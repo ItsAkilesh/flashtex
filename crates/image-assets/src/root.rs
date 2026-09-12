@@ -114,7 +114,11 @@ impl fmt::Display for RootError {
             RootError::EmptyPath => write!(f, "asset path is empty"),
             RootError::NotFound(p) => write!(f, "asset path does not exist: {}", p.display()),
             RootError::NotADirectory(p) => {
-                write!(f, "asset path component is not a directory: {}", p.display())
+                write!(
+                    f,
+                    "asset path component is not a directory: {}",
+                    p.display()
+                )
             }
             RootError::NotARegularFile(p) => {
                 write!(f, "asset path is not a regular file: {}", p.display())
@@ -127,10 +131,9 @@ impl fmt::Display for RootError {
             RootError::NotUtf8(p) => {
                 write!(f, "asset path is not valid UTF-8: {}", p.display())
             }
-            RootError::TooLarge { limit, size } => write!(
-                f,
-                "asset is {size} bytes, exceeding the {limit}-byte bound"
-            ),
+            RootError::TooLarge { limit, size } => {
+                write!(f, "asset is {size} bytes, exceeding the {limit}-byte bound")
+            }
             RootError::Io(msg) => write!(f, "asset root I/O error: {msg}"),
         }
     }
