@@ -464,3 +464,23 @@ and full-font/license hashes. Synthetic and pinned mixed STIX/Liberation tests
 verify stale-generation rejection and unchanged held CFF geometry after project
 font bytes change. No fonts are copied into the repository; installed-font tests
 use disposable temporary project directories.
+
+Registry transport version2 adds `generation` and per-entry `cff_table`:
+`{ sha256, offset, byte_length }` for CFF, `null` for TrueType. `export_manifest()`
+returns typed data; `export_json(max_bytes)` produces deterministic compact JSON
+through a bounded writer (hard1MiB cap). Export includes declarations and identities,
+never font/license bytes. Callers may save through the existing rooted atomic-save
+API; serialization itself has no filesystem side effects. Existing schema1 inputs
+remain accepted. Version2 import uses the same rooted load and resource validators,
+then checks the claimed generation and exact selected CFF table against those
+verified bytes. Unknown fields and duplicate JSON keys are rejected by direct
+strict-struct deserialization, without a map intermediary that overwrites keys.
+
+`enumerate(expected_generation, MetadataFilter { family_prefix, weight, style },
+offset, limit)` returns a serializable `MetadataPage` with generation, total matches,
+next offset and typed export entries including CFF table identity. It scans only
+the bounded declared registry: exact case-sensitive prefix/style/weight filtering,
+1..64 results per page, offset<=128, prefix<=256bytes. Stale generation is refused
+before enumeration. No filesystem discovery or implicit fallback occurs. Roundtrip
+and pagination tests cover both synthetic resources and the pinned mixed licensed
+STIX/Liberation registry; no native wire negotiation or visual parity is implied.
