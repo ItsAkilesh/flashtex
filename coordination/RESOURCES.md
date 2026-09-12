@@ -1,3 +1,13 @@
+## Verified Commander resource checkpoint
+
+Observed 2026-09-12T12:38:21.553671+00:00. Exactly four local running handles: sole Commander /root/runtime_validator and retained /root, /root/compiler_corpus (runtime), /root/supervisor_api_review. Three drained handles remain completed; Sol quiesced. This current census supersedes all historical seven-worker statements below.
+
+Dispatcher1099831 and witness1405586 active; witness12:35:58Z pins Commander268514 live, no journal blockers, claim_authorized=false. No restart or succession justified. Latest remote reply still Jaysen11:20:53Z five children plus parent (target15), not current confirmation; Daniel09:55:54Z completed/blocked report and Aarush older reports remain stale. Renewed census request issue2comment5645891597 awaits reply. Numeric remaining quota is unknown; no new billing authorization.
+
+Observed local load4.95/4.49/3.95, /home187GiB available and /tmp1.9GiB available. These are instantaneous filesystem/load readings, not account balances or quota guarantees. Renderer75642 currently reserves paired sample window; other heavy jobs held.
+
+## Historical resource records
+
 > LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
 > performance, font-resources, rendering-core) plus the sole Commander. Bridge,
 > project-index and edit-ledger may finish their current task, then STOP. Their
