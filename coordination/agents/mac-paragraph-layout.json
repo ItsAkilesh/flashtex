@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-paragraph-layout",
+  "allocation_id": "claude-mac20x-paragraph",
+  "assignment_acknowledgements": {
+    "FT-019": {
+      "acknowledged_utc": "2026-09-12T05:38:12Z",
+      "adaptation": "Reviewed origin/main 9da7e48 (crates/compiler/src/layout.rs: greedy placeholder breaker, 612x792 bp page, PARAGRAPH_GAP 6, LINE_SPACING 1.2), de1020c metrics.rs (Core-14 AFM widths, no kerns), issue #10 oracle findings (no kerning -> early wraps; +14.75pt after headings; 6pt vs parskip 0; 14.45 bp = 14.5 TeX pt line pitch), and oracle report 20260912T050958Z (wrap-sample variant C word boxes). FT-018 branch agent/mac-font-engine/tex-fonts not yet pushed: defining FontMetricsSource trait + Core-14 Times adapter (widths from de1020c, ASCII kern pairs from Adobe AFM) so work is not blocked. Not editing compiler files.",
+      "main_sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-paragraph-layout/linebreak",
+  "capabilities": [
+    "rust",
+    "typesetting"
+  ],
+  "code_revision": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "accepted",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T05:38:12Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
