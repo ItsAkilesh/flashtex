@@ -37,6 +37,7 @@ fn setup(path: &std::path::Path) -> Bridge {
 struct Fake {
     calls: Cell<u32>,
     fail: bool,
+    proposal: Proposal,
 }
 impl Converter for Fake {
     fn convert(&self, _: &CaptureSubmit, _: &Context) -> Result<Proposal> {
@@ -44,17 +45,25 @@ impl Converter for Fake {
         if self.fail {
             return Err(BridgeError::new("provider_timeout", "fixture timeout"));
         }
-        Ok(Proposal {
-            latex: "$x$".into(),
-            ambiguities: vec![],
-            required_dependencies: vec![],
-        })
+        Ok(self.proposal.clone())
     }
 }
 fn fake() -> Fake {
     Fake {
         calls: Cell::new(0),
         fail: false,
+        proposal: Proposal {
+            latex: "$x$".into(),
+            ambiguities: vec![],
+            required_dependencies: vec![],
+        },
+    }
+}
+fn fake_with(proposal: Proposal) -> Fake {
+    Fake {
+        calls: Cell::new(0),
+        fail: false,
+        proposal,
     }
 }
 
@@ -78,6 +87,61 @@ fn durable_receipt_and_duplicate_content_survive_restart() {
     }
     let mut b = Bridge::new(Store::open(dir.path()).unwrap());
     assert_eq!(b.receive(cap.clone()).unwrap().capture, cap);
+}
+#[test]
+fn empty_argument_artifact_blocks_insertion_even_when_approved() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    b.receive(capture()).unwrap();
+    let unsafe_proposal = Proposal {
+        latex: "$\\frac{\\sqrt{ }}{2}$".into(),
+        ambiguities: vec!["Cannot express the Greek letter pi".into()],
+        required_dependencies: vec![],
+    };
+    b.convert("capture-1", vec![], &fake_with(unsafe_proposal))
+        .unwrap();
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "unsupported_construct_requires_confirmation"
+    );
+    // Still blocked, not merely durably cached from the first attempt.
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "unsupported_construct_requires_confirmation"
+    );
+}
+#[test]
+fn tagged_unsupported_ambiguity_blocks_insertion_even_with_clean_latex() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    b.receive(capture()).unwrap();
+    let unsafe_proposal = Proposal {
+        latex: "$x$".into(),
+        ambiguities: vec![
+            "UNSUPPORTED: source used \\oint, which this compiler cannot render".into(),
+        ],
+        required_dependencies: vec![],
+    };
+    b.convert("capture-1", vec![], &fake_with(unsafe_proposal))
+        .unwrap();
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "unsupported_construct_requires_confirmation"
+    );
+}
+#[test]
+fn ordinary_ambiguity_does_not_block_insertion() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    b.receive(capture()).unwrap();
+    let safe_proposal = Proposal {
+        latex: "$x$".into(),
+        ambiguities: vec!["AMBIGUOUS: could be a 1 or a lowercase l".into()],
+        required_dependencies: vec![],
+    };
+    b.convert("capture-1", vec![], &fake_with(safe_proposal))
+        .unwrap();
+    b.prepare_insert("capture-1", 1, true).unwrap();
 }
 #[test]
 fn journal_prevents_concurrent_bridge_owners() {
@@ -224,6 +288,7 @@ fn provider_failure_does_not_produce_proposal_or_retry() {
     let f = Fake {
         calls: Cell::new(0),
         fail: true,
+        proposal: fake().proposal,
     };
     assert_eq!(
         b.convert("capture-1", vec![], &f).unwrap_err().code,
@@ -486,6 +551,7 @@ fn failed_refresh_keeps_stale_proposal_unpreparable() {
     let failing = Fake {
         calls: Cell::new(0),
         fail: true,
+        proposal: fake().proposal,
     };
     assert_eq!(
         b.convert("capture-1", vec![], &failing).unwrap_err().code,
