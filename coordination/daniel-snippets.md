@@ -1,20 +1,82 @@
 # FT-041: editor-snippets
 
-Status: complete, standalone additive crate. No other crate was touched.
+Status: complete through revision 2, standalone additive crate. No other
+crate was touched.
 
-## Tested commit
+## Tested commit (revision 2)
 
 ```
-31076bf84bf64d0c22339c3b57f00a58b9a42f78
+d15a64ab5f9263154755421b46d8c613a9499b59
 ```
 
-On branch `agent/daniel-snippets/editor-snippets`. At this exact SHA, inside
+On branch `agent/daniel-snippets/editor-snippets`, main integrated through
+`284369de3fd2af4384c3de2d2403801dffbcf94b`. At this exact SHA, inside
 `crates/editor-snippets`:
 
 - `cargo build` — clean.
-- `cargo test` — 41 integration tests + 1 doc-test, all passing.
+- `cargo test` — 41 rev-1 integration tests + 17 new plan tests + 2
+  doc-tests, all passing (60 total).
 - `cargo clippy --all-targets -- -D warnings` — clean, zero warnings.
 - `cargo fmt --check` — clean.
+
+## Revision 2: SnippetPlan (document identity, Unicode anchors)
+
+Adds `SnippetPlan`, `DocumentId`/`ContentHash`/`Staleness`, `Anchor`, and
+`PlanError` (see `src/plan.rs`, `src/identity.rs`, `src/anchor.rs`). None of
+rev 1's public API (`Snippet`, `Expansion`, `TabStops`, `SnippetError`) was
+removed or changed; `SnippetPlan` is purely additive.
+
+**Plan identity.** `DocumentId { revision: u64, content_hash: ContentHash }`
+binds a plan to the caller's own opaque revision counter *and* an FNV-1a
+hash of the document's exact bytes at that revision — dependency-free and
+deterministic across processes/versions (unlike
+`std::collections::hash_map::DefaultHasher`, whose algorithm the standard
+library documents as unspecified). `DocumentId::compare` (and
+`SnippetPlan::staleness`) returns a typed `Staleness`: `Fresh`,
+`RevisionMismatch`, or `ContentMismatch`. The critical case is tested
+directly: `bytes_changed_but_revision_id_did_not_is_still_detected_as_stale`
+in `tests/plan.rs` holds the revision id constant across two `DocumentId`s
+built from different text and asserts the result is `ContentMismatch`, not
+`Fresh` — a staleness check that only compared `revision` would get this
+wrong.
+
+**Unicode caret/selection.** `Anchor::{Caret(usize), Selection(Range<usize>)}`
+carries byte offsets into the document text. `SnippetPlan::compute` is the
+only place an `Anchor` becomes part of a plan, and it validates both
+offsets there against the exact `document_text` passed in —
+`str::is_char_boundary` (which is also false past the end of the string) —
+rejecting anything else as `PlanError::InvalidOffset` or
+`PlanError::SelectionReversed`, extending rev 1's structural parser
+guarantee (every offset the crate returns is a valid `char` boundary) to
+these caller-supplied offsets too, by explicit validation rather than
+by construction. Tested with CJK (`caret_at_a_valid_char_boundary_in_cjk_text_succeeds`
+/ `caret_mid_character_in_cjk_text_is_a_typed_error_not_a_panic`), accented
+Latin (`caret_mid_character_in_accented_latin_text_is_rejected`, "café"),
+and a multi-codepoint ZWJ emoji sequence
+(`selection_around_a_multi_codepoint_emoji_sequence_is_unicode_safe`).
+
+**Placeholders preserved.** `SnippetPlan::compute` calls
+`Snippet::expand_with` internally and exposes the resulting `Expansion`
+unchanged via `.expansion()`; linked edits (`plan_compute_applies_overrides_for_a_linked_edit`),
+tab order (`plan_expansion_tab_order_matches_direct_expand`), and
+self-referential detection (`plan_still_reports_self_referential_placeholders_as_a_typed_error`)
+are all re-tested through the plan API, plus all 41 original rev-1 tests
+still pass untouched.
+
+**Explicit caller application, enforced by API shape.** `SnippetPlan`'s
+only public methods are `compute` (a constructor taking shared references
+only — `&Snippet`, `&str`, `&HashMap`, and an owned `Anchor` — never a
+mutable document handle), plus getters (`document()`, `anchor()`,
+`expansion()`) and a pure comparison (`staleness()`). There is no `apply`,
+`commit`, or any method that takes `&mut` anything document-shaped — the
+crate has no such type to take a `&mut` of in the first place. A caller
+cannot get from a `SnippetPlan` to a mutated buffer without writing that
+step itself; the absence of the capability is structural, not a warning in
+a doc comment.
+
+**Rev 1 bounds unchanged.** All six `limits.rs` constants, all `SnippetError`
+variants, and their tests are untouched; `SnippetPlan::compute` propagates
+any `SnippetError` from expansion as `PlanError::Snippet` (via `From`).
 
 Crate name: `flashtex-editor-snippets` (lib name `flashtex_editor_snippets`),
 no workspace root, own `Cargo.lock`, `edition = "2024"` — matching the
@@ -66,6 +128,65 @@ impl TabStops {
     pub fn current(&self) -> Option<u32>;
     pub fn advance(&mut self) -> Option<u32>; // guarded: None + stays put at/before bounds
     pub fn retreat(&mut self) -> Option<u32>; // guarded: None + stays put at/before bounds
+}
+
+// --- revision 2: plans bound to document identity + Unicode anchors ---
+
+pub struct ContentHash(/* opaque */); // FNV-1a 64 of the document's exact bytes
+impl ContentHash {
+    pub fn of(text: &str) -> ContentHash;
+}
+
+pub struct DocumentId {
+    pub revision: u64,       // caller's own opaque revision id
+    pub content_hash: ContentHash,
+}
+impl DocumentId {
+    pub fn new(revision: u64, text: &str) -> DocumentId;
+    pub fn compare(&self, current: &DocumentId) -> Staleness;
+}
+
+pub enum Staleness {
+    Fresh,
+    RevisionMismatch { planned: u64, current: u64 },
+    ContentMismatch { planned: ContentHash, current: ContentHash },
+}
+impl Staleness {
+    pub fn is_fresh(&self) -> bool;
+}
+
+pub enum Anchor {
+    Caret(usize),
+    Selection(std::ops::Range<usize>),
+}
+impl Anchor {
+    pub fn range(&self) -> std::ops::Range<usize>;
+}
+
+pub enum PlanError {
+    Snippet(SnippetError),
+    InvalidOffset { offset: usize },          // not a char boundary, incl. past end
+    SelectionReversed { start: usize, end: usize },
+}
+// impl std::error::Error + std::fmt::Display; impl From<SnippetError> for PlanError
+
+pub struct SnippetPlan { /* opaque: DocumentId + Anchor + Expansion */ }
+impl SnippetPlan {
+    // No constructor or method here ever takes &mut anything document-shaped,
+    // and there is no `apply`/`commit` method at all: applying a plan to a
+    // real buffer is left entirely to the caller, enforced by this being the
+    // whole surface, not by a comment.
+    pub fn compute(
+        snippet: &Snippet,
+        revision: u64,
+        document_text: &str,
+        anchor: Anchor,
+        overrides: &std::collections::HashMap<u32, String>,
+    ) -> Result<SnippetPlan, PlanError>;
+    pub fn document(&self) -> &DocumentId;
+    pub fn anchor(&self) -> &Anchor;
+    pub fn expansion(&self) -> &Expansion;
+    pub fn staleness(&self, current: &DocumentId) -> Staleness;
 }
 
 #[non_exhaustive-in-spirit but currently exhaustive] // see note below

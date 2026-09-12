@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-snippets",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": ["rust", "editor-snippets", "text-editing-primitives"],
+  "branch": "agent/daniel-snippets/editor-snippets",
+  "state": "ready_for_integration",
+  "summary": "crates/editor-snippets rev 2: SnippetPlan binds an expansion to a DocumentId (caller revision id + FNV-1a content hash of exact bytes) and an Anchor (caret or selection), with typed Staleness (Fresh/RevisionMismatch/ContentMismatch) catching bytes changed under an unchanged revision id. Anchor offsets are validated as char boundaries against the exact document text passed to SnippetPlan::compute (PlanError::InvalidOffset/SelectionReversed), tested with CJK, accented Latin, and a multi-codepoint ZWJ emoji sequence. Rev 1 placeholders/linked edits/tab order/self-referential detection and all six limits.rs bounds are unchanged and re-verified through the plan API. SnippetPlan exposes only compute() (shared refs + owned Anchor, never &mut anything document-shaped) plus getters and a pure staleness comparison -- no apply/commit method exists, so caller application is required by the API surface, not documentation. 41 rev-1 tests + 17 new plan tests + 2 doc-tests, all passing; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean.",
+  "next_action": "Await Commander integration; no follow-up work identified for FT-041 rev 2",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Runs on the user's Claude Max 20x subscription; no token/usage metering exposed to this agent; no purchases or overages made"
+  },
+  "reviewed_peers": {
+    "origin/main": "284369de3fd2af4384c3de2d2403801dffbcf94b"
+  },
+  "assignment_acknowledgements": {
+    "FT-041": {
+      "acknowledged_utc": "2026-09-12T09:36:47Z",
+      "revision": 2,
+      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
+      "adaptation": "Implemented SnippetPlan/DocumentId/ContentHash/Staleness/Anchor/PlanError as new modules (identity.rs, anchor.rs, plan.rs) additive to rev 1; no rev-1 public item was changed or removed. Merged origin/main (fast-forward-free merge, no conflicts in owned paths) before final verification."
+    }
+  },
+  "updated_utc": "2026-09-12T09:36:47Z",
+  "code_revision": "d15a64ab5f9263154755421b46d8c613a9499b59",
+  "main_integrated_through": "284369de3fd2af4384c3de2d2403801dffbcf94b"
+}
