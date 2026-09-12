@@ -25,18 +25,35 @@
 //! Internal targets ([`target::InternalTarget::resolve`]) fail explicitly,
 //! naming the unresolved label, when a reference does not match a label the
 //! caller has told this crate is defined — there is no path that produces a
-//! dangling internal destination.
+//! dangling internal destination. A resolved internal target carries an
+//! exportable [`page::PageTarget`] (page + rectangle) for the PDF exporter.
+//!
+//! Every annotation is bound to an exact [`source::SourceIdentity`] —
+//! revision id, content hash, and byte range — so that re-checking it
+//! against a different revision or changed source text is caught as
+//! [`source::Staleness`] rather than silently trusted. Byte ranges are
+//! validated to fall on UTF-8 character boundaries in the exact source text
+//! they are bound against, so a range can never split a multi-byte
+//! character.
 //!
 //! ```
 //! use flashtex_link_annotations::{
-//!     LinkAnnotation, LinkDestination, Point, Rect, SourcePos, SourceSpan, validate_uri,
+//!     LinkAnnotation, LinkDestination, Point, Rect, RevisionId, SourceIdentity, SourcePos,
+//!     SourceSpan, validate_uri,
 //! };
 //!
+//! let source = "see \\href{https://example.com}{here} for more";
 //! let rect = Rect::new(Point::new(72.0, 700.0), 120.0, 12.0).unwrap();
-//! let span = SourceSpan::new(SourcePos::new(10, 2, 1), SourcePos::new(40, 2, 31)).unwrap();
+//! let span = SourceSpan::new(SourcePos::new(4, 1, 5), SourcePos::new(37, 1, 38)).unwrap();
+//! let revision = RevisionId::parse("rev-1").unwrap();
+//! let identity = SourceIdentity::bind(revision.clone(), source, span).unwrap();
 //! let uri = validate_uri("https://example.com").unwrap();
-//! let link = LinkAnnotation::external(rect, span, uri);
+//! let link = LinkAnnotation::external(rect, identity, uri);
 //! assert!(matches!(link.destination, LinkDestination::External(_)));
+//!
+//! // Checked against a different revision, the same bytes are still stale.
+//! let other_revision = RevisionId::parse("rev-2").unwrap();
+//! assert!(link.source.check_fresh(&other_revision, source).is_err());
 //!
 //! // A denied scheme never becomes a link destination.
 //! assert!(validate_uri("javascript:alert(1)").is_err());
@@ -44,12 +61,19 @@
 
 pub mod annotation;
 pub mod geometry;
+pub mod page;
+pub mod source;
 pub mod span;
 pub mod target;
 pub mod uri;
 
 pub use annotation::{LinkAnnotation, LinkDestination};
 pub use geometry::{Point, Rect, RectError};
+pub use page::{PageIndex, PageTarget};
+pub use source::{
+    ContentHash, MAX_REVISION_LEN, RevisionError, RevisionId, SourceIdentity, SourceIdentityError,
+    Staleness,
+};
 pub use span::{SourcePos, SourceSpan, SpanError};
 pub use target::{InternalTarget, LabelError, LabelId, LabelSet, MAX_LABEL_LEN, TargetError};
 pub use uri::{MAX_URI_LEN, UriError, UriScheme, ValidatedUri, validate_uri};

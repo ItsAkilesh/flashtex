@@ -3,11 +3,13 @@
 //!
 //! This module never invents, guesses at, or defers resolution of a label.
 //! It only confirms that a reference names a label the caller has told it
-//! exists in the document being exported. An unresolvable reference is
-//! always a typed error — this module has no path that produces a dangling
-//! internal destination.
+//! exists in the document being exported, and hands back the exportable
+//! [`PageTarget`] (page + rectangle) that label was registered with. An
+//! unresolvable reference is always a typed error — this module has no path
+//! that produces a dangling internal destination.
 
-use std::collections::HashSet;
+use crate::page::PageTarget;
+use std::collections::HashMap;
 use std::fmt;
 
 /// The longest label id this crate will accept.
@@ -72,24 +74,31 @@ impl fmt::Display for LabelError {
 
 impl std::error::Error for LabelError {}
 
-/// The set of labels known to be defined in the document being exported.
-/// This crate does not discover labels itself: the caller (the document
-/// model) supplies them.
+/// The set of labels known to be defined in the document being exported,
+/// each mapped to the exportable [`PageTarget`] (page + rectangle) a PDF
+/// exporter would jump to. This crate does not discover labels itself: the
+/// caller (the document model) supplies them.
 #[derive(Clone, Debug, Default)]
-pub struct LabelSet(HashSet<LabelId>);
+pub struct LabelSet(HashMap<LabelId, PageTarget>);
 
 impl LabelSet {
     pub fn new() -> LabelSet {
-        LabelSet(HashSet::new())
+        LabelSet(HashMap::new())
     }
 
-    /// Records `id` as defined. Returns `false` if it was already present.
-    pub fn insert(&mut self, id: LabelId) -> bool {
-        self.0.insert(id)
+    /// Records `id` as defined at `target`. Returns the previous target if
+    /// `id` was already present (last registration wins, same as
+    /// `HashMap::insert`).
+    pub fn insert(&mut self, id: LabelId, target: PageTarget) -> Option<PageTarget> {
+        self.0.insert(id, target)
     }
 
     pub fn contains(&self, id: &LabelId) -> bool {
-        self.0.contains(id)
+        self.0.contains_key(id)
+    }
+
+    pub fn get(&self, id: &LabelId) -> Option<&PageTarget> {
+        self.0.get(id)
     }
 
     pub fn len(&self) -> usize {
@@ -101,17 +110,19 @@ impl LabelSet {
     }
 }
 
-impl FromIterator<LabelId> for LabelSet {
-    fn from_iter<T: IntoIterator<Item = LabelId>>(iter: T) -> Self {
+impl FromIterator<(LabelId, PageTarget)> for LabelSet {
+    fn from_iter<T: IntoIterator<Item = (LabelId, PageTarget)>>(iter: T) -> Self {
         LabelSet(iter.into_iter().collect())
     }
 }
 
 /// An internal link destination that has been confirmed to resolve to a
-/// label defined in this document.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// label defined in this document, carrying the exportable page target
+/// (page + rectangle) a PDF exporter needs to build a `/GoTo` destination.
+#[derive(Clone, Debug, PartialEq)]
 pub struct InternalTarget {
     label: LabelId,
+    page_target: PageTarget,
 }
 
 impl InternalTarget {
@@ -119,15 +130,21 @@ impl InternalTarget {
         &self.label
     }
 
+    pub fn page_target(&self) -> PageTarget {
+        self.page_target
+    }
+
     /// Resolves `label` against `known`. Fails explicitly, naming the label
     /// that could not be found, rather than ever producing a dangling
     /// target — there is no code path in this function that returns `Ok`
     /// for a label absent from `known`.
     pub fn resolve(label: LabelId, known: &LabelSet) -> Result<InternalTarget, TargetError> {
-        if known.contains(&label) {
-            Ok(InternalTarget { label })
-        } else {
-            Err(TargetError::Unresolved(label))
+        match known.get(&label) {
+            Some(target) => Ok(InternalTarget {
+                label,
+                page_target: *target,
+            }),
+            None => Err(TargetError::Unresolved(label)),
         }
     }
 }
@@ -155,6 +172,15 @@ impl std::error::Error for TargetError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::{Point, Rect};
+    use crate::page::PageIndex;
+
+    fn page_target(page: u32) -> PageTarget {
+        PageTarget::new(
+            PageIndex::new(page),
+            Rect::new(Point::new(0.0, 0.0), 10.0, 10.0).unwrap(),
+        )
+    }
 
     #[test]
     fn rejects_empty_label() {
@@ -206,12 +232,13 @@ mod tests {
     }
 
     #[test]
-    fn resolves_known_label() {
+    fn resolves_known_label_and_carries_its_page_target() {
         let id = LabelId::parse("fig:tree").unwrap();
         let mut known = LabelSet::new();
-        known.insert(id.clone());
+        known.insert(id.clone(), page_target(2));
         let target = InternalTarget::resolve(id.clone(), &known).unwrap();
         assert_eq!(target.label(), &id);
+        assert_eq!(target.page_target().page.value(), 2);
     }
 
     #[test]
@@ -226,8 +253,20 @@ mod tests {
     fn does_not_resolve_against_unrelated_labels() {
         let wanted = LabelId::parse("sec:intro").unwrap();
         let mut known = LabelSet::new();
-        known.insert(LabelId::parse("sec:conclusion").unwrap());
+        known.insert(LabelId::parse("sec:conclusion").unwrap(), page_target(0));
         let err = InternalTarget::resolve(wanted.clone(), &known).unwrap_err();
         assert_eq!(err, TargetError::Unresolved(wanted));
+    }
+
+    #[test]
+    fn last_registration_for_a_label_wins_and_returns_previous_target() {
+        let id = LabelId::parse("fig:tree").unwrap();
+        let mut known = LabelSet::new();
+        let previous = known.insert(id.clone(), page_target(1));
+        assert_eq!(previous, None);
+        let previous = known.insert(id.clone(), page_target(9));
+        assert_eq!(previous, Some(page_target(1)));
+        let target = InternalTarget::resolve(id, &known).unwrap();
+        assert_eq!(target.page_target().page.value(), 9);
     }
 }
