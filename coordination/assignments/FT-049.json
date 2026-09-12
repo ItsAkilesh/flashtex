@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0b8577a129d4546b5730e00e4a5c2bcdb9ab06ae",
-  "objective": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
+  "input_main_sha": "135e5d3ad5881f14c38c01f3e03269b0a0771686",
+  "objective": "Verify thirty sequential normal and stopped-reader session lifecycles return child thread and descriptor observations to baseline",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 16,
+  "revision": 17,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:39:53Z"
+  "updated_utc": "2026-09-12T12:41:34.786216+00:00"
 }
