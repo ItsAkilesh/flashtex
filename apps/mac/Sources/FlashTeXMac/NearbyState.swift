@@ -53,9 +53,23 @@ final class PairingCoordinator: PairingConfirmer {
 }
 
 /// UI-facing state for the nearby listener: advertising, port, pairing code,
-/// paired companions, last received capture.
+/// paired companions, last received capture, and the explicit receive-error
+/// state (refused captures, duplicates) the window shows.
 @MainActor
 final class NearbyState: ObservableObject {
+    /// One refused capture, as the listener reported it to the companion.
+    struct ReceiveError: Equatable, Identifiable {
+        let id: UUID
+        let date: Date
+        let pairId: String?
+        let captureId: String?
+        let code: String
+        let message: String
+        var summary: String {
+            "\(code): \(captureId ?? "?") from \(pairId ?? "unauthenticated") — \(message)"
+        }
+    }
+
     @Published private(set) var isAdvertising = false
     @Published private(set) var port: UInt16?
     @Published private(set) var status = "off"
@@ -65,11 +79,20 @@ final class NearbyState: ObservableObject {
     @Published private(set) var connectedPairIds: [String] = []
     @Published private(set) var lastReceivedCaptureId: String?
     @Published private(set) var log: [String] = []
+    /// Most recent refusal, until `clearReceiveErrors()`; nil means none since.
+    @Published private(set) var lastReceiveError: ReceiveError?
+    /// Recent refusals, newest last (bounded).
+    @Published private(set) var receiveErrors: [ReceiveError] = []
+    /// Retries of already accepted captures (acknowledged, not re-delivered).
+    @Published private(set) var duplicateCaptureCount = 0
+    @Published private(set) var lastDuplicateCaptureId: String?
+    static let maxReceiveErrors = 20
 
     let macName: String
     let store: PairStore
     let coordinator: PairingCoordinator
     let loopbackOnly: Bool
+    let limits: NearbyReceiveLimits
     private let queue = DispatchQueue(label: "flashtex.nearby.listener")
     private var listener: NearbyListener?
     private weak var sink: CaptureSink?
@@ -78,10 +101,12 @@ final class NearbyState: ObservableObject {
     private var wantAdvertising = false
 
     init(store: PairStore = PairStore(url: PairStore.defaultURL()),
-         macName: String = Host.current().localizedName ?? "Mac", loopbackOnly: Bool = false) {
+         macName: String = Host.current().localizedName ?? "Mac", loopbackOnly: Bool = false,
+         limits: NearbyReceiveLimits = .init()) {
         self.store = store
         self.macName = macName
         self.loopbackOnly = loopbackOnly
+        self.limits = limits
         self.coordinator = PairingCoordinator(store: store)
         self.pairs = store.pairs
         if let e = store.loadError { log.append(e); status = e }
@@ -135,7 +160,7 @@ final class NearbyState: ObservableObject {
         if let b = coordinator.bootstrapEntry { psks.append(b) }
         let config = NearbyListener.Configuration(
             psks: psks, macName: macName, port: port,
-            advertisement: .init(name: macName, txt: txtRecord), loopbackOnly: loopbackOnly)
+            advertisement: .init(name: macName, txt: txtRecord), loopbackOnly: loopbackOnly, limits: limits)
         let next = NearbyListener(configuration: config, sink: sink, destinations: destinations,
                                   pairing: coordinator, queue: queue) { [weak self] event in
             Task { @MainActor in self?.handle(event) }
@@ -189,6 +214,16 @@ final class NearbyState: ObservableObject {
         case .capture(let id):
             lastReceivedCaptureId = id
             note("capture \(id)")
+        case .captureRefused(let pairId, let captureId, let code, let message):
+            let e = ReceiveError(id: UUID(), date: Date(), pairId: pairId, captureId: captureId, code: code, message: message)
+            lastReceiveError = e
+            receiveErrors.append(e)
+            if receiveErrors.count > Self.maxReceiveErrors { receiveErrors.removeFirst(receiveErrors.count - Self.maxReceiveErrors) }
+            note("refused \(e.summary)")
+        case .captureDuplicate(let pairId, let captureId):
+            duplicateCaptureCount += 1
+            lastDuplicateCaptureId = captureId
+            note("duplicate \(captureId) from \(pairId ?? "?") acknowledged again, not re-delivered")
         case .connectionClosed(let id, let reason):
             if let id, let i = connectedPairIds.firstIndex(of: id) { connectedPairIds.remove(at: i) }
             note("closed \(id ?? "unauthenticated"): \(reason)")
@@ -248,6 +283,12 @@ final class NearbyState: ObservableObject {
     }
 
     func refreshPairs() { pairs = store.pairs }
+
+    /// Acknowledges the error state in the UI; the log keeps its lines.
+    func clearReceiveErrors() {
+        lastReceiveError = nil
+        receiveErrors = []
+    }
 
     private func note(_ line: String) {
         log.append(line)

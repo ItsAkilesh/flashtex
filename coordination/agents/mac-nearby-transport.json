@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-nearby-transport",
+  "allocation_id": "claude-mac20x-nearby-transport",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-transport/bounded",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:46:52Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
