@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T14:51:23Z",
-      "adaptation": "Read r44 cap audit objective; independently verified f8bb2389 six-state Value capture and reopened documents, no rerun. Full source/body comparisons and decline-before-acceptance pass; wrapper boundary remains separate.",
-      "main_sha": "6b69149c2922b043aafd0e11c2cd1320506b0c74",
-      "revision": 44
+      "acknowledged_utc": "2026-09-12T16:33:36Z",
+      "adaptation": "Read r48 isolated proof objective. Four scratch correctness gates pass; one bounded full preparation comparison active51837. No authoritative runtime or helper API changes, proof not installed into Pending.",
+      "main_sha": "ab5b4e049f0ef58c184853340bbd76213448c0a9",
+      "revision": 48
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "2006af19e89ac5c666cbf8bbe4184797162adca5",
+  "code_revision": "9a74955451ac2ed944e8759128042573a3a5f54f",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "a8790ce1616921c478c5c84fb988eb6fc66a5e25",
-  "next_action": "Commander integrate bounded capture audit; helper optional serialization remains separate boundary. No active jobs; await next assigned work.",
+  "main_integrated_through": "49edf117a60ac015f36fe728ac555bdda9cd00ad",
+  "next_action": "Commander review isolated prototype; root source review received. No active jobs or timing window; retain production ownership and await next bounded assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r44 audit2006af19 PASS:15 compressed artifacts, original hashes,78 assets per capture, exact six v1/accepted v2 Value bodies and source revisions.6000-byte frames;5999JSON decline before acceptance; accepted-declined-accepted recovery and archived reopened documents equal final ACK. No rerun/raw spelling/native claim.",
+  "summary": "FT049r48 isolated proof:4 correctness gates PASS,9actual v1/4siblings, originalSession staleA/currentB rollback preserved. One paired full prep observation proof slower .115\u21921.044ms50KASCII and4.029\u219223.812ms1M, accounted retention reduced. No production API/adoption; recommend retain owned source. Cases/dependency hashes/logs archived.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T14:51:35Z",
+  "updated_utc": "2026-09-12T16:35:20Z",
   "usage": {
     "status": "unknown"
   }

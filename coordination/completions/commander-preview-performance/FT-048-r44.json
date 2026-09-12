@@ -1,0 +1,73 @@
+{
+  "agent_id": "commander-preview-performance",
+  "archived_utc": "2026-09-12T16:25:31Z",
+  "assignment": {
+    "acceptance": [
+      "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+      "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+      "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+    ],
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+    "objective": "Owned preview-controller edit/index/submit large-source ownership audit. Static first; implement only a concrete material redundant-copy improvement preserving exact durable source, per-operation admission receipts and source identity. No runtime/producer/native edits or benchmark sweep. Current-base Text reconciliation remains held for Kabir overlap ACK; no duplicate producer Text implementation.",
+    "owned_paths": [
+      "crates/preview-controller",
+      "crates/edit-ledger"
+    ],
+    "revision": 44,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-048",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T16:24:32.722788+00:00"
+  },
+  "report": {
+    "agent_id": "commander-preview-performance",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-048": {
+        "acknowledged_utc": "2026-09-12T16:24:59Z",
+        "adaptation": "Read r44 owned preview edit/index/submit audit. Static inspection finds metadata replacement already moves source and borrows it for indexing; required full-source clone crosses owned runtime Request API. No speculative implementation or runtime edits; report audit and request owner coordination for substantive ownership change.",
+        "main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
+        "revision": 44
+      }
+    },
+    "branch": "agent/commander-preview-performance/preview-performance",
+    "capabilities": [
+      "Preview helper serialization and latency"
+    ],
+    "code_revision": "8dd9170dccc9f2a809c5537ca13c08459d4c91f5",
+    "eta_minutes": {
+      "likely": 15,
+      "optimistic": 5,
+      "pessimistic": 30
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "8b676e7212042493c690848026cc33cc1900b0fe",
+    "next_action": "Commander coordinate runtime owner for borrowed/request ownership investigation if prioritized; root can adapt helper to a reviewed API. Await Kabir Text overlap acknowledgement. All owned processes terminal; ready for authority transfer fence.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT048r44 static audit completed at8dd9170d: metadata edits move replacement source into durable store, borrow saved source for indexing and return source-free metadata. Remaining full-source copy in compile_current_with_admission supplies runtime-owned InputDocument strings. No material removable source copy found within owned paths; no speculative code changes or benchmark sweep. Current-base Text handoff8b/8dd remains no-build and fenced.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T16:25:15Z",
+    "usage": {
+      "evidence": "crates/preview-controller/src/metadata_edit.rs; crates/preview-controller/src/lib.rs:312; crates/preview-controller/src/lib.rs:444; crates/document-runtime/src/lib.rs:28",
+      "status": "Existing hosted allocation only; no paid API or CLI calls; remaining quota unknown."
+    }
+  },
+  "report_age_seconds": 16,
+  "report_path": "coordination/agents/commander-preview-performance.json",
+  "review_required": true,
+  "revision": 44,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-048",
+  "worker_branch": "agent/commander-preview-performance/preview-performance",
+  "worker_report_sha": "80713a9ed45f87df66abe6e50485b4f0232b0e32"
+}
