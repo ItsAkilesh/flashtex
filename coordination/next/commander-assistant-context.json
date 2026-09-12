@@ -2,9 +2,9 @@
   "agent_id": "commander-assistant-context",
   "assignment_path": "coordination/assignments/FT-029.json",
   "branch": "agent/commander/assistant-context",
-  "previous_report_sha": "7469b2ad4804a87be4436159a05a83063e67adec",
-  "revision": 4,
+  "previous_report_sha": "45e74852045f8cde6d6a875224dfc8a7e8eed54b",
+  "revision": 5,
   "schema_version": 1,
   "task_id": "FT-029",
-  "updated_utc": "2026-09-12T07:57:30Z"
+  "updated_utc": "2026-09-12T08:02:58Z"
 }
