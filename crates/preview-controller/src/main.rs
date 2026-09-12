@@ -18,6 +18,8 @@ use std::{
     thread,
     time::Duration,
 };
+mod wire;
+
 const MAX_FRAME: usize = 1024 * 1024;
 // Leave four MiB below the helper frame bound for its wrapping metadata.
 const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
@@ -222,9 +224,7 @@ fn run(config: Value) -> Result<(), String> {
                     )
                 };
                 let output = match response {
-                    Ok(payload) => {
-                        json!({"protocol_version":1,"session_id":session,"id":id,"type":"result","payload":payload})
-                    }
+                    Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
                 emit(&output_tx, &stopped, output);
@@ -234,9 +234,7 @@ fn run(config: Value) -> Result<(), String> {
         }
         for update in controller.poll() {
             let payload = match update {
-                Update::Preview(preview) => {
-                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"missing_layout_capabilities":preview.missing_layout_capabilities,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
-                }
+                Update::Preview(preview) => wire::preview_payload(preview),
                 Update::Discarded { request_id } => {
                     json!({"kind":"discarded","request_id":request_id})
                 }
@@ -257,7 +255,7 @@ fn run(config: Value) -> Result<(), String> {
             emit(
                 &output_tx,
                 &stopped,
-                json!({"protocol_version":1,"session_id":session,"id":null,"type":"update","payload":payload}),
+                wire::envelope(&session, Value::Null, "update", payload),
             );
         }
     }
