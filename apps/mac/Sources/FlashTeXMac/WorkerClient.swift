@@ -105,7 +105,10 @@ final class WorkerClient {
             // The runtime-v1 transcript (check_runtime.py) records v1 lines only; a
             // negotiated v2 display_list line is not part of that contract's record.
             if case .displayList = event {} else { transcript?.record(line) }
-            if TypingBench.isBenchActive { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
+            if TypingBench.isBenchActive {
+                if case .displayList(let id, _) = event { FlashTeXLog.write("worker: display_list \(id) line \(line.count) B received at \(t1) (header probe \(Double(t1 - t0) / 1e6) ms)") }
+                else { FlashTeXLog.write("worker: line \(line.count) B decoded in \(Double(t1 - t0) / 1e6) ms at \(t1)") }
+            }
             deliver {
                 if TypingBench.isBenchActive { FlashTeXLog.write("worker: event on main at \(MonotonicClock.nowNs())") }
                 self.handler(event)

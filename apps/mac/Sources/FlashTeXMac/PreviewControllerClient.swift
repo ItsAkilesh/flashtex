@@ -75,6 +75,10 @@ final class PreviewControllerClient {
             if let compilerPath { o["compiler_path"] = compilerPath.path }
             if let compilerMaxFrameBytes { o["compiler_max_frame_bytes"] = compilerMaxFrameBytes }
             if !bibliographyPaths.isEmpty { o["bibliography_paths"] = bibliographyPaths }
+            // Evidence only: the helper's own per-phase stderr timings (display
+            // transport profile, optional-output serialization), logged as
+            // `controller: {...}` lines. Off unless FLASHTEX_CONTROLLER_DIAGNOSTIC_TIMINGS=1.
+            if ProcessInfo.processInfo.environment["FLASHTEX_CONTROLLER_DIAGNOSTIC_TIMINGS"] == "1" { o["diagnostic_timings"] = true }
             return o
         }
     }
