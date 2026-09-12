@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "796b982c7f3c1961b27c87feacb65454ad8589ef",
-  "objective": "Consume helper/native feedback through the runtime-only contract, preserving bounded queues and cancellation under slow validation; no peer implementation writes",
+  "input_main_sha": "e4c9252ddb947aebebb81d384d72782e7613a263",
+  "objective": "Independently verify published incremental producer through existing runtime with exact fresh/persistent source and sibling equality; no producer edits",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:06:02Z"
+  "updated_utc": "2026-09-12T11:16:55.918555+00:00"
 }
