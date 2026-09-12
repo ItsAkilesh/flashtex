@@ -357,8 +357,8 @@
           "kind": "diagnostic",
           "source": {
             "path": "main.tex",
-            "start_byte": 22,
-            "end_byte": 23,
+            "start_byte": 49,
+            "end_byte": 50,
             "text": "}"
           },
           "detail": "Report the extra closing brace at this position and explain skipping/marking it."

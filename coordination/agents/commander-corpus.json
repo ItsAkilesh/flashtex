@@ -13,23 +13,34 @@
   "capabilities": [
     "compiler-fixtures"
   ],
-  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "code_revision": "5ed30c2b9946015556015fbe88f9e2ed3d6c8141",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "next_action": "Commander review and actual Cursor commit; compiler owner can consume emitted requests and record semantic results separately.",
-  "reviewed_peers": {},
+  "main_integrated_through": "5ed30c2b9946015556015fbe88f9e2ed3d6c8141",
+  "next_action": "Commander merge current main and publish accumulated FT-011 checkpoint through actual Cursor; no additional corpus edits until that checkpoint is captured.",
+  "reviewed_peers": {
+    "origin/agent/claude/compiler-foundation": {
+      "adaptation": "Fetched branch still9f1033b. Incremental checker compares exact edited request results against fresh processes; does not conflate equivalent unsupported output with semantic support or cache reuse. No compiler internals changed.",
+      "reviewed_utc": "2026-09-12T04:36:32Z",
+      "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+    },
+    "origin/agent/mac-pdf/pdf-output": {
+      "adaptation": "Fetched/reviewed PDF tip remains a0855dd; encoding.rs confirms WinAnsi plus explicit substitutions. Serialization consistency never upgrades underlying5failed/9unsupported semantic corpus. All owner implementations untouched.",
+      "reviewed_utc": "2026-09-12T04:47:03Z",
+      "sha": "a0855dd46ecebd70f2e02ea1a56a9f48499b1034"
+    }
+  },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-011: 14 original TeX compatibility/recovery projects, 25 exact UTF-8 source witnesses, manifest validator and runtime-v1 request emitter. All engine support explicitly required_unverified.",
+  "summary": "FT-011 sixth increment: PDF literal byte/runtime consistency and explicit page/item/codepoint substitution warning checks.40 tests pass;14 actual artifacts consistent,2 contain warned text substitutions; semantic failures preserved.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:24:46Z",
+  "updated_utc": "2026-09-12T04:47:03Z",
   "usage": {
-    "evidence": "python3 tests/tex-corpus/validate.py: 14 cases/25 witnesses; python3 -m unittest discover -s tests/tex-corpus -v: 6 passed; included-file emitted request JSON round-trip passed.",
+    "evidence": "40tests pass; pdf_consistency.py actual evidence shows14pass/0fail/2substitution cases. evidence/pdf-consistency-a0855dd.json links exact compiler/PDF evidence hashes and item source provenance. Tests cover escaping,WinAnsi,CJK/emoji/controls,wrong warnings,dropped/duplicated items,bounds,multiline/multipage.",
     "status": "unknown"
   }
 }
