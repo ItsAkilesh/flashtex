@@ -426,3 +426,80 @@ fn persistent_helper_interleaves_requests_and_rejects_cancelled_callbacks() {
     drop(input);
     assert!(child.wait().unwrap().success());
 }
+
+#[cfg(unix)]
+#[test]
+fn supervised_client_handles_real_helper_and_bounds_stalled_pipes() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{
+        os::unix::fs::PermissionsExt,
+        time::{Duration, Instant},
+    };
+    let mut client = SessionClient::spawn(
+        std::path::Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context")),
+        "client_test",
+    )
+    .unwrap();
+    assert_eq!(
+        client
+            .call(json!({"operation":"sweep"}), Duration::from_secs(2))
+            .unwrap()["result"]["type"],
+        "expired"
+    );
+    assert_eq!(
+        client
+            .call(
+                json!({"operation":"cancel","request_id":"missing"}),
+                Duration::from_secs(2)
+            )
+            .unwrap()["result"]["changed"],
+        false
+    );
+    drop(client);
+    let root =
+        std::env::temp_dir().join(format!("flashtex-assistant-client-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    // No reads: command exceeds pipe capacity. Client must time out the write too.
+    let fixtures = [
+        ("stalled", "#!/bin/sh\nexec sleep 3\n"),
+        ("eof", "#!/bin/sh\nexit 0\n"),
+        ("stdout_stalled", "#!/bin/sh\nread line\nexec sleep 3\n"),
+        (
+            "late",
+            "#!/bin/sh\nread line\nsleep 0.3\nprintf '%s\\n' '{\"id\":\"1\",\"result\":{}}'\n",
+        ),
+        (
+            "oversized",
+            "#!/bin/sh\nread line\nhead -c 140000 /dev/zero\n",
+        ),
+        (
+            "wrong",
+            "#!/bin/sh\nread line\nprintf '%s\\n' '{\"id\":\"wrong\",\"result\":{}}'\n",
+        ),
+        // Descendant retains stdout after direct child exit. No reader thread
+        // may remain blocked; descendant exits itself after a bounded lifetime.
+        ("inherited", "#!/bin/sh\nsleep 1 &\nexit 0\n"),
+    ];
+    for (name, script) in fixtures {
+        let path = root.join(name);
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut client = SessionClient::spawn(&path, "fixture").unwrap();
+        let start = Instant::now();
+        let action = if name == "stalled" {
+            json!({"operation":"fake","padding":"x".repeat(1024*1024)})
+        } else {
+            json!({"operation":"sweep"})
+        };
+        assert!(
+            client.call(action, Duration::from_millis(100)).is_err(),
+            "{name}"
+        );
+        assert!(start.elapsed() < Duration::from_secs(2), "{name}");
+        assert!(client.is_stopped());
+        assert!(client
+            .call(json!({"operation":"sweep"}), Duration::from_secs(1))
+            .is_err());
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}

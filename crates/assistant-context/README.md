@@ -115,3 +115,16 @@ read stdout continuously off the UI thread, and supervise process/IO deadlines i
 the native host. The helper uses blocking pipes and does not enforce an idle or
 blocked-output deadline itself. Responses are consumed once, including on a lost
 pipe reply; never replay an edit automatically after helper restart.
+
+On Unix (macOS/Linux), `SessionClient` supervises the helper using nonblocking
+stdin/stdout. `call(action, timeout)` bounds both a full input pipe and a stalled
+reply, checks command correlation and reply shape, and kills/reaps the direct
+helper on transport/protocol failure. It never retries. stderr goes to the null
+device, and retained frames are bounded. Drop also closes pipes and reaps the
+helper. No IO reader threads can remain blocked on descendant-held descriptors.
+The client does not kill arbitrary descendants; only launch the trusted helper,
+which does not spawn any. Run calls on a background worker; this API still blocks
+that worker while awaiting a reply. Use a new session ID for every explicit restart.
+OS process creation/reaping and JSON serialization are not real-time operations;
+the deadline specifically bounds pipe exchange rather than guaranteeing a hard
+wall-clock deadline under all operating-system conditions.

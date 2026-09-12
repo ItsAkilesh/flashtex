@@ -74,6 +74,7 @@ version = "0.1.0"
 dependencies = [
  "flashtex-edit-ledger",
  "flashtex-project-files",
+ "libc",
  "serde",
  "serde_json",
 ]

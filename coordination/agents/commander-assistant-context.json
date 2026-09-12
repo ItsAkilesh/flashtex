@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-029": {
-      "acknowledged_utc": "2026-09-12T07:50:04Z",
-      "adaptation": "Implementing bounded request registry in owned assistant-context crate; immutable contexts, no provider calls or edits.",
-      "main_sha": "48c2d30503bba7fe5586a7e278ab3cfcd0b991ba",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T07:57:06Z",
+      "adaptation": "Added Unix bounded pipe client in owned crate, no shell or retries; deadline covers writes and reads, inherited descriptors cannot retain reader threads.",
+      "main_sha": "dae486e9449f30a7050886d7d3a7306c212b97f4",
+      "revision": 3
     }
   },
   "branch": "agent/commander/assistant-context",
@@ -14,7 +14,7 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "fef359be7a0444414bde9e3e6eeb1053d2a49aea",
+  "code_revision": "2aa1d72c541ab8b77e011b8a87c25a80e5657ede",
   "eta_minutes": {
     "likely": 25,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Native host integration review and bounded IO supervision design; no provider calls.",
+  "next_action": "Review native integration interface and connect consumer under ownership assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Persistent JSONL request registry helper ready;13 tests including actual subprocess interleaving/cancel and original compiler pass; strict clippy pass.",
+  "summary": "Unix supervised helper client implemented;14 tests plus stalledstdin/stdout/late/EOF/inheritedpipe/oversize fixtures and strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:53:39Z",
+  "updated_utc": "2026-09-12T07:57:06Z",
   "usage": {
-    "evidence": "13 tests; clippy all-targets -D warnings",
-    "status": "Hosted OpenAI only; zero external API calls."
+    "evidence": "cargo test include-ignored14passed; expanded supervised_client test passed; strict clippy passed",
+    "status": "Hosted OpenAI; no provider calls."
   }
 }

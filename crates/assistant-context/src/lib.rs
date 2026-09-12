@@ -507,3 +507,7 @@ impl ExplanationFlight {
 
 mod registry;
 pub use registry::ExplanationRegistry;
+#[cfg(unix)]
+mod client;
+#[cfg(unix)]
+pub use client::SessionClient;
