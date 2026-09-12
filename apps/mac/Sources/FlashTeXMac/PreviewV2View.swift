@@ -409,7 +409,10 @@ extension ShellModel {
             return nil
         }
         if let why = historicalRefusal(of: "navigation") { navigationNote = why; return nil }
-        let verdict = await openForNavigation(path: source.path, compiledRevision: declared.revision)
+        // The comparator is the helper's durable version the applied preview was compiled
+        // from (`compiledRevision(for:)`), never the producer's `documents[].revision`
+        // (its compile revision); the declared sha256 binds the opened bytes exactly.
+        let verdict = await openForNavigation(path: source.path, compiledRevision: compiledRevision(for: source.path), compiledSHA256: declared.sha256)
         guard case .opened(_, let revision) = verdict else {
             if case .alreadyOpen = verdict { navigateV2Now(hit); return verdict }
             navigationNote = "Preview → source: " + verdict.note

@@ -37,6 +37,10 @@ enum UnopenedNavigation {
         /// The document opened, but at durable `durable` while the preview was
         /// compiled from `compiled`: the caret is not placed.
         case revisionDiffers(path: String, compiled: Int, durable: Int)
+        /// The document opened at the compiled durable revision, but its text
+        /// does not hash to the digest the display list declares for it: the
+        /// caret is not placed.
+        case textDiffers(path: String, durable: Int)
 
         var note: String {
             switch self {
@@ -52,6 +56,8 @@ enum UnopenedNavigation {
                 return "\(path) is not open in this window and could not be opened: \(why)"
             case .revisionDiffers(let path, let compiled, let durable):
                 return "\(path) opened at durable r\(durable), but the preview was compiled from r\(compiled); the caret was not placed — recompile (or wait for the next preview) to navigate."
+            case .textDiffers(let path, let durable):
+                return "\(path) opened at durable r\(durable), but its text is not the text the display list declares for it; the caret was not placed — recompile to navigate."
             }
         }
     }
@@ -59,7 +65,11 @@ enum UnopenedNavigation {
 
 extension ShellModel {
     /// The durable revision the applied preview was compiled from for `path`
-    /// (helper route), or nil.
+    /// (helper route: the helper's `source_versions` of the applied v1
+    /// preview, which the candidate gate verified equal to the painted v2
+    /// frame's), or nil. Measured: the producer's `documents[].revision` in
+    /// the display list is its compile revision, NOT the per-document
+    /// durable revision, so it is never used as the comparator.
     func compiledRevision(for path: String) -> Int? {
         displayCandidates.applied?.sourceVersions[path]
     }
@@ -68,7 +78,9 @@ extension ShellModel {
     /// the caret may be placed. `compiledRevision` is the revision the hit's
     /// frame declares for `path` (v2: the display list's `documents[].revision`;
     /// v1: `compiledRevision(for:)`).
-    func openForNavigation(path: String, compiledRevision: Int?) async -> UnopenedNavigation.Verdict {
+    /// `compiledSHA256`, when the hit's frame declares one (v2), additionally
+    /// binds the opened text to the exact bytes the list was produced from.
+    func openForNavigation(path: String, compiledRevision: Int?, compiledSHA256: String? = nil) async -> UnopenedNavigation.Verdict {
         if documents.contains(where: { $0.path == path }) { return .alreadyOpen(path: path) }
         guard controllerAttached else { return .notAttached(path: path) }
         guard let compiledRevision else { return .noCompiledRevision(path: path) }
@@ -81,6 +93,10 @@ extension ShellModel {
         }
         guard durable == compiledRevision else {
             return .revisionDiffers(path: path, compiled: compiledRevision, durable: durable)
+        }
+        if let compiledSHA256, let text = documents.first(where: { $0.path == path })?.text,
+           SourceDigest.sha256Hex(text) != compiledSHA256 {
+            return .textDiffers(path: path, durable: durable)
         }
         return .opened(path: path, revision: durable)
     }
