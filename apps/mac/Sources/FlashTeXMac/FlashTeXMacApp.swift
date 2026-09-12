@@ -88,10 +88,11 @@ struct FlashTeXMacApp: App {
         WindowGroup("FlashTeX") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 900, minHeight: 560)
+                .frame(minWidth: 1100, minHeight: 640) // sidebar + editor + preview + Problems panel
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
+                    if ProcessInfo.processInfo.environment["FLASHTEX_SHOW_PALETTE"] == "1" { model.commandPaletteShown = true } // evidence captures of the command palette
                     if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID, CitationRename.windowID].contains(id) { openWindow(id: id) }
                 }
         }
@@ -106,13 +107,22 @@ struct FlashTeXMacApp: App {
                     .disabled(!model.controllerAttached)
                     .help("Ask the attached preview controller to forward the producer's display-list-v2 sibling (untrusted; validated natively before paint). Status: \(model.displayCandidates.status)")
             }
+            CommandGroup(after: .sidebar) {
+                // View menu (mac-ui-redesign): the command palette lists every
+                // AccessibilityCommand with its shortcut (CommandPalette.swift);
+                // the Problems panel is the bottom diagnostics panel (ProblemsPanel.swift).
+                Button("Command Palette…") { model.commandPaletteShown.toggle() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Toggle Problems") { model.problemsVisible.toggle() }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
             }
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
-                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                    .keyboardShortcut("p", modifiers: [.command, .option]) // ⌘⇧P is the command palette (View)
                 Button("Open Capture Proposal…") { model.openProposalPanel() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Restore Discarded Buffer") { model.restoreDiscardedBuffer() }

@@ -226,18 +226,32 @@ struct DiagnosticsListView: View {
 
     /// - Parameter panel: the state to use (tests drive the selection through
     ///   it); the view makes its own when nil.
-    init(diagnostics: [RuntimeV1.Diagnostic], panel: DiagnosticsPanelState? = nil) {
+    /// Severity to show (nil: all); group indices stay those of `diagnostics`,
+    /// so explanations, quick fixes and occurrences are unaffected by the filter.
+    let severityFilter: RuntimeV1.Severity?
+    /// Whether the "Diagnostics (n) — …" caption is drawn (the Problems panel draws its own header).
+    let showsHeader: Bool
+    let maxHeight: CGFloat
+
+    init(diagnostics: [RuntimeV1.Diagnostic], panel: DiagnosticsPanelState? = nil,
+         severityFilter: RuntimeV1.Severity? = nil, showsHeader: Bool = true, maxHeight: CGFloat = 180) {
         self.diagnostics = diagnostics
+        self.severityFilter = severityFilter
+        self.showsHeader = showsHeader
+        self.maxHeight = maxHeight
         _panel = State(initialValue: panel ?? DiagnosticsPanelState())
     }
 
     var body: some View {
         let diags = diagnostics
         let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.documents.map(\.path))
+            .filter { severityFilter == nil || $0.severity == severityFilter }
         let status = model.result?.status ?? .ok
         VStack(alignment: .leading, spacing: 0) {
-            Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
-                .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+            if showsHeader {
+                Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
+                    .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+            }
             if let carried = model.editorMarkReport.carried {
                 Text("Underlines \(carried.line); the list below is the failed result's.")
                     .font(.caption).foregroundStyle(.orange).padding(.horizontal, 8).padding(.bottom, 4)
@@ -246,7 +260,7 @@ struct DiagnosticsListView: View {
                 row(g, in: diags, status: status)
             }
             .accessibilityIdentifier(Self.listIdentifier)
-            .frame(minHeight: 80, maxHeight: 180)
+            .frame(minHeight: 80, maxHeight: maxHeight)
             .onKeyPress(.return) { model.goToSelectedOccurrence(panel: panel); return .handled }
             .onKeyPress(.escape) { model.returnKeyboardToEditor(); return .handled }
             .copyable([model.diagnosticsCopyText(panel: panel)])
