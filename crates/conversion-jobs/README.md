@@ -176,3 +176,33 @@ cancelling the first does not cancel or overwrite the second. Admission is bound
 FIFO with fixed worker count, not weighted per-project quota scheduling. Native
 reconciliation also revokes exposed status when a full snapshot replacement
 invalidates the original anchor and no current context can be assembled.
+
+## Durable multi-capture review inbox
+
+`bridge_adapter::review::ReviewInbox` persists bounded proposal cards, explicit
+current selection and decision history under an exclusive journal lock. The caller
+admits only journaled proposals with their actual ContextIdentity. No card is
+selected or accepted automatically. `decide(DecisionRequest)` requires the selected
+capture, exact proposal hash and explicit `AcceptForPreparation` or `RejectCapture`
+intent. Identical decision retries return the same context-bound handoff; reuse of
+an ID with altered data or a contradictory second decision fails closed.
+
+A `ReviewIntentHandoff` is a durable intention, not proof of human presence or final
+approval of a PreparedEdit. As coordinated with the controller owner, the caller
+must validate it against actual current context, request preparation, display the
+exact resulting edit and obtain explicit approval before constructing ApprovedEdit
+or invoking the controller's apply action. The inbox never calls bridge prepare,
+reject, apply, providers or source-writing APIs itself.
+
+Context changes and cancellation revoke handoffs. Explicit rejection of a stale
+proposal is possible using its current context. Terminal cards can be retired while
+bounded decision history and capture tombstones preserve deduplication; full limits
+return capacity errors rather than silently evicting history. A cloneable InboxView
+returns immutable snapshots without disk IO. Any persistence uncertainty poisons
+this handle and its view until reopen; bounded-serialization rejection leaves the
+previous checkpoint intact. Reopen validates record and decision identity invariants.
+
+The inbox adds eight tests; 36 all-feature/all-target tests, strict Clippy and
+formatting pass. Cases cover reopen, selection, duplicate/tampered decisions,
+context changes, cancellation, retirement, bounded serialization, corrupt state,
+exclusive ownership and recovery after real storage failure.
