@@ -463,3 +463,297 @@ final class ProjectSearchHelperTests: XCTestCase {
         XCTAssertTrue(client.status.contains("no longer spell the literal"), client.status)
     }
 }
+
+/// Pure plan parsing/verification for `plan_literal_replacement` replies
+/// (decimal-string offsets, schema and approval flags, per-file grouping).
+final class ProjectSearchPlanPureTests: XCTestCase {
+    static func reply(edits: [[String: Any]], literal: String = "café", replacement: String = "tea",
+                      versions: [String: Int] = ["chapter.tex": 1, "main.tex": 1], generation: Int = 3) -> [String: Any] {
+        [
+            "source_versions": versions,
+            "membership_generation": generation,
+            "plan": [
+                "schema": "flashtex.literal-replacement-plan.v1", "proposal_only": true, "requires_user_approval": true,
+                "application_order": "reverse_byte_offset_per_document",
+                "snapshot": ["project_id": "demo", "generation": "\(generation)",
+                             "documents": versions.keys.sorted().map { ["file": $0, "revision": "\(versions[$0]!)"] }],
+                "search": ["literal": literal, "documents": NSNull(), "max_matches": "200", "max_work": "1000000", "work_used": "42", "termination": "complete"],
+                "replacement": replacement,
+                "edits": edits,
+            ] as [String: Any],
+        ]
+    }
+
+    static func edit(_ file: String, _ start: Int, _ end: Int, rev: Int = 1, expected: String = "café", replacement: String = "tea") -> [String: Any] {
+        ["file": file, "revision": "\(rev)", "start_byte": "\(start)", "end_byte": "\(end)", "expected_text": expected, "replacement": replacement]
+    }
+
+    func testExactIntAcceptsDecimalStringsAndIntegralNumbersOnly() {
+        XCTAssertEqual(ProjectSearch.exactInt("0"), 0)
+        XCTAssertEqual(ProjectSearch.exactInt("9007199254740993"), 9007199254740993, "beyond Double precision, parsed exactly")
+        XCTAssertEqual(ProjectSearch.exactInt(12), 12)
+        XCTAssertNil(ProjectSearch.exactInt("1.0"))
+        XCTAssertNil(ProjectSearch.exactInt("-1"))
+        XCTAssertNil(ProjectSearch.exactInt(""))
+        XCTAssertNil(ProjectSearch.exactInt(1.5))
+        XCTAssertNil(ProjectSearch.exactInt(nil))
+        XCTAssertNil(ProjectSearch.exactInt("1234567890123456789012"))
+    }
+
+    func testParsePlanGroupsEditsAndKeepsExactOffsets() {
+        let r = Self.reply(edits: [Self.edit("chapter.tex", 41, 46), Self.edit("chapter.tex", 50, 55), Self.edit("main.tex", 75, 80)])
+        guard case .success(let plan) = ProjectSearch.parsePlan(reply: r, literal: "café", replacement: "tea") else { return XCTFail() }
+        XCTAssertEqual(plan.paths, ["chapter.tex", "main.tex"])
+        XCTAssertEqual(plan.edits(in: "chapter.tex").map(\.start), [41, 50])
+        XCTAssertEqual(plan.membershipGeneration, 3)
+        XCTAssertEqual(plan.projectID, "demo")
+        XCTAssertEqual(plan.workUsed, 42)
+        XCTAssertNil(plan.documents)
+        XCTAssertEqual(plan.summary, "3 replacements in 2 files")
+        XCTAssertEqual(ProjectSearch.applied(plan.edits(in: "chapter.tex"), to: String(repeating: "x", count: 41) + "café.xxxcafé!"),
+                       String(repeating: "x", count: 41) + "tea.xxxtea!")
+    }
+
+    func testParsePlanRefusesAnythingUnexpected() {
+        func refused(_ r: [String: Any], _ expect: String, literal: String = "café", replacement: String = "tea", line: UInt = #line) {
+            guard case .failure(let e) = ProjectSearch.parsePlan(reply: r, literal: literal, replacement: replacement) else { return XCTFail("accepted", line: line) }
+            XCTAssertTrue(e.message.contains(expect), e.message, line: line)
+        }
+        let good = Self.reply(edits: [Self.edit("main.tex", 75, 80)])
+        refused(good, "plan replacement is not “TEA”", replacement: "TEA")
+        refused(good, "plan literal is not “cafe”", literal: "cafe")
+        var r = good; var plan = r["plan"] as! [String: Any]
+        plan["schema"] = "flashtex.literal-replacement-plan.v2"; r["plan"] = plan
+        refused(r, "schema is flashtex.literal-replacement-plan.v2")
+        r = good; plan = r["plan"] as! [String: Any]; plan["proposal_only"] = false; r["plan"] = plan
+        refused(r, "proposal_only")
+        r = good; plan = r["plan"] as! [String: Any]; plan["application_order"] = "forward"; r["plan"] = plan
+        refused(r, "application_order")
+        r = good; r["membership_generation"] = 4
+        refused(r, "generation 3 is not the reply's 4")
+        r = good; r["source_versions"] = ["chapter.tex": 1, "main.tex": 2]
+        refused(r, "differ from the reply's")
+        refused(Self.reply(edits: [Self.edit("main.tex", 75, 80, rev: 2)]), "names main.tex r2")
+        refused(Self.reply(edits: [Self.edit("main.tex", 75, 79)]), "does not replace exactly")
+        refused(Self.reply(edits: [Self.edit("main.tex", 75, 80, expected: "cafe")]), "does not replace exactly")
+        refused(Self.reply(edits: [Self.edit("main.tex", 75, 80), Self.edit("main.tex", 78, 83)]), "overlaps or precedes")
+        refused(Self.reply(edits: [["file": "main.tex", "revision": 1.0, "start_byte": "75", "end_byte": "80", "expected_text": "café", "replacement": "tea"]]), "malformed")
+        r = good; plan = r["plan"] as! [String: Any]; var search = plan["search"] as! [String: Any]
+        search["termination"] = "match_limit"; plan["search"] = search; r["plan"] = plan
+        refused(r, "not complete")
+    }
+
+    func testVerifyAndApplyGroupPayloadAndLabels() {
+        let text = "naïve café — café.\n"
+        let a = ProjectSearch.ReplacementEdit(path: "main.tex", revision: 1, start: 7, end: 12, expectedText: "café", replacement: "tea")
+        let b = ProjectSearch.ReplacementEdit(path: "main.tex", revision: 1, start: 17, end: 22, expectedText: "café", replacement: "tea")
+        XCTAssertNil(ProjectSearch.verify([a, b], in: text))
+        XCTAssertEqual(ProjectSearch.verify([a, b], in: text.replacingOccurrences(of: "café.", with: "cafe.")), "bytes 17..<22 of main.tex r1 no longer spell “café”")
+        XCTAssertEqual(ProjectSearch.applied([a, b], to: text), "naïve tea — tea.\n")
+        let payload = ProjectSearch.applyGroupPayload(path: "main.tex", commandID: "c1", expectedRevision: 1, expectedSHA256: "ab", label: "L", edits: [a, b])
+        XCTAssertEqual(payload["path"] as? String, "main.tex")
+        let command = payload["command"] as! [String: Any]
+        XCTAssertEqual(command["command_id"] as? String, "c1")
+        XCTAssertEqual(command["expected_revision"] as? Int, 1)
+        XCTAssertEqual(command["expected_sha256"] as? String, "ab")
+        XCTAssertEqual(command["label"] as? String, "L")
+        let edits = command["edits"] as! [[String: Any]]
+        XCTAssertEqual(edits.count, 2)
+        XCTAssertEqual(edits[1]["start_byte"] as? Int, 17)
+        XCTAssertEqual(edits[1]["removed_text"] as? String, "café")
+        XCTAssertEqual(edits[1]["replacement"] as? String, "tea")
+        let plan = ProjectSearch.ReplacementPlan(literal: "café", replacement: "tea", projectID: "p", sourceVersions: ["main.tex": 1],
+                                                 membershipGeneration: 1, documents: nil, workUsed: 0, edits: [a, b])
+        let previews = ProjectSearch.previews(for: plan, texts: ["main.tex": text])
+        XCTAssertEqual(previews.map(\.line), [1, 1])
+        XCTAssertEqual(previews[0].before?.text, "naïve café — café.")
+        XCTAssertEqual(previews[0].after, .init(before: "naïve ", match: "tea", after: " — café."))
+        XCTAssertEqual(ProjectSearch.accessibilityLabel(index: 1, count: 2, preview: previews[1]), "replacement 2 of 2, main.tex, line 1, naïve café — café. becomes naïve café — tea.")
+        let outcome = ProjectSearch.FileOutcome(path: "main.tex", state: .uncertain("helper exited (9)", commandID: "c1"))
+        XCTAssertEqual(outcome.description, "main.tex: uncertain — helper exited (9); retry command c1 unchanged")
+    }
+}
+
+/// Against the real helper built from main ≥ 4e15783 (plan endpoints):
+/// proposal, per-file guarded application, refusals, retry semantics.
+@MainActor
+final class ProjectSearchPlanHelperTests: XCTestCase {
+    private func byte(_ needle: String, in text: String) -> Int {
+        text.utf8.distance(from: text.startIndex, to: text.range(of: needle)!.lowerBound)
+    }
+
+    private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
+        let start = Date()
+        while !cond() {
+            if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout") }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+    }
+
+    /// Like `ProjectSearchHelperTests.attachedModel`, plus a probe that skips
+    /// when the helper build predates `plan_literal_replacement`.
+    private func attached() async throws -> (ShellModel, ProjectSearchClient, URL) {
+        guard let helper = PreviewControllerTests.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("search-plan-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        try ProjectSearchHelperTests.main.write(to: root.appendingPathComponent("project/main.tex"), atomically: true, encoding: .utf8)
+        try ProjectSearchHelperTests.chapter.write(to: root.appendingPathComponent("project/chapter.tex"), atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: root.appendingPathComponent("project/main.tex")), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.controllerState.durable["main.tex"] != nil && model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        let client = ProjectSearchClient(model: model)
+        client.query = "café"
+        client.replacement = "tea"
+        await client.search()
+        XCTAssertEqual(client.results?.matches.count, 4, client.status)
+        await client.planReplacement()
+        if client.planStatus.contains("has no plan_literal_replacement") {
+            unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT"); model.detachController(); try? FileManager.default.removeItem(at: root)
+            throw XCTSkip("helper binary predates plan_literal_replacement: \(client.planStatus)")
+        }
+        return (model, client, root)
+    }
+
+    private func cleanup(_ model: ShellModel, _ root: URL) {
+        unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT")
+        model.detachController()
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    func testPlanIsProposalOnlyAndApplyReplacesEveryMatchPerFile() async throws {
+        let (model, client, root) = try await attached()
+        defer { cleanup(model, root) }
+        guard let plan = client.plan else { return XCTFail(client.planStatus) }
+        XCTAssertEqual(plan.summary, "4 replacements in 2 files")
+        XCTAssertEqual(plan.paths, ["chapter.tex", "main.tex"])
+        XCTAssertEqual(plan.sourceVersions, ["chapter.tex": 1, "main.tex": 1])
+        XCTAssertEqual(plan.edits.map(\.start), [byte("café.", in: ProjectSearchHelperTests.chapter), byte("café in", in: ProjectSearchHelperTests.chapter),
+                                                 byte("café —", in: ProjectSearchHelperTests.main), byte("café again", in: ProjectSearchHelperTests.main)])
+        XCTAssertEqual(client.planPreviews.map(\.line), [2, 3, 4, 4])
+        XCTAssertEqual(client.planPreviews[2].after?.text, "naïve tea — see \\ref{sec:b}; café again.")
+        XCTAssertTrue(client.planStatus.hasPrefix("Proposal: 4 replacements in 2 files, replacing “café” with “tea” at durable chapter.tex r1, main.tex r1. Nothing is changed"), client.planStatus)
+        // Proposal only: nothing moved.
+        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, 1)
+        XCTAssertTrue(model.activeText.contains("café"))
+        let editorRevisionBefore = model.editorRevision
+
+        await client.applyPlan()
+        XCTAssertEqual(client.applyOutcomes.map(\.path), ["chapter.tex", "main.tex"])
+        for o in client.applyOutcomes {
+            guard case .applied(let rev, let id, let note) = o.state else { return XCTFail(o.description) }
+            XCTAssertEqual(rev, 2)
+            XCTAssertTrue(id.hasPrefix("search-replace-"))
+            XCTAssertEqual(note, "", o.description)
+        }
+        XCTAssertTrue(client.planStatus.hasPrefix("Replace “café” with “tea”: 2 of 2 files applied."), client.planStatus)
+        XCTAssertNil(client.plan)
+        XCTAssertTrue(client.retainedCommands.isEmpty)
+        // The buffer and the durable state agree on the helper's new text; the
+        // non-open chapter.tex was edited durably without being opened.
+        XCTAssertEqual(model.activeText, ProjectSearchHelperTests.main.replacingOccurrences(of: "café", with: "tea"))
+        XCTAssertGreaterThan(model.editorRevision, editorRevisionBefore)
+        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, 2)
+        XCTAssertEqual(model.controllerState.durable["chapter.tex"]?.revision, 2)
+        XCTAssertEqual(model.controllerState.textByDurable["chapter.tex"]?[2], ProjectSearchHelperTests.chapter.replacingOccurrences(of: "café", with: "tea"))
+        XCTAssertEqual(model.documents.map(\.path), ["main.tex"])
+        // The search re-ran on the new versions: nothing left; "tea" is everywhere.
+        XCTAssertEqual(client.results?.matches.count, 0, client.status)
+        XCTAssertEqual(client.results?.sourceVersions, ["chapter.tex": 2, "main.tex": 2])
+        client.query = "tea"
+        await client.search()
+        XCTAssertEqual(client.results?.matches.count, 4)
+        // The preview follows the durable edit (no spurious edit was sent: the buffer was already durable).
+        try await waitUntil { model.result?.revision == model.editorRevision && model.inFlightRevision == nil }
+        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, 2, "no extra durable revision from a resubmitted buffer")
+        // The helper's history knows the group under its label.
+        guard case .success(let status)? = await model.controllerRequest("history_status", ["path": "main.tex"]) else { return XCTFail() }
+        let labels = ((status["history"] as? [String: Any])?["undo_labels"] as? [String]) ?? []
+        XCTAssertEqual(labels.last, "Replace “café” with “tea” (2 in main.tex)", "\(labels)")
+    }
+
+    func testStaleProposalsAndUnsubmittedBuffersAreRefusedPerFile() async throws {
+        let (model, client, root) = try await attached()
+        defer { cleanup(model, root) }
+        XCTAssertNotNil(client.plan)
+        // A local, not yet durable edit of main.tex: main.tex is refused, chapter.tex applies.
+        model.autoCompile = false
+        model.updateActiveText(ProjectSearchHelperTests.main + "% local\n")
+        await client.applyPlan()
+        XCTAssertEqual(client.applyOutcomes.map(\.path), ["chapter.tex", "main.tex"])
+        guard case .applied(2, _, _) = client.applyOutcomes[0].state else { return XCTFail(client.applyOutcomes[0].description) }
+        guard case .refused(let why) = client.applyOutcomes[1].state else { return XCTFail(client.applyOutcomes[1].description) }
+        XCTAssertTrue(why.contains("not durable yet"), why)
+        XCTAssertTrue(client.planStatus.contains("1 of 2 files applied, 1 not applied"), client.planStatus)
+        XCTAssertTrue(client.planStatus.contains("never all-or-nothing"), client.planStatus)
+        XCTAssertTrue(model.activeText.contains("café"), "main.tex buffer untouched")
+        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, 1)
+        XCTAssertEqual(model.controllerState.durable["chapter.tex"]?.revision, 2)
+        // The re-run search sees the two remaining main.tex matches at the new versions.
+        XCTAssertEqual(client.results?.matches.map(\.path), ["main.tex", "main.tex"], client.status)
+
+        // Make the buffer durable, plan again, then let the project move on
+        // before Apply: refused as a whole, nothing applied.
+        model.autoCompile = true
+        model.controllerSubmitEdit()
+        try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 2 && model.inFlightRevision == nil }
+        await client.search()
+        await client.planReplacement()
+        guard let plan = client.plan else { return XCTFail(client.planStatus) }
+        XCTAssertEqual(plan.sourceVersions, ["chapter.tex": 2, "main.tex": 2])
+        XCTAssertEqual(plan.summary, "2 replacements in 1 file")
+        model.updateActiveText(model.activeText + "% more\n")
+        try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 3 && model.inFlightRevision == nil }
+        await client.applyPlan()
+        XCTAssertTrue(client.applyOutcomes.isEmpty)
+        XCTAssertEqual(client.planStatus, "Project changed since this proposal (main.tex r2→r3); nothing applied — plan again.")
+        XCTAssertNil(client.plan)
+        XCTAssertTrue(model.activeText.contains("café"))
+
+        // A partial search cannot be planned: the helper refuses.
+        client.maxMatches = 1
+        await client.search()
+        XCTAssertEqual(client.results?.termination, .matchLimit)
+        await client.planReplacement()
+        XCTAssertNil(client.plan)
+        XCTAssertTrue(client.planStatus.hasPrefix("Replacement plan refused by the helper:"), client.planStatus)
+        // Same literal and replacement: nothing to do, nothing sent.
+        client.maxMatches = 200
+        client.replacement = "café"
+        await client.planReplacement()
+        XCTAssertEqual(client.planStatus, "The replacement equals the literal; nothing to change.")
+    }
+
+    func testRetryingAnUncertainCommandReplaysExactly() async throws {
+        let (model, client, root) = try await attached()
+        defer { cleanup(model, root) }
+        guard let plan = client.plan else { return XCTFail(client.planStatus) }
+        // Send main.tex's group by hand with a fixed id, then send it again: the
+        // ledger replays it (same revision), which is what a retry after an
+        // uncertain reply relies on.
+        let edits = plan.edits(in: "main.tex")
+        let durable = model.controllerState.durable["main.tex"]!
+        let payload = ProjectSearch.applyGroupPayload(path: "main.tex", commandID: "search-replace-fixed", expectedRevision: 1,
+                                                      expectedSHA256: durable.sha256, label: "L", edits: edits)
+        guard case .success(let first)? = await model.controllerRequest("apply_group", payload) else { return XCTFail() }
+        let doc1 = (first["history"] as! [String: Any])["document"] as! [String: Any]
+        XCTAssertEqual(doc1["revision"] as? Int, 2)
+        XCTAssertEqual((first["history"] as! [String: Any])["replayed_command"] as? Bool, false)
+        guard case .success(let second)? = await model.controllerRequest("apply_group", payload) else { return XCTFail() }
+        let doc2 = (second["history"] as! [String: Any])["document"] as! [String: Any]
+        XCTAssertEqual(doc2["revision"] as? Int, 2, "replayed, no second revision")
+        XCTAssertEqual((second["history"] as! [String: Any])["replayed_command"] as? Bool, true)
+        // A changed payload reusing the id is refused.
+        var changed = payload
+        var command = changed["command"] as! [String: Any]
+        command["label"] = "other"
+        changed["command"] = command
+        guard case .failure(let e)? = await model.controllerRequest("apply_group", changed) else { return XCTFail("changed payload accepted") }
+        XCTAssertFalse(e.message.isEmpty)
+    }
+}
