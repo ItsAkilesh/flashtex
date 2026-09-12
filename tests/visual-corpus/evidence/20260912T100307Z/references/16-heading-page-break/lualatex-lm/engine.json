@@ -1,0 +1,38 @@
+{
+  "engine": "lualatex-lm",
+  "variant": "lm",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/lualatex",
+  "exit": 0,
+  "seconds": 0.849,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-bolditalic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-bold.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-italic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-regular.otf",
+    "TU/lmroman12-regular.otf",
+    "lmroman10-bolditalic.otf",
+    "lmroman12-bold.otf",
+    "lmroman12-italic.otf",
+    "lmroman12-regular.otf"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+  "pdf_sha256": "a2d5c33e0adfa92bdcd4ea2ed630fe03da647c00e9dc50aa096af5a2d3fd4e39",
+  "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+  "rendered_in_run": "20260912T100307Z"
+}

@@ -1,0 +1,31 @@
+{
+  "engine": "pdflatex-lm",
+  "variant": "lm",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/pdflatex",
+  "exit": 0,
+  "seconds": 0.464,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmbx12.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmr12.pfb"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+  "pdf_sha256": "c34d77f4f41576ca5f1bf3122f603e7820d605a6861b3a008fa1dd500a48d7ba",
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+  "rendered_in_run": "20260912T100307Z"
+}

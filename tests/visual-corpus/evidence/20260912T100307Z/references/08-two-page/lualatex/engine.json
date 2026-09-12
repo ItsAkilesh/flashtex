@@ -1,0 +1,30 @@
+{
+  "engine": "lualatex",
+  "variant": "times",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/lualatex",
+  "exit": 0,
+  "seconds": 0.905,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "Roman.ttf"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+  "pdf_sha256": "c2db85fa6b39044c8f81d939daeda0f3df8562d01f7fca3abcb4680678b63133",
+  "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+  "rendered_in_run": "20260912T100307Z"
+}

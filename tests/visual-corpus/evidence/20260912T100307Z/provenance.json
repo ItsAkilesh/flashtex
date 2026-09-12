@@ -1,0 +1,734 @@
+{
+ "generated_utc": "20260912T100307Z",
+ "machine": "mac-m1max-a",
+ "os": "macOS 26.3.1 arm64",
+ "swift": "Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)",
+ "cargo": "cargo 1.99.0-nightly (3efb1f477 2026-07-17)",
+ "python": "3.12.0",
+ "pillow": "12.2.0",
+ "suite_branch": "mvo/rev2",
+ "suite_sha": "959467f9b43879d55167ca2f0f52524769ed5261",
+ "input_main_sha": "02de1162386ba3278e149025dd1d2e623911de0a",
+ "harness_files_sha256": {
+  "capture_native.sh": "2c5f846be6f565ec74bd557493eedcb83ad391c91cc635fc29c78becc6aab8b3",
+  "diff.py": "b136f440b43a2d79e1d782a45fda9d37c601464058396d5e534be76dc476f341",
+  "oracle-profile.json": "978bd7c999f4439534d031a44ecb91bcb428046142b376744c2a0c78ce70ccf1",
+  "pin_oracle.py": "faa4a098fdad3cc936551fe53fab69a7818e1eac09f511134f68ad58e376d7eb",
+  "rasterize.swift": "1a6e6e88e1007e2271566e94c2235bb6227f566a4591f3c319385b98cf41380e",
+  "reference-profile.json": "8a4fcb99d6b2f7e61a1fd175fa4ea94fe67866df654f60a11c767299395c4ed8",
+  "render_flashtex.sh": "0f2383395df585deb99436601926b703f400170cf0f46753530aebe430540bd4",
+  "render_reference.sh": "7b2adbbae51c7040cb2afc6d3a6881a8089948b44cc48ddd871e85bad9e7d08c",
+  "run.sh": "380f359e00568d7b8eebb155cfeb57464153b22ee77ab1c1f262d9102c66e182",
+  "selftest.py": "0d4584bf07cd8bdb7d004da8e457e4052fa97502ae1d7abe56ee72b05c517b1a",
+  "thresholds.json": "701c9b9324decee0b3263f8dcf2c62b639c45ec65ef476491f6f1ea30515feff"
+ },
+ "engines": {
+  "pdflatex": {
+   "path": "/Library/TeX/texbin/pdflatex",
+   "available": true,
+   "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+  },
+  "xelatex": {
+   "path": "/Library/TeX/texbin/xelatex",
+   "available": true,
+   "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+  },
+  "lualatex": {
+   "path": "/Library/TeX/texbin/lualatex",
+   "available": true,
+   "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+  }
+ },
+ "references": {
+  "fresh": [
+   "01-plain-paragraph/lualatex",
+   "01-plain-paragraph/lualatex-lm",
+   "01-plain-paragraph/pdflatex",
+   "01-plain-paragraph/pdflatex-lm",
+   "01-plain-paragraph/xelatex",
+   "01-plain-paragraph/xelatex-lm",
+   "02-wrapping-paragraph/lualatex",
+   "02-wrapping-paragraph/lualatex-lm",
+   "02-wrapping-paragraph/pdflatex",
+   "02-wrapping-paragraph/pdflatex-lm",
+   "02-wrapping-paragraph/xelatex",
+   "02-wrapping-paragraph/xelatex-lm",
+   "03-section-heading/lualatex",
+   "03-section-heading/lualatex-lm",
+   "03-section-heading/pdflatex",
+   "03-section-heading/pdflatex-lm",
+   "03-section-heading/xelatex",
+   "03-section-heading/xelatex-lm",
+   "04-bold-emph/lualatex",
+   "04-bold-emph/lualatex-lm",
+   "04-bold-emph/pdflatex",
+   "04-bold-emph/pdflatex-lm",
+   "04-bold-emph/xelatex",
+   "04-bold-emph/xelatex-lm",
+   "05-unicode/lualatex",
+   "05-unicode/lualatex-lm",
+   "05-unicode/pdflatex",
+   "05-unicode/pdflatex-lm",
+   "05-unicode/xelatex",
+   "05-unicode/xelatex-lm",
+   "06-math-inline/lualatex",
+   "06-math-inline/lualatex-lm",
+   "06-math-inline/pdflatex",
+   "06-math-inline/pdflatex-lm",
+   "06-math-inline/xelatex",
+   "06-math-inline/xelatex-lm",
+   "07-math-display/lualatex",
+   "07-math-display/lualatex-lm",
+   "07-math-display/pdflatex",
+   "07-math-display/pdflatex-lm",
+   "07-math-display/xelatex",
+   "07-math-display/xelatex-lm",
+   "08-two-page/lualatex",
+   "08-two-page/lualatex-lm",
+   "08-two-page/pdflatex",
+   "08-two-page/pdflatex-lm",
+   "08-two-page/xelatex",
+   "08-two-page/xelatex-lm",
+   "09-mixed-document/lualatex",
+   "09-mixed-document/lualatex-lm",
+   "09-mixed-document/pdflatex",
+   "09-mixed-document/pdflatex-lm",
+   "09-mixed-document/xelatex",
+   "09-mixed-document/xelatex-lm",
+   "10-unicode-paragraph/lualatex",
+   "10-unicode-paragraph/lualatex-lm",
+   "10-unicode-paragraph/pdflatex",
+   "10-unicode-paragraph/pdflatex-lm",
+   "10-unicode-paragraph/xelatex",
+   "10-unicode-paragraph/xelatex-lm",
+   "11-nested-lists/lualatex",
+   "11-nested-lists/lualatex-lm",
+   "11-nested-lists/pdflatex",
+   "11-nested-lists/pdflatex-lm",
+   "11-nested-lists/xelatex",
+   "11-nested-lists/xelatex-lm",
+   "12-justified-paragraphs/lualatex",
+   "12-justified-paragraphs/lualatex-lm",
+   "12-justified-paragraphs/pdflatex",
+   "12-justified-paragraphs/pdflatex-lm",
+   "12-justified-paragraphs/xelatex",
+   "12-justified-paragraphs/xelatex-lm",
+   "13-math-display-rich/lualatex",
+   "13-math-display-rich/lualatex-lm",
+   "13-math-display-rich/pdflatex",
+   "13-math-display-rich/pdflatex-lm",
+   "13-math-display-rich/xelatex",
+   "13-math-display-rich/xelatex-lm",
+   "14-math-inline-dense/lualatex",
+   "14-math-inline-dense/lualatex-lm",
+   "14-math-inline-dense/pdflatex",
+   "14-math-inline-dense/pdflatex-lm",
+   "14-math-inline-dense/xelatex",
+   "14-math-inline-dense/xelatex-lm",
+   "15-three-page-sections/lualatex",
+   "15-three-page-sections/lualatex-lm",
+   "15-three-page-sections/pdflatex",
+   "15-three-page-sections/pdflatex-lm",
+   "15-three-page-sections/xelatex",
+   "15-three-page-sections/xelatex-lm",
+   "16-heading-page-break/lualatex",
+   "16-heading-page-break/lualatex-lm",
+   "16-heading-page-break/pdflatex",
+   "16-heading-page-break/pdflatex-lm",
+   "16-heading-page-break/xelatex",
+   "16-heading-page-break/xelatex-lm",
+   "17-apostrophes/lualatex",
+   "17-apostrophes/lualatex-lm",
+   "17-apostrophes/pdflatex",
+   "17-apostrophes/pdflatex-lm",
+   "17-apostrophes/xelatex",
+   "17-apostrophes/xelatex-lm",
+   "18-ligatures/lualatex",
+   "18-ligatures/lualatex-lm",
+   "18-ligatures/pdflatex",
+   "18-ligatures/pdflatex-lm",
+   "18-ligatures/xelatex",
+   "18-ligatures/xelatex-lm"
+  ],
+  "reused": {},
+  "unavailable": [],
+  "stores": [
+   {
+    "dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c/tests/visual-corpus/evidence/20260912T083316Z",
+    "run": "20260912T083316Z",
+    "engines": {
+     "pdflatex": {
+      "path": "/Library/TeX/texbin/pdflatex",
+      "available": true,
+      "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+     },
+     "xelatex": {
+      "path": "/Library/TeX/texbin/xelatex",
+      "available": true,
+      "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+     },
+     "lualatex": {
+      "path": "/Library/TeX/texbin/lualatex",
+      "available": true,
+      "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+     }
+    },
+    "entries": 108
+   },
+   {
+    "dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c/tests/visual-corpus/evidence/20260912T072838Z",
+    "run": "20260912T072838Z",
+    "engines": {
+     "pdflatex": {
+      "path": "/Library/TeX/texbin/pdflatex",
+      "available": true,
+      "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+     },
+     "xelatex": {
+      "path": "/Library/TeX/texbin/xelatex",
+      "available": true,
+      "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+     },
+     "lualatex": {
+      "path": "/Library/TeX/texbin/lualatex",
+      "available": true,
+      "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+     }
+    },
+    "entries": 108
+   },
+   {
+    "dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c/tests/visual-corpus/evidence/20260912T064032Z",
+    "run": "20260912T064032Z",
+    "engines": {
+     "pdflatex": {
+      "path": "/Library/TeX/texbin/pdflatex",
+      "available": true,
+      "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+     },
+     "xelatex": {
+      "path": "/Library/TeX/texbin/xelatex",
+      "available": true,
+      "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+     },
+     "lualatex": {
+      "path": "/Library/TeX/texbin/lualatex",
+      "available": true,
+      "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+     }
+    },
+    "entries": 108
+   }
+  ]
+ },
+ "packages": {
+  "times.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/psnfss/times.sty",
+  "lmodern.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/lmodern.sty",
+  "fontspec.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty",
+  "geometry.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty",
+  "t1enc.def": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/t1enc.def",
+  "texlive_root": "/usr/local/texlive/2026",
+  "texbin_realpath": "/usr/local/texlive/2026/bin/universal-darwin",
+  "tlmgr": "tlmgr revision 78301 (2026-03-07 18:41:28 +0100)",
+  "distribution": "MacTeX / TeX Live full (/usr/local/texlive/2026)"
+ },
+ "system_fonts": {
+  "/System/Library/Fonts/Supplemental/Times New Roman.ttf": true,
+  "/System/Library/Fonts/Times.ttc": true
+ },
+ "preambles": {
+  "xelatex-lm": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "pdflatex": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{times}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "lualatex-lm": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "xelatex": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "pdflatex-lm": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "lualatex": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n"
+ },
+ "engine_flags": [
+  "-interaction=batchmode",
+  "-halt-on-error",
+  "-file-line-error"
+ ],
+ "engine_env": [
+  "SOURCE_DATE_EPOCH=0",
+  "FORCE_SOURCE_DATE=1"
+ ],
+ "compilers": [
+  {
+   "label": "main",
+   "ref": "origin/main",
+   "sha": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "build_ok": true,
+   "note": "Merge remote-tracking branch 'origin/main' into agent/orchestrator-astra/drained-products"
+  },
+  {
+   "label": "de1020c",
+   "ref": "de1020c",
+   "sha": "de1020cd0be7cede11be2691e00e7f5b15cb2224",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "build_ok": true,
+   "note": "compiler: add math, real font metrics and PDF output"
+  },
+  {
+   "label": "pipeline",
+   "ref": "origin/agent/mac-render-pipeline/unified",
+   "sha": "65dbe7da7a182e99322070e2c9763cc3b69a342b",
+   "crate": "crates/render-pipeline",
+   "binary": "flashtex-render",
+   "build_ok": true,
+   "note": "render-pipeline: shaping cache outlives requests (bounded)"
+  },
+  {
+   "label": "exact",
+   "route": "exact",
+   "ref": "origin/agent/mac-render-pipeline/unified",
+   "sha": "65dbe7da7a182e99322070e2c9763cc3b69a342b",
+   "crate": "crates/render-pipeline",
+   "binary": "flashtex-render --secnumdepth 0 --v2",
+   "exact_pdf_ref": "origin/agent/mac-pdf/v2-adapter",
+   "exact_pdf_sha": "8789abf2f82624684b6615e5014240ad25b26c95",
+   "exact_pdf_crate": "crates/pdf",
+   "exact_pdf_binary": "flashtex-pdf-exact from-v2",
+   "build_ok": true,
+   "note": "pdf docs + coord: before/after for Subr pruning and exact TJ kerning in the v2-adapter gap report"
+  }
+ ],
+ "pdf_writer": {
+  "ref": "5b5f7b5",
+  "sha": "5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c",
+  "path": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/builds/pdf-5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c/crates/pdf/target/release/flashtex-pdf",
+  "embed": true,
+  "embed_font": "embedding subset of TimesNewRomanPSMT from /System/Library/Fonts/Supplemental/Times New Roman.ttf"
+ },
+ "dpi": 144.0,
+ "color_space": "sRGB IEC61966-2.1",
+ "pixel_format": "RGBA8, white opaque background",
+ "rasterizer": "tests/visual-corpus/harness/rasterize.swift (CoreGraphics CGPDFDocument -> CGBitmapContext; CoreText for preview-equivalent)",
+ "fixtures": [
+  {
+   "name": "01-plain-paragraph.tex",
+   "sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "meta_sha256": "69b6ddfcee5697dbf8b7adfad10ebda5dad24be7e4aa6aef2376e0796a352b21",
+   "purpose": "Single short line of body text: baseline position, left margin, glyph advance widths.",
+   "meta": {
+    "fixture": "01-plain-paragraph.tex",
+    "purpose": "Single short line of body text: baseline position, left margin, glyph advance widths.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "Times-Roman metrics"
+    ],
+    "notes": "Fits on one line in every engine; any x drift is pure advance-width error.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "02-wrapping-paragraph.tex",
+   "sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "meta_sha256": "cc1c9880f9afa1d8ea59a02ee68b584a2d06a7f02e087f3dfd5fab3f566cb750",
+   "purpose": "Two multi-line paragraphs that wrap; exercises line breaking, justification and paragraph skip.",
+   "meta": {
+    "fixture": "02-wrapping-paragraph.tex",
+    "purpose": "Two multi-line paragraphs that wrap; exercises line breaking, justification and paragraph skip.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "greedy line breaking (no justification)"
+    ],
+    "notes": "LaTeX justifies and hyphenates; FlashTeX is ragged-right and greedy, so word x deltas grow along each line.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "03-section-heading.tex",
+   "sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "meta_sha256": "e673904cd543a66e5717ce5022f772dce539354b422fc6558cfce0bea1be96ae",
+   "purpose": "Unnumbered section headings (secnumdepth 0): heading size, bold face, vertical skips before/after.",
+   "meta": {
+    "fixture": "03-section-heading.tex",
+    "purpose": "Unnumbered section headings (secnumdepth 0): heading size, bold face, vertical skips before/after.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section"
+    ],
+    "notes": "LaTeX uses \\Large\\bfseries (17.28pt at 12pt base); FlashTeX heading size is what the compiler reports.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "04-bold-emph.tex",
+   "sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "meta_sha256": "1dbbdf364ea5e2bf2756b18205d11680ad8ee89363a8e500b583af424d8e32c6",
+   "purpose": "Inline font switches: bold, italic, nested.",
+   "meta": {
+    "fixture": "04-bold-emph.tex",
+    "purpose": "Inline font switches: bold, italic, nested.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\textbf",
+     "\\emph"
+    ],
+    "notes": "FlashTeX may render every word in Times-Roman regular; the metric then measures the missing face change.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "05-unicode.tex",
+   "sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "meta_sha256": "4fc78860ee7dec8fc02874d8bed0d40a30283e3d0ddc6aa0c2cf5013af1c6886",
+   "purpose": "UTF-8 literals with diacritics and an em dash, plus the equivalent TeX accent commands and ---.",
+   "meta": {
+    "fixture": "05-unicode.tex",
+    "purpose": "UTF-8 literals with diacritics and an em dash, plus the equivalent TeX accent commands and ---.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "utf-8 literal text",
+     "accent commands (currently rendered as separate glyphs)"
+    ],
+    "notes": "Literal and command forms should be visually identical in a real TeX; the second half measures FlashTeX's accent-command gap.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "06-math-inline.tex",
+   "sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "meta_sha256": "2eac281c0fd8d368d8c767d7152b4e3696c647e91e07baa71b52099acd660d2a",
+   "purpose": "Inline math: fraction with rule, Greek letters, square root.",
+   "meta": {
+    "fixture": "06-math-inline.tex",
+    "purpose": "Inline math: fraction with rule, Greek letters, square root.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "$...$",
+     "\\frac",
+     "\\alpha",
+     "\\sqrt"
+    ],
+    "notes": "Compiler build main reports math as unimplemented (recovered); de1020c typesets it with Unicode symbols and U+2500 rules.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "07-math-display.tex",
+   "sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "meta_sha256": "3ebd3658132408d686e48a5b7c502981f22a1182a6905cb6c11d98c4a99dca55",
+   "purpose": "Displayed equation with sum limits, scripts and a fraction; display centring and vertical skips.",
+   "meta": {
+    "fixture": "07-math-display.tex",
+    "purpose": "Displayed equation with sum limits, scripts and a fraction; display centring and vertical skips.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\[...\\]",
+     "\\sum with limits",
+     "\\frac"
+    ],
+    "notes": "LaTeX places limits above/below a large operator in display style; FlashTeX places scripts as super/subscripts.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "08-two-page.tex",
+   "sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "meta_sha256": "9a96581db15502a4b0c4a84cbe069b1e9fcf0eca73f4ed240738f9a46fdd1f25",
+   "purpose": "Enough text to overflow to a second page; page count, page break position, second-page top margin.",
+   "meta": {
+    "fixture": "08-two-page.tex",
+    "purpose": "Enough text to overflow to a second page; page count, page break position, second-page top margin.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "page breaking"
+    ],
+    "notes": "Ten identical six-sentence paragraphs. No \\newpage: the break position is a layout result, not an instruction.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "09-mixed-document.tex",
+   "sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "meta_sha256": "73a415dba4819eabc6ec9c710b5cf26108484459c9a01aaabc51d9bb380d5275",
+   "purpose": "Everything together on one page: heading, font switches, Unicode, inline and display math, wrapping.",
+   "meta": {
+    "fixture": "09-mixed-document.tex",
+    "purpose": "Everything together on one page: heading, font switches, Unicode, inline and display math, wrapping.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "\\textbf",
+     "\\emph",
+     "utf-8",
+     "$...$",
+     "\\[...\\]",
+     "\\frac"
+    ],
+    "notes": "Integration case; large deltas here are expected to be the sum of the narrower cases.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "10-unicode-paragraph.tex",
+   "sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "meta_sha256": "516f80d19f36ce828093d605f6a021405431267a7d34d755fba0d770637115f3",
+   "purpose": "Long UTF-8 paragraph: many accented letters, em/en dashes, curly and angle quotes, currency signs; wraps over several lines.",
+   "meta": {
+    "fixture": "10-unicode-paragraph.tex",
+    "purpose": "Long UTF-8 paragraph: many accented letters, em/en dashes, curly and angle quotes, currency signs; wraps over several lines.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "utf-8 literal text",
+     "paragraph"
+    ],
+    "notes": "Measures Unicode glyph coverage/advance widths and line breaking with non-ASCII words; pdflatex needs T1/utf8 — characters outside T1 (e.g. ǅ, ¥ in some encodings) may be reported as missing by the oracle log.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "11-nested-lists.tex",
+   "sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "meta_sha256": "d5b58492c2421b08e8527f471d6dfe4c34b9a959c9f179149fe72bb980ee3a56",
+   "purpose": "Nested itemize/enumerate: list indentation, bullets, numbering, vertical spacing.",
+   "meta": {
+    "fixture": "11-nested-lists.tex",
+    "purpose": "Nested itemize/enumerate: list indentation, bullets, numbering, vertical spacing.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "itemize/enumerate (EXPECTED UNSUPPORTED by both current compiler builds)"
+    ],
+    "expected_unsupported": true,
+    "notes": "The oracle is still rendered; FlashTeX is expected to emit diagnostics and/or render the item text as plain paragraphs. Large deltas are the expected, documented gap.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "12-justified-paragraphs.tex",
+   "sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "meta_sha256": "66a7212c559e794f103ce73263a64bbdda6ebfcf4fff0724dd596671d5d49281",
+   "purpose": "Four justified multi-line paragraphs: interword stretch, hyphenation, paragraph skip accumulation.",
+   "meta": {
+    "fixture": "12-justified-paragraphs.tex",
+    "purpose": "Four justified multi-line paragraphs: interword stretch, hyphenation, paragraph skip accumulation.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "greedy ragged-right breaking (no justification, no hyphenation)"
+    ],
+    "notes": "Isolates justification from everything else; compare with 02-wrapping-paragraph (two paragraphs).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "13-math-display-rich.tex",
+   "sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "meta_sha256": "be614e2525e5c4fb099be92329aa8dac32373170b8dd1f0dfea43625737e26f7",
+   "purpose": "Display math with \\int and \\sum limits, \\frac, \\sqrt, superscripts and a \\left( ... \\right) pair.",
+   "meta": {
+    "fixture": "13-math-display-rich.tex",
+    "purpose": "Display math with \\int and \\sum limits, \\frac, \\sqrt, superscripts and a \\left( ... \\right) pair.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\[...\\]",
+     "\\int",
+     "\\sum",
+     "\\frac",
+     "\\sqrt",
+     "\\left/\\right (support unknown)"
+    ],
+    "notes": "Display box region metrics use this fixture; \\left( \\right) delimiters may be unsupported by the current compiler.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "14-math-inline-dense.tex",
+   "sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "meta_sha256": "2ebc56bc902b32a068cc37e4315c4fb7da91d6bb02b9261cd976b44652202e79",
+   "purpose": "Many short inline math fragments in one wrapping line: inline math widths, script placement, line breaking around math.",
+   "meta": {
+    "fixture": "14-math-inline-dense.tex",
+    "purpose": "Many short inline math fragments in one wrapping line: inline math widths, script placement, line breaking around math.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "$...$",
+     "scripts",
+     "\\frac",
+     "\\sqrt",
+     "Greek"
+    ],
+    "notes": "Compiler build main has no math (recovered).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "15-three-page-sections.tex",
+   "sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "meta_sha256": "d59ab5c9829386c40a40da3e1bf9429b62dde62b2d07f89b3f557f63b60fe493",
+   "purpose": "Three pages, one section per page, forced with \\newpage: page count, per-page heading position, top margin on pages 2-3.",
+   "meta": {
+    "fixture": "15-three-page-sections.tex",
+    "purpose": "Three pages, one section per page, forced with \\newpage: page count, per-page heading position, top margin on pages 2-3.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "\\newpage (support unknown; if ignored the page breaks come from overflow instead)"
+    ],
+    "notes": "Each section also has enough text to nearly fill a page so the layout is comparable even where \\newpage is ignored.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "16-heading-page-break.tex",
+   "sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "meta_sha256": "8f32461c7649723acde36d68d2752b2679d10bdcad4ed31f0ee1741797f39668",
+   "purpose": "A section heading that lands at the bottom of page 1: LaTeX's club/widow and heading-keep rules move it to page 2.",
+   "meta": {
+    "fixture": "16-heading-page-break.tex",
+    "purpose": "A section heading that lands at the bottom of page 1: LaTeX's club/widow and heading-keep rules move it to page 2.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "page breaking (no keep-with-next expected)"
+    ],
+    "notes": "Where the heading falls is the whole point; compare page 1 bottom and page 2 top.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "17-apostrophes.tex",
+   "sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "meta_sha256": "5829d26ed8c73c81618817a5e47d09145eb818a40a6f1e3a8e5db504579e35e4",
+   "purpose": "ASCII apostrophes and TeX quote ligatures: quotesingle vs quoteright glyph and advance width (regression for the metrics bug found in issue #2).",
+   "meta": {
+    "fixture": "17-apostrophes.tex",
+    "purpose": "ASCII apostrophes and TeX quote ligatures: quotesingle vs quoteright glyph and advance width (regression for the metrics bug found in issue #2).",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "' -> quoteright",
+     "`` '' -> quotedblleft/right"
+    ],
+    "notes": "In TeX, ' is typeset as quoteright (’), not quotesingle; a compiler using quotesingle metrics drifts by the width difference per apostrophe.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "18-ligatures.tex",
+   "sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "meta_sha256": "c7c98f444560d753e2a986bf8028081f2f328441d22428cafdf86332b8195c99",
+   "purpose": "ff/fi/fl/ffi/ffl ligature words: TeX substitutes ligature glyphs, changing advance widths and line breaks.",
+   "meta": {
+    "fixture": "18-ligatures.tex",
+    "purpose": "ff/fi/fl/ffi/ffl ligature words: TeX substitutes ligature glyphs, changing advance widths and line breaks.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "no ligatures (documented gap)"
+    ],
+    "notes": "Word dx accumulates by the ligature width difference per occurrence; PDFKit may extract ligatures as U+FB00-FB04 (folded by the word normaliser).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  }
+ ],
+ "work_dir": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T100307Z",
+ "native_preview": null,
+ "limitations": [
+  "Reference engines and fonts: pdflatex uses the psnfss `times` package (URW Nimbus Roman clone); xelatex and lualatex use the macOS system `Times New Roman` TrueType via fontspec. Neither is byte-identical to the Times-Roman standard-14 face CoreGraphics substitutes when rasterizing the FlashTeX PDF.",
+  "Compiler build `main` (origin/main) has no math support: math fixtures compile with status `recovered` and the math is rendered as plain text; `de1020c` typesets math with Unicode symbols and U+2500 rule runs.",
+  "The preview-equivalent raster re-implements the app's CoreText draw; it is not a capture of the SwiftUI preview.",
+  "Metrics are for these fixtures, this DPI, these builds and this machine only.",
+  "Exact-equality gates are the only acceptance signals; thresholds, SSIM, registration and regression numbers are diagnostics."
+ ],
+ "stage_notes": [
+  "Single run.sh execution (references rendered live, 108/108 exit 0, pin verified live 108/108; four candidates: main, de1020c, pipeline, exact). Report regenerated once with diff.py --from-metrics to word the deviation note dynamically; metrics/images unchanged.",
+  "Exact route producers at run time: flashtex-render 65dbe7d (origin/agent/mac-render-pipeline/unified), flashtex-pdf-exact 8789abf (origin/agent/mac-pdf/v2-adapter). from-v2 reported 0 deviations on the 18 fixtures at these revisions. An earlier attempt of this run at render 4888a67 / pdf-exact 654f626 (aborted before the diff stage by a harness JSON bug, work dir not retained as evidence) reported the SHA-256(bytes || face_index) font-hash deviation on 18/18 fixtures (31 font notes); render-pipeline 919ad8b ('raw font digests') is the revision between the two that changed the producer's sha256 form."
+ ]
+}

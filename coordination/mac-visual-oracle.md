@@ -1,18 +1,17 @@
-# mac-visual-oracle — FT-017 rev 3 (GH-24: self-regression vs established-engine gates)
+# mac-visual-oracle — FT-017 rev 3 + exact-route column (GH-24 gates; flashtex-render --v2 → from-v2)
 
 Agent / task / branch: `mac-visual-oracle` (Claude Code subagent, parent `mac-claude-a`,
 machine `mac-m1max-a`) / FT-017 rev 3 (acked, input main 59a49ab; GH-24) /
 `agent/mac-visual-oracle/reference-raster`
-State: ready for integration (FT-017 rev 3 / GH-24 delivered with evidence; follow-ups 1 and 2 delivered)
+State: ready for integration (GH-24 gates, native evidence, and the exact-route candidate column all delivered with evidence)
 Owned paths: `tests/visual-corpus/harness/`, `tests/visual-corpus/evidence/`,
 `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`
-Main integrated through: ddc5bc6 (merge 6e9d14c, this session)
+Main integrated through: 4248b49 (merged this session)
 
 ## Durable checkpoint (context-checkpoint policy; written at every push)
 
-- Lane: FT-017 rev 3 / GH-24 "separate self-regression from established-engine raw-byte /
-  zero-pixel gates"; follow-ups: pin all 18 fixtures to exact engines/fonts (done via
-  `harness/oracle-profile.json`), native-capture-vs-export exact mismatch evidence (in progress).
+- Lane: FT-017 rev 3 / GH-24 (done), follow-ups (done), refill task "exact-route candidate
+  column" (done: evidence 20260912T100307Z).
 - Branch `agent/mac-visual-oracle/reference-raster`; worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c` (local branch name
   `mvo/rev2`, pushes with `git push origin HEAD:agent/mac-visual-oracle/reference-raster`; the
@@ -31,9 +30,9 @@ Main integrated through: ddc5bc6 (merge 6e9d14c, this session)
   pushed SHA); await Commander review of GH-24; if a re-baseline of `reference-profile.json` is
   requested: `bash tests/visual-corpus/harness/run.sh --scratch <scratchpad>/vc --skip-build
   --pin-profile` (labelled baseline, not a pass).
-- Dependency SHAs: origin/main ddc5bc6 (merged); compilers compared: main 5b69110, de1020c,
-  pipeline 79ba728 (origin/agent/mac-render-pipeline/unified); flashtex-pdf 5b5f7b5; app
-  origin/agent/mac-claude-a/mac-shell 169c2a8; MacTeX 2026 full, tlmgr r78301.
+- Dependency SHAs: origin/main 4248b49 (merged); compilers compared in the latest run: main c35ca8b,
+  de1020c, pipeline 65dbe7d, exact = render 65dbe7d + pdf-exact 8789abf (origin/agent/mac-pdf/v2-adapter);
+  flashtex-pdf 5b5f7b5; app origin/agent/mac-claude-a/mac-shell 169c2a8; MacTeX 2026 full, tlmgr r78301.
 
 ## Session note (resumed after an accidental stop)
 
@@ -43,6 +42,20 @@ the harness first gained a reference-reuse path (evidence run 20260912T065946Z, 
 reused from the stopped run's renders); the coordinator then installed **MacTeX 2026 full**
 (`/usr/local/texlive/2026`, tlmgr r78301; `/Library/TeX/texbin` → its bin dir) and the corpus was
 re-run with live oracles (evidence run 20260912T072838Z, the primary rev 2 evidence).
+
+## Ready behavior (refill: exact-route candidate column)
+
+- **Candidate `exact`** in the closure matrix: `flashtex-render --secnumdepth 0 --v2` (built by
+  `git archive` from origin/agent/mac-render-pipeline/unified) → `flashtex-pdf-exact from-v2
+  [--font-dir]` (built from origin/agent/mac-pdf/v2-adapter, crates/pdf) → PDF → shared 144-DPI
+  raster; same gates as every candidate (raw bytes vs pinned oracle, zero-pixel vs oracle raster,
+  self-regression, preview parity) plus `flashtex-pdf-exact classify` categories against the
+  pdflatex-lm reference, from-v2's summary, embedded fonts and every deviation note it prints.
+  `run.sh --exact-route auto|none|<pdf ref>[:<render ref>]`, `--font-dir`; a producer build
+  failure is reported in the report, not fatal. `render_flashtex.sh --exact/--font-dir/--reference`.
+- Report: Gate 2 table gains a classify-categories column; an "Exact route per fixture" table
+  lists from-v2 summary, categories, deviations, zero-pixel result and differing px per page; the
+  builds list states both producer SHAs and whether the tool reported the sha256 deviation.
 
 ## Ready behavior (rev 3, GH-24)
 
@@ -154,33 +167,29 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Validation
 
-- `selftest.py --rasterize <bin>`: PASS (25 checks).
-- Oracle reproducibility: `render_reference.sh` twice → `r2/ra-vs-rb.json`: 108/108 PDFs
-  byte-identical, 108/108 rasters identical (recorded in the commit message of c2619a6).
-- **Evidence run `20260912T083316Z`** (MacTeX 2026 full live; compilers main@5b69110, de1020c,
-  pipeline@79ba728; 648 entries, 0 skipped): `gate_summary` — oracle pins live 108/108
-  (the run's oracle bytes equal the pin, no normalisation); candidate raw bytes = pinned oracle
-  **0/324**; zero-pixel = oracle **0/324**; self-regression EQUAL 9/54 (de1020c on the 9 fixtures
-  pinned in rev 1; main/pipeline differ or unpinned); export = preview-equivalent 0/54.
-  Plain statement in the report: established-engine parity is NOT claimed.
-- **Native capture vs export, exact** (same run, `gate_summary.export_native_available` 54/54,
-  `export_native_equal` 0/54): every fixture × compiler capture DIFFERS from the export raster —
-  34,297 to 1,294,559 differing px of 1,938,816, max |Δ| 255 (e.g. 01-plain-paragraph/de1020c
-  40,484 px; 02-wrapping-paragraph/de1020c 365,319 px). Classification in the report: the
-  capture is a screen raster (CoreText on a 2× Retina backing, resampled ×1.524 to the 144-DPI
-  raster; caption corner masked) vs a CoreGraphics PDF raster — resampling and text rasterization
-  dominate; reported as-is, never normalised. Native-vs-oracle diagnostics (never acceptance) are
-  in the native table: e.g. 17-apostrophes pipeline native vs pdflatex-lm overlays almost exactly.
-  Capture route: app 169c2a8 (origin/agent/mac-claude-a/mac-shell), Retina display this time
-  (backing 2×; rev 1 was 1× external, ×2.84). First pass 44/54 (multi-page + one math capture
-  failed page detection → detector fixed, see Ready behavior), second pass 54/54.
-- **Process-hygiene incident**: the 54-capture pass that produced this evidence still ran
-  `pkill -x FlashTeXMac` before each launch and terminated another lane's app (the parent's
-  typing bench, exit 143). Fixed immediately in a1e2186 (PID-scoped kill and window lookup,
-  `FLASHTEX_NO_ACTIVATE=1`, verified with one launch); the captures predate the fix and say so
-  in `provenance.json` → `stage_notes`.
+- `selftest.py`: PASS (25 checks).
+- **Evidence run `20260912T100307Z`** (MacTeX 2026 full live, pin verified live 108/108; candidates
+  main@c35ca8b, de1020c, pipeline@65dbe7d, **exact** = render 65dbe7d → pdf-exact 8789abf;
+  72 candidates × 6 oracles = 432 pairs, 864 diff entries, 368 PNGs ≤ 300 KB):
+  - raw bytes = pinned oracle **0/432**, zero-pixel = oracle **0/432**, self-regression 9/72,
+    export = preview-equivalent 0/72; native not captured this run (0/0). Parity NOT claimed.
+  - **Exact route vs pdflatex-lm, per fixture** (18/18 rendered, from-v2 exit 0, all six classify
+    categories differ on every fixture — ContentOperators/FontProgram/FontMetadata/ObjectLayout/
+    Compression/DocumentIdentity, plus FontResources on the math/list/Unicode fixtures): zero-pixel
+    DIFFERENT everywhere; differing px at 144 DPI: 01 1,754; 04 1,831; 05 1,262; 17 3,667;
+    18 6,065; 03 2,047; 06 1,556; 07 2,127; 13 5,831; 14 9,959; 09 8,668; 10 14,033; 11 17,589;
+    02 27,814; 12 45,570; 08 96,274/96,135/42,817; 15 80,681/80,717/80,723; 16 96,274/29,402
+    (of 1,938,816 per page). Diagnostics: SSIM₈ 1.0000 and PDFKit word sequence = oracle with mean
+    |dx| 0.00 pt on 01–05, 08, 12, 15–18 (the text fixtures differ at anti-aliasing level only,
+    max |Δ| 4 on 01); math/list fixtures differ in layout (11 |dx| 19.4 pt, 13 12.2 pt).
+  - **Deviation note**: from-v2 reported **no** sha256 deviation at these producer revisions
+    (render-pipeline 919ad8b "raw font digests" switched to SHA-256(bytes)). The earlier attempt of
+    this run at render 4888a67 / pdf-exact 654f626 (aborted before the diff stage by a harness
+    JSON bug, fixed in 959467f) reported the SHA-256(bytes ‖ face_index) deviation on 18/18
+    fixtures (31 font notes); recorded in `provenance.json` → `stage_notes`.
+- Previous runs (083316Z GH-24 + native captures, 072838Z, 065946Z) preserved unchanged.
 - Diagnostics (never acceptance): 4 threshold failures (pdflatex vs de1020c on 10/12/15/16);
-  regress vs 072838Z: 9 entries, all label `main` (SHA moved 5f9f4ec → 5b69110).
+  regress vs 083316Z: 6 entries, all label `pipeline` (tip moved 79ba728 → 65dbe7d).
 
 ## Needs from others
 
@@ -196,9 +205,9 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Next action
 
-Await Commander review (GH-24 comment posted with the evidence path). Next if assigned: per-line
-region metrics; scale-aware registration for native captures; re-baseline the self-regression
-profile to 18 fixtures if requested.
+Await Commander review. Next if assigned: pin `pipeline`/`exact` producers to SHAs for a true
+regression check; native capture of the exact route's PDF is not applicable (the app draws the v1
+compile_result); per-line region metrics; re-baseline the self-regression profile if requested.
 
 ## Peer revisions reviewed and adaptations
 
@@ -213,4 +222,4 @@ profile to 18 fixtures if requested.
   runtime-v1 compile_result and U+2500 rule convention, both still present; a full merge of
   main into this branch is deferred to the next clean checkpoint.
 
-Updated: 2026-09-12T09:11Z
+Updated: 2026-09-12T10:17Z

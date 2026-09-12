@@ -1,0 +1,43 @@
+{
+  "engine": "lualatex-lm",
+  "variant": "lm",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/lualatex",
+  "exit": 0,
+  "seconds": 0.842,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-bolditalic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-bold.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-italic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-regular.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb",
+    "TU/lmroman12-regular.otf",
+    "lmroman10-bolditalic.otf",
+    "lmroman12-bold.otf",
+    "lmroman12-italic.otf",
+    "lmroman12-regular.otf"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+  "pdf_sha256": "594d77b21e78903e3ba537971ddd242df4865c48635fc6bf6847e272ff39d672",
+  "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+  "rendered_in_run": "20260912T100307Z"
+}

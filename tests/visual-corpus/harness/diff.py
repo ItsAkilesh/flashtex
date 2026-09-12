@@ -906,6 +906,8 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
     L.append(f"\nEngine flags: `{' '.join(prov.get('engine_flags', []))}`. Page size: US letter 612×792 pt for every producer "
              "(checked per page from the MediaBox). LaTeX package versions: see `provenance.json` → `packages`.\n")
     L.append("### FlashTeX builds under test\n")
+    ndev = sum(len((g.get("classify") or {}).get("deviations") or []) for g in gates if g.get("route") == "exact")
+    nfx = sum(1 for g in gates if g.get("route") == "exact" and (g.get("classify") or {}).get("deviations"))
     for c in prov.get("compilers", []):
         if c.get("build_ok") is False:
             L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate')}/{c.get('binary')}) — **DID NOT BUILD**, not compared: `{c.get('build_error')}`")
@@ -913,8 +915,11 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
             L.append(f"- **exact route** `{c['label']}`: `flashtex-render --secnumdepth 0 --v2` from `{c['ref']}` @ `{c['sha']}` (crates/render-pipeline) → "
                      f"`flashtex-pdf-exact from-v2` from `{c.get('exact_pdf_ref')}` @ `{c.get('exact_pdf_sha')}` (crates/pdf) — {c.get('note', '')}. "
                      "Glyphs by original GID at the producer's exact tick origins, GID-preserving CFF subsets of the Latin Modern OTFs resolved by content hash. "
-                     "Known deviation reported by the tool on every fixture: the producer's font `sha256` is SHA-256(bytes ‖ face_index) (font-engine's content hash), "
-                     "not SHA-256(bytes) as the rendering-v2 validator requires; from-v2 accepts it and says so.")
+                     + (f"Deviations reported by from-v2 this run: {ndev} note(s) on {nfx} fixture(s) (listed per fixture below; the known one is the producer's font "
+                        "`sha256` being SHA-256(bytes ‖ face_index), font-engine's content hash, instead of SHA-256(bytes) as the rendering-v2 validator requires — "
+                        "from-v2 accepts it and says so)." if ndev else
+                        "from-v2 reported no deviation on any fixture this run (the producer's font `sha256` matched SHA-256(bytes); at earlier producer revisions "
+                        "the tool reported the SHA-256(bytes ‖ face_index) deviation on every fixture)."))
         else:
             L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate', 'crates/compiler')}) — {c.get('note', '')}")
     p = prov.get("pdf_writer", {})

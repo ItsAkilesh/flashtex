@@ -1,0 +1,35 @@
+{
+  "engine": "pdflatex",
+  "variant": "times",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/pdflatex",
+  "exit": 0,
+  "seconds": 0.459,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{times}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/urw/times/utmb8a.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/urw/times/utmr8a.pfb",
+    "/usr/local/texlive/2026/texmf-dist/fonts/type1/urw/times/utmri8a.pfb"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+  "pdf_sha256": "3f666655543ca7a977b30ffa7bed6c85a1b75f6fed409cfba92982a05928822d",
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+  "rendered_in_run": "20260912T100307Z"
+}

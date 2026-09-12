@@ -14,32 +14,37 @@
     "xcode",
     "tex-oracle"
   ],
-  "code_revision": "a1e218660bf283ac6711028657bff451d39247cb",
+  "code_revision": "17233e619a8aa5c5245c864dc55056ff4a22269f",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
-  "next_action": "Await Commander review of GH-24; re-baseline reference-profile.json to 18 fixtures only if requested (--pin-profile, baseline not pass).",
+  "main_integrated_through": "4248b491159c6f38f12830bf8e3e1444d48543ae",
+  "next_action": "Await Commander review; pin producers to SHAs for regression checks if requested.",
   "reviewed_peers": {
+    "origin/agent/mac-pdf/v2-adapter": {
+      "adaptation": "Read crates/pdf README from-v2 section and docs/v2-adapter-gap.md; adopted the documented route (--secnumdepth 0 --v2, from-v2, classify) as the harness's exact candidate; noted the sha256 deviation is no longer reported at 8789abf/65dbe7d.",
+      "reviewed_utc": "2026-09-12T10:17:59Z",
+      "sha": "8789abf2f82624684b6615e5014240ad25b26c95"
+    },
     "origin/agent/mac-render-pipeline/unified": {
-      "adaptation": "Reviewed c000dad (secnumdepth parsing): crates/render-pipeline builds via git archive of crates/; added as pipeline label; finding: matches LM oracle word sequence on 17-apostrophes (|dx| 0.02 pt), display-math boxes weakest region.",
-      "reviewed_utc": "2026-09-12T07:42:12Z",
-      "sha": "c000dadcb637293ac1963decc2387b323b0cefe4"
+      "adaptation": "Built 65dbe7d as both `pipeline` and the exact route's producer; 919ad8b 'raw font digests' explains the vanished deviation.",
+      "reviewed_utc": "2026-09-12T10:17:59Z",
+      "sha": "c4848b2c19297375ecd5cda99ddf17267931ac6d"
     },
     "origin/main": {
-      "adaptation": "Merged origin/main (ddc5bc6) into the branch: no changes under tests/visual-corpus or coordination/mac-visual-oracle*; rev 3 assignment + GH-24 read and acked.",
-      "reviewed_utc": "2026-09-12T08:32:11Z",
-      "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
+      "adaptation": "Merged into the branch; no changes under owned paths.",
+      "reviewed_utc": "2026-09-12T10:17:59Z",
+      "sha": "4248b491159c6f38f12830bf8e3e1444d48543ae"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-017 rev 3 / GH-24 delivered on agent/mac-visual-oracle/reference-raster: report and metrics split into (1) FlashTeX self-regression vs pinned prior FlashTeX bytes, (2) candidate vs established engine \u2014 raw unmodified PDF bytes vs pinned MacTeX 2026 oracle PDF (oracle-profile.json, 108 pairs, pinned render env SOURCE_DATE_EPOCH=0/FORCE_SOURCE_DATE=1 + LuaTeX trailerid, verified byte-reproducible and live 108/108) and zero-pixel raster equality per page, (3) native/export parity; plain statement: parity NOT claimed (0/324 bytes, 0/324 pixels, self-regression 9/54, export=native 0/54 of 54 captures). Evidence tests/visual-corpus/evidence/20260912T083316Z (492 PNGs <= 300 KB, native overlays included). capture_native.sh no longer kills FlashTeXMac by name (a1e2186). selftest.py 25 checks green.",
+  "summary": "Refill delivered on agent/mac-visual-oracle/reference-raster: third candidate column `exact` (flashtex-render --v2 @65dbe7d -> flashtex-pdf-exact from-v2 @8789abf) in the closure matrix, gated like every candidate (raw bytes vs pinned MacTeX oracle, zero-pixel vs oracle raster) plus classify categories per fixture. Evidence 20260912T100307Z: 0/432 bytes, 0/432 pixels, parity NOT claimed; exact route text fixtures differ at anti-aliasing level only (SSIM 1.0000, word |dx| 0.00 pt on 11 of 18), math/list fixtures differ in layout. from-v2 reported no sha256 deviation at these tips (it did on 18/18 at 654f626/4888a67; recorded). GH-24 gate split and native-capture evidence (083316Z) unchanged. selftest 25 checks green.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:11:59Z",
+  "updated_utc": "2026-09-12T10:17:59Z",
   "usage": {
     "evidence": "Claude Max 20x shared quota on mac-m1max-a; no programmatic readout; this session only",
     "status": "unknown"

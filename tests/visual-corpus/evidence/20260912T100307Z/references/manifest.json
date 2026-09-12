@@ -1,0 +1,904 @@
+{
+ "schema_version": 1,
+ "run": "20260912T100307Z",
+ "machine": "mac-m1max-a",
+ "note": "Reference oracle renders (PDF + engine metadata) rendered by this run; rasters/word boxes are re-derived from the PDF. Later runs without an engine reuse these after a fixture SHA-256 + preamble check.",
+ "engines": {
+  "pdflatex": {
+   "path": "/Library/TeX/texbin/pdflatex",
+   "available": true,
+   "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+  },
+  "xelatex": {
+   "path": "/Library/TeX/texbin/xelatex",
+   "available": true,
+   "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+  },
+  "lualatex": {
+   "path": "/Library/TeX/texbin/lualatex",
+   "available": true,
+   "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+  }
+ },
+ "packages": {
+  "times.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/psnfss/times.sty",
+  "lmodern.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/lmodern.sty",
+  "fontspec.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty",
+  "geometry.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty",
+  "t1enc.def": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/t1enc.def",
+  "texlive_root": "/usr/local/texlive/2026",
+  "texbin_realpath": "/usr/local/texlive/2026/bin/universal-darwin",
+  "tlmgr": "tlmgr revision 78301 (2026-03-07 18:41:28 +0100)",
+  "distribution": "MacTeX / TeX Live full (/usr/local/texlive/2026)"
+ },
+ "system_fonts": {
+  "/System/Library/Fonts/Supplemental/Times New Roman.ttf": true,
+  "/System/Library/Fonts/Times.ttc": true
+ },
+ "entries": {
+  "01-plain-paragraph/lualatex": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "071fdb2615a50edd7774d0fc9308275654aed40bd4e44fe3a06189c715b244df",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "01-plain-paragraph/lualatex-lm": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "3f669ebfc506b330fe1e886cd707a7391dc833ab4ad128156a8eacf6a8786e0b",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "01-plain-paragraph/pdflatex": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "dea21bc33a047e261e4037ebeae0404a61576ff0dac42613234854297638cbcd",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "01-plain-paragraph/pdflatex-lm": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "b8188efc215ae92b1270eeee64d899ef4caf9e95258afff79ec72bcb2d953196",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "01-plain-paragraph/xelatex": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "fba4be0815be3544b3c0b7b2f495b9ffb3bdd8e9952a08b3c4e4b6a98af41f5b",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "01-plain-paragraph/xelatex-lm": {
+   "fixture_sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "pdf_sha256": "fda2770281c4a1a29df1b84920ef9e4d82879ea35d13acc44ba34b9766de1807",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/lualatex": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "821f29a8c2a3a3eea4d1c5253baebe95c5c7faa69736cee8190512f38ea003d0",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/lualatex-lm": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "c6008fb87fd36a003a284777271b9de8a729bc0d35fa7d1703da2e5fa825c6a9",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/pdflatex": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "bc6b10f58dcc77ba23dd66bdb649c8b751f24631f1021499d917e1fc1064eee4",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/pdflatex-lm": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "c7e4cfd2513fb43e90c21ce905b0c4f8756ff3dfcc9b7b1ad45ab2c395c0d7cc",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/xelatex": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "f5b5fc672da343df12ba36a5dfaf899f69b884b797ffe06fb4e32b1a9be97ba3",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "02-wrapping-paragraph/xelatex-lm": {
+   "fixture_sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "pdf_sha256": "0aff0b9a124e03d855cdaae1ceb9e9c5de33f4d313d0dbacd971656c24bafa3f",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "03-section-heading/lualatex": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "cb19ca35bb7c0877934130aa78af80675dfd49bf55bf771b94624b87184bff36",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "03-section-heading/lualatex-lm": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "ee66116a5b35cff7f1193d98617c9384c734357c8a46dea24ed9a352b4603ab9",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "03-section-heading/pdflatex": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "1c806ebe1a755fccbb9d8298e54cee5717e629514b88576b1f3c387095e84228",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "03-section-heading/pdflatex-lm": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "81b2c42757b7fc97a690d3dd863336f6e6e46d22b4e2cdc0af2638f2b349aa9e",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "03-section-heading/xelatex": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "3919a3da546240807ef9c6f365e171f0fb416e122923fa19955f78629729cfd7",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "03-section-heading/xelatex-lm": {
+   "fixture_sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "pdf_sha256": "0274f9512cad94f24d87d91be375ddb5a69a74f3a675567d88f6fa00932fc078",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "04-bold-emph/lualatex": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "bdd086cad4b44f4a61dd4cbea9365accf8f3dfc0dabc7dce7ff241d9aa386ca0",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "04-bold-emph/lualatex-lm": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "d7f66e6e57662467488555ef872f63e88922a0f9226a6c19a4d5989269d1f1c0",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "04-bold-emph/pdflatex": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "cbf3f2b715a74dbc73c25962f9c000fce545581069fd29cee49538e801273de5",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "04-bold-emph/pdflatex-lm": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "77fbdc637bf8004f256cf9725373190c8bffd5a44575bcad4c0e0d9cf6eeb4e2",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "04-bold-emph/xelatex": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "c24be5f742821cc1019472f5b9f86f1c093fda46595c71e4dde64ddf3d7698ad",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "04-bold-emph/xelatex-lm": {
+   "fixture_sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "pdf_sha256": "06b26c544fc42017d2957a1b332b13923efb7b961d4c85173e1a754e49166b45",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "05-unicode/lualatex": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "f9f8b9d7f786f8e894635623f226ddf72fb2a1fe2ae689b0f2a82a1501a83531",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "05-unicode/lualatex-lm": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "9e01a7be1796011665a43a6889c827f1ef48288a1fbd27242fb8db0223956867",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "05-unicode/pdflatex": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "5e286bec309af23c27d298cb1ac841bb412e055dac2645f8e6407ae42b498817",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "05-unicode/pdflatex-lm": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "ca2395d15e4d760a62f029fed4e8ecf7e06533ed7e21cd173ba7a901f8cce447",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "05-unicode/xelatex": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "a1d39e1ac2f921ffa6195cfaed496dc282f04496319fd221ad4747eb80efca44",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "05-unicode/xelatex-lm": {
+   "fixture_sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "pdf_sha256": "5fbaa0f3058cd431e5a6bccd2bd986ab78da5ec462da23def74148ecb89f160d",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "06-math-inline/lualatex": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "0ec6803f25e7d479a5b838b3123efb8ac39d5cf288ed6d16dd91ea3cc682d6ef",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "06-math-inline/lualatex-lm": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "693fdbf4161c8b82ec11ec38530c05bc709ac58ae539c7678695cfeb3260f130",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "06-math-inline/pdflatex": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "cc7cb1363a65c84330bdedf8397d616689addc713f1a4e385839938fd6c6c142",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "06-math-inline/pdflatex-lm": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "eddda2a6f3781a154de7835c42f6eed3894f8fed589d282eaf5172631c7f8b7a",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "06-math-inline/xelatex": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "727a71c801d3f1e9e2ee8c3a4cc04a00aac7849a66c75d8cf4db48fb0f1192f6",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "06-math-inline/xelatex-lm": {
+   "fixture_sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "pdf_sha256": "499d2c9618bcbe6fa623959a89dc838e222b4556f7c92b6cb91157403594d0b4",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "07-math-display/lualatex": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "ef6c8c75c1bae3677fb49ff1246b1de2e13559ee9ca553a8b53c08c91fdc1c35",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "07-math-display/lualatex-lm": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "594d77b21e78903e3ba537971ddd242df4865c48635fc6bf6847e272ff39d672",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "07-math-display/pdflatex": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "d83d2aa73837d4ef09a6a4b209bacf5b0e95084aba87a970b581585e2e1b2caf",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "07-math-display/pdflatex-lm": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "d4b717555a27a08ef13f707ce96df585b869ca7bcfd4254a5df819e0095ebbc8",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "07-math-display/xelatex": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "5aeb5e7b82682c561ae7a3521a17a1f556f29f201d6cbe56b8ff2c4fa1211352",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "07-math-display/xelatex-lm": {
+   "fixture_sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "pdf_sha256": "5b7cf60905e4b2ed613a6d719c70ca3f39673a36ec6299f5657a381883d4a1c3",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "08-two-page/lualatex": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "c2db85fa6b39044c8f81d939daeda0f3df8562d01f7fca3abcb4680678b63133",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "08-two-page/lualatex-lm": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "88cd9f207178da8dabcde36b22d94f4087d0b47e5a263f5cfb26694e531574cc",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "08-two-page/pdflatex": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "c47ebebb99f350081966fd1e2615b121828c7e0f8b7269afe738824ca9696dde",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "08-two-page/pdflatex-lm": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "c692ebd4c400d92f2b35a88ccd840691bd11b1c79b7af84e20f7a8dfcc32ac48",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "08-two-page/xelatex": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "0af6eb26211b9ea5393610fa5513ab3a14254bc591d38d5ea7b39f8951521641",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "08-two-page/xelatex-lm": {
+   "fixture_sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "pdf_sha256": "d19dbea0b1266ae81390662c4f007b284b3f48aae5dfa244f1aad376caa8943a",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "09-mixed-document/lualatex": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "e63671f9880bc2a7ad2910052daa8c7b9e097a3bf8935be1a336bd2d34d322df",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "09-mixed-document/lualatex-lm": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "8d56b9ffaddd9d8864818d8785ad1be2de0485b330aec16401fd0cf81d77204a",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "09-mixed-document/pdflatex": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "3f666655543ca7a977b30ffa7bed6c85a1b75f6fed409cfba92982a05928822d",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "09-mixed-document/pdflatex-lm": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "e6bccf4f4427413b7cca00e13c189da01f5c750c879754cca60f5e462de769b2",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "09-mixed-document/xelatex": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "89b04f93705fef754981d8f6766104f8fb941b0f080fed8026c8b2998e72b3d0",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "09-mixed-document/xelatex-lm": {
+   "fixture_sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "pdf_sha256": "81669ecc1a55921d8a0e57d3213dab574a64b709cd61f958b278c59f7c2eb8b1",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "10-unicode-paragraph/lualatex": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "51f9fc74cd8e6a0ed87245585918319ce1424fe87c400a13d045ad9cdbb072cb",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "10-unicode-paragraph/lualatex-lm": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "6f369d081bb6366e522dde2f67c61080abd4e72df7ef02ec23ec17daea1c50e5",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "10-unicode-paragraph/pdflatex": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "98b0b1cd7b8d42856e7c76e466421228a0a2f6b3628f6da5d718c23e363ac561",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "10-unicode-paragraph/pdflatex-lm": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "68fce902e81b6bd29742493abf585d2037723a786158e76ca411767a3cf8d70b",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "10-unicode-paragraph/xelatex": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "2e7c7a6940298d4b4965fe540dbd27f6fb3e8d3f32de53bb51f4618cb1484b90",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "10-unicode-paragraph/xelatex-lm": {
+   "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "pdf_sha256": "e0ba4819bec01fa09d540a93867954fb00d98bb7d0a2d670d46523acd98118b6",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "11-nested-lists/lualatex": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "878beb76c530d6caeefd0ac01ea7d501f80fd3d63ba2b2cafbd1316f7ada3e3d",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "11-nested-lists/lualatex-lm": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "31457e0c7326c0442a3815a2b7364979279405250c502c20e15ef41e098d86ec",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "11-nested-lists/pdflatex": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "caee5d74109395e6f3668b4865b093b9296086b817664ebbccb7b35d06b5ed44",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "11-nested-lists/pdflatex-lm": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "c18a8c985c5331bb5fe4a65dfdae5fec66b6f47e5a18e0ea39fec032d9e3d39a",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "11-nested-lists/xelatex": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "6bc3122337b6d5e8dbacda5ddb4cad4699e36fb215ab818981f109f57eec3ef6",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "11-nested-lists/xelatex-lm": {
+   "fixture_sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "pdf_sha256": "2fc63bf50834b862080d4b86203f1cca4100a13faeae3745de007800dc7fd43a",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "12-justified-paragraphs/lualatex": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "b5d3ae32dd337acc51128892409762c60e6f3d75005773b509debe4f9af24bae",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "12-justified-paragraphs/lualatex-lm": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "bba5d95e2165d32ab3679e019a58418092472a938ba7347fa87630bf6b5c8d78",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "12-justified-paragraphs/pdflatex": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "05f93d54109b6137a334a3df91c88939700f9ba6afa91ab85d086c1b1186ba9c",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "12-justified-paragraphs/pdflatex-lm": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "acf4f507733116250a2d3fb75a2ea9af22fa3eb5ba4be412c9ca9a2f0331747b",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "12-justified-paragraphs/xelatex": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "5b2a3046e376c3b1d6c31f3c9773e4e384b8c4c6debb267ee6036c0a0b91637a",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "12-justified-paragraphs/xelatex-lm": {
+   "fixture_sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "pdf_sha256": "efc39bd0db844440c0856a2abdcb9102c823e2c653426b3c2295c5cdac15f69c",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "13-math-display-rich/lualatex": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "c6a8c02cebf62b3b568ddc5388711842f39aa47f6d94136f6d55ca7df012cc17",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "13-math-display-rich/lualatex-lm": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "08fbc956921c187a151d5dc69dd91e533456a8e83ddc17f5746a65b274659884",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "13-math-display-rich/pdflatex": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "5242ff7fb17ff42c995e85bc173199df2ad38266ef9cdc9d0333abc653d1b4f8",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "13-math-display-rich/pdflatex-lm": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "d7247f3bc2832ee883f16b8f8152ed49e06e2bdbf404c351cff3a1f25881ee33",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "13-math-display-rich/xelatex": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "c583305db231e0a1c2eec8d2feb03b37417ee1ac20499fdfc1ec8cd629ece99b",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "13-math-display-rich/xelatex-lm": {
+   "fixture_sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "pdf_sha256": "626ae401465ddf6e4997dc97e603e1dfed62872be49338d2a364b44226aad959",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "14-math-inline-dense/lualatex": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "645ed13842d95fdcd07979c9b5fa87db573a649f144079e2573f98ca0966d831",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "14-math-inline-dense/lualatex-lm": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "1c7c989776ef076341a2b222a396cc52cbe06be610e8cb45589115842a97376a",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "14-math-inline-dense/pdflatex": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "8443e98a03bae653fd020df8ec791378a2c4ba07e96d7bf74ff8cdae77ef0563",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "14-math-inline-dense/pdflatex-lm": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "0920caa44387cae6a8a1f76d85f4fb6a96dfa3cacc7dbc42e6862e5b265e7a34",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "14-math-inline-dense/xelatex": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "c82cbb0fb156aed8576b07eaae207873f4814586a28b6b0d9c61481e445ab8a9",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "14-math-inline-dense/xelatex-lm": {
+   "fixture_sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "pdf_sha256": "7af86ead23f96bdef64eb046d0020cb7fff4e354b8076e40f7f9514ceec943da",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "15-three-page-sections/lualatex": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "080616943b59dd606dffc2e87e12713e215ed57a08d86075d8690ba108c1a09f",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "15-three-page-sections/lualatex-lm": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "d7da612d6ef1716cb91de12f291be03ef90cd13caafe768f6a509a688373b55e",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "15-three-page-sections/pdflatex": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "e45e3ecb29bfecfd73d394c8e84927c011f80dbb0c6ce579817f7aa64888cd5f",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "15-three-page-sections/pdflatex-lm": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "c34d77f4f41576ca5f1bf3122f603e7820d605a6861b3a008fa1dd500a48d7ba",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "15-three-page-sections/xelatex": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "b41c2002d87e14217aa6f002200fb8227ffc91b224d30c3f06a528e6719b88c2",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "15-three-page-sections/xelatex-lm": {
+   "fixture_sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "pdf_sha256": "d8e5e6b3fca1912b653a75dd0d50f72436acaad4df30a5793c2c2805dd285680",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "16-heading-page-break/lualatex": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "9679238eefa508c0ec45022386862da5f60244bbf568fc29284b4b4e739ab0f5",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "16-heading-page-break/lualatex-lm": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "a2d5c33e0adfa92bdcd4ea2ed630fe03da647c00e9dc50aa096af5a2d3fd4e39",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "16-heading-page-break/pdflatex": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "5b835f10b688877cb937736dd71e4b140d7fd014697d25fa4f6cdc8e75dac112",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "16-heading-page-break/pdflatex-lm": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "08d05e7fd7115149b23c33f831344d944c017d8a04878d3113927efd1219cb6a",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "16-heading-page-break/xelatex": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "4df1f8c91ea67b21c68d76fde960cad1a93ac102c03daca0203dcf6c44612ceb",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "16-heading-page-break/xelatex-lm": {
+   "fixture_sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "pdf_sha256": "c20c31948f9ec85198935423e533e8a17ab0397346b590a66cfb5db5945dca31",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "17-apostrophes/lualatex": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "85075871988098ef0fa0a94c4a1f9062116002bced798a3dcb554a7295f3ebdb",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "17-apostrophes/lualatex-lm": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "32dbf62e2f02230f315908df5fafae3a6f7ad15bd8813b39590c4c7d3cc01cb4",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "17-apostrophes/pdflatex": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "bf783236d3673d0ef52b0bfc1eaa5f122c3dc9621fde8f7212b9cdc82c35d83f",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "17-apostrophes/pdflatex-lm": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "2461cdb2a03c2d1d621482a4dfa206781eb81746277db13ea2bfb790b86bd524",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "17-apostrophes/xelatex": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "b1e7725a74b0ef7d7170ed3c9ffa593a8acc862860cc5982cf23966fb6a8a9c7",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "17-apostrophes/xelatex-lm": {
+   "fixture_sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "pdf_sha256": "f3b3e9a7ee31c90aefdd3bcbca5555a48926681f1045a8444da7d75eb09c9222",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "18-ligatures/lualatex": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "52c653f8cbd04a9a92d2aab72f1a4d7840e8e93d56c1efa5a43d2a3133ead523",
+   "engine": "lualatex",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "18-ligatures/lualatex-lm": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "bdeb03f7ec112b3620a090e664fa397a9704e523a7296aae8d58cc2401d85123",
+   "engine": "lualatex-lm",
+   "engine_version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "18-ligatures/pdflatex": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "4d0a457b931392b655a5c589be7cd521da6722f0ea1f71edd456dd5445cbbe4c",
+   "engine": "pdflatex",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "18-ligatures/pdflatex-lm": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "377de22d34ae318c46872d71de4772eba372cc18e15ffef9db623e8a75df6218",
+   "engine": "pdflatex-lm",
+   "engine_version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  },
+  "18-ligatures/xelatex": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "2fd8235c07ffae3090911a6e8f970d7ad719112c01c7ae67e09efa66bff1efe2",
+   "engine": "xelatex",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "times",
+   "exit": 0
+  },
+  "18-ligatures/xelatex-lm": {
+   "fixture_sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "pdf_sha256": "555050161e54702aad883b4adad96cea5a075069ba1a960f75358fd511e958fb",
+   "engine": "xelatex-lm",
+   "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+   "variant": "lm",
+   "exit": 0
+  }
+ }
+}
