@@ -33,14 +33,20 @@ use flashtex_vector_graphics::Color;
 
 #[test]
 fn identity_plain_name_is_the_palette_entry_unchanged() {
-    assert_eq!(resolve("red", &base_palette()), Ok(Color::Rgb(1.0, 0.0, 0.0)));
+    assert_eq!(
+        resolve("red", &base_palette()),
+        Ok(Color::Rgb(1.0, 0.0, 0.0))
+    );
 }
 
 #[test]
 fn identity_negation_of_blue_is_yellow_numerically() {
     // -blue: (1-0, 1-0, 1-1) = (1, 1, 0) -- numerically identical to
     // `yellow`, by the component-wise complement definition, not a lookup.
-    assert_eq!(resolve("-blue", &base_palette()), Ok(Color::Rgb(1.0, 1.0, 0.0)));
+    assert_eq!(
+        resolve("-blue", &base_palette()),
+        Ok(Color::Rgb(1.0, 1.0, 0.0))
+    );
 }
 
 #[test]
@@ -48,7 +54,10 @@ fn identity_double_negation_is_the_original_exact_value() {
     // -(-red): negate(Rgb(1,0,0)) = Rgb(0,1,1); negate that again =
     // Rgb(1,0,0). Pinned as a literal constant, not compared against a
     // second `resolve("red", ...)` call.
-    assert_eq!(resolve("--red", &base_palette()), Ok(Color::Rgb(1.0, 0.0, 0.0)));
+    assert_eq!(
+        resolve("--red", &base_palette()),
+        Ok(Color::Rgb(1.0, 0.0, 0.0))
+    );
 }
 
 #[test]
@@ -148,10 +157,7 @@ fn identity_three_term_left_associative_mix_chain() {
 
 #[test]
 fn identity_negated_gray_literal() {
-    assert_eq!(
-        resolve("-gray:0.3", &base_palette()),
-        Ok(Color::Gray(0.7))
-    );
+    assert_eq!(resolve("-gray:0.3", &base_palette()), Ok(Color::Gray(0.7)));
 }
 
 #[test]
