@@ -28,8 +28,10 @@ This revision supports:
   approximation remains and produces the existing PDF-export warning.
 - `font-hints-v1`: every text item adds a `font` object containing the family,
   `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
-  Current body text reports Times-Roman, headings report Times-Bold, and
-  supported mathematical symbols report Symbol.
+  Body text reports the face its text style selects (Times-Roman by default;
+  Times-Bold, Times-Italic, Times-BoldItalic, Helvetica or Courier under the
+  style commands), headings start in Times-Bold, and supported mathematical
+  symbols report Symbol.
 
 This additive extension is not rendering-v2 activation or a claim of exact
 LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
@@ -109,8 +111,10 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
   paragraph breaking. The font engine reports unsupported shaping and missing
   glyphs explicitly; the compiler never silently substitutes a missing glyph.
-- `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
-  visual weight and slant are not yet applied.
+- Text styles use only the Core 14 metric faces. Times has real bold, italic
+  and bold-italic variants; slanted shapes (`\textsl`, `\slshape`) use
+  Times-Italic, and sans/typewriter text uses upright Helvetica/Courier even
+  when bold or italic is also requested (the engine has no other variants).
 
 ## Supported commands
 
@@ -119,6 +123,11 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
+`\textsl`, `\texttt`, `\textrm`, `\textsf`, `\textmd`, `\textup`,
+`\textnormal`, the group- and environment-scoped declarations `\bfseries`,
+`\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
+`\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
+`\sl`, `\tt`, `\rm`, `\sf`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate`, `\item`, `\par`, and `\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
@@ -162,8 +171,8 @@ the compiler does not yet read a real math font.
 
 ## Font shaping and layout limits
 
-Layout measures Times-Roman body text, Times-Bold headings, and supported math
-symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
+Layout measures body text in the Core 14 face its text style selects, headings
+in Times-Bold unless restyled, and supported math symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
 advances already include AFM pair kerning and enabled standard ligatures. One
 item is still emitted per word rather than per line; its span is derived from the
 shaped clusters and remains an exact document byte range for literal text.
