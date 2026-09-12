@@ -227,6 +227,9 @@ final class ProposalPreview: ObservableObject {
         worker?.terminate()
         worker = nil
         inFlight.removeAll()
+        if let job = explanationJob, explanationState.isInFlight {
+            recoveryLog.record(.reviewClosed(requestId: job.id, stage: job.stage))
+        }
         cancelExplanation(reason: "review closed")
     }
 

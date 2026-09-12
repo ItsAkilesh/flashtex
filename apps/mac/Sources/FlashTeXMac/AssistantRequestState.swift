@@ -15,6 +15,10 @@ enum AssistantRecoveryEvent: Equatable {
 
     /// The reviewer pressed Cancel while `requestId` was running at `stage`.
     case cancelledByReviewer(requestId: String, stage: ProposalPreview.ExplanationStage)
+    /// The review sheet closed (the proposal was approved for insertion,
+    /// rejected, or dismissed) while `requestId` was running at `stage`: the
+    /// child is terminated and its reply, if any, is discarded unseen.
+    case reviewClosed(requestId: String, stage: ProposalPreview.ExplanationStage)
     /// The bound document moved under the request (editor revision or document
     /// text changed): the helper's binding can no longer be satisfied, so the
     /// request — running or displayed — is discarded before any reply is trusted.
@@ -35,7 +39,7 @@ enum AssistantRecoveryEvent: Equatable {
 
     var requestId: String {
         switch self {
-        case .cancelledByReviewer(let id, _), .expired(let id, _, _), .superseded(let id, _),
+        case .cancelledByReviewer(let id, _), .reviewClosed(let id, _), .expired(let id, _, _), .superseded(let id, _),
              .timedOut(let id, _, _, _), .exited(let id, _, _, _), .refused(let id, _, _), .lateReplyDiscarded(let id, _):
             return id
         }
@@ -46,6 +50,8 @@ enum AssistantRecoveryEvent: Equatable {
         switch self {
         case .cancelledByReviewer(_, let stage):
             return "cancelled during \(stage); any late reply is discarded. Explain starts a new request."
+        case .reviewClosed(_, let stage):
+            return "review closed during \(stage); the request was stopped and any late reply is discarded. Nothing was applied."
         case .expired(_, let from, let to):
             return "explanation expired: the document changed (revision \(from) → \(to)); its reply, if any, is discarded and nothing was applied. Explain again for the current text."
         case .superseded(_, let what):
