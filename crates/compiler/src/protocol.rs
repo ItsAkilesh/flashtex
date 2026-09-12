@@ -712,3 +712,233 @@ mod font_literal_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::*;
+
+    // ── error_envelope ────────────────────────────────────────────────────────
+
+    #[test]
+    fn error_envelope_has_required_top_level_keys() {
+        let v = error_envelope("req-1", "some_code", "some message");
+        assert_eq!(v.get("type").and_then(|x| x.as_str()), Some("error"));
+        assert_eq!(v.get("id").and_then(|x| x.as_str()), Some("req-1"));
+        assert!(v.get("protocol_version").is_some());
+        assert!(v.get("payload").is_some());
+    }
+
+    #[test]
+    fn error_envelope_payload_has_code_and_message() {
+        let v = error_envelope("id1", "bad_code", "bad message");
+        let payload = v.get("payload").unwrap();
+        assert_eq!(payload.get("code").and_then(|x| x.as_str()), Some("bad_code"));
+        assert_eq!(payload.get("message").and_then(|x| x.as_str()), Some("bad message"));
+    }
+
+    #[test]
+    fn error_envelope_protocol_version_is_correct() {
+        let v = error_envelope("x", "c", "m");
+        let ver = v.get("protocol_version").and_then(|x| x.as_i64());
+        assert_eq!(ver, Some(PROTOCOL_VERSION));
+    }
+
+    #[test]
+    fn error_envelope_payload_has_diagnostics_array() {
+        let v = error_envelope("id", "code", "msg");
+        let payload = v.get("payload").unwrap();
+        let diags = payload.get("diagnostics");
+        assert!(diags.is_some(), "error payload must have a diagnostics field");
+        assert!(matches!(diags.unwrap(), Value::Arr(_)), "diagnostics must be an array");
+    }
+
+    // ── handle_request_bytes ──────────────────────────────────────────────────
+
+    #[test]
+    fn handle_request_bytes_rejects_non_utf8() {
+        let reply = handle_request_bytes(&[0xFF, 0xFE]);
+        let parsed = json::parse(&reply).unwrap();
+        assert_eq!(parsed.get("type").and_then(|x| x.as_str()), Some("error"));
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("invalid_utf8")
+        );
+    }
+
+    #[test]
+    fn handle_request_bytes_accepts_valid_utf8() {
+        let bytes = b"not json";
+        let reply = handle_request_bytes(bytes);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_ne!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("invalid_utf8"),
+        );
+    }
+
+    // ── path_is_safe ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn path_is_safe_rejects_empty() {
+        assert!(!path_is_safe(""), "empty path must not be safe");
+    }
+
+    #[test]
+    fn path_is_safe_rejects_absolute_unix_path() {
+        assert!(!path_is_safe("/etc/passwd"));
+        assert!(!path_is_safe("/foo/bar.tex"));
+    }
+
+    #[test]
+    fn path_is_safe_rejects_absolute_windows_path() {
+        assert!(!path_is_safe("\\Windows\\System32\\foo"));
+    }
+
+    #[test]
+    fn path_is_safe_rejects_windows_drive_prefix() {
+        assert!(!path_is_safe("C:\\Users\\foo.tex"));
+        assert!(!path_is_safe("Z:bar.tex"));
+    }
+
+    #[test]
+    fn path_is_safe_rejects_parent_traversal() {
+        assert!(!path_is_safe("../secret.tex"));
+        assert!(!path_is_safe("a/../../etc"));
+        assert!(!path_is_safe("foo/../bar/../baz/../../etc"));
+    }
+
+    #[test]
+    fn path_is_safe_accepts_project_relative_paths() {
+        assert!(path_is_safe("main.tex"));
+        assert!(path_is_safe("src/chapter1.tex"));
+        assert!(path_is_safe("a/b/c.tex"));
+    }
+
+    // ── handle_line ───────────────────────────────────────────────────────────
+
+    fn minimal_compile_line(id: &str) -> String {
+        format!(
+            concat!(
+                "{{\"protocol_version\":{},\"id\":\"{}\",\"type\":\"compile\",",
+                "\"payload\":{{\"path\":\"main.tex\",\"text\":\"hello world\",\"revision\":\"r1\"}}}}"
+            ),
+            PROTOCOL_VERSION, id
+        )
+    }
+
+    #[test]
+    fn handle_line_rejects_malformed_json() {
+        let reply = handle_line("not json at all {{{");
+        let parsed = json::parse(&reply).unwrap();
+        assert_eq!(parsed.get("type").and_then(|x| x.as_str()), Some("error"));
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("malformed_json")
+        );
+    }
+
+    #[test]
+    fn handle_line_rejects_missing_protocol_version() {
+        let reply = handle_line("{\"id\":\"x\",\"type\":\"compile\",\"payload\":{}}");
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("missing_protocol_version")
+        );
+    }
+
+    #[test]
+    fn handle_line_rejects_wrong_protocol_version() {
+        let wrong = PROTOCOL_VERSION + 99;
+        let line = format!(
+            "{{\"protocol_version\":{},\"id\":\"y\",\"type\":\"compile\",\"payload\":{{}}}}",
+            wrong
+        );
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("unsupported_protocol_version")
+        );
+    }
+
+    #[test]
+    fn handle_line_rejects_missing_type() {
+        let line = format!(
+            "{{\"protocol_version\":{},\"id\":\"z\",\"payload\":{{}}}}",
+            PROTOCOL_VERSION
+        );
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("missing_type")
+        );
+    }
+
+    #[test]
+    fn handle_line_rejects_unsupported_type() {
+        let line = format!(
+            "{{\"protocol_version\":{},\"id\":\"w\",\"type\":\"frobnicate\",\"payload\":{{}}}}",
+            PROTOCOL_VERSION
+        );
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("unsupported_type")
+        );
+    }
+
+    #[test]
+    fn handle_line_compile_reply_is_compile_result() {
+        let line = minimal_compile_line("req-42");
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        assert_eq!(
+            parsed.get("type").and_then(|x| x.as_str()),
+            Some("compile_result"),
+        );
+        assert_eq!(parsed.get("id").and_then(|x| x.as_str()), Some("req-42"));
+    }
+
+    #[test]
+    fn handle_line_compile_result_payload_has_pages_and_diagnostics() {
+        let line = minimal_compile_line("req-1");
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert!(payload.get("pages").is_some(), "compile_result must have pages");
+        assert!(payload.get("diagnostics").is_some(), "compile_result must have diagnostics");
+    }
+
+    #[test]
+    fn handle_line_id_is_echoed_in_every_reply() {
+        let line = format!(
+            "{{\"protocol_version\":{},\"id\":\"echo-me\",\"type\":\"unknown\",\"payload\":{{}}}}",
+            PROTOCOL_VERSION
+        );
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        assert_eq!(parsed.get("id").and_then(|x| x.as_str()), Some("echo-me"));
+    }
+
+    #[test]
+    fn handle_line_payload_too_large() {
+        let line = "a".repeat(MAX_LINE_BYTES + 1);
+        let reply = handle_line(&line);
+        let parsed = json::parse(&reply).unwrap();
+        let payload = parsed.get("payload").unwrap();
+        assert_eq!(
+            payload.get("code").and_then(|x| x.as_str()),
+            Some("payload_too_large")
+        );
+    }
+}
