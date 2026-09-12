@@ -125,8 +125,10 @@ final class CompletionLatencyTests: XCTestCase {
             // Narrow: "u" → list updated for `\su` with the popup rows replaced.
             t0 = MonotonicClock.nowNs()
             key("u", code: 32)
-            narrow.samples.append(msUntil("narrowed \(i)", from: t0) { tv.session?.range.length == 3 && tv.completionPopup.items.count == 2 })
-            XCTAssertEqual(tv.session?.items.map(\.label), ["\\subsection{...}", "\\sum"])
+            // The synchronized vocabulary (main f803a711 + mac-completion-sync): text entries, then operators, then symbols.
+            let narrowed = ["\\subsection{...}", "\\sup", "\\subset", "\\subseteq", "\\supset", "\\supseteq", "\\sum"]
+            narrow.samples.append(msUntil("narrowed \(i)", from: t0) { tv.session?.range.length == 3 && tv.completionPopup.items.count == narrowed.count })
+            XCTAssertEqual(tv.session?.items.map(\.label), narrowed)
             XCTAssertTrue(tv.completionPopup.isVisible)
             // Arrow: ↓ → selection moved in the session and in the table (synchronous).
             t0 = MonotonicClock.nowNs()
@@ -139,7 +141,7 @@ final class CompletionLatencyTests: XCTestCase {
             t0 = MonotonicClock.nowNs()
             key("\r", code: 36)
             accept.samples.append(ms(since: t0))
-            XCTAssertTrue(tv.string.contains("\\sum\n\\end{document}"), "iteration \(i)")
+            XCTAssertTrue(tv.string.contains("\\sup\n\\end{document}"), "iteration \(i)")
             XCTAssertNil(tv.session)
             XCTAssertFalse(tv.completionPopup.isVisible)
             XCTAssertEqual(tv.lastCloseReason, .accepted)
