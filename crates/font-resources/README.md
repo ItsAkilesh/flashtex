@@ -141,3 +141,22 @@ cyclic ligature programs fail rather than hanging. Fonts declaring boundary
 programs are explicitly unsupported by this run interpreter (pair inspection
 remains available). It does not perform Unicode encoding, hyphenation,
 discretionaries, TeX scaled-point rounding or TrueType glyph selection.
+
+## Explicit TFM encoding adapter
+
+`encoding::EncodingManifest` is a typed JSON declaration (not a PostScript `.enc`
+interpreter). It binds exact TFM SHA256, font SHA256 and face index to at most 256
+code/name entries and 65536 declared name/original-GID entries. Names are literal
+JSON strings; JSON escapes decode normally, while PostScript/PDF escape syntax is
+not guessed. Duplicate codes/names, absent declarations, invalid GIDs and hash or
+face mismatches fail. Distinct encoding slots may intentionally share a glyph.
+`.notdef` yields the explicit GlyphIdentity::Notdef value; other names cannot map
+to GID zero. A declaration is not proof that a font's name table uses those names.
+
+`BoundTfmFont::new(tfm,font,manifest)` retains immutable borrowed resources and a
+validated map. `map_code` returns original glyph identity plus exact TFM metrics;
+`map_run` applies the bounded TFM interpreter then resolves all output slots,
+retaining input intervals and separate exact kerns. No Unicode casting, font
+fallback, hidden `.notdef` drawing, or TrueType metric substitution occurs.
+The caller must handle Notdef explicitly and establish the declared encoding's
+provenance. This adapter does not establish TFM-to-outline visual equivalence.
