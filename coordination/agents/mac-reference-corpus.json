@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-reference-corpus",
+  "allocation_id": "user-temporary-opus-20min",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-reference-corpus/opus-fonts-takeover",
+  "capabilities": [
+    "swift-packaging",
+    "mactex"
+  ],
+  "code_revision": "7a2f63f4265404900ed54883896ef22b2f9f1aa0",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T18:02:06Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
