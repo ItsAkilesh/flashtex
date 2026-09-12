@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "2f2814b77e3b7493419b6fecf378d16a4de73f7f",
+  "code_revision": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "2f2814b77e3b7493419b6fecf378d16a4de73f7f",
-  "next_action": "Root prepares existing-table quantifier candidate and focused tests; preserve source/token and whole-math adapter distinctions.",
+  "main_integrated_through": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
+  "next_action": "Commander/native owner reconcile scope and delta budget proof before activation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Pinned10forall/6exists occurrences, verified Adobe codes22/24, CMslots38/39, Ord class and actual LM Math cmap GIDs; bounded combined candidate safe.",
+  "summary": "Reviewed native8844 conformance adoption with D2 nil caveat/D1 request scope/D9 correction; r4 target policy improved but estimator and in-flight raster accounting remain.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:08:59Z",
+  "updated_utc": "2026-09-12T15:12:13Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/hw1-quantifiers/source-font-pins.json",
-    "status": "Existing OpenAI only; source/AFM/cmap lookup, no builds/corpus/native/providers/descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/conformance-8844fb59/source-pins.json",
+    "status": "Existing OpenAI; source/evidence only, no builds/native/providers/descendants."
   }
 }
