@@ -5,13 +5,15 @@
   "tool": "Claude Code on Claude Max 20x",
   "capabilities": [
     "rust",
-    "link-annotations",
-    "pdf-export-data-model"
+    "security-testing",
+    "uri-validation",
+    "source-binding",
+    "adversarial-testing"
   ],
   "branch": "agent/daniel-links/link-annotations",
   "state": "ready_for_integration",
-  "summary": "crates/link-annotations rev 2: preserved the rev-1 URI allowlist (http/https/mailto only, mixed-case-bypass test, length-check-before-parse) byte-for-byte untouched (uri.rs has zero diff). Added source::SourceIdentity binding each annotation to an exact revision id + FNV-1a content hash + byte range, with check_fresh() returning typed Staleness (RevisionChanged/ContentChanged/RangeInvalid) when checked against a different revision or edited source; byte ranges are validated as UTF-8 char-boundary-safe against real source text at bind time and re-check time (tested with CJK multi-byte source). Added page::PageTarget (PageIndex + Rect), a pure data model with no I/O; LabelSet now maps each label to its PageTarget and a resolved InternalTarget carries it. Unresolved labels remain a typed TargetError::Unresolved, never a dangling destination. LinkAnnotation now carries a SourceIdentity instead of a bare SourceSpan.",
-  "next_action": "Await review/integration assignment; no consumer crate depends on this one yet, so no breaking-change coordination is needed. Open question carried from rev 1: whether tel: should be added to the URI allowlist.",
+  "summary": "FT-037 rev 3: crates/link-annotations, no production code changed (src/uri.rs unchanged since rev 1, src/source.rs unchanged since rev 2). Added tests/adversarial.rs (21 cases: scheme casing/whitespace vs control-character handling, scheme-like prefix with no colon, nested/repeated schemes, percent-encoded blocked schemes - never decoded, so not a bypass in either direction -, URI length boundary exactly-at and one-past, empty/50MB labels, inverted/out-of-bounds/mid-character byte ranges at both start and end, non-finite/negative rectangles; each asserts the exact typed error variant) and tests/staleness_acceptance.rs (readable specification of the SourceIdentity staleness contract: revision-only, content-only, both changed [RevisionChanged wins, checked first], range invalid [shrunk source and multibyte-misaligned boundary], unchanged [fresh]). cargo test: 94/94 passing (58 unit + 8+21+6 integration + 1 doctest). cargo clippy --all-targets -- -D warnings: 0 warnings. cargo fmt --check: clean.",
+  "next_action": "Await FT-037 rev 4 assignment or an integration owner; no other crate consumes flashtex-link-annotations yet, so there is nothing pending to coordinate for a breaking change.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -20,20 +22,20 @@
   "allocation_id": "daniel-claude20x-shared",
   "usage": {
     "status": "unknown",
-    "evidence": "Shared Claude Max 20x quota (allocation daniel-claude20x-shared); no purchases or overages"
+    "evidence": "Shared Claude Max 20x quota; no purchases or overages; single-crate, additive-tests-only revision completed within the 30-minute timebox."
   },
   "reviewed_peers": {
-    "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    "origin/main": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8"
   },
   "assignment_acknowledgements": {
     "FT-037": {
-      "acknowledged_utc": "2026-09-12T09:26:09Z",
-      "revision": 2,
-      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-      "adaptation": "Accepted FT-037 rev 2 objective as scoped: bound LinkAnnotation to an exact SourceIdentity (revision id + content hash + UTF-8-safe byte range) with explicit staleness detection, added a pure page::PageTarget data model for PDF export, kept InternalTarget resolution a typed error path, and preserved the rev-1 URI allowlist unmodified. No workspace root Cargo.toml touched; no other crate edited."
+      "acknowledged_utc": "2026-09-12T16:32:41Z",
+      "revision": 3,
+      "main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+      "adaptation": "Implemented the bounded adversarial suite and stale-identity acceptance suite named by the rev 3 objective, entirely as new integration tests against the existing rev 1/rev 2 public API; made no src/ changes so the rev 1 allowlist and rev 2 binding/staleness behavior keep passing unchanged."
     }
   },
-  "updated_utc": "2026-09-12T09:26:09Z",
-  "code_revision": "193b363c1d1f48d27380575d50174a5a4e87996e",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  "updated_utc": "2026-09-12T16:32:41Z",
+  "code_revision": "ea79df238095b57564d869cdffe10ef57aa17de1",
+  "main_integrated_through": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8"
 }

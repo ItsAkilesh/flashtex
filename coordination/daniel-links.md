@@ -1,197 +1,132 @@
 # daniel-links handoff
 
-Agent / task / branch: daniel-links (FT-037, revision 2) / typed,
+Agent / task / branch: daniel-links (FT-037, revision 3) / typed,
 source-identity-bound hyperlink destination, page-target, and rectangle
 model for document export (`flashtex-link-annotations`) /
 `agent/daniel-links/link-annotations`
 State: ready for integration
 Owned paths: `crates/link-annotations/**`, `coordination/daniel-links.md`
-Rev 2 input main SHA (assignment base): `83f65e08ae60b312609f49ec0a2b6cae25c8e353`
-Main integrated through (merge-base): `e5901797e8a7ebdd8d714ecdee6793e1097515a9`
-Exact tested commit SHA (rev 2): `193b363c1d1f48d27380575d50174a5a4e87996e`
-(branch `agent/daniel-links/link-annotations`; `cargo build`, `cargo test`,
+Rev 3 input main SHA (assignment base): `8e7546dfb4721c780036f03c21b14e6002062142`
+(as recorded in `coordination/assignments/FT-037.json`)
+Main integrated through (merge-base with `origin/main` at setup-time fetch):
+`0294d2ca48cbfd497c6b549deb7575fbcec4a4b8` (this is the exact `origin/main`
+second parent of the setup merge commit `69b8d2d7`; the local `origin/main`
+remote-tracking ref has since advanced further via other agents' pushes
+without a re-fetch on this branch, so it is not re-reported here as
+reviewed/integrated content that was not actually pulled in).
+Exact tested commit SHA (rev 3): `ea79df238095b57564d869cdffe10ef57aa17de1`
+(branch `agent/daniel-links/link-annotations`; `cargo test`,
 `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --check` were
 all run against exactly this commit inside `crates/link-annotations`.)
+Prior rev 2 tested commit SHA: `193b363c1d1f48d27380575d50174a5a4e87996e`
 Prior rev 1 tested commit SHA: `dd9e99329040fd4d4190e8772bcc99b36943fb84`
-(URI allowlist module `src/uri.rs` has zero diff since that commit — the
-rev 1 security work is preserved byte-for-byte in rev 2.)
+(`src/uri.rs` and `src/source.rs` are unchanged since rev 1/rev 2 respectively —
+the rev 1 allowlist and rev 2 binding/staleness logic are preserved
+byte-for-byte in rev 3; this revision is additive test coverage only.)
 
-## Typed contract
+## Rev 3 objective
 
-Standalone, additive crate. No dependency on any other FlashTeX crate and no
-crate depends on it yet — nothing to migrate. Zero external dependencies.
-Edition 2024, `publish = false`, matching the house style of
-`crates/document-style`.
+"Revision-bound link annotations: bounded adversarial and stale-identity
+acceptance tests." No production code changed — `src/**` is byte-identical
+to rev 2. Two new integration test files were added under
+`crates/link-annotations/tests/`.
 
-This crate models and validates hyperlink annotations. **It has no
-navigation side effects**: it never opens, resolves, or fetches a URI or a
-file, and performs no network or filesystem I/O anywhere in its code.
+### `tests/adversarial.rs` — bounded adversarial acceptance
 
-Public surface (re-exported from `flashtex_link_annotations`):
+Attacks `validate_uri` (scheme/URI shape) and the source-binding path
+(`SourceSpan::new`, `SourceIdentity::bind`), asserting the *exact* typed
+error variant for each case, never a panic or a hang:
 
-- `uri::{validate_uri, UriScheme, ValidatedUri, UriError, MAX_URI_LEN}`
-  `validate_uri(&str) -> Result<ValidatedUri, UriError>` checks a URI's
-  scheme against an **explicit allowlist** — `UriScheme::{Http, Https,
-  Mailto}` — never a denylist. Any scheme not matched in
-  `UriScheme::from_lowercase` (including `javascript:`, `data:`, `file:`,
-  and anything unrecognized) fails as `UriError::SchemeNotAllowed`.
-  Bounded: `text.len() > MAX_URI_LEN` (4096 bytes) is checked before any
-  scan, so a hostile or absurdly long input fails immediately; the rest of
-  validation is a single linear scan with no regex and no recursion.
-  Rejects control characters (`UriError::ControlCharacter`), missing scheme
-  (`UriError::MissingScheme`, e.g. protocol-relative `//host/path`), and
-  syntactically invalid scheme tokens (`UriError::InvalidSchemeSyntax`).
-- `target::{LabelId, LabelSet, InternalTarget, LabelError, TargetError,
-  MAX_LABEL_LEN}`
-  `LabelId::parse(&str) -> Result<LabelId, LabelError>` validates a label
-  reference (non-empty, <= 256 bytes checked before any scan, no control
-  characters). `InternalTarget::resolve(LabelId, &LabelSet) ->
-  Result<InternalTarget, TargetError>` is the only way to build an
-  `InternalTarget`; it returns `Err(TargetError::Unresolved(label))`
-  whenever `label` is not present in the caller-supplied `LabelSet`. There
-  is no code path that produces an `InternalTarget` for an unresolved
-  label — never a silent dangling destination.
-- `geometry::{Point, Rect, RectError}`
-  `Rect::new(Point, width, height) -> Result<Rect, RectError>` rejects
-  non-finite origins/extents and negative extents.
-- `span::{SourcePos, SourceSpan, SpanError}`
-  `SourceSpan::new(SourcePos, SourcePos) -> Result<SourceSpan, SpanError>`
-  rejects an end offset preceding the start offset.
-- `source::{RevisionId, RevisionError, ContentHash, SourceIdentity,
-  SourceIdentityError, Staleness, MAX_REVISION_LEN}` **(new in rev 2)**
-  `SourceIdentity::bind(RevisionId, source: &str, SourceSpan) ->
-  Result<SourceIdentity, SourceIdentityError>` is the only way to build a
-  `SourceIdentity`: it validates the span against the real `source` text
-  (rejects an end past `source.len()`, rejects either offset that does not
-  fall on a UTF-8 character boundary — `SourceIdentityError::NotCharBoundary`
-  — so a range can never split a multi-byte character), then hashes exactly
-  those bytes (FNV-1a, non-cryptographic, drift-detection only — not a
-  security boundary). `SourceIdentity::check_fresh(&RevisionId, &str) ->
-  Result<(), Staleness>` re-validates the same span against a *current*
-  revision/source and returns a typed reason
-  (`RevisionChanged`/`ContentChanged`/`RangeInvalid`) the moment either the
-  revision id differs or the bytes at that exact range no longer hash the
-  same — there is no path that reports a stale binding as fresh.
-- `page::{PageIndex, PageTarget}` **(new in rev 2)**
-  Pure data, no I/O: `PageTarget { page: PageIndex, rect: Rect }` is what a
-  PDF exporter needs to build a `/GoTo` destination for a resolved internal
-  link.
-- `target::{LabelId, LabelSet, InternalTarget, LabelError, TargetError,
-  MAX_LABEL_LEN}` **(rev 2: `LabelSet` now maps labels to `PageTarget`)**
-  `LabelId::parse(&str) -> Result<LabelId, LabelError>` validates a label
-  reference (non-empty, <= 256 bytes checked before any scan, no control
-  characters). `LabelSet::insert(LabelId, PageTarget) -> Option<PageTarget>`
-  registers where a label resolves to for export.
-  `InternalTarget::resolve(LabelId, &LabelSet) -> Result<InternalTarget,
-  TargetError>` is the only way to build an `InternalTarget`; it returns
-  `Err(TargetError::Unresolved(label))` whenever `label` is not present in
-  the caller-supplied `LabelSet`, and otherwise carries that label's
-  `PageTarget`. There is no code path that produces an `InternalTarget` for
-  an unresolved label — never a silent dangling destination.
-- `geometry::{Point, Rect, RectError}`
-  `Rect::new(Point, width, height) -> Result<Rect, RectError>` rejects
-  non-finite origins/extents and negative extents.
-- `span::{SourcePos, SourceSpan, SpanError}`
-  `SourceSpan::new(SourcePos, SourcePos) -> Result<SourceSpan, SpanError>`
-  rejects an end offset preceding the start offset. (Offset-only shape
-  check; UTF-8 boundary and in-bounds checks against real source text now
-  live in `source::SourceIdentity::bind`.)
-- `annotation::{LinkAnnotation, LinkDestination}` **(rev 2: `span` field
-  replaced by `source: SourceIdentity`)**
-  `LinkDestination::{External(ValidatedUri), Internal(InternalTarget)}`;
-  `LinkAnnotation { rect: Rect, source: SourceIdentity, destination:
-  LinkDestination }` built via `LinkAnnotation::external(..)` /
-  `::internal(..)`, both of which only accept already-validated/-resolved
-  destinations and an already-bound `SourceIdentity`.
+- Scheme with unusual casing plus an embedded space (fails
+  `InvalidSchemeSyntax`, since a space is not a control character and
+  survives the earlier control-character scan) and plus an embedded tab or
+  other control character (caught earlier, as `ControlCharacter { at }`,
+  at its exact byte offset).
+- A scheme-like word with no colon at all (`javascript`, `https`, `mailto`,
+  `data`, `file`) — all `MissingScheme`.
+- Nested/repeated schemes: an allowed outer scheme (`http://...`) whose
+  path contains a denied scheme-like word followed by its own colon is
+  accepted as the outer scheme (the first colon in the string governs, full
+  stop); the reverse nesting (`javascript://http:...`) is still rejected as
+  `SchemeNotAllowed { scheme: "javascript" }`.
+- Percent-encoded content that would decode to a blocked scheme
+  (`%6A%61vascript://...`, and the fully-encoded form of `javascript:`):
+  both fail `InvalidSchemeSyntax` because the raw `%` characters are not
+  valid scheme syntax — **this function never decodes anything, so
+  percent-encoding is not a bypass in either direction** (before the first
+  colon it just fails syntax; after it, it's inert path content that's
+  never re-inspected). See the module doc comment for the full answer.
+- URI length: exactly `MAX_URI_LEN` bytes of an otherwise-valid `https`
+  URI is accepted; one byte past it is `TooLong { len, max }`.
+- An empty label (`LabelError::Empty`) and a 50,000,000-byte label
+  (`LabelError::TooLong`, length bound checked before any scan).
+- Byte ranges: inverted (`SpanError::Inverted`), past the end of the source
+  (`SourceIdentityError::SpanOutOfBounds`), and landing mid-character at
+  either the start or the end offset (`SourceIdentityError::NotCharBoundary`,
+  both directions exercised separately).
+- Rectangles with NaN width, negative-infinity height, negative width and
+  height together, and a non-finite origin — each asserted against the
+  precise `RectError` variant.
+
+### `tests/staleness_acceptance.rs` — stale-identity acceptance suite
+
+Written as a readable specification (module doc comment carries the full
+matrix) of the `SourceIdentity::check_fresh` staleness contract, covering
+every way a source can change relative to a bound identity:
+
+| how the source changed | `check_fresh` result |
+|---|---|
+| revision id only | `Err(RevisionChanged { expected, found })` |
+| content only (same revision) | `Err(ContentChanged)` |
+| both revision and content | `Err(RevisionChanged { .. })` — revision is checked first, before the span is ever re-hashed |
+| bound range no longer fits/aligns | `Err(RangeInvalid)` (both the "shrunk past the end" and "multibyte insertion misaligns a boundary" causes are exercised) |
+| nothing changed | `Ok(())` |
+
+The "both changed → `RevisionChanged`" row is called out explicitly as a
+deliberate precedence contract, not an incidental implementation detail.
+
+## Typed contract (unchanged from rev 2)
+
+Standalone, additive crate. Zero external dependencies, edition 2024,
+`publish = false`. Models and validates hyperlink annotations; performs no
+navigation, network, or filesystem I/O anywhere.
+
+Public surface (re-exported from `flashtex_link_annotations`): unchanged —
+see rev 2 notes below for the full API description. This revision adds no
+new public items; it only adds test coverage against the existing surface.
 
 ## Validation
 
-`cd crates/link-annotations && cargo test` -> 58 unit tests (in `uri`,
+`cd crates/link-annotations && cargo test` -> 58 unit tests (`uri`,
 `target`, `geometry`, `span`, `annotation`, `source`, `page`) + 8
-integration tests (`tests/annotation.rs`) + 1 doctest, all passing. `cargo
-clippy --all-targets -- -D warnings` -> 0 warnings. `cargo fmt --check` ->
-clean.
+integration tests (`tests/annotation.rs`) + 21 integration tests
+(`tests/adversarial.rs`, new in rev 3) + 6 integration tests
+(`tests/staleness_acceptance.rs`, new in rev 3) + 1 doctest = **94 tests,
+all passing**.
 
-Rev 2 tests (new):
-- `source::tests::stale_when_revision_id_differs_even_if_bytes_are_identical`,
-  `annotation::tests::annotation_source_is_detectably_stale_against_a_different_revision`,
-  `tests/annotation.rs::source_identity_is_detectably_stale_against_a_different_revision_of_the_same_bytes`
-  — a link bound at one revision is a hard, typed `Staleness::RevisionChanged`
-  when checked against another, even with byte-identical source.
-- `source::tests::stale_when_source_bytes_at_the_span_changed_under_the_same_revision`,
-  `tests/annotation.rs::source_identity_is_detectably_stale_when_the_text_under_the_span_changes`
-  — same revision id, edited bytes under the same span -> `ContentChanged`.
-- `source::tests::rejects_span_that_splits_a_multibyte_character`,
-  `source::tests::accepts_multibyte_span_aligned_on_character_boundaries`,
-  `source::tests::stale_check_is_utf8_safe_when_multibyte_source_shifted`,
-  `tests/annotation.rs::multibyte_source_ranges_never_split_a_character`
-  — CJK (3-byte-per-character) source text; an offset landing inside a
-  character is `SourceIdentityError::NotCharBoundary`, never truncated.
-- `target::tests::resolves_known_label_and_carries_its_page_target`,
-  `tests/annotation.rs::internal_link_resolves_against_document_labels_and_carries_a_page_target`
-  — a resolved `InternalTarget` carries the exact `PageTarget` (page index +
-  rect) its label was registered with.
+`cargo clippy --all-targets -- -D warnings` -> 0 warnings.
+`cargo fmt --check` -> clean.
 
-Security-focused tests (allowlist, not denylist):
-- `uri::tests::rejects_javascript_scheme`, `rejects_data_scheme`,
-  `rejects_file_scheme`, `rejects_mixed_case_javascript_scheme` — each
-  asserts `UriError::SchemeNotAllowed { scheme: .. }` for exactly that
-  scheme; case-folding is proven not to open a bypass.
-- `uri::tests::bounded_against_absurdly_long_hostile_input` — a 50,000,000
-  byte string returns `UriError::TooLong` (asserted equal, with the actual
-  length echoed back), proving the length gate runs before any scan rather
-  than merely not crashing.
-- `uri::tests::max_length_boundary_is_inclusive`,
-  `rejects_uri_over_max_length` — exercise the `MAX_URI_LEN` boundary in
-  both directions.
-- `uri::tests::accepts_unicode_host_and_path`, `accepts_emoji_in_path`,
-  `rejects_unicode_scheme` — Unicode is fine in the host/path, but a
-  Unicode look-alike in the scheme token itself fails
-  `InvalidSchemeSyntax` (scheme is ASCII-only per RFC 3986).
-- `uri::tests::rejects_embedded_newline`, `rejects_embedded_nul` —
-  malformed control-character input.
-- `target::tests::fails_explicitly_on_unresolvable_label`,
-  `does_not_resolve_against_unrelated_labels` — an unresolved or
-  mismatched internal reference is `Err(TargetError::Unresolved(..))`
-  containing the actual label, never a constructed `InternalTarget`.
-- `target::tests::bounded_against_absurdly_long_label` — same length-gate
-  argument for label ids.
-
-All assertions above check concrete values (the returned error variant's
-payload, `Rect::max_x`/`max_y`, `SourceSpan::len`, `UriScheme`, the actual
-label string) rather than only that a call returned `Ok`/`Err`.
-
-Incomplete behavior: no percent-encoding/normalization of URI paths (out of
-scope — this crate validates the scheme and shape, not full RFC 3986
-conformance of the rest of the URI); no host/path allowlisting beyond
-scheme; `LabelSet` is a flat map supplied by the caller — this crate does
-not itself discover or track document labels or page layout. The content
-hash (FNV-1a) is drift-detection only, not collision-resistant — that is a
-deliberate scope boundary, not a gap, since the allowlist (not the hash) is
-the security control. No consumer wired yet.
+Incomplete behavior (unchanged from rev 2): no percent-decoding or
+normalization of URI paths (deliberately out of scope — this crate
+validates scheme and shape, not full RFC 3986 conformance of the rest of
+the URI); no host/path allowlisting beyond scheme; `LabelSet` is a flat map
+supplied by the caller. The content hash (FNV-1a) is drift-detection only,
+not collision-resistant — the allowlist, not the hash, is the security
+control. No consumer wired yet.
 
 ## Needs from others
 
-- An FT integration owner to decide which crate (likely `compiler` or a
-  future PDF-annotation adapter) constructs `LinkAnnotation` values from
-  parsed `\href`/`\url`/`\ref`/`\label` source, supplies the `RevisionId` +
-  source text to `SourceIdentity::bind`, populates `LabelSet` with each
-  label's `PageTarget` (page index from layout, rect from the label's
-  bounding box), and calls `validate_uri` / `InternalTarget::resolve` at
-  that boundary. This crate deliberately does not parse LaTeX, walk the
-  document tree, or discover page layout itself.
-- Confirmation of the scheme allowlist (`http`, `https`, `mailto`) is
-  sufficient for the export targets in scope, or whether e.g. `tel:` should
-  be added — adding a scheme is a one-line, explicit change in
-  `UriScheme::from_lowercase`.
-- Whether the eventual PDF exporter wants `check_fresh` invoked at export
-  time (to detect an annotation computed against a now-stale document
-  revision) or only as an internal consistency check during incremental
-  recompilation — this crate exposes the check either way but does not call
-  it itself.
+Unchanged from rev 2: an FT integration owner to decide which crate
+constructs `LinkAnnotation` values from parsed `\href`/`\url`/`\ref`/`\label`
+source and wires `SourceIdentity::bind` / `check_fresh` into the actual
+compile/recompile pipeline; confirmation the `http`/`https`/`mailto`
+allowlist is sufficient for the export targets in scope; whether the PDF
+exporter should call `check_fresh` at export time or only as an internal
+consistency check.
 
 Next action: await review/integration assignment; no other crate depends on
-this one yet, so there is nothing to coordinate for a breaking change.
+this one yet.
 
-Resource: allocation `daniel-claude20x-shared`; timebox 40 minutes (rev 2).
+Resource: allocation `daniel-claude20x-shared`; timebox 30 minutes (rev 3).
 Updated: 2026-09-12
