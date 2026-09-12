@@ -105,6 +105,28 @@ None of this can run today (no Developer ID certificate, no notarization
 credentials). Recorded here so it is a checklist, not a research task, once an
 Apple Developer Program membership is available.
 
+**Update (mac-packaging signing lane):** steps 2–7 are now executed by
+`make-app.sh` itself — `--sign "<Developer ID Application …>"` performs steps
+2–3 (hardened runtime, `apps/mac/Resources/FlashTeX.entitlements`, helper-first
+signing, `codesign --verify --deep --strict`, `spctl --assess`) and
+`--notarize <keychain-profile>` performs steps 4–7 (`ditto` zip,
+`xcrun notarytool submit --wait`, `stapler staple`/`validate`, `spctl`
+re-assessment; with `--dmg` the image is built after stapling, then signed,
+notarized and stapled). Each step fails before the build with a plain,
+non-secret message when the identity, entitlements file or keychain profile
+is absent (verified here: 0 identities, no profile). `--sign -` runs the same
+hardened-runtime/entitlements path with the ad-hoc identity so it can be
+exercised without a certificate; that bundle passed `launch-check.sh` (app and
+`--dmg`). The entitlements file is deliberately empty — the earlier draft below
+listed App Sandbox keys, which are inert without `app-sandbox`; the file's
+comments record why every candidate entitlement is unnecessary. `--deep` is no
+longer used for distribution signing: helpers are signed first with
+identifiers `tech.jay3332.flashtex.mac.<name>`, `components.json` then records
+their as-shipped sha256 (which the old `--deep` re-sign invalidated), and the
+app is signed last. `scripts/repro-check.sh` shows the only build-to-build
+difference is `build.timestamp` in `components.json` (and the seal chain it
+perturbs); with `SOURCE_DATE_EPOCH` set the bundle is byte-identical.
+
 1. **Get a Developer ID Application certificate** (requires a paid Apple
    Developer Program membership, $99/yr, enrolled to a specific Apple ID/Team).
    Generate it in Xcode (Settings → Accounts → Manage Certificates → "+" →
@@ -297,14 +319,14 @@ left behind by either run.
 
 ## Known gaps (rev 5)
 
-- **Signing/notarization: unchanged.** Everything in "What ad-hoc signing
-  does **not** give us" and "Exact steps for Developer ID signing +
-  notarization" above still holds exactly as written; nothing in rev 5
-  (bundling `flashtex-bridge`/`flashtex-edit-ledger`, `components.json`)
-  changes the signing story. The bundle is still ad-hoc only
+- **Signing/notarization: tooling done, credentials absent.** The
+  Developer ID and notarization steps are implemented in `make-app.sh`
+  (`--sign`, `--notarize`, see the update above) but cannot be executed in
+  this environment: the default bundle is still ad-hoc only
   (`TeamIdentifier=not set`), `spctl -a -vv` still reports `rejected`
   (exit 3), and there is still no Apple Developer Program membership
-  available in this environment to go further.
+  available to go further. What is verified is the absence path and the
+  hardened-runtime path via `--sign -`.
 
 - **Local-network permission prompt: not scriptable, by OS design.**
   The packaged app now bundles a real nearby-capture listener
