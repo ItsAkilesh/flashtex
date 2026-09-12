@@ -188,19 +188,25 @@ final class ShellModel {
 
     /// Diagnostic underlines for the active document, rebased across edits or
     /// dropped (see `EditorDiagnostics`).
-    var editorMarks: [EditorDiagnostics.Mark] {
-        guard let result else { return [] }
-        // Memoized: ContentView reads this on every body evaluation and the
-        // rebase compares the compiled and current texts in full.
+    var editorMarks: [EditorDiagnostics.Mark] { editorMarkReport.marks }
+
+    /// Marks plus the diagnostics withheld after an edit; `staleNote` is
+    /// shown in the footer. Memoized: ContentView reads this on every body
+    /// evaluation and the rebase compares the compiled and current texts.
+    var editorMarkReport: EditorDiagnostics.Report {
+        guard let result else { return .empty }
         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
-        if let cached = editorMarksCache, cached.key == key { return cached.marks }
-        let marks = EditorDiagnostics.marks(for: result, path: activePath,
-                                            compiledText: compiledDocuments[activePath], currentText: activeText)
-        editorMarksCache = (key, marks)
-        return marks
+        if let cached = editorMarksCache, cached.key == key { return cached.report }
+        let report = EditorDiagnostics.report(for: result, resultID: resultID, path: activePath,
+                                              compiledText: compiledDocuments[activePath], currentText: activeText)
+        editorMarksCache = (key, report)
+        return report
     }
     private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
-    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
+    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
+    /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
+    /// start offset are each visited once (Navigation.swift).
+    @ObservationIgnored var currentDiagnosticID: String?
 
     // MARK: caret sync (source -> preview)
 
@@ -506,7 +512,7 @@ final class ShellModel {
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)
             inFlightRequests[id] = InFlight(projectId: request.projectId, revision: request.revision,
                                             documents: documents, sentAt: Date(), layoutCapabilities: capabilities)
@@ -587,7 +593,7 @@ final class ShellModel {
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
-            if TypingBench.shared.isActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
+            if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }
