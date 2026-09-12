@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "bf6da8a0537f45e1573876d93edd9238080557a7",
+  "code_revision": "a33aed25dbac4768e0b4ab291e1e1105b1ccd287",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Merge published font arithmetic2f770fd unchanged and regression-check exact CFF placement/cache outputs.",
+  "next_action": "Publish tested arithmetic integration and continue next assigned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded exact geometry-diff API/CLI implemented with raw hashes, stable identity, categorized differences and exact rational deltas. 110 Rust tests pass.",
+  "summary": "Published font arithmetic dependency merged unchanged and exact CFF direct/cache regression validated. 112 Rust tests pass; pinned STIX run digest unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:21:50Z",
+  "updated_utc": "2026-09-12T07:23:16Z",
   "usage": {
-    "evidence": "110 Rust tests and strict all-target clippy pass. CLI identical mixed input yields equal=true after141nodes. Truncation/unsupported comparisons return equal=null. FT023revision3 ACKed.",
+    "evidence": "112 Rust tests and strict all-target clippy pass. Arithmetic/literal curve equality, cache cold/warm identity and explicit non-dyadic failure tested. Pinned STIX SHA f0210698... remains identical. Peer2f770fd unchanged.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

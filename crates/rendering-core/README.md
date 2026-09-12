@@ -323,3 +323,9 @@ including exact delta arithmetic that exceeds its i128/u128 representation budge
 Source/font bytes are not verified by comparison, and equality is not a visual
 or reference-engine parity claim. Identical illustrative mixed inputs visit 141
 comparison nodes and produce an empty complete difference report.
+
+The Type2 arithmetic dependency checkpoint (`2f770fd`) preserves the pinned STIX
+run SHA above. A synthetic add-operated curve matches literal-coordinate output
+exactly through direct and cached placement, while retaining distinct input hashes.
+Non-dyadic Type2 division stays an explicit unsupported result. This exercises the
+new arithmetic without changing default hint, wire or device-grid policies.

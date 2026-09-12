@@ -492,3 +492,58 @@ fn synthetic_cff_name_mapping_replays_exact_metrics_and_bounds_fixture_bytes() {
         Err(RunError::Budget)
     ));
 }
+#[test]
+fn type2_arithmetic_and_cached_direct_placement_keep_exact_curve_geometry() {
+    use flashtex_font_resources::cff::{CacheLimits, CacheStatus, CffOutlineCache};
+    let literal = fixture(&program(), false);
+    let arithmetic = fixture(
+        &[
+            139, 139, 21, 189, 189, 12, 10, 139, 139, 239, 39, 139, 8, 14,
+        ],
+        false,
+    );
+    let direct = CffConsumer::from_table(&arithmetic, &digest(&arithmetic)).unwrap();
+    let reference = CffConsumer::from_table(&literal, &digest(&literal))
+        .unwrap()
+        .place_glyph(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    let calculated = direct
+        .place_glyph(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(reference.commands, calculated.commands);
+    assert_ne!(reference.cff_table_sha256, calculated.cff_table_sha256);
+    let mut full = b"OTTO".to_vec();
+    full.extend(arithmetic);
+    let cache = CffOutlineCache::from_font_table(
+        &full,
+        0,
+        4..full.len(),
+        CacheLimits {
+            max_entries: 4,
+            max_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let cache = CachedCffConsumer::new(cache);
+    let cold = cache
+        .place_cached(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    let warm = cache
+        .place_cached(1, HintPolicy::Unhinted, r(1, 3), origin(), 100)
+        .unwrap();
+    assert_eq!(cold.cache_status, CacheStatus::Stored);
+    assert_eq!(warm.cache_status, CacheStatus::Hit);
+    assert_eq!(cold.outline.commands, reference.commands);
+    assert_eq!(warm.outline.commands, reference.commands);
+}
+#[test]
+fn nonrepresentable_type2_arithmetic_remains_explicit_unsupported() {
+    let bytes = fixture(&[140, 142, 12, 12, 139, 21, 14], false);
+    let consumer = CffConsumer::from_table(&bytes, &digest(&bytes)).unwrap();
+    assert!(matches!(
+        consumer.place_glyph(1, HintPolicy::Unhinted, r(1, 1), origin(), 100),
+        Err(CubicError::Resource(
+            flashtex_font_resources::Error::UnsupportedFont(_)
+        ))
+    ));
+}
