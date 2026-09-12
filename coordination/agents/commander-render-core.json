@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8b06436cd5bc74d2b5a2a3c9e2e7a45522c47a42",
+  "code_revision": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 5,
+    "optimistic": 2,
+    "pessimistic": 10
   },
   "machine": "linux-primary",
-  "main_integrated_through": "a45e71b0ec92ba99dd089988ee6f87ac3c58aada",
-  "next_action": "Send precise font-binding handoff to existing producer/font owners, then classify a second existing math fixture as queued; no speculative coordinate patch.",
+  "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
+  "next_action": "Publish bounded second-fixture evidence and hand off optical-family gap; await next owned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r8 classified602pixel math mismatch read-only:582math-associated,20colon; exact checked origins/rules differ under0.001bp, observed math resource/optical-family distinction; no verified consumergeometry bug.",
+  "summary": "FT023r8 second existing display-math fixture: unchanged producer zero diagnostics, exact original export, 1244pixel gap; reference sum code88 missing ToUnicode entry while original GID3060 maps correctly to sum.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:41:05Z",
+  "updated_utc": "2026-09-12T10:48:38Z",
   "usage": {
-    "evidence": "Existing owner dump binary and rawtraces/bboxes pinned; directRGB602 count reconciles disjoint windows. Fractionrule and radicalrule interior0diff. CandidateoriginalGIDs/origins retained; referenceType1codes not GIDs. No builds during root timing; window nowreleased. No pending calls.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "159 default tests passed, 2 ignored; strict all-target Clippy passed. Current fixtures use unchanged65dbe7d and matching rooted LM2.004 assets. No native/parity claim.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable."
   }
 }
