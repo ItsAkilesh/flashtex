@@ -16,6 +16,17 @@ are checked initially and before every comparison and must not block. Callback
 runtime, snapshot/path validation, allocation, and document selection are outside
 the comparison budget; this is not a wall-clock deadline guarantee.
 
+`plan_literal_replacement(&complete_search, replacement)` creates reviewable
+multi-document edits only after regenerating the exact complete match set against
+its full project snapshot. Partial/cancelled, stale, omitted, reordered, or altered
+results fail. `validate_literal_replacement_plan(&plan)` regenerates that plan and
+checks every expected-text, revision, range, replacement and edit ordering guard.
+Aggregate expected/replacement text is capped at 8 MiB. Empty replacement deletes
+matches; empty match sets produce empty plans. The caller must explicitly approve
+and transactionally apply a validated plan, in reverse byte order within each file,
+against the same revisions. This library never applies edits. Validation establishes
+consistency, not user approval or authentication of the caller's intended query.
+
 `citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
 Records retain entry/key, field-name/expression, and atom UTF8 source spans.
 Braced and quoted literals preserve internal braces and TeX text; decimal atoms
