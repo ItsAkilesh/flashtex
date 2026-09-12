@@ -93,6 +93,22 @@ final class ShellModel: ObservableObject {
     }
 
     init() {
+        let env = ProcessInfo.processInfo.environment
+        defer {
+            // Demo/automation hooks: seed the editor from a .tex file and attach the
+            // built compiler at launch when FLASHTEX_AUTOATTACH=1 (opt-in so tests
+            // that construct ShellModel stay fixture-backed).
+            if let seed = env["FLASHTEX_SEED_FILE"], let text = try? String(contentsOfFile: seed, encoding: .utf8) {
+                documents = [.init(path: "main.tex", text: text)]
+                activePath = "main.tex"
+                compiledDocuments = [:]
+                editorRevision += 1
+            }
+            if env["FLASHTEX_AUTOATTACH"] == "1", Self.locateCompiler() != nil {
+                attachDiscoveredWorker()
+                compile()
+            }
+        }
         if let root = Self.locateRepoRoot() {
             let fixtures = root.appendingPathComponent("protocol/fixtures")
             loadFixtures(request: fixtures.appendingPathComponent("compile-request.json"),

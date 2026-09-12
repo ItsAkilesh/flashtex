@@ -16,8 +16,19 @@ struct ContentView: View {
             footer
         }
         .toolbar {
-            ToolbarItem { Toggle("Dark preview", isOn: $model.darkPreview).toggleStyle(.switch) }
-            ToolbarItem { Toggle("Auto-compile", isOn: $model.autoCompile).toggleStyle(.switch).disabled(!model.workerAttached) }
+            ToolbarItem {
+                HStack(spacing: 4) {
+                    Text("Dark preview").font(.caption)
+                    Toggle("Dark preview", isOn: $model.darkPreview).toggleStyle(.switch).labelsHidden()
+                }
+            }
+            ToolbarItem {
+                HStack(spacing: 4) {
+                    Text("Auto-compile").font(.caption)
+                    Toggle("Auto-compile", isOn: $model.autoCompile).toggleStyle(.switch).labelsHidden()
+                        .disabled(!model.workerAttached)
+                }
+            }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
             ToolbarItem {
                 Button("Compile", systemImage: "hammer") { model.compile() }

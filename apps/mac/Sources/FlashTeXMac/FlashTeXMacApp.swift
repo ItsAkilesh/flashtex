@@ -1,7 +1,22 @@
+import AppKit
 import SwiftUI
+
+/// A bare SwiftPM executable has no bundle, so AppKit defaults to an
+/// accessory-style process with no Dock icon and, when launched from a
+/// non-GUI context, no visible window. Force a regular, activated app.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
 
 @main
 struct FlashTeXMacApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = ShellModel()
 
     var body: some Scene {

@@ -101,6 +101,23 @@ diagnostics checks beyond the one-line contract fixture.
   entry shows severity, message, recovery note (or "no provisional rendering"),
   and source bytes; the banner shows error/warning counts and a `recovered` note.
 
+## Launch hooks and evidence
+
+`FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles;
+`FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
+
+```sh
+FLASHTEX_REPO=$(git rev-parse --show-toplevel) FLASHTEX_AUTOATTACH=1 \
+  FLASHTEX_SEED_FILE=Samples/recovery-demo.tex .build/debug/FlashTeXMac
+```
+
+Screenshot of that run against crates/compiler 29221d8:
+`docs/evidence/mac-shell-real-compiler-2026-09-12.png` — WORKER badge, status
+`recovered`, three diagnostics with recovery notes, inline underlines. Visible
+limitation: words crowd/overlap in the preview because the compiler positions
+words with placeholder glyph widths (0.5 × size) while the shell draws real Times
+glyphs; real font metrics are the compiler's FT-005 work, not a shell bug.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
