@@ -106,6 +106,53 @@ enum DocumentKindsStore {
         }
     }
 
+    /// The helper's private ledger slot for `path` under a rooted launch
+    /// (`crates/preview-controller/src/file_project.rs`: binding
+    /// `sha256("<len>:<canonical root>:<project id>")`, slot `sha256(path)`),
+    /// or nil when the slot does not exist. Used only to decide whether a
+    /// persisted declaration can still be honored — never to read a ledger.
+    static func retainedLedgerSlot(path: String, projectRoot: URL, privateLedgerRoot: URL, projectID: String) -> URL? {
+        // The helper canonicalizes with realpath(3) (`/private/var/…`);
+        // Foundation's `resolvingSymlinksInPath` strips `/private` again, so
+        // it would bind a different ledger directory.
+        guard let root = canonicalPath(projectRoot), let ledgers = canonicalPath(privateLedgerRoot) else { return nil }
+        let binding = SourceDigest.sha256Hex("\(root.utf8.count):\(root):\(projectID)")
+        let slot = URL(fileURLWithPath: ledgers).appendingPathComponent("project-\(binding)").appendingPathComponent(SourceDigest.sha256Hex(path))
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: slot.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return slot
+    }
+
+    /// `realpath(3)` of an existing directory, or nil.
+    static func canonicalPath(_ url: URL) -> String? {
+        guard let resolved = realpath(url.path, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    /// The persisted declarations a rooted helper launch can honor: each path
+    /// either exists under `projectRoot` or has a retained private ledger
+    /// slot (the reopen-after-deletion case). Anything else would make the
+    /// helper refuse to start ("bibliography source missing on disk"), so it
+    /// is returned in `dropped` for the status line instead; the record is
+    /// not rewritten (the file may come back).
+    @MainActor static func launchableBibliographyPaths(projectRoot: URL, privateLedgerRoot: URL, projectID: String, entry: String)
+        -> (paths: [String], dropped: [String]) {
+        guard case .success(let record) = load(ledgerRoot: privateLedgerRoot) else { return ([], []) }
+        var paths: [String] = [], dropped: [String] = []
+        for path in record.bibliographyPaths(entry: entry) {
+            let onDisk: Bool = if case .file(let url) = ProjectDocuments.rootedFile(path, under: projectRoot) {
+                FileManager.default.fileExists(atPath: url.path)
+            } else { false }
+            if onDisk || retainedLedgerSlot(path: path, projectRoot: projectRoot, privateLedgerRoot: privateLedgerRoot, projectID: projectID) != nil {
+                paths.append(path)
+            } else {
+                dropped.append(path)
+            }
+        }
+        return (paths, dropped)
+    }
+
     /// Replaces the declarations for `entry` (other entries are kept).
     @MainActor static func persist(bibliographyPaths: [String], projectRoot: URL, entry: String) throws {
         let ledgerRoot = ShellModel.controllerLedgerRoot(for: projectRoot)
@@ -159,19 +206,40 @@ final class DocumentKinds {
 
     func kind(of path: String) -> DocumentKind? { kinds[path] }
 
-    /// Project root/entry the persisted record is keyed by (nil for an
-    /// unsaved buffer: the helper runs in a session temporary project then,
-    /// and nothing durable should be written for it).
+    /// Project root/entry the persisted record is keyed by: the saved entry
+    /// document's directory, exactly the rooted project `attachController`
+    /// launches the helper in. Nil for an unsaved buffer or a seeded buffer
+    /// whose file name is not the entry path (the helper then runs in a
+    /// session temporary project, and nothing durable is written for it).
     private var persistenceKey: (root: URL, entry: String)? {
-        guard let url = model.documentURL else { return nil }
+        guard let url = model.documentURL, url.lastPathComponent == model.project.entryPath else { return nil }
         return (url.deletingLastPathComponent(), model.project.entryPath)
     }
 
-    /// What `attachController` should pass as `bibliography_paths` for the
-    /// current saved project (empty for an unsaved buffer).
+    /// The persisted declarations for the current saved project as recorded
+    /// (empty for an unsaved buffer). `attachController` uses
+    /// `startupBibliographyPaths(projectRoot:privateLedgerRoot:projectID:entry:)`
+    /// with its actual launch roots instead.
     var startupBibliographyPaths: [String] {
         guard let key = persistenceKey else { return [] }
         return DocumentKindsStore.bibliographyPaths(projectRoot: key.root, entry: key.entry)
+    }
+
+    /// The last launch's dropped declarations (see below).
+    private(set) var droppedAtLaunch: [String] = []
+
+    /// Declarations still deliverable at launch: persisted paths a stale
+    /// record names but that are neither on disk nor retained in the ledger
+    /// are dropped and reported in `status`, so the helper still starts.
+    func startupBibliographyPaths(projectRoot: URL, privateLedgerRoot: URL, projectID: String, entry: String) -> [String] {
+        let (paths, dropped) = DocumentKindsStore.launchableBibliographyPaths(projectRoot: projectRoot, privateLedgerRoot: privateLedgerRoot,
+                                                                              projectID: projectID, entry: entry)
+        droppedAtLaunch = dropped
+        if !dropped.isEmpty {
+            status = "not supplied at launch (neither on disk nor retained): \(dropped.joined(separator: ", "))"
+            model.log("document kinds: " + status)
+        }
+        return paths
     }
 
     // MARK: helper
