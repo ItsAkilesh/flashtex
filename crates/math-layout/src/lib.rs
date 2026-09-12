@@ -2,7 +2,7 @@
 //! typesetting rules (TeXbook Appendix G) that turns a math list into
 //! explicit boxes carrying glyph identity and rule geometry.
 //!
-//! Pipeline: build a [`MathList`] of [`Atom`]s → [`layout`] it in a
+//! Pipeline: build a [`MathList`] of [`Atom`]s → [`layout()`] it in a
 //! [`Style`] against a [`MathFontMetrics`] provider → get a [`MathBox`] tree →
 //! [`positioned_runs`] flattens it into glyphs and rules in points.
 //!
