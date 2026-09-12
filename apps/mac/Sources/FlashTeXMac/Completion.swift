@@ -37,27 +37,93 @@ enum Completion {
 
     static let maxSuggestions = 12
 
-    /// Commands parsed by the compiler on `main` (`crates/compiler/README.md`,
-    /// "Supported commands"). Names are stored without the leading backslash;
-    /// `\\` is the single-character name `\`.
-    static let coreCommands = ["section", "subsection", "textbf", "emph", "textit", "begin", "end", "par", "\\"]
+    /// The compiler's documented command set (`crates/compiler/README.md`,
+    /// "Supported commands" and "Supported math", plus the `\input`/`\include`
+    /// parser arm). `CompletionTests.testStaticVocabularyMatchesTheCompilerDocs`
+    /// parses those repository files and fails when this table drifts.
+    enum Vocabulary {
+        enum Mode: Equatable { case text, math }
+        enum Source: Equatable {
+            /// README "Supported commands".
+            case readmeCommands
+            /// README "Supported math" (`frac`/`sqrt` and the symbol table,
+            /// which `src/math.rs` `COMMAND_GLYPHS` renders).
+            case readmeMath
+            /// `src/parser.rs` dispatch arm not listed in the README paragraph.
+            case parserArm
+        }
 
-    /// Math commands present in `crates/compiler/src/math.rs` on
-    /// `agent/claude/compiler-foundation` at `mathVerifiedAt`: each name was
-    /// grepped in that file (the `"frac"`/`"sqrt"` parser arms and the
-    /// `"alpha" => "α"` … `"int" => "∫"` symbol table).
-    static let mathCommands = [
-        "frac", "sqrt",
-        "alpha", "beta", "gamma", "delta", "theta", "lambda", "mu", "pi", "sigma", "phi", "omega",
-        "times", "div", "pm", "leq", "geq", "neq", "approx", "cdot", "infty", "sum", "int",
-    ]
-    static let mathVerifiedAt = "de1020c"
+        struct Entry: Equatable {
+            /// Name without the leading backslash; `\\` is the name `\`.
+            let name: String
+            /// Argument shape shown after the name, e.g. `{key}` or `[options]{class}`.
+            let arguments: String
+            let description: String
+            let mode: Mode
+            let source: Source
+            /// Rendered glyph for a math symbol.
+            var glyph: String? = nil
 
-    static let defaultSupported: [String] = coreCommands + mathCommands
+            var label: String { "\\" + name + arguments }
+            var detail: String {
+                switch mode {
+                case .text: return description
+                case .math: return "math · " + description
+                }
+            }
+        }
 
-    /// Environments the compiler names explicitly (`document` is the only
-    /// meaningful one; others typeset their body as plain text with a warning).
-    static let knownEnvironments = ["document"]
+        static let entries: [Entry] = [
+            Entry(name: "section", arguments: "{...}", description: "numbered section heading", mode: .text, source: .readmeCommands),
+            Entry(name: "subsection", arguments: "{...}", description: "numbered subsection heading; resets when a section advances", mode: .text, source: .readmeCommands),
+            Entry(name: "textbf", arguments: "{...}", description: "bold text", mode: .text, source: .readmeCommands),
+            Entry(name: "emph", arguments: "{...}", description: "emphasised (italic) text", mode: .text, source: .readmeCommands),
+            Entry(name: "textit", arguments: "{...}", description: "italic text", mode: .text, source: .readmeCommands),
+            Entry(name: "begin", arguments: "{env}", description: "opens document, equation, figure, itemize or enumerate", mode: .text, source: .readmeCommands),
+            Entry(name: "end", arguments: "{env}", description: "closes the innermost open environment", mode: .text, source: .readmeCommands),
+            Entry(name: "item", arguments: "", description: "entry of an itemize or enumerate list", mode: .text, source: .readmeCommands),
+            Entry(name: "label", arguments: "{key}", description: "names the current section, equation or figure for \\ref and \\pageref", mode: .text, source: .readmeCommands),
+            Entry(name: "ref", arguments: "{key}", description: "number of the labelled item (?? until defined)", mode: .text, source: .readmeCommands),
+            Entry(name: "pageref", arguments: "{key}", description: "page number of the labelled item", mode: .text, source: .readmeCommands),
+            Entry(name: "caption", arguments: "{...}", description: "numbered “Figure N:” caption inside figure", mode: .text, source: .readmeCommands),
+            Entry(name: "par", arguments: "", description: "ends the paragraph", mode: .text, source: .readmeCommands),
+            Entry(name: "\\", arguments: "", description: "line break", mode: .text, source: .readmeCommands),
+            Entry(name: "newcommand", arguments: "{\\name}[n]{body}", description: "defines a macro with 0–9 arguments; rejects an existing name", mode: .text, source: .readmeCommands),
+            Entry(name: "renewcommand", arguments: "{\\name}[n]{body}", description: "redefines an existing macro", mode: .text, source: .readmeCommands),
+            Entry(name: "documentclass", arguments: "[options]{class}", description: "records the class; only the document body is typeset", mode: .text, source: .readmeCommands),
+            Entry(name: "usepackage", arguments: "[options]{a,b,c}", description: "records package names; packages are recognised but not implemented", mode: .text, source: .readmeCommands),
+            Entry(name: "input", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
+            Entry(name: "include", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
+            Entry(name: "frac", arguments: "{num}{den}", description: "fraction; math mode only", mode: .math, source: .readmeMath),
+            Entry(name: "sqrt", arguments: "{x}", description: "square root; math mode only", mode: .math, source: .readmeMath),
+        ] + symbols.map { name, glyph in
+            Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
+        }
+
+        /// `src/math.rs` `COMMAND_GLYPHS`, in table order.
+        static let symbols: [(String, String)] = [
+            ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
+            ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
+            ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
+        ]
+
+        /// Environments the README names for `\begin`/`\end`.
+        static let environments = ["document", "equation", "figure", "itemize", "enumerate"]
+
+        static let byName: [String: Entry] = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        static let names: [String] = entries.map(\.name)
+
+        /// Entry for a name outside the table (a caller-supplied list).
+        static func generic(_ name: String) -> Entry {
+            Entry(name: name, arguments: "", description: "supported by this compiler", mode: .text, source: .readmeCommands)
+        }
+    }
+
+    static let defaultSupported: [String] = Vocabulary.names
+
+    /// Environments the compiler names explicitly; any other environment
+    /// typesets its body as plain text with a warning.
+    static let knownEnvironments = Vocabulary.environments
 
     /// Citation commands whose `{` argument completes citation keys (the
     /// project-index reference set in `crates/project-index/README.md`).
@@ -189,26 +255,33 @@ enum Completion {
             out.append(Suggestion(label: "\\end{\(open.name)}", insertText: "\\end{\(open.name)}", kind: .environment,
                                   detail: "closes \\begin{\(open.name)} at byte \(open.byte)"))
         }
-        // 2. Supported commands.
-        var offered = Set(supported)
-        for name in supported where name.hasPrefix(prefix) {
-            let isMath = mathCommands.contains(name) && !coreCommands.contains(name)
-            let detail = isMath ? "math · verified in compiler at \(mathVerifiedAt)" : "supported by this compiler"
-            out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
+        // 2. The compiler's documented vocabulary, then commands the project
+        //    index saw declared at this exact revision. A project declaration
+        //    wins over a static entry of the same name (the compiler expands
+        //    the user's macro, not a builtin).
+        var offered = Set<String>()
+        let declared: [String: Metadata.Item] = Dictionary((metadata?.commands ?? []).filter { $0.definitions > 0 }.map { ($0.name, $0) },
+                                                           uniquingKeysWith: { a, _ in a })
+        for name in supported where name.hasPrefix(prefix) && offered.insert(name).inserted {
+            if let item = declared[name], let metadata {
+                out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command,
+                                      detail: item.detail(noun: "declared", revision: metadata.revision) + " · overrides the builtin"))
+            } else {
+                let entry = Vocabulary.byName[name] ?? Vocabulary.generic(name)
+                out.append(Suggestion(label: entry.label, insertText: "\\" + name, kind: .command, detail: entry.detail))
+            }
         }
-        // 3. Commands the project index saw declared (`\newcommand` and friends)
-        //    at this exact revision.
         if let metadata {
             for item in metadata.commands where item.name.hasPrefix(prefix) && item.name != prefix && offered.insert(item.name).inserted {
                 out.append(Suggestion(label: "\\" + item.name, insertText: "\\" + item.name, kind: .command,
                                       detail: item.detail(noun: "declared", revision: metadata.revision)))
             }
         }
-        // 4. Commands typed in the document that the compiler does not support,
-        //    with the compiler's own diagnostic when it named the command at
-        //    this revision.
+        // 3. Commands typed in the document that neither the compiler nor the
+        //    project declares, with the compiler's own diagnostic when it
+        //    named the command at this revision.
         for name in scan.commands where !offered.contains(name) {
-            var detail = "not supported by this compiler version"
+            var detail = "not supported by the compiler"
             if let message = metadata?.diagnosticsByCommand[name] { detail += " — " + message }
             out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command, detail: detail))
         }
