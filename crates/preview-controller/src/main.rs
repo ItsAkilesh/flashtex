@@ -1,6 +1,7 @@
 //! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
+use flashtex_preview_controller::completed_protocol::{SubmissionBindings, CAPABILITY};
 use flashtex_preview_controller::file_project::{DiskState, FileProject};
 use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
 use flashtex_project_index::{Category, SearchRequest, SearchTermination, SourceSpan};
@@ -12,13 +13,14 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, SyncSender},
+        mpsc::{self},
         Arc, Mutex,
     },
     thread,
     time::Duration,
 };
 mod output_buffer;
+mod output_delivery;
 mod wire;
 use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
@@ -43,7 +45,7 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
-fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
+fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
     let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
     if serde_json::to_writer(&mut buffer, &value).is_err() {
         buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
@@ -114,7 +116,7 @@ fn run(config: Value) -> Result<(), String> {
         .as_ref()
         .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
-    let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(8);
+    let (output_tx, output_rx) = output_delivery::channel(8);
     let stopped = Arc::new(AtomicBool::new(false));
     let output_stopped = stopped.clone();
     let output_done = Arc::new(AtomicBool::new(false));
@@ -123,16 +125,22 @@ fn run(config: Value) -> Result<(), String> {
     let writer_clock = writing_since.clone();
     thread::spawn(move || {
         let mut stdout = io::stdout().lock();
-        for bytes in output_rx {
+        loop {
+            let frame = match output_rx.next(Duration::from_millis(2)) {
+                Ok(frame) => frame,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             *writer_clock.lock().unwrap() = Some(std::time::Instant::now());
             if stdout
-                .write_all(&bytes)
+                .write_all(&frame.bytes)
                 .and_then(|_| stdout.flush())
                 .is_err()
             {
                 output_stopped.store(true, Ordering::SeqCst);
                 break;
             }
+            output_rx.written(&frame);
             *writer_clock.lock().unwrap() = None;
         }
         *writer_clock.lock().unwrap() = None;
@@ -189,6 +197,8 @@ fn run(config: Value) -> Result<(), String> {
         json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error,"compiler_max_frame_bytes":limits.max_frame,"helper_max_output_bytes":16*1024*1024}}),
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
+    let mut bindings = SubmissionBindings::default();
+    let mut output_epoch = output_tx.reset_optional();
     while !stopped.load(Ordering::SeqCst) {
         if writing_since
             .lock()
@@ -207,14 +217,54 @@ fn run(config: Value) -> Result<(), String> {
                 {
                     Err("invalid version, session or request identity".into())
                 } else {
-                    handle(
-                        &mut controller,
-                        &mut reviews,
-                        &request,
-                        compiler.as_deref(),
-                        &limits,
-                        file_project.as_ref(),
-                    )
+                    (|| -> Result<Value, String> {
+                        let token = request["payload"]
+                            .get("source_binding_token")
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .ok_or("source_binding_token must be a string")
+                            })
+                            .transpose()?;
+                        if let Some(token) = token {
+                            SubmissionBindings::validate_token(token)?;
+                        }
+                        if request["type"] == "configure_completed_snapshots" {
+                            if request["payload"]["capability"] != CAPABILITY {
+                                return Err("unsupported completed snapshot capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            controller.configure_completed_snapshots(enabled)?;
+                            bindings.configure(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(json!({"capability":CAPABILITY,"enabled":enabled}));
+                        }
+                        if request["type"] == "restart" || request["type"] == "close" {
+                            controller.configure_completed_snapshots(false)?;
+                            bindings.configure(false)?;
+                            output_epoch = output_tx.reset_optional();
+                        }
+                        let before = controller.compile_revision();
+                        let result = handle(
+                            &mut controller,
+                            &mut reviews,
+                            &request,
+                            compiler.as_deref(),
+                            &limits,
+                            file_project.as_ref(),
+                        );
+                        let after = controller.compile_revision();
+                        if after != before && bindings.enabled() {
+                            if let Some(token) = token {
+                                // Synchronous request handling captured this exact admitted generation.
+                                // Optional metadata failure must not replace a durable operation's reply.
+                                let _ = bindings.record(after, token);
+                            }
+                        }
+                        result
+                    })()
                 };
                 let output = match response {
                     Ok(payload) => wire::envelope(&session, id, "result", payload),
@@ -225,9 +275,25 @@ fn run(config: Value) -> Result<(), String> {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        for update in controller.poll() {
+        let updates = controller.poll();
+        let historical = controller.take_completed_snapshot().and_then(|snapshot| {
+            bindings
+                .take(bindings.epoch(), snapshot.compile_revision())
+                .map(|token| (snapshot, token))
+        });
+        for update in updates {
+            // A negotiated historical frame replaces its legacy stale notification.
+            // Do not enqueue that notification ahead of its own optional replacement.
+            if matches!(&update, Update::Runtime(Event::Stale { id, .. })
+                if historical.as_ref().is_some_and(|(snapshot, _)| snapshot.request_id() == id))
+            {
+                continue;
+            }
             let payload = match update {
-                Update::Preview(preview) => wire::preview_payload(preview),
+                Update::Preview(preview) => {
+                    bindings.retire_through(preview.compile_revision);
+                    wire::preview_payload(preview)
+                }
                 Update::Discarded { request_id } => {
                     json!({"kind":"discarded","request_id":request_id})
                 }
@@ -250,6 +316,25 @@ fn run(config: Value) -> Result<(), String> {
                 &stopped,
                 wire::envelope(&session, Value::Null, "update", payload),
             );
+        }
+        if let Some((snapshot, token)) = historical {
+            if output_tx.can_offer(output_epoch) && controller.claim_historical_display(&snapshot) {
+                let mut payload = json!({"kind":"completed_snapshot",
+                        "project_id":snapshot.source_versions().project_id,
+                        "session_id":session,"source_versions":snapshot.source_versions().documents,
+                        "request_id":snapshot.request_id(),"compile_revision":snapshot.compile_revision(),
+                        "current_compile_revision":controller.compile_revision(),
+                        "is_current":false,"source_actions_enabled":false,"source_binding_token":token});
+                payload["result"] = snapshot.into_result();
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+                if serde_json::to_writer(&mut buffer, &value).is_ok() {
+                    if let Ok(bytes) = buffer.finish() {
+                        // Optional oversize/backpressure drops never fail durable source delivery.
+                        output_tx.optional(output_epoch, bytes);
+                    }
+                }
+            }
         }
     }
     // Drain normal EOF replies, bounded even if the native reader stopped.
@@ -592,10 +677,10 @@ mod configuration_tests {
     use super::*;
     #[test]
     fn oversized_result_error_does_not_retain_large_output_allocation() {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = output_delivery::channel(1);
         let stopped = AtomicBool::new(false);
         emit(&tx, &stopped, Value::String("x".repeat(MAX_OUTPUT_BYTES)));
-        let bytes = rx.try_recv().unwrap();
+        let bytes = rx.next(Duration::ZERO).unwrap().bytes;
         assert!(!stopped.load(Ordering::SeqCst));
         assert!(bytes.capacity() < 4096);
         assert_eq!(bytes.last(), Some(&b'\n'));

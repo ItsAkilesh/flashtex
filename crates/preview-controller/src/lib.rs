@@ -341,6 +341,10 @@ impl Controller {
         self.submitted = None;
         self.compile_current()
     }
+    /// Latest successfully admitted compiler generation.
+    pub fn compile_revision(&self) -> u64 {
+        self.generation
+    }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();
         if self.closed {
