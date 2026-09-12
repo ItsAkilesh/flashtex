@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "b4088b471190527e73d8bcea8ceb1b500c14071e",
-  "objective": "Inspect and deterministically verify cancellation and joined shutdown while raw decoder processes near-limit valid and malformed frames",
+  "input_main_sha": "cf5097269c7fc8d8c79ff963a70099ebc3248ed0",
+  "objective": "Measure bounded decoder shutdown latency and retained allocation with existing frame limits; propose correction only for demonstrated defects",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:21:47.644416+00:00"
+  "updated_utc": "2026-09-12T12:26:11Z"
 }
