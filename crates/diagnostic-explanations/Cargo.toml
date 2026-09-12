@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-diagnostic-explanations"
+version = "0.1.0"
+edition = "2024"
+description = "Original, actionable explanations and previewable fix suggestions for FlashTeX compiler diagnostics (runtime-v1 shape). No external crates; no model calls."
+publish = false
+
+[lib]
+name = "flashtex_diagnostic_explanations"
+path = "src/lib.rs"
+
+[dependencies]
