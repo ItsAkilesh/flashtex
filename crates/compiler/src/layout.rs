@@ -112,6 +112,22 @@ pub(crate) fn math_font(text: &str) -> Font {
     }
 }
 
+/// The face's real x-height at `size`, in points, for accent vertical
+/// placement (see `math::Nucleus::Accent`). `Symbol` declares no XHeight in
+/// its AFM (Adobe's Symbol font has no case distinction to measure), so this
+/// falls back to a conservative fraction of the em rather than claiming a
+/// number the font never declared.
+pub(crate) fn x_height_pt(font: Font, size: f64) -> f64 {
+    use flashtex_font_engine::Face as _;
+    let metrics = face(font).vertical_metrics();
+    let ratio = if metrics.x_height_declared {
+        f64::from(metrics.x_height) / 1000.0
+    } else {
+        0.45
+    };
+    ratio * size
+}
+
 fn source_span(text: &str, span: Span, shaped: &Shaped) -> Span {
     let Some(first) = shaped.clusters.first() else {
         return span;
