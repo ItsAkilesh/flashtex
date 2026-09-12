@@ -641,3 +641,40 @@ records. Replay tests every exact boundary and half a unit below it. Synthetic
 fixtures cover negative values, missing corners, truncated prefixes, invalid GIDs,
 counts/offsets/heights, device-offset bounds and rational comparison overflow.
 This establishes data/lookup behavior, not a script-placement or visual oracle.
+
+`math_device::DeviceTable` decodes OpenType packed signed2/4/8-bit pixel deltas,
+validating the entire declared payload and zero padding before answering a query.
+VariationIndex0x8000 and unknown formats return typed unsupported errors, including
+when the requested ppem would otherwise lie outside the range. `DeviceContext`
+requires an explicit positive integer ppem. Out-of-range valid Device data gives
+zero as specified. No implicit point-size/axis/pixel conversion is performed.
+
+`BoundMathFont::constant_device(ConstantDeviceRecord,DeviceContext)` exposes this
+additively for the51 MathValueRecords in constants, reusing the peer's constants
+parser and original raw table selection. A result retains parent identity, record
+index, context, pixel delta and exact referenced device-table hash/offset. The
+unhinted API remains unchanged; other MATH value families are not automatically
+device-adjusted. Synthetic tests establish signed packing, word boundaries,
+truncation, padding, parent-relative offsets and variation rejection. Installed
+STIX/Noto Math constant inventory observes no positive device records; exact
+font/table/license hashes are in `fixtures/math-device-inventory.json`.
+OpenType contract: https://learn.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables
+
+`glyph_device` and `kern_device` add identity-bound corrections for glyph italics,
+top accents and corner kerns. Raw design units remain separate from pixel deltas.
+Glyph value extraction is checked against the existing peer MATH parser. Kern
+queries reuse the original parsed corner records and Device decoder; horizontal
+and vertical ppem are explicit separately. Correction-height deltas are converted
+exactly into design units using vertical ppem/UPEM before upper-bound selection;
+selected kern deltas use horizontal ppem. Crossed corrected heights are refused,
+not sorted into a different font program. At most4096 correction heights are
+visited per query. VariationIndex remains unsupported even outside the size range.
+
+The expanded pinned STIX inventory finds four actual glyph device records: top
+accent GIDs3309/3316/3326 and italic GID4010. At12ppem, GID3326 has a +1pixel accent
+correction; all four exact device hashes are retained in the inventory manifest.
+All6760 glyph italic/accent values still match the peer's raw metrics. Synthetic
+fixtures additionally verify negative pixel deltas, corrected-height equality,
+outside-range zero, variation refusal and nonmonotone corrected-height refusal.
+This is metric correction only; it neither grid-fits outlines nor proves raster
+or TeX script-layout parity.

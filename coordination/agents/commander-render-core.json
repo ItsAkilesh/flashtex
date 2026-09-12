@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "fce561571abb1aa8c1b8b2edc4dd8c5ea63286a5",
+  "code_revision": "528ef7e4a1afb9a1872a1c8e63d3df59e066f089",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Publish kern checkpoint then consume additive published device context in same owned crate; retain raw design values and pixel corrections separately, preserve unhinted default. Follow with bounded cached/direct mixed-math replay. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; no exposed native context telemetry/control.",
+  "main_integrated_through": "528ef7e4a1afb9a1872a1c8e63d3df59e066f089",
+  "next_action": "Publish device checkpoint then bounded cached/direct mixed-math replay followup. Preserve immutable source/registry/MATH/device contexts and retained frames. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; owned crate plus own report only. Native context telemetry/compaction control unavailable; report records recovery state.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r5 exact MathKern consumer complete, unchanged peer1fc71f3. 135 ordinary tests and strict clippy pass; pinned STIX293 boundary replays across219 tables plus66 assembly replays pass. Explicit query heights, original GIDs, raw/scaled kerns, device flags and immutable source/registry/MATH identity. No script layout.",
+  "summary": "Explicit MATH device consumer complete atop unchanged a71ce73: bounded constant/glyph/kern queries retain raw design values, signed pixel deltas, axis scales/ppem, table hashes and selected interval; no outline hinting or script layout. 136 ordinary tests + strict clippy + both pinned tests pass; real STIX3326 at12ppem +1pixel -> exact7/3ticks.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:50:57Z",
+  "updated_utc": "2026-09-12T08:55:04Z",
   "usage": {
-    "evidence": "cargo test135 pass; cargo clippy all-targets -D warnings pass; pinned STIXMath source/license hashes checked,293 lookup cases/219 tables; synthetic negative/tie/absence/invalid GID/tamper/duplicate/stale/budget cases. No pending test process.",
+    "evidence": "cargo test136; all-target clippy -D warnings; pinned STIX66assemblies/293kern boundary cases; Device tableSHA cd26325e3c7a478bc246d4a9019d275d88037e830e9a581cdc79d1ea5b1c175e; no pending tests",
     "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

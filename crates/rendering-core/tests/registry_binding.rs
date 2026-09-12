@@ -1279,6 +1279,50 @@ fn pinned_stix_math_metric_consumer_replay() {
                 kerns.data().records().len()
             );
         }
+        {
+            use flashtex_font_resources::math_device::{DeviceContext, GlyphDeviceKind};
+            use flashtex_rendering_core::registry_binding::math::device::*;
+            let request = DeviceQuery::Glyph {
+                original_gid: 3326,
+                kind: GlyphDeviceKind::TopAccentAttachment,
+                context: DeviceContext::new(12).unwrap(),
+                axis: Axis::Horizontal,
+            };
+            let result = renderer
+                .math_devices(
+                    &math,
+                    query(),
+                    PixelScale {
+                        horizontal: r(7, 3),
+                        vertical: r(11, 2),
+                    },
+                    &[request],
+                )
+                .unwrap();
+            let direct = bound
+                .glyph_device(
+                    3326,
+                    GlyphDeviceKind::TopAccentAttachment,
+                    DeviceContext::new(12).unwrap(),
+                )
+                .unwrap();
+            assert_eq!(result.values()[0].delta_pixels, 1);
+            assert_eq!(result.values()[0].correction_ticks, r(7, 3));
+            assert_eq!(
+                result.values()[0].table_sha256,
+                direct.correction().unwrap().device_table_sha256
+            );
+            let replay = result.replay_bytes(100000).unwrap();
+            result
+                .verify_replay(&renderer, "main.tex", &source, &replay)
+                .unwrap();
+            eprintln!(
+                "MATH device STIX GID3326 ppem12 +1pixel correction={} / {} tableSHA={:?}",
+                result.values()[0].correction_ticks.numerator(),
+                result.values()[0].correction_ticks.denominator(),
+                result.values()[0].table_sha256
+            );
+        }
         let variants = bound.variants().unwrap();
         let mut seen = [0, 0];
         for (&(direction, gid), construction) in variants.data().constructions() {
@@ -1708,4 +1752,158 @@ fn math_kern_exact_ties_replay_and_source_gates() {
     );
     absent.original_gid = 3;
     assert!(renderer.math_kerns(&math, query(), &[absent]).is_err());
+}
+
+#[test]
+fn explicit_math_device_context_keeps_pixel_units_and_unhinted_default() {
+    use flashtex_font_resources::{
+        cff::Rational, math_adapter::MathPolicy, math_device::*, math_kern::Corner,
+    };
+    use flashtex_rendering_core::registry_binding::math::{device::*, MathConstant, MathQuery};
+    let font = font_fixture::math_device_fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    std::fs::write(dir.path().join("math.font"), &font).unwrap();
+    std::fs::write(dir.path().join("math.license"), b"test").unwrap();
+    save(
+        dir.path(),
+        &RegistryManifest {
+            schema_version: 1,
+            entries: vec![entry(&font, "math", "static-truetype", b"test")],
+        },
+    );
+    let registry = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "math",
+        registry.clone(),
+        RegistryRenderLimits {
+            max_bindings: 1,
+            max_cache_bytes: 10000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("math"), registry.generation())
+        .unwrap();
+    let math = renderer
+        .math(&lease, MathPolicy::UnhintedDesignUnits)
+        .unwrap();
+    let source = SourceSnapshot {
+        revision: 1,
+        text: "α".into(),
+    };
+    let query = || MathQuery {
+        source_path: "main.tex",
+        snapshot: &source,
+        source_range: 0..2,
+        font_size: r(1000, 3),
+        original_gids: &[1],
+    };
+    let scale = PixelScale {
+        horizontal: r(7, 3),
+        vertical: r(11, 2),
+    };
+    let context = DeviceContext::new(12).unwrap();
+    let requests = [
+        DeviceQuery::Constant {
+            record: ConstantDeviceRecord::new(1).unwrap(),
+            context,
+            axis: Axis::Vertical,
+        },
+        DeviceQuery::Glyph {
+            original_gid: 1,
+            kind: GlyphDeviceKind::ItalicCorrection,
+            context,
+            axis: Axis::Horizontal,
+        },
+        DeviceQuery::Glyph {
+            original_gid: 1,
+            kind: GlyphDeviceKind::TopAccentAttachment,
+            context,
+            axis: Axis::Horizontal,
+        },
+        DeviceQuery::Kern {
+            original_gid: 1,
+            corner: Corner::TopRight,
+            height: Rational::new(20, 1).unwrap(),
+            context: KernDeviceContext {
+                horizontal: context,
+                vertical: context,
+            },
+        },
+    ];
+    let value = renderer
+        .math_devices(&math, query(), scale, &requests)
+        .unwrap();
+    assert!(value
+        .values()
+        .iter()
+        .all(|v| v.delta_pixels == 1 && v.table_sha256.is_some()));
+    assert_eq!(value.values()[0].base_ticks, Some(r(0, 1)));
+    assert_eq!(value.values()[0].combined_ticks, Some(r(11, 2)));
+    assert_eq!(value.values()[1].combined_ticks, Some(r(130, 3)));
+    assert_eq!(value.values()[2].combined_ticks, Some(r(328, 3)));
+    assert_eq!(value.values()[3].combined_ticks, Some(r(5, 1)));
+    assert_eq!(value.values()[3].selected_interval, Some(2));
+    assert_eq!(
+        value
+            .metrics()
+            .constant(MathConstant::axis_height)
+            .unwrap()
+            .value,
+        r(0, 1)
+    );
+    let bytes = value.replay_bytes(100000).unwrap();
+    value
+        .verify_replay(&renderer, "main.tex", &source, &bytes)
+        .unwrap();
+    assert!(value.replay_bytes(1).is_err());
+    assert!(value
+        .require_current(
+            &renderer,
+            "main.tex",
+            &SourceSnapshot {
+                revision: 2,
+                text: source.text.clone()
+            }
+        )
+        .is_err());
+    let at13 = DeviceQuery::Constant {
+        record: ConstantDeviceRecord::new(1).unwrap(),
+        context: DeviceContext::new(13).unwrap(),
+        axis: Axis::Vertical,
+    };
+    let other = renderer
+        .math_devices(&math, query(), scale, &[at13])
+        .unwrap();
+    assert_eq!(other.values()[0].delta_pixels, 0);
+    assert_ne!(other.replay_bytes(100000).unwrap(), bytes);
+    let absent = DeviceQuery::Glyph {
+        original_gid: 2,
+        kind: GlyphDeviceKind::TopAccentAttachment,
+        context,
+        axis: Axis::Horizontal,
+    };
+    assert_eq!(
+        renderer
+            .math_devices(&math, query(), scale, &[absent])
+            .unwrap()
+            .values()[0]
+            .combined_ticks,
+        None
+    );
+    assert!(renderer
+        .math_devices(
+            &math,
+            query(),
+            PixelScale {
+                horizontal: r(0, 1),
+                vertical: r(1, 1)
+            },
+            &requests
+        )
+        .is_err());
+    assert!(renderer
+        .math_devices(&math, query(), scale, &vec![requests[0]; 257])
+        .is_err());
 }

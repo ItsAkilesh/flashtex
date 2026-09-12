@@ -546,3 +546,25 @@ Synthetic checks cover negative heights/values, exact ties, missing corners and
 request/output limits. Pinned STIX replay compares every available corner table
 around its correction-height boundaries against the bound resource API. This
 is exact consumer consistency rather than an independent typesetting oracle.
+
+### Explicit MATH device metrics
+
+`math_devices` is an opt-in query path for constant, glyph and kerning Device
+records. Every request supplies ppem; `PixelScale` separately supplies exact
+horizontal and vertical canonical ticks per pixel. Constants/glyph requests name
+the axis explicitly. Kern selection uses the resource adapter's corrected-height
+policy and retains its selected interval. Nothing infers a device scale from zoom
+or font size.
+
+Each result retains raw design units, base ticks, signed pixel delta, correction
+ticks, optional combined value and Device table hash/offset. Absent accents remain
+absent. The retained base metrics still declare their original unhinted policy;
+this API does not hint outlines or position scripts. Replay binds both ppem axes
+and pixel scales and rejects changed context/provenance. VariationIndex and
+unsupported device data preserve typed resource errors.
+
+Synthetic tests check constant/italic/accent/kern corrections, exact unequal axis
+scales, ppem changes, absent accents and request/output limits. Pinned STIX GID3326
+has a +1pixel top-accent correction at12ppem: the consumer preserves its exact
+7/3 canonical-tick correction and original Device table identity. This does not
+establish device-aware paint or native cache integration.
