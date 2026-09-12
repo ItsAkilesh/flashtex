@@ -103,6 +103,10 @@ final class PreviewControllerClient {
         try JSONSerialization.data(withJSONObject: config.json(), options: [.sortedKeys]).write(to: configURL)
         process.executableURL = executable
         process.arguments = [configURL.path]
+        // Helper-spawned producer route: the helper's compiler child inherits
+        // this environment, so the bundled rooted TFM directory is prepended
+        // to FLASHTEX_TFM_DIRS here too (BundledMetrics.swift, GH36).
+        process.environment = BundledMetrics.producerEnvironment()
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr

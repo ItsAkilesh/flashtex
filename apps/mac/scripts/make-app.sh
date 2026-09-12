@@ -9,7 +9,7 @@
 # Usage: apps/mac/scripts/make-app.sh [--debug] [--helper-root <repo>]
 #          [--compiler <path>] [--pdf <path>] [--bridge <path>] [--ledger <path>]
 #          [--render <path>] [--pdf-exact <path>] [--controller <path>] [--project-files <path>]
-#          [--assistant <path>] [--explain <path>]
+#          [--assistant <path>] [--explain <path>] [--source-sha <key>=<sha>]
 #          [--sign <identity>] [--entitlements <file>] [--notarize <keychain-profile>]
 #          [--open] [--install] [--install-dir <dir>] [--dmg]
 #
@@ -21,9 +21,20 @@
 # --notarize <profile> (requires --sign) submits with `xcrun notarytool submit
 # --wait` using a keychain profile created by `xcrun notarytool
 # store-credentials <profile>`, then staples the app (and the DMG with --dmg).
+# --source-sha <key>=<sha> declares the source revision of a helper built
+# outside a repository checkout (e.g. from an archive export): components.json
+# then records it with git_sha_origin "declared" instead of "resolved".
 # Helpers default to <helper-root>/crates/<crate>/target/release/<name>;
 # --helper-root defaults to this repository (set it to the main checkout when
 # packaging from a worktree). No credential is ever printed by this script.
+#
+# Rooted TeX metrics (GH36): the five official Latin Modern 2.004 TFMs and the
+# rooted GUST license are staged from FLASHTEX_BUNDLE_TEXMF_ROOT (default: the
+# vendored apps/mac/Fonts/texmf) into Contents/Resources/texmf/… via
+# scripts/bundle-texmf.py. Every file must match the pinned manifest hash or
+# packaging refuses BEFORE the build and again before signing; the host TeX
+# tree is never consulted and nothing is downloaded. The resulting hashes are
+# recorded in components.json ("resources") and resource-coverage.json.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,6 +73,17 @@ HELPER_TABLE=(
 )
 # Explicit --<flag> <path> overrides as "key=path" (bash 3.2: no assoc arrays).
 HELPER_OVERRIDES=()
+# Declared source revisions as "key=sha" (--source-sha), for helpers whose
+# build directory is not a repository (an archive export).
+HELPER_SHA_OVERRIDES=()
+
+helper_declared_sha_for() {
+  local entry
+  for entry in ${HELPER_SHA_OVERRIDES[@]+"${HELPER_SHA_OVERRIDES[@]}"}; do
+    if [[ "${entry%%=*}" == "$1" ]]; then echo "${entry#*=}"; return 0; fi
+  done
+  return 0
+}
 
 helper_override_for() {
   local entry
@@ -79,6 +101,8 @@ helper_key_for_flag() {
   done
   return 1
 }
+
+die_early() { echo "make-app.sh: $*" >&2; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -122,6 +146,13 @@ while [[ $# -gt 0 ]]; do
     --dmg)
       DO_DMG=1
       shift
+      ;;
+    --source-sha)
+      [[ "${2:-}" == *=* ]] || die_early "--source-sha needs <key>=<sha>"
+      [[ "${2%%=*}" =~ ^[a-z_]+$ ]] || die_early "--source-sha: component key must be a components.json key such as render"
+      [[ "${2#*=}" =~ ^[0-9a-f]{7,40}$ ]] || die_early "--source-sha: <sha> must be 7-40 hex characters"
+      HELPER_SHA_OVERRIDES+=("$2")
+      shift 2
       ;;
     -h|--help)
       sed -n '2,26p' "${BASH_SOURCE[0]}"
@@ -179,6 +210,19 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\""
 fi
 
+# --- Pre-flight: pinned rooted TFM metrics must verify before the build -------
+# GH36: flashtex-render loads its required metrics only from a rooted texmf
+# tree; a flat Fonts directory or the build machine's TeX cannot stand in.
+BUNDLE_TEXMF_ROOT="${FLASHTEX_BUNDLE_TEXMF_ROOT:-$MAC_DIR/Fonts/texmf}"
+BUNDLE_TEXMF_TOOL="$SCRIPT_DIR/bundle-texmf.py"
+[[ -f "$BUNDLE_TEXMF_TOOL" ]] || die "missing $BUNDLE_TEXMF_TOOL"
+[[ -d "$BUNDLE_TEXMF_ROOT" ]] || die "pinned bundle metrics root not found: $BUNDLE_TEXMF_ROOT (vendored apps/mac/Fonts/texmf, or set FLASHTEX_BUNDLE_TEXMF_ROOT to a verified official LM 2.004 texmf root)"
+TEXMF_PREFLIGHT="$(python3 "$BUNDLE_TEXMF_TOOL" check "$BUNDLE_TEXMF_ROOT" 2>&1)" || {
+  printf '%s\n' "$TEXMF_PREFLIGHT" | grep -E '"(path|status|reason)"' | sed 's/^/    /' >&2
+  die "pinned bundle metric refused under $BUNDLE_TEXMF_ROOT (hash/length mismatch or missing; see above). Nothing is downloaded and the host TeX tree is never used."
+}
+echo "==> Pinned rooted TFM metrics verified under $BUNDLE_TEXMF_ROOT ($(( $(grep -c '"status": "verified"' <<< "$TEXMF_PREFLIGHT") - 1 )) entries)"
+
 # Resolves the short git SHA of the repo that CONTAINS $1 (the resolved source
 # path of a bundled binary, before it is copied into the bundle) — never the
 # app repo's own SHA for a binary sourced from a different worktree.
@@ -196,10 +240,17 @@ COMPONENTS_JSON_ENTRIES=()
 record_component() {
   local name="$1" bundled_path="$2" source_path="$3"
   if [[ -n "$bundled_path" && -f "$bundled_path" ]]; then
-    local sha256 git_sha
+    local sha256 git_sha declared origin="resolved"
     sha256="$(shasum -a 256 "$bundled_path" | awk '{print $1}')"
     git_sha="$(component_git_sha "$source_path")"
-    COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": true, \"source_path\": \"$source_path\", \"git_sha\": \"$git_sha\", \"sha256\": \"$sha256\"}")
+    declared="$(helper_declared_sha_for "$name")"
+    if [[ -n "$declared" ]]; then
+      if [[ "$git_sha" != "unknown" && "$declared" != "$git_sha"* && "$git_sha" != "$declared"* ]]; then
+        die "--source-sha $name=$declared contradicts the resolved revision $git_sha of $source_path"
+      fi
+      git_sha="$declared"; origin="declared"
+    fi
+    COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": true, \"source_path\": \"$source_path\", \"git_sha\": \"$git_sha\", \"git_sha_origin\": \"$origin\", \"sha256\": \"$sha256\"}")
   else
     COMPONENTS_JSON_ENTRIES+=("  \"$name\": {\"bundled\": false, \"source_path\": null, \"git_sha\": null, \"sha256\": null}")
   fi
@@ -256,6 +307,17 @@ fi
 if [[ -d "$MAC_DIR/Samples" ]]; then
   cp -R "$MAC_DIR/Samples/." "$SAMPLES_DIR/"
 fi
+
+# --- Pinned rooted TFM metrics (GH36; before signing, no download/host TeX) --
+# Re-verifies each source file, copies it to Contents/Resources/texmf/…, then
+# runs crates/rendering-core/tools/verify_bundle_resources.py over the whole
+# Resources directory (3 OTFs + 5 TFMs + license). Refuses signing otherwise.
+echo "==> Staging pinned rooted TFM metrics into Contents/Resources/texmf (source: $BUNDLE_TEXMF_ROOT)"
+RESOURCES_COMPONENT_JSON="$(python3 "$BUNDLE_TEXMF_TOOL" stage "$BUNDLE_TEXMF_ROOT" "$RESOURCES_DIR" "$RESOURCES_DIR/resource-coverage.json" 2>&1)" || {
+  printf '%s\n' "$RESOURCES_COMPONENT_JSON" | grep -E '"(path|status|reason)"' | sed 's/^/    /' >&2
+  die "pinned bundle resources failed verification; refusing to sign $APP_DIR"
+}
+echo "    verified $(find "$RESOURCES_DIR/texmf" -type f | wc -l | tr -d ' ') rooted metric/license files + 3 pinned faces; report at Contents/Resources/resource-coverage.json"
 
 # --- Helpers -----------------------------------------------------------------
 echo "==> Locating built Rust binaries (helper root: $HELPER_ROOT)"
@@ -327,6 +389,10 @@ for row in "${BUNDLED_HELPERS[@]}"; do
     record_component "$key" "" ""
   fi
 done
+
+# Pinned resource hashes (fonts, rooted metrics, license) as verified above,
+# so the component report carries them before the app signature seals it.
+COMPONENTS_JSON_ENTRIES+=("  \"resources\": $RESOURCES_COMPONENT_JSON")
 
 # The app's own entry uses $GIT_SHA (already resolved for the whole repo
 # worktree) directly rather than record_component's file-based git lookup,

@@ -317,6 +317,37 @@ whose name is "FlashTeX"'` showed the process while running and `pgrep -x
 FlashTeX` showed nothing after quitting — no stray `FlashTeX` process was
 left behind by either run.
 
+## Rooted TeX metrics in the bundle (GH36)
+
+`make-app.sh` now stages the five pinned official Latin Modern 2.004 TFMs and
+the rooted GUST license from `apps/mac/Fonts/texmf` (or
+`FLASHTEX_BUNDLE_TEXMF_ROOT`) into `Contents/Resources/texmf/fonts/tfm/public/lm`
+and `Contents/Resources/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT` through
+`scripts/bundle-texmf.py`: each source file is hash-verified against the
+Commander's pinned manifest before the build (a mismatch, a missing file or a
+symlink exits 1 before `swift build`), staged, and then the whole `Resources`
+directory is verified with `crates/rendering-core/tools/verify_bundle_resources.py`
+before any signing. `components.json` gains a `"resources"` entry with the nine
+verified SHA-256/byte pairs and the manifest hash; `resource-coverage.json` is
+the verifier's full report. Both are sealed by the app signature (they are
+written before `codesign`). The producer gets the bundled directory prepended to
+`FLASHTEX_TFM_DIRS` by `BundledMetrics.swift` on both launch routes
+(`WorkerClient`, `PreviewControllerClient`); see `README.md` "Rooted TeX
+metrics" and the acceptance script `scripts/texmf-acceptance.sh` (bundled
+producer, host TeX denied by `sandbox-exec`, 10 pt multi-document + 12 pt
+text/math, 10 pt styles, 11 pt, deliberate removal, verifier exit 0). A
+producer before render-pipeline 421a2049 does not discover
+`../Resources/texmf` on its own, so the env route is what makes such a bundle
+independent of host TeX (evidence `docs/evidence/mac-bundle-texmf-20260912T134120Z`,
+control row 9 diagnostics, env rows 0); from 421a2049 (tip 98e829bf) the
+producer finds the bundle itself and `texmf-acceptance.sh --require-discovery`
+passes both routes (`docs/evidence/mac-bundle-texmf-20260912T135157Z`).
+Beyond the Commander's five pinned files, 23 supplementary Latin Modern TFMs
+(other design sizes, bold, italic) ship under the in-repo pin
+`apps/mac/Fonts/texmf/SUPPLEMENTARY-METRICS.json` and are recorded in
+`components.json` `resources.supplementary`; their provenance limitation (not
+verified against the pinned 2.004 archive) is stated in that file.
+
 ## Known gaps (rev 5)
 
 - **Signing/notarization: tooling done, credentials absent.** The
