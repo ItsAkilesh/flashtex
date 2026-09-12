@@ -164,8 +164,8 @@ mod tests {
         let op_a = b.insert_at(&doc, 0, 'a').unwrap();
         doc.apply(op_a).unwrap();
         let op_b = b.insert_at(&doc, 1, 'b').unwrap(); // depends on op_a
-        // Simulate op_b having been *generated* (so op_c can depend on it)
-        // without yet being delivered.
+                                                       // Simulate op_b having been *generated* (so op_c can depend on it)
+                                                       // without yet being delivered.
         let mut preview = doc.clone();
         preview.apply(op_b).unwrap();
         let op_c = b.insert_at(&preview, 2, 'c').unwrap(); // depends on op_b
@@ -184,7 +184,10 @@ mod tests {
         assert_eq!(pending.missing_dependencies(&doc), vec![op_b.id]);
 
         // op_b now arrives: applying it directly should drain op_c too.
-        assert_eq!(pending.receive(&mut doc, op_b).unwrap(), ApplyOutcome::Applied);
+        assert_eq!(
+            pending.receive(&mut doc, op_b).unwrap(),
+            ApplyOutcome::Applied
+        );
         assert_eq!(doc.text(), "abc");
         assert!(pending.is_empty(), "op_c must have drained automatically");
     }
@@ -217,7 +220,10 @@ mod tests {
         assert_eq!(pending.pending_len(), 2);
 
         // The root arrives last; both buffered operations should cascade in.
-        assert_eq!(pending.receive(&mut doc, op1).unwrap(), ApplyOutcome::Applied);
+        assert_eq!(
+            pending.receive(&mut doc, op1).unwrap(),
+            ApplyOutcome::Applied
+        );
         assert_eq!(doc.text(), "xyz");
         assert!(pending.is_empty());
     }

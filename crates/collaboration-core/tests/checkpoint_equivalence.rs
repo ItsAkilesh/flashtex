@@ -15,9 +15,7 @@
 //! concurrent scenario shared in spirit with `tests/convergence.rs`, each
 //! checked at every possible cut point - not one happy path.
 
-use flashtex_collaboration_core::{
-    CrdtError, Document, Op, OpBuilder, OpId, OpPayload, ReplicaId,
-};
+use flashtex_collaboration_core::{CrdtError, Document, Op, OpBuilder, OpId, OpPayload, ReplicaId};
 
 /// Applies `ops` (a single fixed, causally valid order) to completion, then
 /// re-derives the same final state by checkpointing after `cut` operations,

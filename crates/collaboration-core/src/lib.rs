@@ -254,7 +254,11 @@ impl Document {
     /// (used by [`checkpoint`] to restore from a [`Checkpoint`] without
     /// re-running integration - the stored element order already *is* the
     /// integrated structural order).
-    pub(crate) fn from_parts(elements: Vec<Element>, applied: HashSet<OpId>, max_elements: usize) -> Self {
+    pub(crate) fn from_parts(
+        elements: Vec<Element>,
+        applied: HashSet<OpId>,
+        max_elements: usize,
+    ) -> Self {
         Self {
             elements,
             applied,
@@ -287,7 +291,8 @@ impl Document {
             None => -1,
             Some(id) => self
                 .position_of(id)
-                .expect("caller must validate dependencies before integrating") as isize,
+                .expect("caller must validate dependencies before integrating")
+                as isize,
         }
     }
 
@@ -298,7 +303,8 @@ impl Document {
             None => self.elements.len() as isize,
             Some(id) => self
                 .position_of(id)
-                .expect("caller must validate dependencies before integrating") as isize,
+                .expect("caller must validate dependencies before integrating")
+                as isize,
         }
     }
 
@@ -351,12 +357,44 @@ impl Document {
     /// must already be applied).
     pub fn apply(&mut self, op: Op) -> Result<ApplyOutcome, CrdtError> {
         if self.applied.contains(&op.id) {
-            if let OpPayload::Insert { value, .. } = &op.payload {
-                if let Some(existing) = self.elements.iter().find(|e| e.id == op.id) {
+            // An id that has been applied was used either by an Insert, in
+            // which case its element is still present (elements are only ever
+            // tombstoned, never removed), or by a Delete, in which case no
+            // element carries that id. That distinction is enough to detect a
+            // reused id across the two payload kinds without storing anything
+            // extra.
+            //
+            // This matters more than ordinary input validation: `apply` is
+            // public and `Op` is fully public, so operations arriving from a
+            // peer are bug- or attacker-controlled. Letting a reused id fall
+            // through as `Duplicate` makes two replicas that saw the same
+            // operations in different orders end up with different text and
+            // *no error* - silent divergence, which defeats the entire point
+            // of the crate.
+            let original_was_insert = self.elements.iter().find(|e| e.id == op.id);
+            match (&op.payload, original_was_insert) {
+                // Insert re-applied over an Insert: same value is an
+                // idempotent replay, a different value is a conflict.
+                (OpPayload::Insert { value, .. }, Some(existing)) => {
                     if existing.value != *value {
                         return Err(CrdtError::IdConflict(op.id));
                     }
                 }
+                // Insert re-using an id a Delete already used.
+                (OpPayload::Insert { .. }, None) => {
+                    return Err(CrdtError::IdConflict(op.id));
+                }
+                // Delete re-using an id an Insert already used.
+                (OpPayload::Delete { .. }, Some(_)) => {
+                    return Err(CrdtError::IdConflict(op.id));
+                }
+                // Delete re-applied over a Delete. Distinguishing an
+                // idempotent replay from a conflicting different target would
+                // require storing each delete's target, which the checkpoint
+                // wire format does not currently carry. Treated as an
+                // idempotent replay, as before. See
+                // coordination/daniel-collaboration.md for the open item.
+                (OpPayload::Delete { .. }, None) => {}
             }
             return Ok(ApplyOutcome::Duplicate);
         }
@@ -409,7 +447,10 @@ pub struct OpBuilder {
 
 impl OpBuilder {
     pub fn new(replica: ReplicaId) -> Self {
-        Self { replica, counter: 0 }
+        Self {
+            replica,
+            counter: 0,
+        }
     }
 
     /// Allocate the next `OpId`, or `None` if this replica's per-replica

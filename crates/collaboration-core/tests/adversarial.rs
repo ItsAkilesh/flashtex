@@ -114,7 +114,11 @@ fn pending_buffer_exactly_at_capacity_succeeds_next_one_is_rejected() {
         pending.receive(&mut doc, overflow),
         Err(CrdtError::PendingBufferFull { max_pending })
     );
-    assert_eq!(pending.pending_len(), max_pending, "buffer must not grow past its bound");
+    assert_eq!(
+        pending.pending_len(),
+        max_pending,
+        "buffer must not grow past its bound"
+    );
 }
 
 // --- Checkpoint at and past its entry bound -------------------------------
@@ -127,7 +131,9 @@ fn checkpoint_exactly_at_bound_succeeds_one_less_bound_fails() {
         doc.apply(b.insert_at(&doc, i, ch).unwrap()).unwrap();
     }
     // 5 elements, 0 delete-op ids -> entry_count() == 5.
-    let at_bound = doc.checkpoint(5).expect("exactly at the bound must succeed");
+    let at_bound = doc
+        .checkpoint(5)
+        .expect("exactly at the bound must succeed");
     assert_eq!(at_bound.entry_count(), 5);
 
     assert_eq!(
@@ -191,7 +197,10 @@ fn checkpoint_bytes_with_a_flipped_byte_in_the_middle_is_rejected_or_harmlessly_
     let mid = bytes.len() / 2;
     bytes[mid] ^= 0xFF;
     let result = std::panic::catch_unwind(|| Checkpoint::from_bytes(&bytes));
-    assert!(result.is_ok(), "from_bytes must never panic on corrupted bytes");
+    assert!(
+        result.is_ok(),
+        "from_bytes must never panic on corrupted bytes"
+    );
 }
 
 // --- Insert whose position references a deleted element ------------------
@@ -227,8 +236,16 @@ fn insert_anchored_to_a_tombstoned_element_still_integrates_deterministically() 
         },
     };
     assert_eq!(doc.apply(op), Ok(ApplyOutcome::Applied));
-    assert_eq!(doc.text(), "Xc", "X lands in the gap after the tombstoned 'a', before 'c'");
-    assert_eq!(doc.len_chars(), 2, "the tombstoned 'a' is not counted as visible");
+    assert_eq!(
+        doc.text(),
+        "Xc",
+        "X lands in the gap after the tombstoned 'a', before 'c'"
+    );
+    assert_eq!(
+        doc.len_chars(),
+        2,
+        "the tombstoned 'a' is not counted as visible"
+    );
 }
 
 #[test]
@@ -380,7 +397,11 @@ fn interleaved_delete_then_insert_on_the_same_element_converges_across_delivery_
         for idx in order {
             doc.apply(ops[idx]).unwrap();
         }
-        assert_eq!(doc.text(), "c", "order {order:?} diverged from the pinned result");
+        assert_eq!(
+            doc.text(),
+            "c",
+            "order {order:?} diverged from the pinned result"
+        );
         assert_eq!(doc.len_chars(), 1);
     }
 }

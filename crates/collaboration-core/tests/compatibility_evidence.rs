@@ -113,9 +113,12 @@ fn checkpoint_bytes_for_a_fixed_fixture_are_pinned_byte_for_byte() {
 
     // "Readable under the stated contract": decoding the pinned bytes
     // reproduces a checkpoint identical to the one written.
-    let decoded =
-        Checkpoint::from_bytes(PINNED).expect("pinned bytes must decode under the documented contract");
-    assert_eq!(decoded, cp, "decoding the pinned bytes must reproduce the written checkpoint exactly");
+    let decoded = Checkpoint::from_bytes(PINNED)
+        .expect("pinned bytes must decode under the documented contract");
+    assert_eq!(
+        decoded, cp,
+        "decoding the pinned bytes must reproduce the written checkpoint exactly"
+    );
 }
 
 /// Evidence #2: a converged document is byte-identical across every one of

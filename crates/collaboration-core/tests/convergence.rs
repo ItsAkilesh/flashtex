@@ -13,7 +13,9 @@
 //! delivery, which `Document::apply` rejects with `MissingDependency`
 //! instead of silently reordering.
 
-use flashtex_collaboration_core::{ApplyOutcome, CrdtError, Document, Op, OpBuilder, OpId, OpPayload, ReplicaId};
+use flashtex_collaboration_core::{
+    ApplyOutcome, CrdtError, Document, Op, OpBuilder, OpId, OpPayload, ReplicaId,
+};
 
 /// Case 1: two replicas concurrently insert a different character at the
 /// *same* position.
