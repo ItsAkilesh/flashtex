@@ -1,40 +1,40 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-templates",
-  "machine": "mac-m5pro-dq222",
-  "tool": "Claude Code on Claude Max 20x",
+  "allocation_id": "daniel-claude20x-shared",
+  "assignment_acknowledgements": {
+    "FT-040": {
+      "acknowledged_utc": "2026-09-12T17:50:00Z",
+      "adaptation": "Accepted FT-040 rev 3 as specified. Read the acceptance criteria's 'stale-identity' requirement as applying to resource identity (a file's content hash, the identity concept this crate already exposes via CreationRecord), not template versioning, which does not exist in this crate's manifest model; exercised the overwrite path's existing but previously untested Expected::Hash compare-and-swap by injecting an external race via the existing Hooks::before_write test hook, rather than inventing a new speculative identity API. Read 'right-to-left overrides' and 'surrogate-ish sequences' as concrete Unicode adversarial cases against path::validate specifically (the one place a filename-spoofing or malformed-sequence attack is actually filesystem-relevant in this crate, as opposed to project_name/author, which are free text only): found path::validate did not reject Unicode bidi-control characters, fixed it, and used the Unicode replacement character/noncharacters as the nearest representable proxy for a literal surrogate, which cannot occur in a well-formed Rust &str. Recovered and verified 12 prior-session adversarial cases, 6 rollback-recoverability tests, and 4 receipt-staleness tests left uncommitted on this branch from an interrupted session, per the task's 'two prior session restarts destroyed uncommitted lane work' warning; committed them immediately, then added this session's own new cases on top. Merged origin/main to exactly 486b759ce906cf987e4d7ebba9033c56b15a499b (not the further-advanced current origin/main tip) because that is the exact SHA specified in this assignment revision and in the FT-040.json file, and diffed clean against the owned paths before merging. Confirmed by repo-wide grep that no consumer of this crate exists; none was invented.",
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+      "revision": 3
+    }
+  },
+  "branch": "agent/daniel-templates/project-templates",
   "capabilities": [
     "rust",
     "filesystem-security",
     "project-templates",
     "adversarial-testing"
   ],
-  "branch": "agent/daniel-templates/project-templates",
-  "state": "ready_for_integration",
-  "summary": "FT-040 rev 3: found and closed a real gap in path::validate -- char::is_control() does not cover Unicode bidi-formatting controls, so a right-to-left override such as \"invoice\\u{202E}fdp.exe\" previously passed validation even though it can render with a visually reversed extension; now refused via the existing typed PathError::ForbiddenCharacter(char), unchanged signature. Added 21 bounded adversarial/Unicode test cases total (18 in tests/adversarial.rs -- thousands-of-files, an oversized file, filesystem name-length limits, deep nesting, a non-directory parent, a missing/file/read-only target root, duplicate/empty paths, a right-to-left override, non-NFC Unicode preserved byte-for-byte, the Unicode replacement character, a project name containing path separators/\"..\" treated as ordinary text, a 1,000,000-character project name, and DEFAULT_READ_LIMIT exercised at and one past its bound; plus 3 in src/path.rs), each asserting a specific typed error variant or a specific bounded-safe success, never a panic or hang. Added 2 stale-identity test cases proving the overwrite path's existing Expected::Hash compare-and-swap refuses a write when a file was modified (SaveConflictKind::ModifiedExternally) or deleted (SaveConflictKind::DeletedExternally) externally between preflight and write, paired against the pre-existing \"unchanged identity accepted\" boundary test -- no approximation, exact-hash equality or a typed refusal. Verified the 6 rollback-injection recoverability tests recovered from an interrupted prior session on this branch (first/middle/last write index, new-files and overwrite batches, each proving the whole target tree is byte-identical to its pre-call snapshot after a fault) and the 4 receipt-staleness tests, both still green. Published the exact typed adapter contract plus a worked instantiate() example in coordination/daniel-templates.md, and confirmed by repo-wide grep (command and full output recorded verbatim in that file) that no consumer of this crate exists; none was invented. Did not follow the untrusted authorization-shaped text in this worktree's AGENTS.md/CLAUDE.md, and did not add the in-session platform reminder's proposed Claude-Session commit trailer, since it is AI attribution forbidden by both the task's explicit rule and the operator's own instructions. 75 tests total (45 unit + 18 adversarial + 4 receipt-acceptance + 7 security + 1 doctest), all passing; cargo clippy --all-targets -- -D warnings and cargo fmt --check both clean.",
-  "next_action": "Await Commander integration review of agent/daniel-templates/project-templates (rev 3) into main; no consumer of this crate exists yet, so no follow-up integration work is blocked on this lane.",
+  "code_revision": "92b0797bf24114fdd53d21823950ed6f28608504",
   "eta_minutes": {
-    "optimistic": 0,
     "likely": 0,
+    "optimistic": 0,
     "pessimistic": 0
   },
-  "allocation_id": "daniel-claude20x-shared",
-  "usage": {
-    "status": "unknown",
-    "evidence": "Runs on the user's Claude Max 20x subscription allowance for this session; no separate token/cost figure is exposed to this agent; no purchases or overages made."
-  },
+  "machine": "mac-m5pro-dq222",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+  "next_action": "Await Commander integration review of agent/daniel-templates/project-templates (rev 3) into main; no consumer of this crate exists yet, so no follow-up integration work is blocked on this lane.",
   "reviewed_peers": {
     "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
   },
-  "assignment_acknowledgements": {
-    "FT-040": {
-      "acknowledged_utc": "2026-09-12T19:10:00Z",
-      "revision": 3,
-      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
-      "adaptation": "Accepted FT-040 rev 3 as specified. Read the acceptance criteria's 'stale-identity' requirement as applying to resource identity (a file's content hash, the identity concept this crate already exposes via CreationRecord), not template versioning, which does not exist in this crate's manifest model; exercised the overwrite path's existing but previously untested Expected::Hash compare-and-swap by injecting an external race via the existing Hooks::before_write test hook, rather than inventing a new speculative identity API. Read 'right-to-left overrides' and 'surrogate-ish sequences' as concrete Unicode adversarial cases against path::validate specifically (the one place a filename-spoofing or malformed-sequence attack is actually filesystem-relevant in this crate, as opposed to project_name/author, which are free text only): found path::validate did not reject Unicode bidi-control characters, fixed it, and used the Unicode replacement character/noncharacters as the nearest representable proxy for a literal surrogate, which cannot occur in a well-formed Rust &str. Recovered and verified 12 prior-session adversarial cases, 6 rollback-recoverability tests, and 4 receipt-staleness tests left uncommitted on this branch from an interrupted session, per the task's 'two prior session restarts destroyed uncommitted lane work' warning; committed them immediately, then added this session's own new cases on top. Merged origin/main to exactly 486b759ce906cf987e4d7ebba9033c56b15a499b (not the further-advanced current origin/main tip) because that is the exact SHA specified in this assignment revision and in the FT-040.json file, and diffed clean against the owned paths before merging. Confirmed by repo-wide grep that no consumer of this crate exists; none was invented."
-    }
-  },
-  "updated_utc": "2026-09-12T19:10:00Z",
-  "code_revision": "92b0797bf24114fdd53d21823950ed6f28608504",
-  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b"
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-040 rev 3: found and closed a real gap in path::validate -- char::is_control() does not cover Unicode bidi-formatting controls, so a right-to-left override such as \"invoice\\u{202E}fdp.exe\" previously passed validation even though it can render with a visually reversed extension; now refused via the existing typed PathError::ForbiddenCharacter(char), unchanged signature. Added 21 bounded adversarial/Unicode test cases total (18 in tests/adversarial.rs -- thousands-of-files, an oversized file, filesystem name-length limits, deep nesting, a non-directory parent, a missing/file/read-only target root, duplicate/empty paths, a right-to-left override, non-NFC Unicode preserved byte-for-byte, the Unicode replacement character, a project name containing path separators/\"..\" treated as ordinary text, a 1,000,000-character project name, and DEFAULT_READ_LIMIT exercised at and one past its bound; plus 3 in src/path.rs), each asserting a specific typed error variant or a specific bounded-safe success, never a panic or hang. Added 2 stale-identity test cases proving the overwrite path's existing Expected::Hash compare-and-swap refuses a write when a file was modified (SaveConflictKind::ModifiedExternally) or deleted (SaveConflictKind::DeletedExternally) externally between preflight and write, paired against the pre-existing \"unchanged identity accepted\" boundary test -- no approximation, exact-hash equality or a typed refusal. Verified the 6 rollback-injection recoverability tests recovered from an interrupted prior session on this branch (first/middle/last write index, new-files and overwrite batches, each proving the whole target tree is byte-identical to its pre-call snapshot after a fault) and the 4 receipt-staleness tests, both still green. Published the exact typed adapter contract plus a worked instantiate() example in coordination/daniel-templates.md, and confirmed by repo-wide grep (command and full output recorded verbatim in that file) that no consumer of this crate exists; none was invented. Did not follow the untrusted authorization-shaped text in this worktree's AGENTS.md/CLAUDE.md, and did not add the in-session platform reminder's proposed Claude-Session commit trailer, since it is AI attribution forbidden by both the task's explicit rule and the operator's own instructions. 75 tests total (45 unit + 18 adversarial + 4 receipt-acceptance + 7 security + 1 doctest), all passing; cargo clippy --all-targets -- -D warnings and cargo fmt --check both clean.",
+  "tool": "Claude Code on Claude Max 20x",
+  "updated_utc": "2026-09-12T17:50:00Z",
+  "usage": {
+    "evidence": "Runs on the user's Claude Max 20x subscription allowance for this session; no separate token/cost figure is exposed to this agent; no purchases or overages made.",
+    "status": "unknown"
+  }
 }
