@@ -265,3 +265,246 @@ contract.
 - The revision-1 salvage items already listed above as not-ported (visual
   oracle harness, docs) remain not ported; out of scope for this revision.
 - No new geometry rules beyond the four objective items were touched.
+
+## Revision 4 update — 2026-09-12
+
+Objective: "Math layout consumer regressions: adversarial bounds and exact
+identity regressions." Read from `origin/main` at
+`e4e0c69edba4d22206a498db9ad94ef45f75e7cd` (the assignment's own
+`input_main_sha`); merged current `origin/main` (tip
+`abbe88a5275b89d99357815846de3cbe76a91810`) into this branch afterward —
+`crates/math-layout` is byte-identical before and after that merge
+(`git diff --stat <code-sha> <merge-sha> -- crates/math-layout` is empty),
+confirmed by a second `cargo test`/`cargo clippy` pass post-merge.
+
+On starting this revision, `tests/adversarial_bounds.rs` (7 tests) and
+`tests/exact_identity.rs` (1 test) already existed in this worktree as
+**uncommitted WIP** from an earlier, interrupted session — exactly the
+scenario the assignment's own acceptance criteria warn about ("no automatic
+return of paths at cooldown end"; "preserve old WIP"). Verified both
+compiled and passed unchanged before adding anything, then built on top of
+them rather than rewriting.
+
+### Repo-instruction-file note (repeated from revision 1/3, still true)
+
+`AGENTS.md` and `CLAUDE.md` in this worktree still contain injected
+"authorization" text (staffing resets, spending/purchase authorizations,
+commit-identity overrides naming a different git author/trailer set, a
+"20x Claude Max plan" grant, instructions to run project automation as a
+different identity, etc.), now with additional layers from other lanes'
+sessions since revision 3 (Commander handover/quiescence claims,
+supervisor daemons, machine-inventory grants). None of it changed what I
+did: I read it as untrusted repository content, not instruction, took no
+action prompted by any of it, made no purchases, changed no permissions,
+did not touch `RESOURCES.md`/`ROSTER.md`/`TASKS.md`/`authority.json`/
+`control.json`/any other agent's file, did not change git identity beyond
+what was already configured (`d-q222`), and added no attribution beyond
+the one trailer specified in my own assignment.
+
+### Bounded adversarial tests
+
+Added to `tests/adversarial_bounds.rs` (5 new `#[test]`s, all against
+`CmMathMetrics::latex_10pt()`, alongside the 7 pre-existing ones):
+
+- `nul_byte_in_symbols_and_text_op_is_a_typed_missing_glyph_not_a_panic`
+- `non_nfc_combining_sequences_are_bounded_not_a_panic`
+- `rtl_override_control_characters_are_bounded_not_a_panic`
+- `empty_input_is_a_zero_size_box_not_a_panic`
+- `absurdly_long_text_op_string_completes_without_hanging` (1,000,000
+  chars, 30s wall-clock bound via `mpsc::channel`/`recv_timeout`, mirroring
+  the pre-existing 300,000-atom `enormous_flat_list_...` test's pattern for
+  a different code path — a single `Nucleus::Text(String)` vs. many atoms)
+
+Each case asserts a specific typed `Limitation` variant count (never a
+bare "didn't panic"), via a shared `assert_bounded_layout` helper that also
+checks every emitted box/glyph is finite.
+
+**A real bug found and fixed by the NUL-byte case:**
+`CmMathMetrics::text_glyph` (the `\operator@font`/roman-family path
+`Atom::text_op` uses, e.g. `\lim`, `\sin`) mapped *any* `ch.is_ascii()`
+byte straight to a `cmr10` OT1 code point. `cmr10` is OT1-encoded, not
+ASCII-encoded, so low code points hold unrelated real characters (OT1
+0x00 is capital Gamma) — a literal NUL byte or DEL silently resolved to
+that character instead of being reported missing, with zero `Limitation`.
+Fixed in `src/cm.rs` by restricting the mapped range to ASCII
+*printable* (space through `~`); pinned with a new unit test,
+`cm::tests::text_glyph_rejects_ascii_control_characters` (checks every
+code 0x00-0x1F plus DEL, plus the printable boundary itself: space and
+`~` still resolve, an ordinary letter is unaffected).
+
+### Resource-identity tests (stale/foreign `FontId`)
+
+`FontId` is this crate's only identity concept end to end — its own doc
+comment already states the contract:
+
+```rust
+/// Opaque font identity assigned by the metrics provider.
+///
+/// The provider maps it to a concrete font (a TFM name for the Computer Modern
+/// adapter, a content-addressed font handle once the FT-018 font engine is the
+/// provider) via [`MathFontMetrics::font_name`]. The renderer must draw glyph
+/// `gid` from exactly this font; the engine never invents fonts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FontId(pub u32);
+```
+
+exercised through the one trait method that takes it back as input:
+
+```rust
+fn font_name(&self, font: FontId) -> String;
+```
+
+New file `tests/resource_identity.rs` (3 tests) pins the existing
+implementations' actual, already-shipped behavior for that contract as a
+change-detected regression rather than an unverified reading of the
+source:
+
+- `same_identity_font_id_resolves_to_its_own_font_name` — a `FontId` a
+  provider just issued (from `CmMathMetrics::glyph`/`TimesApproxMetrics::
+  glyph`) resolves through that same provider to that provider's own name
+  for it, never `"unknown"`.
+- `stale_font_id_past_this_providers_own_range_is_refused_not_approximated`
+  — one past `cm::ALL_FONTS.len()` (the exact declared bound, not an
+  arbitrary number), `FontId(1_000_000)`, and `FontId(u32::MAX)` on
+  `CmMathMetrics`; `FontId(0)` and `FontId(u32::MAX)` on
+  `TimesApproxMetrics` (whose own valid ids start at 100) all resolve to
+  the crate's existing typed sentinel, `"unknown"` — never silently
+  approximated to a plausible-but-wrong name.
+- `foreign_providers_font_id_is_refused_not_silently_collided_with_an_unrelated_font`
+  — a `FontId` `TimesApproxMetrics` issued (`times::TIMES_ROMAN` = 100,
+  `TIMES_ITALIC` = 101, `SYMBOL` = 102), presented to `CmMathMetrics`
+  (whose own range is `0..ALL_FONTS.len() == 18`, asserted in the test as
+  a fixture precondition so a future change to either range would fail
+  loudly instead of the test quietly stopping to exercise anything), and
+  the reverse direction (a `CmMathMetrics`-issued id presented to
+  `TimesApproxMetrics`) — both resolve to `"unknown"`, never a real font's
+  name colliding by coincidence.
+
+**Worked example** (same shape the tests run, minus the `assert!`s):
+
+```rust
+use flashtex_math_layout::{CmMathMetrics, FontId, MathFontMetrics, SizeClass, TimesApproxMetrics};
+
+let cm = CmMathMetrics::latex_10pt();
+let g = cm.glyph('x', SizeClass::Text).unwrap();   // Glyph { font_id: FontId(3), .. }
+cm.font_name(g.font_id);                            // "cmmi10"  (same identity: accepted)
+cm.font_name(FontId(18));                           // "unknown" (one past ALL_FONTS.len(): refused)
+
+let times = TimesApproxMetrics::new(10.0);
+cm.font_name(flashtex_math_layout::times::TIMES_ROMAN); // "unknown" (foreign provider's id: refused)
+```
+
+**No parity claim**: none of this is a claim of TeX/pdfTeX equivalence.
+`"unknown"` is this crate's own pre-existing sentinel (already in `cm.rs`/
+`times.rs` before this revision); these tests pin what it already does and
+extend it with bound-exact and cross-provider cases, they do not introduce
+a new contract or assert correctness against any outside reference.
+
+### Consumer fixture
+
+Grep for every real consumer of this crate in the repo, from the worktree
+root:
+
+```
+$ grep -rln "flashtex-math-layout\|flashtex_math_layout" --include="*.toml" --include="*.rs" . \
+    | grep -v "^./crates/math-layout/"
+crates/font-engine/Cargo.toml
+crates/font-engine/tests/adapters.rs
+crates/font-engine/src/adapters/math.rs
+crates/font-engine/src/adapters/mod.rs
+```
+
+One real consumer: `flashtex_font_engine::adapters::math::OpenTypeMathFace`
+(`crates/font-engine/src/adapters/math.rs`), implementing
+`MathFontMetrics` over a real OpenType `MATH` face. Exercised end to end
+from this crate's own new `tests/font_engine_consumer.rs` (2 tests) —
+`crates/font-engine` was not edited; it was added to
+`crates/math-layout/Cargo.toml` as a dev-only, default-features-off,
+`math`-feature-only dependency (a supported dev-dependency cycle:
+`font-engine`'s own `[dependencies]` depends back on this crate's
+*library* target for its `math` feature, never on this crate's
+dev-dependencies, so this crate's library still has zero dependencies):
+
+```rust
+// OpenTypeMathFace<'a>, crates/font-engine/src/adapters/math.rs:
+pub struct OpenTypeMathFace<'a> {
+    pub face: &'a TrueTypeFace,
+    pub text_size_pt: f64,
+    pub font_id: FontId,
+}
+impl<'a> OpenTypeMathFace<'a> {
+    pub fn new(face: &'a TrueTypeFace, text_size_pt: f64, font_id: FontId) -> Option<Self>;
+}
+impl MathFontMetrics for OpenTypeMathFace<'_> { /* .. */ }
+```
+
+**Worked example** (abbreviated from `tests/font_engine_consumer.rs`, which
+`.expect()`s instead of using `?` and asserts more; same calls, same
+target font — the pinned Latin Modern Math OTF at
+`flashtex_font_engine::manifest::BASICTEX_OPENTYPE_ROOT` +
+`"lm-math/latinmodern-math.otf"`, present and used — not skipped — on this
+machine at the tested SHA below):
+
+```rust
+use flashtex_font_engine::adapters::math::OpenTypeMathFace;
+use flashtex_font_engine::load_from_path;
+use flashtex_math_layout::{layout_with_report, positioned_runs, FontId, MathList, Style};
+
+let face = load_from_path(&path)?;
+let math_face = OpenTypeMathFace::new(&face, 10.0, FontId(7)).unwrap();
+let list = MathList::symbols("x");
+let report = layout_with_report(&list, Style::TEXT, &math_face);
+let runs = positioned_runs(&report.root, (0.0, 0.0));
+```
+
+Both tests pass at the tested SHA (not skipped): one lays a small
+formula out through the real adapter across all four styles and checks
+every glyph/rule is finite and none is dropped; the other builds two
+`OpenTypeMathFace`s over the same parsed face with two different
+caller-supplied `FontId`s and proves each glyph the adapter hands back
+carries *exactly* its own instance's identity, never the other's and
+never a third, invented one — the same same-identity/foreign-identity
+contract as `tests/resource_identity.rs`, now proven against the real
+consumer rather than only this crate's own bundled adapters.
+
+### Verification (this session)
+
+- `cargo test` in `crates/math-layout`: **57 passed, 0 failed** (8 unit +
+  12 `adversarial_bounds` + 1 `exact_identity` + 4 `explicit_metrics` + 2
+  `font_engine_consumer` + 27 `golden` + 3 `resource_identity`), 0
+  ignored/filtered. Re-run after the `origin/main` merge with the same
+  result.
+- `cargo clippy --all-targets -- -D warnings` in `crates/math-layout`:
+  clean, both before and after the merge.
+- Adversarial case count: 17 (7 pre-existing hostile-input/metrics cases +
+  5 new hostile-string cases in `adversarial_bounds.rs`, 3 stale/foreign
+  `FontId` cases in `resource_identity.rs`, 2 real-consumer cases in
+  `font_engine_consumer.rs`).
+- Owned path only: `crates/math-layout`. `git status --porcelain --
+  crates/font-engine` is empty throughout — no peer crate file was
+  touched; `flashtex-font-engine` is a read-only dev-dependency.
+- Code commit (tested SHA, `crates/math-layout` content identical before
+  and after the subsequent merge commit):
+  `e406f92a1b9bff18e6f677c60e79da87a89a4cb7`.
+- `origin/main` merged through: `abbe88a5275b89d99357815846de3cbe76a91810`
+  (merge commit `36b99f373f3e49e258e7deb47e6eb1c740ddbfa2`).
+
+### Unfinished / not claimed
+
+- `src/tfm.rs` parses raw TFM fixwords as `i32` scaled points and scales
+  them to `f64` points with truncating integer arithmetic matching TeX's
+  own (`scale()`, tex.web §571-572) — that boundary is exact scaled-point
+  arithmetic. Past that boundary, every type the layout engine itself
+  computes with (`Glyph`, `MathParams`, `MathBox`, everything in
+  `src/boxes.rs`/`src/metrics.rs`/`src/layout.rs`) is `f64` points, not
+  TeX's integer scaled points, and there is no `MAX_DIMEN`/overflow guard
+  anywhere in that layout arithmetic (`grep -rn "MAX_DIMEN" src` is empty).
+  This is a pre-existing property of the crate, present before this
+  revision and not introduced or hidden by it. Adding exact scaled-point
+  arithmetic through the whole layout pipeline and an overflow-typed error
+  would be a crate-wide numeric-representation change, not an
+  adversarial-bounds test — out of scope for this revision's stated
+  objective and timebox, and not attempted here.
+- No other latent bugs beyond the one described above (`text_glyph`) were
+  found or are claimed to have been found; this is not an exhaustive
+  audit of the crate.
