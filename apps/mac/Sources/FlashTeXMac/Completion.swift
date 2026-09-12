@@ -1,4 +1,5 @@
 import AppKit
+import FlashTeXAccessibility
 import FlashTeXProtocol
 import os
 
@@ -1054,7 +1055,8 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         table.target = self
         table.action = #selector(rowClicked(_:))
         table.doubleAction = #selector(rowDoubleClicked(_:))
-        table.setAccessibilityLabel("Completions")
+        table.setAccessibilityLabel(CompletionAccessibility.listLabel) // FlashTeXAccessibility
+        table.setAccessibilityHelp(CompletionAccessibility.listHelp)
         let scroll = NSScrollView(frame: contentView!.bounds)
         scroll.documentView = table
         scroll.hasVerticalScroller = true
@@ -1096,6 +1098,7 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
         if items.indices.contains(selected) {
             table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
             table.scrollRowToVisible(selected)
+            announceSelection(items[selected], index: selected, total: items.count)
         }
         updatingSelection = false
     }
@@ -1150,7 +1153,22 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
             return f
         }()
         field.attributedStringValue = Self.attributed(items[row])
+        field.setAccessibilityLabel(Self.spokenLabel(items[row])) // FlashTeXAccessibility
         return field
+    }
+
+    /// "\section, command, supported by this compiler" — what VoiceOver reads for a row.
+    static func spokenLabel(_ s: Completion.Suggestion) -> String {
+        CompletionAccessibility.rowLabel(label: s.label, kind: s.kind.accessibilityKind, detail: s.detail)
+    }
+
+    /// "n of m: …" posted when the selection moves (the panel never takes focus, so this is the only cue).
+    private func announceSelection(_ s: Completion.Suggestion, index: Int, total: Int) {
+        NSAccessibility.post(element: table, notification: .announcementRequested, userInfo: [
+            .announcement: CompletionAccessibility.selectionAnnouncement(index: index, total: total, label: s.label,
+                                                                        kind: s.kind.accessibilityKind, detail: s.detail),
+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
     }
 
     /// `\section  cmd · supported by this compiler` — label in the editor's
@@ -1167,6 +1185,17 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
 }
 
 extension Completion.Kind {
+    /// The accessibility layer's spelling of the kind (spoken "label" for `.reference`).
+    var accessibilityKind: CompletionAccessibility.Kind {
+        switch self {
+        case .command: return .command
+        case .environment: return .environment
+        case .reference: return .reference
+        case .citation: return .citation
+        case .word: return .word
+        }
+    }
+
     var badge: String {
         switch self {
         case .command: return "cmd"

@@ -339,7 +339,8 @@ private struct PreviewPane: View {
                     Spacer()
                     if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
                 }
-                .accessibleDiagnostic(d, index: i, total: diags.count) { model.navigate(to: d.source) } // FlashTeXAccessibility
+                .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok,
+                                      explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line) { model.navigate(to: d.source) } // FlashTeXAccessibility
             }
             .frame(minHeight: 80, maxHeight: 180)
         }

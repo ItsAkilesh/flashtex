@@ -13,6 +13,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case undo, completion
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
+    case accessibilityHelp
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -148,6 +149,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Brings back the unsaved text replaced by a Discard decision when another file was opened; the restored buffer stays unsaved.",
                          requires: "a discarded buffer from this session",
                          menuItem: "Restore Discarded Buffer")
+        case .accessibilityHelp:
+            return Entry(command: self, title: "Help window", shortcuts: ["Help > FlashTeX Accessibility Help"], menu: "Help",
+                         description: "Opens the Accessibility Help window: focus order, what VoiceOver reads in each pane, and every command in this table.",
+                         menuItem: "FlashTeX Accessibility Help")
         case .selectPreviewItemSource:
             return Entry(command: self, title: "Select source of a preview item", shortcuts: ["Click preview text"], menu: "Preview",
                          description: "Selects the item's source in the editor; with VoiceOver, use the “Go to source” action on the item.",

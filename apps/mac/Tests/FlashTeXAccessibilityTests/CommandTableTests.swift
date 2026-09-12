@@ -242,7 +242,7 @@ final class CommandTableTests: XCTestCase {
 
     func testHelpViewCoversEveryCommandAndMenu() {
         let menus = AccessibilityHelpView.menus
-        XCTAssertEqual(menus.map(\.menu), ["File", "File / toolbar", "Edit", "Editor", "Navigate", "Preview"])
+        XCTAssertEqual(menus.map(\.menu), ["File", "File / toolbar", "Edit", "Editor", "Navigate", "Preview", "Help"])
         XCTAssertEqual(menus.flatMap(\.entries).count, AccessibilityCommand.allCases.count)
         XCTAssertEqual(AccessibilityHelpView.windowID, "a11y-help")
         XCTAssertEqual(AccessibilityHelpView.menuItem, "FlashTeX Accessibility Help")

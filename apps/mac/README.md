@@ -680,6 +680,7 @@ explain that nothing is loaded.
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
+| Help > FlashTeX Accessibility Help | Help window: focus order, what VoiceOver reads in each pane, every command above |
 
 The compiler rejects request lines over 8 MiB with an `error` envelope, which the
 banner shows; the shell rejects response lines over 16 MiB.

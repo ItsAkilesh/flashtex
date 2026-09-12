@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import FlashTeXAccessibility
 
 /// A bare SwiftPM executable has no bundle, so AppKit defaults to an
 /// accessory-style process with no Dock icon and, when launched from a
@@ -88,11 +89,14 @@ struct FlashTeXMacApp: App {
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
-                    if ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"] == "nearby" { openWindow(id: "nearby") }
+                    if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID].contains(id) { openWindow(id: id) }
                 }
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift
+            CommandGroup(after: .help) {
+                Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
+            }
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
@@ -163,5 +167,8 @@ struct FlashTeXMacApp: App {
             NearbyView().environmentObject(nearby).environment(model)
         }
         .windowResizability(.contentSize)
+        Window("Accessibility Help", id: AccessibilityHelpView.windowID) {
+            AccessibilityHelpView() // FlashTeXAccessibility: focus order, VoiceOver notes, command table
+        }
     }
 }
