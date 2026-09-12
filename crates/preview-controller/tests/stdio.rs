@@ -1725,6 +1725,24 @@ fn stalled_optional_display_write_triggers_watchdog_with_no_source_loss() {
         .any(|v| v["phase"] == "optional_output"
             && v["kind"] == "display_candidate"
             && v["outcome"] == "admitted"));
+    let records: Vec<Value> = log
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    let timeout = records
+        .iter()
+        .find(|v| v["phase"] == "output_watchdog")
+        .unwrap();
+    assert_eq!(timeout["outcome"], "timeout");
+    let sequence = timeout["sequence"].as_u64().unwrap();
+    assert!(records.iter().any(|v| v["phase"] == "output_frame"
+        && v["sequence"] == sequence
+        && v["class"] == "optional"
+        && v["outcome"] == "write_started"));
+    assert!(!records.iter().any(|v| v["phase"] == "output_frame"
+        && v["sequence"] == sequence
+        && v["outcome"] == "write_finished"));
+    assert!(!log.contains("α original"));
     drop(client);
     let mut reopened = Client::start(dir.path());
     reopened.send("doc", "document", json!({"path":"main.tex"}));

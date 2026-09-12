@@ -176,7 +176,8 @@ inferred from the missing frame.
 
 Before choosing an optimization, the minimal diagnostic extension should:
 
-- Attach request ID and a helper-relative monotonic timestamp to request timing.
+- Attach a numeric diagnostic request sequence and a helper-relative monotonic
+  timestamp to request timing; do not log external request IDs.
 - Give admitted output frames a small diagnostic sequence number and admission
   timestamp; record required/optional class, byte count, dequeue/start/end times
   and write success. Pass metadata with the frame rather than reparsing its JSON.
@@ -191,3 +192,37 @@ writes. Cross-process timestamps need an explicit shared clock/calibration befor
 subtracting them; within-process durations alone cannot establish transport time.
 Only then should a bounded new capture test which stage dominates. This analysis
 runs solely over existing artifacts and makes no additional timing measurement.
+
+## Implemented diagnostic transport probes
+
+With diagnostic_timings enabled, output frames now carry a numeric attempted-
+admission sequence, class, byte count and helper-relative admission clock. Stderr
+records admission/refusal, optional replacement/reset/required eviction, dequeue,
+write start/finish/failure, and a distinct watchdog timeout carrying the active
+sequence. Historical frames additionally retain the numeric compile generation,
+including when evicted without delivery. Missing binding and eligibility/claim
+refusals are explicit scalar outcomes. No raw request IDs, paths or tokens are
+included in these new records. Request timing uses a checked numeric sequence and
+shares the output clock. Exhausted diagnostic IDs become absent, never wrap.
+
+Queue trace emission occurs after releasing the queue mutex. Diagnostic stderr
+must still be actively drained or redirected to a file: these opt-in probes can
+perturb scheduling and a blocked diagnostic sink is not made nonblocking. Admission
+logging may race dequeue logging, so log-line order is not lifecycle order.
+Sequence gaps include refused attempts, and an evicted optional frame never
+appears on stdout. Correlate successful writer order and original wire evidence,
+not contiguous sequence numbers or byte count alone. A timeout is not a successful
+write or proof of partial byte count. Existing watchdog and queue bounds remain.
+
+The benchmark receiver records a Client-wide ordinal including startup frames,
+read completion, a separate decode start/end (excluding raw-wire copying), and
+frame byte count. Its source-free timing list is capped at4096 records, with a
+reported dropped count. Parent receipt handling remains distinct from native paint.
+Helper-relative and Python monotonic timestamps are separate clock domains until
+explicitly calibrated; compare within-process durations without subtracting origins.
+
+Tests cover replacement/in-flight identity, refused attempts, preserved required
+priority, disabled diagnostics, sequence exhaustion, and actual unread-output
+watchdog correlation with no false write_finished record. Receiver order and
+record bounds were checked without a compiler timing run. Defaults and wire bytes
+remain unchanged. A measured diagnostic capture is still a separate future gate.

@@ -162,7 +162,9 @@ def main():
                 if sender:sender.stop()
             finally:
                 try:client.stop()
-                finally:events.close()
+                finally:
+                    events.close()
+                    (out/'receiver-timings.json').write_text(json.dumps(dict(records=client.receiver_timings,dropped=client.receiver_timings_dropped),indent=2)+'\n')
         reopened=Client(args.helper,config)
         try:
             durable=snapshot_after_initial_preview(reopened)
