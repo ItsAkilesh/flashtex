@@ -1,26 +1,25 @@
 {
   "acceptance": [
-    "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-    "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-    "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-    "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+    "Consume already-published index APIs without duplicate parser or index implementation",
+    "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
+    "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
   ],
   "agent_id": "commander-preview-performance",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "02de1162386ba3278e149025dd1d2e623911de0a",
-  "objective": "Resolve measured large-edit history cost and bounded helper frame headroom while preserving negotiated historical delivery, durable source, permanent IDs and exact replay semantics.",
+  "input_main_sha": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
+  "objective": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
   "owned_paths": [
     "crates/preview-controller",
     "crates/document-runtime",
     "crates/edit-ledger"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
-  "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T10:07:56.529965+00:00"
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T10:42:19.775391+00:00"
 }
