@@ -118,3 +118,14 @@ query preprocessing. Results contain ordered UTF-8 byte ranges, `work_used` and
 explicit `termination`: `complete`, `match_limit`, or `work_limit`. Partial results
 must never be labeled exhaustive. Search is a bounded serialized operation; this
 initial helper route does not implement mid-query user cancellation or regex.
+
+`reload:{path,expected_revision,expected_sha256,expected_disk_sha256,user_approved:true}`
+explicitly imports a reviewed disk snapshot into the durable source. Both source
+identity and the freshly read disk hash must match. The helper takes the shared
+project lock while reading and saving the ledger; arbitrary external writers can
+still modify disk afterwards. The imported bytes are bounded UTF-8, and prior
+source remains in persistent undo history. This operation never writes disk.
+It returns document and separate preview status just like `edit`. A lost reply
+requires reading `document` before retry; the old revision will be refused after
+a successful reload. `user_approved` is a client responsibility, not proof of a
+human action. Native UI must show the changes before confirming replacement.

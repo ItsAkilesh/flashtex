@@ -366,6 +366,25 @@ fn handle(
                 json!({"path":string(p,"path")?,"disk":state,"discovery_diagnostics":files.diagnostics(),"export_available":true}),
             )
         }
+        "reload" => {
+            if p["user_approved"] != true {
+                return Err("explicit reload approval required".into());
+            }
+            let result = file_project
+                .ok_or("helper was not opened from a file project")?
+                .reload_explicitly(
+                    controller,
+                    string(p, "path")?,
+                    p["expected_revision"]
+                        .as_u64()
+                        .ok_or("expected_revision required")?,
+                    string(p, "expected_sha256")?,
+                    string(p, "expected_disk_sha256")?,
+                )?;
+            Ok(
+                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+            )
+        }
         "export" => {
             let receipt = file_project
                 .ok_or("helper was not opened from a file project")?
