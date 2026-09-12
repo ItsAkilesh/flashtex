@@ -134,10 +134,13 @@ final class WorkerClient {
 
     static func decode(_ line: Data) -> Event {
         do {
-            let header = try RuntimeV1.header(of: line)
-            if header.protocolVersion == 2, header.type == "display_list" {
-                return .displayList(id: header.id, line: line) // runtime-v1-display-list-v2.md
+            // runtime-v1-display-list-v2.md: the sibling line is ~2 MB; probe its
+            // header with the payload skipped by a byte scan (JSONDecoder over the
+            // whole line cost 11 ms p50 on this thread) and hand the bytes to V2Loader.
+            if let probe = RenderingV2Fast.header(line), probe.protocolVersion == 2, probe.type == "display_list" {
+                return .displayList(id: probe.id, line: line)
             }
+            let header = try RuntimeV1.header(of: line)
             guard header.protocolVersion == RuntimeV1.protocolVersion else {
                 return .protocolViolation("unsupported protocol_version \(header.protocolVersion)")
             }
