@@ -5,10 +5,10 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Original bounded tabular box layout with exact column widths, multicolumn spans and source-mapped rules; consume measured boxes, no compiler parser edits. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "paragraph-layout: exact reference-fixture mismatch repair with measured deltas",
+      "objective": "paragraph-layout: exact reference-fixture mismatch repair with measured deltas",
       "owned_paths": [
-        "crates/table-layout"
+        "crates/paragraph-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
@@ -19,10 +19,10 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Original bounded tabular box layout with exact column widths, multicolumn spans and source-mapped rules; consume measured boxes, no compiler parser edits. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "paragraph-layout: bounded performance regression and native/compiler adapter evidence",
+      "objective": "paragraph-layout: bounded performance regression and native/compiler adapter evidence",
       "owned_paths": [
-        "crates/table-layout"
+        "crates/paragraph-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",

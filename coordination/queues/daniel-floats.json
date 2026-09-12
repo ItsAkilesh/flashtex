@@ -5,10 +5,10 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Deterministic bounded figure/table float placement from measured boxes and explicit page constraints; preserve placement failures and source IDs. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "font-engine: exact reference-fixture mismatch repair with measured deltas",
+      "objective": "font-engine: exact reference-fixture mismatch repair with measured deltas",
       "owned_paths": [
-        "crates/float-layout"
+        "crates/font-engine"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
@@ -19,10 +19,10 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Deterministic bounded figure/table float placement from measured boxes and explicit page constraints; preserve placement failures and source IDs. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "font-engine: bounded performance regression and native/compiler adapter evidence",
+      "objective": "font-engine: bounded performance regression and native/compiler adapter evidence",
       "owned_paths": [
-        "crates/float-layout"
+        "crates/font-engine"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",

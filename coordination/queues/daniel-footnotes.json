@@ -5,10 +5,10 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Exact footnote insertion/splitting reservation from measured content boxes with source links, continuation and overflow diagnostics. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "math-layout: exact reference-fixture mismatch repair with measured deltas",
+      "objective": "math-layout: exact reference-fixture mismatch repair with measured deltas",
       "owned_paths": [
-        "crates/footnote-layout"
+        "crates/math-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
@@ -19,10 +19,10 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Exact footnote insertion/splitting reservation from measured content boxes with source links, continuation and overflow diagnostics. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "math-layout: bounded performance regression and native/compiler adapter evidence",
+      "objective": "math-layout: bounded performance regression and native/compiler adapter evidence",
       "owned_paths": [
-        "crates/footnote-layout"
+        "crates/math-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",

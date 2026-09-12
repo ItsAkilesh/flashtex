@@ -16,8 +16,10 @@
   ],
   "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "paused_transferred",
   "task_id": "FT-018",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:39:21Z"
+  "updated_utc": "2026-09-12T06:39:21Z",
+  "transfer_to": "FT-031",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return"
 }
