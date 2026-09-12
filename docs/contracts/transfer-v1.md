@@ -1,0 +1,123 @@
+# Capture bridge and reviewed insertion v1
+
+Owner: Commander, FT-007. Updated September 12, 2026. Status: implemented local
+Rust bridge interface, additive to [runtime-v1](runtime-v1.md); native integration
+and encrypted nearby transport remain outstanding. Implementation and tests:
+[`crates/bridge`](../../crates/bridge/README.md). This document governs these new
+message types once merged; it does not change compilation messages.
+
+The Mac launches a separate bridge process with a private application-data journal.
+UTF-8 JSON Lines use the runtime envelope `{protocol_version:1,id,type,payload}`.
+Each request ID is a nonempty string of at most 128 bytes; replies preserve it.
+Errors carry `{code,message}`. Unparseable/unidentifiable requests use null ID.
+Each line, including newline, is at most 12 MiB. Logs belong on stderr. Process
+requests off the main UI thread; conversion can take up to 90 seconds and must not
+block compiler/editor responsiveness. One process owns a journal at a time.
+
+## Documents and destinations
+
+All offsets are zero-based, end-exclusive UTF-8 byte boundaries. Document text is
+at most 8 MiB. Project/capture/destination IDs contain 1–128 ASCII alphanumerics,
+`-` or `_`. Paths are normalized relative paths; reject absolute paths, empty or
+parent segments, backslashes, colons and NUL. Revisions are increasing integers.
+
+| Request type | Payload | Reply type / payload |
+|---|---|---|
+| `document_open` | `project_id,path,revision,text` | `document_opened` / `{}` |
+| `document_edit` | `project_id,path,base_revision,revision,start_byte,end_byte,replacement` | `document_updated` / `{revision}` |
+| `destination_pin` | `destination_id,project_id,path,revision,start_byte,end_byte` | `destination_pinned` / anchor below |
+
+An anchor contains `destination_id,project_id,path,pinned_revision,current_revision,
+start_byte,end_byte,valid`. Capture `base_revision` means the original pinned
+revision, not a guess from the phone. A document edit before the target rebases
+its offsets. An intersecting edit, or insertion exactly at an empty target,
+invalidates the target rather than guessing affinity. Unknown full-snapshot
+changes invalidate affected anchors. A new selection receives a new destination
+ID. The Mac supplies the current destination to the paired companion; users
+should not have to type IDs or revision numbers.
+
+## Durable capture and conversion
+
+`capture_submit` retains the runtime-v1 payload. Accept only fully decodable PNG
+or JPEG, at most 8 MiB encoded image bytes, dimensions at most 8192 × 8192 and a
+64 MiB decode allocation limit. Instructions are at most 4096 UTF-8 bytes. Send
+one image per capture. Invalid images receive an error, not an acknowledgement.
+
+`capture_received` contains `capture_id,durable:true,has_proposal,applied`. The
+journal has been atomically replaced and fsynced before acknowledgement. Identical
+capture-ID retries return the existing record; a different payload using that ID
+returns `capture_conflict`. Durable receipt does not mean conversion or insertion.
+
+`capture_convert` payload is `{capture_id,supported_features:[]}`. The feature list
+comes from actual compiler capabilities, at most 64 entries of 128 bytes each.
+The bridge resolves the current anchor and assembles bounded context: selected
+source, nearby source, package/macro definition line excerpts, project/path and
+revision. Total source context is at most 16 KiB; selected text at most 8 KiB;
+prefix/suffix at most 4096 bytes each. Excerpts are not complete macro analysis.
+
+`capture_proposal` returns `capture_id,latex,ambiguities,required_dependencies,
+context_revision`. LaTeX is 1–65536 UTF-8 bytes; each list has at most 32 strings,
+each at most 2048 bytes. The UI displays uncertainties and dependencies explicitly.
+No unsupported package is silently installed. Actual compiler validation of the
+proposal in document context remains an integration gate, not an implemented
+claim. Show the proposed edit and resulting diagnostics before approval.
+
+Grok is opt-in at process launch (`--enable-grok`) and per conversion request.
+The Mac credential adapter supplies its authorized key; never send keys from the
+companion or store them in the capture journal. No automatic retry or provider
+fallback occurs. Successfully journaled proposals are reused. A process crash
+between a successful API response and journal persistence can require another
+paid call; receipt deduplication does not promise exactly-once external billing.
+
+## Review, insertion and crash reconciliation
+
+| Request type | Payload | Reply |
+|---|---|---|
+| `capture_reject` | `{capture_id}` | `capture_rejected` / `{capture_id}` |
+| `capture_prepare_insert` | `{capture_id,expected_revision,approved:true}` | `capture_edit` / prepared edit below |
+| `capture_applied` | `{capture_id,edit_id,new_revision}` | `capture_application_received` / same fields |
+| `capture_status` | `{capture_id}` | `capture_status` / `{capture_id,proposal,prepared,applied,rejected}` |
+
+Rejecting a capture is durable and terminal. Retries are harmless; conversion and
+preparation subsequently fail. Rejection after an edit has already been issued
+is refused: first reconcile the Mac edit ledger, because an issued edit might
+already have been applied. A new attempt uses a new capture ID.
+
+A prepared edit contains `capture_id,edit_id,project_id,path,expected_revision,
+start_byte,end_byte,removed_text,replacement,document_before_sha256`. It is
+persisted before being returned. Preparation never edits source. Repeating the
+same request returns the same edit only if the current source revision/hash still
+match. Changing the source after preparation requires reconciliation, not blind
+re-preparation or replay.
+
+The Mac must:
+
+1. Require explicit review approval for the currently displayed proposal and target.
+2. Compare revision, SHA-256 of UTF-8 source, scalar boundaries and removed text.
+3. Persist an edit-ID application ledger with its document transaction; apply one
+   undoable source edit. An already applied ID must never produce another edit.
+4. Send `capture_applied` after its source transaction is durable. Do not also send
+   `document_edit` for that same edit: confirmation updates the bridge snapshot.
+5. On disconnect/restart, consult `capture_status` and its own ledger before doing
+   anything. Reopen the pre-edit snapshot before replaying a missing receipt, then
+   synchronize the current source; never reapply to an already changed document.
+
+The bridge accepts matching receipt retries and rejects conflicting IDs/revisions.
+Its journal alone cannot make a separate native document store transactional.
+Native ledger, undo integration and restart reconciliation require integration
+verification. Anchors/documents are in memory and must be resynchronized after
+restart. A stale/invalid destination must show a reselection action; the initial
+bridge requires a new capture ID/destination for the renewed attempt.
+
+## Nearby transport boundary
+
+This executable implements local stdin/stdout, not a network listener. Planned
+nearby transport must use explicit pairing plus authenticated encryption; Bonjour
+is discovery only. Do not expose this plaintext process protocol to an anonymous
+LAN port. The authenticated adapter forwards capture messages to the local bridge
+and returns durable acknowledgements. Camera/Pencil device tests, disconnect
+recovery, pairing, TLS identity storage and native Keychain access are outstanding.
+
+Consumers: FT-003 Mac owns UI review, document transaction and bridge lifecycle;
+FT-004 companion owns image production and authenticated delivery; FT-012 validates
+published envelopes; FT-007 owns Rust journal, anchors and provider conversion.
