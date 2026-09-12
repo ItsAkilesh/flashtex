@@ -25,7 +25,6 @@ mod output_delivery;
 mod source_plans;
 mod wire;
 mod raw_wire;
-use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
@@ -51,20 +50,18 @@ fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
 fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
-    let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
-    if serde_json::to_writer(&mut buffer, &value).is_err() {
-        buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+    emit_with_limit(tx, stopped, value, MAX_OUTPUT_BYTES);
+}
+fn emit_with_limit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value, limit: usize) {
+    let bytes = output_buffer::serialize(&value, limit).or_else(|_| {
         let error = failure(
             value["session_id"].as_str().unwrap_or(""),
             value["id"].clone(),
             "response exceeds output limit; source may already be durable",
         );
-        if serde_json::to_writer(&mut buffer, &error).is_err() {
-            stopped.store(true, Ordering::SeqCst);
-            return;
-        }
-    }
-    let Ok(bytes) = buffer.finish() else {
+        output_buffer::serialize(&error, limit)
+    });
+    let Ok(bytes) = bytes else {
         stopped.store(true, Ordering::SeqCst);
         return;
     };
@@ -902,4 +899,28 @@ mod configuration_tests {
             assert!(compiler_limits(&json!({"compiler_max_frame_bytes":value})).is_err());
         }
     }
+    #[test]
+    fn required_serialization_refusal_delivers_error_then_next_ack() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        emit_with_limit(&tx, &stopped, wire::envelope("s", json!("large"), "result", json!({"body":"x".repeat(20000)})), 512);
+        emit_with_limit(&tx, &stopped, wire::envelope("s", json!("ack"), "result", json!({"durable":true})), 512);
+        assert!(!stopped.load(Ordering::SeqCst));
+        let first = rx.next(Duration::ZERO).unwrap();
+        let error: Value = serde_json::from_slice(&first.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["id"], "large");
+        assert!(error["payload"]["message"].as_str().unwrap().contains("source may already be durable"));
+        rx.written(&first);
+        let second = rx.next(Duration::ZERO).unwrap();
+        let ack: Value = serde_json::from_slice(&second.bytes).unwrap();
+        assert_eq!(ack["id"], "ack");
+        assert_eq!(ack["payload"]["durable"], true);
+        rx.written(&second);
+        assert!(rx.next(Duration::ZERO).is_err());
+        emit_with_limit(&tx, &stopped, json!({"too":"large"}), 1);
+        assert!(stopped.load(Ordering::SeqCst));
+        assert!(rx.next(Duration::ZERO).is_err());
+    }
+
 }
