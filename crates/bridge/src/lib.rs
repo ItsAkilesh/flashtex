@@ -1,4 +1,5 @@
 //! Durable capture receipt and reviewed source edits. No TeX engine is embedded.
+pub mod context;
 pub mod grok;
 pub mod store;
 
@@ -466,50 +467,15 @@ impl Bridge {
     ) -> Result<Context> {
         let a = self.capture_anchor(capture)?;
         let doc = self.document(&a.project_id, &a.path)?;
-        range(&doc.text, a.start_byte, a.end_byte)?;
-        if a.end_byte - a.start_byte > MAX_CONTEXT_BYTES / 2 {
-            return Err(BridgeError::new(
-                "context_too_large",
-                "Selected source exceeds context budget",
-            ));
-        }
-        let mut start = a.start_byte.saturating_sub(4096);
-        while !doc.text.is_char_boundary(start) {
-            start += 1;
-        }
-        let mut end = (a.end_byte + 4096).min(doc.text.len());
-        while !doc.text.is_char_boundary(end) {
-            end -= 1;
-        }
-        let mut definitions = Vec::new();
-        let mut remaining = MAX_CONTEXT_BYTES - (end - start);
-        for line in doc.text.lines().filter(|l| {
-            ["\\usepackage", "\\newcommand", "\\renewcommand", "\\def"]
-                .iter()
-                .any(|p| l.trim_start().starts_with(p))
-        }) {
-            if line.len() <= remaining {
-                definitions.push(line.to_owned());
-                remaining -= line.len();
-            }
-        }
-        if supported_features.len() > 64 || supported_features.iter().any(|s| s.len() > 128) {
-            return Err(BridgeError::new(
-                "context_too_large",
-                "Supported-feature list exceeds limits",
-            ));
-        }
-        Ok(Context {
-            project_id: a.project_id.clone(),
-            path: a.path.clone(),
-            revision: doc.revision,
-            source_before: doc.text[start..a.start_byte].into(),
-            selected_source: doc.text[a.start_byte..a.end_byte].into(),
-            source_after: doc.text[a.end_byte..end].into(),
-            definitions,
+        context::build(
+            doc,
+            a.start_byte,
+            a.end_byte,
+            self.documents.values(),
             supported_features,
-        })
+        )
     }
+
     pub fn convert(
         &mut self,
         capture_id: &str,
