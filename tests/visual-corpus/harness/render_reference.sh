@@ -125,6 +125,13 @@ if os.access(kp, os.X_OK):
         pk[sty] = r or None
     r = subprocess.run([kp, "-var-value", "SELFAUTOPARENT"], capture_output=True, text=True).stdout.strip()
     pk["texlive_root"] = r
+    pk["texbin_realpath"] = os.path.realpath(texbin)
+    tl = os.path.join(texbin, "tlmgr")
+    if os.access(tl, os.X_OK):
+        v = subprocess.run([tl, "--version"], capture_output=True, text=True).stdout.splitlines()
+        pk["tlmgr"] = next((l for l in v if "tlmgr" in l or "revision" in l), v[0] if v else "?")
+    pk["distribution"] = ("BasicTeX (TeX Live " + r.rsplit("/", 1)[-1] + ")" if r.endswith("basic")
+                          else "MacTeX / TeX Live full (" + r + ")" if "/texlive/" in r else "TeX Live at " + r)
 info["_packages"] = pk
 fonts = {}
 for f in ["/System/Library/Fonts/Supplemental/Times New Roman.ttf", "/System/Library/Fonts/Times.ttc"]:

@@ -430,9 +430,14 @@ def registration_diagnostics(ref, ours, dpi, max_shift_pt=60):
         out["candidate_rejected"] = {"shift_pt": out["candidate_shift_pt"], "diff_mean_if_applied": after["diff_mean"],
                                      "ssim_8x8_mean_if_applied": after["ssim_8x8_mean"]}
         dx, dy, after = 0, 0, raw
+    reduction = (raw["diff_mean"] - after["diff_mean"]) / raw["diff_mean"] if raw["diff_mean"] else 0.0
     out.update({"shift_px": [dx, dy], "shift_pt": [round(dx * 72 / dpi, 2), round(dy * 72 / dpi, 2)],
                 "registered_diff_mean": after["diff_mean"], "registered_differing_fraction": after["differing_fraction"],
-                "registered_ssim_8x8_mean": after["ssim_8x8_mean"]})
+                "registered_ssim_8x8_mean": after["ssim_8x8_mean"],
+                "error_reduction_fraction": round(reduction, 4),
+                # How much of the raw error the shift explains: a genuine global offset removes most of it;
+                # a large shift that removes a few percent is a coincidental alignment of unrelated lines.
+                "confidence": "none" if not (dx or dy) else "strong" if reduction >= 0.25 else "moderate" if reduction >= 0.05 else "weak"})
     return out
 
 
@@ -651,6 +656,7 @@ def summarise(pages):
             "above_threshold_fraction": round(statistics.fmean(p["above_threshold_fraction"] for p in ok), 6),
             "ssim_8x8_mean": round(statistics.fmean(p["ssim_8x8_mean"] for p in ok), 4),
             "registration_shift_pt": [p.get("registration", {}).get("shift_pt") for p in ok],
+            "registration_confidence": [p.get("registration", {}).get("confidence") for p in ok],
             "registered_diff_mean": round(statistics.fmean(p["registration"]["registered_diff_mean"] for p in ok if p.get("registration", {}).get("available")), 4)
                 if any(p.get("registration", {}).get("available") for p in ok) else None,
             "registered_ssim_8x8_mean": round(statistics.fmean(p["registration"]["registered_ssim_8x8_mean"] for p in ok if p.get("registration", {}).get("available")), 4)
@@ -816,6 +822,9 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                 L.append(f"  - {u['key']}: {u['reason']}")
     L.append("\nThe `-lm` oracles are the intended primary apples-to-apples target once a Latin-Modern-metrics FlashTeX pipeline "
              "exists; the Times oracles match the current compiler's Times metrics. Both are reported for every fixture.")
+    pk = prov.get("packages") or {}
+    if pk.get("distribution"):
+        L.append(f"\nTeX distribution this run: **{pk['distribution']}**, texbin → `{pk.get('texbin_realpath', '?')}`, {pk.get('tlmgr', 'tlmgr version unknown')}.")
     L.append(f"\nEngine flags: `{' '.join(prov.get('engine_flags', []))}`. Page size: US letter 612×792 pt for every producer "
              "(checked per page from the MediaBox). LaTeX package versions: see `provenance.json` → `packages`.\n")
     L.append("### FlashTeX builds under test\n")
@@ -854,7 +863,7 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
             return
         L.append(f"## {title}\n")
         L.append(note + "\n")
-        L.append("| Fixture | Engine | Compiler | Pages ref/ours | Status | mean\\|Δ\\| raw | SSIM₈ raw | registration Δ pt (dx,dy per page) | mean\\|Δ\\| after reg | SSIM₈ after reg | max | differing | ≥thr | words ref/ours/aligned | seq= | mean\\|dx\\| pt | mean\\|dy\\| pt | line-start agree | rules ref/ours | overlay |")
+        L.append("| Fixture | Engine | Compiler | Pages ref/ours | Status | mean\\|Δ\\| raw | SSIM₈ raw | registration Δ pt (dx,dy per page; `weak`/`moderate` = shift explains <25% of the error) | mean\\|Δ\\| after reg | SSIM₈ after reg | max | differing | ≥thr | words ref/ours/aligned | seq= | mean\\|dx\\| pt | mean\\|dy\\| pt | line-start agree | rules ref/ours | overlay |")
         L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for e in rows:
             if e.get("skipped"):
@@ -868,7 +877,8 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
             L.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
                 e["fixture"], e["engine"], e["compiler"], f"{e.get('ref_pages', '-')}/{e.get('our_pages', '-')}",
                 e.get("status", "-"), fmt(r.get("diff_mean")), fmt(r.get("ssim_8x8_mean")),
-                "; ".join(f"({v[0]:g},{v[1]:g})" for v in (r.get("registration_shift_pt") or []) if v) or "-",
+                "; ".join(f"({v[0]:g},{v[1]:g}){'' if c in ('none', 'strong') else ' ' + str(c)}"
+                          for v, c in zip(r.get("registration_shift_pt") or [], r.get("registration_confidence") or []) if v) or "-",
                 fmt(r.get("registered_diff_mean")), fmt(r.get("registered_ssim_8x8_mean")),
                 fmt(r.get("diff_max")), fmt(r.get("differing_fraction"), 4),
                 fmt(r.get("above_threshold_fraction"), 4),
@@ -928,7 +938,7 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                 L.append(f"  - registration error (diagnostic): global shift {reg['shift_pt']} pt by ink-projection correlation "
                          + (f"(correlation candidate {rej['shift_pt']} pt REJECTED: applying it gives mean|Δ| {rej['diff_mean_if_applied']}, not lower; "
                             f"centroid estimate {reg['centroid_shift_pt']} pt); " if rej else f"(centroid estimate {reg['centroid_shift_pt']} pt); ")
-                         + f"rendering error after undoing it: mean|Δ| "
+                         + f"confidence {reg.get('confidence')} (shift explains {round(100 * reg.get('error_reduction_fraction', 0))}% of raw mean|Δ|); rendering error after undoing it: mean|Δ| "
                          f"{reg['registered_diff_mean']}, differing {reg['registered_differing_fraction']}, SSIM₈ {reg['registered_ssim_8x8_mean']} "
                          f"(raw {p['diff_mean']}, {p['differing_fraction']}, {p['ssim_8x8_mean']})")
             if p.get("regions"):
