@@ -1,0 +1,18 @@
+{
+  "_comment": "Per-fixture acceptance limits for the narrow cases only. Checked by diff.py for entries whose [side, engine, compiler] is in scope; ssim/line-start are minimums, diff/dx/dy are maximums. Values were set from the 2026-09-12 baseline (pdflatex vs de1020c export, 144 DPI) with ~10-20% headroom so they catch worsening, not to certify quality.",
+  "default": {
+    "scope": [["export", "pdflatex", "de1020c"]],
+    "ssim_8x8_mean": 0.9,
+    "diff_mean": 3.0,
+    "above_threshold_fraction": 0.02
+  },
+  "01-plain-paragraph": {"ssim_8x8_mean": 0.99, "diff_mean": 0.3, "dx_abs_mean": 1.0, "dy_abs_mean": 1.0, "line_start_agreement": 1.0},
+  "02-wrapping-paragraph": {"ssim_8x8_mean": 0.85, "diff_mean": 9.5, "above_threshold_fraction": 0.06, "line_start_agreement": 0.85},
+  "03-section-heading": {"ssim_8x8_mean": 0.97, "diff_mean": 1.6, "dx_abs_mean": 1.0, "dy_abs_mean": 24.0},
+  "04-bold-emph": {"ssim_8x8_mean": 0.99, "diff_mean": 0.5, "dx_abs_mean": 5.0, "dy_abs_mean": 1.0},
+  "05-unicode": {"ssim_8x8_mean": 0.99, "diff_mean": 0.4, "dx_abs_mean": 7.0, "dy_abs_mean": 1.0},
+  "06-math-inline": {"ssim_8x8_mean": 0.99, "diff_mean": 0.5, "dx_abs_mean": 5.0, "dy_abs_mean": 3.5},
+  "07-math-display": {"ssim_8x8_mean": 0.99, "diff_mean": 0.35, "dx_abs_mean": 1.0, "dy_abs_mean": 2.0},
+  "08-two-page": {"ssim_8x8_mean": 0.5, "diff_mean": 30.0, "above_threshold_fraction": 0.18, "line_start_agreement": 0.85},
+  "09-mixed-document": {"ssim_8x8_mean": 0.94, "diff_mean": 3.0, "dx_abs_mean": 3.5, "dy_abs_mean": 35.0}
+}

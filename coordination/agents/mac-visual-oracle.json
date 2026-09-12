@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-visual-oracle",
+  "allocation_id": "claude-mac20x-visual-oracle",
+  "assignment_acknowledgements": {
+    "FT-017": {
+      "acknowledged_utc": "2026-09-12T05:25:05Z",
+      "adaptation": "Accepted FT-017 rev 1 from main 998e566. Reusing native-verification oracle approach (PDFKit word boxes, apples-to-apples preamble B); adding CoreGraphics fixed-DPI rasterizer shared by all sides, pixel/SSIM/overlay/heatmap diffs, preview-equivalent CoreText raster. Owned paths only: tests/visual-corpus/{harness,evidence}. Engines: pdflatex/xelatex/lualatex present at /Library/TeX/texbin; availability of Times New Roman via fontspec to be verified in run.",
+      "main_sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-visual-oracle/reference-raster",
+  "capabilities": [
+    "xcode",
+    "tex-oracle"
+  ],
+  "code_revision": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "accepted",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T05:25:05Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

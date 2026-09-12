@@ -1,0 +1,16 @@
+{
+  "fixture": "04-bold-emph.tex",
+  "purpose": "Inline font switches: bold, italic, nested.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "\\textbf",
+    "\\emph"
+  ],
+  "notes": "FlashTeX may render every word in Times-Roman regular; the metric then measures the missing face change.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}

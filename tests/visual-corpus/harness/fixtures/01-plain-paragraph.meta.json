@@ -1,0 +1,16 @@
+{
+  "fixture": "01-plain-paragraph.tex",
+  "purpose": "Single short line of body text: baseline position, left margin, glyph advance widths.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "paragraph",
+    "Times-Roman metrics"
+  ],
+  "notes": "Fits on one line in every engine; any x drift is pure advance-width error.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}
