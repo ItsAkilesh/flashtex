@@ -737,7 +737,8 @@ final class SourceEditorViewTests: XCTestCase {
         // pending scan can never reopen it while marked text exists.
         completing.requestCompletion()
         try await waitUntil("completion list") { completing.session != nil }
-        XCTAssertEqual(completing.session?.items.first?.label, "\\section")
+        // The vocabulary lane shows the argument shape in the label ("\section{...}").
+        XCTAssertTrue(completing.session?.items.first?.label.hasPrefix("\\section") == true, completing.session?.items.first?.label ?? "nil")
         compose(tv, "か")
         completing.requestCompletion() // what the list's key path does after every keystroke
         try await waitUntil("list closed by the composition") { completing.session == nil }
