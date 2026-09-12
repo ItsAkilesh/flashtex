@@ -404,6 +404,39 @@ final class ShellModel {
 
     /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
     /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
+    /// Finds a built render pipeline (`flashtex-render`, crates/render-pipeline:
+    /// a drop-in runtime-v1 producer measured with Latin Modern metrics, so
+    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, the
+    /// app bundle, then crates/render-pipeline/target/{release,debug}.
+    static func locateRenderPipeline() -> URL? {
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], fm.isExecutableFile(atPath: env) {
+            return URL(fileURLWithPath: env)
+        }
+        if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-render"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
+        }
+        guard let root = locateRepoRoot() else { return nil }
+        for profile in ["release", "debug"] {
+            let url = root.appendingPathComponent("crates/render-pipeline/target/\(profile)/flashtex-render")
+            if fm.isExecutableFile(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// File > Attach Render Pipeline: the Latin Modern producer when it is built.
+    @discardableResult
+    func attachDiscoveredRenderPipeline() -> Bool {
+        guard let url = Self.locateRenderPipeline() else {
+            workerStatus = "no built flashtex-render found (build crates/render-pipeline or set FLASHTEX_RENDER)"
+            return false
+        }
+        attachWorker(at: url)
+        compile()
+        return true
+    }
+
     static func locateCompiler() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {

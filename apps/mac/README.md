@@ -546,6 +546,7 @@ explain that nothing is loaded.
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
 | ⌘R | Reload fixture |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
+| ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
 | ⌘K | Attach worker executable… |
 | ⌘B | Compile now (auto-compile also runs 250 ms after edits) |
 | ⌘⇧E | Export PDF… (CoreGraphics, always white) |

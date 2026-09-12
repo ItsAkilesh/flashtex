@@ -6,7 +6,7 @@ import Foundation
 /// "Accessibility help" list; the test target checks it against the README.
 public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case openLaTeXFile, save, saveAs, openFixture, reloadFixture
-    case attachBuiltCompiler, attachWorker, compile
+    case attachBuiltCompiler, attachRenderPipeline, attachWorker, compile
     case exportPDF, exportPDFViaRust
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
@@ -51,6 +51,9 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
         case .attachBuiltCompiler:
             return Entry(command: self, title: "Attach built compiler", shortcuts: ["⌘⇧K"], menu: "File",
                          description: "Attaches the FlashTeX compiler found via $FLASHTEX_COMPILER or crates/compiler/target.")
+        case .attachRenderPipeline:
+            return Entry(command: self, title: "Attach render pipeline", shortcuts: ["⌘⇧R"], menu: "File",
+                         description: "Attaches flashtex-render (crates/render-pipeline) found via $FLASHTEX_RENDER, the app bundle, or crates/render-pipeline/target: the producer measured with Latin Modern metrics, so the preview shows Computer Modern-style text.")
         case .attachWorker:
             return Entry(command: self, title: "Attach worker executable", shortcuts: ["⌘K"], menu: "File",
                          description: "Chooses any executable speaking runtime v1 JSON Lines and attaches it as the compiler.")
