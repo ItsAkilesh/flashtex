@@ -6,12 +6,13 @@
   "capabilities": [
     "rust",
     "toc-layout",
-    "fixed-point-convergence"
+    "fixed-point-convergence",
+    "corpus-measurement"
   ],
   "branch": "agent/daniel-contents/toc-layout",
   "state": "ready_for_integration",
-  "summary": "crates/toc-layout rev 3: adversarial-bounds tests (tests/adversarial_bounds.rs, 14 tests) attack converge_front_matter_pages/stabilize_toc/layout_entry with hostile FrontMatterModels (long-period oscillation at period 5/8/9 against the 8-pass bound -- period 9 proves Unresolved, not Cycle, since the fixed-size history never observes a wraparound past the bound; unbounded doubling growth; an LCG-style wildly-varying model) and hostile data (30k entries, page number at u32::MAX, a 1,000,000-char title, zero/negative LineBox width, duplicate sequence numbers) -- every case is a typed error or bounded result, never a panic or hang. converge.rs's ConvergenceError::Unresolved doc comment now states the period-exceeds-bound classification explicitly. tests/exact_identity.rs (2 tests) pins stabilize_toc + layout_entry output for a representative 4-entry document as literal StabilizedToc/LaidOutEntry values (front-matter pages, resolved pages, leader counts 51/40/40/33, leader widths 76.5/60.0/60.0/49.5, gaps 1.0/0.0/0.0/0.5) via exact struct PartialEq, using only binary-exact f64 measurements. 47 tests + 1 doctest pass; clippy clean.",
-  "next_action": "Await Commander integration; open item is unchanged from rev 1/2 scope -- a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout)",
+  "summary": "crates/toc-layout rev 4: FT-034's \"existing consumer integration fixture and measured unsupported gaps\". Grepped for real section producers first (crates/document-style/src/fonts.rs::SectionSpec is heading styling, not a page record; crates/document-runtime is queue/decode-lane plumbing and crates/project-index is bibliography/citation/search indexing -- neither has anything sectioning-shaped) and found the real producer: crates/compiler's Block::Heading (parser.rs's \"section\" | \"subsection\" match arm is the only place it's constructed) plus LayoutCursor::render_prepared_block's real PlacedItem::page_index (the exact prepare_block/render_prepared_block loop layout::layout_with_constraints itself runs). Added flashtex-compiler as a tests-only [dev-dependencies] entry (the library keeps an empty [dependencies] table) and tests/producer_fixture.rs: adapts that real, unmodified compiler output -- never a hand-built EntryRecord -- into SourcedEntry/RelativeEntry and runs it through stabilize_toc + layout_entry (3 tests: real multi-page pagination actually happens; the full stabilized-and-laid-out 7-entry pipeline is internally consistent; independent re-parses converge to a byte-identical StabilizedToc). No fixture under tests/tex-corpus has any sectioning at all (grepped: 0/14 real corpus projects), so the fixture's LaTeX input is authored in-test and labelled a stand-in; the compiler processing it is real and untouched. tests/measured_gaps.rs (1 pinned test) measures the real corpus exactly: 14 documents, 0 with supported sectioning, 0 with an unsupported construct (starred sections/subsubsection/paragraph/part/chapter/appendix/custom counter numbering -- none present to find), 0.000 entries/doc average, and -- via a geometry-derived FrontMatterModel stand-in, since no real rendered-TOC page-count producer exists either -- every document converges in exactly 2 passes, 0/14 anywhere near the 8-pass bound. Rev 2/3 coverage (cycle-vs-unresolved classification, determinism, staleness, adversarial bounds, exact identity) all still passes unmodified. 50 tests + 1 doctest pass; clippy --all-targets -D warnings clean; cargo fmt --check clean.",
+  "next_action": "Await Commander integration. Still open from rev 1-3: real TextMeasure/FrontMatterModel consumer wiring (font-engine for measurement, compiler/native layout for pagination) has no owner yet. New from rev 4: tests/tex-corpus (owned by FT-011/commander-corpus) has no sectioned document, so measured_gaps.rs currently measures an honest zero -- adding one \\section-bearing corpus case would let it measure something real.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -23,17 +24,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent"
   },
   "reviewed_peers": {
-    "origin/main": "a91fc1015e6884ab4a451d5d32a626271edacbd4"
+    "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
   },
   "assignment_acknowledgements": {
     "FT-034": {
-      "acknowledged_utc": "2026-09-12T16:29:27Z",
-      "revision": 3,
-      "main_sha": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-      "adaptation": "Attacked rev 2's stabilizer instead of changing its production behavior: added tests/adversarial_bounds.rs (hostile FrontMatterModels -- long-period oscillation at/under/over the 8-pass bound, unbounded doubling growth, an LCG-style wildly-varying model -- plus hostile data: tens of thousands of entries, a page number at u32::MAX, a million-character title, zero/negative LineBox width, duplicate sequence numbers), asserting every case is a typed error or bounded result and never a panic or hang. Confirmed the rev-2 cycle detector (earliest-repeated-value scan over the completed history) still classifies a period-5 and period-8 oscillation as Cycle, and documented in converge.rs that a period-9 oscillation (one longer than MAX_CONVERGENCE_ITERATIONS) is reported as Unresolved rather than Cycle, since the fixed-size history never observes that wraparound -- a real but unobserved cycle is indistinguishable from divergence at this bound. Added tests/exact_identity.rs pinning stabilize_toc + layout_entry output for a representative document as literal expected StabilizedToc/LaidOutEntry values via exact PartialEq (leader counts, widths, gaps, resolved pages), choosing only binary-exact f64 measurements so equality is never epsilon-based. No production code changed beyond one doc-comment clarification in converge.rs."
+      "acknowledged_utc": "2026-09-12T17:01:00Z",
+      "revision": 4,
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+      "adaptation": "Read coordination/assignments/FT-034.json's rev-4 objective, then grepped crates/ for section-handling per the assignment's own instructions before writing anything: crates/document-style has SectionSpec/SectionAfter (heading font styling only), crates/document-runtime and crates/project-index have no sectioning at all. Identified crates/compiler's Block::Heading + LayoutCursor::render_prepared_block's PlacedItem::page_index as the real, unmodified producer, and consumed it (never edited) via a tests-only dev-dependency in tests/producer_fixture.rs, adapting genuine compiler output into RelativeEntry/SourcedEntry rather than hand-shaping records. Measured, rather than described, the gap against tests/tex-corpus in tests/measured_gaps.rs: 0/14 real corpus documents use any sectioning construct at all (supported or unsupported), so the honestly-measured average is 0 entries/doc; every document's front-matter convergence (via a geometry-constant FrontMatterModel stand-in, since no real page-count producer exists in this repo either) takes exactly 2 passes and none approach the 8-pass bound -- both pinned as exact regression assertions, matching crates/compiler/tests/corpus_gate.rs's own pinning philosophy for this same corpus. Left rev-2 cycle/unresolved classification, determinism and staleness tests, and rev-3 adversarial-bounds and exact-identity tests unmodified; all still pass. No production code in crates/toc-layout changed."
     }
   },
-  "updated_utc": "2026-09-12T16:29:27Z",
-  "code_revision": "99b233124c833500fbdca7e32951c04c3b37fe78",
-  "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4"
+  "updated_utc": "2026-09-12T17:01:00Z",
+  "code_revision": "d11ec17433d316aab3cd43df7b8fc2fcfd104227",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b"
 }

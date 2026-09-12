@@ -1,21 +1,98 @@
 # daniel-contents handoff
 
-Agent / task / branch: daniel-contents (Claude Code subagent) / FT-034 rev 3:
-contents stabilization — adversarial bounds and exact identity regressions /
-`agent/daniel-contents/toc-layout`
+Agent / task / branch: daniel-contents (Claude Code subagent) / FT-034 rev 4:
+contents stabilization — existing consumer integration fixture and measured
+unsupported gaps / `agent/daniel-contents/toc-layout`
 State: ready for integration
 Owned paths: `crates/toc-layout/**`, `coordination/daniel-contents.md`,
 `coordination/agents/daniel-contents.json`
-Exact tested commit SHA (rev 3 implementation): `99b233124c833500fbdca7e32951c04c3b37fe78`
-Main integrated through (`origin/main` at this update, working tree already
-current with it — no merge commit was needed):
-`a91fc1015e6884ab4a451d5d32a626271edacbd4`
-(rev 2's tested SHA was `754c7579baa37b304eca772fbb3dbbbdbd619cb9`, input_main_sha
+Exact tested commit SHA (rev 4 implementation): `d11ec17433d316aab3cd43df7b8fc2fcfd104227`
+Main integrated through (`origin/main` at the merge done at the start of this
+revision; a merge commit was needed):
+`486b759ce906cf987e4d7ebba9033c56b15a499b`
+(origin/main has advanced further since — to `abbe88a5275b89d99357815846de3cbe76a91810`
+as of this report — but this revision was not re-based onto it; `crates/toc-layout`
+was untouched by anything between those two SHAs. Rev 3's tested SHA was
+`99b233124c833500fbdca7e32951c04c3b37fe78`, input_main_sha
+`8e7546dfb4721c780036f03c21b14e6002062142`; rev 2's tested SHA was
+`754c7579baa37b304eca772fbb3dbbbdbd619cb9`, input_main_sha
 `85a0b58bb152dda9ddf1c7c52b8b078bae37287f`; rev 1's tested SHA was
 `da20d5cb4872029fd23af4defe64af9ea58bad77`, input_main_sha
-`53fee3012b2902ca05bd31766defa515b3044cec`. This coordination-record commit
-adds one more commit on top of the rev 3 implementation commit above,
-touching only coordination files.)
+`53fee3012b2902ca05bd31766defa515b3044cec`.)
+
+## Rev 4: real-producer integration fixture and measured unsupported gaps
+
+New: `crates/toc-layout/tests/producer_fixture.rs`,
+`crates/toc-layout/tests/measured_gaps.rs`,
+`crates/toc-layout/tests/support/mod.rs`, and one `[dev-dependencies]` line
+in `Cargo.toml` (`flashtex-compiler = { path = "../compiler" }`, tests only —
+the library itself is still dependency-free). No production code changed.
+
+### 1. What actually produces sectioning in this repo
+
+```
+$ grep -rniE "struct .*[Ss]ection|enum .*[Ss]ection" crates/*/src
+crates/document-style/src/fonts.rs:351:pub struct SectionSpec {   # heading *styling*, not a page record
+crates/document-style/src/fonts.rs:367:pub enum SectionAfter {
+```
+
+No crate exposes a prebuilt section+page record type. The real producer is
+`crates/compiler`: `crates/compiler/src/parser.rs`'s `"section" | "subsection"`
+match arm (the only place in the repo `Block::Heading { level, number,
+content, .. }` is constructed) parses `\section`/`\subsection`, and
+`crates/compiler/src/layout.rs`'s `LayoutCursor` (via its public
+`prepare_block`/`render_prepared_block` — the exact pair `layout::
+layout_with_constraints` itself calls in a loop) places each heading's words
+onto real paginated `Page`s and reports the page each landed on via
+`PlacedItem::page_index`. `crates/document-runtime` and `crates/project-index`
+were checked per the assignment and have nothing sectioning-shaped
+(document-runtime is queue/decode-lane plumbing; project-index is
+bibliography/citation/search indexing).
+
+`tests/producer_fixture.rs` adapts that real, unmodified output — never a
+hand-built `EntryRecord`/`RelativeEntry` — into this crate's types, then runs
+it through `stabilize_toc` + `layout_entry`. One further grep proved there is
+no *fixture* with real sectioning to parse instead of authored LaTeX text: see
+§2 — 0 of the repo's 14 real corpus projects use any sectioning command at
+all, so the fixture's LaTeX *input* is authored in the test, labelled plainly
+as a stand-in for that missing corpus content, while the compiler that
+processes it is real and untouched. Its own `FrontMatterModel` (how many
+pages the rendered TOC itself needs) is also necessarily a stand-in — nothing
+in `crates/pdf`, `crates/compiler`, or `crates/rendering-core` computes that —
+estimated from the compiler's real page-geometry constants
+(`layout::{PAGE_HEIGHT_PT,MARGIN_PT,BODY_SIZE_PT,LINE_SPACING}`) and a real
+measured entry count, and labelled as such in `tests/support/mod.rs`.
+
+### 2. Measured unsupported gaps (`tests/measured_gaps.rs`, exact, pinned)
+
+Measured by actually parsing every real project in `tests/tex-corpus`
+(FT-011's 14 small compatibility/recovery projects, 16 `.tex` files total)
+through `parser::parse_project` and counting real `Block::Heading` output,
+plus a raw-text scan for constructs the compiler's `"section" | "subsection"`
+arm does not recognize:
+
+| Metric | Measured value |
+| --- | --- |
+| Documents in corpus | 14 |
+| Documents with sectioning this crate's model handles (`\section`/`\subsection`, any count > 0) | 0 / 14 |
+| Documents using an unsupported construct (`\section*`, `\subsection*`, `\subsubsection`, `\paragraph`, `\subparagraph`, `\part`, `\chapter`, `\appendix`, `\setcounter{section\|chapter\|part}`, `\renewcommand{\thesection\|\thesubsection\|\thechapter}`) | 0 / 14 |
+| Total real `Block::Heading` entries across the corpus | 0 |
+| Entries per document, average | 0.000 |
+| Convergence passes taken, per document (via the geometry `FrontMatterModel` stand-in, `initial_guess = 0`) | 2 (all 14/14) |
+| Documents hitting the `MAX_CONVERGENCE_ITERATIONS = 8` bound | 0 / 14 |
+
+The headline finding is not a specific unsupported construct — it's that
+**the repo's only `.tex` corpus has no sectioned document at all**: a plain
+`grep -rnE '\\(sub)*section\*?|\\part\*?|\\chapter\*?|\\appendix'
+tests/tex-corpus/cases` returns zero matches. `toc-layout`'s real-producer
+consumer path is therefore exercised end-to-end today only by
+`producer_fixture.rs`'s authored LaTeX, not by any checked-in corpus fixture.
+The 2-pass convergence figure is real but structurally trivial here: with 0
+entries the geometry model returns a page count independent of the candidate,
+so pass 1 (guess 0 → corrected count) never matches and pass 2 (corrected
+count → itself) always does. None of the 14 real documents stress the 8-pass
+bound; that's proven only by rev 3's adversarial synthetic models
+(`tests/adversarial_bounds.rs`, periods up to 9).
 
 ## Rev 3: adversarial bounds and exact identity regressions
 
@@ -146,11 +223,28 @@ by design, per FT-034's scope.
 
 ## Validation
 
-`cd crates/toc-layout && cargo build && cargo test`: 47 integration tests
+`cd crates/toc-layout && cargo build && cargo test`: 50 integration tests
 (30 in `tests/toc.rs`, 14 in `tests/adversarial_bounds.rs`, 2 in
-`tests/exact_identity.rs`) + 1 doctest pass, 0 unit tests (all behavior is
+`tests/exact_identity.rs`, **(rev 4)** 3 in `tests/producer_fixture.rs`, 1 in
+`tests/measured_gaps.rs`) + 1 doctest pass, 0 unit tests (all behavior is
 exercised through the public API). `cargo clippy --all-targets -- -D
-warnings`: 0 warnings. `cargo fmt --check`: clean.
+warnings`: 0 warnings. `cargo fmt --check`: clean. Building the test binaries
+now also builds `crates/compiler` and its own dependency tree
+(`font-engine`/`paragraph-layout`/`math-layout`/`pdf`) as a `[dev-dependencies]`-only
+edge — the library target itself still has an empty `[dependencies]` table.
+
+**(rev 4)** `tests/producer_fixture.rs` (3 tests): real, unmodified
+`flashtex-compiler` parses and lays out an authored (labelled stand-in, see
+§1 above) LaTeX document; `Block::Heading` + `PlacedItem::page_index` are
+adapted into `SourcedEntry`/`RelativeEntry` and run through `stabilize_toc` +
+`layout_entry`, asserting: headings really land on more than one real page
+(pagination genuinely happened, not just page 1 for everything); the full
+7-entry stabilized-and-laid-out result is internally consistent (sequence
+order, non-empty titles, non-stale source, exact page-label round trip); and
+re-parsing and re-laying-out from scratch twice produces byte-identical
+`StabilizedToc` values (determinism holds against a real producer, not just
+hand-built fixtures). `tests/measured_gaps.rs` (1 test, pinned): see the
+exact table in the Rev 4 section above.
 
 Tests cover, with real asserted arithmetic (not just `is_ok()`):
 - malformed input: empty/whitespace title, page/offset zero, level over
@@ -191,9 +285,21 @@ Tests cover, with real asserted arithmetic (not just `is_ok()`):
 
 ## Incomplete / out of scope
 
-- No consumer wiring: font-engine/compiler/native layout do not implement
-  `TextMeasure`/`FrontMatterModel` yet, by design (standalone additive
-  crate; FT-034 says "coordinate consumer contract before integration").
+- No *real* consumer wiring: font-engine/compiler/native layout still do not
+  implement `TextMeasure`/`FrontMatterModel` themselves, by design
+  (standalone additive crate). **(rev 4)** What changed: this crate's tests
+  now consume genuine section+page records from `crates/compiler`'s real,
+  unmodified parser+layout (`tests/producer_fixture.rs`) — the record
+  *extraction* side of the contract is proven against a real producer. What
+  is still missing is the *page-count* side: a real `FrontMatterModel` that
+  the compiler/native layout implements against actual pagination (rather
+  than `tests/support::GeometryFrontMatterModel`'s geometry-constant
+  stand-in) and a real `TextMeasure` against font-engine glyph metrics
+  (rather than `CharWidthMeasure`).
+- **(rev 4)** `tests/tex-corpus` (FT-011, owned elsewhere) has zero
+  sectioned documents — see the measured-gaps table above. This crate's
+  real-producer path is therefore proven only against fixture LaTeX authored
+  in this crate's own tests, not against any checked-in corpus fixture.
 - `CharWidthMeasure` measures by `char`, not by extended grapheme
   cluster; a real font-backed `TextMeasure` should measure by grapheme
   cluster for correctness with combining marks and multi-codepoint
@@ -225,11 +331,17 @@ Tests cover, with real asserted arithmetic (not just `is_ok()`):
   likely belong in the consumer crate or a thin bridge crate).
 - Confirmation of the acceptable `MAX_CONVERGENCE_ITERATIONS` bound (8)
   for real documents; raise if a real front-matter model is found to
-  legitimately need more passes.
+  legitimately need more passes. **(rev 4)** No real document measured so
+  far comes anywhere close: the entire real corpus converges in 2 passes.
 - A decision on whether `SourceId.revision` should be a caller-opaque
   string (current choice) or a typed hash/version the compiler already
   produces elsewhere in the workspace, once a consumer wires this crate
   up for real.
+- **(rev 4)** Whoever owns `tests/tex-corpus` (FT-011): the corpus has no
+  sectioned document to validate a real TOC/LOF consumer path against. A
+  small added case (a project using `\section`/`\subsection`, and ideally
+  a starred/`\part`/`\chapter`/`\appendix` case once those are supported)
+  would let `measured_gaps.rs` measure something other than zero.
 
 Resource: allocation `daniel-claude20x-shared`.
-Updated: 2026-09-12 (rev 3)
+Updated: 2026-09-12 (rev 4)
