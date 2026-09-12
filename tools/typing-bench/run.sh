@@ -7,7 +7,7 @@
 # summaries next to it.
 #
 # Usage: tools/typing-bench/run.sh [--intervals "30 0"] [--seeds "demo body60k fixture"]
-#                                  [--producers "compiler render"] [--keep-app]
+#                                  [--producers "compiler render"]
 #                                  [--no-render] [--out <evidence.md>]
 # Env:   FLASHTEX_RENDER=<path>  use an already built flashtex-render
 #        FLASHTEX_RENDER_REF=<git ref>  branch to build it from
@@ -125,7 +125,7 @@ run_one() { # producer_name producer_path seed interval -> writes $RAW_DIR/<name
     FLASHTEX_COMPILER="$ppath" FLASHTEX_LM_DIR="$MAC/Fonts" FLASHTEX_FONT_DIRS="$MAC/Fonts" \
     FLASHTEX_SEED_FILE="$WORK/$seed.tex" FLASHTEX_LOG="$log" \
     FLASHTEX_TYPING_BENCH="$TYPED" FLASHTEX_TYPING_BENCH_MS="$ms" FLASHTEX_TYPING_BENCH_OUT="$json" \
-    FLASHTEX_TYPING_BENCH_SETTLE_MS=120000 \
+    FLASHTEX_TYPING_BENCH_SETTLE_MS=60000 FLASHTEX_TYPING_BENCH_MAX_MS=120000 \
     "$APP_BIN" >/dev/null 2>&1 &
     pid=$!
     for _ in $(seq 1 600); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
@@ -178,13 +178,14 @@ lines.append("## Results")
 lines.append("")
 lines.append("Latency is keystroke → paint per typed character (ms); a coalesced keystroke is measured to the first paint that showed it. `compile` is the shell's send → result time on the main thread (waits behind any render pass in progress); `render` is PreviewView body → last page Canvas draw.")
 lines.append("")
-lines.append("| producer | seed | bytes | interval | keys | paints | coalesced | k→p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | unpainted |")
+lines.append("| producer | seed | bytes | interval | keys typed | paints | coalesced | k→p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | unpainted |")
 lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 for d in runs:
     prod, seed, interval = d["_file"][:-5].split("-", 2)
     k = d["keystroke_to_paint_ms"]; c = d["compile_ms"]; r = d.get("render_pass_ms", {})
-    lines.append("| %s | %s | %d | %s | %d | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %d |" % (
-        d["producer"], seed, d["document_bytes_after"], interval, d["keystrokes"], d["paints"], d["coalesced"],
+    typed = "%d" % d["keystrokes"] + (" of %d (budget)" % d["script_keystrokes"] if d.get("typing_budget_exhausted") else "")
+    lines.append("| %s | %s | %d | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %d |" % (
+        d["producer"], seed, d["document_bytes_after"], interval, typed, d["paints"], d["coalesced"],
         ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")),
         ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")), d["unpainted"]))
 if not runs:
@@ -205,7 +206,8 @@ lines.append("")
 lines.append("- The bench inserts text programmatically: there is no OS keyboard event, no event-queue wait, no key repeat and no input-method composition; real typing adds the HID → WindowServer → `NSApplication.sendEvent` hop, which the local-monitor path measures but this bench cannot.")
 lines.append("- `paint` is the completed CoreAnimation commit, not the display scan-out: the pixels reach the panel at the next vsync (up to one frame, 8–17 ms at 60–120 Hz) after the stamp, and later still if the render server is behind. No IOSurface presentation callback is observed. The window is ordered back (`FLASHTEX_NO_ACTIVATE=1`) and may be occluded during the run; commits still happen, on-screen visibility is not verified.")
 lines.append("- Compile time is measured on the main thread from send to result application, so it includes any time the reply waited behind a render pass; the producers' own round trip is 1–6 ms for these documents when measured directly.")
-lines.append("- One machine, one run per cell, no warm-up discard beyond the first compile; numbers are indicative, not a regression gate.")
+lines.append("- Typing stops after `FLASHTEX_TYPING_BENCH_MAX_MS` (120 s here); a cell marked "of 200 (budget)" typed fewer characters because each keystroke waited for a main-thread render pass.
+- One machine, one run per cell, no warm-up discard beyond the first compile; numbers are indicative, not a regression gate.")
 open(out, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print("\n".join(lines[:4]))
 for l in lines:

@@ -155,7 +155,10 @@ struct TypingBenchSummary: Codable {
     var producer: String
     var script: String
     var intervalMs: Double
+    /// Keystrokes in the script; `typed` is smaller when the typing budget ran out.
+    var scriptKeystrokes: Int
     var typed: Int
+    var typingBudgetExhausted: Bool
     var keystrokes: Int
     var painted: Int
     var unpainted: Int
@@ -178,7 +181,8 @@ struct TypingBenchSummary: Codable {
     var startedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case producer, script, intervalMs = "interval_ms", typed, keystrokes, painted, unpainted, coalesced, paints,
+        case producer, script, intervalMs = "interval_ms", scriptKeystrokes = "script_keystrokes", typed,
+             typingBudgetExhausted = "typing_budget_exhausted", keystrokes, painted, unpainted, coalesced, paints,
              paintsWithoutRedraw = "paints_without_redraw", compiles,
              documentBytesBefore = "document_bytes_before", documentBytesAfter = "document_bytes_after",
              elapsedMs = "elapsed_ms", keystrokeToPaintMs = "keystroke_to_paint_ms", compileMs = "compile_ms",
@@ -194,6 +198,9 @@ struct TypingBenchConfig: Equatable {
     var outputPath: String
     /// How long to wait for the last keystroke's paint before giving up.
     var settleTimeoutMs: Double = 10_000
+    /// Wall-clock budget for typing; when exhausted the remaining script is
+    /// skipped (recorded as `typed < script_keystrokes`) and the run settles.
+    var typingBudgetMs: Double = 120_000
     /// Insert before `\end{document}` when present so every character lays out.
     var insertBeforeEndDocument = true
 
@@ -203,6 +210,7 @@ struct TypingBenchConfig: Equatable {
         if let s = env["FLASHTEX_TYPING_BENCH_MS"], let ms = Double(s), ms >= 0 { c.intervalMs = ms }
         if let out = env["FLASHTEX_TYPING_BENCH_OUT"], !out.isEmpty { c.outputPath = out }
         if let s = env["FLASHTEX_TYPING_BENCH_SETTLE_MS"], let ms = Double(s), ms > 0 { c.settleTimeoutMs = ms }
+        if let s = env["FLASHTEX_TYPING_BENCH_MAX_MS"], let ms = Double(s), ms > 0 { c.typingBudgetMs = ms }
         if env["FLASHTEX_TYPING_BENCH_APPEND"] == "1" { c.insertBeforeEndDocument = false }
         return c
     }
@@ -322,6 +330,7 @@ final class TypingBenchDriver {
     private var bytesBefore = 0
     private var startedAt = Date()
     private var settleDeadline: Date?
+    private var budgetExhausted = false
     private var finished = false
     private(set) var textView: NSTextView?
     /// Test hook: called instead of `exit` when set.
@@ -389,7 +398,11 @@ final class TypingBenchDriver {
 
     private func tick() {
         guard !finished, let tv = textView else { return }
-        if index < keys.count {
+        if index < keys.count, !budgetExhausted, Double(MonotonicClock.nowNs() &- startNs) / 1e6 > config.typingBudgetMs {
+            budgetExhausted = true
+            FlashTeXLog.write("bench: typing budget of \(config.typingBudgetMs) ms exhausted after \(index)/\(keys.count) keystrokes; settling")
+        }
+        if index < keys.count, !budgetExhausted {
             let key = keys[index]
             index += 1
             bench.recorder.keystroke(at: MonotonicClock.nowNs())
@@ -415,7 +428,9 @@ final class TypingBenchDriver {
             producer: { if case .worker(let name) = model.previewSource { return name } else { return "none" } }(),
             script: config.scriptPath,
             intervalMs: config.intervalMs,
+            scriptKeystrokes: keys.count,
             typed: index,
+            typingBudgetExhausted: budgetExhausted,
             keystrokes: r.keystrokes.count,
             painted: r.painted.count,
             unpainted: r.unpainted.count,
