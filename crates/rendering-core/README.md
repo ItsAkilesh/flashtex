@@ -134,3 +134,13 @@ The developer outline probe now reports expansion-cache measurements separately.
 One local debug-build LiberationSans `A` run measured one cold expansion at 59,456ns
 and 1,000 cache lookups totaling 901,476ns (one expansion, 1,000 hits). These are
 single-run font-cache observations, not native paint or edit-to-preview latency.
+
+`batch::PreparedBatchSource` verifies immutable font descriptors and source snapshots
+once, then creates atomic consumer-neutral page batches. Batches preserve glyph/rule
+paint order, sRGB paint, exact quadratic commands and source/synthetic provenance.
+The canonical rectangular clip is intersected with the page; `None` in the returned
+`visible_clip` means empty. Consumers must apply that clip when painting curves.
+Glyph ink is never culled using source hit boxes. Operation/path limits fail the
+whole batch explicitly; immutable cached expansions remain reusable on retry.
+Collection validation uses loader-owned verified bytes without copying or reparsing
+fonts. This adapter does not activate runtime-v2 or establish native paint parity.

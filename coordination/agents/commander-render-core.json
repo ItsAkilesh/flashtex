@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "ebca91b3df41f736d351803d58a2bd78bf907e97",
+  "code_revision": "5f01719733bda03162e15d854cd4d393deff4415",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "ebca91b3df41f736d351803d58a2bd78bf907e97",
-  "next_action": "Implement consumer-neutral exact quadratic path batches with clip and source provenance.",
+  "next_action": "Publish batch checkpoint and continue next orchestrator-assigned rendering consumer increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Immutable bounded glyph-path LRU implemented with SHA/face/GID/exact-policy keys, cached unsupported/budget outcomes, and direct cached glyph-placement consumer API.53 Rust tests pass.",
+  "summary": "Exact consumer-neutral quadratic path batches implemented with canonical clip, source provenance, atomic operation/path budgets and immutable verified-font reuse. 58 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:13:59Z",
+  "updated_utc": "2026-09-12T06:20:34Z",
   "usage": {
-    "evidence": "53 Rust tests and strict clippy pass. Real LiberationSans A debug probe:1 expansion,1000 cache hits; cold59456ns,warm total901476ns; not native latency.",
+    "evidence": "58 Rust tests and strict clippy pass; synthetic triangle tests cover clips, source validation, revision rejection and budget retry. No native painting or shaping parity claimed.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }
