@@ -44,7 +44,6 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{3B8}', 0x71),  // theta
     ('\u{3BB}', 0x6C),  // lambda
     ('\u{3BC}', 0x6D),  // mu
-    ('\u{3BD}', 0x6E),  // nu
     ('\u{3C0}', 0x70),  // pi
     ('\u{3C3}', 0x73),  // sigma
     ('\u{3C6}', 0x66),  // phi
@@ -61,6 +60,28 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{2211}', 0xE5), // summation
     ('\u{222B}', 0xF2), // integral
     ('\u{221A}', 0xD6), // radical
+    ('\u{2208}', 0xCE), // element of (\in)
+    ('\u{2200}', 0x22), // for all (\forall)
+    ('\u{2203}', 0x24), // there exists (\exists)
+    ('\u{2228}', 0xDA), // logical or (\vee)
+    ('\u{21D2}', 0xDE), // double right arrow (\Rightarrow)
+    ('\u{2223}', 0x7C), // verticalbar (\mid)
+    ('\u{3B5}', 0x65),  // epsilon
+    ('\u{3B6}', 0x7A),  // zeta
+    ('\u{3B7}', 0x68),  // eta
+    ('\u{3D1}', 0x4A),  // theta1 (\vartheta)
+    ('\u{3B9}', 0x69),  // iota
+    ('\u{3BA}', 0x6B),  // kappa
+    ('\u{3BD}', 0x6E),  // nu
+    ('\u{3BE}', 0x78),  // xi
+    ('\u{3D6}', 0x76),  // omega1 (\varpi)
+    ('\u{3C1}', 0x72),  // rho
+    ('\u{3C2}', 0x56),  // sigma1 (\varsigma)
+    ('\u{3C4}', 0x74),  // tau
+    ('\u{3C5}', 0x75),  // upsilon
+    ('\u{3D5}', 0x6A),  // phi1 (\varphi)
+    ('\u{3C7}', 0x63),  // chi
+    ('\u{3C8}', 0x79),  // psi
     ('\u{393}', 0x47),  // Gamma
     ('\u{394}', 0x44),  // Delta
     ('\u{398}', 0x51),  // Theta
@@ -72,32 +93,46 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{3A6}', 0x46),  // Phi
     ('\u{3A8}', 0x59),  // Psi
     ('\u{3A9}', 0x57),  // Omega
-    ('\u{2202}', 0xB6), // partial
-    ('\u{2207}', 0xD1), // nabla
-    ('\u{2208}', 0xCE), // in
-    ('\u{220F}', 0xD5), // prod
-    ('\u{2192}', 0xAE), // to
-    ('\u{2190}', 0xAC), // gets
-    ('\u{21D2}', 0xDE), // Rightarrow
-    ('\u{21D4}', 0xDB), // Leftrightarrow
-    ('\u{2227}', 0xD9), // wedge
-    ('\u{2228}', 0xDA), // vee
-    ('\u{AC}', 0xD8),   // neg
-    ('\u{2200}', 0x22), // forall
-    ('\u{2203}', 0x24), // exists
+    ('\u{2261}', 0xBA), // equivalence
+    ('\u{223C}', 0x7E), // similar
+    ('\u{2245}', 0x40), // congruent
+    ('\u{221D}', 0xB5), // proportional
+    ('\u{22A5}', 0x5E), // perpendicular
+    ('\u{2202}', 0xB6), // partialdiff
+    ('\u{2207}', 0xD1), // gradient
+    ('\u{220F}', 0xD5), // product
+    ('\u{2217}', 0x2A), // asteriskmath
+    ('\u{2032}', 0xA2), // minute (\prime)
+    ('\u{222A}', 0xC8), // union
+    ('\u{2229}', 0xC7), // intersection
+    ('\u{22C5}', 0xD7), // dotmath (\cdots)
+    ('\u{2282}', 0xCC), // propersubset
+    ('\u{2286}', 0xCD), // reflexsubset
+    ('\u{2283}', 0xC9), // propersuperset
+    ('\u{2287}', 0xCA), // reflexsuperset
+    ('\u{2209}', 0xCF), // notelement
+    ('\u{220B}', 0x27), // suchthat (\ni)
     ('\u{2205}', 0xC6), // emptyset
-    ('\u{2261}', 0xBA), // equiv
-    ('\u{223C}', 0x7E), // sim
-    ('\u{2282}', 0xCC), // subset
-    ('\u{2286}', 0xCD), // subseteq
-    ('\u{22A5}', 0x5E), // perp
+    ('\u{2295}', 0xC5), // circleplus
+    ('\u{2297}', 0xC4), // circlemultiply
+    ('\u{2227}', 0xD9), // logicaland
+    ('\u{2192}', 0xAE), // arrowright
+    ('\u{2190}', 0xAC), // arrowleft
+    ('\u{2191}', 0xAD), // arrowup
+    ('\u{2193}', 0xAF), // arrowdown
+    ('\u{2194}', 0xAB), // arrowboth
+    ('\u{21D0}', 0xDC), // arrowdblleft
+    ('\u{21D4}', 0xDB), // arrowdblboth
+    ('\u{21D1}', 0xDD), // arrowdblup
+    ('\u{21D3}', 0xDF), // arrowdbldown
+    ('\u{2234}', 0x5C), // therefore
     ('\u{2220}', 0xD0), // angle
-    ('\u{220B}', 0x27), // ni
-    ('\u{2209}', 0xCF), // notin
-    ('\u{2283}', 0xC9), // supset
-    ('\u{2287}', 0xCA), // supseteq
-    ('\u{222A}', 0xC8), // cup
-    ('\u{2229}', 0xC7), // cap
+    ('\u{2135}', 0xC0), // aleph
+    ('\u{211C}', 0xC2), // Rfraktur
+    ('\u{2111}', 0xC1), // Ifraktur
+    ('\u{2118}', 0xC3), // weierstrass
+    ('\u{2329}', 0xE1), // angleleft
+    ('\u{232A}', 0xF1), // angleright
 ];
 
 /// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.
@@ -143,6 +178,12 @@ pub fn map_char(c: char) -> Glyph {
         return Glyph::Unrepresentable {
             reason: "fraction rules are drawn with a box-drawing character as a stand-in; \
                      runtime-v1 has no rule item type yet, so they cannot be exported faithfully",
+        };
+    }
+    if crate::lm_math::advance(c).is_some() {
+        return Glyph::Unrepresentable {
+            reason: "it is drawn from the pinned Latin Modern Math resource (lm.math), \
+                     which the base-14 PDF export cannot embed",
         };
     }
     if let Some((_, code)) = SYMBOL_ENCODING.iter().find(|(ch, _)| *ch == c) {
@@ -212,7 +253,12 @@ mod tests {
                         );
                     }
                     Glyph::Unrepresentable { reason } => {
-                        panic!("\\{command} renders {c:?} which cannot be exported: {reason}");
+                        // The only decided non-base-14 outcome: a glyph bound
+                        // to the pinned Latin Modern Math resource.
+                        assert!(
+                            crate::lm_math::advance(c).is_some() && reason.contains("lm.math"),
+                            "\\{command} renders {c:?} which cannot be exported: {reason}"
+                        );
                     }
                 }
             }

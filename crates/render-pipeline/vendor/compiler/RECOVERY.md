@@ -1,4 +1,4 @@
-Generated from commit `c14866252e255c5949565cd14af32106fe8ac92d` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `79986817cb0b3065d86f730e827891304af36a03` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -65,40 +65,40 @@ Positioned text items:
 Input:
 
 ```text
-Visible \begin{quote}body\end{itemize} Tail.
+Visible \begin{tabbing}body\end{itemize} Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `environment 'quote' is not implemented; its body is typeset as plain text` — recovery: `typeset the body without the environment's formatting`; byte range: `8..14`
-- `\end{itemize} does not match \begin{quote}` — recovery: `closed the innermost open environment`; byte range: `25..29`
+- `environment 'tabbing' is not implemented; its body is typeset as plain text` — recovery: `typeset the body without the environment's formatting`; byte range: `8..14`
+- `\end{itemize} does not match \begin{tabbing}` — recovery: `closed the innermost open environment`; byte range: `27..31`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `body` — byte range `21..25`
-- `Tail.` — byte range `39..44`
+- `body` — byte range `23..27`
+- `Tail.` — byte range `41..46`
 
 ## stray end
 
 Input:
 
 ```text
-Visible \end{quote} Tail.
+Visible \end{tabbing} Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `\end{quote} with no matching \begin` — recovery: `ignored the stray \end`; byte range: `8..12`
+- `\end{tabbing} with no matching \begin` — recovery: `ignored the stray \end`; byte range: `8..12`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `Tail.` — byte range `20..25`
+- `Tail.` — byte range `22..27`
 
 ## unknown command
 
@@ -112,12 +112,11 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\frobnicate is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: `skipped the command; any braced argument was typeset as plain text`; byte range: `8..19`
+- `\frobnicate is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: `skipped the command and its argument, which looked like a parameter rather than text`; byte range: `8..19`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `argument` — byte range `20..28`
 - `Tail.` — byte range `30..35`
 
 ## include of a file the request did not supply
@@ -183,20 +182,20 @@ Positioned text items:
 Input:
 
 ```text
-Visible \begin{quote}body\end{quote} Tail.
+Visible \begin{tabbing}body\end{tabbing} Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `environment 'quote' is not implemented; its body is typeset as plain text` — recovery: `typeset the body without the environment's formatting`; byte range: `8..14`
+- `environment 'tabbing' is not implemented; its body is typeset as plain text` — recovery: `typeset the body without the environment's formatting`; byte range: `8..14`
 
 Positioned text items:
 
 - `Visible` — byte range `0..7`
-- `body` — byte range `21..25`
-- `Tail.` — byte range `37..42`
+- `body` — byte range `23..27`
+- `Tail.` — byte range `41..46`
 
 ## missing required command argument
 

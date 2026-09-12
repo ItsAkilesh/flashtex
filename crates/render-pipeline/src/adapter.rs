@@ -87,6 +87,11 @@ pub enum Item {
     /// `\/` after a `\textit`/`\emph`/`\textbf` argument (LaTeX's
     /// `\text@command` adds it unless `.` or `,` follows).
     ItalicCorrection,
+    /// `\hfill`/`\hfil` (compiler `Inline::HFill`): infinitely stretchable
+    /// glue; a legal break point that is discarded at a line break.
+    HFill,
+    /// `\hspace{<dimen>}` (compiler `Inline::HSpace`): fixed glue in points.
+    HSpace { pt: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,11 +118,16 @@ pub enum Block {
         /// block and this one (the compiler reports and drops the command;
         /// the break is recovered from the source bytes).
         eject_before: bool,
+        /// `\vspace{<dimen>}` blocks between the previous block and this
+        /// one (compiler `Block::VSpace`), summed in points; `\addvspace`
+        /// glue added before the block.
+        vspace_before: f64,
     },
     Heading {
         level: u8,
         items: Vec<Item>,
         eject_before: bool,
+        vspace_before: f64,
     },
 }
 
@@ -126,6 +136,10 @@ pub struct Doc {
     pub style: Stylesheet,
     pub blocks: Vec<Block>,
     pub diagnostics: Vec<Diagnostic>,
+    /// Compiler constructs this pipeline has no exact block for and set
+    /// approximately or dropped: `(code, source span, message)`, reported
+    /// as warnings against the document paths by the caller.
+    pub limitations: Vec<(&'static str, Span, String)>,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -139,7 +153,8 @@ pub struct Labels {
 fn inlines_of(block: &CBlock) -> &[Inline] {
     match block {
         CBlock::Paragraph(i) => i,
-        CBlock::Heading { content, .. } | CBlock::FigureCaption { content } => content,
+        CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
+        CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => &[],
     }
 }
 
@@ -226,9 +241,12 @@ pub fn adapt_cached(
     };
     let items_for = |inlines: &[Inline]| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, cache) };
     let mut blocks = Vec::new();
+    let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut after_heading = false;
     for unit in split_at_page_breaks(texts, parsed) {
         let eject_before = unit.eject_before;
+        let vspace_before = unit.vspace_before;
+        limitations.extend(unit.limitations);
         match unit.kind {
             UnitKind::Heading {
                 level,
@@ -256,10 +274,21 @@ pub fn adapt_cached(
                     level,
                     items,
                     eject_before,
+                    vspace_before,
                 });
                 after_heading = true;
             }
-            UnitKind::Paragraph { inlines, caption } => {
+            UnitKind::Paragraph { inlines, caption, styled } => {
+                for inline in inlines {
+                    if let Inline::MathRows { rows, aligned, span } = inline {
+                        let env = if *aligned { "align" } else { "gather" };
+                        limitations.push((
+                            "math_limitation",
+                            *span,
+                            format!("{env}: {} row(s) set as separate centred displays; `&` alignment points ignored (no multi-row display block yet)", rows.len()),
+                        ));
+                    }
+                }
                 let items = items_for(inlines);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
@@ -270,9 +299,13 @@ pub fn adapt_cached(
                                 parts.push(ParaPart::Lines(std::mem::take(&mut current)));
                             }
                             // The compiler counts every closed display; LaTeX
-                            // numbers only the `equation` environment.
+                            // numbers only the `equation` environment. Rows of
+                            // an amsmath display carry their own numbers.
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
-                            let number = display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}"));
+                            let number = match math_row_number(inlines, span) {
+                                Some(row) => row,
+                                None => display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}")),
+                            };
                             let bracket = rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}");
                             parts.push(ParaPart::Display {
                                 list,
@@ -295,8 +328,9 @@ pub fn adapt_cached(
                 }
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption,
+                    indent: !after_heading && !caption && !styled,
                     eject_before,
+                    vspace_before,
                 });
                 after_heading = false;
             }
@@ -306,6 +340,7 @@ pub fn adapt_cached(
         style,
         blocks,
         diagnostics: Vec::new(),
+        limitations,
     }
 }
 
@@ -314,8 +349,11 @@ fn inline_span(i: &Inline) -> Span {
         Inline::Text { span, .. }
         | Inline::LineBreak { span }
         | Inline::Math { span, .. }
+        | Inline::MathRows { span, .. }
         | Inline::Label { span, .. }
-        | Inline::Reference { span, .. } => *span,
+        | Inline::Reference { span, .. }
+        | Inline::HFill { span }
+        | Inline::HSpace { span, .. } => *span,
     }
 }
 
@@ -325,6 +363,10 @@ fn inline_span(i: &Inline) -> Span {
 struct Unit<'p> {
     kind: UnitKind<'p>,
     eject_before: bool,
+    /// Summed `\vspace` points from compiler `VSpace` blocks before this unit.
+    vspace_before: f64,
+    /// Constructs before this unit the pipeline set approximately.
+    limitations: Vec<(&'static str, Span, String)>,
 }
 
 enum UnitKind<'p> {
@@ -337,6 +379,9 @@ enum UnitKind<'p> {
     Paragraph {
         inlines: &'p [Inline],
         caption: bool,
+        /// A compiler `Styled` paragraph (`center`, `quote`, ...): set as a
+        /// plain unindented paragraph and reported.
+        styled: bool,
     },
 }
 
@@ -355,12 +400,39 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
 fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
+    // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
+    // to the next unit that holds material.
+    let mut pending_eject = false;
+    let mut pending_vspace = 0.0f64;
+    let mut pending_limitations: Vec<(&'static str, Span, String)> = Vec::new();
     for block in &parsed.blocks {
+        match block {
+            CBlock::PageBreak => {
+                pending_eject = true;
+                continue;
+            }
+            CBlock::VSpace { pt } => {
+                pending_vspace += pt;
+                continue;
+            }
+            CBlock::Rule { span } => {
+                pending_limitations.push(("unsupported_block", *span, "\\hrule dropped: the pipeline has no rule block yet".to_string()));
+                continue;
+            }
+            _ => {}
+        }
         let first = match block {
             CBlock::Heading { number_span, .. } => Some(*number_span),
             _ => inlines_of(block).iter().map(inline_span).next(),
         };
-        let mut eject = matches!((prev_end, first), (Some(p), Some(f)) if gap_has_page_break(texts, p, f));
+        let mut eject = std::mem::take(&mut pending_eject) || matches!((prev_end, first), (Some(p), Some(f)) if gap_has_page_break(texts, p, f));
+        let vspace_before = std::mem::take(&mut pending_vspace);
+        let mut limitations = std::mem::take(&mut pending_limitations);
+        if let CBlock::Styled { style, .. } = block {
+            if let Some(span) = first {
+                limitations.push(("unsupported_block", span, format!("{style:?} paragraph set as a plain justified paragraph (no paragraph-style support yet)")));
+            }
+        }
         match block {
             CBlock::Heading {
                 level,
@@ -376,19 +448,27 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                         content,
                     },
                     eject_before: eject,
+                    vspace_before,
+                    limitations,
                 });
             }
-            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } => {
+            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
+                let styled = matches!(block, CBlock::Styled { .. });
                 let mut start = 0usize;
+                let mut vspace_before = vspace_before;
+                let mut limitations = limitations;
                 for i in 1..inlines.len() {
                     if gap_has_page_break(texts, inline_span(&inlines[i - 1]), inline_span(&inlines[i])) {
                         units.push(Unit {
                             kind: UnitKind::Paragraph {
                                 inlines: &inlines[start..i],
                                 caption,
+                                styled,
                             },
                             eject_before: eject,
+                            vspace_before: std::mem::take(&mut vspace_before),
+                            limitations: std::mem::take(&mut limitations),
                         });
                         eject = true;
                         start = i;
@@ -398,10 +478,14 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                     kind: UnitKind::Paragraph {
                         inlines: &inlines[start..],
                         caption,
+                        styled,
                     },
                     eject_before: eject,
+                    vspace_before,
+                    limitations,
                 });
             }
+            CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => unreachable!("handled above"),
         }
         if let Some(last) = inlines_of(block).iter().map(inline_span).last() {
             prev_end = Some(last);
@@ -411,7 +495,29 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
 }
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {
-    inlines.iter().any(|i| matches!(i, Inline::Math { display: true, span: s, .. } if *s == span))
+    inlines.iter().any(|i| match i {
+        Inline::Math { display: true, span: s, .. } => *s == span,
+        Inline::MathRows { rows, .. } => rows.iter().any(|r| r.span == span),
+        _ => false,
+    })
+}
+
+/// The row of an amsmath multi-row display whose span is `span`, if any:
+/// `Some(number)` where `number` is the row's own equation number.
+fn math_row_number(inlines: &[Inline], span: Span) -> Option<Option<(String, Span)>> {
+    inlines.iter().find_map(|i| match i {
+        Inline::MathRows { rows, .. } => rows.iter().find(|r| r.span == span).map(|r| r.number.clone().map(|n| (n, r.span))),
+        _ => None,
+    })
+}
+
+/// One row of an amsmath display as a single math list: the `&`-separated
+/// cells concatenated in order (the alignment points are reported by
+/// `adapt` as a `math_limitation`).
+fn math_row_list(row: &flashtex_compiler::parser::MathRow) -> MathList {
+    MathList {
+        atoms: row.cells.iter().flat_map(|c| c.atoms.iter().cloned()).collect(),
+    }
 }
 
 fn display_number(inlines: &[Inline], span: Span) -> Option<(String, Span)> {
@@ -868,6 +974,24 @@ fn items_cached(
                 key.hash(&mut h);
                 page.hash(&mut h);
             }
+            Inline::HFill { .. } => 6u8.hash(&mut h),
+            Inline::HSpace { pt, .. } => {
+                7u8.hash(&mut h);
+                pt.to_bits().hash(&mut h);
+            }
+            Inline::MathRows { rows, aligned, .. } => {
+                5u8.hash(&mut h);
+                aligned.hash(&mut h);
+                rows.len().hash(&mut h);
+                for row in rows {
+                    (row.span.start.wrapping_sub(start), row.span.end.wrapping_sub(start)).hash(&mut h);
+                    row.number.hash(&mut h);
+                    row.cells.len().hash(&mut h);
+                    for cell in &row.cells {
+                        crate::incremental::hash_math(cell, &mut h);
+                    }
+                }
+            }
         }
     }
     let key = h.finish();
@@ -896,7 +1020,11 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 }
                 .unwrap_or_else(|| "??".to_string());
                 reference_spans.push(*span);
-                resolved.push(std::borrow::Cow::Owned(Inline::Text { text, span: *span }));
+                resolved.push(std::borrow::Cow::Owned(Inline::Text {
+                    text,
+                    span: *span,
+                    style: Default::default(),
+                }));
             }
             other => resolved.push(std::borrow::Cow::Borrowed(other)),
         }
@@ -944,6 +1072,48 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_span = Some(*span);
                 factor = 1000;
             }
+            Inline::HFill { span } | Inline::HSpace { span, .. } => {
+                // Explicit horizontal glue: the interword space read before
+                // it stays (TeX keeps both glue nodes).
+                if space_between(prev_end, prev_span, *span) {
+                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                    items.push(Item::Space {
+                        style: gap_style,
+                        factor,
+                        no_break: false,
+                    });
+                }
+                items.push(match &**inline {
+                    Inline::HSpace { pt, .. } => Item::HSpace { pt: *pt },
+                    _ => Item::HFill,
+                });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+            }
+            Inline::MathRows { rows, span, .. } => {
+                // Each row becomes its own display item (`is_display`
+                // recognises the row spans); the environment's span ends
+                // the preceding text like `\[`.
+                if space_between(prev_end, prev_span, *span) {
+                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                    items.push(Item::Space {
+                        style: gap_style,
+                        factor,
+                        no_break: false,
+                    });
+                }
+                for row in rows {
+                    items.push(Item::Math {
+                        list: math_row_list(row),
+                        span: row.span,
+                    });
+                }
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+            }
             Inline::Math { list, span, .. } => {
                 if space_between(prev_end, prev_span, *span) {
                     // The glue is the current font's where the space sits.
@@ -962,12 +1132,26 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_span = Some(*span);
                 factor = 1000;
             }
-            Inline::Text { text, span } => {
+            Inline::Text { text, span, .. } => {
                 let source = text_of(span.document);
-                let is_accent = span.end - span.start == 2
-                    && source.as_bytes().get(span.start) == Some(&b'\\')
-                    && text.chars().count() == 1
-                    && "\"'`^~=.".contains(text.as_str());
+                // The compiler (pin `8c0d65e7`) runs its text-ligature pass
+                // over the accent command's own character too, so `\'` and
+                // `\`` arrive as the curly quotes; map them back.
+                let accent_mark = |t: &str| -> Option<char> {
+                    let mut it = t.chars();
+                    match (it.next(), it.next()) {
+                        (Some('\u{2019}'), None) => Some('\''),
+                        (Some('\u{2018}'), None) => Some('`'),
+                        (Some(c), None) if "\"'`^~=.".contains(c) => Some(c),
+                        _ => None,
+                    }
+                };
+                let accent_char = if span.end - span.start == 2 && source.as_bytes().get(span.start) == Some(&b'\\') {
+                    accent_mark(text)
+                } else {
+                    None
+                };
+                let is_accent = accent_char.is_some();
                 let style = style_at(styles_of(span.document), span.start);
                 let has_space = space_between(prev_end, prev_span, *span);
                 if has_space {
@@ -983,9 +1167,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     });
                     pending_accent = None;
                 }
-                if is_accent {
+                if let Some(mark) = accent_char {
                     pending_accent = Some((
-                        text.chars().next().unwrap(),
+                        mark,
                         CharSrc {
                             document: span.document,
                             start: span.start,

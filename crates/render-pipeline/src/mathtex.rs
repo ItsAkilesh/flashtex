@@ -29,6 +29,11 @@ use crate::fonts::{FontSet, LoadedFace, Role, TfmStatus};
 use crate::mathfont::{MathFonts, MathSizes};
 use crate::tfm::Tfm;
 
+/// Font id of glyphs [`TexMathMetrics`] takes straight from Latin Modern
+/// Math because no CM TFM slot covers the character; `gid` is then the
+/// face's own glyph id (see `MathProvider::otf_glyph`).
+pub const OTF_FALLBACK_FONT: MathFontId = MathFontId(u32::MAX);
+
 pub struct TexMathMetrics {
     cm: CmMathMetrics,
     sizes: MathSizes,
@@ -140,6 +145,18 @@ impl TexMathMetrics {
         Some((self.otf.face().clone(), gid))
     }
 
+    /// A symbol outside the CM tables (compiler pin `87df3e4a` lists
+    /// `\cong`, `\propto`, `\aleph`, `\Re`, `\langle`, `\Longrightarrow`,
+    /// ... that math-layout's `cm` slot table does not carry): Latin Modern
+    /// Math's own glyph and OpenType box, tagged [`OTF_FALLBACK_FONT`] so the
+    /// painter draws that glyph id directly. Its width is the OpenType
+    /// advance, not the cmsy/msbm TFM width pdfLaTeX would use.
+    fn otf_fallback_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        let mut g = self.otf.glyph(ch, size)?;
+        g.font_id = OTF_FALLBACK_FONT;
+        Some(g)
+    }
+
     /// The first roman-TFM failure, if any.
     pub fn roman_status(&self) -> Option<&TfmStatus> {
         self.roman_status.as_ref()
@@ -160,6 +177,20 @@ impl TexMathMetrics {
 
     pub fn otf_fonts(&self) -> &Rc<MathFonts> {
         &self.otf
+    }
+
+    /// The TFM box `(height, depth)` in pt of a placed extension-family
+    /// (cmex) glyph, `None` for every other font. cmex outlines hang from
+    /// the origin (`\big(`: 0.04 em above, 1.16 em below; `\sum`: nothing
+    /// above) and their TFM box is that ink, while the Latin Modern Math
+    /// variants drawn for them sit on the axis relative to their own
+    /// origin, so the painter re-centres the drawn ink on this box.
+    pub fn extension_box(&self, font: MathFontId, code: u8, size: f64) -> Option<(f64, f64)> {
+        if !self.cm.font_name(font).starts_with("cmex") {
+            return None;
+        }
+        let c = cm_tfm::CMEX10.char(code)?;
+        Some((mtfm::scale(c.height, size), mtfm::scale(c.depth, size)))
     }
 
     /// Glyphs the layout placed that have no OpenType counterpart
@@ -254,7 +285,7 @@ impl TexMathMetrics {
                     let mut found = None;
                     while let Some(c) = cur {
                         if c.code == code {
-                            found = Some(k);
+                            found = Some((k, c));
                             break;
                         }
                         cur = font.next_larger(c);
@@ -267,10 +298,21 @@ impl TexMathMetrics {
                         // The text-size glyph of a cmex-based symbol (`\sum`)
                         // is the base glyph; delimiters/radicals start their
                         // chain one step above the cmr/cmsy base glyph.
-                        Some(0) if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) => Some(base_gid),
-                        Some(k) => {
-                            let idx = if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) { k } else { k + 1 };
-                            self.otf.variant_gid(base_gid, idx)
+                        Some((0, _)) if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) => Some(base_gid),
+                        // The variant whose ink box is nearest the TFM box of
+                        // the placed cmex glyph (both at the cmex design size:
+                        // only the ratio matters). Latin Modern Math lists
+                        // more delimiter sizes than cmex's `\big`…`\Bigg`
+                        // chain, so the chain index alone selects a glyph
+                        // TeX would not (`\Big(` = cmex 0x10, 18 pt, is the
+                        // 4th larger variant, not the 2nd).
+                        Some((k, c)) => {
+                            let at = font.design_size;
+                            let wanted = mtfm::scale(c.height, at) + mtfm::scale(c.depth, at);
+                            self.otf.variant_nearest(ch, at, wanted).or_else(|| {
+                                let idx = if cm::symbol_slot(ch).is_some_and(|(f, _)| f == Family::Extension) { k } else { k + 1 };
+                                self.otf.variant_gid(base_gid, idx)
+                            })
                         }
                         None => None,
                     }
@@ -293,6 +335,9 @@ impl MathFontMetrics for TexMathMetrics {
     }
 
     fn font_name(&self, font: MathFontId) -> String {
+        if font == OTF_FALLBACK_FONT {
+            return self.otf.face().name.clone();
+        }
         self.cm.font_name(font)
     }
 
@@ -302,7 +347,7 @@ impl MathFontMetrics for TexMathMetrics {
             Some(_) => self.cm.glyph(ch, size),
             None => match extra_symbol_slot(ch) {
                 Some(code) => self.symbol_family_glyph(code, ch, size),
-                None => self.cm.glyph(ch, size),
+                None => self.cm.glyph(ch, size).or_else(|| self.otf_fallback_glyph(ch, size)),
             },
         }
     }

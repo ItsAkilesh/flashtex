@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::diagnostics::Diagnostic;
-use crate::lexer::{tokenize, tokenize_document, Token, TokenKind};
+use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
 use crate::{DocumentId, Span};
 
@@ -29,6 +29,7 @@ pub enum Inline {
     Text {
         text: String,
         span: Span,
+        style: TextStyle,
     },
     LineBreak {
         span: Span,
@@ -38,6 +39,13 @@ pub enum Inline {
         display: bool,
         number: Option<String>,
         number_span: Option<Span>,
+        span: Span,
+    },
+    /// A multi-row amsmath display (`gather`, `align` and their starred forms).
+    /// `aligned` cells alternate right/left alignment around shared tab stops.
+    MathRows {
+        rows: Vec<MathRow>,
+        aligned: bool,
         span: Span,
     },
     Label {
@@ -50,6 +58,31 @@ pub enum Inline {
         page: bool,
         span: Span,
     },
+    /// `\hfill`/`\hfil`: infinite horizontal stretch. Multiple fills on one
+    /// line share the line's leftover width equally, as real TeX glue does;
+    /// unlike TeX, `\hfil` and `\hfill` are not distinguished by stretch
+    /// order (this layout has only one order of infinite glue), an accepted
+    /// simplification. See `layout::LayoutCursor::resolve_hfill`.
+    HFill {
+        span: Span,
+    },
+    /// `\hspace{<dimen>}`/`\hspace*{<dimen>}`: a fixed, non-stretching space.
+    /// `pt` is already converted (see `parse_dimen_pt`). Real TeX also lets
+    /// plain `\hspace` glue (unlike the starred form) be discarded when it
+    /// falls at a line break; this layout never discards glue at a line
+    /// start, so both forms behave identically here.
+    HSpace {
+        pt: f64,
+        span: Span,
+    },
+}
+
+/// One `\\`-separated row of a multi-row display; cells are split on `&`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MathRow {
+    pub cells: Vec<MathList>,
+    pub number: Option<String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +97,125 @@ pub enum Block {
     FigureCaption {
         content: Vec<Inline>,
     },
+    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote` or
+    /// `quotation`.
+    Styled {
+        style: ParagraphStyle,
+        content: Vec<Inline>,
+    },
+    /// `\vspace{<dimen>}`: additional vertical glue, in points.
+    VSpace {
+        pt: f64,
+    },
+    /// `\hrule`: a full-measure-width rule at the current line.
+    Rule {
+        span: Span,
+    },
+    /// `\newpage`: force the next block onto a fresh page.
+    PageBreak,
+}
+
+/// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
+/// Slanted shapes (`\textsl`, `\slshape`) are recorded as italic: the Core 14
+/// faces have no slanted Times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct TextStyle {
+    pub bold: bool,
+    pub italic: bool,
+    pub family: TextFamily,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum TextFamily {
+    #[default]
+    Roman,
+    Sans,
+    Mono,
+}
+
+impl TextStyle {
+    pub const BOLD: TextStyle = TextStyle {
+        bold: true,
+        italic: false,
+        family: TextFamily::Roman,
+    };
+}
+
+/// Argument-taking style commands (`\textbf{...}`).
+fn style_command(name: &str) -> bool {
+    matches!(
+        name,
+        "textbf"
+            | "textmd"
+            | "textit"
+            | "textsl"
+            | "textup"
+            | "emph"
+            | "texttt"
+            | "textrm"
+            | "textsf"
+            | "textnormal"
+    )
+}
+
+/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`).
+fn style_declaration(name: &str) -> bool {
+    matches!(
+        name,
+        "bfseries"
+            | "mdseries"
+            | "itshape"
+            | "slshape"
+            | "upshape"
+            | "ttfamily"
+            | "rmfamily"
+            | "sffamily"
+            | "normalfont"
+            | "em"
+            | "bf"
+            | "it"
+            | "sl"
+            | "tt"
+            | "rm"
+            | "sf"
+    )
+}
+
+/// The style after applying one style command or declaration to `style`.
+fn apply_style(style: TextStyle, name: &str) -> TextStyle {
+    let mut next = style;
+    match name {
+        "textbf" | "bfseries" => next.bold = true,
+        "textmd" | "mdseries" => next.bold = false,
+        "textit" | "textsl" | "itshape" | "slshape" => next.italic = true,
+        "textup" | "upshape" => next.italic = false,
+        "emph" | "em" => next.italic = !style.italic,
+        "texttt" | "ttfamily" => next.family = TextFamily::Mono,
+        "textrm" | "rmfamily" => next.family = TextFamily::Roman,
+        "textsf" | "sffamily" => next.family = TextFamily::Sans,
+        "textnormal" | "normalfont" => next = TextStyle::default(),
+        // LaTeX 2.09 forms reset the other attributes: `\bf` is
+        // `\normalfont\bfseries`.
+        "bf" => next = TextStyle::BOLD,
+        "it" | "sl" => {
+            next = TextStyle {
+                italic: true,
+                ..TextStyle::default()
+            }
+        }
+        "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
+        _ => {}
+    }
+    next
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParagraphStyle {
+    Center,
+    FlushRight,
+    FlushLeft,
+    /// `quote`/`quotation`: both margins indented.
+    Quote,
 }
 
 /// A macro definition actually consulted while producing one block.
@@ -96,13 +248,21 @@ const BUILT_INS: &[&str] = &[
     "section",
     "subsection",
     "textbf",
+    "textmd",
     "emph",
     "textit",
+    "textsl",
+    "textup",
+    "texttt",
+    "textrm",
+    "textsf",
+    "textnormal",
     "begin",
     "end",
     "par",
     "documentclass",
     "usepackage",
+    "setlist",
     "newcommand",
     "renewcommand",
     "input",
@@ -113,7 +273,80 @@ const BUILT_INS: &[&str] = &[
     "caption",
     "item",
     "includegraphics",
+    "hfill",
+    "hfil",
+    "hspace",
+    "normalfont",
+    "bfseries",
+    "mdseries",
+    "itshape",
+    "slshape",
+    "upshape",
+    "ttfamily",
+    "rmfamily",
+    "sffamily",
+    "em",
+    "bf",
+    "it",
+    "sl",
+    "tt",
+    "rm",
+    "sf",
+    "vspace",
+    "hrule",
+    "newpage",
+    "pagestyle",
+    "listfiles",
+    "noindent",
 ];
+
+/// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
+/// `12bp`) to points. `em`/`ex` are relative to the compiler's fixed body size
+/// because the layout does not yet carry a current font size into dimension
+/// parsing; `ex` uses the common TeX-metrics approximation of half an em,
+/// since no real x-height is read from the font. `bp` ("big point") is exactly this compiler's own
+/// internal point (both are 1/72 inch, matching the 612×792pt page in
+/// `layout.rs`), unlike `in`/`cm`/`mm` below, which follow TeX's own
+/// 72.27-per-inch point.
+pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let unit_len = text
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .count();
+    if unit_len == 0 || unit_len > text.len() {
+        return None;
+    }
+    let split = text.len() - unit_len;
+    let (number, unit) = text.split_at(split);
+    let value: f64 = number.trim().parse().ok()?;
+    let per_pt = match unit {
+        "pt" | "bp" => 1.0,
+        "in" => 72.27,
+        "cm" => 72.27 / 2.54,
+        "mm" => 72.27 / 25.4,
+        "em" => crate::layout::BODY_SIZE_PT,
+        "ex" => crate::layout::BODY_SIZE_PT * 0.5,
+        _ => return None,
+    };
+    Some(value * per_pt)
+}
+
+/// True when `content` (already trimmed) is safe for the unsupported-command
+/// recovery policy to assume is a parameter rather than prose — see the
+/// policy comment on `unsupported` below for the full rationale. A dimension
+/// (reusing `parse_dimen_pt`, so `\vspace{0.6em}`-style values match) or a
+/// single lowercase keyword (`empty`, `arabic`, ...) both qualify. A
+/// single-*character* word is deliberately excluded: real LaTeX keyword
+/// parameters are essentially always two or more letters (`empty`, `plain`,
+/// `arabic`, ...), while a single lowercase letter is far more likely to be
+/// genuine one-letter prose or a macro body (`\def\x{y}`) that must not be
+/// silently dropped.
+fn looks_like_recoverable_argument(content: &str) -> bool {
+    parse_dimen_pt(content).is_some()
+        || (content.chars().count() > 1 && content.chars().all(|ch| ch.is_ascii_lowercase()))
+}
 
 /// Project-relative paths only: no absolute paths or parent traversal.
 pub(crate) fn path_is_safe(path: &str) -> bool {
@@ -191,7 +424,11 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        paragraph_styles: Vec::new(),
         document_global_state: false,
+        style: TextStyle::default(),
+        style_stack: Vec::new(),
+        env_styles: Vec::new(),
     };
     let blocks = p.document();
 
@@ -247,8 +484,15 @@ struct P<'a> {
     figure_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
-    list_stack: Vec<(String, u32)>,
+    /// Environment name, item count, and an enumitem label template if given.
+    list_stack: Vec<(String, u32, Option<String>)>,
+    paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
+    /// Current text style; saved on `{` and environment entry, restored on
+    /// the matching `}` or `\end`.
+    style: TextStyle,
+    style_stack: Vec<TextStyle>,
+    env_styles: Vec<TextStyle>,
 }
 
 impl P<'_> {
@@ -282,21 +526,24 @@ impl P<'_> {
                     self.i += 1;
                     if render {
                         para.push(Inline::Text {
-                            text: word,
+                            text: apply_text_ligatures(&word),
                             span: tok.span,
+                            style: self.style,
                         });
                     }
                 }
                 TokenKind::LineBreak => {
                     self.i += 1;
+                    // `\\[<length>]`: the vertical space is not modelled, but the
+                    // argument must not be typeset as text.
+                    self.skip_line_break_length();
                     if render {
                         para.push(Inline::LineBreak { span: tok.span });
                     }
                 }
                 TokenKind::LBrace => {
                     self.i += 1;
-                    self.brace_stack.push(tok.span);
-                    self.macro_scopes.push(HashMap::new());
+                    self.open_group(tok.span);
                 }
                 TokenKind::RBrace => {
                     self.i += 1;
@@ -310,6 +557,9 @@ impl P<'_> {
                         }
                     } else {
                         self.restore_scope();
+                        if let Some(style) = self.style_stack.pop() {
+                            self.style = style;
+                        }
                     }
                 }
                 TokenKind::MathShift if render => self.dollar_math(tok.span, para),
@@ -367,23 +617,22 @@ impl P<'_> {
         match name {
             "documentclass" => self.document_class(span),
             "usepackage" => self.use_package(span),
+            "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
+            // MacTeX writes package-version banners to the log for `\listfiles`;
+            // this compiler has no log stream to write them to, so the honest
+            // behaviour is a documented no-op rather than an "unsupported"
+            // diagnostic for a command every corpus fixture's preamble carries.
+            "listfiles" => {}
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
-                // Starred form: \section*{..} is unnumbered and is not added to
-                // any counter, as in LaTeX. Without this the star was not
-                // consumed, so the following brace was never seen and the
-                // heading reported "requires a braced argument" instead of
-                // typesetting: seven such errors on the HW1 source.
-                let starred = self.take_star();
+                let starred = self.take_optional_star();
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
                 let number = if starred {
-                    // Unnumbered: counters do not advance, and a \label inside
-                    // a starred heading has no number to bind to.
                     String::new()
                 } else if level == 1 {
                     self.section_counter += 1;
@@ -393,8 +642,10 @@ impl P<'_> {
                     self.subsection_counter += 1;
                     format!("{}.{}", self.section_counter, self.subsection_counter)
                 };
-                self.current_counter = if starred { None } else { Some(number.clone()) };
-                let content = self.inlines_from_tokens(tokens);
+                if !starred {
+                    self.current_counter = Some(number.clone());
+                }
+                let content = self.inlines_from_tokens(tokens, TextStyle::BOLD);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
                     // applicable and has nothing to position. Do not create an
@@ -453,7 +704,8 @@ impl P<'_> {
                         Some(span),
                         Some("typeset the caption text as an ordinary paragraph".into()),
                     ));
-                    para.extend(self.inlines_from_tokens(tokens));
+                    let style = self.style;
+                    para.extend(self.inlines_from_tokens(tokens, style));
                 } else {
                     self.flush_paragraph(blocks, para);
                     self.figure_counter += 1;
@@ -461,8 +713,9 @@ impl P<'_> {
                     let mut content = vec![Inline::Text {
                         text: format!("Figure {}:", self.figure_counter),
                         span,
+                        style: TextStyle::default(),
                     }];
-                    content.extend(self.inlines_from_tokens(tokens));
+                    content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
                     blocks.push(Block::FigureCaption { content });
                     self.finish_block_dependencies();
                 }
@@ -470,14 +723,21 @@ impl P<'_> {
             "item" => {
                 self.flush_paragraph(blocks, para);
                 match self.list_stack.last_mut() {
-                    Some((kind, count)) => {
+                    Some((kind, count, template)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
-                            format!("{}.", count)
+                            match template {
+                                Some(template) => enumitem_label(template, *count),
+                                None => format!("{}.", count),
+                            }
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text { text: marker, span });
+                        para.push(Inline::Text {
+                            text: marker,
+                            span,
+                            style: TextStyle::default(),
+                        });
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -495,11 +755,86 @@ impl P<'_> {
                     Some("omitted the image and continued".into()),
                 ));
             }
-            "textbf" | "emph" | "textit" => {
-                let (tokens, _) = self.required_group(name, span);
-                para.extend(self.inlines_from_tokens(tokens));
+            _ if style_command(name) => {
+                self.skip_spaces();
+                let next = apply_style(self.style, name);
+                if let Some(open) = self.closed_group_start() {
+                    // Re-enter the argument as an ordinary group so math and
+                    // other commands inside it are parsed normally.
+                    self.i += 1;
+                    self.open_group(open);
+                    self.style = next;
+                } else {
+                    let (tokens, _) = self.required_group(name, span);
+                    para.extend(self.inlines_from_tokens(tokens, next));
+                }
             }
+            _ if style_declaration(name) => self.style = apply_style(self.style, name),
+            "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            "hspace" => {
+                // The star only affects whether the glue survives being
+                // discarded at a line break in real TeX, which this layout
+                // never does anyway (see the `Inline::HSpace` comment), so
+                // both forms are parsed identically.
+                let _starred = self.take_optional_star();
+                let (tokens, argument_span) = self.required_group(name, span);
+                let raw = token_text(&tokens);
+                match parse_dimen_pt(&raw) {
+                    Some(pt) => para.push(Inline::HSpace {
+                        pt,
+                        span: span.merge(argument_span),
+                    }),
+                    None => self.diags.push(Diagnostic::error(
+                        format!(
+                            "\\hspace requires a recognised dimension, got '{}'",
+                            raw.trim()
+                        ),
+                        Some(span.merge(argument_span)),
+                        Some("ignored the malformed \\hspace argument".into()),
+                    )),
+                }
+            }
+            // No paragraph is ever given a first-line indent in this layout
+            // model, so there is nothing for \noindent to suppress: an honest
+            // no-op rather than a fabricated indent to cancel.
+            "noindent" => {}
             "par" => self.flush_paragraph(blocks, para),
+            "vspace" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let raw = token_text(&tokens);
+                match parse_dimen_pt(&raw) {
+                    Some(pt) => {
+                        self.flush_paragraph(blocks, para);
+                        blocks.push(Block::VSpace { pt });
+                        self.finish_block_dependencies();
+                    }
+                    None => self.diags.push(Diagnostic::error(
+                        format!(
+                            "\\vspace requires a recognised dimension, got '{}'",
+                            raw.trim()
+                        ),
+                        Some(span.merge(argument_span)),
+                        Some("ignored the vertical space and continued".into()),
+                    )),
+                }
+            }
+            "hrule" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::Rule { span });
+                self.finish_block_dependencies();
+            }
+            "newpage" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::PageBreak);
+                self.finish_block_dependencies();
+            }
+            "pagestyle" => {
+                // No header/footer rendering exists yet, so every style is
+                // accepted with the same (honest) effect: none. `empty` and
+                // `plain` both describe "no footer content beyond a page
+                // number", which is already what happens.
+                let _ = self.required_group(name, span);
+            }
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -618,8 +953,21 @@ impl P<'_> {
         }
     }
 
+    fn set_list(&mut self, span: Span) {
+        let _ = self.optional_bracket_argument();
+        let (_, argument_span) = self.required_group("setlist", span);
+        self.diags.push(Diagnostic::warning(
+            "\\setlist list spacing is recognised but not implemented",
+            Some(span.merge(argument_span)),
+            Some("lists use the compiler's default spacing".into()),
+        ));
+    }
+
     fn use_package(&mut self, span: Span) {
-        let _options = self.optional_bracket_argument();
+        let options = self
+            .optional_bracket_argument()
+            .map(|(options, _)| options)
+            .unwrap_or_default();
         let (tokens, argument_span) = self.required_group("usepackage", span);
         let packages: Vec<String> = token_text(&tokens)
             .split(',')
@@ -636,6 +984,13 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        let packages: Vec<String> = packages
+            .into_iter()
+            .filter(|package| !package_matches_layout(package, &options))
+            .collect();
+        if packages.is_empty() {
+            return;
+        }
         self.diags.push(Diagnostic::warning(
             format!(
                 "packages {} are recognised but not implemented",
@@ -855,17 +1210,42 @@ impl P<'_> {
         let (tokens, argument_span) = self.required_group(kind, span);
         let environment = token_text(&tokens).trim().to_string();
         if kind == "begin" {
-            if environment == "equation" && self.in_body {
-                self.equation_environment(span, blocks, para);
+            if matches!(
+                environment.as_str(),
+                "equation" | "equation*" | "displaymath"
+            ) && self.in_body
+            {
+                self.equation_environment(span, &environment, blocks, para);
+                return;
+            }
+            if matches!(
+                environment.as_str(),
+                "gather"
+                    | "gather*"
+                    | "align"
+                    | "align*"
+                    | "alignat"
+                    | "alignat*"
+                    | "flalign"
+                    | "flalign*"
+                    | "multline"
+                    | "multline*"
+            ) && self.in_body
+            {
+                self.multirow_environment(span, &environment, blocks, para);
                 return;
             }
             if environment == "document" && self.has_document {
                 self.in_body = true;
             } else if environment == "figure" && self.in_body {
                 self.flush_paragraph(blocks, para);
+            } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
+                self.flush_paragraph(blocks, para);
+                self.paragraph_styles.push(style);
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
-                self.list_stack.push((environment.clone(), 0));
+                let template = self.optional_bracket_argument().map(|(options, _)| options);
+                self.list_stack.push((environment.clone(), 0, template));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -878,10 +1258,17 @@ impl P<'_> {
             }
             self.env_stack
                 .push((environment, span.merge(argument_span)));
+            self.env_styles.push(self.style);
             return;
         }
 
-        match self.env_stack.pop() {
+        let popped = self.env_stack.pop();
+        if popped.is_some() {
+            if let Some(style) = self.env_styles.pop() {
+                self.style = style;
+            }
+        }
+        match popped {
             Some((open, _)) if open == environment => {}
             Some((open, _)) => self.diags.push(Diagnostic::error(
                 format!(
@@ -897,7 +1284,10 @@ impl P<'_> {
                 Some("ignored the stray \\end".into()),
             )),
         }
-        if matches!(environment.as_str(), "itemize" | "enumerate") {
+        if paragraph_style(&environment).is_some() && self.in_body {
+            self.flush_paragraph(blocks, para);
+            self.paragraph_styles.pop();
+        } else if matches!(environment.as_str(), "itemize" | "enumerate") {
             self.flush_paragraph(blocks, para);
             self.list_stack.pop();
         } else if environment == "figure" {
@@ -913,13 +1303,17 @@ impl P<'_> {
     fn equation_environment(
         &mut self,
         open: Span,
+        name: &str,
         blocks: &mut Vec<Block>,
         para: &mut Vec<Inline>,
     ) {
         self.flush_paragraph(blocks, para);
-        self.equation_counter += 1;
+        let numbered = name == "equation";
+        if numbered {
+            self.equation_counter += 1;
+            self.current_counter = Some(self.equation_counter.to_string());
+        }
         let number = self.equation_counter.to_string();
-        self.current_counter = Some(number.clone());
         let mut raw = Vec::new();
         let mut labels = Vec::new();
         let mut end = open.end;
@@ -929,7 +1323,7 @@ impl P<'_> {
             if self.expand_current_macro() {
                 continue;
             }
-            if let Some((after, end_span)) = environment_end_at(&self.t, self.i, "equation") {
+            if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                 self.i = after;
                 end = end_span.end;
                 found_end = true;
@@ -963,7 +1357,7 @@ impl P<'_> {
         }
         if !found_end {
             self.diags.push(Diagnostic::error(
-                "unterminated environment 'equation' — no matching \\end",
+                format!("unterminated environment '{name}' — no matching \\end"),
                 Some(open),
                 Some("closed the equation at end of input".into()),
             ));
@@ -972,8 +1366,189 @@ impl P<'_> {
         para.push(Inline::Math {
             list,
             display: true,
-            number: Some(number),
-            number_span: Some(open),
+            number: numbered.then_some(number),
+            number_span: numbered.then_some(open),
+            span: Span::in_document(open.document, open.start, end),
+        });
+        para.extend(labels);
+        self.flush_paragraph(blocks, para);
+    }
+
+    /// amsmath `gather`/`align` (and starred forms): rows split on top-level
+    /// `\\`, `align` cells split on top-level `&`. Numbered forms number every
+    /// row except those carrying `\nonumber`/`\notag`.
+    fn multirow_environment(
+        &mut self,
+        open: Span,
+        name: &str,
+        blocks: &mut Vec<Block>,
+        para: &mut Vec<Inline>,
+    ) {
+        self.flush_paragraph(blocks, para);
+        let numbered = !name.ends_with('*');
+        let aligned = name.starts_with("align") || name.starts_with("flalign");
+        if name.starts_with("alignat") {
+            // The column-pair count; cells are split on `&` regardless.
+            let _ = self.required_group("alignat", open);
+        }
+        // Per row: (cells of raw tokens, unnumbered flag, labels).
+        type RawRow = (Vec<Vec<Token>>, bool, Vec<(String, Span)>);
+        let mut rows: Vec<RawRow> = vec![(vec![Vec::new()], false, Vec::new())];
+        let mut depth = 0usize;
+        let mut end = open.end;
+        let mut found_end = false;
+
+        while self.i < self.t.len() {
+            if self.expand_current_macro() {
+                continue;
+            }
+            if depth == 0 {
+                if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
+                    self.i = after;
+                    end = end_span.end;
+                    found_end = true;
+                    break;
+                }
+            }
+            let token = self.t[self.i].token.clone();
+            let row = rows.last_mut().expect("at least one row");
+            match &token.kind {
+                TokenKind::Command(command) if command == "label" => {
+                    self.i += 1;
+                    let (tokens, argument_span) = self.required_group("label", token.span);
+                    let key = token_text(&tokens).trim().to_string();
+                    if !key.is_empty() {
+                        let row = rows.last_mut().expect("at least one row");
+                        row.2.push((key, token.span.merge(argument_span)));
+                    }
+                    continue;
+                }
+                TokenKind::Command(command) if command == "nonumber" || command == "notag" => {
+                    row.1 = true;
+                }
+                TokenKind::LineBreak if depth == 0 => {
+                    rows.push((vec![Vec::new()], false, Vec::new()));
+                }
+                TokenKind::Word(word) if depth == 0 && word.contains('&') => {
+                    let exact = token.span.end - token.span.start == word.len();
+                    for (index, piece) in word.split('&').enumerate() {
+                        if index > 0 {
+                            row.0.push(Vec::new());
+                        }
+                        if piece.is_empty() {
+                            continue;
+                        }
+                        let offset = piece.as_ptr() as usize - word.as_ptr() as usize;
+                        let span = if exact {
+                            Span::in_document(
+                                token.span.document,
+                                token.span.start + offset,
+                                token.span.start + offset + piece.len(),
+                            )
+                        } else {
+                            token.span
+                        };
+                        row.0.last_mut().expect("at least one cell").push(Token {
+                            kind: TokenKind::Word(piece.to_string()),
+                            span,
+                        });
+                    }
+                }
+                _ => {
+                    // Nested groups and environments (`cases`, `pmatrix`)
+                    // own their `\\` and `&`.
+                    match &token.kind {
+                        TokenKind::LBrace => depth += 1,
+                        TokenKind::Command(command) if command == "begin" => depth += 1,
+                        TokenKind::RBrace => depth = depth.saturating_sub(1),
+                        TokenKind::Command(command) if command == "end" => {
+                            depth = depth.saturating_sub(1)
+                        }
+                        _ => {}
+                    }
+                    row.0
+                        .last_mut()
+                        .expect("at least one cell")
+                        .push(token.clone());
+                }
+            }
+            end = token.span.end;
+            self.i += 1;
+        }
+        if !found_end {
+            self.diags.push(Diagnostic::error(
+                format!("unterminated environment '{name}' — no matching \\end"),
+                Some(open),
+                Some("closed the display at end of input".into()),
+            ));
+        }
+        // A trailing `\\` before `\end` does not start a real row.
+        if rows.len() > 1
+            && rows.last().is_some_and(|(cells, _, labels)| {
+                labels.is_empty()
+                    && cells.iter().flatten().all(|t| {
+                        matches!(
+                            t.kind,
+                            TokenKind::Space | TokenKind::Comment | TokenKind::ParBreak
+                        )
+                    })
+            })
+        {
+            rows.pop();
+        }
+        if name == "multline" {
+            // One multline display carries a single number, on its last line.
+            let last = rows.len().saturating_sub(1);
+            for (index, row) in rows.iter_mut().enumerate() {
+                row.1 |= index != last;
+            }
+        }
+
+        let mut math_rows = Vec::new();
+        let mut labels = Vec::new();
+        for (cells, unnumbered, row_labels) in rows {
+            let span = cells
+                .iter()
+                .flatten()
+                .map(|t| t.span)
+                .reduce(Span::merge)
+                .unwrap_or(open);
+            let number = (numbered && !unnumbered).then(|| {
+                self.equation_counter += 1;
+                let number = self.equation_counter.to_string();
+                self.current_counter = Some(number.clone());
+                number
+            });
+            for (key, label_span) in row_labels {
+                self.document_global_state = true;
+                if self.seen_labels.insert(key.clone(), label_span).is_some() {
+                    self.diags.push(Diagnostic::warning(
+                        format!("duplicate \\label{{{key}}}; the second definition wins"),
+                        Some(label_span),
+                        Some("replaced the earlier label definition".into()),
+                    ));
+                }
+                labels.push(Inline::Label {
+                    key,
+                    value: number
+                        .clone()
+                        .unwrap_or_else(|| self.equation_counter.to_string()),
+                    span: label_span,
+                });
+            }
+            let cells = cells
+                .iter()
+                .map(|cell| math::parse_tokens(cell, &mut self.diags))
+                .collect();
+            math_rows.push(MathRow {
+                cells,
+                number,
+                span,
+            });
+        }
+        para.push(Inline::MathRows {
+            rows: math_rows,
+            aligned,
             span: Span::in_document(open.document, open.start, end),
         });
         para.extend(labels);
@@ -1126,19 +1701,13 @@ impl P<'_> {
                 Some("closed math mode at end of input and typeset its contents".into()),
             ));
         }
-        let number = if display && found {
-            self.equation_counter += 1;
-            let number = self.equation_counter.to_string();
-            self.current_counter = Some(number.clone());
-            Some(number)
-        } else {
-            None
-        };
+        // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
+        // print a number or advance the equation counter.
         para.push(Inline::Math {
             list,
             display,
-            number,
-            number_span: (display && found).then_some(open),
+            number: None,
+            number_span: None,
             span: Span::in_document(open.document, open.start, end),
         });
     }
@@ -1239,7 +1808,48 @@ impl P<'_> {
         Some((content, span))
     }
 
-    fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>) -> Vec<Inline> {
+    fn take_optional_star(&mut self) -> bool {
+        self.skip_spaces();
+        if matches!(
+            self.peek().map(|token| &token.kind),
+            Some(TokenKind::Word(word)) if word == "*"
+        ) {
+            self.i += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The `{` span when the next token opens a group that closes in this
+    /// token stream. Unclosed arguments keep `required_group`'s diagnostics.
+    fn closed_group_start(&self) -> Option<Span> {
+        let open = self
+            .peek()
+            .filter(|token| token.kind == TokenKind::LBrace)?;
+        let mut depth = 0usize;
+        for input in &self.t[self.i..] {
+            match input.token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(open.span);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn open_group(&mut self, span: Span) {
+        self.brace_stack.push(span);
+        self.macro_scopes.push(HashMap::new());
+        self.style_stack.push(self.style);
+    }
+
+    fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, tokens);
         let outer_index = std::mem::replace(&mut self.i, 0);
         let mut expanded = Vec::new();
@@ -1254,44 +1864,37 @@ impl P<'_> {
         self.i = outer_index;
 
         let mut content = Vec::new();
+        let mut style = base;
+        let mut saved = Vec::new();
+        let mut pending = None;
         for input in expanded {
             match input.token.kind {
+                TokenKind::Command(name) if style_command(&name) => {
+                    pending = Some(apply_style(style, &name));
+                }
+                TokenKind::Command(name) if style_declaration(&name) => {
+                    style = apply_style(style, &name);
+                }
+                TokenKind::LBrace => {
+                    saved.push(style);
+                    if let Some(next) = pending.take() {
+                        style = next;
+                    }
+                }
+                TokenKind::RBrace => {
+                    if let Some(previous) = saved.pop() {
+                        style = previous;
+                    }
+                }
                 TokenKind::Word(text) => content.push(Inline::Text {
-                    text,
+                    text: apply_text_ligatures(&text),
                     span: input.token.span,
+                    style,
                 }),
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
                 }),
-                // Issue #38: this arm used to be `_ => {}`, which silently
-                // discarded every command token inside a parsed title. On the
-                // HW1 source that lost fourteen unsupported-command diagnostics
-                // for \hfill and \normalfont: the author was told nothing, and
-                // the baseline diagnostic count dropped from 119 to 98 when only
-                // seven starred-brace errors should have disappeared.
-                //
-                // A command that is not supported must say so wherever it
-                // appears, including inside a section title.
-                TokenKind::Command(name) => {
-                    if !BUILT_INS.contains(&name.as_str()) {
-                        self.unsupported(&name, input.token.span);
-                    }
-                }
-                // Everything else carries no content of its own here: whitespace,
-                // comments, the braces that delimited this group, and the math
-                // and script markers, which are legal in a title and handled by
-                // the caller. Math in a section title is ordinary LaTeX and must
-                // not be reported as a problem.
-                TokenKind::Space
-                | TokenKind::ParBreak
-                | TokenKind::Comment
-                | TokenKind::LBrace
-                | TokenKind::RBrace
-                | TokenKind::MathShift
-                | TokenKind::DisplayMathOpen
-                | TokenKind::DisplayMathClose
-                | TokenKind::Superscript
-                | TokenKind::Subscript => {}
+                _ => {}
             }
         }
         content
@@ -1350,9 +1953,40 @@ impl P<'_> {
 
     fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
         if !paragraph.is_empty() {
-            blocks.push(Block::Paragraph(std::mem::take(paragraph)));
+            let content = std::mem::take(paragraph);
+            blocks.push(match self.paragraph_styles.last() {
+                Some(&style) => Block::Styled { style, content },
+                None => Block::Paragraph(content),
+            });
             self.finish_block_dependencies();
         }
+    }
+
+    /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
+    /// to it (`\\[3pt]Next`) as the remainder of the word.
+    fn skip_line_break_length(&mut self) {
+        let Some(input) = self.t.get_mut(self.i) else {
+            return;
+        };
+        let TokenKind::Word(word) = &input.token.kind else {
+            return;
+        };
+        if !word.starts_with('[') {
+            return;
+        }
+        let Some(close) = word.find(']') else {
+            return;
+        };
+        let rest = word[close + 1..].to_string();
+        if rest.is_empty() {
+            self.i += 1;
+            return;
+        }
+        let span = input.token.span;
+        if span.end - span.start == word.len() {
+            input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
+        }
+        input.token.kind = TokenKind::Word(rest);
     }
 
     fn skip_spaces(&mut self) {
@@ -1372,42 +2006,253 @@ impl P<'_> {
         ));
     }
 
-    /// Consumes a `*` immediately following a command, if present.
-    fn take_star(&mut self) -> bool {
-        if let Some(input) = self.t.get(self.i) {
-            if let TokenKind::Word(word) = &input.token.kind {
-                if word == "*" {
-                    self.i += 1;
-                    return true;
-                }
-                if let Some(rest) = word.strip_prefix('*') {
-                    // The tokenizer keeps `*{` style runs together; split the
-                    // star off and leave the remainder in place.
-                    let rest = rest.to_string();
-                    let span = input.token.span;
-                    let mut replacement = input.clone();
-                    replacement.token.kind = TokenKind::Word(rest);
-                    replacement.token.span =
-                        Span::in_document(span.document, span.start + 1, span.end);
-                    self.t[self.i] = replacement;
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
+    /// Recovery policy for a command this compiler does not implement.
+    ///
+    /// The diagnostic naming the command must always survive — that is the
+    /// contract that lets an author discover the gap; it is never hidden or
+    /// weakened by what follows. What varies is only whether the following
+    /// brace/bracket argument is also consumed. Left alone, the main token
+    /// loop just keeps walking: a `{` opens an anonymous group and its
+    /// contents fall through to ordinary paragraph text, so the argument
+    /// itself becomes visible body text (e.g. `\vspace{0.6em}` used to leak
+    /// the word "0.6em" onto the page, before `\vspace` gained its own
+    /// implementation). That is fine — even correct — for a command whose
+    /// argument IS meant to be read as prose: an unknown macro someone typoed,
+    /// `\mycommand{Some real sentence}`, must keep that sentence visible, or
+    /// the recovery would silently eat the author's content.
+    ///
+    /// So the argument is only skipped when it is conservatively safe to
+    /// assume it is a parameter, not prose:
+    ///   1. `name` is in `KNOWN_ARITY_UNIMPLEMENTED`: a command this compiler
+    ///      recognises by name as taking a fixed count of non-prose
+    ///      arguments it does not yet implement. Its whole arity is consumed
+    ///      unconditionally — the command name alone is enough context.
+    ///   2. Otherwise, for a genuinely unrecognised command, only the ONE
+    ///      immediately following `{...}` group is inspected, and only
+    ///      consumed if its full (trimmed) contents look like a dimension or
+    ///      a keyword — see `looks_like_recoverable_argument`. Anything else
+    ///      (multiple words, punctuation, a capitalized word, a lone letter)
+    ///      is left in place and typeset as text, exactly as before.
+    ///
+    /// Either way, the diagnostic's recovery note records whether an argument
+    /// was skipped, so the choice itself stays auditable from the output.
     fn unsupported(&mut self, name: &str, span: Span) {
         debug_assert!(!BUILT_INS.contains(&name));
+        let skipped = self.skip_recoverable_argument(name);
         self.diags.push(Diagnostic::error(
             format!(
                 "\\{} is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                 name
             ),
             Some(span),
-            Some("skipped the command; any braced argument was typeset as plain text".into()),
+            Some(if skipped {
+                "skipped the command and its argument, which looked like a parameter rather than text".into()
+            } else {
+                "skipped the command; any braced argument was typeset as plain text".into()
+            }),
         ));
     }
+
+    /// Commands this compiler recognises by name as taking a fixed count of
+    /// non-prose arguments it does not implement. Each listed argument is
+    /// always skipped, regardless of content — the command name alone gives
+    /// enough context to know the text was never meant to reach the page.
+    /// Deliberately excludes `\vspace`/`\hrule`/`\newpage`/`\pagestyle` (and
+    /// `\Large`/`\setlength`): those already have, or are gaining, their own
+    /// real implementations elsewhere, so hardcoding them here would fight
+    /// that work instead of falling out of it automatically.
+    fn skip_recoverable_argument(&mut self, name: &str) -> bool {
+        const KNOWN_ARITY_UNIMPLEMENTED: &[(&str, usize)] = &[
+            // `\linespread{1.5}`: a bare scale factor with no unit suffix, so
+            // the dimension heuristic below would never catch it on its own.
+            ("linespread", 1),
+        ];
+        if let Some(&(_, arity)) = KNOWN_ARITY_UNIMPLEMENTED
+            .iter()
+            .find(|(known, _)| *known == name)
+        {
+            let mut skipped_any = false;
+            for _ in 0..arity {
+                if self.try_skip_braced_group(None) {
+                    skipped_any = true;
+                } else {
+                    break;
+                }
+            }
+            return skipped_any;
+        }
+        self.try_skip_braced_group(Some(looks_like_recoverable_argument))
+    }
+
+    /// Skips one `{...}` group immediately ahead (after whitespace), if one
+    /// is there — and, when `predicate` is given, only when the group's
+    /// trimmed text content satisfies it. Never emits a diagnostic of its
+    /// own and never advances past anything on a rejected attempt: the
+    /// missing- or non-matching-argument case is silent by design, since the
+    /// ordinary token loop is what typesets it as text afterwards.
+    fn try_skip_braced_group(&mut self, predicate: Option<fn(&str) -> bool>) -> bool {
+        let mut cursor = self.i;
+        while matches!(
+            self.t.get(cursor).map(|input| &input.token.kind),
+            Some(TokenKind::Space | TokenKind::Comment)
+        ) {
+            cursor += 1;
+        }
+        if !matches!(
+            self.t.get(cursor).map(|input| &input.token.kind),
+            Some(TokenKind::LBrace)
+        ) {
+            return false;
+        }
+        let mut depth = 1usize;
+        let mut scan = cursor + 1;
+        let close = loop {
+            match self.t.get(scan).map(|input| &input.token.kind) {
+                Some(TokenKind::LBrace) => depth += 1,
+                Some(TokenKind::RBrace) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break scan;
+                    }
+                }
+                Some(_) => {}
+                // Unterminated group: leave it for ordinary recovery rather
+                // than guessing where it would have closed.
+                None => return false,
+            }
+            scan += 1;
+        };
+        if let Some(predicate) = predicate {
+            let content = token_text(&self.t[cursor + 1..close]);
+            if !predicate(content.trim()) {
+                return false;
+            }
+        }
+        self.i = close + 1;
+        true
+    }
+}
+
+/// True when loading `package` with `options` changes nothing about the output,
+/// because the fixed layout already behaves that way.
+fn package_matches_layout(package: &str, options: &str) -> bool {
+    let options: Vec<&str> = options
+        .split(',')
+        .map(str::trim)
+        .filter(|option| !option.is_empty())
+        .collect();
+    match package {
+        // Source text is decoded as UTF-8 already.
+        "inputenc" => options.iter().all(|option| *option == "utf8"),
+        // Text glyphs are mapped from Unicode, which is what T1 approximates.
+        "fontenc" => options.iter().all(|option| *option == "T1"),
+        // Enumerate label templates are implemented; \setlist reports its own gap.
+        "enumitem" => options.iter().all(|option| *option == "shortlabels"),
+        "geometry" => {
+            !options.is_empty()
+                && options.iter().all(|option| match option.split_once('=') {
+                    Some(("margin", value)) => length_pt(value)
+                        .is_some_and(|pt| (pt - crate::layout::MARGIN_PT).abs() < 0.01),
+                    None => *option == "letterpaper",
+                    _ => false,
+                })
+        }
+        // amsmath/amssymb/amsthm (math typesetting: \mathbb, \forall, gather,
+        // align, ...) and microtype (character protrusion/expansion kerning)
+        // are genuinely unimplemented and change real output; they must keep
+        // warning rather than being silently matched here.
+        _ => false,
+    }
+}
+
+fn length_pt(value: &str) -> Option<f64> {
+    let value = value.trim();
+    let split = value
+        .find(|c: char| c.is_ascii_alphabetic())
+        .unwrap_or(value.len());
+    let number: f64 = value[..split].trim().parse().ok()?;
+    let per_unit = match value[split..].trim() {
+        "in" => 72.0,
+        "pt" => 72.0 / 72.27,
+        "bp" => 1.0,
+        "cm" => 72.0 / 2.54,
+        "mm" => 72.0 / 25.4,
+        _ => return None,
+    };
+    Some(number * per_unit)
+}
+
+/// Formats an enumitem label: a `label=` key using `\alph*`-style counters,
+/// or a shortlabels template whose first `a A i I 1` is the counter.
+fn enumitem_label(template: &str, count: u32) -> String {
+    let counter = |style: char| match style {
+        'a' => alphabetic(count, b'a'),
+        'A' => alphabetic(count, b'A'),
+        'i' => roman(count),
+        'I' => roman(count).to_uppercase(),
+        _ => count.to_string(),
+    };
+    if template.contains('=') {
+        let Some(label) = template
+            .split(',')
+            .find_map(|key| key.trim().strip_prefix("label="))
+        else {
+            return format!("{}.", count);
+        };
+        return [
+            ("\\alph*", 'a'),
+            ("\\Alph*", 'A'),
+            ("\\roman*", 'i'),
+            ("\\Roman*", 'I'),
+            ("\\arabic*", '1'),
+        ]
+        .iter()
+        .fold(label.trim().to_string(), |text, (command, style)| {
+            text.replace(command, &counter(*style))
+        });
+    }
+    match template.char_indices().find(|(_, c)| "aAiI1".contains(*c)) {
+        Some((index, style)) => format!(
+            "{}{}{}",
+            &template[..index],
+            counter(style),
+            &template[index + style.len_utf8()..]
+        ),
+        None => template.to_string(),
+    }
+}
+
+fn alphabetic(count: u32, base: u8) -> String {
+    match count {
+        1..=26 => char::from(base + (count - 1) as u8).to_string(),
+        _ => count.to_string(),
+    }
+}
+
+fn roman(mut count: u32) -> String {
+    const NUMERALS: &[(u32, &str)] = &[
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ];
+    let mut text = String::new();
+    for (value, numeral) in NUMERALS {
+        while count >= *value {
+            text.push_str(numeral);
+            count -= value;
+        }
+    }
+    text
 }
 
 fn mapped_word(word: &str, span: Span, depth: usize) -> InputToken {
@@ -1470,6 +2315,16 @@ fn token_text(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
+    match environment {
+        "center" => Some(ParagraphStyle::Center),
+        "flushright" => Some(ParagraphStyle::FlushRight),
+        "flushleft" => Some(ParagraphStyle::FlushLeft),
+        "quote" | "quotation" => Some(ParagraphStyle::Quote),
+        _ => None,
+    }
 }
 
 fn environment_end_at(
@@ -1542,6 +2397,77 @@ mod tests {
         (parsed, items)
     }
 
+    fn pages(source: &str) -> (Parsed, Vec<crate::layout::Page>) {
+        let parsed = parse(source);
+        let pages = layout::layout(&parsed.blocks);
+        (parsed, pages)
+    }
+
+    #[test]
+    fn dimen_parsing_supports_the_common_units() {
+        assert_eq!(parse_dimen_pt("12pt"), Some(12.0));
+        assert_eq!(parse_dimen_pt(" 1em "), Some(crate::layout::BODY_SIZE_PT));
+        assert_eq!(parse_dimen_pt("1in"), Some(72.27));
+        assert!(parse_dimen_pt("banana").is_none());
+        assert!(parse_dimen_pt("").is_none());
+    }
+
+    #[test]
+    fn newpage_forces_a_fresh_page_even_with_room_left() {
+        let (parsed, pages) = pages(r"First page\newpage Second page");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(pages.len(), 2, "expected exactly one forced page break");
+        assert!(pages[0].items.iter().any(|item| item.text == "First"));
+        assert!(pages[1].items.iter().any(|item| item.text == "Second"));
+    }
+
+    #[test]
+    fn hrule_emits_a_full_measure_rule_with_a_real_span() {
+        let source = r"Above\hrule Below";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let rule_item = items
+            .iter()
+            .find(|item| item.rule.is_some())
+            .expect("hrule must emit an item carrying rule geometry");
+        let rule = rule_item.rule.unwrap();
+        assert!(rule.width_pt > 0.0);
+        assert!(rule.height_pt > 0.0);
+        assert_eq!(
+            rule_item.span,
+            Span::new(
+                source.find("\\hrule").unwrap(),
+                source.find("\\hrule").unwrap() + "\\hrule".len()
+            )
+        );
+    }
+
+    #[test]
+    fn vspace_adds_extra_gap_beyond_the_ordinary_paragraph_gap() {
+        let baseline = items("One\n\nTwo").1;
+        let spaced = items(r"One\vspace{50pt}Two").1;
+        let one = baseline.iter().find(|i| i.text == "One").unwrap();
+        let two_baseline = baseline.iter().find(|i| i.text == "Two").unwrap();
+        let two_spaced = spaced.iter().find(|i| i.text == "Two").unwrap();
+        assert!(
+            two_spaced.baseline_y_pt - one.baseline_y_pt
+                > two_baseline.baseline_y_pt - one.baseline_y_pt,
+            "\\vspace{{50pt}} should push the following text further down than an ordinary paragraph break"
+        );
+    }
+
+    #[test]
+    fn pagestyle_is_accepted_without_a_diagnostic() {
+        for style in ["empty", "plain", "headings"] {
+            let parsed = parse(&format!(r"\pagestyle{{{style}}}Body text"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "\\pagestyle{{{style}}}: {:?}",
+                parsed.diagnostics
+            );
+        }
+    }
+
     #[test]
     fn preamble_is_recorded_and_only_document_body_is_typeset() {
         let source = "\\documentclass[draft]{article}\n\\usepackage[demo]{amsmath}\n\\begin{document}Body only\\end{document}trailer";
@@ -1557,6 +2483,71 @@ mod tests {
         );
         assert_eq!(parsed.diagnostics.len(), 1);
         assert!(parsed.diagnostics[0].message.contains("amsmath"));
+    }
+
+    #[test]
+    fn starred_subsection_consumes_its_star_and_does_not_advance_numbering() {
+        let parsed = parse(r"\section{One}\subsection*{Aside}\subsection{Two}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<&str> = parsed
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Heading { number, .. } => Some(number.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numbers, ["1", "", "1.1"]);
+    }
+
+    #[test]
+    fn problem_style_macro_and_font_declarations_preserve_content_without_errors() {
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \hfill \normalfont[#2 points]}}\problem{1}{4}{\bfseries Body}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(items.iter().any(|item| item.text == "Problem"));
+        assert!(items.iter().any(|item| item.text == "Body"));
+        assert!(!items.iter().any(|item| item.text == "*"));
+    }
+
+    #[test]
+    fn tex_input_ligatures_convert_in_ordinary_text() {
+        // The exact shape found in fixtures/real-world/hw1/HW1.tex: a ligature
+        // pair straddling a word boundary and one embedded inside a single
+        // compound word with no surrounding whitespace.
+        let source = "``Quoted'' and a turn---after dash, don't stop.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.contains(&"\u{201C}Quoted\u{201D}"), "{texts:?}");
+        assert!(texts.contains(&"turn\u{2014}after"), "{texts:?}");
+        assert!(texts.iter().any(|t| t.contains('\u{2019}')), "{texts:?}");
+    }
+
+    #[test]
+    fn tex_input_ligatures_convert_in_headings_and_text_style_arguments() {
+        let source = "\\section{Notes---Continued}\n\\textbf{can't---won't}\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(texts.iter().any(|t| t.contains('\u{2014}')), "{texts:?}");
+        assert!(
+            texts.iter().any(|t| t.contains('\u{2019}')),
+            "expected a converted apostrophe in {texts:?}"
+        );
+    }
+
+    #[test]
+    fn tex_input_ligatures_never_apply_inside_math() {
+        // Math is parsed through an entirely separate path (`math::parse_tokens`)
+        // that this function is never wired into; a literal double-hyphen inside
+        // `$...$` must stay two literal hyphens, never an en dash.
+        let source = "Text. $a--b$ more text.\n";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(!items.iter().any(|item| item.text.contains('\u{2013}')));
+        assert!(!items.iter().any(|item| item.text.contains('\u{2014}')));
+        assert!(items.iter().any(|item| item.text == "-"));
     }
 
     #[test]
@@ -1665,5 +2656,260 @@ mod tests {
                     .message
                     .contains(&MACRO_RECURSION_LIMIT.to_string())
         }));
+    }
+
+    #[test]
+    fn gather_star_rows_are_math_with_no_diagnostics() {
+        let source = "\\documentclass{article}\\begin{document}\n\\begin{gather*}\\int_{0}^{\\infty} e^{-x^{2}}\\,dx = \\frac{\\sqrt{\\pi}}{2} \\\\ \\sum_{n=1}^{\\infty}\\frac{1}{n^{2}} = \\frac{\\pi^{2}}{6}\\end{gather*}\n\\end{document}";
+        let (parsed, items) = items(source);
+        let errors: Vec<_> = parsed
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == crate::diagnostics::Severity::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph");
+        };
+        let Inline::MathRows { rows, aligned, .. } = &inlines[0] else {
+            panic!("expected multi-row math, got {inlines:?}");
+        };
+        assert!(!aligned);
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.number.is_none()));
+        let texts: Vec<_> = items.iter().map(|i| i.text.as_str()).collect();
+        for glyph in ["∫", "∑", "π", "∞"] {
+            assert!(texts.contains(&glyph), "{glyph} missing from {texts:?}");
+        }
+        assert!(!texts.contains(&","), "\\, must be spacing, not a comma");
+        let int_y = items.iter().find(|i| i.text == "∫").unwrap().baseline_y_pt;
+        let sum_y = items.iter().find(|i| i.text == "∑").unwrap().baseline_y_pt;
+        assert!(sum_y > int_y, "second row must sit below the first");
+    }
+
+    #[test]
+    fn align_shares_tab_stop_and_numbers_rows() {
+        let source = "\\begin{align}x^{2} &= y \\label{a}\\\\ 2xyz &= 1 \\nonumber\\\\ w &= 3\\\\\\end{align}\\ref{a}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let equals: Vec<_> = items.iter().filter(|i| i.text == "=").collect();
+        assert_eq!(equals.len(), 3);
+        assert!(equals
+            .iter()
+            .all(|i| (i.x_pt - equals[0].x_pt).abs() < 0.01));
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1)", "(2)"]);
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph");
+        };
+        assert!(inlines.iter().any(
+            |inline| matches!(inline, Inline::Label { key, value, .. } if key == "a" && value == "1")
+        ));
+    }
+
+    #[test]
+    fn equation_star_is_unnumbered_display_math() {
+        let (parsed, items) = items("\\begin{equation*}a=b\\end{equation*}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(
+            items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(),
+            ["a", "=", "b"]
+        );
+    }
+
+    #[test]
+    fn math_grid_environments_lay_out_cells_in_rows_and_columns() {
+        let source = "\\[ f = \\begin{cases} x & x \\geq 0 \\\\ -y & y < 0 \\end{cases} \\]\n\\begin{gather*}\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}\\end{gather*}\n\\[\\begin{array}{rl} a & b,\\\\[2pt] cc & d \\end{array}\\]";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let at = |text: &str| items.iter().find(|i| i.text == text).unwrap();
+        // cases: left brace only, two rows, second column shared.
+        assert!(items.iter().any(|i| i.text == "{"));
+        assert!(at("≥").baseline_y_pt < at("<").baseline_y_pt);
+        // pmatrix: fences and a 2x2 grid.
+        assert!(items.iter().any(|i| i.text == "(") && items.iter().any(|i| i.text == ")"));
+        assert_eq!(at("1").baseline_y_pt, at("2").baseline_y_pt);
+        assert_eq!(at("1").x_pt, at("3").x_pt);
+        assert!(at("3").baseline_y_pt > at("1").baseline_y_pt);
+        // array {rl}: right-aligned first column, `[2pt]` consumed.
+        assert!(!items.iter().any(|i| i.text == "p" || i.text == "t"));
+        let a = at("a");
+        let cs: Vec<_> = items.iter().filter(|i| i.text == "c").collect();
+        assert!(a.x_pt > cs[0].x_pt, "right-aligned column");
+        assert_eq!(at("b").x_pt, at("d").x_pt);
+    }
+
+    #[test]
+    fn center_and_quote_align_their_paragraphs() {
+        let source = "Plain.\n\\begin{center}Title\\\\[3pt]Subtitle words\\end{center}\n\\begin{quote}Quoted.\\end{quote}\nAfter.";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(matches!(
+            parsed.blocks[1],
+            Block::Styled {
+                style: ParagraphStyle::Center,
+                ..
+            }
+        ));
+        let at = |text: &str| items.iter().find(|i| i.text == text).unwrap();
+        assert!(!items.iter().any(|i| i.text.contains("3pt")));
+        let page_centre = crate::layout::PAGE_WIDTH_PT / 2.0;
+        assert!((at("Title").x_pt - page_centre).abs() < 40.0);
+        assert!(at("Subtitle").x_pt > crate::layout::MARGIN_PT + 100.0);
+        assert_eq!(
+            at("Quoted.").x_pt,
+            crate::layout::MARGIN_PT + crate::layout::QUOTE_INDENT_PT
+        );
+        assert_eq!(at("After.").x_pt, crate::layout::MARGIN_PT);
+        assert_eq!(at("Plain.").x_pt, crate::layout::MARGIN_PT);
+    }
+
+    #[test]
+    fn only_numbered_displays_print_numbers_and_advance_the_counter() {
+        let source = "\\[a\\] $$b$$ \\begin{displaymath}c\\end{displaymath}\\begin{equation*}d\\end{equation*}\\begin{gather*}e\\end{gather*}\\begin{align*}f&=g\\end{align*}\\begin{equation}h\\label{h}\\end{equation}\\begin{align}i\\nonumber\\\\j\\label{j}\\end{align}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1)", "(2)"]);
+        let labels: Vec<_> = parsed
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph(inlines) => inlines.as_slice(),
+                _ => &[],
+            })
+            .filter_map(|inline| match inline {
+                Inline::Label { key, value, .. } => Some((key.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, [("h", "1"), ("j", "2")]);
+    }
+
+    fn font_of(items: &[crate::layout::TextItem], text: &str) -> layout::Font {
+        items
+            .iter()
+            .find(|item| item.text == text)
+            .unwrap_or_else(|| panic!("no item {text:?}"))
+            .font
+    }
+
+    #[test]
+    fn text_style_commands_select_real_core14_variants() {
+        use layout::Font;
+        let source = r"a \textbf{b $x$ c} \textit{d \textbf{e}} \emph{f \emph{g}} \textsl{h} \texttt{i} \textsf{j} \textbf{\textrm{k}} l";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, font) in [
+            ("a", Font::TimesRoman),
+            ("b", Font::TimesBold),
+            ("x", Font::TimesRoman),
+            ("c", Font::TimesBold),
+            ("d", Font::TimesItalic),
+            ("e", Font::TimesBoldItalic),
+            ("f", Font::TimesItalic),
+            ("g", Font::TimesRoman),
+            ("h", Font::TimesItalic),
+            ("i", Font::Courier),
+            ("j", Font::Helvetica),
+            ("k", Font::TimesBold),
+            ("l", Font::TimesRoman),
+        ] {
+            assert_eq!(font_of(&items, text), font, "{text}");
+        }
+    }
+
+    #[test]
+    fn style_declarations_are_scoped_to_groups_and_environments() {
+        use layout::Font;
+        let source = "\\begin{document}{\\bf a} b {\\it c \\bfseries d} e \\begin{center}\\itshape f\n\ng\\end{center} h {\\ttfamily i \\normalfont j} \\bfseries k\\end{document}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, font) in [
+            ("a", Font::TimesBold),
+            ("b", Font::TimesRoman),
+            ("c", Font::TimesItalic),
+            ("d", Font::TimesBoldItalic),
+            ("e", Font::TimesRoman),
+            ("f", Font::TimesItalic),
+            ("g", Font::TimesItalic),
+            ("h", Font::TimesRoman),
+            ("i", Font::Courier),
+            ("j", Font::TimesRoman),
+            ("k", Font::TimesBold),
+        ] {
+            assert_eq!(font_of(&items, text), font, "{text}");
+        }
+    }
+
+    #[test]
+    fn heading_styles_start_bold_and_honour_normalfont() {
+        use layout::Font;
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \normalfont[#2 \textit{pts}]}}\problem{1}{4}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(font_of(&items, "Problem"), Font::TimesBold);
+        assert_eq!(font_of(&items, "["), Font::TimesRoman);
+        assert_eq!(font_of(&items, "4"), Font::TimesRoman);
+        assert_eq!(font_of(&items, "pts"), Font::TimesItalic);
+    }
+
+    #[test]
+    fn unsupported_parameter_like_argument_is_skipped_but_prose_is_preserved() {
+        let source = r"A \unknown{0.6em} B \typo{Readable prose} C";
+        let (parsed, items) = items(source);
+        let text: Vec<_> = items.iter().map(|item| item.text.as_str()).collect();
+        assert!(!text.contains(&"0.6em"), "{text:?}");
+        assert!(
+            text.contains(&"Readable") && text.contains(&"prose"),
+            "{text:?}"
+        );
+        assert_eq!(
+            parsed
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.message.contains("not supported"))
+                .count(),
+            2
+        );
+        assert!(parsed.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("\\unknown")
+                && diagnostic
+                    .recovery
+                    .as_deref()
+                    .is_some_and(|note| note.contains("parameter"))
+        }));
+        assert!(parsed.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("\\typo")
+                && diagnostic
+                    .recovery
+                    .as_deref()
+                    .is_some_and(|note| note.contains("plain text"))
+        }));
+    }
+
+    #[test]
+    fn malformed_hspace_is_diagnosed_without_leaking_its_argument() {
+        let source = r"A\hspace{wide}B";
+        let (parsed, items) = items(source);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("\\hspace requires")));
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.text.as_str())
+                .collect::<Vec<_>>(),
+            ["A", "B"]
+        );
     }
 }

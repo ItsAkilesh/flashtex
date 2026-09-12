@@ -85,22 +85,6 @@ fn request(text: &str) -> String {
     request_for(text, "ttfb")
 }
 
-/// Same request with both capabilities negotiated.
-fn request_with_caps(text: &str, project: &str) -> String {
-    use flashtex_compiler::json::{self, Value};
-    let base = request_for(text, project);
-    let mut parsed = json::parse(&base).expect("request parses");
-    if let Value::Obj(ref mut env) = parsed {
-        if let Some(Value::Obj(payload)) = env.get_mut("payload") {
-            payload.insert(
-                "layout_capabilities".into(),
-                Value::Arr(vec![json::str_("rules-v1"), json::str_("font-hints-v1")]),
-            );
-        }
-    }
-    json::write(&parsed)
-}
-
 fn main() {
     let text = fixture();
     let line = request(&text);
@@ -142,19 +126,6 @@ fn main() {
     }
     report("COLD reply built (= TTFB today)", cold);
 
-    // Negotiated mode: font-hints-v1 is where the output path allocates per item.
-    {
-        let mut negotiated = Vec::with_capacity(SAMPLES);
-        let line_caps = request_with_caps(&text, "ttfb-caps");
-        handle_line(&line_caps);
-        for _ in 0..SAMPLES {
-            let start = Instant::now();
-            black_box(handle_line(black_box(&line_caps)));
-            negotiated.push(start.elapsed());
-        }
-        report("WARM reply, font-hints-v1", negotiated);
-    }
-
     // WARM: the same document recompiled, which is what an editing session does.
     let mut warm = Vec::with_capacity(SAMPLES);
     handle_line(&line);
@@ -166,64 +137,18 @@ fn main() {
     }
     report("WARM reply built", warm);
 
-    // FT-002 rev 10: isolate the phases on this exact fixture, so cost is
-    // attributed rather than lumped together. Each phase is measured on its own
-    // inputs, produced fresh, so no phase benefits from another's caching.
+    // Split the reply build into compile versus serialise, so the dominant part
+    // is known rather than assumed. rev 7 cost two wrong fixes before measuring.
     {
+        use flashtex_compiler::incremental::compile_full;
         use flashtex_compiler::layout::LayoutConstraints;
-        use flashtex_compiler::{layout, parser};
-
-        let constraints = LayoutConstraints::default();
-
-        // 1. Parse: source text to blocks.
-        let mut parse_only = Vec::with_capacity(SAMPLES);
+        let mut compile_only = Vec::with_capacity(SAMPLES);
         for _ in 0..SAMPLES {
             let start = Instant::now();
-            black_box(parser::parse(black_box(&text)));
-            parse_only.push(start.elapsed());
+            black_box(compile_full(black_box(&text), LayoutConstraints::default()));
+            compile_only.push(start.elapsed());
         }
-        report("  phase 1: parse", parse_only);
-
-        // 2. Layout and page construction: blocks to positioned pages. Parsing
-        //    is done up front so this measures only the layout work, including
-        //    the cross-reference convergence passes.
-        let parsed = parser::parse(&text);
-        let mut layout_only = Vec::with_capacity(SAMPLES);
-        for _ in 0..SAMPLES {
-            let start = Instant::now();
-            black_box(layout::layout_converged(
-                black_box(&parsed.blocks),
-                constraints,
-            ));
-            layout_only.push(start.elapsed());
-        }
-        report("  phase 2: layout + pages", layout_only);
-
-        // 3. JSON serialisation: positioned pages to reply bytes. Measured by
-        //    handing the protocol a request whose compile is already warm, so
-        //    the difference from the warm total is serialisation.
-        let (pages, _) = layout::layout_converged(&parsed.blocks, constraints);
-        let item_count: usize = pages.iter().map(|p| p.items.len()).sum();
-
-        // Serialisation isolated by difference, using only public API: a warm
-        // session skips the layout it can reuse, so the warm reply build is
-        // dominated by turning pages into bytes. Stated as a difference rather
-        // than a direct timing, because that is what it is.
-        use flashtex_compiler::incremental::Session;
-        let mut session = Session::new();
-        session.compile(&text, constraints);
-        let mut warm_compile = Vec::with_capacity(SAMPLES);
-        for _ in 0..SAMPLES {
-            let start = Instant::now();
-            black_box(session.compile(black_box(&text), constraints));
-            warm_compile.push(start.elapsed());
-        }
-        report("  phase 3a: warm compile only", warm_compile);
-        println!("  phase 3b: serialisation = warm reply build minus warm compile");
-        println!(
-            "  fixture shape: {} pages, {item_count} positioned items",
-            pages.len()
-        );
+        report("  of which: compile", compile_only);
     }
 
     // Writing it out, measured separately so the split is visible.

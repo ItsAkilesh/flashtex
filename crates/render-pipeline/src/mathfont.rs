@@ -122,6 +122,28 @@ impl MathFonts {
         self.vert_variants.get(&base)?.iter().filter(|v| v.gid != base).nth(k - 1).map(|v| v.gid)
     }
 
+    /// The vertical variant of `ch` (drawn at `size_pt`) whose ink
+    /// height + depth is nearest `wanted`, the base glyph excluded.
+    ///
+    /// The cmex size chains are indexed by TeX's `next_larger` steps
+    /// (`\big` 12 pt, `\Big` 18, `\bigg` 24, `\Bigg` 30 for delimiters),
+    /// but Latin Modern Math's `MathVariants` for the delimiters carry
+    /// seven sizes (≈ 11, 12, 14.4, 18, 21, 24, 30 pt at 10 pt), so the
+    /// same-index variant is the wrong size from the second step on; the
+    /// radical and the operators list exactly the cmex sizes and match
+    /// either way. `None` when the face lists no larger variant.
+    pub fn variant_nearest(&self, ch: char, size_pt: f64, wanted: f64) -> Option<u16> {
+        let base = self.base_gid(ch)?;
+        let drawn = Self::math_char(ch);
+        self.vert_variants
+            .get(&base)?
+            .iter()
+            .filter(|v| v.gid != base)
+            .map(|v| (v.gid, (self.glyph_for(v.gid, drawn, size_pt).total_height() - wanted).abs()))
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(gid, _)| gid)
+    }
+
     /// The character actually drawn for a math symbol: letters and lower-case
     /// Greek go to the Unicode mathematical-italic block (what `cmmi` is to
     /// `cmr`), everything else is itself.

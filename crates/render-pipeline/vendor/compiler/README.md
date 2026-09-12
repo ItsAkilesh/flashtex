@@ -2,9 +2,9 @@
 
 Original Rust compiler foundation for FlashTeX (task FT-002). No existing TeX
 engine is invoked, linked, or shelled out to. The compiler has no registry
-dependencies: it uses the in-repository `../font-engine` and
-`../paragraph-layout` crates through path dependencies, so the build remains
-offline and deterministic. The JSON transport is hand-written.
+dependencies: it uses the in-repository `../font-engine` crate through a path
+dependency, so the build remains offline and deterministic. The JSON transport
+is hand-written.
 
 Speaks runtime protocol v1 (`docs/contracts/runtime-v1.md`) over JSON Lines on
 stdin/stdout.
@@ -28,8 +28,10 @@ This revision supports:
   approximation remains and produces the existing PDF-export warning.
 - `font-hints-v1`: every text item adds a `font` object containing the family,
   `normal` or `bold` weight, and `normal` or `italic` style selected by layout.
-  Current body text reports Times-Roman, headings report Times-Bold, and
-  supported mathematical symbols report Symbol.
+  Body text reports the face its text style selects (Times-Roman by default;
+  Times-Bold, Times-Italic, Times-BoldItalic, Helvetica or Courier under the
+  style commands), headings start in Times-Bold, and supported mathematical
+  symbols report Symbol.
 
 This additive extension is not rendering-v2 activation or a claim of exact
 LaTeX PDF identity. Font hints do not identify font bytes, glyph IDs, shaping,
@@ -72,11 +74,21 @@ Implemented and tested:
   are enabled. Every shaping cluster retains the exact input byte range and text.
   Literal cluster-relative ranges are translated back into the originating
   document, while generated macro text keeps its real invocation span.
-- TeX-style total-fit paragraph breaking from `flashtex-paragraph-layout`, fed
-  by shaped runs from `flashtex-font-engine`. Explicit `\-` discretionaries
-  can break within a word; automatic pattern hyphenation is not shipped by the
-  adopted crate and remains unsupported here.
-- Page breaking onto 612×792 pt pages.
+- TeX's classic text-mode input ligatures are converted before layout: a
+  double backtick or a double apostrophe becomes a curly double quote, a lone
+  backtick or apostrophe becomes a curly single quote (a lone apostrophe is
+  always the right-hand form, exactly as plain typing behaves), three hyphens
+  become an em dash, two hyphens become an en dash, and an exclamation or
+  question mark followed by a backtick becomes the inverted exclamation or
+  question mark. Conversion runs on ordinary text words only — math is parsed
+  through an entirely separate path and is never touched, and this milestone
+  has no verbatim, `\texttt`, or `\ttfamily` state to exclude in the first
+  place. A converted word's item keeps its exact original source span; only
+  its rendered text changes, the same rule already used for a
+  command-substituted glyph such as `\alpha`. All eight resulting codepoints
+  (curly quotes, en/em dash, inverted `!`/`?`) have Times-Roman AFM widths and
+  encode to WinAnsi, so none of this produces a new PDF-export warning.
+- Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
 - Numbered `\section{...}` and `\subsection{...}` headings, numbered display
@@ -110,11 +122,13 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - Environments other than `document`, `equation`, `figure`, `itemize`, and
   `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
-- No bidi, joining, complex-script reordering, or automatic pattern
-  hyphenation. The font engine reports unsupported shaping and missing glyphs
-  explicitly; the compiler never silently substitutes a missing glyph.
-- `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
-  visual weight and slant are not yet applied.
+- No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
+  paragraph breaking. The font engine reports unsupported shaping and missing
+  glyphs explicitly; the compiler never silently substitutes a missing glyph.
+- Text styles use only the Core 14 metric faces. Times has real bold, italic
+  and bold-italic variants; slanted shapes (`\textsl`, `\slshape`) use
+  Times-Italic, and sans/typewriter text uses upright Helvetica/Courier even
+  when bold or italic is also requested (the engine has no other variants).
 
 ## Supported commands
 
@@ -123,12 +137,25 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
+`\textsl`, `\texttt`, `\textrm`, `\textsf`, `\textmd`, `\textup`,
+`\textnormal`, the group- and environment-scoped declarations `\bfseries`,
+`\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
+`\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
+`\sl`, `\tt`, `\rm`, `\sf`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
-`enumerate`, `\item`, `\par`, `\-`, and `\\`. Macro
+`enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
+starred or not; `multline` numbers only its last line), `\item`, `\par`, `\\`,
+`\listfiles`, and `\noindent`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
 this compiler version" diagnostic — never silent output.
+
+`\listfiles` is accepted anywhere and is always a no-op: MacTeX uses it to log
+package version banners, and this compiler has no log stream to write them to,
+so silently doing nothing is the honest behaviour rather than a fabricated log.
+`\noindent` is likewise always a no-op: no paragraph in this layout model is
+ever given a first-line indent, so there is no indent for it to suppress.
 
 ## Macro expansion and source mapping
 
@@ -155,8 +182,59 @@ a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
 The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, and `\int` map to Unicode.
+So do `\epsilon`, `\varepsilon`, `\zeta`, `\eta`, `\vartheta`, `\iota`, `\kappa`,
+`\nu`, `\xi`, `\varpi`, `\rho`, `\varsigma`, `\tau`, `\upsilon`, `\varphi`,
+`\chi`, `\psi`, `\Gamma`, `\Delta`, `\Theta`, `\Lambda`, `\Xi`, `\Pi`, `\Sigma`,
+`\Upsilon`, `\Phi`, `\Psi`, `\Omega`, `\le`, `\ge`, `\ne`, `\equiv`, `\sim`,
+`\cong`, `\propto`, `\perp`, `\partial`, `\nabla`, `\prod`, `\ast`, `\prime`,
+`\cup`, `\cap`, `\subset`, `\subseteq`, `\supset`, `\supseteq`, `\notin`, `\ni`,
+`\emptyset`, `\varnothing`, `\oplus`, `\otimes`, `\wedge`, `\land`, `\lor`,
+`\to`, `\rightarrow`, `\leftarrow`, `\gets`, `\uparrow`, `\downarrow`,
+`\leftrightarrow`, `\implies`, `\Leftarrow`, `\impliedby`, `\Leftrightarrow`,
+`\iff`, `\Uparrow`, `\Downarrow`, `\therefore`, `\angle`, `\aleph`, `\Re`, `\Im`,
+`\wp`, `\langle`, `\rangle`, `\lvert`, `\rvert`, `\lVert`, `\rVert`,
+`\setminus`, and `\Longrightarrow`. `\mathbb{A}` through `\mathbb{Z}` map to
+the Unicode double-struck capitals; other arguments are rejected explicitly.
+Symbol has no lunate epsilon, so `\epsilon` shares the open `\varepsilon`
+glyph; it has no double bar, so `\lVert`, `\rVert` and `\|` are two real
+vertical bars. `\iint` and `\iiint` repeat the integral glyph (Symbol has no
+U+222C/U+222D). `\oint`, `\mapsto`, `\mp`, `\ll`, `\gg`, `\lfloor`, `\lceil`,
+`\vdots`, `\ddots`, `\ell` and `\hbar` have no Symbol glyph and stay diagnostics.
+
+Operator names typeset as upright roman words: `\sin`, `\cos`, `\tan`, `\cot`,
+`\sec`, `\csc`, `\arcsin`, `\arccos`, `\arctan`, `\sinh`, `\cosh`, `\tanh`,
+`\coth`, `\log`, `\ln`, `\lg`, `\exp`, `\lim`, `\liminf`, `\limsup`, `\max`,
+`\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\deg`, `\dim`, `\ker`, `\arg`, `\hom`,
+`\Pr`, `\sgn`, `\bmod`, `\mod`, and `\operatorname{name}` (starred form too).
+In displays, scripts on `\lim`, `\liminf`, `\limsup`, `\max`, `\min`, `\sup`,
+`\inf`, `\det`, `\gcd`, `\Pr`, `\sum` and `\prod` stack centred above and
+below the operator (top level of the display only); inline and on other atoms,
+including integrals, they stay beside it. `\dfrac`, `\tfrac` and `\cfrac` lay out as `\frac`.
+`\ldots`/`\dots` are three periods and `\cdots` three math dots. `\left`,
+`\right`, `\big`, `\Big`, `\bigg`, `\Bigg` and their `l`/`r`/`m` forms keep the
+requested delimiter at ordinary size (`.` is the invisible null delimiter).
+`\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
+their argument in the current math face (no distinct face yet). `\displaystyle`,
+`\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`split`, `aligned`, `alignedat` and `gathered` lay out as grids.
+
+`\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.
+`\sqrt[n]{x}` raises the index as a script ahead of the radical sign.
+`\mathbf{text}` typesets literal text in Times-Bold. `\boxed{...}`,
+`\overline{...}` and `\underline{...}` draw real rules around, over or under
+their math list. `\tag{x}` places `(x)` two quads after the display content
+(`\tag*{x}` without parentheses); it is not right-aligned yet. `\pmod{n}`
+typesets `(mod n)`. `\overset{over}{base}`, `\stackrel{over}{base}` and
+`\underset{under}{base}` centre a script-size list directly above or below the
+base. The TeX infix forms `{n \choose k}` and `{a \over b}` build the same
+grid and fraction as `\binom` and `\frac`.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
-export mapping; ordinary math letters and digits use Times-Roman. Unknown math
+export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`:
+those are drawn from the pinned Latin Modern Math resource (`lm.math`, see
+`src/lm_math.rs`). Its Unicode-math designs and widths differ from pdfLaTeX's
+msbm10/cmsy10, and the base-14 PDF export reports that it cannot embed them.
+Ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
 literally, never silently dropped.
 
@@ -164,28 +242,33 @@ Script sizes and shifts and fraction geometry use named classic-proportion
 constants in `src/math.rs`. They approximate TeX's font-parameter-driven values;
 the compiler does not yet read a real math font.
 
+`\hat`, `\bar`, `\vec`, `\tilde`, `\dot`, `\ddot`, `\acute`, and `\grave` place a
+real base-14 accent glyph over `{body}`, symmetrically centered (no skew
+term: this compiler's math letters render upright, never math-italic, and
+Adobe Core 14 AFM metrics have no TeX-style skewchar kern to add one from).
+`\vec` uses the Symbol arrowright glyph and `\dot` uses the middle dot
+`\cdot` already renders with — the closest real glyphs available, not TeX's
+exact short arrow or raised dot. `\widehat`/`\widetilde` reuse the plain
+`\hat`/`\tilde` glyph unstretched (no cmex-style growing glyph exists here),
+which is diagnosed when the base is more than one symbol. `\check` and
+`\breve` have no representable base-14 glyph (no caron or breve in WinAnsi
+or the Symbol encoding) and are diagnosed rather than faked; the base still
+typesets without a mark. `\overline{body}` and `\underline{body}` draw a
+real rule spanning `body`'s width, the same rule/legacy-glyph pattern the
+fraction bar uses.
+
 ## Font shaping and layout limits
 
-Layout measures Times-Roman body text, Times-Bold headings, and supported math
-symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
-advances already include AFM pair kerning and enabled standard ligatures. Those
-shaped clusters become `paragraph-layout` boxes directly; glue and penalties
-remain separate, and `layout_paragraph` positions the resulting runs.
+Layout measures body text in the Core 14 face its text style selects, headings
+in Times-Bold unless restyled, and supported math symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
+advances already include AFM pair kerning and enabled standard ligatures. One
+item is still emitted per word rather than per line; its span is derived from the
+shaped clusters and remains an exact document byte range for literal text.
 
-The adapter assigns each shaped box a unique paragraph-local range and keeps a
-side table back to the exact document `Span` and output kind. The local range is
-never exposed as a document offset. Positioned literal runs map back to exact
-UTF-8 source slices, including each half of a discretionary word. A generated
-discretionary hyphen maps to the complete word construct that produced it.
-Macro replacements continue to map to their invocation construct; no generated
-per-character source offsets are fabricated.
-
-This is real Core 14 shaping and TeX-style total-fit breaking, but it is not full
-TeX paragraph layout. Automatic pattern hyphenation, approximate math constants,
-and the lack of a negotiated original-glyph rendering contract still prevent
-pixel or PDF identity claims. A changed paragraph is broken again as a whole;
-unchanged blocks can still be reused, and incremental output remains required to
-be byte-identical to a clean full build.
+This is real Core 14 shaping, but it is not full TeX paragraph layout. Greedy
+line breaking, approximate math constants, no hyphenation, and the lack of a
+negotiated original-glyph rendering contract still prevent pixel or PDF identity
+claims.
 
 ## Pinned evidence and separate fidelity gates
 
@@ -222,149 +305,33 @@ ordinary word item's span slices back to exactly that word — is unchanged.
 
 ## Scaling, measured
 
-Run `cargo run --release --bin scaling_bench`. It deterministically generates
-the three inputs from a fixed seed and takes 30 samples per case (five samples
-for a fresh cold session). The post-adoption run used binary SHA-256 prefix
-`396d6d06005b0377`.
+Run `cargo run --release --bin scaling_bench`. It prints the SHA-256 of every
+generated input and of the binary, so a number can be tied to what produced it.
+Inputs are generated by a seeded LCG, so they are identical on every machine.
 
-| Input | Bytes / blocks | Input SHA-256 |
-|---|---:|---|
-| 5 KB | 5,019 / 84 | `343a997f84568daf` (prefix) |
-| 50 KB | 50,124 / 792 | `5e98259d014082a1` (prefix) |
-| 500 KB | 500,056 / 7,754 | `925e62ec2e45b868` (prefix) |
+One-word edit, p95, before and after the revision-7 parser fix:
 
-| Input | Case | p50 | p95 | p99 |
-|---|---|---:|---:|---:|
-| 5 KB | Cold fresh session | 1.901 ms | 2.857 ms | 2.857 ms |
-| 5 KB | Warm unchanged | 0.054 ms | 0.064 ms | 0.091 ms |
-| 5 KB | One-word edit | 0.393 ms | 0.468 ms | 0.502 ms |
-| 5 KB | Global macro edit | 1.042 ms | 1.339 ms | 1.339 ms |
-| 50 KB | Cold fresh session | 7.872 ms | 8.554 ms | 8.554 ms |
-| 50 KB | Warm unchanged | 0.276 ms | 0.313 ms | 0.390 ms |
-| 50 KB | One-word edit | 2.219 ms | 2.425 ms | 2.461 ms |
-| 50 KB | Global macro edit | 8.115 ms | 8.802 ms | 8.802 ms |
-| 500 KB | Cold fresh session | 84.699 ms | 89.221 ms | 89.221 ms |
-| 500 KB | Warm unchanged | 3.122 ms | 3.411 ms | 4.801 ms |
-| 500 KB | One-word edit | 26.833 ms | 28.829 ms | 30.864 ms |
-| 500 KB | Global macro edit | 90.118 ms | 91.543 ms | 91.543 ms |
+| Size | Blocks | Before | After |
+|---|---|---|---|
+| 5 KB | 84 | 0.801 ms | 0.551 ms |
+| 50 KB | 792 | 7.402 ms | 2.541 ms |
+| 500 KB | 7 754 | 420.606 ms | **29.401 ms** |
 
-The benchmark checks exact incremental-versus-clean output outside every timed
-interval. At 500 KB the ordinary edit reused 7,753 of 7,754 blocks; the global
-macro edit correctly reused none. No measured case crossed 200 ms. Relative to
-the immediately preceding run on the same inputs, 500 KB cold p95 changed from
-92.341 ms to 89.221 ms, one-word-edit p95 from 29.125 ms to 28.829 ms, and
-global-macro-edit p95 from 84.732 ms to 91.543 ms. These are observed timings,
-not a claim that total-fit is intrinsically faster; short runs remain noisy and
-the algorithm does more work per changed paragraph than the former greedy loop.
+Scaling is now approximately linear. It was not: 10x the blocks cost 64x the
+time between 50 KB and 500 KB, because every macro invocation removed the
+invocation token and then spliced its expansion into the gap, moving the tail of
+the token vector twice. Replacing the token in a single splice makes a one-token
+expansion an in-place overwrite that shifts nothing. Parse fell from 402.586 ms
+to 12.254 ms at 500 KB.
 
-Revision 7's earlier `incremental_bench` found two superlinear costs. Before the
-fixes, on that benchmark's inputs,
-the 500 KB one-word edit was 530.636/549.694/563.445 ms p50/p95/p99 and cold was
-569.313/579.248/579.635 ms. The old reuse loop made more than 3.15 million
-candidate comparisons for the one-word edit and 6,300,100 for the macro edit.
-The span-signature index reduced both to 2,510 hash-bucket confirmations, each
-still gated by full dependency and shifted-block equality. The parser also used
-two tail-moving vector operations per macro invocation; one range replacement
-preserves argument and recursion semantics while avoiding the second move. The
-resulting 500 KB one-word-edit p95 is 32.797 ms, 16.8 times faster.
+The pinned byte-exact fixtures were unchanged by this work, which is the evidence
+that it is a pure speedup and not a change in output.
 
-The other suspects remain linear and were left alone. Reused positioned items
-must each receive a current-revision source span, so span shifting and page
-reconstruction are one pass over reused items. Label/reference convergence is a
-fixed maximum of five whole-document passes, not a block-squared loop. Diagnostic
-append is linear in diagnostic count, and the protocol export check is one pass
-over emitted items and characters. A separate 500 KB probe measured parse at
-12.937 ms p50 / 14.274 ms p95 and the complete one-word edit at 31.581 ms p50 /
-36.382 ms p95; no additional superlinear curve was observed in those linear
-walks.
-
-These are COMPILER-WORK-ONLY measurements, from source text to laid-out result.
-UI paint, scheduling, IPC transport, PDF writing, and native-shell work are not
-included. Native paint equality and raw PDF byte equality remain separate gates
-and are not claimed here. The product target of under 200 ms from keystroke to
-visible output REMAINS UNPROVEN and can only be established in the real app.
-
-## Time to first response byte
-
-Run `cargo run --release --bin ttfb_bench`. It prints the SHA-256 of the fixture,
-the request and the binary, so a number can be tied to what produced it.
-
-Measured on a pinned 500 032-byte fixture producing an 8 318 125-byte reply:
-
-| | before | after |
-|---|---|---|
-| Cold, document never seen | p50 143.451 ms, p95 151.336 ms | **p50 101.506 ms, p95 108.395 ms** |
-| Warm, same document recompiled | p50 61.826 ms, p95 64.758 ms | **p50 20.048 ms, p95 20.954 ms** |
-
-Serialisation was 61 ms of a 143 ms cold reply. The reply was built as a `Value`
-tree and immediately thrown away: tens of thousands of items, each a map with
-owned String keys, allocated and dropped per compile. Pages now render straight
-to JSON text. Output is byte-identical, which the pinned fixtures prove.
-
-Writing the finished bytes to a writer is 0.12 ms, so it is not worth optimising.
-
-A correction worth recording: the first version of this benchmark reused one
-`project_id` across samples, so every iteration after the first hit the warm
-session cache and reported cold numbers that were really warm ones. It showed as
-compile appearing slower than the whole reply, which is impossible. Each cold
-sample now uses a distinct project id.
-
-These are COMPILER-ONLY measurements. UI paint, scheduling, IPC transport and PDF
-writing are outside this crate. Native paint parity and raw PDF byte equality are
-separate gates and are not claimed here.
-
-### Where the time goes, by phase
-
-Isolated on the same pinned fixture (691 pages, 96 571 positioned items):
-
-| Phase | p50 | Share of cold |
-|---|---|---|
-| Parse | 11.867 ms | 12% |
-| **Layout and page construction** | **63.300 ms** | **64%** |
-| JSON serialisation | 16.159 ms | 16% |
-| Write finished bytes to a writer | 0.105 ms | 0.1% |
-
-Serialisation is measured as the warm reply build (19.458 ms) minus warm compile
-(3.299 ms), using only public API, and is stated as a difference because that is
-what it is.
-
-Layout dominates, and it is where the cross-reference convergence passes live.
-Serialisation was the larger cost before revision 9 cut it from 61 ms to 16 ms;
-attacking it again would win little. The phases sum to about 91 ms against a
-99 ms cold reply, and the remainder is request parsing, path validation and
-diagnostic assembly.
-
-### Output allocation: the font hint
-
-With `font-hints-v1` negotiated, every positioned item carried a font object that
-was built as a `Value` and stringified per item: 96 571 allocations on the pinned
-fixture. `Font` has seven variants whose family, weight and style are fixed, so
-the object never varies. It is now a precomputed literal.
-
-| | before | after |
-|---|---|---|
-| Warm reply, font-hints-v1 | p50 32.601 ms, p95 33.655 ms | **p50 16.152 ms, p95 17.007 ms** |
-
-Half the cost of the negotiated reply was allocating the same seven strings over
-and over. A test asserts each literal is byte-identical to serialising the
-structured form, so the two cannot drift apart.
-
-Measured and rejected in the same revision: resizing the reply buffer reservation
-from 160 to 96 bytes per item, which the fixture's 86-byte average suggested.
-It helped the negotiated case and hurt the legacy one, within run-to-run noise
-either way, so it was left alone rather than bundled in as an apparent win.
-
-### Math delimiters
-
-\left and \right are parsed and their delimiter is typeset, including TeX's
-null delimiter \left. which pairs but renders nothing. Nesting is bounded at 64
-pairs. An unmatched \left, or a \right with no \left, is an explicit
-diagnostic and the formula still typesets.
-
-Not implemented: the delimiter is NOT grown to the height of its content. Real
-TeX assembles extensible pieces so a tall fraction gets tall parentheses; here
-the delimiter is drawn at the surrounding size. A document using \left over a
-tall subformula will therefore differ visibly from a reference engine.
+These are COMPILER-ONLY measurements, from source text to laid-out result. UI
+paint, scheduling, IPC transport and PDF writing are outside this crate. Native
+paint parity and raw PDF byte equality are separate gates and are not claimed
+here. The product target of under 200 ms from keystroke to visible output
+REMAINS UNPROVEN and can only be established by measuring the real application.
 
 ## Recovery behaviour
 
@@ -399,3 +366,35 @@ Labels and references are more global: any changed snapshot containing either is
 laid out conservatively from scratch and passed through the bounded convergence
 loop. This intentionally sacrifices reuse to keep every incremental result
 byte-identical to a clean build.
+
+## Measured incremental latency
+
+Measured on `mac-m5pro-kabir` on 2026-09-12 with:
+
+```sh
+cargo run --release --bin incremental_bench
+```
+
+The deterministic `generated-500-paragraphs` fixture is built by the benchmark:
+500 multi-line paragraphs, 118,700 UTF-8 bytes, with one user-macro expansion,
+inline scripted math, a named math symbol, and a fraction in every paragraph.
+Fifty samples produced these actual compiler-only measurements:
+
+| Case | Actual latency | Reuse |
+|---|---:|---:|
+| First cold compile | 45.762 ms | 0 / 500 blocks |
+| Cold compile | median 37.882 ms, p95 40.453 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.728 ms, p95 0.879 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 27.459 ms, p95 29.225 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 40.211 ms, p95 42.009 ms | 0 / 500 blocks |
+
+These numbers were re-measured after adopting shared Core 14 shaping. Cold and
+global-macro cases include shaping every recomputed block. The one-word edit
+still reuses 499 of 500 blocks.
+
+The measured compiler work is below the 200 ms ordinary warm-edit target; the
+one-word edit p95 is 29.225 ms, leaving 170.775 ms of that budget. This is not an
+end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
+drawing, and artifact publication are excluded, so the full product target still
+requires integration measurement. The benchmark intentionally does not claim a
+guarantee for arbitrary documents or TeX programs.

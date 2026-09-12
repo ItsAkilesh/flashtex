@@ -1,8 +1,10 @@
 //! A paragraph ending in `\\` used to panic inside the pinned
 //! paragraph-layout (`vendor/paragraph-layout/src/linebreak.rs:988`, slice
-//! index on the empty final line TeX would set) and kill the worker. The
-//! pipeline refuses such a paragraph with a typed diagnostic instead; the
-//! vendored crate is not patched here (owner report in the handoff).
+//! index on the empty final line TeX would set) and kill the worker. Until
+//! the owner's forced-break fix lands the pipeline drops the trailing break
+//! before line breaking, sets the rest of the paragraph, and reports the
+//! dropped empty line as a typed warning; the vendored crate is not patched
+//! here (owner report in `docs/handoffs/paragraph-layout-forced-break/`).
 
 mod common;
 
@@ -14,7 +16,7 @@ fn body(text: &str) -> String {
 }
 
 #[test]
-fn trailing_linebreak_is_a_typed_diagnostic_not_a_panic() {
+fn trailing_linebreak_is_dropped_with_a_warning_not_a_panic() {
     if !lm_available() {
         eprintln!("skipping: Latin Modern not installed");
         return;
@@ -27,18 +29,23 @@ fn trailing_linebreak_is_a_typed_diagnostic_not_a_panic() {
             .iter()
             .find(|d| d.code == "paragraph_final_linebreak")
             .unwrap_or_else(|| panic!("{text:?}: {:?}", r.v2.diagnostics));
-        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.severity, Severity::Warning, "{text:?}: {d:?}");
+        assert!(d.message.contains("forced-break fix pending"), "{text:?}: {}", d.message);
         assert_eq!(d.sources.len(), 1, "{text:?}: the diagnostic points at the text before the break");
         let src = &d.sources[0];
         let doc = body(text);
         let pointed = &doc[src.start_byte..src.end_byte];
         assert!(text.contains(pointed) && !pointed.is_empty(), "{text:?} -> {pointed:?}");
-        // The refused paragraph is absent; a following paragraph is still set.
+        // The paragraph is set minus its empty last line; a following
+        // paragraph is still set.
         let texts: Vec<String> = r.v2.pages.iter().flat_map(|p| p.items.iter()).filter_map(|i| match i {
             flashtex_render_pipeline::display::Item::GlyphRun(g) => Some(g.text.clone()),
             _ => None,
         }).collect();
-        assert!(!texts.iter().any(|t| t == "Alpha"), "{text:?}: {texts:?}");
+        assert!(texts.iter().any(|t| t == "Alpha"), "{text:?}: {texts:?}");
+        if text.contains("beta") {
+            assert!(texts.iter().any(|t| t == "beta"), "{text:?}: {texts:?}");
+        }
         if text.contains("Next") {
             assert!(texts.iter().any(|t| t.starts_with("Next")), "{text:?}: {texts:?}");
         }
