@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T06:05:25Z",
-      "adaptation": "Accepted FT-002 revision 4 at input main 81f02dc under allocation openai-kabir-plus-ft002-stage4. Three of the four child streams named in the objective are already delivered on this branch: reusable incremental state (6b13034), scoped macro expansion and preamble handling (01fb13c), project-relative multifile dependencies with per-file source identity (3ae7d9b), and independent equivalence and performance evidence (benchmark plus byte-identical-to-clean-build assertions, rerun by me). Issue #8 reproductions should already pass and will be verified against its exact JSON lines. Issue #9 is the real remaining work: the compiler emits fraction bars as box-drawing text and Greek/radical as Unicode, which crates/pdf cannot encode in base-14 and silently turns into question marks. Rev 4 forbids silent glyph substitution, so this needs a shared representation or a tested adapter; crates/pdf belongs to FT-009 and will not be edited from here.",
-      "main_sha": "1befb923fb8c248a704a1ff5148d77b5f581130f",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T06:34:14Z",
+      "adaptation": "Accepted FT-002 revision 5 at input main ac17097 under allocation openai-kabir-plus-ft002-stage5: harden incremental restart/recovery and run a pinned-corpus non-regression gate, recording supported, failed, unsupported and unverified behaviour honestly. Note that crates/compiler is now integrated on main, so this branch is finally building on integrated work. Running rules-v1 and font-hints-v1 negotiation in parallel in a separate worktree, because the layout-capabilities contract published at a949f5b is what finally allows issue #9 to be closed properly: the fraction bar can become a real rule primitive instead of a box-drawing stand-in.",
+      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+      "revision": 5
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "3aa33304c937749276c7c1fdbb1afa431004540b",
+  "code_revision": "3a45cb7c00911fd8efa3257277a0b03961b6bf3c",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 30,
+    "optimistic": 20,
+    "pessimistic": 45
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Awaiting the two contract decisions on issue #9 and integration of this branch. Available for dispatch.",
+  "main_integrated_through": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
+  "next_action": "Verify and merge the rules-v1 worktree, then close issue #9.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "The README numbers predated cross-references and multi-file support, so they were quietly wrong. Re-measuring rather than trusting them is what exposed the regression; the README now records both the corrected numbers and the fact that cold compilation is genuinely 6 ms slower as the honest cost of the convergence pass, which is not a regression.",
-      "reviewed_utc": "2026-09-12T06:30:27Z",
-      "sha": "1befb923fb8c248a704a1ff5148d77b5f581130f"
+      "adaptation": "crates/compiler is now integrated on main, so this branch finally builds on integrated work rather than diverging from a pre-rev-3 snapshot. The layout-capabilities contract published at a949f5b grants both things I escalated on issue #9, so the fraction bar can stop being a box-drawing stand-in.",
+      "reviewed_utc": "2026-09-12T06:37:18Z",
+      "sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Found and fixed a 6x performance regression by re-measuring my own stale published numbers. The reuse lookup was quadratic: it shifted a cached block once per comparison, so a one-word edit reached 178 ms p95 against a 200 ms target despite reusing 499 of 500 blocks. Now 29.678 ms. 72 tests pass.",
+  "summary": "FT-002 rev 5 delivered: pinned corpus non-regression gate, restart and malformed-repair determinism suite, and a generated unsupported-feature inventory. 75 tests across 11 suites. rules-v1 negotiation running in parallel in a separate worktree to close issue #9.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T06:30:27Z",
+  "updated_utc": "2026-09-12T06:37:18Z",
   "usage": {
-    "evidence": "Benchmark rerun before and after on the same 118700-byte 500-paragraph fixture: one-word edit p95 178.760 ms then 29.678 ms; cold 27.366 ms; warm unchanged 0.933 ms. cargo test 72 pass; clippy clean; fmt clean; harness 21/21; corpus 9 ok",
-    "status": "No Codex worker; diagnosis and fix written directly"
+    "evidence": "cargo test 75 pass; clippy -D warnings clean; fmt clean; corpus gate pins all 14 cases with exact status; restart suite proves warm output equals a restarted worker and a clean build at every step of an 8-step edit sequence including two break-repair cycles; UNSUPPORTED.md generated from the real compiler",
+    "status": "Codex running on rules-v1; rev 5 written directly"
   }
 }
