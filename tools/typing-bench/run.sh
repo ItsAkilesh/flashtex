@@ -152,7 +152,7 @@ done
 step "writing $OUT"
 python3 - "$OUT" "$RAW_DIR" "$ROOT" "$UTC" "$TYPED" "$(printf '%s\n' "${PRODUCER_NOTES[@]}")" <<'PY'
 import json, os, subprocess, sys, glob
-out, raw, root, utc, typed, notes = sys.argv[1:7]
+out, raw, root, utc, typed_path, notes = sys.argv[1:7]
 def sh(*a):
     try: return subprocess.check_output(a, text=True).strip()
     except Exception as e: return "unavailable (%s)" % e
@@ -191,7 +191,7 @@ for d in runs:
 if not runs:
     lines.append("| (no runs completed) | | | | | | | | | | | | | | | |")
 lines.append("")
-lines.append("Typed script: `tools/typing-bench/typed-200.txt` (%d characters, inserted before `\\end{document}` when present, else at the end)." % len(open(typed, encoding="utf-8").read()))
+lines.append("Typed script: `tools/typing-bench/typed-200.txt` (%d characters, inserted before `\\end{document}` when present, else at the end)." % len(open(typed_path, encoding="utf-8").read()))
 lines.append("Seeds: `demo` = `apps/mac/Samples/demo.tex`; `body60k` = the demo's paragraphs repeated to ≥ 60 KB in one document; `fixture` = the entry document of `protocol/fixtures/compile-request.json`.")
 lines.append("")
 lines.append("## Methodology")
@@ -206,8 +206,8 @@ lines.append("")
 lines.append("- The bench inserts text programmatically: there is no OS keyboard event, no event-queue wait, no key repeat and no input-method composition; real typing adds the HID → WindowServer → `NSApplication.sendEvent` hop, which the local-monitor path measures but this bench cannot.")
 lines.append("- `paint` is the completed CoreAnimation commit, not the display scan-out: the pixels reach the panel at the next vsync (up to one frame, 8–17 ms at 60–120 Hz) after the stamp, and later still if the render server is behind. No IOSurface presentation callback is observed. The window is ordered back (`FLASHTEX_NO_ACTIVATE=1`) and may be occluded during the run; commits still happen, on-screen visibility is not verified.")
 lines.append("- Compile time is measured on the main thread from send to result application, so it includes any time the reply waited behind a render pass; the producers' own round trip is 1–6 ms for these documents when measured directly.")
-lines.append("- Typing stops after `FLASHTEX_TYPING_BENCH_MAX_MS` (120 s here); a cell marked "of 200 (budget)" typed fewer characters because each keystroke waited for a main-thread render pass.
-- One machine, one run per cell, no warm-up discard beyond the first compile; numbers are indicative, not a regression gate.")
+lines.append("- Typing stops after `FLASHTEX_TYPING_BENCH_MAX_MS` (120 s here); a cell marked 'of 200 (budget)' typed fewer characters because each keystroke waited for a main-thread render pass.")
+lines.append("- One machine, one run per cell, no warm-up discard beyond the first compile; numbers are indicative, not a regression gate.")
 open(out, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print("\n".join(lines[:4]))
 for l in lines:
