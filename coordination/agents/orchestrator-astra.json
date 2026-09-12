@@ -11,13 +11,13 @@
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "4746e5b0b248f5df5db9c68807b6a23ce58dfc99",
-  "next_action": "Test and promote combined original Rust product components; replenish task queues and inspect remote ACKs.",
+  "next_action": "Integrate preview-controller after parallel lock-fix gate; keep remote native candidate held for exact combined Xcode validation and five known bridge source defects.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Active sole orchestrator. Dispatcher active PID350962; six hosted product engineers active; Jaysen parent ACK reports14 then15 engineering workers.",
+  "summary": "Sole active orchestrator; dispatcher478508 verified active. Six hosted product engineers active. Jaysen reported15 engineers. Main includes original compiler3ae7d9b and four tested Rust integration batches; full visual/byte PDF compatibility not achieved.",
   "tool": "Codex Astra orchestrator",
-  "updated_utc": "2026-09-12T05:51:18.201476+00:00",
+  "updated_utc": "2026-09-12T06:10:20.628667+00:00",
   "usage": {
     "status": "unknown"
   }

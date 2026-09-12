@@ -78,3 +78,46 @@ Verified locally with installed LiberationSans-Regular.ttf, SHA256
 fixture and keeps `paintable: false`; the font itself is not copied into this crate.
 Font license/embedding permission remains explicit loader metadata and is never
 inferred from successful parsing or converted from unknown to allowed.
+
+`transform::ViewportTransform` maps canonical ticks to exact rational viewport
+coordinates with positive zoom, translation and optional y-axis reversal. It clips
+source rectangles before transformation and preserves half-open boundary inclusion
+even when the y axis flips. `PageIndex::hit_test_exact` retains fractional query
+positions for caret choice; integer floor is used only for exact membership tests
+against integer rectangle edges. No pixel rounding changes caret selection.
+Rational denominators are bounded to one million; checked distance arithmetic
+returns an explicit error if an extreme query exceeds its i128 budget.
+
+`wire::parse_validated` and `wire::serialize_validated` form the opt-in consumer
+boundary. They validate capabilities and semantic references, return typed errors
+for unsupported versions/messages/primitives, and never emit a partial oversized
+frame. The serializer defaults to the caller's requested cap, bounded above by
+32 MiB. Resource verification remains separate from wire validity.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example validate_display -- \
+  crates/rendering-core/tests/fixtures/synthetic-display-list.json \
+  crates/rendering-core/tests/fixtures/capabilities.json
+```
+
+The offline harness validates, serializes, reparses and verifies a stable canonical
+roundtrip. It reports `paintable: false`; a synthetic glyph fixture is not a native
+rendering or font-shaping test.
+
+`outlines::PreparedOutlines` validates exact display/font descriptors once, then
+resolves original glyph IDs through the immutable font loader. It preserves font
+SHA, component instances, logical cluster/source ranges and explicit synthetic
+provenance. Loader-supplied quadratic paths and implied points are placed with exact
+checked rational size/baseline arithmetic; font coordinates point upward and page
+coordinates downward. `hinting_applied` remains false. Unsupported loader cases
+return errors, never silently empty paths or replacement fonts.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example outline_probe -- \
+  /path/to/font.ttf /path/to/LICENSE.txt A
+```
+
+Local LiberationSans `A` probe: original GID 36, 17 points, two contours and
+17 placed path commands; exact font hash recorded above. Supplied installed license
+SHA256 was `93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b`.
+No glyph shaping, hint execution, raster painting or reference-TeX parity is claimed.

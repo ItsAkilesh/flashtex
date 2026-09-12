@@ -353,3 +353,116 @@ fn horizontal_metrics_keep_original_units_and_trailing_bearings() {
         Err(Error::UnsupportedFont(_))
     ));
 }
+
+fn tfm_for_encoding() -> flashtex_font_resources::tfm::Tfm {
+    let mut bytes = [16u16, 2, 65, 66, 2, 1, 1, 1, 0, 0, 0, 1]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        0x01000000,
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+        0,
+    ] {
+        bytes.extend(word.to_be_bytes());
+    }
+    flashtex_font_resources::tfm::Tfm::parse(&bytes).unwrap()
+}
+fn encoding_manifest(
+    font: &FontResource,
+    tfm: &flashtex_font_resources::tfm::Tfm,
+) -> flashtex_font_resources::encoding::EncodingManifest {
+    use flashtex_font_resources::encoding::*;
+    EncodingManifest {
+        font_sha256: font.descriptor().sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![
+            EncodingEntry {
+                code: 65,
+                glyph_name: "A.alt".into(),
+            },
+            EncodingEntry {
+                code: 66,
+                glyph_name: ".notdef".into(),
+            },
+        ],
+        declared_glyphs: vec![NamedGlyph {
+            glyph_name: "A.alt".into(),
+            glyph_id: 2,
+        }],
+    }
+}
+#[test]
+fn explicit_encoding_never_casts_codes_and_adapter_preserves_metrics() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let bound = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    assert_eq!(bound.map_code(65).unwrap().0, GlyphIdentity::Original(2));
+    assert_eq!(bound.map_code(66).unwrap().0, GlyphIdentity::Notdef);
+    assert!(bound.map_code(67).is_err());
+    assert!(matches!(
+        &bound.map_run(b"AB").unwrap()[0],
+        MappedItem::Glyph {
+            identity: GlyphIdentity::Original(2),
+            input_start: 0,
+            input_end: 1,
+            ..
+        }
+    ));
+}
+#[test]
+fn encoding_duplicate_missing_and_hash_binding_fail() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let original = encoding_manifest(&font, &tfm);
+    for mode in 0..7 {
+        let mut m = original.clone();
+        match mode {
+            0 => m.encoding.push(m.encoding[0].clone()),
+            1 => m.declared_glyphs.push(m.declared_glyphs[0].clone()),
+            2 => m.declared_glyphs.clear(),
+            3 => m.font_sha256 = "0".repeat(64),
+            4 => m.tfm_sha256 = "0".repeat(64),
+            5 => m.face_index = 1,
+            _ => m.declared_glyphs[0].glyph_id = 0,
+        };
+        assert!(EncodingMap::bind(&m, &font, &tfm).is_err(), "{mode}");
+    }
+}
+#[test]
+fn typed_json_escaped_names_decode_exactly_without_postscript_guessing() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let mut manifest = encoding_manifest(&font, &tfm);
+    manifest.encoding[0] =
+        serde_json::from_str(r#"{"code":65,"glyph_name":"A\u002ealt"}"#).unwrap();
+    assert_eq!(
+        EncodingMap::bind(&manifest, &font, &tfm)
+            .unwrap()
+            .resolve(65)
+            .unwrap(),
+        GlyphIdentity::Original(2)
+    );
+    manifest.encoding[0].glyph_name = "A#2Ealt".into();
+    assert!(EncodingMap::bind(&manifest, &font, &tfm).is_err());
+    manifest.declared_glyphs.push(NamedGlyph {
+        glyph_name: ".notdef".into(),
+        glyph_id: 1,
+    });
+    assert!(EncodingMap::bind(&manifest, &font, &tfm).is_err());
+}

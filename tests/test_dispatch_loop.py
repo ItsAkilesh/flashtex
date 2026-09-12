@@ -269,6 +269,16 @@ class DispatcherTests(unittest.TestCase):
         self.assertTrue(coord.published_branch_assignment(self.root, 'legacy-worker', assignment['branch']))
         self.assertFalse(coord.published_branch_assignment(self.root, 'other-worker', assignment['branch']))
 
+    def test_malformed_queue_does_not_stop_other_workers(self):
+        self.write(self.root, 'coordination/queues/bad-worker.json', {'schema_version': 1, 'agent_id': 'bad-worker', 'steps': None})
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        result = loop.scan_once(self.root, self.args)
+        self.assertEqual(result['prepared'], ['TASK'])
+        bad = next(item for item in result['skipped'] if item['queue'].endswith('bad-worker.json'))
+        self.assertTrue(bad['needs_commander_review'])
+        self.assertIn('invalid queue', bad['reason'])
+
     def test_verified_milestone_continues_dispatch(self):
         self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})
         self.commit(self.root)
