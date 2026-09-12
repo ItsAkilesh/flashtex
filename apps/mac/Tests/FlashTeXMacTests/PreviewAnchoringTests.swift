@@ -398,7 +398,7 @@ final class PreviewAnchoringTests: XCTestCase {
         let target = try XCTUnwrap(wide.frame(of: 2)).minY + 0.3 * pageH * wide.scale
         Self.scroll(scroll, toTop: target)
         try await settle(0.1)
-        var report = ["preview-anchoring PreviewView (\(loadNote()), keeper \(applied ? "present" : "ABSENT — parent diff not applied, drift reported not asserted")): base \(base.pages.count) page(s), revision \(base.revision)"]
+        var report = ["(\(loadNote()), keeper \(applied ? "present" : "ABSENT — parent diff not applied, drift reported not asserted")): base \(base.pages.count) page(s), revision \(base.revision)"]
 
         // (a) more pages
         let more = try await compile(Self.body(paragraphs: 120))
