@@ -1,3 +1,9 @@
+## Current observed resource and census checkpoint
+
+Observed 2026-09-12T13:33:32.337444+00:00. Local retained handles: Commander and three existing engineers, no expansion. Dispatcher1099831 and witness service active; latest witness13:32:34 pins Commander268514 live, empty journal blockers and claim_authorized=false. No restart justified. Load1.07/1.16/1.56; /home187GiB and /tmp1.7GiB available, not account balances.
+
+Jaysen issue2comment5646190139 reports twelve children plus parent, target15, quota429 cleared13:20 and sessions resumed13:27. GH31 ae7ddcfb739815fac and GH36 ac12dd0004019340d acknowledged. Report created13:30:18 but self-dated13:40 and handoff13:45: timestamps inconsistent, correction requested5646203389; count is lead-reported, not independently verified processes. Daniel b40e9948, Kabir previous ce5bf48e and Aarush c5c0bb67 remain stale; no current all-machine confirmation or numeric remaining balance. Existing billing restrictions remain.
+
 ## Verified Commander resource checkpoint
 
 Observed 2026-09-12T12:38:21.553671+00:00. Exactly four local running handles: sole Commander /root/runtime_validator and retained /root, /root/compiler_corpus (runtime), /root/supervisor_api_review. Three drained handles remain completed; Sol quiesced. This current census supersedes all historical seven-worker statements below.
