@@ -6,8 +6,81 @@ Agent / task / branch: `daniel-spelling` / FT-039 "spellcheck" /
 State: ready for integration (standalone additive crate; not yet wired into
 any consumer)
 
-Owned paths: `crates/spellcheck/**`, `coordination/daniel-spelling.md`. No
-other crate or coordination file was touched.
+Owned paths: `crates/spellcheck/**`, `coordination/daniel-spelling.md`,
+`coordination/agents/daniel-spelling.json`. No other crate or coordination
+file was touched.
+
+## Revision 2 (current)
+
+Objective: bounded user dictionary layered over the caller dictionary,
+source-revision-aware results, cancellation, and confirming no automatic
+source mutation was introduced.
+
+**Exact tested commit: `9c0651a37da934f401d681200e765d757ff59f65`**
+(`agent/daniel-spelling/spellcheck`, "spellcheck: bounded user dictionary,
+revision-aware results, cancellation"). `main` was merged in first
+(`origin/main` at `2fc45df69f0d397706174117116777f19619dfe2`, no conflicts,
+no other crate touched by that merge). `cargo test` (35 passed, 0 failed)
+and `cargo clippy --all-targets -- -D warnings` (clean) both ran against
+this exact commit's `crates/spellcheck` tree. `Cargo.toml`'s
+`[dependencies]` table is still empty.
+
+New public API surface, all additive (nothing in the rev 1 surface changed
+signature or behavior):
+
+- `UserDictionary` (bounded: typed `UserDictionaryError::CapacityExceeded`
+  once `max_entries` combined additions+ignores is reached; default bound
+  `USER_DICTIONARY_DEFAULT_MAX_ENTRIES = 10_000`) plus `LayeredDictionary`,
+  which composes a `UserDictionary` with any caller `Dictionary` by
+  implementing the same `Dictionary` trait — no change needed to `check()`
+  itself. `add_word` entries are also offered as suggestions for other
+  misspelled words; `ignore_word` entries only suppress flagging for that
+  exact word. Neither ever touches the base dictionary or does I/O.
+- `Revision` (`= u64`, caller-defined, opaque to this crate) and
+  `CheckResult { revision, misspellings }` via the new
+  `SpellChecker::check_revision`, with `CheckResult::is_stale(current)` to
+  detect a result computed against an older revision.
+- `CheckOutcome::{Completed(CheckResult), Cancelled { revision }}` via the
+  new `SpellChecker::check_cancellable(text, revision, dictionary,
+  is_cancelled: &dyn Fn() -> bool)`. `is_cancelled` is polled synchronously
+  before the scan starts and again before each candidate word is processed
+  (the point where the bounded-but-nontrivial suggestion search would run),
+  so cancellation is observed promptly rather than after a full scan. No
+  threads or async runtime involved.
+- `check()`, `check_revision()`, and `check_cancellable()` now share one
+  private `check_impl` so there is exactly one place the scan/suggest logic
+  lives; `check()`'s public signature and behavior are unchanged.
+- No mutation API was added or exists: every new method takes `&self` and
+  `text: &str`, returning byte ranges/suggestions/results, never rewriting
+  the input.
+
+New tests (9, on top of the 26 rev 1 tests — 35 total):
+`user_dictionary_add_word_respects_capacity_bound`,
+`user_dictionary_ignore_word_shares_the_same_capacity_bound_as_additions`,
+`user_dictionary_error_display_mentions_the_bound`,
+`user_dictionary_ignore_does_not_promote_to_addition_and_add_promotes_existing_ignore`,
+`layered_dictionary_suppresses_additions_and_ignores_without_mutating_the_base`,
+`check_revision_tags_result_and_detects_staleness`,
+`check_cancellable_without_cancellation_matches_plain_check`,
+`cancellation_short_circuits_a_long_check_instead_of_running_to_completion`
+(the load-bearing one: 500 distinct misspelled tokens, a cancellation
+callback that fires on its 4th poll, asserts the outcome is `Cancelled` and
+that the callback was polled at most 5 times rather than ~500 — i.e. it
+proves the short-circuit, not just that cancellation is possible), and
+`check_cancellable_reports_the_given_revision_even_when_cancelled_immediately`.
+
+Rev 1's math/command-exclusion tests, UTF-8 boundary tests, and suggestion
+bound tests all still pass unchanged (verified in the same 35-test run).
+The rev 1 documented limitations (LaTeX math *environments* not
+recognized — only `$...$`/`$$...$$`/`\(...\)`/`\[...\]`; ASCII a-z-only
+suggestion alphabet) were not revisited and remain accurate; rev 2 did not
+touch `excluded_ranges`, `tokenize_words`, `edits1`, or `EDIT_ALPHABET`.
+
+Unfinished / out of scope for rev 2 as specified: no persistence for
+`UserDictionary` (caller's responsibility, matching the crate's zero-I/O
+stance); no consumer wiring (still a standalone crate, as in rev 1).
+
+## Revision 1
 
 ## What this is
 
