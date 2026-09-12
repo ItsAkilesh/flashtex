@@ -832,3 +832,52 @@ fn xelatex_reference_with_cid_keyed_cff_reemits_identically() {
     assert_eq!(again.bytes, out.bytes, "fixed point");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Issue #28: identical bytes must not imply operator equality when the
+/// stream is outside the bounded set.
+#[test]
+fn classify_reports_identical_unsupported_streams_as_unsupported_not_identical() {
+    let doc = sample_document();
+    let a = render_exact(&doc).unwrap();
+    // Same byte length, same container: turn the ` rg` in page 1's content
+    // into ` gs`, which the exact parser refuses.
+    let needle = b" rg\n";
+    let at = a
+        .bytes
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("page 1 content has an rg operator");
+    let mut bytes = a.bytes.clone();
+    bytes[at + 1..at + 3].copy_from_slice(b"gs");
+    let file = PdfFile::parse(&bytes).unwrap();
+    verify::check_structure(&bytes).unwrap();
+    let report = compare::classify(&file, &file, "a", "b");
+    assert_eq!(
+        report.content_byte_identical,
+        vec![true, true],
+        "bytes really are identical"
+    );
+    assert_eq!(
+        report.content_ops_identical,
+        vec![false, true],
+        "page 1 is unknown (unsupported), page 2 is parsed-identical"
+    );
+    assert!(
+        report.categories.contains(&Category::ContentUnsupported),
+        "{}",
+        report.text()
+    );
+    assert!(
+        report
+            .lines
+            .iter()
+            .any(|l| l.contains("outside the bounded operator set")),
+        "{}",
+        report.text()
+    );
+    // The unmodified file compared with itself is parsed-identical on both pages.
+    let good = PdfFile::parse(&a.bytes).unwrap();
+    let report = compare::classify(&good, &good, "a", "b");
+    assert_eq!(report.content_ops_identical, vec![true, true]);
+    assert!(report.categories.is_empty(), "{}", report.text());
+}

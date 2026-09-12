@@ -595,19 +595,23 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
         let cb = b.page_content(pb);
         match (&ca, &cb) {
             (Ok(ca), Ok(cb)) => {
-                if ca == cb {
-                    r.same(format!(
-                        "page {n} content stream byte-identical ({} bytes)",
-                        ca.len()
-                    ));
-                    r.content_byte_identical.push(true);
-                    r.content_ops_identical.push(true);
-                } else {
-                    r.content_byte_identical.push(false);
-                    match (exact::parse(ca), exact::parse(cb)) {
-                        (Ok(oa), Ok(ob)) => {
-                            if oa == ob {
-                                r.content_ops_identical.push(true);
+                // Byte equality and parsed-operator equality are separate
+                // facts (issue #28): both sides are always parsed, and a
+                // stream outside the bounded set is reported as unsupported
+                // even when the two files carry identical bytes.
+                let bytes_equal = ca == cb;
+                r.content_byte_identical.push(bytes_equal);
+                match (exact::parse(ca), exact::parse(cb)) {
+                    (Ok(oa), Ok(ob)) => {
+                        if oa == ob {
+                            r.content_ops_identical.push(true);
+                            if bytes_equal {
+                                r.same(format!(
+                                    "page {n} content stream byte-identical ({} bytes, {} operators)",
+                                    ca.len(),
+                                    oa.len()
+                                ));
+                            } else {
                                 r.note(
                                     Category::ContentFormatting,
                                     format!(
@@ -617,55 +621,61 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                                         cb.len()
                                     ),
                                 );
+                            }
+                        } else {
+                            r.content_ops_identical.push(false);
+                            let same_shape = oa.len() == ob.len()
+                                && oa.iter().zip(&ob).all(|(x, y)| {
+                                    std::mem::discriminant(x) == std::mem::discriminant(y)
+                                });
+                            let cat = if same_shape {
+                                Category::ContentOperands
                             } else {
-                                r.content_ops_identical.push(false);
-                                let same_shape = oa.len() == ob.len()
-                                    && oa.iter().zip(&ob).all(|(x, y)| {
-                                        std::mem::discriminant(x) == std::mem::discriminant(y)
-                                    });
-                                let cat = if same_shape {
-                                    Category::ContentOperands
-                                } else {
-                                    Category::ContentOperators
-                                };
-                                let mut shown = 0;
-                                for (k, (x, y)) in oa.iter().zip(&ob).enumerate() {
-                                    if x != y {
-                                        r.note(
-                                            cat,
-                                            format!(
-                                                "page {n} op {k}: {} | {}",
-                                                op_summary(x),
-                                                op_summary(y)
-                                            ),
-                                        );
-                                        shown += 1;
-                                        if shown == 5 {
-                                            break;
-                                        }
-                                    }
-                                }
-                                if oa.len() != ob.len() {
+                                Category::ContentOperators
+                            };
+                            let mut shown = 0;
+                            for (k, (x, y)) in oa.iter().zip(&ob).enumerate() {
+                                if x != y {
                                     r.note(
                                         cat,
                                         format!(
-                                            "page {n} operator count {} vs {}",
-                                            oa.len(),
-                                            ob.len()
+                                            "page {n} op {k}: {} | {}",
+                                            op_summary(x),
+                                            op_summary(y)
                                         ),
                                     );
+                                    shown += 1;
+                                    if shown == 5 {
+                                        break;
+                                    }
                                 }
                             }
+                            if oa.len() != ob.len() {
+                                r.note(
+                                    cat,
+                                    format!("page {n} operator count {} vs {}", oa.len(), ob.len()),
+                                );
+                            }
                         }
-                        (Err(e), _) => {
-                            r.content_ops_identical.push(false);
+                    }
+                    (ra, rb) => {
+                        r.content_ops_identical.push(false);
+                        if bytes_equal {
+                            r.note(
+                                Category::ContentUnsupported,
+                                format!(
+                                    "page {n} content bytes are identical ({} bytes) but outside the bounded operator set, so operator equality is unknown",
+                                    ca.len()
+                                ),
+                            );
+                        }
+                        if let Err(e) = ra {
                             r.note(
                                 Category::ContentUnsupported,
                                 format!("page {n} {label_a}: {e}"),
                             );
                         }
-                        (_, Err(e)) => {
-                            r.content_ops_identical.push(false);
+                        if let Err(e) = rb {
                             r.note(
                                 Category::ContentUnsupported,
                                 format!("page {n} {label_b}: {e}"),
