@@ -280,3 +280,24 @@ and sidecar I/O remain ordinary filesystem operations, not hard real-time bounds
 Reopen capture status explicitly labels its stderr as a pre-stop snapshot; late
 shutdown stderr may be missing. Child termination is checked separately from
 reaping by the OS, and no remote/native recovery acceptance is implied.
+
+## Positional diagnostic snapshots
+
+The one corrected-harness correctness run under /home (process58242, harness
+77c8cab1) failed in Client.diagnostics JSON parsing before reopening. Its original
+remaining artifacts are in `typing-burst-diagnostic-read-failed`; raw stderr was
+not saved before the temporary file closed, so the exact malformed bytes and
+cause are unavailable. No complete acceptance or comparison is claimed.
+
+Code review found a separate concrete defect: seek/read on the diagnostic file
+changes the open-file-description offset shared with the helper's stderr writer.
+The reader now uses positional pread, retains raw bytes before parsing, and records
+explicit partial-tail, truncation and non-JSON states. Only newline-complete records
+are parsed; an incomplete final line remains in the raw capture with a flag.
+Complete non-JSON records still fail rather than being silently discarded. The
+1MiB bound remains. This is a live snapshot, not complete terminal stderr coverage.
+
+Four deterministic tests verify shared-offset preservation and subsequent exact
+append, partial-tail completion, preserved/refused non-JSON records, and the capture
+bound. They establish the mechanism and repair, not the causes of58242 or68918.
+No additional workload was run while making this change.

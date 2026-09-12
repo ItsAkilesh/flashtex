@@ -164,6 +164,8 @@ def main():
                 try:client.stop()
                 finally:
                     events.close()
+                    (out/'diagnostics-raw.jsonl').write_bytes(client.last_diagnostics_raw[:1024*1024])
+                    (out/'diagnostics-capture-status.json').write_text(json.dumps(client.diagnostics_status)+'\n')
                     (out/'receiver-timings.json').write_text(json.dumps(dict(records=client.receiver_timings,dropped=client.receiver_timings_dropped),indent=2)+'\n')
         reopened=Client(args.helper,config,capture_wire=True,capture_diagnostics=True)
         reopen_events=(out/'reopen-events.jsonl').open('wb')
@@ -180,8 +182,7 @@ def main():
         finally:
             try:
                 # Preserve raw diagnostics, even an incomplete final stderr line.
-                reopened.diagnostic_file.seek(0)
-                data=reopened.diagnostic_file.read(1024*1024+1)
+                data=reopened.diagnostic_bytes()
                 (out/'reopen-diagnostics.jsonl').write_bytes(data[:1024*1024])
                 (out/'reopen-capture-status.json').write_text(json.dumps(dict(
                     scope="pre-stop snapshot; terminal stderr may be missing",
