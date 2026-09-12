@@ -1,5 +1,6 @@
 //! Durable capture receipt and reviewed source edits. No TeX engine is embedded.
 pub mod context;
+pub mod features;
 pub mod grok;
 pub mod store;
 pub mod validation;
@@ -196,6 +197,13 @@ impl CaptureSubmit {
     }
 }
 
+/// Grok is instructed (see `grok::request_body`) to prefix any `ambiguities`
+/// entry describing a construct it could not honestly express with the
+/// supported feature list — as opposed to an ordinary handwriting ambiguity —
+/// with this marker. Such entries are load-bearing: see
+/// `Proposal::blocks_direct_insertion`.
+pub const UNSUPPORTED_CONSTRUCT_PREFIX: &str = "UNSUPPORTED:";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Proposal {
@@ -227,6 +235,77 @@ impl Proposal {
         }
         Ok(())
     }
+    /// True when this proposal must not be inserted as a plain reviewed edit:
+    /// either Grok itself reported an unsupported/unexpressible construct
+    /// (an `ambiguities` entry tagged `UNSUPPORTED_CONSTRUCT_PREFIX`), or the
+    /// LaTeX contains a deterministic empty-argument artifact — the measured
+    /// failure mode where an unsupported operator (e.g. `\sqrt`) is dropped
+    /// but its now-meaningless operand braces are kept, silently producing
+    /// something that renders cleanly but is mathematically false (issues
+    /// #51/#23). Ordinary handwriting ambiguities (untagged) do not block
+    /// insertion; they are only surfaced for human review.
+    pub fn blocks_direct_insertion(&self) -> bool {
+        self.ambiguities
+            .iter()
+            .any(|a| a.trim_start().starts_with(UNSUPPORTED_CONSTRUCT_PREFIX))
+            || has_empty_argument_artifact(&self.latex)
+    }
+}
+
+/// Scans for a mandatory-argument brace group that is empty or whitespace-only
+/// immediately after a command name, `^`, or `_` (e.g. `\sqrt{ }`, `\frac{}{2}`,
+/// `^{ }`), or for an unbalanced `{` — both signs of a dropped operator whose
+/// hollow operand was kept rather than honestly reported. Deterministic; runs
+/// on every proposal regardless of what Grok says about itself.
+fn has_empty_argument_artifact(latex: &str) -> bool {
+    let bytes = latex.as_bytes();
+    // Every '{' is checked independently (not just top-level groups) so a
+    // hollow argument nested inside an otherwise-nonempty group, e.g. the
+    // \sqrt{ } inside \frac{\sqrt{ }}{2}, is still caught.
+    for (i, &b) in bytes.iter().enumerate() {
+        if b != b'{' {
+            continue;
+        }
+        match matching_brace(bytes, i) {
+            Some(end) => {
+                if latex[i + 1..end].trim().is_empty() && preceded_by_command_or_script(latex, i) {
+                    return true;
+                }
+            }
+            None => return true, // Unbalanced group: truncated/malformed proposal.
+        }
+    }
+    false
+}
+fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+fn preceded_by_command_or_script(latex: &str, brace_index: usize) -> bool {
+    let trimmed = latex[..brace_index].trim_end();
+    if trimmed.ends_with('^') || trimmed.ends_with('_') {
+        return true;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut k = bytes.len();
+    while k > 0 && (bytes[k - 1] as char).is_ascii_alphabetic() {
+        k -= 1;
+    }
+    k > 0 && bytes[k - 1] == b'\\' && k < bytes.len()
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContextDependency {
@@ -655,6 +734,15 @@ impl Bridge {
                 "Convert the capture before reviewing insertion",
             )
         })?;
+        if proposal.blocks_direct_insertion() {
+            return Err(BridgeError::new(
+                "unsupported_construct_requires_confirmation",
+                "This proposal reports an unsupported/unexpressible construct or a hollow \
+                 empty-argument artifact (e.g. \\sqrt{ }); it cannot be inserted as a plain \
+                 reviewed edit. Have a human directly re-author this passage instead of \
+                 approving it as-is.",
+            ));
+        }
         self.verify_proposal_context(&record)?;
         if doc.text.len() - (a.end_byte - a.start_byte) + proposal.latex.len() > MAX_DOCUMENT_BYTES
         {
@@ -739,5 +827,76 @@ impl Bridge {
             replacement: edit.replacement.clone(),
         })?;
         Ok(applied)
+    }
+}
+
+#[cfg(test)]
+mod proposal_gate_tests {
+    use super::*;
+
+    fn proposal(latex: &str, ambiguities: Vec<&str>) -> Proposal {
+        Proposal {
+            latex: latex.into(),
+            ambiguities: ambiguities.into_iter().map(String::from).collect(),
+            required_dependencies: vec![],
+        }
+    }
+
+    #[test]
+    fn clean_proposal_does_not_block() {
+        assert!(!proposal("$x^2$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn ordinary_handwriting_ambiguity_does_not_block() {
+        assert!(!proposal("$x$", vec!["AMBIGUOUS: could be 1 or l"]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn tagged_unsupported_construct_ambiguity_blocks() {
+        assert!(proposal(
+            "$x$",
+            vec!["UNSUPPORTED: cannot express the Greek letter pi"]
+        )
+        .blocks_direct_insertion());
+    }
+
+    #[test]
+    fn tagged_ambiguity_blocks_even_with_leading_whitespace() {
+        assert!(
+            proposal("$x$", vec!["  UNSUPPORTED: dropped an operator"]).blocks_direct_insertion()
+        );
+    }
+
+    #[test]
+    fn empty_sqrt_argument_blocks() {
+        assert!(proposal("$\\frac{\\sqrt{ }}{2}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_frac_numerator_blocks() {
+        assert!(proposal("$\\frac{ }{2}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_superscript_blocks() {
+        assert!(proposal("$x^{ }$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_subscript_blocks() {
+        assert!(proposal("$x_{}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn unbalanced_brace_blocks() {
+        assert!(proposal("$\\frac{ }{$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_braces_not_after_a_command_do_not_block() {
+        // A plain empty group is legal TeX (e.g. spacing idioms); only flag it
+        // when it directly follows a command name, `^`, or `_`.
+        assert!(!proposal("$x{}y$", vec![]).blocks_direct_insertion());
     }
 }
