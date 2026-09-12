@@ -65,3 +65,19 @@ must be coordinated with the capture journal by the eventual bridge adapter.
 
 Twelve tests now pass, including atomic old-file preservation, bounded codecs,
 malformed snapshots, duplicate identities and explicit recovery authorization.
+
+## Progress and resource evidence
+
+`subscribe(capacity)` returns a bounded event receiver. Enqueue, start, completion,
+failure, cancellation and `CancellationToken::progress(percent,message)` emit
+sequenced metadata events using nonblocking sends. Full consumers lose events;
+`usage().events_dropped` records missed deliveries and clients resynchronize from
+`state`. No consumer callback runs inside the scheduler lock. Progress messages
+are limited to 1024 bytes and percentages to 0–100; do not include credentials.
+Disconnected receivers are pruned on the next event. Up to 64 subscriptions with
+capacity 1–4096 are permitted; callers should use small UI buffers.
+
+`usage` exposes queued, physically executing, retained and converter-call counts.
+These are process-local measurements, not cumulative provider billing or quota;
+`provider_billing_known` is always false. Cancellation does not free an executing
+slot early. Fifteen tests cover the scheduler, recovery and event/backpressure paths.

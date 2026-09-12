@@ -1,3 +1,4 @@
+pub mod events;
 pub mod snapshot;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -59,6 +60,8 @@ impl<T> Clone for State<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     InvalidLimits,
+    InvalidProgress,
+    SubscriberLimit,
     WorkerUnavailable,
     InvalidIdentity,
     InvalidFingerprint,
@@ -72,7 +75,7 @@ pub enum Error {
     RecoveryAuthorizationRequired,
 }
 #[derive(Clone)]
-pub struct CancellationToken(Arc<AtomicBool>);
+pub struct CancellationToken(Arc<AtomicBool>, Option<events::Reporter>);
 impl CancellationToken {
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Acquire)
@@ -95,6 +98,7 @@ struct Data<T> {
 struct Shared<T> {
     data: Mutex<Data<T>>,
     wake: Condvar,
+    events: Arc<events::Hub>,
 }
 /// `max_queued` bounds pending calls; `max_retained` also bounds completed records.
 /// Explicit `forget` is required to release terminal identities/results.
@@ -115,6 +119,7 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
                 stopped: false,
             }),
             wake: Condvar::new(),
+            events: Arc::new(events::Hub::new()),
         });
         for _ in 0..workers {
             let shared = shared.clone();
@@ -171,11 +176,18 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
                 expected: context.clone(),
                 current: context,
                 state: State::Queued,
-                token: CancellationToken(Arc::new(AtomicBool::new(false))),
+                token: CancellationToken(
+                    Arc::new(AtomicBool::new(false)),
+                    Some(events::Reporter {
+                        id: id.clone(),
+                        hub: self.shared.events.clone(),
+                    }),
+                ),
                 task: Some(Box::new(convert)),
                 executing: false,
             },
         );
+        self.shared.events.emit(&id, events::EventKind::Queued);
         data.queue.push_back(id);
         self.shared.wake.notify_one();
         Ok(())
@@ -199,6 +211,7 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
         job.current = current;
         if job.current != job.expected && matches!(job.state, State::Completed(_)) {
             job.state = State::Failed(stale());
+            self.shared.events.emit(id, events::kind(&job.state));
         }
         Ok(())
     }
@@ -210,6 +223,7 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
         if matches!(job.state, State::Queued | State::Running | State::Cancelled) {
             job.token.0.store(true, Ordering::Release);
             job.state = State::Cancelled;
+            self.shared.events.emit(id, events::EventKind::Cancelled);
             job.task = None;
             data.queue.retain(|queued| queued != id);
         }
@@ -271,12 +285,15 @@ fn worker<T: Send + Sync + 'static>(shared: Arc<Shared<T>>) {
                     let job = data.jobs.get_mut(&id).unwrap();
                     if job.current != job.expected {
                         job.state = State::Failed(stale());
+                        shared.events.emit(&id, events::kind(&job.state));
                         job.task = None;
                         continue;
                     }
                     if let Some(task) = job.task.take() {
                         job.state = State::Running;
                         job.executing = true;
+                        shared.events.started.fetch_add(1, Ordering::Relaxed);
+                        shared.events.emit(&id, events::EventKind::Running);
                         break (id, task, job.token.clone());
                     }
                 } else {
@@ -302,5 +319,6 @@ fn worker<T: Send + Sync + 'static>(shared: Arc<Shared<T>>) {
                 )),
             }
         };
+        shared.events.emit(&id, events::kind(&job.state));
     }
 }

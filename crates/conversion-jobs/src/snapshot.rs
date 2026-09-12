@@ -213,7 +213,7 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
                     expected: j.expected,
                     current: j.current,
                     state,
-                    token: CancellationToken(Arc::new(AtomicBool::new(false))),
+                    token: CancellationToken(Arc::new(AtomicBool::new(false)), None),
                     task: None,
                     executing: false,
                 },
@@ -251,8 +251,15 @@ impl<T: Send + Sync + 'static> Scheduler<T> {
         job.expected = context.clone();
         job.current = context;
         job.state = State::Queued;
-        job.token = CancellationToken(Arc::new(AtomicBool::new(false)));
+        job.token = CancellationToken(
+            Arc::new(AtomicBool::new(false)),
+            Some(events::Reporter {
+                id: id.into(),
+                hub: self.shared.events.clone(),
+            }),
+        );
         job.task = Some(Box::new(convert));
+        self.shared.events.emit(id, events::EventKind::Queued);
         data.queue.push_back(id.into());
         self.shared.wake.notify_one();
         Ok(())
