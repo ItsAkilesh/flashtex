@@ -22,8 +22,10 @@
   mine (untracked root `Cargo.toml`, `Cargo.lock`, `src/`,
   `tests/extended-tex-corpus/`, `tools/extended-tex-corpus/` predate this
   lane and are left alone).
-- State: ready for integration. Crate commit also cherry-picked onto
-  `origin/main` as `agent/mac-pdf/searchable-text` (see below).
+- State: ready for integration. Lane tip `1093dec8` (pushed). Commander
+  crate copy: `agent/mac-pdf/searchable-text` @ `b4b15136` = `94a67130`
+  cherry-picked onto `origin/agent/mac-pdf/fidelity` `a3536c2f` (main's
+  crate + mac-pdf-2's /W fix); `tests/v2` 6/6 there. Pushed.
 - Scratch (not committed): `…/scratchpad/pdf3/` — `gen.sh` (bundled
   `flashtex-render --v2` fixtures), `export.sh` / `extract.sh` (from-v2 +
   PDFKit `pdftext.swift` + Ghostscript txtwrite + `mdimport -t -d3`),
