@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Review exact published producer discovery build and Linux sibling bundle test feasibility with existing official assets",
-      "objective": "Review exact published producer discovery build and Linux sibling bundle test feasibility with existing official assets",
+      "name": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
+      "objective": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "After a coordinated build window verify unchanged producer rooted asset discovery missing or corrupt refusal and explicit override provenance",
-      "objective": "After a coordinated build window verify unchanged producer rooted asset discovery missing or corrupt refusal and explicit override provenance",
+      "name": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
+      "objective": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish reproducible source binary asset evidence while separating Linux sibling layout from sealed native app acceptance",
-      "objective": "Publish reproducible source binary asset evidence while separating Linux sibling layout from sealed native app acceptance",
+      "name": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
+      "objective": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
       "owned_paths": [
         "crates/rendering-core"
       ],
