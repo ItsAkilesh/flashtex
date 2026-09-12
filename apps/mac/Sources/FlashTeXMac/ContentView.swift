@@ -315,8 +315,10 @@ private struct PreviewHeader: View {
             if let r = model.result {
                 Text(sourceName).font(.caption).lineLimit(1)
                     .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
-                Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
-                if r.status == .recovered {
+                if model.previewDebugStatus {
+                    Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
+                }
+                if r.status == .recovered && model.previewDebugStatus {
                     Text("provisional rendering").font(.caption).foregroundStyle(.orange).lineLimit(1).fixedSize()
                         .help("recovered: preview shown with provisional rendering")
                 }

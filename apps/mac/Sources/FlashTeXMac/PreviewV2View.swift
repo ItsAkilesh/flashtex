@@ -794,7 +794,9 @@ struct PreviewV2Pane: View {
         // diagnostics (every keystroke of a document with 130 recovered errors)
         // does not rebuild 130 rows; the list is lazy and bounded in height so
         // the pages keep their room.
-        V2DiagnosticsList(diagnostics: frame.list.diagnostics) { model.navigate(to: $0) }.equatable()
+        if model.previewDebugStatus {
+            V2DiagnosticsList(diagnostics: frame.list.diagnostics) { model.navigate(to: $0) }.equatable()
+        }
     }
 
     private var header: some View { V2PaneHeader() }
@@ -844,7 +846,8 @@ private struct V2PaneHeader: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 Text("V2").font(.caption.bold()).padding(.horizontal, 6).padding(.vertical, 2).background(Color.purple.opacity(0.25), in: Capsule())
-                Text("experimental display-list-v2 — not the default path").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if model.previewDebugStatus {
+                Text("display-list-v2").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 if model.workerAttached {
                     Text(model.liveV2Accepted ? "LIVE" : "v1 only")
                         .font(.caption.bold()).padding(.horizontal, 6).padding(.vertical, 2)
@@ -859,6 +862,7 @@ private struct V2PaneHeader: View {
                         .font(.caption.bold()).foregroundStyle(.orange).lineLimit(1)
                         .accessibilityIdentifier("v2-behind")
                 }
+                }
                 if case .loading(let source, _, let previous, _, _) = model.displayListV2 {
                     // Quiet progress indicator: the previous frame stays on screen; no flashing text.
                     ProgressView().controlSize(.mini)
@@ -871,7 +875,7 @@ private struct V2PaneHeader: View {
                 Button("Export PDF (v2)…") { model.exportPDFV2() }.controlSize(.small).fixedSize()
                     .disabled({ if case .loaded = model.displayListV2 { false } else { true } }())
             }
-            if let frame = model.displayListV2?.frame {
+            if model.previewDebugStatus, let frame = model.displayListV2?.frame {
                 let fonts = frame.fonts.values.map { "\($0.resource.postscriptName) \($0.resource.sha256.prefix(8))" }.sorted().joined(separator: ", ")
                 Text("\(model.displayListV2?.source.label ?? "") · id \(frame.id) · project \(frame.list.projectId) · revision \(frame.list.revision) · \(frame.list.pages.count) page(s) · fonts by hash: \(fonts)")
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
