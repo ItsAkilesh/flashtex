@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "36797512287440dbb4ef4229c1d77a4df86b891f",
-  "objective": "Verify raw versus current candidate equivalence, malformed and duplicate fields, source/epoch invalidation and exact frame bounds",
+  "input_main_sha": "4ff60ac08ba55894338ced8cd822b3bf75f11551",
+  "objective": "Measure isolated parse/residency effect and coordinate reviewed helper consumption before any default behavior change",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 6,
+  "revision": 7,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:48:45Z"
+  "updated_utc": "2026-09-12T11:54:18Z"
 }
