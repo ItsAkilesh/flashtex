@@ -80,7 +80,7 @@ was measured on the 18 `tests/visual-corpus/harness/fixtures` of
 (`--harness-fixtures`, bodies under the pdflatex-lm preamble, fresh MacTeX 2026 references):
 evidence `docs/evidence/visual-oracle-2026-09-12T161438Z/harness-fixtures/report.{md,json}`,
 23 pages, from-v2 exit 0 on 18/18. **17 of 23 pages at max |dx| ≤ 0.01 bp and |dy| = 0.00 bp
-for every aligned word** (01–05, 07–09, 12, 15–18; 08 p1–3, 15 p1–3, 16 p1–2; e.g. 08-two-page
+for every aligned word** (01–05, 07, 08, 12, 15–18; 08 p1–3, 15 p1–3, 16 p1–2; 09-mixed-document is at 0.06 bp on one bold word; e.g. 08-two-page
 737/737 words aligned, all within 0.01 bp). Residuals unchanged from the pinned doc:
 11-nested-lists (page-wide shift −16.25/−29.89 bp, list environment), 13 (max 39.7 bp, math
 parser drops `\left…\right`), 14 (23.95 bp, `\nu`), 10 (10.80 bp, `ǅ` glyph), 06 (9.96 bp, `\sqrt`).
