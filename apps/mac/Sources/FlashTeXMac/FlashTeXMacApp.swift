@@ -50,14 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct FlashTeXMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = ShellModel()
+    @State private var model = ShellModel()
     @StateObject private var nearby = NearbyState()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         WindowGroup("FlashTeX") {
             ContentView()
-                .environmentObject(model)
+                .environment(model)
                 .frame(minWidth: 900, minHeight: 560)
                 .onAppear { appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model) }
         }
@@ -120,7 +120,7 @@ struct FlashTeXMacApp: App {
             }
         }
         Window("Nearby Companion", id: "nearby") {
-            NearbyView().environmentObject(nearby).environmentObject(model)
+            NearbyView().environmentObject(nearby).environment(model)
         }
         .windowResizability(.contentSize)
     }

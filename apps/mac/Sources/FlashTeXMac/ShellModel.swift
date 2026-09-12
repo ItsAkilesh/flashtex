@@ -1,57 +1,62 @@
 import AppKit
 import Combine
+import Observation
 import FlashTeXProtocol
 
 /// State for the editor/preview shell. The preview is fixture-backed: nothing
 /// here compiles LaTeX. `isFixture` is surfaced in the UI so the shell never
 /// implies a real compiler ran.
+/// `@Observable`: SwiftUI tracks the properties each view actually reads, so a
+/// keystroke (documents/editorRevision) re-evaluates the editor pane and the
+/// footer, and a compile result the preview — not the whole window.
 @MainActor
-final class ShellModel: ObservableObject {
+@Observable
+final class ShellModel {
     struct Selection: Equatable {
         var path: String
         var nsRange: NSRange
         var token = 0 // bump so the same range re-applies
     }
 
-    @Published var documents: [RuntimeV1.Document] = []
-    @Published var activePath: String = "main.tex"
-    @Published var result: RuntimeV1.CompileResult?
-    @Published var resultID: String?
-    @Published var fixtureURL: URL?
-    @Published var loadError: String?
-    @Published var selection: Selection?
-    @Published var navigationNote: String?
-    @Published var darkPreview = false
-    @Published var previewSource: PreviewSource = .none
+    var documents: [RuntimeV1.Document] = []
+    var activePath: String = "main.tex"
+    var result: RuntimeV1.CompileResult?
+    var resultID: String?
+    var fixtureURL: URL?
+    var loadError: String?
+    var selection: Selection?
+    var navigationNote: String?
+    var darkPreview = false
+    var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
-    @Published var documentURL: URL?
-    @Published var savedText: String?
-    @Published var recoverableBuffer: RecoverableBuffer?
+    var documentURL: URL?
+    var savedText: String?
+    var recoverableBuffer: RecoverableBuffer?
 
     // Capture review / insertion (contract: "Capture and insertion").
     struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
-    @Published var caretUTF16: Int = 0
-    @Published var anchor: InsertionAnchor?
-    @Published var proposals: [RuntimeV1.CaptureProposal] = []
-    @Published var reviewing: RuntimeV1.CaptureProposal?
-    @Published var pendingEdit: PendingEdit?
-    @Published var captureNote: String?
+    var caretUTF16: Int = 0
+    var anchor: InsertionAnchor?
+    var proposals: [RuntimeV1.CaptureProposal] = []
+    var reviewing: RuntimeV1.CaptureProposal?
+    var pendingEdit: PendingEdit?
+    var captureNote: String?
     var appliedCaptureIDs: Set<String> = []
     var nextAnchorNumber = 1
     /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
-    @Published var caretLengthUTF16: Int = 0
+    var caretLengthUTF16: Int = 0
     // Capture bridge (contract: transfer-v1). See ShellModel+Bridge.swift.
-    @Published var bridgeStatus: String = "no bridge attached" { didSet { FlashTeXLog.write("bridge: " + bridgeStatus) } }
-    @Published var bridgeCaptures: [BridgeSession.Capture] = []
-    @Published var bridgeDestination: TransferV1.Anchor?
+    var bridgeStatus: String = "no bridge attached" { didSet { FlashTeXLog.write("bridge: " + bridgeStatus) } }
+    var bridgeCaptures: [BridgeSession.Capture] = []
+    var bridgeDestination: TransferV1.Anchor?
     private(set) var bridge: BridgeSession?
     /// Deadline for each `capture_status` during restart reconciliation.
     var bridgeStatusTimeout: TimeInterval = 15
-    @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
+    var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
-    @Published var workerLog: [String] = []
-    private var worker: WorkerClient?
-    private var nextRequestID = 1
+    var workerLog: [String] = []
+    @ObservationIgnored private var worker: WorkerClient?
+    @ObservationIgnored private var nextRequestID = 1
     /// Text each document had when the current `result` was produced, so stale
     /// byte offsets can be rebased (or refused) after edits.
     private(set) var compiledDocuments: [String: String] = [:]
@@ -78,19 +83,19 @@ final class ShellModel: ObservableObject {
     /// `FLASHTEX_LAYOUT_CAPABILITIES` (comma-separated; empty string disables).
     /// Changing the set is a mode switch: with auto-compile on, the current
     /// buffers are re-requested at the *same* revision under the new set.
-    @Published var requestedLayoutCapabilities: [String] = ShellModel.defaultLayoutCapabilities() {
+    var requestedLayoutCapabilities: [String] = ShellModel.defaultLayoutCapabilities() {
         didSet { if oldValue != requestedLayoutCapabilities, autoCompile, workerAttached { compile() } }
     }
     /// Negotiation bound to the *applied* result: what its own request asked for
     /// and what the producer accepted. A late reply for another request never
     /// changes this (results are correlated by id + project + revision first).
-    @Published private(set) var negotiation: LayoutNegotiation = .legacy
+    private(set) var negotiation: LayoutNegotiation = .legacy
     var acceptedLayoutCapabilities: [String] { negotiation.accepted }
     /// Font hints the applied result carries that could not be honored exactly.
-    @Published private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
+    private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
     /// Source-aware errors for unknown primitives in the applied result
     /// (negotiated route only; the legacy route still skips unknown kinds).
-    @Published private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
+    private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
     /// Producer diagnostics followed by the shell's own layout diagnostics.
     var displayedDiagnostics: [RuntimeV1.Diagnostic] { (result?.diagnostics ?? []) + layoutDiagnostics }
 
@@ -118,11 +123,11 @@ final class ShellModel: ObservableObject {
         for note in capabilityNotes { log(note) }
         for d in layoutDiagnostics { log(d.message) }
     }
-    @Published var autoCompile = true
-    @Published private(set) var lastLatencyMs: Double?
-    @Published private(set) var latenciesMs: [Double] = []
-    private var debounce: DispatchWorkItem?
-    private var compileQueued = false
+    var autoCompile = true
+    private(set) var lastLatencyMs: Double?
+    private(set) var latenciesMs: [Double] = []
+    @ObservationIgnored private var debounce: DispatchWorkItem?
+    @ObservationIgnored private var compileQueued = false
     /// Keystroke-to-compile delay. The compiler answers in ~1–9 ms for typical
     /// documents, so the default is 0: every edit submits immediately and the
     /// one-in-flight coalescing absorbs bursts. `FLASHTEX_DEBOUNCE_MS` overrides.
@@ -131,10 +136,10 @@ final class ShellModel: ObservableObject {
         return 0
     }()
     /// Revision of the compile request currently in flight (nil if idle).
-    @Published private(set) var inFlightRevision: Int?
+    private(set) var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
     /// UI can say when the preview's source ranges no longer match the buffer.
-    @Published private(set) var editorRevision = 1
+    private(set) var editorRevision = 1
 
     enum PreviewSource: Equatable { case none, fixture, worker(String) }
 
@@ -188,7 +193,7 @@ final class ShellModel: ObservableObject {
         return marks
     }
     private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
-    private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
+    @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, marks: [EditorDiagnostics.Mark])?
 
     // MARK: caret sync (source -> preview)
 

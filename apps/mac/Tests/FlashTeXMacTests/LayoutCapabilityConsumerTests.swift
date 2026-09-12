@@ -312,9 +312,11 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         // behind the in-flight request — it goes out at once under a new id —
         // and the legacy reply, arriving later, is superseded: valid, logged,
         // never applied (check_runtime.py classifies it `stale_ignore`).
-        var applied: [(revision: Int?, negotiation: LayoutNegotiation)] = []
-        let sink = model.$negotiation.dropFirst().sink { applied.append((model.result?.revision, $0)) }
-        defer { sink.cancel() }
+        // Every applied result changes `resultID` (ids are unique per reply);
+        // Observation does not report a value-equal set of `negotiation`, so the
+        // id is the applied-result signal and both fields are read one turn later.
+        let applied = AppliedResults(model: model)
+        defer { applied.stop() }
         model.requestedLayoutCapabilities = []
         model.updateActiveText("%caps\n%slow\nin flight legacy\n")
         model.compile()
@@ -332,8 +334,9 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         try await waitUntil { model.inFlightRequests.isEmpty }
         XCTAssertEqual(model.result?.revision, extendedRevision)
         XCTAssertNil(model.inFlightRevision)
-        XCTAssertEqual(applied.map(\.revision), [extendedRevision], "the superseded legacy reply is never applied")
-        XCTAssertEqual(applied.map(\.negotiation), [.init(requested: Self.extended, accepted: Self.extended)])
+        try await waitUntil { !applied.entries.isEmpty }
+        XCTAssertEqual(applied.entries.map(\.revision), [extendedRevision], "the superseded legacy reply is never applied")
+        XCTAssertEqual(applied.entries.map(\.negotiation), [.init(requested: Self.extended, accepted: Self.extended)])
         XCTAssertTrue(model.workerLog.contains { $0.contains("ignored stale compile_result \(legacyID)") && $0.contains("superseded by \(extendedID)") }, "\(model.workerLog.suffix(4))")
         model.detachWorker()
     }
@@ -465,6 +468,33 @@ final class ShellLayoutNegotiationTests: XCTestCase {
         while !cond() {
             if Date().timeIntervalSince(start) > timeout { throw XCTSkip("timeout") }
             try await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+}
+
+/// Records `(result revision, negotiation)` once per applied result, keyed on
+/// `ShellModel.resultID` changing (unique per reply), re-arming Observation
+/// tracking after each change. Values are read on the following main-actor
+/// turn, after the whole result has been bound.
+@MainActor
+private final class AppliedResults {
+    private(set) var entries: [(revision: Int?, negotiation: LayoutNegotiation)] = []
+    private var stopped = false
+    private let model: ShellModel
+
+    init(model: ShellModel) { self.model = model; arm() }
+    func stop() { stopped = true }
+
+    private func arm() {
+        withObservationTracking { _ = model.resultID } onChange: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.stopped else { return }
+                self.arm()
+                Task { @MainActor [weak self] in
+                    guard let self, self.model.resultID != nil else { return }
+                    self.entries.append((self.model.result?.revision, self.model.negotiation))
+                }
+            }
         }
     }
 }

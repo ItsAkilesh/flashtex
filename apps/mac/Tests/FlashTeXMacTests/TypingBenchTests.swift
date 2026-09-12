@@ -126,7 +126,7 @@ final class TypingBenchTests: XCTestCase {
 
     /// Hosts the real editor and preview so keystrokes take the production path.
     private struct BenchHost: View {
-        @ObservedObject var model: ShellModel
+        var model: ShellModel // @Observable: reads inside body are tracked
         var body: some View {
             HStack {
                 SourceEditorView(text: Binding(get: { model.activeText }, set: { model.updateActiveText($0) }),

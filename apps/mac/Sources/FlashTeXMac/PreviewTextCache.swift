@@ -16,9 +16,11 @@ final class PreviewTextCache {
     struct Key: Hashable {
         var text: String
         var postScriptName: String
-        /// Font size in screen points, rounded to 1/64 pt so display-scale
-        /// jitter does not fragment the cache.
-        var sizeQ: Int
+        /// Exact font size in screen points (bit pattern, so 10.000 and 10.004 pt
+        /// are distinct entries and the CTFont is built at the size asked for;
+        /// no quantization — geometry must stay exact for oracle comparison).
+        var sizeBits: UInt64
+        var size: CGFloat { CGFloat(Double(bitPattern: sizeBits)) }
     }
 
     struct Line {
@@ -28,25 +30,32 @@ final class PreviewTextCache {
         var width: CGFloat
     }
 
-    /// Bound on cached entries; when exceeded the cache is dropped wholesale
-    /// (simpler than LRU, and a full rebuild is one revision's cost).
+    /// Bound on cached lines; when exceeded both dictionaries are dropped
+    /// wholesale (simpler than LRU, and a full rebuild is one revision's cost).
     var capacity = 20_000
+    /// Bound on cached fonts (one per distinct face × exact size).
+    var fontCapacity = 512
     private var lines: [Key: Line] = [:]
-    private var fonts: [String: CTFont] = [:]
+    private var fonts: [FontKey: CTFont] = [:]
     private(set) var hits = 0, misses = 0
 
+    struct FontKey: Hashable { var postScriptName: String; var sizeBits: UInt64 }
+
     var count: Int { lines.count }
+    var fontCount: Int { fonts.count }
 
     func clear() { lines.removeAll(keepingCapacity: true); fonts.removeAll(); hits = 0; misses = 0 }
 
     static func key(text: String, postScriptName: String, size: CGFloat) -> Key {
-        Key(text: text, postScriptName: postScriptName, sizeQ: Int((size * 64).rounded()))
+        Key(text: text, postScriptName: postScriptName, sizeBits: Double(size).bitPattern)
     }
 
-    private func font(_ name: String, sizeQ: Int) -> CTFont {
-        let id = "\(name)@\(sizeQ)"
+    /// The CTFont for a face at an exact size (`CTFontGetSize` == `size`).
+    func font(_ name: String, size: CGFloat) -> CTFont {
+        let id = FontKey(postScriptName: name, sizeBits: Double(size).bitPattern)
         if let f = fonts[id] { return f }
-        let f = CTFontCreateWithName(name as CFString, CGFloat(sizeQ) / 64, nil)
+        if fonts.count >= fontCapacity { fonts.removeAll(keepingCapacity: true); lines.removeAll(keepingCapacity: true) }
+        let f = CTFontCreateWithName(name as CFString, size, nil)
         fonts[id] = f
         return f
     }
@@ -54,9 +63,9 @@ final class PreviewTextCache {
     func line(for key: Key) -> Line {
         if let l = lines[key] { hits += 1; return l }
         misses += 1
-        if lines.count >= capacity { lines.removeAll(keepingCapacity: true) }
+        if lines.count >= capacity { lines.removeAll(keepingCapacity: true); fonts.removeAll(keepingCapacity: true) }
         let attributed = NSAttributedString(string: key.text, attributes: [
-            .font: font(key.postScriptName, sizeQ: key.sizeQ),
+            .font: font(key.postScriptName, size: key.size),
             kCTForegroundColorFromContextAttributeName as NSAttributedString.Key: true,
         ])
         let ct = CTLineCreateWithAttributedString(attributed)

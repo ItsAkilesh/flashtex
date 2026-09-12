@@ -73,9 +73,8 @@ final class RuntimeTranscriptTests: XCTestCase {
 
     func testShellTranscriptPassesTheRuntimeValidatorAndAgreesOnStaleClassification() async throws {
         let model = try attachedModel()
-        var applied: [String] = []
-        let sink = model.$resultID.dropFirst().compactMap { $0 }.sink { applied.append($0) }
-        defer { sink.cancel() }
+        let applied = ResultIDChanges(model: model)
+        defer { applied.stop() }
 
         // 1. Legacy request (no layout_capabilities field at all).
         model.requestedLayoutCapabilities = []
@@ -123,7 +122,7 @@ final class RuntimeTranscriptTests: XCTestCase {
         XCTAssertEqual(model.inFlightRequests.count, 2)
         try await waitUntil(timeout: 15) { model.inFlightRequests.isEmpty }
         XCTAssertEqual(model.resultID, asyncID)
-        XCTAssertFalse(applied.contains(slowID), "superseded reply must not be applied")
+        XCTAssertFalse(applied.ids.contains(slowID), "superseded reply must not be applied")
         XCTAssertFalse(model.workerStatus.contains("violation"), model.workerStatus)
         model.detachWorker()
 
@@ -135,9 +134,9 @@ final class RuntimeTranscriptTests: XCTestCase {
         XCTAssertEqual(report.errors.map(\.message), [])
         XCTAssertEqual(report.pending_request_ids, [])
         let byID = Dictionary(uniqueKeysWithValues: report.responses.map { ($0.id, $0) })
-        XCTAssertEqual(Set(byID.keys), Set(applied + [slowID, errorID]), "every reply is a response the shell saw")
+        XCTAssertEqual(Set(byID.keys), Set(applied.ids + [slowID, errorID]), "every reply is a response the shell saw")
         for response in report.responses {
-            let shellApplied = applied.contains(response.id)
+            let shellApplied = applied.ids.contains(response.id)
             switch response.type ?? "compile_result" {
             case "error":
                 XCTAssertEqual(response.id, errorID)
@@ -194,6 +193,34 @@ final class RuntimeTranscriptTests: XCTestCase {
         while !cond() {
             if Date().timeIntervalSince(start) > timeout { XCTFail("timeout"); return }
             try await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+}
+
+/// Every non-nil value `ShellModel.resultID` takes, in order (one per applied
+/// result). Observation reports a change before the new value lands, so the
+/// id is read on the following main-actor turn.
+@MainActor
+private final class ResultIDChanges {
+    private(set) var ids: [String] = []
+    private var stopped = false
+    private let model: ShellModel
+
+    init(model: ShellModel) { self.model = model; arm() }
+    func stop() { stopped = true }
+
+    private func arm() {
+        withObservationTracking { _ = model.resultID } onChange: { [weak self] in
+            // Synchronous, before the new value lands: re-arm now (so a change
+            // on the very next turn is not missed) and read the id one turn later.
+            MainActor.assumeIsolated {
+                guard let self, !self.stopped else { return }
+                self.arm()
+                Task { @MainActor [weak self] in
+                    guard let self, let id = self.model.resultID, self.ids.last != id else { return }
+                    self.ids.append(id)
+                }
+            }
         }
     }
 }
