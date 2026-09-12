@@ -6,8 +6,8 @@
   "capabilities": ["rust", "document-statistics", "caching"],
   "branch": "agent/daniel-statistics/document-statistics",
   "state": "ready_for_integration",
-  "summary": "crates/document-statistics rev 3: no src/ changes. Added tests/adversarial_bounds.rs (14 tests) attacking the cache and scanner -- exact scan-byte-limit boundary, a 5000-document project, a single ~2MB item, combining-mark-only and zero-width-only text, revision id at u64::MAX, one source id re-registered 200 times with different content, an empty project, and 20000/5000-update churn proving cache.len() tracks distinct sources not update count -- every case a typed ScanTooLarge or a bounded Ok, never a panic. Added tests/stale_identity_acceptance.rs (5 tests) restating rev 2's property-tested contract as a specification: same revision+content is a trusted hit; same revision+changed content is a miss (the dangerous stale case); changed revision+same content is a miss; a sibling document's entry is untouched by either. 65 tests pass (was 46), clippy and fmt clean.",
-  "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation). No further rev-3 work planned unless Commander requests additional adversarial coverage.",
+  "summary": "crates/document-statistics rev 4: no src/ changes. Repo-wide search found flashtex-compiler (crates/compiler) is the only real document producer (parser::Parsed/Block/Inline, layout::Page); document-runtime is an external-process transport with no item model. Added flashtex-compiler as a dev-dependency-only adapter (tests/support/mod.rs) that runs the real parser+layout over the real files under tests/tex-corpus/cases and turns Inline::Text/Inline::Math/Page into SourceItems (math source sliced verbatim from real document bytes via the compiler's own span); crates/compiler not edited, src/ gains no dependency. tests/consumer_fixture.rs (5 tests) exercises it end to end. tests/corpus_measurements.rs (3 tests) measures, not describes: 14 corpus cases / 16 real .tex documents / 49 total words / 2 math items / 14 pages; exactly 2 documents contain CJK script, and only unicode-literals's \"東京.\"-style token is actually undercounted (2 CJK characters counted as 1 word, undercount of 1 word total across the corpus) while literal-source-map's lone single-character token is not; a 30-round realistic edit sequence over all 14 real documents (one document edited per round, using a real math item borrowed from elsewhere in the corpus as the edit) measures 377 hits / 43 misses (89.76% hit rate), 1087 bytes actually scanned vs 11137 bytes a fresh-every-round recompute would scan, 10050 bytes saved. All numbers asserted exactly, not just bounded. Rev 2's property test and rev 3's adversarial/stale-identity suites untouched. 73 tests pass (was 65), clippy and fmt clean.",
+  "next_action": "Await Commander integration; still no production consumer wired up (unchanged deferral from rev 3 negotiation) -- rev 4's adapter is test-only. No further rev-4 work planned unless Commander requests a production integration or a larger/more CJK-rich corpus to re-measure against.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -19,17 +19,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; live consumption not exposed to this agent."
   },
   "reviewed_peers": {
-    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
   },
   "assignment_acknowledgements": {
     "FT-042": {
-      "acknowledged_utc": "2026-09-12T16:32:13Z",
-      "revision": 3,
-      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
-      "adaptation": "Accepted FT-042 rev 3 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute, its word-counting rule and documented CJK limitation, rev 2's ScanLimit/ProjectCache, and the rev-2 incremental-equals-fresh property test fully intact -- no src/ file touched. Added tests/adversarial_bounds.rs attacking the cache and scanner with the required minimum cases (scan-byte limit at/past the boundary, a thousands-of-documents project, a single enormous item, combining-mark/zero-width-only text, a u64::MAX revision id, one document id re-registered with different content, an empty project, and many-updates churn showing bounded cache size), asserting exact typed-error fields or bounded Ok results and never a panic. Added tests/stale_identity_acceptance.rs stating the four-rule trust contract (same rev+content hit; same rev+changed content miss, the dangerous case; changed rev+same content miss; sibling entry untouched) as named, readable acceptance tests. Merged origin/main first. No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed."
+      "acknowledged_utc": "2026-09-12T16:56:39Z",
+      "revision": 4,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Accepted FT-042 rev 4 as owner of crates/document-statistics only. Grepped crates/ for the actual document/item producer per the objective: flashtex-compiler (parser::Parsed/Block/Inline, layout::Page/TextItem) is the only one; document-runtime is a transport around an external process with no item model; no consumer of flashtex-document-statistics exists in production. Added flashtex-compiler as [dev-dependencies] only (src/ untouched, crate stays dependency-free at runtime) and wrote tests/support/mod.rs, a test-only adapter reading every real .tex file under tests/tex-corpus/cases, running the real parser+layout, and mapping Inline::Text/Math to SourceItem (math source sliced from real document bytes via the compiler's real span) and real Page count to PageMark count. tests/consumer_fixture.rs (5 tests) and tests/corpus_measurements.rs (3 tests) exercise and measure it: exact total documents/words/math/pages across the real corpus, exact CJK undercount per affected document (measured, not estimated: 1 word total, on unicode-literals only), and exact cache hit rate (89.76%) and bytes saved (10050 of 11137, 90.2%) over a 30-round realistic edit sequence built from real corpus content only. Kept rev 1's counting rule and CJK limitation, rev 2's ScanLimit/ProjectCache and incremental-equals-fresh property test, and rev 3's adversarial bounds and stale-identity acceptance suites fully intact -- no src/ file touched. Merged origin/main twice (before and after implementation, since main advanced mid-session). No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed."
     }
   },
-  "updated_utc": "2026-09-12T16:32:13Z",
-  "code_revision": "cce30e1d9f692316f7df16d116752e7bf043cc72",
-  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+  "updated_utc": "2026-09-12T16:56:39Z",
+  "code_revision": "8c94259640bb12f20593187107045d16dcf0d7f1",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
 }

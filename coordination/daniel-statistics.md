@@ -1,24 +1,130 @@
 # daniel-statistics handoff — FT-042
 
-Agent / task / branch: daniel-statistics / FT-042 revision 3 (bounded
-adversarial and stale-identity acceptance tests) /
+Agent / task / branch: daniel-statistics / FT-042 revision 4 (actual existing
+consumer fixture and exact measured limitations) /
 `agent/daniel-statistics/document-statistics`
 Owned paths: `crates/document-statistics/**`, `coordination/daniel-statistics.md`
-State: ready for integration (standalone additive crate; no consumer wired yet)
-Tested commit SHA: `cce30e1d9f692316f7df16d116752e7bf043cc72`
+State: ready for integration (standalone additive crate; no consumer wired
+in production — rev 4 adds a test-only fixture against the real producer,
+see below)
+Tested commit SHA: `8c94259640bb12f20593187107045d16dcf0d7f1`
+Previous (rev 3) tested SHA: `cce30e1d9f692316f7df16d116752e7bf043cc72`
 Previous (rev 2) tested SHA: `e56b2e56a9a4ca9409a74b43014039f2db051bb4`
 Previous (rev 1) tested SHA: `92dd4ee806e513c68096e32ab0ff89a0133355d8`
-Main integrated through (merged and reviewed): `967703ebb4e8140feaf4db02d27cb3ac63c573f6`
+Main integrated through (merged and reviewed): `abbe88a5275b89d99357815846de3cbe76a91810`
 
 Validation at that SHA (`cd crates/document-statistics`):
 - `cargo build` — clean.
-- `cargo test` — 65 tests total: 39 unit tests (`src/`), 2 property-style
+- `cargo test` — 73 tests total: 39 unit tests (`src/`), 2 property-style
   integration tests (`tests/incremental_equals_fresh.rs`), 14 adversarial
   acceptance tests (`tests/adversarial_bounds.rs`), 5 stale-identity
   acceptance tests (`tests/stale_identity_acceptance.rs`), 4 integration
-  tests (`tests/statistics.rs`), 1 doctest. All pass.
+  tests (`tests/statistics.rs`), 5 real-producer consumer-fixture tests
+  (`tests/consumer_fixture.rs`), 3 measurement tests
+  (`tests/corpus_measurements.rs`), 1 doctest. All pass.
 - `cargo clippy --all-targets -- -D warnings` — 0 warnings.
 - `cargo fmt --check` — clean.
+
+## Rev 4: real-producer consumer fixture and exact measured limitations
+
+**The search.** Grepped `crates/` for anything that already builds a
+document/item structure this crate could consume. `flashtex-compiler`
+(`crates/compiler`) is the only one: `parser::parse`/`parse_project` produces
+`Parsed { blocks: Vec<Block>, .. }` of `Block::{Paragraph,Heading,
+FigureCaption}` holding `Inline::{Text,Math,LineBreak,Label,Reference}`, and
+`layout::layout(&blocks)` produces real `Vec<Page>` (Adobe Core 14 metrics,
+no external font files needed) with real page breaks.
+`crates/document-runtime` is a JSON-Lines transport around an *external*
+compiler process and defines no item/document model of its own — it is not
+a producer. Nothing else under `crates/` parses `.tex` or builds a
+paragraph/inline tree. **Nothing in this repository calls
+`flashtex-document-statistics` in production** — that is unchanged from rev
+3's negotiated deferral, not a rev 4 regression.
+
+**The fixture (`tests/support/mod.rs`, `tests/consumer_fixture.rs`).**
+Because the only real producer is `flashtex-compiler` and no consumer is
+wired up, rev 4 adds `flashtex-compiler` as a **dev-dependency only**
+(`[dev-dependencies]` in `Cargo.toml`; `src/` gains no new dependency,
+preserving the "no filesystem, no parsing" guarantee in `src/lib.rs`) and
+writes a test-only adapter:
+- Reads every `.tex` file under `tests/tex-corpus/cases/**` from disk — no
+  hand-written LaTeX.
+- Runs the real `parser::parse_project` (so `\input`/`\include` resolution
+  is the compiler's own) and the real `layout::layout`.
+- `Inline::Text` → `SourceItem::Text`, one item per real compiler
+  word-token. `Inline::Math` → `SourceItem::Math`, its `source` sliced
+  **verbatim from the real document bytes** via the compiler's own `Span`
+  (delimiters included, e.g. `"$x_1^2 + y$"`, `"\[\frac{a+b}{c}=d\]"`) — not
+  reconstructed from the parsed `MathList`. `Inline::LineBreak`/`Label`/
+  `Reference` map to nothing: this crate has no notion of them.
+  One `SourceItem::PageMark` per page the real layout engine actually laid
+  out.
+`crates/compiler` was not edited.
+
+Five tests exercise this: every real corpus case computes bounded
+statistics without panicking; `plain-paragraphs` word count and page count
+match the real compiler output exactly; `math-inline-display`'s math is
+counted and never word-counted, and its two math items' `source` strings
+are exactly the real sliced spans; `included-file`'s prose includes text
+that only exists in the actually-`\input`-ed file, not main.tex; and editing
+the real `plain-paragraphs/main.tex` text on disk (in memory, then
+re-parsed) is visible through `is_current_for` under the same revision id.
+
+**The measurements (`tests/corpus_measurements.rs`), run over the same real
+corpus:**
+
+| Metric | Value |
+|---|---|
+| Corpus cases (`tests/tex-corpus/cases/*`) | 14 |
+| Total real `.tex` documents (incl. included files) | 16 |
+| Total words counted (this crate's rule, summed over all 14 cases) | 49 |
+| Total math items counted | 2 |
+| Total pages (real layout engine) | 14 |
+
+CJK limitation, measured, not described: of the 14 cases, exactly **2**
+contain CJK script:
+
+| Case | Real token | CJK chars | Words counted | Undercount |
+|---|---|---|---|---|
+| `literal-source-map` | `尾` | 1 | 1 | 0 |
+| `unicode-literals` | `東京.` | 2 | 1 | **1** |
+
+`literal-source-map`'s `尾` sits alone on its own line, so it is its own
+whitespace-delimited token: 1 CJK character counted as 1 word — not
+undercounted by this measure. `unicode-literals`'s `東京.` is one real
+compiler word-token (the lexer only breaks a word on whitespace or a TeX
+special character; `.` is neither): 2 real CJK characters, counted as
+exactly 1 word by the rule in `src/words.rs`. Measured undercount across the
+whole real corpus: **1 word**, entirely on that one document. (The corpus is
+small; this is the actual, exact, small number it produces — not scaled up
+or extrapolated.)
+
+Cache, measured over a realistic edit sequence, not asserted only as an
+inequality: all 14 real corpus cases loaded as 14 project documents; 30
+rounds, one document edited per round round-robin (the "edit" is that
+document's real items plus one real `SourceItem::Math` borrowed verbatim
+from elsewhere in the corpus — still real content, never invented text),
+every other document resubmitted unchanged each round (the realistic
+"recompute the whole project on every edit" shape):
+
+| Metric | Value |
+|---|---|
+| Total `ProjectCache::update` calls (30 rounds × 14 docs) | 420 |
+| Hits | 377 |
+| Misses | 43 |
+| Hit rate | 89.76% |
+| Bytes scanned, incremental (only misses) | 1,087 |
+| Bytes that a fresh-every-round recompute would scan | 11,137 |
+| Bytes saved | 10,050 (90.2% of the fresh-recompute cost) |
+
+All numbers above are asserted exactly in `tests/corpus_measurements.rs`
+(not just bounded/inequality checks) so they cannot silently drift; if the
+corpus changes, re-run `cargo test --test corpus_measurements -- --nocapture`
+and update both the assertions and this table.
+
+Rev 2's incremental-equals-fresh property test and rev 3's adversarial
+bounds and stale-identity acceptance suites are untouched — no `src/` file
+was modified in rev 4.
 
 ## Rev 3: what changed
 
@@ -267,9 +373,13 @@ which is what the acceptance criterion requires.
 
 - No CJK/script-aware word segmentation (see above — a stated limitation,
   not an oversight).
-- No consumer adapter: nothing in `crates/compiler` or elsewhere calls this
-  crate yet. This crate does not decide how `SourceItem`s get produced from
-  a real document; that's the negotiation FT-042 asks to defer.
+- No *production* consumer adapter: nothing in `crates/compiler` or
+  elsewhere calls this crate yet. Rev 4 added a dev-dependency-only test
+  fixture (`tests/support/mod.rs`) proving an adapter over the real
+  `flashtex-compiler` output is possible and measuring it against the real
+  corpus, but this crate still does not decide how `SourceItem`s get
+  produced from a real document in production; that integration is the
+  negotiation FT-042 asks to defer.
 - No serialization (no `serde`): callers needing to persist `Statistics` or
   `ProjectCache` across process boundaries will need to add that at the
   integration boundary, not in this crate.
