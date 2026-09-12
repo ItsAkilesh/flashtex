@@ -125,7 +125,7 @@ extension ShellModel {
         // Replies parked in `awaiting` (save, file_status, project requests)
         // never come now: resume them with a failure instead of dropping their
         // continuations; the completion query's ids mean nothing on the next client.
-        for (_, waiter) in controllerState.awaiting { waiter(.failure(.init(message: "helper detached"))) }
+        for (_, waiter) in controllerState.awaiting { waiter(.failure(.init(message: "helper exited (detached)"))) }
         completionFetcher.discard()
         controllerState = ControllerState()
         historicalInvalidate(reason: "close")
