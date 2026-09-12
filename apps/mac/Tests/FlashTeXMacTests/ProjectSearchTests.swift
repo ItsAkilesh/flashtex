@@ -24,7 +24,7 @@ final class ProjectSearchPureTests: XCTestCase {
     func testResultsSummaryNeverCallsPartialResultsComplete() {
         let loc = ShellModel.IndexLocation(["path": "main.tex", "revision": 1, "start_byte": 0, "end_byte": 1])!
         let m = ProjectSearch.Match(location: loc, line: 1, column: 1, snippet: nil)
-        var r = ProjectSearch.Results(literal: "x", sourceVersions: ["main.tex": 1], matches: [m], termination: .complete, workUsed: 3, maxMatches: 1, maxWork: 10)
+        var r = ProjectSearch.Results(literal: "x", sourceVersions: ["main.tex": 1], documents: nil, matches: [m], termination: .complete, workUsed: 3, maxMatches: 1, maxWork: 10)
         XCTAssertEqual(r.summary, "1 match (complete)")
         r.termination = .matchLimit
         XCTAssertEqual(r.summary, "1 match shown — partial (match limit)")
@@ -233,7 +233,7 @@ final class ProjectSearchHelperTests: XCTestCase {
         XCTAssertEqual(r.termination, .complete)
         XCTAssertEqual(r.summary, "4 matches (complete)")
         XCTAssertEqual(r.sourceVersions.keys.sorted(), ["chapter.tex", "main.tex"], "\\input{chapter} is part of the helper's project")
-        XCTAssertTrue(client.status.hasPrefix("4 matches (complete) for “café” in durable source (work "), client.status)
+        XCTAssertTrue(client.status.hasPrefix("4 matches (complete) for “café” in the project (durable source, work "), client.status)
         XCTAssertGreaterThan(r.workUsed, 0)
         // Helper order: path, then byte offset. chapter.tex was not open in the
         // window; its durable text was read through `document` for the snippets.
@@ -355,6 +355,48 @@ final class ProjectSearchHelperTests: XCTestCase {
         await client.navigateToSelected()
         XCTAssertEqual(selected(model), "Résumé")
         XCTAssertEqual(model.activePath, "chapter.tex")
+    }
+
+    func testActiveDocumentScopeAndNextMatchWrap() async throws {
+        let (model, root) = try await attachedModel()
+        defer { cleanup(model, root) }
+        let client = ProjectSearchClient(model: model)
+        client.query = "café"
+        client.scope = .activeDocument
+        await client.search()
+        guard let r = client.results else { return XCTFail(client.status) }
+        XCTAssertEqual(r.documents, ["main.tex"])
+        XCTAssertEqual(r.matches.map(\.path), ["main.tex", "main.tex"], "the `documents` filter limits the search")
+        XCTAssertEqual(r.termination, .complete)
+        XCTAssertEqual(r.summary, "2 matches (complete)")
+        XCTAssertTrue(client.status.hasPrefix("2 matches (complete) for “café” in main.tex (durable source"), client.status)
+
+        // ⌘G steps through the matches, wrapping, navigating exactly each time.
+        XCTAssertEqual(client.selectedIndex, 0)
+        await client.navigateNext()
+        XCTAssertEqual(client.selectedIndex, 1)
+        XCTAssertEqual(client.navigationCount, 1, client.status)
+        XCTAssertEqual(selected(model), "café")
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("café again", in: Self.main))
+        await client.navigateNext()
+        XCTAssertEqual(client.selectedIndex, 0, "wrapped")
+        XCTAssertEqual(client.navigationCount, 2, client.status)
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, byte("café —", in: Self.main))
+        XCTAssertTrue(client.status.hasPrefix("Match 1 of 2 for “café”: main.tex bytes"), client.status)
+
+        // A changed scope makes Return search again rather than navigate.
+        client.scope = .project
+        client.submit()
+        try await waitUntil { client.results?.documents == nil }
+        XCTAssertEqual(client.results?.matches.count, 4)
+
+        // A path the helper does not index is explained, nothing sent.
+        client.scope = .activeDocument
+        model.documents.append(.init(path: "scratch.tex", text: "café"))
+        model.activePath = "scratch.tex"
+        await client.search()
+        XCTAssertNil(client.results)
+        XCTAssertEqual(client.status, "scratch.tex is not part of the helper's project (indexed: chapter.tex, main.tex).")
     }
 
     func testNavigationIsRefusedAfterLocalOverlappingEditAndAfterDurableEdit() async throws {

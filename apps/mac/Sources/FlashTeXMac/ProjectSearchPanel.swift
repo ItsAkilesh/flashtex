@@ -113,6 +113,8 @@ enum ProjectSearch {
     struct Results: Equatable {
         var literal: String
         var sourceVersions: [String: Int]
+        /// The `documents` filter the search ran with; nil is the whole project.
+        var documents: [String]?
         var matches: [Match]
         var termination: Termination
         var workUsed: Int
@@ -247,8 +249,17 @@ enum ProjectSearch {
 @MainActor
 @Observable
 final class ProjectSearchClient {
+    /// Where to search: the whole helper project, or only the active document
+    /// (the contract's optional `documents` filter).
+    enum Scope: String, CaseIterable, Identifiable {
+        case project = "Whole project"
+        case activeDocument = "Active document"
+        var id: String { rawValue }
+    }
+
     private(set) var model: ShellModel
     var query = ""
+    var scope: Scope = .project
     var maxMatches = ProjectSearch.defaultMaxMatches
     var maxWork = ProjectSearch.defaultMaxWork
     private(set) var results: ProjectSearch.Results?
@@ -287,7 +298,7 @@ final class ProjectSearchClient {
     /// Return in the field: search when the query is not what the list shows,
     /// otherwise go to the selected match.
     func submit() {
-        if let results, results.literal == query, !results.matches.isEmpty {
+        if let results, results.literal == query, results.documents == (scope == .activeDocument ? [model.activePath] : nil), !results.matches.isEmpty {
             Task { await navigateToSelected() }
         } else {
             Task { await search() }
@@ -325,7 +336,13 @@ final class ProjectSearchClient {
             case .failure(let e): results = nil; status = "Snapshot refused: \(e.message)"; return
             case .success(let v): versions = v
             }
-            let payload = ProjectSearch.request(sourceVersions: versions, literal: literal, maxMatches: maxMatches, maxWork: maxWork)
+            let documents: [String]? = scope == .activeDocument ? [model.activePath] : nil
+            if let documents, let missing = documents.first(where: { versions[$0] == nil }) {
+                results = nil
+                status = "\(missing) is not part of the helper's project (indexed: \(versions.keys.sorted().joined(separator: ", ")))."
+                return
+            }
+            let payload = ProjectSearch.request(sourceVersions: versions, literal: literal, maxMatches: maxMatches, maxWork: maxWork, documents: documents)
             guard let reply = await model.controllerRequest("search_literal", payload) else { results = nil; status = ProjectSearch.noHelperMessage; return }
             switch reply {
             case .failure(let e):
@@ -344,16 +361,18 @@ final class ProjectSearchClient {
                         if let rev = raw.sourceVersions[path], let text = await durableText(path: path, revision: rev) { texts[path] = text }
                     }
                     let matches = ProjectSearch.matches(from: raw.matches, texts: texts)
-                    let out = ProjectSearch.Results(literal: literal, sourceVersions: raw.sourceVersions, matches: matches,
+                    let out = ProjectSearch.Results(literal: literal, sourceVersions: raw.sourceVersions, documents: documents, matches: matches,
                                                     termination: raw.termination, workUsed: raw.workUsed,
                                                     maxMatches: ProjectSearch.clamp(maxMatches, to: ProjectSearch.matchLimitRange),
                                                     maxWork: ProjectSearch.clamp(maxWork, to: ProjectSearch.workLimitRange))
                     results = out
                     selectedID = matches.first?.id
                     let unread = matches.filter { $0.snippet == nil }.count
-                    status = out.summary + " for “\(literal)” in durable source (work \(raw.workUsed))"
-                        + (unread > 0 ? "; \(unread) without text (durable revision not readable)" : "")
-                        + (attempt > 1 ? "; retried once after the project changed" : "")
+                    let scopeName: String = documents?.joined(separator: ", ") ?? "the project"
+                    var line = "\(out.summary) for “\(literal)” in \(scopeName) (durable source, work \(raw.workUsed))"
+                    if unread > 0 { line += "; \(unread) without text (durable revision not readable)" }
+                    if attempt > 1 { line += "; retried once after the project changed" }
+                    status = line
                     return
                 }
             }
@@ -373,6 +392,14 @@ final class ProjectSearchClient {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }
         return model.controllerState.textByDurable[path]?[revision]
+    }
+
+    /// ⌘G in the panel: advance the selection (wrapping) and go there.
+    func navigateNext() async {
+        guard let results, !results.matches.isEmpty else { status = "No matches to step through."; return }
+        let next = ((selectedIndex ?? -1) + 1) % results.matches.count
+        selectedID = results.matches[next].id
+        await navigate(to: next, of: results)
     }
 
     func navigateToSelected() async {
@@ -487,9 +514,18 @@ private struct ProjectSearchBody: View {
                     .disabled(client.isSearching || client.query.isEmpty)
                 Button("Go to Match") { Task { await client.navigateToSelected() } }
                     .disabled(client.selectedMatch == nil)
+                Button("Next Match") { Task { await client.navigateNext() } }
+                    .keyboardShortcut("g", modifiers: .command)
+                    .disabled(client.results?.matches.isEmpty ?? true)
+                    .help("Select the next match (wrapping) and go there (⌘G while this window is key)")
             }
             HStack(spacing: 12) {
                 Text("Case-sensitive literal; the helper has no regex or normalization.").font(.caption).foregroundStyle(.secondary)
+                Picker("Scope", selection: $client.scope) {
+                    ForEach(ProjectSearchClient.Scope.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.menu).font(.caption).fixedSize()
+                .accessibilityLabel("Search scope")
                 Spacer()
                 Stepper("Max matches: \(client.maxMatches)", value: $client.maxMatches, in: ProjectSearch.matchLimitRange, step: 50)
                     .font(.caption)
