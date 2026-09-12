@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputKind {
+    Shaped,
+    Device,
     Mixed,
     Display,
 }
@@ -16,6 +18,27 @@ pub struct ValidatedGeometry {
     value: Value,
 }
 impl ValidatedGeometry {
+    pub fn shaped(bytes: &[u8]) -> Result<Self> {
+        let replay = crate::shaped_replay::ShapedReplay::parse(
+            bytes,
+            crate::shaped_replay::ReplayLimits::default(),
+        )?;
+        Ok(Self {
+            kind: InputKind::Shaped,
+            raw_sha256: digest(bytes),
+            offer_sha256: None,
+            value: replay.metadata().clone(),
+        })
+    }
+
+    pub fn device(bytes: &[u8]) -> Result<Self> {
+        Ok(Self {
+            kind: InputKind::Device,
+            raw_sha256: digest(bytes),
+            offer_sha256: None,
+            value: crate::device_grid::validate_fixture(bytes)?,
+        })
+    }
     pub fn mixed(bytes: &[u8]) -> Result<Self> {
         let replay = ReplayBatch::parse(bytes, MixedLimits::default())
             .map_err(|e| ValidationError(format!("invalid mixed comparison input: {e:?}")))?;
@@ -369,6 +392,9 @@ fn primitive_id(v: &Value) -> Option<PrimitiveId> {
     })
 }
 fn classify(path: &str, rule: bool) -> Category {
+    if path.contains("/device_context") {
+        return Category::FontResourceOrGid;
+    }
     if [
         "source",
         "documents",
@@ -383,6 +409,7 @@ fn classify(path: &str, rule: bool) -> Category {
         return Category::SourceProvenance;
     }
     if [
+        "device_context",
         "font",
         "cff",
         "gid",

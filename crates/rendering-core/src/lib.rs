@@ -771,3 +771,9 @@ pub mod residency;
 pub mod cff_run;
 
 pub mod geometry_diff;
+
+pub mod device_grid;
+
+pub mod shaped_run;
+
+pub mod shaped_replay;

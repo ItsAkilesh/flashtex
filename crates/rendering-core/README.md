@@ -329,3 +329,76 @@ run SHA above. A synthetic add-operated curve matches literal-coordinate output
 exactly through direct and cached placement, while retaining distinct input hashes.
 Non-dyadic Type2 division stays an explicit unsupported result. This exercises the
 new arithmetic without changing default hint, wire or device-grid policies.
+
+`device_grid::DevicePathCache` is a separate opt-in cache for composites requiring
+an explicit device grid. Keys retain font SHA/face/GID, ppem X/Y, tie rule, declared
+outline-policy/build hash and transform order (declared offset transform before
+grid rounding; child assembly before parent transform). Missing context fails;
+changing context clears device entries. The size-independent unhinted cache and
+its unsupported outcomes remain unchanged. Retained byte charges exclude map
+overhead and external Arcs; entry and payload caps stay explicit.
+
+Device paths serialize only to `flashtex-internal-device-v1` comparison fixtures.
+The geometry-diff tool validates this opt-in format and reports device policy changes
+as resource-context differences; it does not infer equivalence to mixed/display
+formats. Fractional placement remains exact, and `hinting_applied` remains false.
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example device_grid_probe -- \
+  /usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf \
+  /usr/share/licenses/liberation-sans-fonts/LICENSE
+```
+
+Pinned 16-ppem/AwayFromZero replay: 2,619 non-.notdef device glyphs, 63,782 commands,
+2,619 direct/cache matches and warm hits. Default expansion remains 1,678 accepted
+and 941 explicitly unsupported non-.notdef glyphs. Geometry SHA256:
+`a33a8836d80b2bd9fa89ba017c60df0ef175d563d930b5620e0b7e75f9dfa3b5`.
+The fixture records font/license/policy pins. Device policy is not TrueType
+instruction execution or a hinted raster/native/PDF parity claim.
+
+`shaped_run::PlacedShapedRun::prepare` consumes the original font engine's
+`BoundShapedRun` and a current source snapshot into exact internal quadratic or
+cubic paths. It retains the complete immutable shaping record, original GIDs,
+engine face identity and distinct full-font SHA, absolute UTF-8 cluster ranges,
+empty clusters, ligature counts and feature notes. Integer advances already
+include shaping kerning; exact size/UPEM scales them separately from outline
+advances. Glyph offsets flip the font y-axis once. The caller supplies the exact
+clip and an item identity; no hit positions are invented inside a cluster.
+
+The source digest/revision and outline resource identity must agree before
+expansion. Glyph/command/charged-payload limits fail atomically without returning
+a partial run. Charged payload includes hint records; it is not allocator RSS or
+shared cache residency. TrueType uses the unchanged unhinted cache; device-grid
+paths require the separate explicit device API. CFF requires an immutable cache
+bound to the full font and an explicit hint policy. No wire/native activation.
+
+`cargo run --offline --manifest-path crates/rendering-core/Cargo.toml --example
+shaped_run_probe -- /path/STIXTwoText-Regular.otf /path/OFL.txt` checks existing
+font/license pins and exact warm-cache placement for a Unicode source slice.
+The observed pinned run has 11 glyphs/clusters, 165 commands and advance
+9762243491/600 canonical ticks. This demonstrates consumer consistency, not
+reference shaping completeness, TeX metrics, hinting or native visual parity.
+
+`PlacedShapedRun::replay_bytes` produces `flashtex-internal-shaped-v1` offline
+fixtures with exact rational geometry, both font identities, source revision/hash,
+shaping options/notes, full cluster coverage (including empty clusters), original
+GIDs and stable primitive IDs. `shaped_replay::ShapedReplay::parse` rejects
+unknown fields/commands, duplicate JSON keys, noncanonical fractions, malformed
+cluster coverage, inconsistent exact metric placement and exceeded limits.
+`verify_source(path, snapshot)` separately checks current source contents and
+revision; parsing alone cannot verify font bytes, the shape cache key's provenance,
+or the truth of externally supplied outline geometry.
+
+The geometry-diff CLI accepts these fixtures directly. It preserves raw input
+hashes, reports exact rational changes and refuses equality claims on truncated
+reports. `tests/fixtures/synthetic-shaped.json` is an original synthetic-font
+fixture containing `A`, `é` and an invisible zero-width-space cluster, not a real
+font rendering reference. It can be regenerated with
+`FLASHTEX_RECORD_SHAPED_FIXTURE=1 cargo test --offline --manifest-path
+crates/rendering-core/Cargo.toml --test shaped_run`.
+
+The pinned STIX probe also verifies source-aware replay, explicit warm-cache hit
+status and 100 identical placement/serialization repetitions. Timings are labelled
+as local debug measurements; they exclude native painting and are not a preview
+latency claim. Replay includes the shaping implementation cache key, so a source
+revision may legitimately change the replay hash without changing geometry.

@@ -28,7 +28,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let parse = |bytes: &[u8]| -> Result<ValidatedGeometry, Box<dyn Error>> {
         let value: serde_json::Value = serde_json::from_slice(bytes)?;
-        if value.get("format").is_some() {
+        if value.get("format").and_then(|v| v.as_str()) == Some("flashtex-internal-shaped-v1") {
+            Ok(ValidatedGeometry::shaped(bytes)?)
+        } else if value.get("format").and_then(|v| v.as_str())
+            == Some("flashtex-internal-device-v1")
+        {
+            Ok(ValidatedGeometry::device(bytes)?)
+        } else if value.get("format").is_some() {
             Ok(ValidatedGeometry::mixed(bytes)?)
         } else {
             Ok(ValidatedGeometry::display(

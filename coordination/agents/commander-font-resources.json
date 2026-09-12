@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T06:47:16Z",
-      "adaptation": "Proceed with current authorized CFF regression evidence and immutable full-font/table identity cache. Prior unhinted/flex/matrix stage already published at569fe9c; no repeated implementation.",
-      "main_sha": "13ee88dff72631bf2bc7a7f9f9d1f3a966a13fc6",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T07:20:48Z",
+      "adaptation": "Reviewed current adapter assignment; consuming exact published font-engine f418238 unchanged, preserving distinct engine and raw-font identities and source clusters. No shaper duplication.",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 7
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "23209f7763ddc67f66c58710b2f5cec4eeff6c82",
+  "code_revision": "9335f3de0fdbb02e766390472ac45f1497fcc6c5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Ready next assigned product task; renderer can consume additive grid wrapper in separate cache keyed exact device context.",
+  "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
+  "next_action": "Renderer handoff sent; registry CFF and mixedgeneration/cache invalidation followup complete. Ready next assigned product task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published23209f7 explicit composite device-grid policy;88tests/clippy pass. Pinned LiberationSans16ppem2620glyphs accepted vs default1679+941unsupported. API preserves grid/tie/upem and original font/component provenance; non-dyadic final offsets explicitunsupported. Renderer API/cache-identity handoff sent. No hint/raster parity claim; provider capacity available.",
+  "summary": "Published9335f3d rooted CFF registry extension.92tests/clippy and pinned mixedSTIX/Liberation registry replay pass. Typed backend resources preserve fullfont/CFFtable/face/license identity via existing engine/CFF parser; generation invalidates license-provenance changes and heldgeometry survives externalfont edits unchanged. No peer edits/fonts vendored/visualparity claim.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:17:10Z",
+  "updated_utc": "2026-09-12T07:46:22Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
