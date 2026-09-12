@@ -11,6 +11,11 @@ use crate::{
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Query {
+    UnhintedKern {
+        glyph_id: u16,
+        corner: Corner,
+        height: Rational,
+    },
     Constant {
         record: ConstantDeviceRecord,
         context: DeviceContext,
@@ -36,6 +41,10 @@ pub enum Query {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
+    UnhintedKern {
+        value: crate::math_kern::Value,
+        height_device_adjustment_present: bool,
+    },
     Constant(ConstantCorrection),
     Glyph {
         design_units: Option<i16>,
@@ -113,6 +122,7 @@ fn value_bytes(v: &Result<Value, QueryError>) -> usize {
     512 + size_of::<Value>()
         + match v {
             Err(e) => format!("{e:?}").len() + 1024,
+            Ok(Value::UnhintedKern { .. }) => 0,
             Ok(Value::Constant(c)) => c.device_table_sha256.as_ref().map_or(0, String::capacity),
             Ok(Value::Glyph { correction, .. }) => correction.as_ref().map_or(0, record_bytes),
             Ok(Value::Kern(k)) => record_bytes(&k.correction),
@@ -227,6 +237,30 @@ impl<'a> MathQueryCache<'a> {
     }
     fn compute(&mut self, q: &Query) -> Result<Value, QueryError> {
         match *q {
+            Query::UnhintedKern {
+                glyph_id,
+                corner,
+                height,
+            } => {
+                let parsed = self.kern();
+                let kern = parsed
+                    .as_ref()
+                    .as_ref()
+                    .map_err(|e| QueryError::Resource(e.clone()))?;
+                let value = kern
+                    .lookup(glyph_id, corner, height)
+                    .map_err(QueryError::Resource)?;
+                let height_device_adjustment_present =
+                    kern.records().get(&(glyph_id, corner)).is_some_and(|t| {
+                        t.correction_heights()
+                            .iter()
+                            .any(|v| v.device_adjustment_present)
+                    });
+                Ok(Value::UnhintedKern {
+                    value,
+                    height_device_adjustment_present,
+                })
+            }
             Query::Constant { record, context } => self
                 .font
                 .constant_device(record, context)

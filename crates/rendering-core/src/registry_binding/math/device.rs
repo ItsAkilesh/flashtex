@@ -135,6 +135,16 @@ impl RegistryRenderer {
         scale: PixelScale,
         requests: &[DeviceQuery],
     ) -> std::result::Result<MathDeviceSnapshot, DeviceConsumerError> {
+        self.math_devices_with_values(lease, query, scale, requests, None)
+    }
+    pub(super) fn math_devices_with_values(
+        &self,
+        lease: &MathLease,
+        query: MathQuery<'_>,
+        scale: PixelScale,
+        requests: &[DeviceQuery],
+        cached: Option<&[flashtex_font_resources::math_cache::Value]>,
+    ) -> std::result::Result<MathDeviceSnapshot, DeviceConsumerError> {
         if requests.len() > 256 {
             return Err(MathConsumerError::Budget.into());
         }
@@ -144,19 +154,27 @@ impl RegistryRenderer {
         )?;
         let metrics = self.math_metrics(lease, query)?;
         let mut values = Vec::with_capacity(requests.len());
-        for &query in requests {
+        for (index, &query) in requests.iter().enumerate() {
+            let cached = cached.map(|values| &values[index]);
             let (raw, delta, offset, sha, interval, axis) = match query {
                 DeviceQuery::Constant {
                     record,
                     context,
                     axis,
                 } => {
-                    let value = lease.font.constant_device(record, context)?;
-                    require(
-                        value.identity() == lease.identity(),
-                        "constant device identity",
-                    )?;
-                    let c = value.correction();
+                    let c = match cached {
+                        Some(flashtex_font_resources::math_cache::Value::Constant(c)) => c.clone(),
+                        None => lease
+                            .font
+                            .constant_device(record, context)?
+                            .correction()
+                            .clone(),
+                        _ => {
+                            return Err(
+                                ValidationError("cached constant kind mismatch".into()).into()
+                            )
+                        }
+                    };
                     let raw = MathConstant::ALL[usize::from(record.index()) + 2]
                         .raw(&lease.font)
                         .0;
@@ -179,14 +197,22 @@ impl RegistryRenderer {
                     context,
                     axis,
                 } => {
-                    let value = lease.font.glyph_device(original_gid, kind, context)?;
-                    require(
-                        value.identity() == lease.identity(),
-                        "glyph device identity",
-                    )?;
-                    let c = value.correction();
+                    let (design, c) = match cached {
+                        Some(flashtex_font_resources::math_cache::Value::Glyph {
+                            design_units,
+                            correction,
+                        }) => (*design_units, correction.clone()),
+                        None => {
+                            let v = lease.font.glyph_device(original_gid, kind, context)?;
+                            (v.design_units(), v.correction().cloned())
+                        }
+                        _ => {
+                            return Err(ValidationError("cached glyph kind mismatch".into()).into())
+                        }
+                    };
+                    let c = c.as_ref();
                     (
-                        value.design_units(),
+                        design,
                         c.map_or(0, |v| v.delta_pixels),
                         c.and_then(|v| v.device_table_offset),
                         c.and_then(|v| v.device_table_sha256.clone()),
@@ -200,11 +226,15 @@ impl RegistryRenderer {
                     height,
                     context,
                 } => {
-                    let value = lease
-                        .font
-                        .kern_device(original_gid, corner, height, context)?;
-                    require(value.identity() == lease.identity(), "kern device identity")?;
-                    let k = value.correction();
+                    let k = match cached {
+                        Some(flashtex_font_resources::math_cache::Value::Kern(k)) => k.clone(),
+                        None => lease
+                            .font
+                            .kern_device(original_gid, corner, height, context)?
+                            .correction()
+                            .clone(),
+                        _ => return Err(ValidationError("cached kern kind mismatch".into()).into()),
+                    };
                     let c = &k.correction;
                     (
                         Some(c.design_units),

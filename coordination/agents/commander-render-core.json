@@ -3,9 +3,9 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T08:50:08Z",
-      "adaptation": "Read exact published FT023 revision5. Current MathKernInfo exact source-bound replay implemented; synthetic tie/budget/tamper tests pass. Finish pinned boundary replay then device-context and cached/direct mixed-math followups; no script layout or wire activation.",
-      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
+      "acknowledged_utc": "2026-09-12T09:04:56Z",
+      "adaptation": "Reread origin/main exact FT023r5 at cache checkpoint; published row still MathKern objective, latest direct Commander dispatch authorizes MathQueryCache integration. Cached/direct fit/kern/device paths implemented with unchanged7812318+60695a3 dependencies, current lease and source recomposition, no native wire change.",
+      "main_sha": "780f1458c125d9702b994ab9df377aed96a1113f",
       "revision": 5
     }
   },
@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "3f99f3d3a9ee0ab0bf5b4ebcadb196f822ccc030",
+  "code_revision": "11c43407a6ff1b89df8a283a1aed8f794a5c2f4d",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "528ef7e4a1afb9a1872a1c8e63d3df59e066f089",
-  "next_action": "Current FT023r5 assigned stages completed through device context and cached/direct replay. Proposed next bounded task: consume published MathQueryCache7812318 unchanged for parsed MATH reuse, maintaining borrowed immutable font and context/limit keys; await commander dispatch before new scope. Worktree /home/natkarri/flashtex-rendering-core, branch agent/commander-render-core/rendering-core; own crate/report only. No telemetry/native compaction control exposed.",
+  "next_action": "Publish cache checkpoint and hand off for next Commander product assignment. Branch agent/commander-render-core/rendering-core, worktree /home/natkarri/flashtex-rendering-core. Own crate/report only. AssemblyFit now local immutable wrapper with unchanged identity()/fit() getter shape; explicit former BoundMathFit annotations need adaptation. No native/schema activation. No context telemetry/native compaction control exposed.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded complete MATH assembly replay finished: exact fit/part/overlap geometry, origin/strategy/limits, source/registry/MATH and policy identity joined. Fresh-resource and path-cache reuse replay exactly equal. 136 ordinary tests + strict clippy pass; pinned66assemblies and293kern cases + real device accent pass. Timing samples diagnostic only, no consistent speedup or native paint claim.",
+  "summary": "RegistryMathCache integration complete with unchanged7812318+60695a3 dependencies. Cached assembly/unhinted kern/device queries reconstruct exact source-bound frames; positive lease check before access prevents A-B-A revival. Pinned exact direct/cache replay:1kern parse,1variants parse,945hits,946computations,178624query bytes/130528parsed bytes. 136 ordinary tests, strict clippy and both pinned tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:58:31Z",
+  "updated_utc": "2026-09-12T09:05:55Z",
   "usage": {
-    "evidence": "No pending tests. cargo test136; strict all-target clippy; pinned cold/reuse vertical2600/2488us horizontal4730/4866us from one noisy run, exact complete replay equal; synthetic fit-metadata tamper and output budgets refused. Ready own commit then clean publication.",
+    "evidence": "No pending commands. Exact synthetic/pinned direct-cache assembly+kern/device replay; bounded query eviction/zero parsed residency; cached failure; changed pixel scales/source; stale registry A-B-A refusal; retained frames remain byte-identical. Eliminated parse counts verified, no speedup claim. Origin/main FT023 stillr5 read/ACKed; latest direct Commander cache dispatch supplies current scope.",
     "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

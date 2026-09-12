@@ -10,8 +10,7 @@ use crate::{
 };
 use flashtex_font_resources::{
     cff::HintPolicy,
-    math_adapter::BoundMathFit,
-    math_fit::{FitError, FitLimits, FitStrategy, FittedShape},
+    math_fit::{FitError, FitLimits, FitStrategy, FittedShape, MathFit},
     math_variants::Direction,
 };
 #[derive(Debug)]
@@ -44,9 +43,21 @@ pub struct AssemblyRequest<'a> {
     pub paint: Paint,
     pub hint_policy: HintPolicy,
 }
+pub struct AssemblyFit {
+    identity: MathIdentity,
+    fit: MathFit,
+}
+impl AssemblyFit {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn fit(&self) -> &MathFit {
+        &self.fit
+    }
+}
 pub struct MathAssemblyFrame {
     metrics: MathMetricsSnapshot,
-    fit: BoundMathFit,
+    fit: AssemblyFit,
     batch: MixedBatch,
     origin: P,
     hint_policy: HintPolicy,
@@ -56,7 +67,7 @@ impl MathAssemblyFrame {
     pub fn metrics(&self) -> &MathMetricsSnapshot {
         &self.metrics
     }
-    pub fn fit(&self) -> &BoundMathFit {
+    pub fn fit(&self) -> &AssemblyFit {
         &self.fit
     }
     pub fn batch(&self) -> &MixedBatch {
@@ -78,6 +89,15 @@ impl RegistryRenderer {
         request: AssemblyRequest<'_>,
         limits: MixedLimits,
     ) -> std::result::Result<MathAssemblyFrame, AssemblyError> {
+        self.math_assembly_with_fit(lease, request, limits, None)
+    }
+    pub(super) fn math_assembly_with_fit(
+        &self,
+        lease: &MathLease,
+        request: AssemblyRequest<'_>,
+        limits: MixedLimits,
+        cached: Option<MathFit>,
+    ) -> std::result::Result<MathAssemblyFrame, AssemblyError> {
         if !(1..=100000).contains(&limits.max_primitives)
             || !(1..=2_000_000).contains(&limits.max_commands)
             || !(1..=MAX_MESSAGE_BYTES).contains(&limits.max_serialized_bytes)
@@ -91,16 +111,28 @@ impl RegistryRenderer {
         )?;
         request.paint.validate()?;
         request.page.clip.validate()?;
-        let variants = lease.font.variants().map_err(MathConsumerError::from)?;
-        let fit = variants
-            .fit(
-                request.direction,
-                request.original_gid,
-                request.target,
-                request.strategy,
-                request.fit_limits,
-            )
-            .map_err(AssemblyError::Fit)?;
+        let fit = if let Some(fit) = cached {
+            fit
+        } else {
+            lease
+                .font
+                .variants()
+                .map_err(MathConsumerError::from)?
+                .fit(
+                    request.direction,
+                    request.original_gid,
+                    request.target,
+                    request.strategy,
+                    request.fit_limits,
+                )
+                .map_err(AssemblyError::Fit)?
+                .fit()
+                .clone()
+        };
+        let fit = AssemblyFit {
+            identity: lease.identity().clone(),
+            fit,
+        };
         let parts: Vec<_> = match &fit.fit().shape {
             FittedShape::Variant(v) => vec![(v.glyph_id, Rational::new(0, 1).expect("zero"))],
             FittedShape::Assembly(a) => {

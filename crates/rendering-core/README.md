@@ -584,3 +584,32 @@ Pinned tests print fresh/reused-path elapsed times for one horizontal and one
 vertical construction. These include consumer work and are diagnostic samples,
 not native paint latency or a performance threshold. Source revisions, fit
 metadata and declared origins remain part of the replay identity.
+
+### Registry-bound parsed MATH query cache
+
+`RegistryRenderer::math_cache` creates `RegistryMathCache` borrowing one immutable
+`MathLease`. Its `assembly`, `kerns` and `devices` methods validate the live renderer
+lease before querying the original font cache, then rebuild exact source-bound
+frames through the same conversion paths used by direct calls. Unhinted kerning
+has its own cache query and never invents ppem. Device contexts, rational heights,
+fit strategy and limits remain query keys; page pixel scales and source revisions
+are recomposed and verified on every result. A registry A→B→A transition cannot
+revive an old cache. No persistent cache or native wire activation is introduced.
+
+`MathAssemblyFrame::fit()` now returns the local immutable `AssemblyFit` wrapper,
+with the same `identity()` and `fit()` getters; it preserves the verified parent
+MathIdentity without fabricating a private resource-library BoundMathFit. Consumers
+that explicitly named that former return type must use AssemblyFit instead.
+
+Caller limits bound entry storage, retained query results and parsed tables
+separately. `stats()` exposes the original cache's charged bytes, computations,
+hits and parse counts; oversized outcomes may bypass residency. Caller-retained
+frames and transient parsing allocations are outside these residency counters.
+Synthetic checks exercise eviction, zero parsed-table residency, cached failures,
+changed pixel scales/source, and stale A→B→A leases with retained geometry intact.
+
+The pinned STIX workload compares exact direct/cached assembly, unhinted kerning
+and device replay: one kern parse, one variants parse,945 hits and946 computations
+in the recorded run (178624 query bytes,130528 parsed bytes). These counts prove
+eliminated repeated parsing; they do not establish native paint latency or an
+end-to-end speedup.

@@ -1212,6 +1212,12 @@ fn pinned_stix_math_metric_consumer_replay() {
         font_size: r(10485761, 3),
         original_gids: &ids,
     };
+    let mut query_cache = renderer
+        .math_cache(
+            &math,
+            flashtex_font_resources::math_cache::Limits::default(),
+        )
+        .unwrap();
     {
         use flashtex_font_resources::{
             cff::{HintPolicy, Rational},
@@ -1255,6 +1261,12 @@ fn pinned_stix_math_metric_consumer_replay() {
                         })
                         .collect();
                     let snapshot = renderer.math_kerns(&math, query(), &requests).unwrap();
+                    let cached = query_cache.kerns(&renderer, query(), &requests).unwrap();
+                    assert_eq!(
+                        cached.replay_bytes(100000).unwrap(),
+                        snapshot.replay_bytes(100000).unwrap()
+                    );
+                    query_cache.kerns(&renderer, query(), &requests).unwrap();
                     for value in snapshot.values() {
                         let raw = kerns
                             .data()
@@ -1299,6 +1311,21 @@ fn pinned_stix_math_metric_consumer_replay() {
                     &[request],
                 )
                 .unwrap();
+            let cached = query_cache
+                .devices(
+                    &renderer,
+                    query(),
+                    PixelScale {
+                        horizontal: r(7, 3),
+                        vertical: r(11, 2),
+                    },
+                    &[request],
+                )
+                .unwrap();
+            assert_eq!(
+                cached.replay_bytes(100000).unwrap(),
+                result.replay_bytes(100000).unwrap()
+            );
             let direct = bound
                 .glyph_device(
                     3326,
@@ -1380,6 +1407,16 @@ fn pinned_stix_math_metric_consumer_replay() {
                     1
                 }] += 1;
             }
+            let cached = query_cache
+                .assembly(&renderer, request(), MixedLimits::default())
+                .unwrap();
+            assert_eq!(
+                cached.replay_bytes(1000000).unwrap(),
+                frame.replay_bytes(1000000).unwrap()
+            );
+            query_cache
+                .assembly(&renderer, request(), MixedLimits::default())
+                .unwrap();
             let replay = frame.replay_bytes(1000000).unwrap();
             frame
                 .verify_replay(&renderer, "main.tex", &source, &replay)
@@ -1458,6 +1495,10 @@ fn pinned_stix_math_metric_consumer_replay() {
             seen[0], seen[1]
         );
     }
+    assert_eq!(query_cache.stats().kern_parses, 1);
+    assert_eq!(query_cache.stats().variant_parses, 1);
+    assert!(query_cache.stats().hits > 100);
+    eprintln!("registry MATH cache: kern_parses={} variant_parses={} hits={} computations={} query_bytes={} parsed_bytes={}",query_cache.stats().kern_parses,query_cache.stats().variant_parses,query_cache.stats().hits,query_cache.stats().computations,query_cache.stats().query_bytes,query_cache.stats().parsed_bytes);
     let metrics = renderer.math_metrics(&math, query()).unwrap();
     let face = TrueTypeFace::parse(bytes).unwrap();
     let original = face.math().unwrap();
@@ -1591,6 +1632,24 @@ fn fitted_math_exact_origins_overlaps_and_atomic_limits() {
         let frame = renderer
             .math_assembly(&math, request(551), MixedLimits::default())
             .unwrap();
+        let mut cache = renderer
+            .math_cache(
+                &math,
+                flashtex_font_resources::math_cache::Limits::default(),
+            )
+            .unwrap();
+        for _ in 0..5 {
+            assert_eq!(
+                cache
+                    .assembly(&renderer, request(551), MixedLimits::default())
+                    .unwrap()
+                    .replay_bytes(100000)
+                    .unwrap(),
+                frame.replay_bytes(100000).unwrap()
+            );
+        }
+        assert_eq!(cache.stats().variant_parses, 1);
+        assert_eq!(cache.stats().hits, 4);
         let replay = frame.replay_bytes(100000).unwrap();
         frame
             .verify_replay(&renderer, "main.tex", &source, &replay)
@@ -1989,4 +2048,119 @@ fn explicit_math_device_context_keeps_pixel_units_and_unhinted_default() {
     assert!(renderer
         .math_devices(&math, query(), scale, &vec![requests[0]; 257])
         .is_err());
+    use flashtex_font_resources::math_cache::Limits as CacheLimits;
+    let cache_limits = CacheLimits {
+        entries: 8,
+        query_bytes: 100000,
+        parsed_bytes: 100000,
+    };
+    let mut cache = renderer.math_cache(&math, cache_limits).unwrap();
+    for _ in 0..20 {
+        assert_eq!(
+            cache
+                .devices(&renderer, query(), scale, &requests)
+                .unwrap()
+                .replay_bytes(100000)
+                .unwrap(),
+            bytes
+        );
+    }
+    assert_eq!(cache.stats().computations, 4);
+    assert_eq!(cache.stats().hits, 76);
+    assert_eq!(cache.stats().kern_parses, 1);
+    let uq = flashtex_rendering_core::registry_binding::math::kern::KernQuery {
+        original_gid: 1,
+        corner: Corner::TopRight,
+        height: Rational::new(20, 1).unwrap(),
+    };
+    let unhinted = cache.kerns(&renderer, query(), &[uq]).unwrap();
+    assert_eq!(unhinted.values()[0].value.ticks, r(8, 3));
+    assert_eq!(cache.stats().kern_parses, 1);
+    let changed = PixelScale {
+        horizontal: r(14, 3),
+        vertical: r(11, 2),
+    };
+    let recomposed = cache
+        .devices(&renderer, query(), changed, &requests)
+        .unwrap();
+    assert_ne!(recomposed.replay_bytes(100000).unwrap(), bytes);
+    assert_eq!(recomposed.values()[1].correction_ticks, r(14, 3));
+    let edited = SourceSnapshot {
+        revision: 2,
+        text: "β".into(),
+    };
+    let mut edited_query = query();
+    edited_query.snapshot = &edited;
+    let edited_result = cache
+        .devices(&renderer, edited_query, scale, &requests)
+        .unwrap();
+    assert_ne!(edited_result.replay_bytes(100000).unwrap(), bytes);
+    assert!(value
+        .require_current(&renderer, "main.tex", &edited)
+        .is_err());
+    edited_result
+        .require_current(&renderer, "main.tex", &edited)
+        .unwrap();
+    let mut tiny = renderer
+        .math_cache(
+            &math,
+            CacheLimits {
+                entries: 1,
+                query_bytes: 4096,
+                parsed_bytes: 0,
+            },
+        )
+        .unwrap();
+    let mut uq2 = uq;
+    uq2.height = Rational::new(21, 1).unwrap();
+    for q in [uq, uq2, uq] {
+        tiny.kerns(&renderer, query(), &[q]).unwrap();
+    }
+    assert_eq!(tiny.stats().kern_parses, 3);
+    assert_eq!(tiny.stats().hits, 0);
+    assert!(tiny.stats().query_bytes <= 4096);
+    assert_eq!(tiny.stats().parsed_bytes, 0);
+    let invalid = DeviceQuery::Glyph {
+        original_gid: 3,
+        kind: GlyphDeviceKind::TopAccentAttachment,
+        context,
+        axis: Axis::Horizontal,
+    };
+    assert!(cache
+        .devices(&renderer, query(), scale, &[invalid])
+        .is_err());
+    let computed = cache.stats().computations;
+    assert!(cache
+        .devices(&renderer, query(), scale, &[invalid])
+        .is_err());
+    assert_eq!(cache.stats().computations, computed);
+    assert!(cache.stats().query_bytes <= cache_limits.query_bytes);
+    assert!(cache.stats().parsed_bytes <= cache_limits.parsed_bytes);
+    // A -> B -> A does not revive an old renderer lease or its borrowed cache.
+    let changed_font = font_fixture::math_device_fixture();
+    let mut changed_manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![entry(
+            &changed_font,
+            "math",
+            "static-truetype",
+            b"changed-license",
+        )],
+    };
+    std::fs::write(dir.path().join("math.license"), b"changed-license").unwrap();
+    save(dir.path(), &changed_manifest);
+    renderer.replace(load(&root)).unwrap();
+    let before = cache.stats().computations;
+    assert!(cache.devices(&renderer, query(), scale, &requests).is_err());
+    assert_eq!(cache.stats().computations, before);
+    changed_manifest.entries[0] = entry(&font, "math", "static-truetype", b"test");
+    std::fs::write(dir.path().join("math.license"), b"test").unwrap();
+    save(dir.path(), &changed_manifest);
+    renderer.replace(load(&root)).unwrap();
+    assert_eq!(renderer.generation(), registry.generation());
+    assert!(cache.devices(&renderer, query(), scale, &requests).is_err());
+    assert!(value
+        .require_current(&renderer, "main.tex", &source)
+        .is_err());
+    assert_eq!(value.replay_bytes(100000).unwrap(), bytes);
 }
