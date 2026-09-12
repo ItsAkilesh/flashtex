@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "99412f7148ca64abe0bd2488b36ff7e33850e4ca",
+  "code_revision": "5be2ac1ad97a61bf3109ddca481841b1e1759b2a",
   "eta_minutes": {
     "likely": 120,
     "optimistic": 60,
     "pessimistic": 240
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
-  "next_action": "Parent: preview-controller STDIO background adapter in ShellModel (rev 6/7 objective); integrate lane branches as they land",
+  "main_integrated_through": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
+  "next_action": "Integrate remaining lanes as they land; controller-route save (export/file_status) per document-files recommendation; re-measure on a quiet machine",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "read 5b69110 (rev 7) and preview-controller STDIO.md on main; adapter design follows the helper protocol v1 (edit -> durable result + async update with source_versions; native staleness check at paint)",
-      "reviewed_utc": "2026-09-12T08:29:09Z",
-      "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
+      "adaptation": "main through 1026f52 read (Daniel lanes, runtime validation gate, assistant/runtime integration); no interface change affecting apps/mac beyond crates/project-files gaining the helper binary from my document-files lane (flagged for Commander routing)",
+      "reviewed_utc": "2026-09-12T09:04:09Z",
+      "sha": "780f1458c125d9702b994ab9df377aed96a1113f"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 7 acked: 15 child sessions running (ids on issue #2 comment 5644730841) + parent; route usable; GH26 fixed 6b43a3a; 185/185 native tests; typing-bench demo p50 36 ms.",
+  "summary": "FT-003 rev 7: mac-shell 5be2ac1 \u2014 306/306 native tests with compiler/pdf/bridge/edit-ledger/preview-controller/project-files; integrated 7 lane branches (preview-cache, editor-diagnostics, document-files, completion, pairing-ui, nearby-transport, navigation) with their parent-side diffs; preview-controller background adapter measured (demo 75 ms p50 vs 33 direct); FastJSON compile_result reader 3.8x faster than JSONDecoder (60 KB keystroke->paint p50 275 -> 198 ms). 6 lanes still running (render-pipeline, visual-oracle, mac-pdf, mac-validation, preview-v2, nearby-client, editor-accessibility, ai-review).",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T08:29:09Z",
+  "updated_utc": "2026-09-12T09:04:09Z",
   "usage": {
-    "evidence": "issue #2 comment 5644730841",
-    "status": "Claude Max 20x usable after 08:20Z reset; 15 subagents + parent; no overage"
+    "evidence": "docs/evidence/typing-bench-2026-09-12T090250Z.md; issue #2 comment 5644835228",
+    "status": "Claude Max 20x usable; 8 subagents + parent active; no overage"
   }
 }
