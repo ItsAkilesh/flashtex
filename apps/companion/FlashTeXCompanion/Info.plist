@@ -6,5 +6,11 @@
     <string>FlashTeX needs camera access to capture handwritten equations and drawings from paper.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>FlashTeX needs photo library access to import images of handwritten content.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>FlashTeX uses your local network to send captures to your paired Mac.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_flashtex._tcp</string>
+    </array>
 </dict>
 </plist>
