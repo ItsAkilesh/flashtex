@@ -224,3 +224,85 @@ fn structurally_valid_but_corrupt_proposal_is_rejected_on_recovery() {
         "Recovered journal must not return an empty proposal that Proposal::validate rejects"
     );
 }
+
+#[test]
+fn contradictory_prepared_and_applied_journals_fail_closed() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut b = bridge(dir.path());
+        b.receive(capture()).unwrap();
+        b.convert("recovery-capture", vec![], &OfflineConverter(Cell::new(0)))
+            .unwrap();
+        let edit = b.prepare_insert("recovery-capture", 1, true).unwrap();
+        b.confirm_insert("recovery-capture", &edit.edit_id, 2)
+            .unwrap();
+    }
+    let path = record_path(dir.path());
+    let good: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let mutations = [
+        ("/prepared/capture_id", serde_json::json!("wrong")),
+        ("/prepared/edit_id", serde_json::json!("wrong")),
+        ("/prepared/path", serde_json::json!("../escape.tex")),
+        ("/prepared/project_id", serde_json::json!("another-project")),
+        ("/prepared/start_byte", serde_json::json!(20)),
+        ("/prepared/end_byte", serde_json::json!(4)),
+        ("/prepared/replacement", serde_json::json!("different")),
+        (
+            "/prepared/document_before_sha256",
+            serde_json::json!("invalid"),
+        ),
+        ("/applied/edit_id", serde_json::json!("wrong")),
+        ("/applied/new_revision", serde_json::json!(1)),
+        ("/rejected", serde_json::json!(true)),
+        ("/proposal", serde_json::Value::Null),
+        ("/prepared", serde_json::Value::Null),
+        (
+            "/destination_binding/source_sha256",
+            serde_json::json!("invalid"),
+        ),
+        (
+            "/context/dependencies/0/source_sha256",
+            serde_json::json!("invalid"),
+        ),
+    ];
+    for (pointer, replacement) in mutations {
+        let mut changed = good.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        fs::write(&path, serde_json::to_vec(&changed).unwrap()).unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        assert_eq!(
+            store.require("recovery-capture").unwrap_err().code,
+            "invalid_journal",
+            "{pointer}"
+        );
+    }
+}
+#[test]
+fn legacy_missing_binding_is_readable_but_cannot_prepare_or_redirect() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut b = bridge(dir.path());
+        b.receive(capture()).unwrap();
+        b.convert("recovery-capture", vec![], &OfflineConverter(Cell::new(0)))
+            .unwrap();
+    }
+    let path = record_path(dir.path());
+    let mut legacy: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("destination_binding");
+    legacy["context"]
+        .as_object_mut()
+        .unwrap()
+        .remove("dependencies");
+    fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let mut b = bridge(dir.path());
+    assert!(b.store.require("recovery-capture").is_ok());
+    assert_eq!(
+        b.prepare_insert("recovery-capture", 1, true)
+            .unwrap_err()
+            .code,
+        "destination_reselection_required"
+    );
+}
