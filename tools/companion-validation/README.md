@@ -34,6 +34,10 @@ Bonjour delivery and missing physical-device local-network privacy declarations.
 Finally, it distinguishes a received network response from a durable bridge
 receipt, which prevents the companion from reporting delivery too early.
 
+Pass `--mac-ref origin/agent/mac-claude-a/nearby-listener` to pin the Mac
+receiver revision too. The report then records both immutable SHAs and fails
+closed when its TLS-PSK/hello requirements do not match the companion source.
+
 Run the harness unit tests with:
 
 ```sh

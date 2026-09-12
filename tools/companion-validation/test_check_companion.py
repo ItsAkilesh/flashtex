@@ -119,6 +119,26 @@ class CompanionValidationTests(unittest.TestCase):
             ),
             ["capture_received is accepted without checking durable receipt status"],
         )
+
+    def test_detects_pinned_companion_mac_transport_mismatch(self):
+        findings = check_companion.interop_findings(
+            "let params = NWParameters.tcp\nlet hello = role",
+            "sec_protocol_options_add_pre_shared_key\nverifyHelloProof",
+        )
+        self.assertEqual(
+            findings,
+            [
+                "Mac receiver requires TLS-PSK but companion cannot open a PSK connection",
+                "Mac receiver requires hello pair_id/proof but companion cannot authenticate hello",
+                "plaintext companion connection will be rejected before the Mac parses JSON Lines",
+            ],
+        )
+        self.assertEqual(
+            check_companion.interop_findings(
+                "add_pre_shared_key\npair_id\nproof", "sec_protocol_options_add_pre_shared_key\nverifyHelloProof"
+            ),
+            [],
+        )
         self.assertEqual(
             check_companion.receipt_findings(
                 'if type_ == "capture_received", let durable = payload["durable"] as? Bool, durable == true {}'

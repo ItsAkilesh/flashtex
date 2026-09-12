@@ -29,6 +29,7 @@ STORE = Path("apps/companion/FlashTeXCompanion/Models/CaptureStore.swift")
 TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/CaptureTransport.swift")
 BONJOUR_TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/BonjourTransport.swift")
 INFO_PLIST = Path("apps/companion/FlashTeXCompanion/Info.plist")
+MAC_NEARBY_LISTENER = Path("apps/mac/Sources/FlashTeXMac/NearbyListener.swift")
 CAPTURE_FIXTURE = Path("protocol/fixtures/capture-submission.json")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
@@ -195,6 +196,22 @@ def receipt_findings(bonjour_source: str) -> list[str]:
     return findings
 
 
+def interop_findings(companion_bonjour: str, mac_listener: str) -> list[str]:
+    """Compare pinned companion and Mac receiver transport capabilities."""
+    findings: list[str] = []
+    mac_requires_psk = "sec_protocol_options_add_pre_shared_key" in mac_listener
+    mac_requires_hello_proof = "verifyHelloProof" in mac_listener
+    companion_has_psk = "add_pre_shared_key" in companion_bonjour
+    companion_has_proof = "pair_id" in companion_bonjour and "proof" in companion_bonjour
+    if mac_requires_psk and not companion_has_psk:
+        findings.append("Mac receiver requires TLS-PSK but companion cannot open a PSK connection")
+    if mac_requires_hello_proof and not companion_has_proof:
+        findings.append("Mac receiver requires hello pair_id/proof but companion cannot authenticate hello")
+    if "NWParameters.tcp" in companion_bonjour and mac_requires_psk:
+        findings.append("plaintext companion connection will be rejected before the Mac parses JSON Lines")
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -340,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--bad-ref", required=True, help="pinned FT-004 revision")
     parser.add_argument("--repair-ref", help="candidate repair revision")
+    parser.add_argument("--mac-ref", help="pinned Mac nearby-listener revision for interop validation")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--xcodebuild", default="xcodebuild")
     parser.add_argument("--skip-build", action="store_true")
@@ -354,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
         "bad_sha": resolve_revision(repo, args.bad_ref),
         "repair_ref": args.repair_ref,
         "repair_sha": resolve_revision(repo, args.repair_ref) if args.repair_ref else None,
+        "mac_ref": args.mac_ref,
+        "mac_sha": resolve_revision(repo, args.mac_ref) if args.mac_ref else None,
         "repo": str(repo),
         "xcodebuild": shutil.which(args.xcodebuild) or args.xcodebuild,
         "toolchain": {
@@ -401,6 +421,26 @@ def main(argv: list[str] | None = None) -> int:
                     == (repaired_export / "source" / PROJECT).read_bytes()
                 )
             report["patch_validation"] = patch_validation
+        if args.mac_ref:
+            mac_export = temporary_path / "mac"
+            mac_export.mkdir()
+            export_revision(repo, args.mac_ref, mac_export)
+            companion_source = (
+                repaired_export / "source" if args.repair_ref else bad_export / "source"
+            )
+            companion_bonjour = companion_source / BONJOUR_TRANSPORT
+            listener = mac_export / "source" / MAC_NEARBY_LISTENER
+            report["interop_validation"] = {
+                "companion_source_sha": report["repair_sha"] or report["bad_sha"],
+                "mac_source_sha": report["mac_sha"],
+                "findings": interop_findings(
+                    companion_bonjour.read_text(encoding="utf-8") if companion_bonjour.exists() else "",
+                    listener.read_text(encoding="utf-8") if listener.exists() else "",
+                ),
+                "missing_sources": [
+                    str(path) for path in (companion_bonjour, listener) if not path.exists()
+                ],
+            }
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
