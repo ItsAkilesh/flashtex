@@ -104,6 +104,39 @@ pub struct CffEncodingManifest {
     pub face_index: u32,
     pub encoding: Vec<EncodingEntry>,
 }
+fn manifest_digest(manifest: &CffEncodingManifest) -> Result<String> {
+    if manifest.tfm_sha256.len() != 64
+        || !manifest
+            .tfm_sha256
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(invalid("CFF encoding TFM hash must be canonical SHA256"));
+    }
+    if manifest.encoding.len() > 256 {
+        return Err(invalid("CFF encoding entry budget"));
+    }
+    let mut sorted = BTreeMap::new();
+    for entry in &manifest.encoding {
+        if !valid_name(&entry.glyph_name) {
+            return Err(invalid("invalid explicit CFF encoding name"));
+        }
+        if sorted
+            .insert(entry.code, entry.glyph_name.as_str())
+            .is_some()
+        {
+            return Err(invalid("duplicate explicit CFF encoding code"));
+        }
+    }
+    let mut canonical = Vec::new();
+    canonical.extend(b"cff-encoding-v1\0");
+    for (code, name) in sorted {
+        canonical.push(code);
+        canonical.extend((name.len() as u32).to_be_bytes());
+        canonical.extend(name.as_bytes());
+    }
+    Ok(crate::sha256(&canonical))
+}
 #[derive(Debug, Clone)]
 pub struct ResolvedCffEncoding {
     identity: CffIdentity,
@@ -157,18 +190,116 @@ impl ResolvedCffEncoding {
                 return Err(invalid("duplicate explicit CFF encoding code"));
             }
         }
-        let mut canonical = Vec::new();
-        canonical.extend(b"cff-encoding-v1\0");
-        for (code, (name, _)) in &mapping {
-            canonical.push(*code);
-            canonical.extend((name.len() as u32).to_be_bytes());
-            canonical.extend(name.as_bytes());
-        }
         Ok(Self {
             identity: identity.clone(),
             tfm_sha256: tfm.source_sha256.clone(),
-            digest: crate::sha256(&canonical),
+            digest: manifest_digest(manifest)?,
             mapping,
+        })
+    }
+}
+/// Immutable-font scoped cache. Entry budget excludes shared name metadata
+/// (separately capped at 16MiB) and Arc references retained by callers.
+pub struct CffEncodingCache {
+    identity: CffIdentity,
+    names: Arc<CffGlyphNames>,
+    limits: super::CacheLimits,
+    entries: std::collections::VecDeque<(Arc<ResolvedCffEncoding>, usize)>,
+    bytes: usize,
+}
+pub struct EncodingCacheOutcome {
+    pub encoding: Arc<ResolvedCffEncoding>,
+    pub status: super::CacheStatus,
+}
+impl CffEncodingCache {
+    pub fn new(font: &CffOutlineCache, limits: super::CacheLimits) -> Result<Self> {
+        if limits.max_entries > 128 || limits.max_bytes > 8 * 1024 * 1024 {
+            return Err(invalid("CFF encoding cache budget exceeds limit"));
+        }
+        Ok(Self {
+            identity: font.identity().clone(),
+            names: font.glyph_names()?,
+            limits,
+            entries: Default::default(),
+            bytes: 0,
+        })
+    }
+    pub fn identity(&self) -> &CffIdentity {
+        &self.identity
+    }
+    pub fn retained_bytes(&self) -> usize {
+        self.bytes
+    }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    pub fn clear(&mut self) {
+        self.entries = Default::default();
+        self.bytes = 0;
+    }
+    pub fn lookup(
+        &mut self,
+        tfm: &Tfm,
+        manifest: &CffEncodingManifest,
+    ) -> Result<EncodingCacheOutcome> {
+        // Validate identities before even considering a hit.
+        if manifest.font_sha256 != self.identity.font_sha256
+            || manifest.cff_sha256 != self.identity.cff_sha256
+            || manifest.face_index != self.identity.face_index
+            || manifest.tfm_sha256 != tfm.source_sha256
+        {
+            return Err(invalid("CFF encoding cache resource identity mismatch"));
+        }
+        let digest = manifest_digest(manifest)?;
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|(v, _)| v.tfm_sha256 == tfm.source_sha256 && v.digest == digest)
+        {
+            let entry = self.entries.remove(index).expect("located entry");
+            let encoding = entry.0.clone();
+            self.entries.push_back(entry);
+            return Ok(EncodingCacheOutcome {
+                encoding,
+                status: super::CacheStatus::Hit,
+            });
+        }
+        let encoding = Arc::new(ResolvedCffEncoding::bind(
+            &self.identity,
+            &self.names,
+            tfm,
+            manifest,
+        )?);
+        // Includes conservative tree-node, Arc, deque capacity and identity/key charge.
+        let bytes = 2048
+            + encoding
+                .mapping
+                .values()
+                .map(|(name, _)| 256 + name.capacity())
+                .sum::<usize>();
+        if self.limits.max_entries == 0 || bytes > self.limits.max_bytes {
+            return Ok(EncodingCacheOutcome {
+                encoding,
+                status: super::CacheStatus::BypassedOversize,
+            });
+        }
+        while self.entries.len() >= self.limits.max_entries
+            || self.bytes + bytes > self.limits.max_bytes
+        {
+            let (_, removed) = self
+                .entries
+                .pop_front()
+                .expect("budget requires resident entry");
+            self.bytes -= removed;
+        }
+        self.bytes += bytes;
+        self.entries.push_back((encoding.clone(), bytes));
+        Ok(EncodingCacheOutcome {
+            encoding,
+            status: super::CacheStatus::Stored,
         })
     }
 }

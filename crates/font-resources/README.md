@@ -333,3 +333,16 @@ original GID. The 2221-name canonical hash and resource hashes are recorded in
 `fixtures/stix-cff-names.json`; A is GID3 and the literal name fi is absent.
 A missing alias fails rather than being guessed. This is charset/name evidence,
 not TeX encoding correctness or visual/raster parity.
+
+`CffEncodingCache::new(&outline_cache, CacheLimits)` pins an immutable full-font,
+CFF table range and face identity. `lookup(tfm, manifest)` validates identity before
+reuse and returns `EncodingCacheOutcome { encoding: Arc<ResolvedCffEncoding>,
+status }`. Canonical sorted slot/name declarations share entries regardless of
+input order; different TFM hashes or declarations do not. Missing names and invalid
+identities are errors, not negative fallback entries. `BoundCffTfmFont::from_resolved`
+consumes the shared binding; `validate_cache` checks the eventual outline consumer.
+LRU retention permits at most 128 entries and 8MiB of conservatively charged entry
+payload/bookkeeping, with explicit oversize bypass and zero-budget operation.
+The shared name index has its separate 16MiB bound; caller-retained Arc references
+and allocator-wide memory are outside cache ownership. No shaping or native render
+performance claim follows from an encoding cache hit.

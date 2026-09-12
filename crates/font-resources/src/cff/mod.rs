@@ -431,4 +431,7 @@ pub use cache::{CacheLimits, CacheOutcome, CacheStatus, CffIdentity, CffOutlineC
 
 mod names;
 mod standard_strings;
-pub use names::{BoundCffTfmFont, CffEncodingManifest, CffGlyphNames, ResolvedCffEncoding};
+pub use names::{
+    BoundCffTfmFont, CffEncodingCache, CffEncodingManifest, CffGlyphNames, EncodingCacheOutcome,
+    ResolvedCffEncoding,
+};
