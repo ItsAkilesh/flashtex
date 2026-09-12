@@ -170,6 +170,7 @@ def scan_once(root, args):
             if coord.run(['git', 'merge-base', '--is-ancestor', 'HEAD', baseline], cwd=root, check=False).returncode:
                 raise RuntimeError('Commander HEAD must exactly match current origin/main or be a clean ancestor before dispatch')
             coord.git(root, 'merge', '--ff-only', 'origin/main')
+        control = {}
         control_path = 'coordination/control.json'
         if not coord.run(['git', 'cat-file', '-e', baseline + ':' + control_path], cwd=root, check=False).returncode:
             control = coord.peer_json(root, baseline, control_path)
@@ -181,6 +182,9 @@ def scan_once(root, args):
         plans, skipped = [], []
         now = datetime.now(timezone.utc)
         for path, queue in sorted(queues.items()):
+            if queue.get('agent_id') in control.get('paused_agents', []):
+                skipped.append({'queue': path, 'reason': 'worker paused by explicit user staffing limit'})
+                continue
             try:
                 plan, reason = plan_step(root, path, queue, assignments, now, args.stale_seconds)
             except DispatchAuthorizationError:

@@ -279,6 +279,14 @@ class DispatcherTests(unittest.TestCase):
         self.assertTrue(bad['needs_commander_review'])
         self.assertIn('invalid queue', bad['reason'])
 
+    def test_paused_worker_cannot_be_redispatched(self):
+        self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'running', 'paused_agents': ['worker']})
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        result = loop.scan_once(self.root, self.args)
+        self.assertFalse(result['prepared'])
+        self.assertIn('paused', result['skipped'][0]['reason'])
+
     def test_verified_milestone_continues_dispatch(self):
         self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})
         self.commit(self.root)

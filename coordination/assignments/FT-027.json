@@ -10,15 +10,17 @@
   "branch": "agent/commander/preview-controller",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "b44eb68dda46385bf98cc8d1ebb539ee85eeef2c",
-  "objective": "Subprocess crash/restart and reviewed receipt recovery",
+  "input_main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+  "objective": "Implement explicit opt-in rules-v1/font-hints-v1 negotiation and validation in persistent runtime/controller, preserving legacy output and exact async ID/revision/capability correlation; then guarded native helper integration.",
   "owned_paths": [
-    "crates/preview-controller"
+    "crates/preview-controller",
+    "crates/document-runtime"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:22:04Z"
+  "updated_utc": "2026-09-12T06:34:25.106201+00:00",
+  "dispatch_reason": "Commander scope extension for newly authoritative runtime-v1 layout capabilities; prior helper stages completed, no extra agent allocation."
 }
