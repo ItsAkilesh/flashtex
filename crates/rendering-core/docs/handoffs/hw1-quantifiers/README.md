@@ -16,3 +16,7 @@ Keep `\exists!` as the existing quantifier token followed by the separate exclam
 Compiler v1 command spans can remain exact original tokens (seven bytes for `\forall`, seven for `\exists`); Unicode output is three UTF-8 bytes. The pipeline currently retains whole-math-expression provenance for emitted clusters, as documented in the membership handoff. Do not promise new token-level navigation or infer spans from glyph/text lengths. Existing array, mathbb, spacing and optical-design diagnostics remain; these sixteen recognized tokens do not imply HW1 reference parity.
 
 This review performed only source/table inspection and two cmap lookups. No candidate implementation, compiler run, corpus replay or native execution occurred. Root owns the next candidate and its focused tests.
+
+## Candidate review
+
+Root candidate `8daaab99` preserves this scope: existing command table gains the two scalars, existing export table gains exactly Symbol0x22/0x24, and tests explicitly cover multibyte-prefix command spans, separate `!`, macro recognition, unknown-command diagnostics and incremental/clean equality. Source review found no encoding or AST blocker to the combined owner gate. Tests and producer/native adoption remain the implementing owner's execution evidence; this followup did not rerun them.
