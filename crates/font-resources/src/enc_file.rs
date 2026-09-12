@@ -40,6 +40,29 @@ pub struct EncodingSource {
     pub encoding_name: String,
     pub project_path: Option<String>,
 }
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GlyphNameAlias {
+    pub literal_name: String,
+    pub font_name: String,
+    pub original_gid: u16,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnavailableSlot {
+    pub code: u8,
+    pub literal_name: String,
+}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CffMappingDeclarations {
+    pub encoding_file_sha256: String,
+    pub font_sha256: String,
+    pub cff_sha256: String,
+    pub face_index: u32,
+    pub aliases: Vec<GlyphNameAlias>,
+    pub unavailable_slots: Vec<UnavailableSlot>,
+}
 pub struct EncFile {
     source: EncodingSource,
     slots: Vec<EncodingEntry>,
@@ -215,6 +238,103 @@ impl EncFile {
             font: BoundTfmFont::new(tfm, font, &manifest)?,
         })
     }
+    pub fn bind_cff_declared<'a>(
+        &self,
+        tfm: &'a Tfm,
+        font: &CffOutlineCache,
+        declarations: &CffMappingDeclarations,
+    ) -> Result<EncodedCff<'a>, EncError> {
+        use crate::encoding::GlyphIdentity;
+        use std::collections::{BTreeMap, BTreeSet};
+        let identity = font.identity();
+        if declarations.encoding_file_sha256 != self.source.file_sha256
+            || declarations.font_sha256 != identity.font_sha256
+            || declarations.cff_sha256 != identity.cff_sha256
+            || declarations.face_index != identity.face_index
+        {
+            return Err(EncError::Binding(crate::invalid(
+                "encoding declaration identity mismatch",
+            )));
+        }
+        if declarations.aliases.len() > 256 || declarations.unavailable_slots.len() > 256 {
+            return Err(EncError::SizeLimit);
+        }
+        let names = font.glyph_names()?;
+        let mut aliases = BTreeMap::new();
+        let mut omitted = BTreeSet::new();
+        for alias in &declarations.aliases {
+            if alias.literal_name.len() > 256
+                || alias.font_name.len() > 256
+                || alias.literal_name == ".notdef"
+                || alias.font_name == ".notdef"
+                || !self
+                    .slots
+                    .iter()
+                    .any(|s| s.glyph_name == alias.literal_name)
+                || aliases
+                    .insert(alias.literal_name.clone(), alias.font_name.clone())
+                    .is_some()
+            {
+                return Err(EncError::Binding(crate::invalid(
+                    "duplicate/unknown alias source",
+                )));
+            }
+            if names.resolve(&alias.font_name)? != GlyphIdentity::Original(alias.original_gid)
+                || alias.original_gid == 0
+            {
+                return Err(EncError::Binding(crate::invalid(
+                    "alias target original GID mismatch",
+                )));
+            }
+            if names
+                .resolve(&alias.literal_name)
+                .is_ok_and(|gid| gid != GlyphIdentity::Original(alias.original_gid))
+            {
+                return Err(EncError::Binding(crate::invalid(
+                    "alias conflicts with existing font name",
+                )));
+            }
+        }
+        for unavailable in &declarations.unavailable_slots {
+            if self.slots[unavailable.code as usize].glyph_name != unavailable.literal_name
+                || !omitted.insert(unavailable.code)
+                || aliases.contains_key(&unavailable.literal_name)
+                || names.resolve(&unavailable.literal_name).is_ok()
+            {
+                return Err(EncError::Binding(crate::invalid(
+                    "invalid/conflicting unavailable slot",
+                )));
+            }
+        }
+        let manifest = CffEncodingManifest {
+            font_sha256: identity.font_sha256.clone(),
+            cff_sha256: identity.cff_sha256.clone(),
+            tfm_sha256: tfm.source_sha256.clone(),
+            face_index: identity.face_index,
+            encoding: self
+                .slots
+                .iter()
+                .filter(|s| !omitted.contains(&s.code))
+                .map(|s| EncodingEntry {
+                    code: s.code,
+                    glyph_name: aliases.get(&s.glyph_name).unwrap_or(&s.glyph_name).clone(),
+                })
+                .collect(),
+        };
+        let bound = BoundCffTfmFont::new(tfm, font, &manifest)?;
+        let bytes = serde_json::to_vec(declarations)
+            .map_err(|_| EncError::Binding(crate::invalid("encoding declaration serialization")))?;
+        let resolved = bound
+            .encoding()
+            .as_ref()
+            .clone()
+            .preserve_literal_names(&self.slots, &sha256(&bytes))?;
+        Ok(EncodedCff {
+            source: self.source.clone(),
+            font: BoundCffTfmFont::from_resolved(tfm, std::sync::Arc::new(resolved))?,
+            declarations: Some(declarations.clone()),
+        })
+    }
     pub fn bind_cff<'a>(
         &self,
         tfm: &'a Tfm,
@@ -231,6 +351,7 @@ impl EncFile {
         Ok(EncodedCff {
             source: self.source.clone(),
             font: BoundCffTfmFont::new(tfm, font, &manifest)?,
+            declarations: None,
         })
     }
 }
@@ -247,10 +368,14 @@ impl<'a> EncodedTrueType<'a> {
     }
 }
 pub struct EncodedCff<'a> {
+    declarations: Option<CffMappingDeclarations>,
     source: EncodingSource,
     font: BoundCffTfmFont<'a>,
 }
 impl<'a> EncodedCff<'a> {
+    pub fn declarations(&self) -> Option<&CffMappingDeclarations> {
+        self.declarations.as_ref()
+    }
     pub fn source(&self) -> &EncodingSource {
         &self.source
     }

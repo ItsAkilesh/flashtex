@@ -812,6 +812,48 @@ fn cff_encoding_binds_actual_names_and_resource_hashes() {
         encoding::GlyphIdentity::Notdef
     );
     assert_eq!(encoded.source().file_sha256, sha256(enc_source.as_bytes()));
+    let mut aliases_names = vec!["/.notdef"; 256];
+    aliases_names[65] = "/alias";
+    aliases_names[66] = "/absent";
+    let alias_source = format!("/Declared[{}]def", aliases_names.join(" "));
+    let enc = enc_file::EncFile::parse(alias_source.as_bytes(), &sha256(alias_source.as_bytes()))
+        .unwrap();
+    assert!(enc.bind_cff(&tfm, &cache).is_err());
+    let declarations = enc_file::CffMappingDeclarations {
+        encoding_file_sha256: sha256(alias_source.as_bytes()),
+        font_sha256: cache.identity().font_sha256.clone(),
+        cff_sha256: cache.identity().cff_sha256.clone(),
+        face_index: 0,
+        aliases: vec![enc_file::GlyphNameAlias {
+            literal_name: "alias".into(),
+            font_name: "space".into(),
+            original_gid: 1,
+        }],
+        unavailable_slots: vec![enc_file::UnavailableSlot {
+            code: 66,
+            literal_name: "absent".into(),
+        }],
+    };
+    let bound_alias = enc.bind_cff_declared(&tfm, &cache, &declarations).unwrap();
+    assert_eq!(
+        bound_alias.font().map_code(65).unwrap().0,
+        encoding::GlyphIdentity::Original(1)
+    );
+    assert_eq!(bound_alias.font().encoding().glyph_name(65), Some("alias"));
+    assert!(bound_alias.font().map_code(66).is_err());
+    assert!(bound_alias.declarations().is_some());
+    for fault in 0..6 {
+        let mut bad = declarations.clone();
+        match fault {
+            0 => bad.font_sha256 = "0".repeat(64),
+            1 => bad.aliases[0].original_gid = 0,
+            2 => bad.aliases.push(bad.aliases[0].clone()),
+            3 => bad.unavailable_slots.push(bad.unavailable_slots[0].clone()),
+            4 => bad.unavailable_slots[0].code = 65,
+            _ => bad.encoding_file_sha256 = "0".repeat(64),
+        }
+        assert!(enc.bind_cff_declared(&tfm, &cache, &bad).is_err());
+    }
     let identity = cache.identity();
     let manifest = CffEncodingManifest {
         font_sha256: identity.font_sha256.clone(),
@@ -1370,6 +1412,7 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
             panic!()
         };
         asset_deps.nodes[0] = Node::CffPhysicalEncodingAsset {
+            declarations: None,
             id,
             tfm,
             binding,

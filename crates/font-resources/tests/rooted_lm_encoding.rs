@@ -97,8 +97,48 @@ fn matching_latin_modern_rooted_encoding_run() {
         sha256: sha256(&enc),
         license: metadata,
     };
+    let known: encoding::EncodingManifest =
+        serde_json::from_slice(&std::fs::read(fixtures.join("ec-lmr10.encoding.json")).unwrap())
+            .unwrap();
+    let cff_identity = match registry.resource(&binding).unwrap() {
+        RegistryResource::Cff(r) => Some(r.identity().clone()),
+        _ => None,
+    };
+    let declarations = cff_identity.map(|identity| enc_file::CffMappingDeclarations {
+        encoding_file_sha256: sha256(&enc),
+        font_sha256: identity.font_sha256,
+        cff_sha256: identity.cff_sha256,
+        face_index: 0,
+        aliases: [
+            ("ff", "f_f"),
+            ("fi", "f_i"),
+            ("fl", "f_l"),
+            ("ffi", "f_f_i"),
+            ("ffl", "f_f_l"),
+        ]
+        .into_iter()
+        .map(|(literal, target)| enc_file::GlyphNameAlias {
+            literal_name: literal.into(),
+            font_name: target.into(),
+            original_gid: known
+                .declared_glyphs
+                .iter()
+                .find(|g| g.glyph_name == literal)
+                .unwrap()
+                .glyph_id,
+        })
+        .collect(),
+        unavailable_slots: [(156, "IJ"), (188, "ij"), (223, "Germandbls")]
+            .into_iter()
+            .map(|(code, name)| enc_file::UnavailableSlot {
+                code,
+                literal_name: name.into(),
+            })
+            .collect(),
+    });
     let node = match face.outlines() {
         Outlines::Cff => Node::CffPhysicalEncodingAsset {
+            declarations,
             id: "lm".into(),
             tfm: tfm_asset,
             binding,
@@ -118,17 +158,24 @@ fn matching_latin_modern_rooted_encoding_run() {
             }
         }
     };
-    std::fs::write(
-        dir.path().join("deps.json"),
-        serde_json::to_vec(&DependencyManifest {
-            schema_version: 2,
-            registry_generation: registry.generation().into(),
-            root: "lm".into(),
-            nodes: vec![node],
-        })
-        .unwrap(),
-    )
-    .unwrap();
+    let manifest = DependencyManifest {
+        schema_version: 2,
+        registry_generation: registry.generation().into(),
+        root: "lm".into(),
+        nodes: vec![node],
+    };
+    let write = |m: &DependencyManifest| {
+        std::fs::write(dir.path().join("deps.json"), serde_json::to_vec(m).unwrap()).unwrap()
+    };
+    let mut strict = manifest.clone();
+    if let Node::CffPhysicalEncodingAsset { declarations, .. } = &mut strict.nodes[0] {
+        *declarations = None;
+        write(&strict);
+        assert!(
+            ResolvedVfProject::load(&root, "deps.json", &registry, Default::default()).is_err()
+        );
+    }
+    write(&manifest);
     let project =
         ResolvedVfProject::load(&root, "deps.json", &registry, Default::default()).unwrap();
     let fi = project
@@ -138,6 +185,7 @@ fn matching_latin_modern_rooted_encoding_run() {
         fi.items.as_slice(),
         [MappedItem::Glyph {
             tfm_code: 28,
+            identity: encoding::GlyphIdentity::Original(125),
             input_start: 0,
             input_end: 2,
             ..
@@ -162,6 +210,11 @@ fn matching_latin_modern_rooted_encoding_run() {
             }
         ]
     ));
+    for slot in [156, 188, 223] {
+        assert!(project
+            .physical_run("lm", &[slot], registry.generation())
+            .is_err());
+    }
     assert_eq!(av.project_generation, project.generation());
     assert!(project.physical_run("lm", b"fi", "stale").is_err());
 }

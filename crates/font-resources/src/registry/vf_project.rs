@@ -47,6 +47,8 @@ pub enum Node {
         tfm: Asset,
         binding: StyleBinding,
         encoding_asset: Asset,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        declarations: Option<crate::enc_file::CffMappingDeclarations>,
     },
     Virtual {
         id: String,
@@ -252,43 +254,6 @@ impl ResolvedVfProject {
                         },
                     })
                 }
-                Node::CffPhysicalEncodingAsset {
-                    tfm,
-                    binding,
-                    encoding_asset,
-                    ..
-                } => {
-                    if manifest.schema_version != 2 {
-                        return Err(RegistryError::InvalidManifest(
-                            "encoding assets require schema2".into(),
-                        ));
-                    }
-                    let bytes = asset(
-                        &mut reader,
-                        encoding_asset,
-                        crate::enc_file::MAX_ENC_BYTES as u64,
-                        &mut license_texts,
-                    )?;
-                    let enc = crate::enc_file::EncFile::parse(&bytes, &encoding_asset.sha256)
-                        .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
-                    let RegistryResource::Cff(font) = registry.resource(binding)? else {
-                        return Err(RegistryError::InvalidManifest(
-                            "CFF encoding asset requires CFF resource".into(),
-                        ));
-                    };
-                    Some(Node::CffPhysical {
-                        id: id.clone(),
-                        tfm: tfm.clone(),
-                        binding: binding.clone(),
-                        encoding: crate::cff::CffEncodingManifest {
-                            tfm_sha256: tfm.sha256.clone(),
-                            font_sha256: font.identity().font_sha256.clone(),
-                            cff_sha256: font.identity().cff_sha256.clone(),
-                            face_index: font.identity().face_index,
-                            encoding: enc.slots().to_vec(),
-                        },
-                    })
-                }
                 _ => None,
             };
             let loaded = match prepared.as_mut().unwrap_or(node) {
@@ -337,7 +302,52 @@ impl ResolvedVfProject {
                         encoding: resolved,
                     }
                 }
-                Node::PhysicalEncodingAsset { .. } | Node::CffPhysicalEncodingAsset { .. } => {
+                Node::CffPhysicalEncodingAsset {
+                    tfm,
+                    binding,
+                    encoding_asset,
+                    declarations,
+                    ..
+                } => {
+                    if manifest.schema_version != 2 {
+                        return Err(RegistryError::InvalidManifest(
+                            "encoding assets require schema2".into(),
+                        ));
+                    }
+                    let encbytes = asset(
+                        &mut reader,
+                        encoding_asset,
+                        crate::enc_file::MAX_ENC_BYTES as u64,
+                        &mut license_texts,
+                    )?;
+                    let enc = crate::enc_file::EncFile::parse(&encbytes, &encoding_asset.sha256)
+                        .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
+                    let tfmbytes = asset(&mut reader, tfm, 131068, &mut license_texts)?;
+                    let parsed = Tfm::parse(&tfmbytes).map_err(|e| resource_error(&tfm.path, e))?;
+                    let RegistryResource::Cff(font) = registry.resource(binding)? else {
+                        return Err(RegistryError::InvalidManifest(
+                            "CFF encoding asset requires CFF resource".into(),
+                        ));
+                    };
+                    let cache = font
+                        .outline_cache(crate::cff::CacheLimits {
+                            max_entries: 0,
+                            max_bytes: 0,
+                        })
+                        .map_err(|e| resource_error(&tfm.path, e))?;
+                    let bound = match declarations {
+                        Some(d) => enc.bind_cff_declared(&parsed, &cache, d),
+                        None => enc.bind_cff(&parsed, &cache),
+                    }
+                    .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
+                    let encoding = bound.font().encoding().clone();
+                    Loaded::CffPhysical {
+                        tfm: parsed,
+                        font,
+                        encoding,
+                    }
+                }
+                Node::PhysicalEncodingAsset { .. } => {
                     return Err(RegistryError::InvalidManifest(
                         "unresolved encoding asset".into(),
                     ))

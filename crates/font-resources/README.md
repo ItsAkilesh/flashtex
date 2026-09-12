@@ -784,6 +784,26 @@ The full matching-font test is deliberately opt-in:
 `FLASHTEX_LM_FONT=/exact/lmroman10-regular.otf cargo test --offline --manifest-path crates/font-resources/Cargo.toml --test rooted_lm_encoding -- --ignored`.
 It requires font SHA `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852`
 and verifies exact TFM/encoding/license hashes, rooted loading, fi interval0..2,
-AV intervals0..1/1..2 and exact kern. Matching font bytes are absent on this Linux
-host; the test is compiled but not claimed executed. No substitute font is used
-as matching evidence.
+AV intervals0..1/1..2 and exact kern. The exact matching font was subsequently obtained from the official GUST
+distribution into a temporary evidence directory; the test now passes with the
+explicit declarations described below. No substitute font is used.
+
+
+CFF encoding-asset nodes may explicitly opt into `declarations`, binding the
+encoding-file/full-font/CFF hashes and face index. Each alias declares its literal
+source name, literal font target name and exact original GID. Duplicate, conflicting,
+unknown or `.notdef` aliases are refused. Explicit unavailable slots must match the
+literal vector and actually lack a font name; requesting one fails, never substitutes.
+The default without declarations remains strict. Resolved mappings retain literal
+source names; their semantic digest includes the declaration hash, and rooted
+project generation retains the entire declaration and licensed asset provenance.
+
+The official GUST archive supplied exact font SHA1aa18cf...; the initially failing
+full rooted test exposed the documented five LM ligature aliases and three missing
+slots. With those exact fixture-bound declarations it now passes fi->originalGID125,
+input0..2, AV kern-116509 with intervals0..1/1..2, and all three unavailable-slot
+refusals. `fixtures/rooted-lm-download.json` preserves official URLs, archive/font/
+license hashes and the initial failure. The freshly downloaded license differs in
+line endings/URL spelling/whitespace from the pinned fixture; its normalized terms
+agree, but the two raw hashes remain distinct in evidence. Assets are temporary,
+not installed or copied into the repository.
