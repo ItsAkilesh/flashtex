@@ -83,12 +83,29 @@ pub fn error_envelope(id: &str, code: &str, message: &str) -> Value {
     let mut payload = Value::obj();
     payload.set("code", str_(code));
     payload.set("message", str_(message));
+    payload.set(
+        "diagnostics",
+        Value::Arr(vec![Diagnostic::error(message, None, None).to_json("")]),
+    );
     let mut v = Value::obj();
     v.set("protocol_version", Value::Num(PROTOCOL_VERSION as f64));
     v.set("id", str_(id));
     v.set("type", str_("error"));
     v.set("payload", payload);
     v
+}
+
+/// Handles one already-delimited request line, including transport bytes that
+/// cannot be represented as UTF-8. The worker and tests share this reply path.
+pub fn handle_request_bytes(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(line) => handle_line(line),
+        Err(_) => json::write(&error_envelope(
+            "",
+            "invalid_utf8",
+            "request line is not valid UTF-8",
+        )),
+    }
 }
 
 /// Project-relative paths only: no absolute paths, no parent traversal.

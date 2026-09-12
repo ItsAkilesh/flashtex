@@ -289,14 +289,31 @@ impl P {
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
                 let content = self.inlines_from_tokens(tokens);
-                blocks.push(Block::Heading { level, content });
-                self.finish_block_dependencies();
+                if content.is_empty() {
+                    // A missing/empty heading is already diagnosed where
+                    // applicable and has nothing to position. Do not create an
+                    // empty block: incremental block spans require real source.
+                    self.current_dependencies.clear();
+                } else {
+                    blocks.push(Block::Heading { level, content });
+                    self.finish_block_dependencies();
+                }
             }
             "textbf" | "emph" | "textit" => {
                 let (tokens, _) = self.required_group(name, span);
                 para.extend(self.inlines_from_tokens(tokens));
             }
             "par" => self.flush_paragraph(blocks, para),
+            "input" => self.diags.push(Diagnostic::error(
+                "\\input and multi-document inclusion are not implemented",
+                Some(span),
+                Some("skipped the include and typeset its braced path as plain text".into()),
+            )),
+            "frac" | "sqrt" => self.diags.push(Diagnostic::error(
+                format!("\\{} requires math mode", name),
+                Some(span),
+                Some("skipped the command and typeset its braced arguments as plain text".into()),
+            )),
             other => self.unsupported(other, span),
         }
     }
@@ -428,7 +445,22 @@ impl P {
     fn expand_macro(&mut self, name: &str, span: Span, depth: usize, definition: MacroDef) {
         let mut arguments = Vec::new();
         for _ in 0..definition.argument_count {
-            arguments.push(self.required_group(name, span).0);
+            let (argument, argument_span) = self.required_group(name, span);
+            if argument_span != span
+                && argument.iter().all(|token| {
+                    matches!(
+                        token.token.kind,
+                        TokenKind::Space | TokenKind::ParBreak | TokenKind::Comment
+                    )
+                })
+            {
+                self.diags.push(Diagnostic::error(
+                    format!("macro \\{} received an empty required argument", name),
+                    Some(argument_span),
+                    Some("substituted an empty argument and continued".into()),
+                ));
+            }
+            arguments.push(argument);
         }
         if depth >= MACRO_RECURSION_LIMIT {
             self.diags.push(Diagnostic::error(

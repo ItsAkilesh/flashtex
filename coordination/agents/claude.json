@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "220051681f0b053d9c2e7b67ec7c3b076b2fd67e",
+  "code_revision": "6b13034593e04404a0cfde0f296c14360f5c4b26",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "next_action": "Awaiting Commander decision on the FT-005 duplication report and the next dispatch.",
+  "next_action": "Merge current origin/main into this branch; tell the Commander that main crates/compiler is a pre-rev-3 snapshot so 6b13034 and this commit still need integrating.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed the worker output rather than accepting its self-report: confirmed compile_full is a genuine clean parse-and-layout so the byte-identical equivalence assertion is real, and confirmed the private layout copy is gone. Found and fixed one defect it introduced: the warm-session map was an unbounded process-global cache, so every project/path pair ever compiled was retained forever. Now bounded to 8 documents with least-recently-used eviction, plus a test asserting eviction changes reuse but never output or spans.",
-      "reviewed_utc": "2026-09-12T05:29:43Z",
-      "sha": "984fa28f2537feadb9f848eb90f69de0327d1fa5"
+      "adaptation": "Verified the fixes rather than trusting the report. Noted one deliberate behaviour change: an empty optional-content argument such as \\\\section{} no longer warns, which matches real LaTeX where an empty section title is legal; \\\\documentclass and macro empty-argument warnings are retained and covered by tests.",
+      "reviewed_utc": "2026-09-12T05:41:49Z",
+      "sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 3 complete: dependency-aware invalidation and cached reuse. Layout refactored into a resumable cursor so one engine serves both the full and incremental paths; the stage-2 shadow engine is deleted. 49 tests pass. Measured on this machine: one-word edit p95 22.75 ms with 499/500 blocks reused; a macro redefinition correctly reuses 0/500.",
+  "summary": "FT-006 recovery evidence complete. 54 tests pass (38 lib, 11 acceptance, 5 recovery). Committed RECOVERY.md generated from the real compiler. Five real defects found and fixed, including a panic in incremental compilation triggered by an empty heading argument.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:29:43Z",
+  "updated_utc": "2026-09-12T05:41:49Z",
   "usage": {
-    "evidence": "cargo test 49 pass; clippy -D warnings clean; fmt clean; independent harness 21/21; tex-corpus 14/14 answered, 7 ok, 9/9 expectations; benchmark rerun by me: cold first 34.384 ms, cold p95 21.674 ms, warm unchanged p95 0.761 ms, one-word edit p95 22.750 ms, macro edit p95 22.711 ms on a 118 700-byte 500-paragraph math-and-macro fixture",
-    "status": "Fifth Codex worker completed on openai-kabir-plus-ft002-stage3"
+    "evidence": "cargo test 54 pass; clippy -D warnings clean; fmt clean; independent harness 21/21; tex-corpus 14/14 answered 7 ok; empty-heading panic case rerun by me through the real binary across three revisions with no crash and correct output",
+    "status": "Sixth Codex worker complete. Both Claude and Codex usage on this machine are approaching limits per the user."
   }
 }
