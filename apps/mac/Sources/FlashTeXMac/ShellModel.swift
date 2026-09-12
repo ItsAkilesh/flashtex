@@ -88,6 +88,8 @@ final class ShellModel {
     /// preview replaces it. Explicit, never inferred from staleness.
     var historicalPreview: HistoricalDisplay?
     @ObservationIgnored var historicalState = HistoricalPreviewState()
+    /// Helper display-candidate route (ShellModel+DisplayCandidates.swift): opt-in, negotiation and gate state.
+    let displayCandidates = DisplayCandidateState()
     /// Project-index completion vocabulary (labels/citations/commands) bound to
     /// the editor revision it was fetched for (Completion.swift).
     var completionMetadata: Completion.Metadata?

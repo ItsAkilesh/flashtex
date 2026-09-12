@@ -124,6 +124,7 @@ extension ShellModel {
         self.controller = nil
         controllerState = ControllerState()
         historicalInvalidate(reason: "close")
+        displayCandidatesInvalidate(reason: "close") // ShellModel+DisplayCandidates.swift
         inFlightRevision = nil
         controllerStatus = "no preview controller attached"
         if previewSource != .fixture { workerStatus = "no worker attached" }
@@ -189,13 +190,18 @@ extension ShellModel {
             // into the negotiated primitives the preview draws, then learn the
             // durable document so edits can name the revision they expect.
             historicalNegotiate()
-            if !requestedLayoutCapabilities.isEmpty {
-                _ = try? controller.configureLayout(capabilities: requestedLayoutCapabilities)
+            // display-list-v2 is enrolled by the helper itself through the
+            // display-candidate opt-in (ShellModel+DisplayCandidates.swift), never by configure_layout.
+            let layout = displayCandidatesConfigureLayoutCapabilities(requestedLayoutCapabilities)
+            if !layout.isEmpty {
+                _ = try? controller.configureLayout(capabilities: layout)
             }
+            displayCandidatesNegotiate() // after configure_layout: the helper enrolls display-list-v2 into that set
             _ = try? controller.document(path: activePath)
         case .result(let id, let payload):
             if let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.success(payload)); return }
             if historicalHandle(resultID: id, payload: payload) { return }
+            if displayCandidatesHandle(resultID: id, payload: payload) { return }
             switch completionFetcher.handle(resultID: id, payload: payload) {
             case .notMine: break
             case .pending: return
@@ -212,6 +218,7 @@ extension ShellModel {
         case .error(let id, let message):
             if let id, let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.failure(.init(message: message))); return }
             if historicalHandle(errorID: id, message: message) { return }
+            if displayCandidatesHandle(errorID: id, message: message) { return }
             if case .refused(let why) = completionFetcher.handle(errorID: id, message: message) {
                 log("completion metadata refused: \(why)")
                 break
@@ -235,6 +242,8 @@ extension ShellModel {
             applyControllerPreview(update)
         case .completedSnapshot(let frame):
             historicalReceive(frame)
+        case .displayCandidate(let candidate):
+            handleDisplayCandidate(candidate) // ShellModel+DisplayCandidates.swift
         case .update(let kind, let payload):
             // stale / discarded previews name the request they replaced; nothing
             // to paint. If it was the preview our in-flight edit waits for, the
@@ -266,6 +275,7 @@ extension ShellModel {
             controllerState = ControllerState()
             inFlightRevision = nil
             historicalInvalidate(reason: "helper exited")
+            displayCandidatesInvalidate(reason: "helper exited") // ShellModel+DisplayCandidates.swift
             if wasAttached { scheduleControllerRelaunch(afterExit: code) }
         }
     }
@@ -443,7 +453,11 @@ extension ShellModel {
         // active path's version says nothing about it.
         if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
            let got = update.sourceVersions[inFlight.path], got >= want {
-            controllerReleaseInFlight()
+            // Held briefly for this request's display-candidate sibling when that route is
+            // negotiated (ShellModel+DisplayCandidates.swift); otherwise released now.
+            displayCandidatesAfterSibling(of: update.requestID, acceptedLayout: update.result.payload.layoutCapabilities ?? [], holdsRelease: true) { [weak self] in
+                self?.controllerReleaseInFlight()
+            }
         }
         guard let durableRevision = versionForActive,
               let editorRev = controllerState.editorRevisionByDurable[activePath]?[durableRevision] else {
@@ -456,7 +470,8 @@ extension ShellModel {
         }
         var incoming = update.result.payload
         incoming.revision = editorRev
-        let requested = requestedLayoutCapabilities
+        // display-list-v2 accepted by the producer is expected while the helper enrolls it for candidates (ShellModel+DisplayCandidates.swift).
+        let requested = displayCandidatesLayoutRequested(requestedLayoutCapabilities)
         if let violation = LayoutNegotiation.violation(in: incoming, requested: requested) {
             log("rejected controller preview \(update.requestID): \(violation)")
             controllerStatus = "protocol violation: \(violation)"
@@ -467,6 +482,7 @@ extension ShellModel {
         previewSource = .worker("flashtex-preview-controller")
         outputBoundNotePreviewApplied()
         historicalNoteCurrentPreview(compileRevision: update.compileRevision)
+        displayCandidatesNotePreview(update, editorRevision: editorRev) // the only request a candidate may correlate to
         bindLayout(of: incoming, requested: requested)
         if !update.missingLayoutCapabilities.isEmpty {
             log("controller: compiler declined layout capabilities \(update.missingLayoutCapabilities)")
@@ -482,9 +498,14 @@ extension ShellModel {
         workerStatus = String(format: "revision %d: %@, %d diagnostics in %.0f ms (durable r%d)", editorRev,
                               incoming.status.rawValue, incoming.diagnostics.count, ms, durableRevision)
         selection = nil
-        // Refresh the completion vocabulary for exactly these source versions.
+        // Refresh the completion vocabulary for exactly these source versions
+        // (held back briefly while the helper's display-candidate sibling of this
+        // request is expected: ShellModel+DisplayCandidates.swift).
         if let controller {
-            completionFetcher.request(sourceVersions: update.sourceVersions, editorRevision: editorRev) { try controller.send($0, $1) }
+            displayCandidatesAfterSibling(of: update.requestID, acceptedLayout: incoming.layoutCapabilities ?? []) { [weak self] in
+                guard let self, self.controller === controller, controller.isRunning else { return }
+                self.completionFetcher.request(sourceVersions: update.sourceVersions, editorRevision: editorRev) { try controller.send($0, $1) }
+            }
         }
     }
 }

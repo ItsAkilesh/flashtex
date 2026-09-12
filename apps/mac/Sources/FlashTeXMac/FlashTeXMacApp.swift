@@ -96,6 +96,12 @@ struct FlashTeXMacApp: App {
             NavigationCommands(model: model) // Navigation.swift
             ProjectSearchCommands(openWindow: openWindow) // ProjectSearchPanel.swift: ⌘⇧F Find in Project…
             CitationRenameCommands(openWindow: openWindow) // CitationRename.swift: Edit > Rename Citation… (no shortcut)
+            CommandGroup(after: .toolbar) {
+                // Helper display-candidate route (ShellModel+DisplayCandidates.swift): default OFF; untrusted v2 siblings painted in the v2 pane.
+                Toggle("Helper Display Candidates", isOn: Binding(get: { model.displayCandidates.requested }, set: { model.setDisplayCandidates($0) }))
+                    .disabled(!model.controllerAttached)
+                    .help("Ask the attached preview controller to forward the producer's display-list-v2 sibling (untrusted; validated natively before paint). Status: \(model.displayCandidates.status)")
+            }
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
             }
