@@ -61,3 +61,9 @@ Productd53c5073 integrated after full ledger suite, four metadata helper tests a
 21ce1756/b7dedddf private immutable paired envelope reuse integrated with894b393f GH33 bounded test-reader cleanup/progress. Corrected integration21373 passed actual large-result, optional expansion, ten helper candidate tests and both lints; first98940 invocation omitted required compiler environment and failed setup, not product. Logs /tmp/flashtex-paired-gh33-corrected.log and original setup log preserved. Owner173 rendering tests and exact five-fixture hashes unchanged. GH33 original cause remains unproven; no deadline relaxation.
 
 Pending9f28baeb owned edit text move,106bca6e repeated lifecycle evidence. Next root/runtime coordinated actual multi-document explicit bibliography helper capture (distinct editor/compile revisions); avoid modeled capture claims. RendererFT023r15 exact current-guarded hit lookup reuses validated PipelineCff and existing geometry, no source_actions/native activation.
+
+## Owned input and actual multi-document acceptance
+
+9f28baeb/e09e1f40 owned edit/history JSON transfer integrated with e680d2ef actual multi-document capture, independentc4178a54 consumer and106bca6e30-cycle lifecycle evidence. Two owned-input tests, fourmetadata tests, runtime suite and helper lint passed67245; explicit captured-byte replay passed /tmp/flashtex-helper-capture-integration.log. Replay re-emits recorded producer bytes, not a new compiler run; original capture records actual pinned compiler traffic. Captured statuses remain recovered/missingec-lmr10, no fidelity claim.
+
+GH34 assigned existing renderer; verified official10pt asset found, rootFT048r18 separately corrected capture in progress. Preserve old asset stage and warning-bearing evidence. Rendererfce554f1 hit-query/81247ff1 baseline ready but not integrated yet. Source actions and native modes remain disabled. All Commander commands terminal at this publication.
