@@ -1,0 +1,76 @@
+gui/501/com.flashtex.commander-supervisor = {
+	active count = 1
+	path = /Users/kubar/Library/LaunchAgents/com.flashtex.commander-supervisor.plist
+	type = LaunchAgent
+	state = running
+
+	program = /bin/zsh
+	arguments = {
+		/bin/zsh
+		/Users/kubar/flashtex-supervisor/supervisor.sh
+		90
+	}
+
+	working directory = /Users/kubar/flashtex-supervisor
+
+	stdout path = /Users/kubar/flashtex-supervisor/launchd.out.log
+	stderr path = /Users/kubar/flashtex-supervisor/launchd.err.log
+	inherited environment = {
+		DISPLAY => /var/run/com.apple.launchd.s5qfjaPyei/org.xquartz:0
+		SSH_AUTH_SOCK => /var/run/com.apple.launchd.3kvkb1sUuv/Listeners
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		PATH => /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/kubar/.local/bin
+		XPC_SERVICE_NAME => com.flashtex.commander-supervisor
+	}
+
+	domain = gui/501 [100023]
+	asid = 100023
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 2
+	pid = 3531
+	immediate reason = inefficient
+	forks = 16
+	execs = 1
+	initialized = 1
+	trampolined = 1
+	started suspended = 0
+	proxy started suspended = 0
+	checked allocations = 0 (queried = 1)
+	checked allocations reason = no host
+	checked allocations flags = 0x0
+	last terminating signal = Terminated: 15
+
+	resource coalition = {
+		ID = 20526
+		type = resource
+		state = active
+		active count = 1
+		name = com.flashtex.commander-supervisor
+	}
+
+	jetsam coalition = {
+		ID = 20527
+		type = jetsam
+		state = active
+		active count = 1
+		name = com.flashtex.commander-supervisor
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+
+	properties = keepalive | runatload | inferred program
+}
