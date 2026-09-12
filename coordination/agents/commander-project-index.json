@@ -14,23 +14,23 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "8f48b549375fc0268fc8863e3b7c99b2a4d01c56",
+  "code_revision": "bd6c2605d0b8fa1b7978cccc0a4af0f90c6dc4c6",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "9372296059270ce3e8a6d578bcd87bed94be4421",
-  "next_action": "Orchestrator integration and independent product review; no provider calls or engine semantics claimed.",
+  "main_integrated_through": "579a58c71ce296bd7277b84fd20e2c6bc383d0da",
+  "next_action": "Orchestrator integration and native consumer wiring; validate exact snapshots and obtain explicit caller approval before application.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published bounded bibliography value parser and incremental citation metadata cache. Exact UTF8 key/field/expression/atom spans; explicit malformed/duplicate/missing/cyclic states; author/title/year inspection and source navigation; 60 tests pass.",
+  "summary": "Published bounded literal search, guarded multi-document replacement proposals, and versioned bounded JSON serialization with native-consumable schema/example. 73 Rust tests pass; no automatic document mutation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:23:56Z",
+  "updated_utc": "2026-09-12T08:20:37Z",
   "usage": {
-    "evidence": "cargo test --offline: 60 passed; cargo clippy --offline --all-targets -- -D warnings passed; cargo fmt and git diff --check passed. Metadata rebuild equivalence, transitive invalidation, malformed recovery, Unicode spans, comment shielding and expansion bounds tested.",
+    "evidence": "73 offline Rust tests pass; strict Clippy and fmt/diff checks pass. Python independently decoded example JSON and verified escaped text, exact u64 revision and UTF8 spans; optional jsonschema unavailable, no install attempted. Stale/malformed/overlapping/tampered plans rejected.",
     "status": "unknown"
   }
 }
