@@ -3,10 +3,10 @@
   "allocation_id": "openai-aarush-plus-ft004",
   "assignment_acknowledgements": {
     "FT-004": {
-      "acknowledged_utc": "2026-09-12T15:37:59Z",
-      "adaptation": "Accepted FT-004 rev 3. Implementing: (1) image orientation normalization in ImageValidator, (2) context input UI in both CameraCaptureView and DrawingCanvasView, (3) persisted destination ID/revision via UserDefaults, (4) review-before-send staging flow in CaptureStore + PayloadPreviewView, (5) accessibility labels/hints. xcodebuild unavailable on Linux VM \u2014 build verification requires Mac owner. Protocol unchanged.",
-      "main_sha": "e67fe2a5",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T16:15:00Z",
+      "adaptation": "Accepted FT-004 rev 4. Completed: (1) verified all 16 PBXFileReference\u2192disk-path mappings; (2) fixed MIME type mismatch \u2014 ImageValidator.encode() now returns (Data, String); CaptureEnvelope.create(image:) uses it so mime_type always matches actual bytes; (3) committed shared xcscheme so xcodebuild -scheme works; (4) wrote VALIDATION_HANDOFF.md with literal xcodebuild commands and PHYSICAL MAC GATE labels; (5) added 4 new tests covering encode() and MIME agreement. Physical gates require Mac+Xcode+iOS simulator \u2014 explicitly not run.",
+      "main_sha": "904197db20de983f10b0f3ef049ac8f20822bdc2",
+      "revision": 4
     }
   },
   "branch": "agent/aarush-macbook/companion-capture",
@@ -24,13 +24,13 @@
   },
   "machine": "mac-m5pro-aarush",
   "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Await xcodebuild -list verification on macOS from chatgpt-a (FT-014) or user. Available for new assignments.",
+  "next_action": "Await physical-Mac validation by chatgpt-a (FT-014) using VALIDATION_HANDOFF.md",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-004 rev 3: orientation normalization, context TextField, UserDefaults persistence, review-before-send (stagePendingCapture/confirmAndSend/discardPending), CaptureReviewSheet, accessibility labels/hints across DrawingCanvasView, CameraCaptureView, SettingsView.",
+  "summary": "FT-004 rev 4 audit: project graph verified, MIME mismatch fixed, shared xcscheme added, VALIDATION_HANDOFF.md written. 7 CapturePayloadTests + 7 ImageValidatorTests (logic verified in source; physical Mac gates documented with literal commands).",
   "tool": "Claude Cowork",
-  "updated_utc": "2026-09-12T15:37:59Z",
+  "updated_utc": "2026-09-12T16:15:00Z",
   "usage": {
     "status": "unknown"
   }
