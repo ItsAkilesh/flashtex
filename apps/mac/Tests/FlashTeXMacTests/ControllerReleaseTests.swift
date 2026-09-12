@@ -32,6 +32,9 @@ final class ControllerReleaseTests: XCTestCase {
         XCTAssertEqual(ReleaseBound.boundMs(lastEditToPreviewMs: 100), 200)
         XCTAssertEqual(ReleaseBound.boundMs(lastEditToPreviewMs: 125), 250)
         XCTAssertEqual(ReleaseBound.boundMs(lastEditToPreviewMs: 900), 250)
+        XCTAssertEqual(ReleaseBound.boundMs(lastEditToPreviewMs: 100, multiplier: 1), 100)
+        XCTAssertEqual(ReleaseBound.boundMs(lastEditToPreviewMs: 100, multiplier: 3), 250)
+        XCTAssertEqual(ReleaseBound.defaultMultiplier, 2)
         XCTAssertEqual(ReleaseBound.remainingMs(inFlightMs: 10, lastEditToPreviewMs: 100), 190)
         XCTAssertEqual(ReleaseBound.remainingMs(inFlightMs: 300, lastEditToPreviewMs: 100), 0)
     }

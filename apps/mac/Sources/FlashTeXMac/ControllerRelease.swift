@@ -32,11 +32,17 @@ enum ControllerReleasePolicy: String, Equatable {
 enum ReleaseBound {
     static let minimumMs: Double = 40
     static let maximumMs: Double = 250
-    static let multiplier: Double = 2
+    /// Default factor over the last observed latency; `FLASHTEX_CONTROLLER_RELEASE_FACTOR`
+    /// (a positive number) overrides it for measurement only.
+    static let defaultMultiplier: Double = 2
+    static let multiplier: Double = {
+        if let s = ProcessInfo.processInfo.environment["FLASHTEX_CONTROLLER_RELEASE_FACTOR"], let f = Double(s), f > 0 { return f }
+        return defaultMultiplier
+    }()
 
-    /// `2 × lastEditToPreviewMs` clamped to 40…250 ms; the minimum when nothing
-    /// was observed yet.
-    static func boundMs(lastEditToPreviewMs: Double?) -> Double {
+    /// `multiplier × lastEditToPreviewMs` clamped to 40…250 ms; the minimum when
+    /// nothing was observed yet.
+    static func boundMs(lastEditToPreviewMs: Double?, multiplier: Double = ReleaseBound.multiplier) -> Double {
         guard let last = lastEditToPreviewMs, last.isFinite, last > 0 else { return minimumMs }
         return min(maximumMs, max(minimumMs, last * multiplier))
     }
