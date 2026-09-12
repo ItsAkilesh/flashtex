@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Factor source-free ledger history command status to avoid full document clone for metadata group undo and redo while preserving legacy APIs",
-      "objective": "Factor source-free ledger history command status to avoid full document clone for metadata group undo and redo while preserving legacy APIs",
+      "name": "Investigate GH33 helper deadline failures by separating test harness parsing readiness and helper work without relaxing watchdog limits",
+      "objective": "Investigate GH33 helper deadline failures by separating test harness parsing readiness and helper work without relaxing watchdog limits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify identical durable bytes command receipts retries undo redo and cold reopen across full and compact paths",
-      "objective": "Verify identical durable bytes command receipts retries undo redo and cold reopen across full and compact paths",
+      "name": "Implement only evidence-backed deterministic helper acceptance synchronization preserving output bounds and failure assertions",
+      "objective": "Implement only evidence-backed deterministic helper acceptance synchronization preserving output bounds and failure assertions",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Measure one500KB history response allocation or clone cost and document exact remaining copies without native latency claims",
-      "objective": "Measure one500KB history response allocation or clone cost and document exact remaining copies without native latency claims",
+      "name": "Verify exact two deadline cases in isolation and retain initial failure evidence with honest cause and remaining limits",
+      "objective": "Verify exact two deadline cases in isolation and retain initial failure evidence with honest cause and remaining limits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
