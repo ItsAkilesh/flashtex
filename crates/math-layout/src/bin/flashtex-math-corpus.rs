@@ -23,17 +23,21 @@ fn metrics() -> CmMathMetrics {
     CmMathMetrics::latex_12pt()
 }
 
-/// font-hints-v1 family/style for a Computer Modern font.
+/// font-hints-v1 family/style for a Computer Modern font. Family names are
+/// what `crates/pdf` (4bd8c2e) resolves: `Latin Modern*` embeds the LM Roman
+/// faces (the OpenType form of Computer Modern text); the math symbol and
+/// extension families have no LM Roman face and are reported as substituted
+/// by the writer. Hints name families, not glyph ids (contract wording).
 fn font_hint(m: &CmMathMetrics, id: FontId) -> Json {
     let name = m.font_name(id);
     let (family, style) = if name.starts_with("cmmi") {
-        ("Computer Modern Math Italic", "italic")
+        ("Latin Modern Roman", "italic")
     } else if name.starts_with("cmsy") {
-        ("Computer Modern Math Symbols", "normal")
+        ("Latin Modern Math Symbols", "normal")
     } else if name.starts_with("cmex") {
-        ("Computer Modern Math Extension", "normal")
+        ("Latin Modern Math Extension", "normal")
     } else {
-        ("Computer Modern Roman", "normal")
+        ("Latin Modern Roman", "normal")
     };
     obj(vec![
         ("family", Json::Str(family.into())),
