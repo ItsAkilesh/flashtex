@@ -43,18 +43,69 @@ NOT covered (this lane): no shell code reads `compile_request_id`; no
 that a forged/mismatched `stale` id does not release; no test of the
 `discarded`-with-`compile_revision` wire from main 55bcf12.
 
-## Plan
-1. `PreviewControllerClient.swift`: no wire change needed (edit results are
-   bridged as `[String: Any]`; `NSNull` for null) — only if a typed accessor helps.
-2. `ShellModel+Controller.swift` (explicit exception for this lane): add
-   `admitted: (requestID: String, compileRevision: Int)?` to `inFlight`; set it from
-   the edit reply in `applyDurableDocument`; new `controllerUpdateReleasesInFlight(kind:payload:)`
-   / `controllerPreviewReleasesInFlight(_:)` pure decision in a NEW file
-   `ShellModel+AdmissionCorrelation.swift` so the diff in the retained file is minimal.
-3. `Tests/FlashTeXMacTests/AdmissionCorrelationTests.swift`: (a)–(e) per brief.
+## What was added (ae0226a0)
+
+- `apps/mac/Sources/FlashTeXMac/AdmissionCorrelation.swift` (new):
+  `ControllerCompileAdmission {requestID, compileRevision?}` decoded from the
+  edit reply (`from(editResult:)` — nil when either field is absent/null);
+  `AdmissionCorrelation.decision(kind:requestID:compileRevision:previewVersion:admitted:durableRevision:)`
+  — with a recorded pair, only the outcome (`preview`/`stale`/`discarded`/
+  `failed`/`cancelled`) naming that request id (and the same generation when
+  both carry one) releases; a mismatched id never releases; with no pair the
+  previous numeric comparison is kept verbatim (stale/discarded generation >=
+  durable, failed/cancelled any durable edit, preview compiled version of the
+  in-flight path >= durable). `rebinding(...)` moves the wait to `by_id` on
+  `superseded {request_id, by_id}` for the admitted compile. Two ShellModel
+  helpers `controllerAdmissionReleases(kind:payload:)` / `(preview:)` log
+  `controller release: …` / `controller hold: …` lines naming the ids.
+- `ShellModel+Controller.swift` (lane exception): `inFlight` tuple gains
+  `admitted: ControllerCompileAdmission?`; set from the edit reply next to
+  `durableRevision`; the `stale`/`discarded` (+`superseded`), `failed`/`cancelled`
+  and `applyControllerPreview` release sites call the decision. 7 hunks; the
+  concurrent core-review lane's hunks (detach/exited) do not overlap.
+- `ControllerPipelineReviewTests.swift:173`, `OutputBoundsTests.swift:87`: the
+  positional tuple gains `, nil` (compile fix only).
+- `Tests/FlashTeXMacTests/AdmissionCorrelationTests.swift` (9 tests): decision
+  matrix (3), `superseded` rebinding, real helper (worktree build of main
+  55bcf12) + real compiler through a sh wrapper (slow/dying markers):
+  (a) reply pair non-null → its preview releases by id; (b) rapid edits with a
+  slow compile + explicit `compile`: A released exactly once by its own
+  `stale`/`discarded` carrying its compile_revision, the intermediate compile's
+  outcome is a logged hold, B held until its own preview; (c) `failed` for the
+  admitted id releases and surfaces `preview failed: …`; (e) forged
+  stale/discarded/failed ids (generation past durable) never release, a
+  same-id/other-generation stale is held; (d) fake helper (no pair) → admitted
+  nil, numeric fallback holds below and releases at the durable revision.
+  Real-helper tests XCTSkip without FLASHTEX_PREVIEW_CONTROLLER/FLASHTEX_COMPILER;
+  (b) also skips when 1-min load > 20.
+
+## Evidence
+- `swift build` clean (apps/mac).
+- `swift test --filter AdmissionCorrelationTests` with
+  FLASHTEX_PREVIEW_CONTROLLER=<worktree>/crates/preview-controller/target/release/flashtex-preview-controller
+  (built from 644fcc9e = main 55bcf124 merge) and FLASHTEX_COMPILER=<worktree>/crates/compiler/target/release/flashtex-compiler:
+  9/9, 0 skipped, in 4 consecutive runs (4.3–4.7 s; load 6–10).
+- Required filter `PreviewControllerTests|ControllerReleaseTests|ControllerPipelineReviewTests|EditHistoryTests|HistoricalPreviewTests|OutputBoundsTests|DisplayCandidateTests|AdmissionCorrelationTests`
+  with the real helpers (pdf/bridge/edit-ledger/project-files/assistant-context from
+  the main checkout's release builds): 63 tests, 5 skipped, 0 failures (23.6 s,
+  load 9.5–10.5). The 5 skips are DisplayCandidateTests helper cases requiring
+  FLASHTEX_RENDER (no flashtex-render binary exists on this Mac; pre-existing).
+- Full `swift test`: see "Full suite" below.
+
+## Limitations
+- The `superseded` rebinding is covered by the decision test and the log path of
+  (b) only if the runtime reports it; in the observed runs the outcome was
+  `stale` (the slow compile was already active), so the rebinding branch was not
+  exercised end-to-end against the real helper.
+- `outputBoundHandleControllerUpdate` (ShellModel+OutputBounds.swift) still
+  releases the held edit on an oversized-reply `failed` regardless of id; out of
+  this lane's scope and unchanged.
+- `ProjectDocuments.awaitInFlight` keeps its own durable-text comparison for the
+  switched-away path; unchanged.
 
 ## Checkpoint
-- branch `agent/mac-admission-correlation/compile-id` @ 644fcc9e (merge of main 55bcf124)
-- dirty: this file
+- branch `agent/mac-admission-correlation/compile-id` @ ae0226a0 (pushed), base
+  644fcc9e = mac-shell 3a3a6f21 + main 55bcf124
+- dirty: coordination/agents/mac-admission-correlation.json, this file
 - consumed main SHA: 55bcf124
-- next: build helper+compiler in worktree (background), implement, test, commit, push, register
+- next: record full-suite result, commit coordination files, push, final report
