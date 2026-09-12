@@ -1,4 +1,4 @@
-//! One bounded request per process. Native callers must run IO off the UI thread.
+//! Bounded single-request or JSONL session helper. Run IO off the UI thread.
 use flashtex_assistant_context::{CompileBinding, Context, Location};
 use flashtex_edit_ledger::Document;
 use serde::Deserialize;
@@ -19,6 +19,29 @@ struct Input {
     response: Option<Value>,
     current_sources: Option<Vec<Document>>,
 }
+fn build_context(request: &Input) -> Result<Context, String> {
+    let mut context = match &request.selected_diagnostics {
+        Some(indices) => Context::build_selected(
+            request.binding.clone(),
+            &request.sources,
+            &request.compiler_result,
+            &request.user_instruction,
+            &request.related_paths,
+            indices,
+        )?,
+        None => Context::build(
+            request.binding.clone(),
+            &request.sources,
+            &request.compiler_result,
+            &request.user_instruction,
+            &request.related_paths,
+        )?,
+    };
+    if let Some(destinations) = &request.destinations {
+        context = context.restrict_edits(destinations.clone(), &request.sources)?;
+    }
+    Ok(context)
+}
 fn run() -> Result<Value, String> {
     let mut bytes = Vec::new();
     io::stdin()
@@ -29,26 +52,7 @@ fn run() -> Result<Value, String> {
         return Err("input exceeds16MiB".into());
     }
     let request: Input = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    let mut context = match request.selected_diagnostics {
-        Some(indices) => Context::build_selected(
-            request.binding,
-            &request.sources,
-            &request.compiler_result,
-            &request.user_instruction,
-            &request.related_paths,
-            &indices,
-        )?,
-        None => Context::build(
-            request.binding,
-            &request.sources,
-            &request.compiler_result,
-            &request.user_instruction,
-            &request.related_paths,
-        )?,
-    };
-    if let Some(destinations) = request.destinations {
-        context = context.restrict_edits(destinations, &request.sources)?;
-    }
+    let context = build_context(&request)?;
     match request.operation.as_str() {
         "prepare" => Ok(json!({"type":"prepared_context","payload":context.payload()})),
         "validate" => {
@@ -63,7 +67,20 @@ fn run() -> Result<Value, String> {
         _ => Err("operation must be prepare or validate".into()),
     }
 }
+mod session;
 fn main() {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--session") && args.len() == 2 {
+        if let Err(error) = session::run(&args[1]) {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        return;
+    }
+    if !args.is_empty() {
+        eprintln!("usage: flashtex-assistant-context [--session FRESH_SESSION_ID]");
+        std::process::exit(2);
+    }
     let (value, failed) = match run() {
         Ok(value) => (value, false),
         Err(error) => (json!({"type":"error","message":error}), true),

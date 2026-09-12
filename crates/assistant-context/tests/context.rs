@@ -370,3 +370,59 @@ fn registry_expiry_reclaims_capacity_and_bad_responses_are_terminal() {
     assert!(ExplanationRegistry::new("".into(), 1, 1).is_err());
     assert!(ExplanationRegistry::new("ok".into(), 33, 1).is_err());
 }
+
+#[test]
+fn persistent_helper_interleaves_requests_and_rejects_cancelled_callbacks() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+    let docs = vec![source()];
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"))
+        .args(["--session", "test_session"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let mut output = BufReader::new(child.stdout.take().unwrap());
+    let mut exchange = |mut value: Value| -> Value {
+        let id = value.as_object_mut().unwrap().remove("id").unwrap();
+        let value = json!({"id":id,"action":value});
+        writeln!(input, "{}", value).unwrap();
+        input.flush().unwrap();
+        let mut line = String::new();
+        assert!(output.read_line(&mut line).unwrap() > 0);
+        serde_json::from_str(&line).unwrap()
+    };
+    let prepare = json!({"operation":"prepare","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain"});
+    let first =
+        exchange(json!({"id":"one","operation":"submit","input":prepare,"timeout_ms":10000}));
+    assert_eq!(first["result"]["type"], "submitted", "{first}");
+    let second =
+        exchange(json!({"id":"two","operation":"submit","input":prepare,"timeout_ms":10000}));
+    let a = first["result"]["request_id"].clone();
+    let b = second["result"]["request_id"].clone();
+    assert_ne!(a, b);
+    assert_eq!(
+        exchange(json!({"id":"cancel","operation":"cancel","request_id":a}))["result"]["changed"],
+        true
+    );
+    let context_id = first["result"]["payload"]["context_id"].clone();
+    let response = json!({"context_id":context_id,"explanation":"Explanation","edits":[]});
+    assert!(exchange(json!({"id":"late","operation":"receive","request_id":a,"context_id":context_id,"response":response,"current_sources":docs}))["error"].is_string());
+    let valid = exchange(
+        json!({"id":"valid","operation":"receive","request_id":b,"context_id":context_id,"response":response,"current_sources":docs}),
+    );
+    assert_eq!(valid["result"]["type"], "validated_proposal", "{valid}");
+    assert_eq!(valid["result"]["applied"], false);
+    assert!(
+        exchange(json!({"id":"invalid","operation":"sweep","unexpected":true}))["error"]
+            .is_string()
+    );
+    assert_eq!(
+        exchange(json!({"id":"still_alive","operation":"status","request_id":b}))["result"]
+            ["state"],
+        "Completed"
+    );
+    drop(input);
+    assert!(child.wait().unwrap().success());
+}

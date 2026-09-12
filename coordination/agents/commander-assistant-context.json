@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "a5866beeca50dc5ebcc0131304b61cfff84f8c7e",
+  "code_revision": "fef359be7a0444414bde9e3e6eeb1053d2a49aea",
   "eta_minutes": {
-    "likely": 20,
+    "likely": 25,
     "optimistic": 10,
-    "pessimistic": 35
+    "pessimistic": 45
   },
   "machine": "linux-primary",
-  "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
-  "next_action": "Subprocess interleaving/cancellation adapter and tests; no provider calls.",
+  "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
+  "next_action": "Native host integration review and bounded IO supervision design; no provider calls.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Published a5866be bounded request registry;12 tests including actual compiler and strict clippy pass.",
+  "state": "ready_for_integration",
+  "summary": "Persistent JSONL request registry helper ready;13 tests including actual subprocess interleaving/cancel and original compiler pass; strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:50:46Z",
+  "updated_utc": "2026-09-12T07:53:39Z",
   "usage": {
-    "evidence": "a5866be;12 tests passed; strict clippy passed",
-    "status": "Hosted OpenAI only; no external billed calls."
+    "evidence": "13 tests; clippy all-targets -D warnings",
+    "status": "Hosted OpenAI only; zero external API calls."
   }
 }

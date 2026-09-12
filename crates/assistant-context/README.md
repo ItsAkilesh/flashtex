@@ -91,3 +91,27 @@ Call `revoke_stale(project_id, complete_current_snapshot)` on source changes and
 cancel the returned provider task IDs; call `sweep` from the native timer to collect
 expired IDs. Registry lifecycle actions do not themselves stop network requests.
 This is a Rust integration API; the one-request JSON helper remains unchanged.
+
+Run `flashtex-assistant-context --session FRESH_SESSION_ID` for a persistent JSONL
+helper (8 pending requests,64 terminal IDs). Each command is
+`{"id":"caller-command-id","action":{"operation":"...",...}}`; each reply
+contains that ID plus `result` or `error`. Invalid JSON returns a null ID and does
+not terminate the session. Oversized16MiB input frames terminate it. Replies are
+bounded128KiB and flushed after every command. EOF ends the process.
+
+Actions:
+- `submit`: `input` is the existing prepare request, plus `timeout_ms`1..120000.
+  Returns `request_id` and immutable context `payload`.
+- `receive`: `request_id`, `context_id`, `response`, `current_sources`; returns a
+  validated proposal with `applied:false`, never edits documents.
+- `cancel`: `request_id`; returns whether a pending request changed.
+- `revoke_stale`: `project_id`, complete `current_sources`; returns revoked IDs.
+- `status`: `request_id`; returns state or null if unknown/evicted.
+- `sweep`: returns expired IDs for cancelling provider tasks.
+
+Commands are processed sequentially while multiple provider requests can be pending
+in the native caller. No provider is called here. Use a fresh session ID on restart,
+read stdout continuously off the UI thread, and supervise process/IO deadlines in
+the native host. The helper uses blocking pipes and does not enforce an idle or
+blocked-output deadline itself. Responses are consumed once, including on a lost
+pipe reply; never replay an edit automatically after helper restart.
