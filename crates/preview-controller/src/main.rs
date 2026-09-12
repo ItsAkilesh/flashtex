@@ -363,18 +363,30 @@ fn handle(
                 DiskState::Unavailable { reason } => json!({"state":"unavailable","reason":reason}),
             };
             Ok(
-                json!({"path":string(p,"path")?,"disk":state,"discovery_diagnostics":files.diagnostics(),"export_available":false}),
+                json!({"path":string(p,"path")?,"disk":state,"discovery_diagnostics":files.diagnostics(),"export_available":true}),
             )
         }
         "export" => {
-            file_project
+            let receipt = file_project
                 .ok_or("helper was not opened from a file project")?
                 .export(
                     controller,
                     string(p, "path")?,
-                    p["expected_disk_sha256"].as_str(),
+                    p["expected_revision"]
+                        .as_u64()
+                        .ok_or("expected_revision required")?,
+                    string(p, "expected_sha256")?,
+                    match p.get("expected_disk_sha256") {
+                        Some(Value::Null) => None,
+                        Some(Value::String(hash)) => Some(hash.as_str()),
+                        _ => {
+                            return Err("expected_disk_sha256 must be explicit null or hash".into())
+                        }
+                    },
                 )?;
-            Ok(json!({"exported":true}))
+            Ok(
+                json!({"exported":true,"path":receipt.path.as_str(),"sha256":receipt.sha256_hex(),"bytes":receipt.bytes}),
+            )
         }
         "history_status" => Ok(json!({"history":controller.history_status(string(p,"path")?)?})),
         "apply_group" | "undo" | "redo" => {

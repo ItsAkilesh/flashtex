@@ -1,8 +1,11 @@
-//! Disk discovery imports into authoritative private ledgers. Export remains
-//! explicitly unavailable until the shared rooted-save primitive is ready.
+//! Disk discovery imports into authoritative private ledgers; rooted export
+//! checks both source identity and expected disk content before writing.
 use crate::Controller;
 use flashtex_edit_ledger::{Document, Store};
-use flashtex_project_files::{sha256_hex, DiscoverError, Overlay, ProjectGraph, ProjectPath};
+use flashtex_project_files::{
+    sha256_from_hex, sha256_hex, sha256_to_hex, Expected, Overlay, ProjectGraph, ProjectPath,
+    ProjectRoot, SaveReceipt, DEFAULT_READ_LIMIT,
+};
 use std::{
     collections::BTreeMap,
     fs,
@@ -25,6 +28,7 @@ pub enum DiskState {
 }
 pub struct FileProject {
     root: PathBuf,
+    capability: ProjectRoot,
     project_id: String,
     diagnostics: Vec<String>,
 }
@@ -46,6 +50,7 @@ impl FileProject {
         if !private_root.is_dir() {
             return Err("private ledger root is not a directory".into());
         }
+        let capability = ProjectRoot::open(&root).map_err(|e| e.to_string())?;
         let entry = ProjectPath::normalize(entry).map_err(|e| e.to_string())?;
         let root_text = root
             .to_str()
@@ -131,6 +136,7 @@ impl FileProject {
         Ok((
             Self {
                 root,
+                capability,
                 project_id: project_id.into(),
                 diagnostics,
             },
@@ -143,29 +149,16 @@ impl FileProject {
     pub fn diagnostics(&self) -> &[String] {
         &self.diagnostics
     }
-    /// Always rereads the current disk graph. No mtime-only shortcut; this check
-    /// never changes source, advances a disk baseline or implies save approval.
+    /// Bounded rooted read; never changes authoritative source or a disk baseline.
     pub fn inspect(&self, controller: &Controller, path: &str) -> Result<DiskState, String> {
         let source = controller.document(path)?;
         if source.project_id != self.project_id {
             return Err("controller belongs to another project".into());
         }
         let path = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
-        if let Err(reason) = check_entry(&self.root, &path) {
-            return Ok(DiskState::Unavailable { reason });
-        }
-        match ProjectGraph::discover(&self.root, &path) {
-            Ok(graph) => {
-                let file = graph
-                    .files()
-                    .iter()
-                    .find(|file| file.path == path)
-                    .ok_or("entry absent from disk graph")?;
-                let hash = file
-                    .sha256
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<String>();
+        match self.capability.read(&path, DEFAULT_READ_LIMIT) {
+            Ok(Some(file)) => {
+                let hash = sha256_to_hex(&file.sha256);
                 Ok(if hash == source.source_sha256 {
                     DiskState::MatchesSource { sha256: hash }
                 } else {
@@ -175,24 +168,39 @@ impl FileProject {
                     }
                 })
             }
-            Err(DiscoverError::EntryMissing(_)) => Ok(DiskState::Missing),
+            Ok(None) => Ok(DiskState::Missing),
             Err(error) => Ok(DiskState::Unavailable {
                 reason: error.to_string(),
             }),
         }
     }
-    /// This API intentionally refuses export while GH18's rooted-save guarantees
-    /// are unresolved; it never calls the shared unconfined save implementation.
+    /// None means the target must not exist. No force-overwrite option.
+    /// A post-rename error may mean bytes changed: inspect before retrying.
     pub fn export(
         &self,
-        _controller: &Controller,
-        _path: &str,
-        _expected_disk_sha256: Option<&str>,
-    ) -> Result<(), String> {
-        Err(
-            "export unavailable: shared rooted-save confinement/conflict gate GH18 unresolved"
-                .into(),
-        )
+        controller: &Controller,
+        path: &str,
+        expected_revision: u64,
+        expected_source_sha256: &str,
+        expected_disk_sha256: Option<&str>,
+    ) -> Result<SaveReceipt, String> {
+        let source = controller.document(path)?;
+        if source.project_id != self.project_id
+            || source.revision != expected_revision
+            || source.source_sha256 != expected_source_sha256
+        {
+            return Err("export source identity is stale or belongs to another project".into());
+        }
+        let path = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
+        let expected = match expected_disk_sha256 {
+            Some(hash) => {
+                Expected::Hash(sha256_from_hex(hash).ok_or("invalid expected disk SHA-256")?)
+            }
+            None => Expected::NewFile,
+        };
+        self.capability
+            .save(&path, source.text.as_bytes(), expected, false)
+            .map_err(|e| format!("export failed; inspect disk before retrying: {e}"))
     }
 }
 
