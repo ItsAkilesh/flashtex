@@ -415,3 +415,26 @@ fn malformed_and_unrequested_layout_cannot_reach_preview() {
             .any(|event| matches!(event, Event::Preview { .. })));
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn invalid_utf8_json_frame_is_terminal_without_preview() {
+    let (_dir, path) = executable(
+        r#"import sys
+sys.stdin.readline()
+sys.stdout.buffer.write(b'{"bad":"\xff"}\n')
+sys.stdout.buffer.flush()
+"#,
+    );
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session.submit(request(1)).unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Failed { .. }))
+    });
+    assert!(!events
+        .iter()
+        .any(|event| matches!(event, Event::Preview { .. })));
+    assert!(!session.is_alive());
+}

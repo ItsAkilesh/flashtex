@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
-      "objective": "Multi-font generation replacement invalidates stale leases while retained frames stay immutable",
+      "name": "Bind explicit MATH device correction context into existing metrics replay",
+      "objective": "Bind explicit MATH device correction context into existing metrics replay",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -19,8 +19,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
-      "objective": "Bounded source-aware hit testing across shaped font changes with exact cluster provenance",
+      "name": "Exact cached/direct mixed math replay with stale source and resource refusal",
+      "objective": "Exact cached/direct mixed math replay with stale source and resource refusal",
       "owned_paths": [
         "crates/rendering-core"
       ],
