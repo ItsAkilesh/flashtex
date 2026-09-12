@@ -1,0 +1,525 @@
+{
+  "schema_version": 1,
+  "purpose": "Offline, reproducible image corpus for measuring Grok handwriting-to-LaTeX conversion quality (crates/bridge CaptureImage -> Converter -> Proposal). Every image here is machine-typeset with MacTeX from known LaTeX, so ground_truth_latex is exact, not eyeballed. No image was captured from or matched against a real handwriting sample.",
+  "generated_by": "tests/grok-corpus/generate.sh",
+  "scoring": "tests/grok-corpus/score.py",
+  "caveat": "This manifest makes conversion quality MEASURABLE. It does not itself prove Grok performs well on real handwriting: no case here is an actual photograph of handwriting, and no live Grok call has been made against this corpus.",
+  "cases": [
+    {
+      "id": "clean-quadratic-formula",
+      "category": "baseline-clean",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-quadratic-formula.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 3655,
+      "sha256": "4707ae34e8572e19209f1efd594d2ca7f58793a86a5ade0df3386ab726f83ab8"
+    },
+    {
+      "id": "clean-integral-unicode",
+      "category": "baseline-clean",
+      "engine": "xelatex+unicode-math",
+      "source_tex": "cases/clean-integral-unicode.tex",
+      "ground_truth_latex": "\\[\n∫_0^π \\sin^2θ\\,dθ = \\frac{π}{2}\n\\]",
+      "description": "Definite integral typed with literal Unicode math symbols (integral sign, pi, theta) via unicode-math and a system OpenType math font, to exercise the unicode-math path this machine's MacTeX confirmed working.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-integral-unicode.png",
+      "mime_type": "image/png",
+      "width": 428,
+      "height": 300,
+      "size_bytes": 4065,
+      "sha256": "05bddab5ddf0aed12d6c41a5498c2c01ce4d7e4027596a453187be1e82ec4e00"
+    },
+    {
+      "id": "clean-multiline-derivation",
+      "category": "structural-hard",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-multiline-derivation.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 3533,
+      "sha256": "add437d8e321cc4100dcbb6913bf59be3b4075f3c0b1d9e22413d2535b1eec5c"
+    },
+    {
+      "id": "clean-matrix-determinant",
+      "category": "structural-hard",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-matrix-determinant.tex",
+      "ground_truth_latex": "\\[\n\\det\\begin{pmatrix} 1 & 2 & 3 \\\\ 0 & 1 & 4 \\\\ 5 & 6 & 0 \\end{pmatrix}\n  = 1(0-24) - 2(0-20) + 3(0-5) = -24 + 40 - 15 = 1\n\\]",
+      "description": "3x3 matrix determinant expansion; stresses pmatrix/array layout and a longer single-line equation. Stored as JPEG to exercise the CaptureImage image/jpeg path.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-matrix-determinant.jpg",
+      "mime_type": "image/jpeg",
+      "width": 1036,
+      "height": 269,
+      "size_bytes": 20682,
+      "sha256": "52e209285d5eb292089fcbef91542c1c5148ba3af64a7ea380c069efeffb9b3c"
+    },
+    {
+      "id": "clean-nested-fraction-scripts",
+      "category": "structural-hard",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-nested-fraction-scripts.tex",
+      "ground_truth_latex": "\\[\nx^{y^{z}} + \\cfrac{1}{2+\\cfrac{1}{3+\\cfrac{1}{4}}}\n\\qquad\na_{i_{j_{k}}}^{2}\n\\]",
+      "description": "Doubly-nested continued fraction plus stacked sub/superscripts (x^{y^{z}}, a_{i_{j_{k}}}^{2}); stresses deep nesting that is easy to flatten or truncate incorrectly.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-nested-fraction-scripts.png",
+      "mime_type": "image/png",
+      "width": 458,
+      "height": 308,
+      "size_bytes": 4231,
+      "sha256": "5941a2022c341376e23e58ab14cb3004605f1a0f1d3c9f303afec2a5ac471b4d"
+    },
+    {
+      "id": "clean-mixed-prose-math",
+      "category": "structural-hard",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-mixed-prose-math.tex",
+      "ground_truth_latex": "Problem 3. A particle moves along the curve $y = x^3 - 3x$ for $t \\geq 0$.\nFind all critical points where $y'(x) = 0$ and classify each as a local\nmaximum, minimum, or saddle using the second derivative test on $y''(x)$.",
+      "description": "A homework-style prose paragraph with inline math ($y=x^3-3x$, $y'(x)$, $y''(x)$); tests whether prose and math are both preserved faithfully instead of the model dropping the prose or over-mathifying it.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-mixed-prose-math.jpg",
+      "mime_type": "image/jpeg",
+      "width": 872,
+      "height": 261,
+      "size_bytes": 45260,
+      "sha256": "20edc35ca49b67b590fc22051dd5997f64402c75e3d1c0d80e1dd6b5b5f13721"
+    },
+    {
+      "id": "clean-multicolumn-two-equations",
+      "category": "structural-hard",
+      "engine": "pdflatex+multicol",
+      "source_tex": "cases/clean-multicolumn-two-equations.tex",
+      "ground_truth_latex": "Pythagorean theorem:\n\\[\na^2 + b^2 = c^2\n\\]\n\nEuler's identity:\n\\[\ne^{i\\pi} + 1 = 0\n\\]",
+      "description": "Two-column layout with one unrelated equation per column; tests whether a column-major or row-major (visually left-to-right across columns) reading order is used, and whether the two are kept distinct.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-multicolumn-two-equations.png",
+      "mime_type": "image/png",
+      "width": 942,
+      "height": 206,
+      "size_bytes": 6953,
+      "sha256": "263c06b74dffc32e882844561ad294b6b0b28cd804933257ed0f512177539afe"
+    },
+    {
+      "id": "clean-two-problems-page",
+      "category": "structural-hard",
+      "engine": "pdflatex",
+      "source_tex": "cases/clean-two-problems-page.tex",
+      "ground_truth_latex": "\\textbf{Problem 1.} Solve for $x$: $3x - 7 = 2x + 5$.\n\\[\nx = 12\n\\]\n\n\\bigskip\n\\textbf{Problem 2.} Evaluate $\\displaystyle\\lim_{x\\to 0} \\frac{\\sin x}{x}$.\n\\[\n\\lim_{x\\to 0} \\frac{\\sin x}{x} = 1\n\\]",
+      "description": "One page containing two separately labeled problems with independent equations; tests whether a conversion keeps them separate instead of merging into one derivation.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/clean-two-problems-page.jpg",
+      "mime_type": "image/jpeg",
+      "width": 675,
+      "height": 428,
+      "size_bytes": 26462,
+      "sha256": "74ca2bf8cf43429876d9654400c6653527ac9d8b2a7ef72b50940b0439b3f1dc"
+    },
+    {
+      "id": "adversarial-prose-no-math",
+      "category": "adversarial",
+      "engine": "pdflatex",
+      "source_tex": "cases/adversarial-prose-no-math.tex",
+      "ground_truth_latex": "The library will be closed for renovations from October 3rd through October\n17th. During this time, returned books may be deposited in the outdoor drop\nbox near the west entrance. Regular hours resume on October 18th.",
+      "description": "A page of ordinary English prose containing no mathematics at all.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/adversarial-prose-no-math.png",
+      "mime_type": "image/png",
+      "width": 872,
+      "height": 253,
+      "size_bytes": 17459,
+      "sha256": "ed6e517fb4c851af94a478a09e7e656c6bebe98d3aa044e37b453760e5a59ed0"
+    },
+    {
+      "id": "adversarial-blank-page",
+      "category": "adversarial",
+      "engine": "corpus_augment (synthetic, no LaTeX)",
+      "source_tex": null,
+      "ground_truth_latex": "",
+      "description": "A featureless solid-white image: no ink, no structure, nothing to transcribe.",
+      "expected_behavior": "No faithful LaTeX transcription exists. The bridge's own Proposal schema requires 1-65536 non-NUL bytes of latex (see Proposal::validate in crates/bridge/src/lib.rs), so a model that (correctly) has nothing to say cannot return an empty proposal; the only schema-honest outcomes are a content:\"refusal\" response (handled in grok::parse_response as provider_refusal) or a proposal with placeholder/ambiguous content. A model that instead emits confident, unrelated LaTeX is hallucinating and that failure mode is exactly what this case is for catching.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/adversarial-blank-page.png",
+      "mime_type": "image/png",
+      "width": 1000,
+      "height": 1300,
+      "size_bytes": 22218,
+      "sha256": "63e5e57880d77787392d3f2731dfe534e20c294fbc4d14a43c050db8f37c0c72"
+    },
+    {
+      "id": "adversarial-pure-noise",
+      "category": "adversarial",
+      "engine": "corpus_augment (synthetic, no LaTeX)",
+      "source_tex": null,
+      "ground_truth_latex": "",
+      "description": "Uniform random RGB noise, no rendered content of any kind.",
+      "expected_behavior": "Same reasoning as adversarial-blank-page: nothing to transcribe. A trustworthy pipeline reports a refusal or high-ambiguity proposal, never invented mathematics.",
+      "degradation": null,
+      "source_case": null,
+      "image": "images/adversarial-pure-noise.png",
+      "mime_type": "image/png",
+      "width": 300,
+      "height": 400,
+      "size_bytes": 360493,
+      "sha256": "f52d2f163ded64ba2cfde66d62d640b7dafa47319a246f70c2972d55045f2e91"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-rotate6",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via rotate ({'degrees': 6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "rotate",
+        "params": {
+          "degrees": 6
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-rotate6.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 13646,
+      "sha256": "76aa2033d1771a73e371a372a4959b15f67aea345cdaa76a05046ba20c6a4c8d"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-rotate15",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via rotate ({'degrees': 15}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "rotate",
+        "params": {
+          "degrees": 15
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-rotate15.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 15246,
+      "sha256": "27d67a07fc222bf68d887cfe85464840d54d6d8a4d33455143c5a5c939dee93b"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-perspective",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via perspective ({'strength': 0.6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "perspective",
+        "params": {
+          "strength": 0.6
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-perspective.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 8084,
+      "sha256": "fdfbb99d8d3972588f630ecf9990128b369aaeeec60e90382d23f42de37adc2f"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-low-contrast",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via contrast ({'delta': -55}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "contrast",
+        "params": {
+          "delta": -55
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-low-contrast.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 6441,
+      "sha256": "4d1b1669e920870ede4c95733b29f2d8d98d2029fc69334b4dc7fa7567fae79d"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-lighting-gradient",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via lighting-gradient ({'strength': 0.6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "lighting-gradient",
+        "params": {
+          "strength": 0.6
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-lighting-gradient.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 70563,
+      "sha256": "bf0f9acf5396e6121521d372e59292cdc72e44a97589483aa55a2e8676874ae4"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-jpeg-artifacts",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via jpeg-recompress ({'quality': 8}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "jpeg-recompress",
+        "params": {
+          "quality": 8
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-jpeg-artifacts.jpg",
+      "mime_type": "image/jpeg",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 5121,
+      "sha256": "7e21fc5838fceba696dfd74b741f7f5758090294abd3e301f2c2fb663ee1d266"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-downscale-blur",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via downscale-blur ({'factor': 0.28}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "downscale-blur",
+        "params": {
+          "factor": 0.28
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-downscale-blur.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 9755,
+      "sha256": "3cbfb2e6248411f797fd73b3d124239219328bb76284aadb0a263827f0d5d7b6"
+    },
+    {
+      "id": "degraded-clean-quadratic-formula-noise",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-quadratic-formula.tex",
+      "ground_truth_latex": "\\[\nx = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n\\]",
+      "description": "Single clean typeset equation, matching the scenario the Commander already validated with one live call against a synthetic rendered-math image. Degraded via additive-noise ({'amount': 30, 'seed': 42}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "additive-noise",
+        "params": {
+          "amount": 30,
+          "seed": 42
+        }
+      },
+      "source_case": "clean-quadratic-formula",
+      "image": "images/degraded-clean-quadratic-formula-noise.png",
+      "mime_type": "image/png",
+      "width": 469,
+      "height": 286,
+      "size_bytes": 325372,
+      "sha256": "a174f6a389045a925d21dfc007ec498974ec9aef369d5dc4cd0e3de5ca74434f"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-rotate6",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via rotate ({'degrees': 6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "rotate",
+        "params": {
+          "degrees": 6
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-rotate6.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 10579,
+      "sha256": "d7f3313e484361f8485612a9d5877fb8bd99076fd93edc65ccc0107924ee4c03"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-rotate15",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via rotate ({'degrees': 15}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "rotate",
+        "params": {
+          "degrees": 15
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-rotate15.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 11345,
+      "sha256": "3d2abf20514ea347f293df970c4c0a4d98e3645f49f1bdae7bf3e8a5fda10816"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-perspective",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via perspective ({'strength': 0.6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "perspective",
+        "params": {
+          "strength": 0.6
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-perspective.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 7714,
+      "sha256": "3a7754ab4e9143d7c3c67cb1be6f6b7259f9b724f8face41aabd2168f671afa7"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-low-contrast",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via contrast ({'delta': -55}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "contrast",
+        "params": {
+          "delta": -55
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-low-contrast.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 5847,
+      "sha256": "1cd3a344ff7103ed8d16e6013510af679a36a5c3732e5cf08557c6a5b5e5def0"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-lighting-gradient",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via lighting-gradient ({'strength': 0.6}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "lighting-gradient",
+        "params": {
+          "strength": 0.6
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-lighting-gradient.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 60717,
+      "sha256": "3b31fda69fd9ea43efb9b703827415a3908d83bb8499f77a143c4493949e1976"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-jpeg-artifacts",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via jpeg-recompress ({'quality': 8}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "jpeg-recompress",
+        "params": {
+          "quality": 8
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-jpeg-artifacts.jpg",
+      "mime_type": "image/jpeg",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 3470,
+      "sha256": "5a8dfb1921b16d5c92125fd51db3d9791a6bcd1e07709eeb6917340d9c614499"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-downscale-blur",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via downscale-blur ({'factor': 0.28}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "downscale-blur",
+        "params": {
+          "factor": 0.28
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-downscale-blur.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 8294,
+      "sha256": "233a0098600b0ef3d9bbf68f4cf97c28a5c4fa7a487f8f6ce2bcfe04121867c1"
+    },
+    {
+      "id": "degraded-clean-multiline-derivation-noise",
+      "category": "degraded-photo",
+      "engine": "corpus_augment",
+      "source_tex": "cases/clean-multiline-derivation.tex",
+      "ground_truth_latex": "\\begin{align*}\n2x + 3 &= 11 \\\\\n2x &= 8 \\\\\nx &= 4\n\\end{align*}",
+      "description": "Three-step algebraic derivation in an align* environment: tests whether a conversion preserves line structure and alignment, not just a single formula. Degraded via additive-noise ({'amount': 30, 'seed': 42}) to simulate a realistic phone-camera capture rather than a clean scan.",
+      "degradation": {
+        "type": "additive-noise",
+        "params": {
+          "amount": 30,
+          "seed": 42
+        }
+      },
+      "source_case": "clean-multiline-derivation",
+      "image": "images/degraded-clean-multiline-derivation-noise.png",
+      "mime_type": "image/png",
+      "width": 308,
+      "height": 269,
+      "size_bytes": 201164,
+      "sha256": "b41076af9532ea52ed3c34649f77f5a47e65080e15b38df3f07f616893c2bef1"
+    }
+  ]
+}
