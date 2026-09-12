@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "machine_id": "daniel-new",
-  "registration_state": "awaiting_machine_registration",
-  "tool": "Claude Code Opus on user-reported Claude20x plan",
+  "registration_state": "machine_report_received_census_needs_verification",
+  "tool": "Reported Claude Code Sonnet on Daniel Max20x; exact current model census pending",
   "engineering_target": 16,
   "active_engineers_verified": 0,
-  "target_basis": "At least historical explicit Jaysen15 engineers; latest Jaysen reports5 spend-limited terminations and no complete current census.16 is a reservation, not a liveness claim. Increase only if a fresh verified Jaysen engineering census exceeds16.",
-  "operating_system": "unknown",
-  "rust_toolchain": "unverified",
-  "xcode": "unverified",
-  "github_identity": "unverified",
+  "target_basis": "Explicit user requests at least current Jaysen engineering count; standing target16 simultaneous existing-machine engineering lanes, each with current task plus2followups. Historical Jaysen429 is not a current Daniel capacity refusal.",
+  "operating_system": "reported macOS26.6.2 arm64",
+  "rust_toolchain": "reported Rust1.98.1",
+  "xcode": "reported Xcode26.6",
+  "github_identity": "reported d-q222",
   "billing": {
     "route": "existing Daniel Claude20x allowance only",
     "shared_pool": true,
@@ -30,7 +30,7 @@
       "task_id": "FT-030",
       "branch": "agent/daniel-tables/table-layout",
       "owned_paths": [
-        "crates/table-layout"
+        "crates/paragraph-layout"
       ]
     },
     {
@@ -38,7 +38,7 @@
       "task_id": "FT-031",
       "branch": "agent/daniel-floats/float-layout",
       "owned_paths": [
-        "crates/float-layout"
+        "crates/font-engine"
       ]
     },
     {
@@ -46,7 +46,7 @@
       "task_id": "FT-032",
       "branch": "agent/daniel-footnotes/footnote-layout",
       "owned_paths": [
-        "crates/footnote-layout"
+        "crates/math-layout"
       ]
     },
     {
@@ -154,6 +154,13 @@
       ]
     }
   ],
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00",
-  "cooldown_priority": "FT030 paragraph-layout, FT031 font-engine, FT032 math-layout replace initial additive lanes under user-authorized transfer; still16 total slots"
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00",
+  "cooldown_priority": "FT030 paragraph-layout, FT031 font-engine, FT032 math-layout replace initial additive lanes under user-authorized transfer; still16 total slots",
+  "actual_machine_id": "mac-m5pro-dq222",
+  "hardware": "reported Apple M5Pro18cores48GB",
+  "engineering_count_reported": 2,
+  "report_branch": "agent/daniel-parent/supervisor",
+  "report_sha": "95edadcb549bd4b8357f2c3ffffa4de5d932cb02",
+  "report_limitations": "09:04:17handoff reports14complete471tests/2running, no child execution IDs. FT046r2 manually acknowledged; schema/state added, updated_utc still absent. Existing current+2followups replenished for completed14, target remains16 concurrent.",
+  "completed_lanes_reported": 14
 }
