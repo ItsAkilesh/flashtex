@@ -94,6 +94,25 @@ diagnostics checks beyond the one-line contract fixture.
   entry shows severity, message, recovery note (or "no provisional rendering"),
   and source bytes; the banner shows error/warning counts and a `recovered` note.
 
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| ⌘O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
+| ⌘R | Reload fixture |
+| ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
+| ⌘K | Attach worker executable… |
+| ⌘B | Compile now (auto-compile also runs 250 ms after edits) |
+| ⌘⇧E | Export PDF… (CoreGraphics, always white) |
+| ⌘⌥E | Export PDF via Rust writer… (`flashtex-pdf --verify`, always white) |
+| ⌘⇧P | Pin insertion point at caret (capture destination anchor) |
+| ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
+| ⌘Z | Undo (including an approved capture insertion) |
+| Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
+
+The compiler rejects request lines over 8 MiB with an `error` envelope, which the
+banner shows; the shell rejects response lines over 16 MiB.
+
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
