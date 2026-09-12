@@ -499,7 +499,7 @@ impl LayoutCursor {
             .map(|row| {
                 row.cells
                     .iter()
-                    .map(|cell| math::layout(cell, size, &mut self.diagnostics))
+                    .map(|cell| math::layout_display(cell, size, &mut self.diagnostics))
                     .collect()
             })
             .collect();
@@ -875,7 +875,11 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 number_span,
                 span,
             } => {
-                let b = math::layout(list, size, &mut c.diagnostics);
+                let b = if *display {
+                    math::layout_display(list, size, &mut c.diagnostics)
+                } else {
+                    math::layout(list, size, &mut c.diagnostics)
+                };
                 if *display {
                     c.display_math(
                         b,

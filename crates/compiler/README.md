@@ -144,7 +144,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
 `\sl`, `\tt`, `\rm`, `\sf`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
-`enumerate`, `\item`, `\par`, and `\\`. Macro
+`enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
+starred or not; `multline` numbers only its last line), `\item`, `\par`, and
+`\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -177,6 +179,51 @@ The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, `\int`, `\in`, `\forall`,
 `\exists`, `\vee`, `\Rightarrow`, `\mid`, `\setminus`, and `\Longrightarrow` map to
 Unicode. `\mathbb{A}` through `\mathbb{Z}` map to the double-struck capitals.
+So do `\epsilon`, `\varepsilon`, `\zeta`, `\eta`, `\vartheta`, `\iota`, `\kappa`,
+`\nu`, `\xi`, `\varpi`, `\rho`, `\varsigma`, `\tau`, `\upsilon`, `\varphi`,
+`\chi`, `\psi`, `\Gamma`, `\Delta`, `\Theta`, `\Lambda`, `\Xi`, `\Pi`, `\Sigma`,
+`\Upsilon`, `\Phi`, `\Psi`, `\Omega`, `\le`, `\ge`, `\ne`, `\equiv`, `\sim`,
+`\cong`, `\propto`, `\perp`, `\partial`, `\nabla`, `\prod`, `\ast`, `\prime`,
+`\cup`, `\cap`, `\subset`, `\subseteq`, `\supset`, `\supseteq`, `\notin`, `\ni`,
+`\emptyset`, `\varnothing`, `\oplus`, `\otimes`, `\wedge`, `\land`, `\lor`,
+`\to`, `\rightarrow`, `\leftarrow`, `\gets`, `\uparrow`, `\downarrow`,
+`\leftrightarrow`, `\implies`, `\Leftarrow`, `\impliedby`, `\Leftrightarrow`,
+`\iff`, `\Uparrow`, `\Downarrow`, `\therefore`, `\angle`, `\aleph`, `\Re`, `\Im`,
+`\wp`, `\langle`, `\rangle`, `\lvert`, `\rvert`, `\lVert`, and `\rVert`.
+Symbol has no lunate epsilon, so `\epsilon` shares the open `\varepsilon`
+glyph; it has no double bar, so `\lVert`, `\rVert` and `\|` are two real
+vertical bars. `\iint` and `\iiint` repeat the integral glyph (Symbol has no
+U+222C/U+222D). `\oint`, `\mapsto`, `\mp`, `\ll`, `\gg`, `\lfloor`, `\lceil`,
+`\vdots`, `\ddots`, `\ell` and `\hbar` have no Symbol glyph and stay diagnostics.
+
+Operator names typeset as upright roman words: `\sin`, `\cos`, `\tan`, `\cot`,
+`\sec`, `\csc`, `\arcsin`, `\arccos`, `\arctan`, `\sinh`, `\cosh`, `\tanh`,
+`\coth`, `\log`, `\ln`, `\lg`, `\exp`, `\lim`, `\liminf`, `\limsup`, `\max`,
+`\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\deg`, `\dim`, `\ker`, `\arg`, `\hom`,
+`\Pr`, `\sgn`, `\bmod`, `\mod`, and `\operatorname{name}` (starred form too).
+In displays, scripts on `\lim`, `\liminf`, `\limsup`, `\max`, `\min`, `\sup`,
+`\inf`, `\det`, `\gcd`, `\Pr`, `\sum` and `\prod` stack centred above and
+below the operator (top level of the display only); inline and on other atoms,
+including integrals, they stay beside it. `\dfrac`, `\tfrac` and `\cfrac` lay out as `\frac`.
+`\ldots`/`\dots` are three periods and `\cdots` three math dots. `\left`,
+`\right`, `\big`, `\Big`, `\bigg`, `\Bigg` and their `l`/`r`/`m` forms keep the
+requested delimiter at ordinary size (`.` is the invisible null delimiter).
+`\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
+their argument in the current math face (no distinct face yet). `\displaystyle`,
+`\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`split`, `aligned`, `alignedat` and `gathered` lay out as grids.
+
+`\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.
+`\sqrt[n]{x}` raises the index as a script ahead of the radical sign.
+`\mathbf{text}` typesets literal text in Times-Bold. `\boxed{...}`,
+`\overline{...}` and `\underline{...}` draw real rules around, over or under
+their math list. `\tag{x}` places `(x)` two quads after the display content
+(`\tag*{x}` without parentheses); it is not right-aligned yet. `\pmod{n}`
+typesets `(mod n)`. `\overset{over}{base}`, `\stackrel{over}{base}` and
+`\underset{under}{base}` centre a script-size list directly above or below the
+base. The TeX infix forms `{n \choose k}` and `{a \over b}` build the same
+grid and fraction as `\binom` and `\frac`.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
 export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`: those
 are drawn from the pinned Latin Modern Math resource (`lm.math`, see
