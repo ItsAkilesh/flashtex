@@ -187,7 +187,20 @@ fn parse_decimal(text: &str, at: usize) -> Result<(i128, i128), CalcError> {
         Some((i, f)) => (i, f),
         None => (text, ""),
     };
-    let denominator: i128 = 10i128.pow(frac_part.len() as u32);
+    // `10i128.pow(frac_part.len())` overflows i128 once the fractional part
+    // has 39+ digits (10^39 > i128::MAX), and a bare `as u32` truncation of
+    // `frac_part.len()` would itself silently wrap for a pathological
+    // multi-gigabyte literal. Neither case may reach an unchecked `pow`:
+    // a source literal with this many fractional digits can never produce a
+    // value distinguishable within `Sp`'s bound anyway, so refusing it
+    // explicitly loses nothing a real document needs.
+    let denominator: i128 = u32::try_from(frac_part.len())
+        .ok()
+        .and_then(|exp| 10i128.checked_pow(exp))
+        .ok_or_else(|| CalcError::Parse {
+            message: format!("number `{text}` has too many fractional digits"),
+            at,
+        })?;
     let digits: String = format!("{int_part}{frac_part}");
     let digits = if digits.is_empty() { "0" } else { &digits };
     let numerator: i128 = digits.parse().map_err(|_| CalcError::Parse {
@@ -258,5 +271,22 @@ mod tests {
     fn fractional_number_forms() {
         assert_eq!(toks(".5"), vec![Tok::Number(5, 10), Tok::Eof]);
         assert_eq!(toks("10."), vec![Tok::Number(10, 1), Tok::Eof]);
+    }
+
+    /// A fractional part of 39+ digits makes `10i128.pow(frac_part.len())`
+    /// overflow i128 (10^39 > i128::MAX): on unfixed code this reached an
+    /// unchecked `pow` call directly from `lex` and panicked with "attempt to
+    /// exponentiate with overflow" instead of returning a typed error.
+    #[test]
+    fn overlong_fractional_part_is_a_typed_parse_error_not_a_panic() {
+        let text = format!("0.{}pt", "1".repeat(39));
+        assert!(matches!(lex(&text), Err(CalcError::Parse { .. })));
+    }
+
+    /// One digit short of the overflow threshold must still lex normally.
+    #[test]
+    fn fractional_part_just_below_the_overflow_threshold_still_lexes() {
+        let text = format!("0.{}pt", "1".repeat(38));
+        assert!(lex(&text).is_ok());
     }
 }
