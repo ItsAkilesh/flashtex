@@ -340,7 +340,8 @@ final class ShellModel: ObservableObject {
                 self?.handle(event)
             }
             workerStatus = "attached: \(url.lastPathComponent)"
-            log("launched \(url.path)")
+            PreviewFonts.producerFace = PreviewFonts.face(forProducer: url.lastPathComponent)
+            log("launched \(url.path) (preview face: \(PreviewFonts.active.rawValue))")
         } catch {
             workerStatus = "launch failed: \(error.localizedDescription)"
         }
