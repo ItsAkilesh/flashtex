@@ -9,6 +9,7 @@ description = "Experimental typed display-list validation; not a production wire
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tempfile = "3"
 
 [dependencies.flashtex-font-resources]
 path = "../font-resources"
@@ -16,7 +17,6 @@ path = "../font-resources"
 [dev-dependencies]
 flashtex-project-files = { path = "../project-files" }
 flashtex-font-engine = { path = "../font-engine" }
-tempfile = "3"
 
 [dependencies.flashtex-pdf]
 path = "../pdf"

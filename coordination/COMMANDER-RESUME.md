@@ -1,3 +1,41 @@
+# Current override checkpoint — 2026-09-12 09:50Z
+
+This section supersedes older pending/status wording below. Main52344d3 integrated
+full-output serializer e75741e; root c07f7ba/0154d27 evidence and internal historical
+prototype integrated6c89f26. All301pages byte-identical20/20; actual50KB30ms helper
+burst1→12current previews,20durableACKs both, exactreopen. Median500KB278→153ms;
+tail remains>200, no native guarantee. Main d8d96a4 integrates font03cdc27 real LM
+aliases/sharedTFM and PDFcompare9d09582, tests/lint+actualLM gate pass. Main18827dc
+integrates Daniel title2869f1a, TOCf8870c8, color1c75fce tested/linted.
+
+Dispatcher race e1b372b reconciled ONCE via8e7546d. Permanent shared Git-common
+publication_lock installedad4d89c,28tests pass. Service activePID1099831; witness
+correctly blocks takeover on livehostingprocess/newpublisherPID, no journalblockers.
+ALL Commander mainwrites now hold dispatch_loop.publication_lock across fresh
+fetch/authority check/reconcile/nonforcepush. No active Commander build/merge now.
+
+Root ff5fb39 internal optionalqueue complete; NEGOTIATED helper implementation now
+explicitly authorized after verified nativeACK issue2comment5644981151(09:21:01).
+Required project/session/source_versions/compile_revision/current_compile_revision,
+is_current:false,source_actions_enabled:false,echoed source_binding_token<=128;
+configACK first/resetonrestart,requiredACK/current priority,max1historical slot.
+No defaultnativeactivation. Earlier claim noMacACK was incomplete and corrected.
+
+Font activeFT024r14 main277a091: matching12TFM evidence cb4ff5f/578ac0c ready;
+now reviewing DanielTTCf2fdb08/4422cff. Descriptor lacks header/version overlap and
+hard workcaps; no unsafe resolver activation, concreteprobes underway. Renderer
+8131778 exactCFFv2adapter ready; actual pipeline9bb7b27 emits engineSHA as rawSHA,
+strict DigestMismatch retained. Latestpipeline4888a67/1a8e748 fixesmissingTFMdiag;
+renderer rechecksoriginal/reference andrawSHA, no rewrittenfixtureasproof.
+
+Danielparent5cae50809:31 remains7round2done/6runningreported/3notstarted, noIDs/r4ACK;
+laterownbranchescollaboration/mathaccess/fontadvanceprove ownwork, not16active.
+JaysenJSON09:25 names3activechildren, not15. Freshcensusrequested2/23comments
+5645125440/5645125550. KabirFT002r12 main58d83a5 prioritizes measuredleft/right+nu
+parsergaps; issue1comment5645129701 requestsACK/session, preservesinflightwork.
+Aarush/companions remainstale/unverified. Local3engineers+Commander intact; drained3
+staystopped. No newstaffing/purchases. Older historical details follow.
+
 # Commander checkpoint — 2026-09-12 09:30Z
 
 Read fresh origin/main authority/control before writing. Sole Commander is
@@ -79,3 +117,23 @@ and sixnat coauthor; preserve peer author history. Context policy: actual>80%, o
 60–80% mostly irrelevant, compact at natural checkpoint after durable state. No
 telemetry/compact tool exposed here; never invent percentage or restart workers.
 Historical checkpoint details remain in Git, not repeated here.
+
+
+## Integration checkpoint after main70a5f30
+
+Main4248b49 integrates renderer c158f4e with combined all-target tests and strict Clippy. One actual untouched65dbe7d zero-diagnostic rooted-TFM fixture matches reference text and144DPI RGB exactly; prior211pixel fallback/error evidence is retained and corrected. No universal/math parity claim. Main70a5f30 integrates root397bff7 including GH29 explicit15MiB compiler ceiling (default8MiB unchanged), independent16MiB wire guard and exact-schema shared immutable history. Combined ledger/helper suites, serial explicit original-compiler gates including full large-result delivery, and strict helper lint pass. Prior producer/helper timeout logs remain evidence, not erased by later passes.
+
+No pending publication at this checkpoint. Dispatcher1099831 and witness752107 independently active. All main writes used dispatch_loop.publication_lock over the common Git directory. Existing revival prompt verified; quota-to-terminal hook remains unverified. Never claim offline from silence or quota error.
+
+Root is running bounded cached-history-serialization paired benchmark88252; avoid overlapping heavy comparisons. Font retained slot resumed from7fc273c for bounded passive Type1 outline opcodes, explicit unsupported hints/flex/OtherSubrs/seac and no PS execution. Renderer retained slot resumed for reproducible actual-reference runner then exact existing LM Math asset b898cfc (SHA6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f). Drained bridge/index/ledger remain completed; no new agents.
+
+Fresh native historical report12faf78 at10:19:37 requires feature remain OFF: actual ab945e6 per-keystroke current p95 starvation1.6s demo/5.6s60KB, historical lag93/119/146ms demo and316/414/441ms60KB. After b898cfc merge four tests assume math font absent; owner reports parent-preexisting. Parent must reconcile5c35587 and test expectations. This report is not proof all15 remote workers running. Superseded census summary: see the correction below; Daniel full live census remains unverified.
+
+
+## Census correction and next integration gates
+
+Freshly reread issue2comment5645147878 (09:51:39) names16 running Jaysen child sessions plus parent; the previous four-child count was stale. This is a point-in-time machine report, not proof all16 remain running now. Child branches published through10:20. Daniel b40e99409:55:54 reports15 round2 lanes complete, FT030r3 blocked by local tool permission, others waiting for integration; FT046r4 standing supervision/pickup is still not ACKed. Do not bypass the permission block. Followup/current census request5645300305 sent through authorized issue2.
+
+Root2f2605d bounded encoded history cache published67ledger/53serialhelper checks,18/18 exact-byte paired encoding comparisons; native remeasure requested5645310209. Root release actual-helper pair16550 owns current benchmark window; Commander has no heavy builds running.
+
+Compiler ce5bf48 isolated port in /home/natkarri/flashtex-compiler-delimiters, branch agent/orchestrator-astra/compiler-delimiters, remains UNCOMMITTED and blocked. Code delta applied without page-dropping ancestry, six supplied tests pass; added unknown-delimiter regression fails: left+unknown command silently disappears with statusok/diagnostics empty. Exact reproduction and owner correction request issue1comment5645309209; logs /tmp/flashtex-delimiter-unknown.log. Do not merge or erase this pending evidence until owner correction. Font da0ab4a published passive Type1 subset and resumed explicit unhinted/div followup; renderer active on reproducible reference runner/math asset.

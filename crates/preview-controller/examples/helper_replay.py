@@ -12,9 +12,10 @@ import time
 
 
 class Client:
-    def __init__(self, binary, config):
+    def __init__(self, binary, config, capture_diagnostics=False):
+        self.diagnostic_file = tempfile.TemporaryFile() if capture_diagnostics else None
         self.proc = subprocess.Popen([binary, str(config)], stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                     stdout=subprocess.PIPE, stderr=self.diagnostic_file or subprocess.DEVNULL)
         self.buffer = bytearray()
 
     def send(self, identity, kind, payload):
@@ -40,11 +41,22 @@ class Client:
         received = time.monotonic()
         return json.loads(line), received
 
+    def diagnostics(self):
+        if self.diagnostic_file is None:
+            return []
+        self.diagnostic_file.seek(0)
+        raw = self.diagnostic_file.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise RuntimeError("diagnostic capture limit")
+        return [json.loads(line) for line in raw.splitlines() if line]
+
     def stop(self):
         self.proc.kill()
         self.proc.wait(timeout=5)
         self.proc.stdin.close()
         self.proc.stdout.close()
+        if self.diagnostic_file is not None:
+            self.diagnostic_file.close()
 
 
 def snapshot_after_initial_preview(client):
@@ -54,6 +66,10 @@ def snapshot_after_initial_preview(client):
     preview = False
     while document is None or not preview:
         event, _ = client.read()
+        if event.get("type") == "error":
+            raise RuntimeError(event.get("payload", {}).get("message", "helper startup error"))
+        if event.get("payload", {}).get("kind") == "failed":
+            raise RuntimeError(event["payload"]["reason"])
         if event.get("id") == "snapshot-document":
             document = event["payload"]["document"]
         if event.get("payload", {}).get("kind") == "preview":

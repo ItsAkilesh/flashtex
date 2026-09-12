@@ -1,0 +1,34 @@
+
+running 1 test
+ENCODING {"cached_us":[6486,6472,6369,6384,6128,6252],"cold_us":24532,"encoded_bytes":5219067,"entries":5,"exact_pairs":6,"legacy_us":[15919,15106,15456,16669,15974,15286]}
+ENCODING {"cached_us":[27321,14801,15033,15125,14808,14758],"cold_us":40040,"encoded_bytes":10438097,"entries":10,"exact_pairs":6,"legacy_us":[41032,28511,37630,35649,35584,35668]}
+ENCODING {"cached_us":[58924,35968,34507,42046,40006,45816],"cold_us":83899,"encoded_bytes":20876157,"entries":20,"exact_pairs":6,"legacy_us":[82595,63785,88824,98928,98545,109838]}
+test history::tests::paired_cached_history_encoding ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 1.72s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

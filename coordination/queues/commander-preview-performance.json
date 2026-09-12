@@ -4,34 +4,38 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
-      "objective": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
+      "name": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
+      "objective": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime"
+        "crates/document-runtime",
+        "crates/edit-ledger"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
+        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
+        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
+        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 45
     },
     {
-      "name": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
-      "objective": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
+      "name": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
+      "objective": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime"
+        "crates/document-runtime",
+        "crates/edit-ledger"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
+        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
+        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
+        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-048"
