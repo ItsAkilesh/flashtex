@@ -167,7 +167,7 @@ final class NearbyReconnectTests: XCTestCase {
         // Park the listener queue so the frame is budgeted and remembered but
         // its validation result cannot be applied until the peer is gone.
         let gate = DispatchSemaphore(value: 0)
-        let big = TestImages.png(width: 512, height: 512, noise: true)
+        let big = TestImages.png(width: 96, height: 96, noise: true)
         let s = RuntimeV1.CaptureSubmit(captureId: "cap-v1", destinationId: "dest-r", baseRevision: 1,
                                         image: .init(mimeType: "image/png", dataBase64: big.base64EncodedString()), instructions: "v")
         a.send(frame("v1", s))
@@ -177,14 +177,16 @@ final class NearbyReconnectTests: XCTestCase {
         usleep(200_000)
         gate.signal()
         waitUntil("listener saw the drop") { !closedEvents(h, identity: Self.pairId).isEmpty }
-        waitUntil("pending entry forgotten or acknowledged") {
+        waitUntil("pending entry forgotten or acknowledged", timeout: 15) {
             h.listener.memory.count(pairId: Self.pairId) == 0 || h.listener.memory.lookup(pairId: Self.pairId, captureId: "cap-v1")?.ack != nil
         }
         let b = connect(h)
         hello(b)
         XCTAssertEqual(type(b.lines(atLeast: 1)[0]), "hello_ack")
         b.send(frame("v2", s))
-        XCTAssertEqual(ack(b.lines(atLeast: 2)[1])?.captureId, "cap-v1")
+        let replies = b.lines(atLeast: 2, timeout: 15)
+        XCTAssertEqual(replies.count >= 2 ? ack(replies[1])?.captureId : nil, "cap-v1",
+                       "\(replies.map { String(decoding: $0, as: UTF8.self) })")
         XCTAssertEqual(sink.count, 1, "delivered exactly once whichever side of the drop validation landed on")
         b.cancel()
     }

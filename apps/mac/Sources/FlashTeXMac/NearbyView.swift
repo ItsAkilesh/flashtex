@@ -385,11 +385,18 @@ struct NearbyFlowView: View {
                 GridRow { Text("Port").foregroundStyle(.secondary); Text(nearby.port.map(String.init) ?? "—") }
                 GridRow { Text("Mac id (fp)").foregroundStyle(.secondary); Text(nearby.fingerprint).font(.system(.body, design: .monospaced)) }
                 GridRow { Text("TLS").foregroundStyle(.secondary); Text("1.2, \(nearby.cipherSuite), no resumption") }
+                GridRow {
+                    Text("Transport").foregroundStyle(.secondary)
+                    Text(nearby.metrics.line)
+                        .accessibilityLabel("Transport metrics")
+                        .accessibilityValue(nearby.metrics.line)
+                        .accessibilityIdentifier("nearby.transport.metrics")
+                }
             }
             .font(.callout)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Service details")
-            .accessibilityValue("Bonjour \(nearby.serviceType) named \(nearby.macName); port \(nearby.port.map(String.init) ?? "none"); Mac id \(nearby.fingerprint); TLS 1.2 \(nearby.cipherSuite)")
+            .accessibilityValue("Bonjour \(nearby.serviceType) named \(nearby.macName); port \(nearby.port.map(String.init) ?? "none"); Mac id \(nearby.fingerprint); TLS 1.2 \(nearby.cipherSuite); transport \(nearby.metrics.line)")
             Text("Proposal nearby-v1 — not yet a published contract. Captures are kept in memory only (durable: false).")
                 .font(.caption2).foregroundStyle(.secondary)
         }
