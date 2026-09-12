@@ -180,18 +180,51 @@ final class BridgeClientTests: XCTestCase {
         XCTAssertEqual(SourceMapping.changedRegion(from: "same", to: "same"), .init(startByte: 4, oldEndByte: 4, newEndByte: 4, replacement: ""))
     }
 
-    func testLedgerPersistsAndNeverDuplicatesEditIDs() throws {
-        let store = try Self.tempStore()
-        let ledger = EditLedger(storeDirectory: store)
+    static let fakeEditLedger = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().appendingPathComponent("Fixtures/fake_edit_ledger.py")
+
+    /// Edit-ledger helper protocol round trip through `Fixtures/fake_edit_ledger.py`
+    /// (a Python double of crates/edit-ledger d1dd1d7): initialize → apply →
+    /// status → replace_document → confirm, plus its error codes.
+    func testEditLedgerHelperRoundTrip() async throws {
+        let store = try Self.tempStore().appendingPathComponent("doc")
+        let client = try EditLedgerClient(executable: Self.python, arguments: [Self.fakeEditLedger.path], storeDirectory: store,
+                                          queue: DispatchQueue(label: "ledger-test"))
+        defer { client.terminate() }
+        let empty = try await client.status()
+        XCTAssertNil(empty.document); XCTAssertEqual(empty.pendingReceipts, [])
+        let text = "Hello naïve FlashTeX.\n"
+        let doc = try await client.initialize(.init(projectId: "demo", path: "main.tex", revision: 3, text: text))
+        XCTAssertEqual(doc.revision, 3); XCTAssertEqual(doc.sourceSha256, SourceDigest.sha256Hex(text))
         let edit = TransferV1.CaptureEdit(captureId: "c1", editId: "capture-c1", projectId: "demo", path: "main.tex", expectedRevision: 3,
-                                          startByte: 1, endByte: 1, removedText: "", replacement: "y", documentBeforeSha256: "abc")
-        try ledger.upsert(EditLedgerEntry(edit: edit, beforeText: "x"))
-        try ledger.update(editId: "capture-c1") { $0.state = .applied; $0.newRevision = 4 }
-        try ledger.upsert(EditLedgerEntry(edit: edit, beforeText: "x")) // same id: replaces, never a second row
-        XCTAssertEqual(ledger.entries.count, 1)
-        let reloaded = EditLedger(storeDirectory: store)
-        XCTAssertEqual(reloaded.entries.map(\.editId), ["capture-c1"])
-        XCTAssertEqual(reloaded.url.path, store.appendingPathComponent("mac/edit-ledger.json").path)
+                                          startByte: 13, endByte: 13, removedText: "", replacement: "X", documentBeforeSha256: doc.sourceSha256)
+        let applied = try await client.apply(edit)
+        XCTAssertEqual(applied.receipt, .init(captureId: "c1", editId: "capture-c1", newRevision: 4))
+        XCTAssertEqual(applied.document.text, "Hello naïve XFlashTeX.\n")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.appendingPathComponent("document.json").path), "durable before the reply")
+        let again = try await client.apply(edit)
+        XCTAssertEqual(again.receipt, applied.receipt, "identical retry returns the original receipt")
+        XCTAssertEqual(again.document, applied.document, "and never inserts twice")
+        var different = edit; different.replacement = "Y"
+        await assertBridgeError("edit_id_conflict") { try await client.apply(different) }
+        var otherEdit = edit; otherEdit.editId = "capture-c1-b"; otherEdit.expectedRevision = 4; otherEdit.documentBeforeSha256 = applied.document.sourceSha256
+        await assertBridgeError("capture_id_conflict") { try await client.apply(otherEdit) }
+        let st = try await client.status()
+        XCTAssertEqual(st.pendingReceipts.count, 1)
+        XCTAssertEqual(st.pendingReceipts.first?.documentBefore?.text, text, "before-source retained until confirmed")
+        XCTAssertFalse(st.pendingReceipts.first!.confirmed)
+        // Undo (ordinary replace) keeps the tombstone: the same edit still cannot insert twice.
+        let undone = try await client.replaceDocument(expectedRevision: 4, expectedSha256: applied.document.sourceSha256, text: text)
+        XCTAssertEqual(undone.revision, 5); XCTAssertEqual(undone.text, text)
+        await assertBridgeError("document_conflict") { try await client.replaceDocument(expectedRevision: 4, expectedSha256: "stale", text: "x") }
+        let retry = try await client.apply(edit)
+        XCTAssertEqual(retry.receipt, applied.receipt); XCTAssertEqual(retry.document.text, text, "dedup survives undo")
+        _ = try await client.confirm(applied.receipt)
+        let after = try await client.status()
+        XCTAssertEqual(after.pendingReceipts, [])
+        await assertBridgeError("receipt_conflict") { try await client.confirm(.init(captureId: "c1", editId: "capture-c1", newRevision: 9)) }
+        await assertBridgeError("edit_missing") { try await client.confirm(.init(captureId: "zz", editId: "nope", newRevision: 1)) }
+        await assertBridgeError("document_exists") { try await client.initialize(.init(projectId: "demo", path: "main.tex", revision: 1, text: "other")) }
     }
 
     private func assertBridgeError<T>(_ code: String, file: StaticString = #filePath, line: UInt = #line, _ body: () async throws -> T) async {

@@ -57,6 +57,7 @@ extension ShellModel {
             documentURL = url
             savedText = activeText
             captureNote = "Saved \(url.lastPathComponent)"
+            bridgeSourceSaved(url: url, text: activeText)
             return true
         } catch {
             captureNote = "Save failed: \(error.localizedDescription)"

@@ -62,6 +62,10 @@ struct FlashTeXMacApp: App {
                 Button("Convert Capture") { model.convertLatestCapture() }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
                     .disabled(model.latestConvertibleCapture == nil)
+                Button("Retry Bridge Receipt") { model.retryBridgeReceipt() }
+                    .disabled(model.bridge?.pendingTransaction == nil)
+                Button("Retry Bridge Reconciliation") { Task { await model.retryBridgeReconciliation() } }
+                    .disabled(!model.bridgeAttached)
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }

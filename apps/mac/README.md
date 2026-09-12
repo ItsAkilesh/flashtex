@@ -148,36 +148,93 @@ What works offline (no key, no network — verified with `RealBridgeTests`):
   expected_revision: editorRevision, approved: true}` and verifies the returned
   `capture_edit`: project/path, `expected_revision == editorRevision`, SHA-256 of
   the current UTF-8 buffer == `document_before_sha256` (CryptoKit), scalar-aligned
-  `start_byte..end_byte`, and `removed_text` equal to those bytes. Only then is
-  the edit applied as one undoable editor edit (`pendingEdit`), recorded in the
-  ledger (`<store>/mac/edit-ledger.json`, prepared → applied → confirmed), and
-  confirmed with `capture_applied {capture_id, edit_id, new_revision}` — no
-  `document_edit` is sent for that change. The same `edit_id` is never applied
-  twice. Reviewer-edited LaTeX is refused (the contract has no field for it).
-  `Reject` sends `capture_reject`.
-- Restart reconciliation: for each ledger entry not yet confirmed, the shell
-  queries `capture_status` before opening the current document. A receipt the
-  bridge already holds is marked confirmed; an applied-but-unconfirmed edit is
-  replayed by reopening the pre-edit snapshot and resending `capture_applied`,
-  then the live source is resynchronized; a prepared-but-unapplied edit is
-  re-offered only if the buffer still hashes to `document_before_sha256`,
-  otherwise it is abandoned and reselection (new destination + capture ID) is
-  required. Nothing is ever reapplied to a changed document.
+  `start_byte..end_byte`, and `removed_text` equal to those bytes. The edit is
+  then committed **durably first** through the edit-ledger helper (below):
+  source and applied edit ID land together in one fsynced record and a receipt
+  comes back. Only then is the durable document adopted in the editor as one
+  undoable edit (`pendingEdit`), the `.tex` re-exported atomically when the
+  document is file-backed, and `capture_applied {capture_id, edit_id,
+  new_revision}` sent — no `document_edit` for that change. On the bridge's
+  acknowledgement the helper drops its recovery snapshot (`confirm`). A helper
+  refusal or persistence failure inserts nothing anywhere and sends no
+  receipt; a persistence failure poisons the helper handle, which is relaunched
+  and its on-disk state re-read before anything else. The same `edit_id` is
+  never applied twice (bridge `already_applied`, helper `edit_id_conflict` /
+  original-receipt replay), also after undo. Reviewer-edited LaTeX is refused
+  (the contract has no field for it). `Reject` sends `capture_reject`.
+- Restart reconciliation (ledger-guarded): before the current document is
+  opened, the shell asks the helper for a `recovery_export` (snapshot token +
+  pending receipts), queries the bridge `capture_status` for each pending
+  capture, and hands the observations back as one `recovery_import`. An exact
+  `applied` receipt is confirmed durably by the helper; a `prepared` edit that
+  matches yields `replay_receipt`: the shell reopens the retained pre-edit
+  snapshot on the bridge, resends `capture_applied`, and confirms only on an
+  exact acknowledgement; anything `unavailable` (transport failure, or a bridge
+  with no/conflicting record) keeps its evidence — transport failures are
+  reported for retry (`Edit > Retry Bridge Reconciliation`), missing or
+  conflicting bridge records are held for explicit operator resolution
+  (`resolveReconciliation`, the only path that drops a snapshot). If source or
+  ledger changed during the bridge round trip the import is refused as stale
+  and the export is repeated (bounded). Nothing is ever reapplied to a changed
+  document, and the durable document is authoritative: on attach, a store with
+  pending receipts whose text differs from the buffer is adopted into the editor
+  as one undoable operation; without pending receipts the buffer replaces the
+  stored text (`replace_document`).
+
+### Edit ledger helper (durable document transaction)
+
+The durable document store is the Commander's Rust `crates/edit-ledger`
+(`flashtex-edit-ledger --store <dir>`), pinned at commit
+**afb15839f8080f9e86efd6a187e46dfe014ce559** on
+`origin/agent/mac-contract-review/edit-ledger` (an unmerged dependency; built
+in a scratch worktree for validation). It is located like the other helpers:
+`$FLASHTEX_EDIT_LEDGER`, a `flashtex-edit-ledger` bundled next to the
+executable, then `crates/edit-ledger/target/{release,debug}/flashtex-edit-ledger`.
+One store per document lives under `<captures store>/documents/`, keyed by the
+SHA-256 of the file path (`file-…`) — an unsaved buffer gets a fresh
+`unsaved-…` store per attach, so its pending receipts are not recoverable
+after a restart (save the document to make them so). Without the helper the
+bridge still attaches but capture insertion is disabled (fail closed); the
+same when its store is corrupt/unreadable (`invalid_store`), in use by another
+process (`store_in_use`), or bound to another document.
+
+The Swift side (`EditLedgerClient`, `BridgeSession`) keeps only an in-memory
+mirror of the helper's document and transactions. Ordinary typing and undo go
+through `replace_document` (expected revision + source hash; applied-ID
+tombstones survive undo); a refused replace marks the session diverged and
+disables application until the next attach reconciles. Editor revisions and
+the helper's document revision advance in lockstep; on attach an older store
+is aligned upward, never the editor downward. Every helper reply's
+`session_id` / `sequence` / `document_revision` / `document_sha256` is
+checked: a foreign session or non-increasing sequence is discarded as a stale
+observation, and callbacks of a replaced helper process (or a detached bridge
+session) never update the model. All pipe I/O (bridge and helper) runs on a
+bounded serial background queue (`LineProcessClient`, 32 MiB in flight,
+`backpressure` beyond it, 12 MiB per line) — a stalled reader never blocks the
+main thread. `recovery_export` / `recovery_import` are used as above;
+`compact` is not used yet.
+
+Requested ledger changes: none required for this integration. Observations for
+the ledger owner: (1) the helper answers `invalid_request` with `id: null`
+when the operation name is unknown, so such a request can only be matched by
+timeout; (2) `replace_document` bumps exactly one revision, so aligning an
+older store to a newer editor revision takes one round trip per step (bounded
+at 10 000 here); a `set_revision`-style alignment would remove that loop.
 
 Not implemented here: the Mac credential adapter that would run the bridge with
 `--enable-grok` and supply the authorized `XAI_API_KEY` (so no real conversion
 happens from this shell), the companion network transport (captures come from
-a file picker), and compiler validation of proposals before review. The
-document store is the in-memory buffer, so the ledger is transactional with
-respect to the shell's own edit application, not with respect to `File > Save`.
+a file picker), compiler validation of proposals before review, and ledger
+compaction.
 
-`Tests/FlashTeXMacTests/Fixtures/fake_bridge.py` is a stdlib-Python test double
-of the bridge (in-memory journal, deterministic `\fakecapture{<id>}` proposal);
-`RealBridgeTests` runs only when `FLASHTEX_BRIDGE` points at a built binary and
-uses a temporary `--store`. Note: the 1×1 PNG in main's
-`protocol/fixtures/capture-submission.json` is rejected by the bridge's decoder
-(`invalid_image`); the bridge branch (ba89c9a) replaced it, and the real-bridge
-test carries that decodable image inline.
+`Tests/FlashTeXMacTests/Fixtures/fake_bridge.py` and `fake_edit_ledger.py` are
+stdlib-Python test doubles of the bridge (in-memory journal, deterministic
+`\fakecapture{<id>}` proposal, `%stall`/`%error`/`%garbage` directives) and of
+the edit-ledger helper (real atomic `document.json`, same validation and error
+codes, service metadata, recovery export/import). `RealBridgeTests` runs only
+when `FLASHTEX_BRIDGE` points at a built binary; `RealEditLedgerTests` only
+when `FLASHTEX_EDIT_LEDGER` does (both with temporary stores). The shared
+fixture `protocol/fixtures/capture-submission.json` decodes since main 9da7e48.
 
 ## Samples
 
@@ -297,6 +354,7 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
+| — | Edit > Retry Bridge Receipt / Retry Bridge Reconciliation (withheld receipt export, incomplete reconciliation) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
@@ -314,21 +372,34 @@ banner shows; the shell rejects response lines over 16 MiB.
 - `FlashTeXMac` — the app. `BridgeClient` (JSON Lines transport, id-correlated
   replies, 12 MiB line limit), `BridgeSession` (bridge-side document shadow,
   destination, captures, edit ledger, reconciliation), `ShellModel+Bridge`.
-- Tests (75, of which `RealCompilerTests`, `RustPDFExportTests` and
-  `RealBridgeTests` are gated on `FLASHTEX_COMPILER`, `FLASHTEX_PDF` and
-  `FLASHTEX_BRIDGE`): completion (prefix/trigger rules, unclosed `\end{}`,
-  unsupported marks, non-ASCII and invalid carets, 1 MB latency) and navigation
-  (label/ref incl. Unicode, nested begin/end, diagnostic cycling/wrap/refusal on
-  the multipage sample, caret reveal); bridge transport round trip of every transfer-v1 request
-  type incl. error envelopes, garbage/oversized/trailing lines and oversized
-  requests; ledger persistence; shell ↔ fake bridge flow (open → edit → pin →
-  submit → received → convert → review → prepare → verify → apply once →
-  `capture_applied`, duplicate approval no-op, edited-LaTeX refusal, buffer
-  changed between prepare and apply → reselection, provider error as text,
-  reject forwarded, restart reconciliation replaying a missing receipt and
-  abandoning prepared edits on a changed buffer); real bridge (durable receipt,
-  duplicate/conflict, `invalid_image`, `provider_disabled`, `proposal_missing`,
-  reject, `capture_missing`); plus the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+- `FlashTeXMac` also holds `LineProcessClient` (shared bounded JSON Lines
+  process transport) and `EditLedgerClient` (edit-ledger helper protocol).
+- Tests (85, of which `RealCompilerTests`, `RustPDFExportTests`,
+  `RealBridgeTests` and `RealEditLedgerTests` are gated on `FLASHTEX_COMPILER`,
+  `FLASHTEX_PDF`, `FLASHTEX_BRIDGE` and `FLASHTEX_EDIT_LEDGER`): completion
+  (prefix/trigger rules, unclosed `\end{}`, unsupported marks, non-ASCII and
+  invalid carets, 1 MB latency) and navigation (label/ref incl. Unicode, nested
+  begin/end, diagnostic cycling/wrap/refusal on the multipage sample, caret
+  reveal); bridge transport round trip of every transfer-v1 request type incl. error envelopes,
+  garbage/oversized/trailing lines and oversized requests; edit-ledger helper
+  round trip (initialize/apply/dedup/undo/confirm/error codes); shell ↔ fake
+  bridge + fake ledger flow (open → edit → pin → submit → received → convert →
+  review → prepare → verify → durable apply → adopt once → `capture_applied` →
+  confirm, duplicate approval no-op incl. after undo, edited-LaTeX refusal,
+  stale edit refused by shell and helper, provider error as text, reject
+  forwarded, no-helper fail-closed); fault/recovery (persistence failure inserts
+  nothing and sends no receipt, file-backed export before receipt, export
+  failure withholds the receipt while the durable commit stands, corrupt or
+  unreadable store fails closed, transient status failures retain
+  transactions and snapshots, missing receipt replayed from the retained
+  snapshot only for an exactly matching prepared edit, stalled bridge never
+  blocks the main thread + backpressure, detach/reattach ignores old-session
+  events, edits during reconciliation); real bridge (durable receipt,
+  duplicate/conflict, `provider_disabled`, `proposal_missing`, reject,
+  `capture_missing`); real edit ledger (durable apply with on-disk hash check,
+  duplicate edit ID refused, recovery export/import incl. stale token, undo
+  keeps dedup, session metadata, second writer refused, full shell flow); plus
+  the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,

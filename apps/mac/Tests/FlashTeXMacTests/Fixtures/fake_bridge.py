@@ -16,12 +16,18 @@ Test directives in `capture_submit.instructions`:
     %huge           emit one line larger than 12 MiB
     %trailing       emit a partial line and exit
     %exit           exit without replying
+    %stall:<sec>    stop reading stdin for that long before replying (slow conversion)
+Test directives in `capture_status.capture_id`:
+    err-<code>-*    reply with an error envelope carrying <code>
+    garbage-*       emit a non-JSON line instead of a reply
+    stall-<sec>-*   sleep before answering normally
 """
 import base64
 import hashlib
 import json
 import re
 import sys
+import time
 
 MAX_FRAME = 12 * 1024 * 1024
 IDENT = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -165,6 +171,8 @@ def dispatch(kind, p):
             sys.exit(0)
         if ins.startswith("%exit"):
             sys.exit(0)
+        if ins.startswith("%stall:"):
+            time.sleep(float(ins[len("%stall:"):].split()[0]))
         if len(ins.encode("utf-8")) > 4096:
             raise Err("instructions_too_large", "Instructions exceed 4096 UTF-8 bytes")
         if p["image"]["mime_type"] not in ("image/png", "image/jpeg"):
@@ -255,6 +263,13 @@ def dispatch(kind, p):
                    e["start_byte"], e["end_byte"], e["replacement"])
         return "capture_application_received", {"capture_id": p["capture_id"], **rec["applied"]}
     if kind == "capture_status":
+        cid = p["capture_id"]
+        if cid.startswith("err-"):
+            raise Err(cid.split("-")[1], "requested status failure")
+        if cid.startswith("garbage-"):
+            return None, "status garbage"
+        if cid.startswith("stall-"):
+            time.sleep(float(cid.split("-")[1]))
         rec = require(p["capture_id"])
         return "capture_status", {"capture_id": p["capture_id"], "proposal": rec["proposal"],
                                   "prepared": rec["prepared"], "applied": rec["applied"],

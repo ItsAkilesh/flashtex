@@ -31,15 +31,25 @@ extension ShellModel {
         return true
     }
 
-    /// Launches `executable arguments... --store <storeDirectory>` and runs the
-    /// contract's restart reconciliation before opening the active document.
-    /// Returns once the document is open (or the attach failed).
+    /// Where the edit-ledger helper comes from: `$FLASHTEX_EDIT_LEDGER`, a bundled
+    /// `flashtex-edit-ledger`, or `crates/edit-ledger/target/{release,debug}/…`.
+    /// Without it the bridge still attaches but capture insertion is disabled.
+    struct LedgerLaunch { var executable: URL; var arguments: [String] = [] }
+
+    /// Launches `executable arguments... --store <storeDirectory>` plus the
+    /// edit-ledger helper for the active document, adopts/aligns the durable
+    /// document, runs the contract's restart reconciliation, then opens the
+    /// active document on the bridge.
     func attachBridge(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false) {
         Task { await attachBridgeAndWait(executable: executable, arguments: arguments, storeDirectory: storeDirectory, enableGrok: enableGrok) }
     }
 
     @discardableResult
-    func attachBridgeAndWait(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false) async -> Bool {
+    /// `ledger` nil with `discoverLedger` true uses the discovered helper; pass
+    /// `discoverLedger: false` to attach without any edit ledger (insertion disabled).
+    func attachBridgeAndWait(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+                             ledger: LedgerLaunch? = nil, discoverLedger: Bool = true, ledgerStore: URL? = nil) async -> Bool {
+        let ledger = ledger ?? (discoverLedger ? EditLedgerClient.locate().map { LedgerLaunch(executable: $0) } : nil)
         let session: BridgeSession
         do {
             session = try BridgeSession(executable: executable, arguments: arguments, storeDirectory: storeDirectory,
@@ -49,33 +59,104 @@ extension ShellModel {
             return false
         }
         setBridge(session)
+        // Callbacks and continuations of a session that is no longer `bridge` (detached,
+        // replaced) must never touch the model: a queued exit event from an old process
+        // would otherwise overwrite the new session's status.
         session.onChange = { [weak self, weak session] in
-            guard let self, let session else { return }
-            self.bridgeStatus = session.status
+            guard let self, let session, self.bridge === session else { return }
+            self.bridgeStatus = session.status + (session.ledgerError.map { " · " + $0 } ?? "")
             self.bridgeCaptures = session.captures
             self.bridgeDestination = session.destination
         }
+        session.onSourceWritten = { [weak self, weak session] url, text in
+            guard let self, let session, self.bridge === session, self.documentURL == url else { return }
+            self.savedText = text
+        }
+        session.onAdoptDocument = { [weak self, weak session] text in
+            guard let self, let session, self.bridge === session else { return }
+            self.adoptDurableDocument(text, session: session)
+        }
+        // Durable ledger first: the helper's document is the authoritative source.
+        if let ledger {
+            let store = ledgerStore ?? EditLedgerClient.storeDirectory(under: storeDirectory, documentURL: documentURL)
+            let outcome = await session.openLedger(executable: ledger.executable, arguments: ledger.arguments, store: store,
+                                                   path: activePath, currentText: activeText, currentRevision: editorRevision)
+            guard bridge === session else { return false }
+            switch outcome {
+            case .fresh(let r), .aligned(let r), .bufferReplacedStore(let r):
+                advanceEditorRevision(atLeast: r)
+            case .adoptDurable(let text, let r):
+                advanceEditorRevision(atLeast: r)
+                captureNote = "Edit ledger: the durable document (with unconfirmed insertions) replaced the buffer; ⌘Z undoes the adoption."
+                adoptDurableDocument(text, session: session)
+            case .unavailable(let why):
+                captureNote = "Edit ledger unavailable: \(why). Capture insertion is disabled."
+            }
+        } else {
+            captureNote = "No flashtex-edit-ledger helper found (build crates/edit-ledger or set FLASHTEX_EDIT_LEDGER); capture insertion is disabled."
+        }
         // Contract step 5: consult capture_status and the ledger before anything else.
-        let (actions, minimumRevision) = await session.reconcile(path: activePath, currentText: activeText, currentRevision: editorRevision)
+        // The source is re-read after every await so edits made meanwhile are honored.
+        let (actions, minimumRevision) = await session.reconcile(path: activePath,
+                                                                 currentSource: { [weak self] in (self?.activeText ?? "", self?.editorRevision ?? 0) },
+                                                                 statusTimeout: bridgeStatusTimeout)
+        guard bridge === session else { return false }
         advanceEditorRevision(atLeast: minimumRevision)
         for action in actions {
             switch action {
             case .confirmed(let editId): captureNote = "Ledger: edit \(editId) confirmed by the bridge."
             case .replayedReceipt(let editId, let rev): captureNote = "Ledger: replayed missing receipt for \(editId) (revision \(rev))."
-            case .reoffered(let captureId, let proposal):
-                captureNote = "Ledger: prepared edit for \(captureId) re-offered for review (buffer unchanged)."
-                enqueue(proposal)
-            case .reselectionRequired(let editId, let why), .abandoned(let editId, let why):
+            case .needsReconciliation(let editId, let why), .retryLater(let editId, let why):
                 captureNote = "Ledger: \(editId) — \(why)"
             }
+        }
+        if session.reconciliationIncomplete {
+            captureNote = (captureNote.map { $0 + " " } ?? "") + "Reconciliation incomplete; use Edit > Retry Bridge Reconciliation."
         }
         do {
             try await session.open(path: activePath, revision: editorRevision, text: activeText)
         } catch {
+            guard bridge === session else { return false }
             captureNote = "Bridge could not open \(activePath): \((error as? BridgeClient.Failure)?.text ?? "\(error)")"
             return false
         }
-        return true
+        return bridge === session
+    }
+
+    /// Replaces the whole buffer with the durable document as one undoable
+    /// editor operation. The change is flagged so it is not persisted again.
+    func adoptDurableDocument(_ text: String, session: BridgeSession) {
+        guard bridge === session, text != activeText else { return }
+        session.expectAdoption(of: text)
+        let whole = NSRange(location: 0, length: (activeText as NSString).length)
+        pendingEdit = .init(path: activePath, nsRange: whole, text: text, token: (pendingEdit?.token ?? 0) + 1)
+    }
+
+    /// Re-runs restart reconciliation for entries a transport failure left
+    /// undecided, then re-synchronizes the current document.
+    @discardableResult
+    func retryBridgeReconciliation() async -> Bool {
+        guard let session = bridge, session.running else { return false }
+        let (actions, minimumRevision) = await session.reconcile(path: activePath,
+                                                                 currentSource: { [weak self] in (self?.activeText ?? "", self?.editorRevision ?? 0) },
+                                                                 statusTimeout: bridgeStatusTimeout)
+        guard bridge === session else { return false }
+        advanceEditorRevision(atLeast: minimumRevision)
+        captureNote = actions.isEmpty ? "Nothing left to reconcile." : "Reconciliation: \(actions.count) entr\(actions.count == 1 ? "y" : "ies") processed\(session.reconciliationIncomplete ? "; still incomplete" : "")."
+        do { try await session.open(path: activePath, revision: editorRevision, text: activeText) } catch { return false }
+        return !session.reconciliationIncomplete
+    }
+
+    /// Retries the export/receipt steps of a durable edit whose receipt was withheld.
+    func retryBridgeReceipt() {
+        guard let bridge else { captureNote = "No bridge attached."; return }
+        if bridge.pendingTransaction == nil { captureNote = "No withheld receipt."; return }
+        if bridge.commitPendingTransaction() { captureNote = "Receipt sent." } else { captureNote = bridge.status }
+    }
+
+    /// Called after a successful save so a pending export is recorded.
+    func bridgeSourceSaved(url: URL, text: String) {
+        bridge?.sourceSaved(url: url, text: text)
     }
 
     func detachBridge() { setBridge(nil) }
@@ -86,14 +167,14 @@ extension ShellModel {
         guard let bridge, bridge.running else { return }
         if let expected = bridge.expectedApplication, expected.edit.path == path {
             if new == expected.afterText {
-                // Contract step 4: the reviewed edit landed; confirm it, do not send document_edit.
+                // Contract step 4: the editor adopted the durable document; export, receipt. No document_edit.
                 appliedCaptureIDs.insert(expected.edit.captureId)
-                bridge.applicationApplied(newRevision: revision, afterText: new) // also drops the pinned destination
+                bridge.applicationApplied(newRevision: revision, afterText: new, sourceURL: documentURL) // also drops the pinned destination
                 captureNote = "Inserted \(expected.edit.captureId) via bridge edit \(expected.edit.editId) (undo with ⌘Z); pin a new insertion point for the next capture."
                 return
             }
-            bridge.abandonExpectedApplication("buffer changed differently than the prepared edit")
-            captureNote = "Prepared edit \(expected.edit.editId) was not applied as prepared; pin a new destination and submit a new capture."
+            bridge.abandonExpectedApplication("buffer changed differently than the durable document")
+            captureNote = "Durable edit \(expected.edit.editId) was not adopted as committed; reattach the bridge to adopt the durable document."
         }
         bridge.edited(path: path, oldText: old, newText: new, base: base, revision: revision)
     }
@@ -194,11 +275,12 @@ extension ShellModel {
     }
 
     /// Approval for a bridge capture: `capture_prepare_insert` at the current
-    /// editor revision, full verification of the returned edit, one undoable
-    /// edit through `pendingEdit`, ledger entry, then `capture_applied` once the
-    /// editor reports the change. The reviewer's LaTeX must equal the journaled
-    /// proposal: the contract has no field to send edited text, so an edited
-    /// proposal is refused rather than silently replaced.
+    /// editor revision, full verification of the returned edit, durable commit
+    /// through the edit-ledger helper (source + applied ID, fsynced, receipt
+    /// returned), then adoption of the durable document as one undoable editor
+    /// edit; `capture_applied` follows once the editor reports the change.
+    /// The reviewer's LaTeX must equal the journaled proposal: the contract has
+    /// no field to send edited text, so an edited proposal is refused.
     @discardableResult
     func approveBridgeProposal(_ proposal: RuntimeV1.CaptureProposal, latex: String) async -> ApproveOutcome {
         guard let bridge, bridge.running else { captureNote = "No bridge attached."; return .refused("no bridge") }
@@ -212,9 +294,13 @@ extension ShellModel {
             captureNote = "Edited LaTeX cannot be inserted through the bridge (transfer-v1 prepares only the journaled proposal); reject and resubmit instead."
             return .refused("edited LaTeX")
         }
-        guard bridge.expectedApplication == nil else {
-            captureNote = "Another prepared edit is still being applied."
+        guard bridge.expectedApplication == nil, bridge.pendingTransaction == nil else {
+            captureNote = "Another prepared edit is still being applied or committed."
             return .refused("edit in progress")
+        }
+        guard bridge.ledgerUsable else {
+            captureNote = "Edit ledger unusable; not applying: \(bridge.ledgerError ?? bridge.ledgerStatus). Reattach to reconcile."
+            return .refused("ledger")
         }
         let edit: TransferV1.CaptureEdit
         do {
@@ -234,6 +320,7 @@ extension ShellModel {
             }
             return .refused(f?.text ?? "\(error)")
         }
+        guard self.bridge === bridge else { return .refused("bridge detached") }
         let text = activeText
         switch BridgeSession.verify(edit, projectId: projectId, path: activePath, revision: editorRevision, text: text) {
         case .refused(let why):
@@ -241,25 +328,40 @@ extension ShellModel {
             bridge.invalidateDestination()
             return .needsReselection(why)
         case .ok(let afterText):
-            guard let ns = text.nsRange(utf8Bytes: .init(path: edit.path, startByte: edit.startByte, endByte: edit.endByte)) else {
-                return .needsReselection("byte range is not representable in UTF-16")
-            }
+            // Durable first: source + applied ID committed together by the helper.
+            let applied: EditLedgerV1.Applied
             do {
-                guard try bridge.recordPrepared(edit, beforeText: text, afterText: afterText) else {
-                    captureNote = "Edit \(edit.editId) is already in the ledger as applied; not applying again."
+                applied = try await bridge.applyDurably(edit, afterText: afterText)
+            } catch let e as BridgeSession.LedgerError {
+                switch e {
+                case .unusable(let why): captureNote = "Edit ledger unusable; not applying: \(why)"
+                case .transactionPending(let id): captureNote = "Edit \(id) is still being committed; not applying another."
+                case .alreadyApplied(let id):
+                    captureNote = "Edit \(id) is already durable; not inserting again."
+                    appliedCaptureIDs.insert(proposal.captureId)
                     proposals.removeAll { $0.captureId == proposal.captureId }
                     reviewing = proposals.first
                     return .duplicate
+                case .refused(let why): captureNote = "Edit ledger refused \(edit.editId); nothing inserted: \(why)"
                 }
+                return .refused("ledger")
             } catch {
-                captureNote = "Ledger write failed; not applying: \(error.localizedDescription)"
+                captureNote = "Edit ledger failed; nothing inserted: \(error.localizedDescription)"
                 return .refused("ledger")
             }
+            guard self.bridge === bridge else { return .refused("bridge detached") }
+            // Adopt the durable document: the prepared range when it matches, else the whole text.
             activePath = edit.path
-            pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: (pendingEdit?.token ?? 0) + 1)
+            if applied.document.text == afterText,
+               let ns = text.nsRange(utf8Bytes: .init(path: edit.path, startByte: edit.startByte, endByte: edit.endByte)) {
+                pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: (pendingEdit?.token ?? 0) + 1)
+            } else {
+                let whole = NSRange(location: 0, length: (text as NSString).length)
+                pendingEdit = .init(path: edit.path, nsRange: whole, text: applied.document.text, token: (pendingEdit?.token ?? 0) + 1)
+            }
             proposals.removeAll { $0.captureId == proposal.captureId }
             reviewing = proposals.first
-            captureNote = "Applying bridge edit \(edit.editId) at bytes \(edit.startByte)..<\(edit.endByte)…"
+            captureNote = "Durable edit \(edit.editId) (revision \(applied.receipt.newRevision)); adopting at bytes \(edit.startByte)..<\(edit.endByte)…"
             return .inserted(byteOffset: edit.startByte)
         }
     }

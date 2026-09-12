@@ -9,89 +9,18 @@ enum SourceDigest {
     }
 }
 
-/// Application ledger for bridge-prepared edits, persisted as JSON under the
-/// bridge store (`<store>/mac/edit-ledger.json`). An edit ID is applied at most
-/// once; `prepared` entries survive a crash between preparation and application,
-/// `applied` entries survive a crash before the bridge confirmed the receipt.
-/// The pre-edit text is kept only until the receipt is confirmed, because the
-/// contract's crash recovery reopens the pre-edit snapshot before replaying it.
-struct EditLedgerEntry: Codable, Equatable {
-    enum State: String, Codable { case prepared, applied, confirmed, abandoned }
-    var editId: String
-    var captureId: String
-    var projectId: String
-    var path: String
-    var expectedRevision: Int
-    var startByte: Int
-    var endByte: Int
-    var removedText: String
-    var replacement: String
-    var documentBeforeSha256: String
-    var documentBeforeText: String?
-    var newRevision: Int?
-    var documentAfterSha256: String?
-    var state: State
-    var note: String?
-    var updatedAt: Date
-
-    init(edit: TransferV1.CaptureEdit, beforeText: String) {
-        editId = edit.editId; captureId = edit.captureId; projectId = edit.projectId; path = edit.path
-        expectedRevision = edit.expectedRevision; startByte = edit.startByte; endByte = edit.endByte
-        removedText = edit.removedText; replacement = edit.replacement
-        documentBeforeSha256 = edit.documentBeforeSha256; documentBeforeText = beforeText
-        state = .prepared; updatedAt = Date()
-    }
-}
-
-final class EditLedger {
-    let url: URL
-    private(set) var entries: [EditLedgerEntry] = []
-    private(set) var loadError: String?
-
-    init(storeDirectory: URL) {
-        url = storeDirectory.appendingPathComponent("mac/edit-ledger.json")
-        if let data = try? Data(contentsOf: url) {
-            do { entries = try Self.decoder.decode([EditLedgerEntry].self, from: data) }
-            catch { loadError = "ledger unreadable: \(error)" }
-        }
-    }
-
-    private static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }()
-    private static let encoder: JSONEncoder = {
-        let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; e.outputFormatting = [.prettyPrinted, .sortedKeys]; return e
-    }()
-
-    func entry(editId: String) -> EditLedgerEntry? { entries.first { $0.editId == editId } }
-    func entry(captureId: String) -> EditLedgerEntry? { entries.first { $0.captureId == captureId } }
-    var unconfirmed: [EditLedgerEntry] { entries.filter { $0.state == .prepared || $0.state == .applied } }
-
-    /// Inserts or replaces by edit ID and writes the file atomically (temp + rename).
-    func upsert(_ entry: EditLedgerEntry) throws {
-        var e = entry
-        e.updatedAt = Date()
-        if let i = entries.firstIndex(where: { $0.editId == e.editId }) { entries[i] = e } else { entries.append(e) }
-        try save()
-    }
-
-    func update(editId: String, _ change: (inout EditLedgerEntry) -> Void) throws {
-        guard var e = entry(editId: editId) else { return }
-        change(&e)
-        try upsert(e)
-    }
-
-    private func save() throws {
-        let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
-                                                attributes: [.posixPermissions: 0o700])
-        let data = try Self.encoder.encode(entries)
-        try data.write(to: url, options: .atomic)
-    }
-}
-
 /// One attached bridge process plus everything the Mac must remember about it:
 /// the bridge's view of the document (what was sent), the pinned destination,
-/// the captures in flight, and the edit ledger. Owned by `ShellModel`; all
-/// state changes happen on the main actor and `onChange` lets the model publish.
+/// the captures in flight, and the durable edit ledger. Owned by `ShellModel`;
+/// all state changes happen on the main actor and `onChange` lets the model publish.
+///
+/// Durability is delegated to the `flashtex-edit-ledger` helper (crates/edit-ledger
+/// at d1dd1d7): it holds the authoritative document and every applied edit ID in
+/// one atomically fsynced record. The Swift side keeps only an in-memory mirror.
+/// Order for a reviewed insertion: bridge `capture_prepare_insert` → local
+/// verification → helper `apply` (durable source + ledger, receipt returned) →
+/// adopt the durable document in the editor as one undoable edit → export the
+/// `.tex` when file-backed → `capture_applied` → helper `confirm`.
 @MainActor
 final class BridgeSession {
     enum CaptureState: String { case received, converting, proposed, prepared, applied, confirmed, rejected, needsReselection, failed }
@@ -104,7 +33,6 @@ final class BridgeSession {
 
     let client: BridgeClient
     let projectId: String
-    let ledger: EditLedger
     let storeDirectory: URL
     private(set) var status: String
     private(set) var running = true
@@ -113,16 +41,36 @@ final class BridgeSession {
     private(set) var log: [String] = []
     /// Snapshot the bridge is believed to hold per path (mirrors sent edits).
     private(set) var shadow: [String: (revision: Int, text: String)] = [:]
+    /// Paths whose snapshot the bridge holds; edits before the initial
+    /// `document_open` only update the shadow (the open sends the newest text).
+    private(set) var openPaths: Set<String> = []
     /// Edit the editor is about to apply; the next text change equal to
     /// `afterText` is its application and must not be sent as `document_edit`.
     private(set) var expectedApplication: (edit: TransferV1.CaptureEdit, afterText: String)?
     var onChange: () -> Void = {}
+    /// The durable document differs from the editor buffer (helper retry,
+    /// crash recovery): the shell adopts `text` as one undoable operation.
+    var onAdoptDocument: (String) -> Void = { _ in }
+    /// Called after the post-edit `.tex` export was written atomically.
+    var onSourceWritten: (URL, String) -> Void = { _, _ in }
+
+    // Durable edit ledger (helper process) and its in-memory mirror.
+    private(set) var ledger: EditLedgerClient?
+    private(set) var ledgerStatus = "no edit ledger"
+    private(set) var ledgerError: String?
+    private(set) var durable: EditLedgerV1.Document?
+    /// Applied transactions known to the helper (pending and confirmed), by edit ID.
+    private(set) var transactions: [String: EditLedgerV1.AppliedTransaction] = [:]
+    /// Entries the bridge has no durable record for; they keep their evidence in
+    /// the helper until `resolveReconciliation` confirms them explicitly.
+    private(set) var needsReconciliation: [String: String] = [:]
+    var ledgerUsable: Bool { ledger?.isRunning == true && ledgerError == nil }
+    private var ledgerLaunch: (executable: URL, arguments: [String], store: URL)?
 
     init(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
          projectId: String) throws {
         self.projectId = projectId
         self.storeDirectory = storeDirectory
-        self.ledger = EditLedger(storeDirectory: storeDirectory)
         status = "launching \(executable.lastPathComponent)"
         var events: ((BridgeClient.Event) -> Void)?
         client = try BridgeClient(executable: executable, arguments: arguments, storeDirectory: storeDirectory,
@@ -132,11 +80,11 @@ final class BridgeSession {
             Task { @MainActor in self.handle(event) }
         }
         status = "attached: \(executable.lastPathComponent)"
-        if let err = ledger.loadError { note(err) }
     }
 
     func terminate() {
         client.terminate()
+        ledger?.terminate()
         running = false
         status = "bridge detached"
         onChange()
@@ -152,6 +100,19 @@ final class BridgeSession {
             status = "bridge exited (\(code))"
             expectedApplication = nil
             note(status)
+        }
+        onChange()
+    }
+
+    private func handleLedger(_ event: EditLedgerClient.Event) {
+        switch event {
+        case .stderr(let s): note("ledger: " + s.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .protocolViolation(let m): ledgerError = "edit ledger protocol violation: \(m)"; note(ledgerError!)
+        case .unsolicited(let id, let type, let code): note("ledger unsolicited \(type) id=\(id ?? "null") code=\(code ?? "-")")
+        case .exited(let code):
+            if ledgerError == nil { ledgerError = "edit ledger exited (\(code))" }
+            ledgerStatus = ledgerError!
+            note(ledgerStatus)
         }
         onChange()
     }
@@ -180,6 +141,127 @@ final class BridgeSession {
         onChange()
     }
 
+    // MARK: durable ledger (helper process)
+
+    enum LedgerOpen: Equatable {
+        case fresh(revision: Int)
+        /// Store and buffer agree (after revision alignment).
+        case aligned(revision: Int)
+        /// The durable document is authoritative (pending receipts) and differs
+        /// from the buffer: the shell must adopt `text` (one undoable operation).
+        case adoptDurable(text: String, revision: Int)
+        /// No pending receipts and the buffer differs: the buffer replaced the store.
+        case bufferReplacedStore(revision: Int)
+        case unavailable(String)
+    }
+
+    /// Launches the helper on `store` and aligns it with the editor. Returns
+    /// the revision the editor must be at (only ever advancing it).
+    func openLedger(executable: URL, arguments: [String] = [], store: URL, path: String,
+                    currentText: String, currentRevision: Int, timeout: TimeInterval = 15) async -> LedgerOpen {
+        ledger?.terminate()
+        ledger = nil
+        ledgerError = nil
+        transactions = [:]
+        durable = nil
+        ledgerLaunch = (executable, arguments, store)
+        do {
+            try FileManager.default.createDirectory(at: store.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            var events: ((EditLedgerClient.Event) -> Void)?
+            let l = try EditLedgerClient(executable: executable, arguments: arguments, storeDirectory: store) { events?($0) }
+            // Events from a helper that is no longer `ledger` (replaced after a poisoned handle) are dropped.
+            events = { [weak self, weak l] e in Task { @MainActor in guard let self, let l, self.ledger === l else { return }; self.handleLedger(e) } }
+            ledger = l
+            let st = try await l.status(timeout: timeout)
+            for tx in st.pendingReceipts { transactions[tx.edit.editId] = tx }
+            guard let existing = st.document else {
+                durable = try await l.initialize(.init(projectId: projectId, path: path, revision: currentRevision, text: currentText))
+                ledgerStatus = "edit ledger: fresh store at revision \(currentRevision)"
+                onChange()
+                return .fresh(revision: currentRevision)
+            }
+            guard existing.projectId == projectId, existing.path == path else {
+                ledgerError = "edit ledger store holds \(existing.projectId)/\(existing.path), not \(projectId)/\(path)"
+                ledgerStatus = ledgerError!
+                onChange()
+                return .unavailable(ledgerError!)
+            }
+            durable = existing
+            if existing.text == currentText {
+                let target = max(existing.revision, currentRevision)
+                try await alignStore(to: target)
+                ledgerStatus = "edit ledger: store matches the buffer at revision \(target)"
+                onChange()
+                return .aligned(revision: target)
+            }
+            if !st.pendingReceipts.isEmpty {
+                // Durable document is authoritative: it carries applied edits whose receipts are still owed.
+                let target = max(existing.revision, currentRevision)
+                try await alignStore(to: target)
+                ledgerStatus = "edit ledger: durable document adopted (\(st.pendingReceipts.count) pending receipt\(st.pendingReceipts.count == 1 ? "" : "s"))"
+                onChange()
+                return .adoptDurable(text: existing.text, revision: target)
+            }
+            // No receipts owed: the buffer (the user's current source) replaces the durable text.
+            durable = try await l.replaceDocument(expectedRevision: existing.revision, expectedSha256: existing.sourceSha256, text: currentText)
+            let target = max(durable!.revision, currentRevision)
+            try await alignStore(to: target)
+            ledgerStatus = "edit ledger: buffer replaced the stored document (revision \(target))"
+            onChange()
+            return .bufferReplacedStore(revision: target)
+        } catch {
+            let f = (error as? LineProcessFailure) ?? .undecodable("\(error)")
+            ledgerError = "edit ledger unavailable — \(f.text)"
+            ledgerStatus = ledgerError!
+            note(ledgerStatus)
+            onChange()
+            return .unavailable(ledgerError!)
+        }
+    }
+
+    /// Editor revisions and the helper's document revision advance in lockstep
+    /// (one per edit); an existing store can lag the editor after a restart.
+    private func alignStore(to revision: Int) async throws {
+        guard let l = ledger, var doc = durable else { return }
+        var steps = 0
+        while doc.revision < revision {
+            doc = try await l.replaceDocument(expectedRevision: doc.revision, expectedSha256: doc.sourceSha256, text: doc.text)
+            durable = doc
+            steps += 1
+            if steps > 10_000 { throw LineProcessFailure.undecodable("revision alignment exceeded 10000 steps") }
+        }
+    }
+
+    /// Relaunches the helper after a persistence error (its handle is poisoned:
+    /// the rename may or may not have completed) and re-reads the durable state.
+    private func reopenLedger(timeout: TimeInterval = 15) async -> Bool {
+        guard let launch = ledgerLaunch else { return false }
+        ledger?.terminate()
+        ledger = nil
+        ledgerError = nil
+        do {
+            var events: ((EditLedgerClient.Event) -> Void)?
+            let l = try EditLedgerClient(executable: launch.executable, arguments: launch.arguments, storeDirectory: launch.store) { events?($0) }
+            // Events from a helper that is no longer `ledger` (replaced after a poisoned handle) are dropped.
+            events = { [weak self, weak l] e in Task { @MainActor in guard let self, let l, self.ledger === l else { return }; self.handleLedger(e) } }
+            ledger = l
+            let st = try await l.status(timeout: timeout)
+            durable = st.document
+            transactions = [:]
+            for tx in st.pendingReceipts { transactions[tx.edit.editId] = tx }
+            ledgerStatus = "edit ledger reopened at revision \(st.document?.revision ?? 0)"
+            onChange()
+            return true
+        } catch {
+            let f = (error as? LineProcessFailure) ?? .undecodable("\(error)")
+            ledgerError = "edit ledger unavailable — \(f.text)"
+            ledgerStatus = ledgerError!
+            onChange()
+            return false
+        }
+    }
+
     // MARK: documents
 
     func open(path: String, revision: Int, text: String) async throws {
@@ -187,28 +269,64 @@ final class BridgeSession {
             _ = try await client.request(.documentOpen, TransferV1.DocumentOpen(projectId: projectId, path: path, revision: revision, text: text),
                                          as: TransferV1.Empty.self)
             shadow[path] = (revision, text)
+            openPaths.insert(path)
             status = "attached: \(client.executable.lastPathComponent) · \(path) open at revision \(revision)"
             onChange()
         } catch { throw fail("document_open", error) }
     }
 
-    /// Sends the byte-range difference between `oldText` and `newText` as
-    /// `document_edit`. Fire-and-forget: a rejected edit triggers a full
-    /// `document_open` resynchronization from the newest shadow snapshot.
+    /// Ordinary typing/undo: persisted through the helper (`replace_document`,
+    /// tombstones kept) and sent to the bridge as one `document_edit` (byte
+    /// range + replacement). Fire-and-forget: a refused bridge edit triggers a
+    /// `document_open` resynchronization; a refused durable replace means the
+    /// store diverged and application is disabled until the next attach.
     func edited(path: String, oldText: String, newText: String, base: Int, revision: Int) {
         guard running else { return }
         let region = SourceMapping.changedRegion(from: oldText, to: newText)
         let edit = TransferV1.DocumentEdit(projectId: projectId, path: path, baseRevision: base, revision: revision,
                                            startByte: region.startByte, endByte: region.oldEndByte, replacement: region.replacement)
         shadow[path] = (revision, newText)
+        if let l = ledger, ledgerError == nil, let doc = durable, doc.path == path {
+            if consumeAdoption(newText) {
+                // The store already holds this text; only its revision number must catch up.
+                Task { [weak self] in try? await self?.alignStore(to: revision) }
+            } else if doc.revision == base, doc.text == oldText {
+                durable = .init(projectId: projectId, path: path, revision: revision, text: newText)
+                l.send({ EditLedgerV1.ReplaceRequest(id: $0, expectedRevision: base, expectedSha256: doc.sourceSha256, text: newText) },
+                       as: EditLedgerV1.DocumentReply.self) { [weak self] result in
+                    guard let self, self.ledger === l else { return } // a replaced helper's late reply is not ours
+                    if case .failure(let f) = result {
+                        self.ledgerError = "durable document diverged from the editor (\(f.text)); reattach to reconcile"
+                        self.ledgerStatus = self.ledgerError!
+                        self.note(self.ledgerStatus)
+                        self.onChange()
+                    }
+                }
+            } else {
+                ledgerError = "durable document diverged from the editor (store at revision \(doc.revision), edit based on \(base)); reattach to reconcile"
+                ledgerStatus = ledgerError!
+                note(ledgerStatus)
+                onChange()
+            }
+        }
+        guard openPaths.contains(path) else { return } // the initial document_open will carry this text
+        if let tx = pendingTransaction, tx.edit.path == path {
+            // The bridge must apply the receipt before edits based on the post-edit revision.
+            deferredEdits.append(edit)
+            return
+        }
+        sendEdit(edit)
+    }
+
+    private func sendEdit(_ edit: TransferV1.DocumentEdit) {
         client.send(.documentEdit, edit, as: TransferV1.DocumentUpdated.self) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(let updated):
-                if updated.revision != revision { self.note("document_updated reports revision \(updated.revision), sent \(revision)") }
+                if updated.revision != edit.revision { self.note("document_updated reports revision \(updated.revision), sent \(edit.revision)") }
             case .failure(let f):
-                self.note("document_edit \(base)->\(revision) refused (\(f.text)); resynchronizing snapshot")
-                self.resync(path: path)
+                self.note("document_edit \(edit.baseRevision)->\(edit.revision) refused (\(f.text)); resynchronizing snapshot")
+                self.resync(path: edit.path)
             }
         }
     }
@@ -312,7 +430,7 @@ final class BridgeSession {
         catch { throw fail("capture_status", error) }
     }
 
-    // MARK: verified application and ledger
+    // MARK: verified application and durable ledger
 
     enum Verification: Equatable { case ok(afterText: String); case refused(String) }
 
@@ -337,61 +455,204 @@ final class BridgeSession {
         return .ok(afterText: text.replacingCharacters(in: range, with: edit.replacement))
     }
 
-    /// Records a verified edit as `prepared` and arms `expectedApplication`.
-    /// Returns false when the edit ID was already applied (never twice).
-    func recordPrepared(_ edit: TransferV1.CaptureEdit, beforeText: String, afterText: String) throws -> Bool {
-        if let existing = ledger.entry(editId: edit.editId), existing.state == .applied || existing.state == .confirmed {
-            setCapture(edit.captureId, .applied, "edit \(edit.editId) already applied; ignoring")
-            return false
+    enum LedgerError: Error, Equatable {
+        case unusable(String)
+        case transactionPending(String)
+        case alreadyApplied(String)
+        /// The helper refused the edit (its code); nothing was inserted anywhere.
+        case refused(String)
+    }
+
+    /// Ordered record of durability steps, for evidence:
+    /// "ledger" (helper commit), "source" (.tex export), "receipt", "confirmed".
+    private(set) var transactionTrace: [String] = []
+    /// One reviewed edit that is durable in the helper but not yet acknowledged
+    /// by the bridge. Survives receipt failures; `commitPendingTransaction` retries.
+    struct Transaction: Equatable {
+        var edit: TransferV1.CaptureEdit
+        var receipt: TransferV1.CaptureApplied
+        var afterText: String
+        var sourceURL: URL?
+        var sourceWritten = false
+        var receiptSent = false
+        var lastFailure: String?
+    }
+    private(set) var pendingTransaction: Transaction?
+    /// Bridge edits held back until the pending receipt is acknowledged.
+    private var deferredEdits: [TransferV1.DocumentEdit] = []
+    /// Whole-document adoption the shell is about to perform (not an ordinary edit).
+    private var expectedAdoption: String?
+
+    /// Step 3 (helper side): commits the verified edit durably — source and
+    /// applied ID together, fsynced — and returns the durable document the
+    /// editor must adopt. Nothing is inserted in the editor before this returns.
+    /// An identical retry returns the original receipt without inserting twice.
+    func applyDurably(_ edit: TransferV1.CaptureEdit, afterText: String) async throws -> EditLedgerV1.Applied {
+        guard ledgerUsable, let l = ledger else { throw LedgerError.unusable(ledgerError ?? ledgerStatus) }
+        guard pendingTransaction == nil else { throw LedgerError.transactionPending(pendingTransaction!.edit.editId) }
+        if let tx = transactions[edit.editId] {
+            setCapture(edit.captureId, tx.confirmed ? .confirmed : .applied, "edit \(edit.editId) already applied durably; not inserting again")
+            throw LedgerError.alreadyApplied(edit.editId)
         }
-        try ledger.upsert(EditLedgerEntry(edit: edit, beforeText: beforeText))
-        expectedApplication = (edit, afterText)
-        onChange()
+        do {
+            let applied = try await l.apply(edit)
+            durable = applied.document
+            transactions[edit.editId] = .init(edit: edit, receipt: applied.receipt, documentBefore: nil,
+                                              documentAfterSha256: applied.document.sourceSha256, confirmed: false)
+            transactionTrace.append("ledger")
+            if applied.document.text != afterText {
+                note("durable document after \(edit.editId) differs from the expected text; adopting the durable document")
+            }
+            expectedApplication = (edit, applied.document.text)
+            pendingTransaction = Transaction(edit: edit, receipt: applied.receipt, afterText: applied.document.text)
+            setCapture(edit.captureId, .applied, "durable in the edit ledger as revision \(applied.receipt.newRevision); adopting in the editor…")
+            onChange()
+            return applied
+        } catch let f as LineProcessFailure {
+            if f.isTransient || f.code == "storage_error" || f.code == "recovery_required" {
+                // Persistence uncertainty: the handle is poisoned. Reopen and read what is on disk.
+                note("edit ledger apply failed (\(f.text)); reopening the store to inspect its durable state")
+                if await reopenLedger(), let tx = transactions[edit.editId], tx.edit == edit {
+                    transactionTrace.append("ledger")
+                    expectedApplication = (edit, durable?.text ?? afterText)
+                    pendingTransaction = Transaction(edit: edit, receipt: tx.receipt, afterText: durable?.text ?? afterText)
+                    setCapture(edit.captureId, .applied, "edit \(edit.editId) was committed before the failure; adopting the durable document")
+                    onChange()
+                    return .init(receipt: tx.receipt, document: durable ?? .init(projectId: edit.projectId, path: edit.path,
+                                                                                    revision: tx.receipt.newRevision, text: afterText))
+                }
+                setCapture(edit.captureId, .proposed, "not inserted: edit ledger persistence failed (\(f.text)); retry approval")
+                throw LedgerError.refused(f.text)
+            }
+            setCapture(edit.captureId, f.code == "capture_id_conflict" || f.code == "edit_id_conflict" ? .applied : .proposed,
+                       "edit ledger refused \(edit.editId): \(f.text)")
+            throw LedgerError.refused(f.text)
+        }
+    }
+
+    /// The shell will replace the whole buffer with `text` (durable adoption);
+    /// the resulting text change is not an ordinary edit.
+    func expectAdoption(of text: String) { expectedAdoption = text }
+
+    /// The editor's text change matched an armed adoption; consume it.
+    func consumeAdoption(_ text: String) -> Bool {
+        guard expectedAdoption == text else { return false }
+        expectedAdoption = nil
         return true
     }
 
+    /// The editor changed differently than the durable document it was asked to
+    /// adopt. The durable store stays authoritative (the edit is committed and its
+    /// receipt is still owed); the session is marked diverged so nothing else is
+    /// persisted on top, and the next attach adopts the durable text and replays
+    /// the receipt through reconciliation.
     func abandonExpectedApplication(_ why: String) {
         guard let expected = expectedApplication else { return }
         expectedApplication = nil
-        try? ledger.update(editId: expected.edit.editId) { $0.state = .abandoned; $0.note = why; $0.documentBeforeText = nil }
-        setCapture(expected.edit.captureId, .needsReselection, "not applied: \(why)")
+        ledgerError = "editor diverged from the durable document after \(expected.edit.editId) (\(why)); reattach to adopt it and replay the receipt"
+        ledgerStatus = ledgerError!
+        note(ledgerStatus)
+        setCapture(expected.edit.captureId, .applied, "durable but not adopted in the editor: \(why); reattach to reconcile")
+        onChange()
     }
 
-    /// Contract steps 3–4: the editor applied the edit; persist `applied`, then
-    /// send `capture_applied` (never `document_edit` for this change).
-    func applicationApplied(newRevision: Int, afterText: String) {
-        guard let expected = expectedApplication else { return }
+    /// Step 3 (editor side): the editor adopted the durable document. Export the
+    /// `.tex` when file-backed, then send the receipt. Never sends `document_edit`.
+    func applicationApplied(newRevision: Int, afterText: String, sourceURL: URL?) {
+        guard let expected = expectedApplication, var tx = pendingTransaction else { return }
         expectedApplication = nil
-        let edit = expected.edit
-        do {
-            try ledger.update(editId: edit.editId) {
-                $0.state = .applied; $0.newRevision = newRevision; $0.documentAfterSha256 = SourceDigest.sha256Hex(afterText)
-            }
-        } catch {
-            status = "ledger write failed — \(error.localizedDescription)"; note(status)
-        }
-        shadow[edit.path] = (newRevision, afterText)
+        shadow[expected.edit.path] = (newRevision, afterText)
         destination = nil // the insertion intersected (or sat exactly at) the pinned target; the bridge invalidated it
-        setCapture(edit.captureId, .applied, "applied as revision \(newRevision); confirming…")
-        sendApplied(captureId: edit.captureId, editId: edit.editId, newRevision: newRevision)
+        if newRevision != tx.receipt.newRevision {
+            note("editor revision \(newRevision) differs from the durable receipt revision \(tx.receipt.newRevision); the receipt is authoritative")
+        }
+        tx.sourceURL = sourceURL
+        pendingTransaction = tx
+        commitPendingTransaction()
     }
 
-    private func sendApplied(captureId: String, editId: String, newRevision: Int) {
-        client.send(.captureApplied, TransferV1.CaptureApplied(captureId: captureId, editId: editId, newRevision: newRevision),
-                    as: TransferV1.CaptureApplied.self) { [weak self] result in
+    /// The document was saved to `url`; a pending transaction without an export
+    /// yet records it when the saved text is the durable state (the post-edit
+    /// text or the current durable document after later typing).
+    func sourceSaved(url: URL, text: String) {
+        guard var tx = pendingTransaction, !tx.sourceWritten, text == tx.afterText || text == durable?.text else { return }
+        tx.sourceURL = url
+        tx.sourceWritten = true
+        pendingTransaction = tx
+        transactionTrace.append("source")
+        if !tx.receiptSent { commitPendingTransaction() }
+    }
+
+    /// Retries the export/receipt steps of the pending transaction.
+    @discardableResult
+    func commitPendingTransaction() -> Bool {
+        guard var tx = pendingTransaction, !tx.receiptSent else { return false }
+        let edit = tx.edit
+        // Export: the durable store is authoritative; a file-backed document is
+        // re-exported atomically (current durable text, never an older snapshot)
+        // before the receipt so the .tex never lags the store.
+        if !tx.sourceWritten, let url = tx.sourceURL {
+            let text = durable?.text ?? tx.afterText
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+                tx.sourceWritten = true
+                transactionTrace.append("source")
+                onSourceWritten(url, text)
+            } catch {
+                tx.lastFailure = "export to \(url.lastPathComponent) failed: \(error.localizedDescription)"
+                pendingTransaction = tx
+                status = "capture \(edit.captureId) durable; receipt withheld — \(tx.lastFailure!) (Edit > Retry Bridge Receipt)"
+                setCapture(edit.captureId, .applied, status)
+                onChange()
+                return false
+            }
+        }
+        tx.receiptSent = true
+        pendingTransaction = tx
+        transactionTrace.append("receipt")
+        setCapture(edit.captureId, .applied, "applied as revision \(tx.receipt.newRevision); durable; confirming…")
+        sendApplied(tx.receipt)
+        return true
+    }
+
+    private func sendApplied(_ receipt: TransferV1.CaptureApplied) {
+        client.send(.captureApplied, receipt, as: TransferV1.CaptureApplied.self) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success(let receipt):
-                try? self.ledger.update(editId: editId) { $0.state = .confirmed; $0.documentBeforeText = nil }
-                self.setCapture(captureId, .confirmed, "insertion confirmed (edit \(receipt.editId), revision \(receipt.newRevision))")
-                self.status = "capture \(captureId) inserted and confirmed"
+            case .success(let ack):
+                self.pendingTransaction = nil
+                self.transactionTrace.append("confirmed")
+                self.confirmDurably(ack)
+                self.setCapture(receipt.captureId, .confirmed, "insertion confirmed (edit \(ack.editId), revision \(ack.newRevision))")
+                self.status = "capture \(receipt.captureId) inserted and confirmed"
+                self.flushDeferredEdits()
             case .failure(let f):
-                // Ledger keeps `applied`; reconciliation retries the receipt on the next attach.
-                self.setCapture(captureId, .applied, "applied locally; receipt not confirmed (\(f.text))")
+                // The helper keeps the transaction and its snapshot; reconciliation retries the receipt.
+                if var tx = self.pendingTransaction { tx.receiptSent = false; tx.lastFailure = f.text; self.pendingTransaction = tx }
+                self.setCapture(receipt.captureId, .applied, "durable locally; receipt not acknowledged (\(f.text))")
                 self.status = "capture_applied failed — \(f.text)"
+                if !f.isTransient { self.pendingTransaction = nil; self.flushDeferredEdits() }
             }
             self.onChange()
         }
+    }
+
+    /// Exact bridge acknowledgement → helper drops the recovery snapshot.
+    private func confirmDurably(_ receipt: TransferV1.CaptureApplied) {
+        guard let l = ledger else { return }
+        l.send({ EditLedgerV1.ConfirmRequest(id: $0, receipt: receipt) }, as: EditLedgerV1.Confirmed.self) { [weak self] result in
+            guard let self, self.ledger === l else { return }
+            switch result {
+            case .success: self.transactions[receipt.editId]?.confirmed = true; self.transactions[receipt.editId]?.documentBefore = nil
+            case .failure(let f): self.note("edit ledger confirm \(receipt.editId) failed: \(f.text)")
+            }
+        }
+    }
+
+    private func flushDeferredEdits() {
+        let edits = deferredEdits
+        deferredEdits.removeAll()
+        for edit in edits { sendEdit(edit) }
     }
 
     // MARK: restart reconciliation (contract step 5)
@@ -399,78 +660,164 @@ final class BridgeSession {
     enum ReconcileAction: Equatable {
         case confirmed(editId: String)
         case replayedReceipt(editId: String, newRevision: Int)
-        case reoffered(captureId: String, proposal: RuntimeV1.CaptureProposal)
-        case reselectionRequired(editId: String, why: String)
-        case abandoned(editId: String, why: String)
+        /// The bridge has no (or a conflicting) durable record: the helper keeps
+        /// the evidence; a person must resolve it (`resolveReconciliation`).
+        case needsReconciliation(editId: String, why: String)
+        /// Transport failure: nothing was concluded; retry reconciliation later.
+        case retryLater(editId: String, why: String)
     }
 
-    /// Consults `capture_status` for every unconfirmed ledger entry before the
-    /// current document is opened. Missing receipts are replayed against the
-    /// pre-edit snapshot; prepared-but-unapplied edits are re-offered only when
-    /// the buffer still matches; anything else requires a new capture/destination.
-    /// Returns the actions plus the minimum revision the editor must advance to.
-    func reconcile(path: String, currentText: String, currentRevision: Int) async -> (actions: [ReconcileAction], minimumRevision: Int) {
+    /// True after a reconciliation that could not reach a conclusion for every entry.
+    private(set) var reconciliationIncomplete = false
+
+    /// Ledger-guarded reconciliation (helper `recovery_export` → bridge
+    /// `capture_status` per pending capture → `recovery_import` with the
+    /// observations): the helper confirms exact `applied` receipts durably,
+    /// returns `replay_receipt` (with the retained pre-edit snapshot) for edits
+    /// the bridge only prepared, and keeps evidence for anything unavailable.
+    /// The snapshot token refuses an import if source or ledger changed during
+    /// the bridge round trip (edits while awaiting); we re-export and retry a
+    /// bounded number of times. Missing/conflicting bridge records are reported
+    /// as `needsReconciliation` (explicit resolution), transport failures as
+    /// `retryLater`. Returns the actions and the minimum editor revision.
+    func reconcile(path: String, currentSource: () -> (text: String, revision: Int),
+                   statusTimeout: TimeInterval = 15, maxRounds: Int = 3) async -> (actions: [ReconcileAction], minimumRevision: Int) {
         var actions: [ReconcileAction] = []
-        var minimum = currentRevision
-        let currentSha = SourceDigest.sha256Hex(currentText)
-        for entry in ledger.unconfirmed where entry.projectId == projectId && entry.path == path {
-            let st: TransferV1.CaptureStatus
-            do { st = try await status(captureId: entry.captureId) } catch {
-                let why = "bridge has no usable record (\((error as? BridgeClient.Failure)?.text ?? "\(error)"))"
-                try? ledger.update(editId: entry.editId) { $0.state = .abandoned; $0.note = why; $0.documentBeforeText = nil }
-                actions.append(.abandoned(editId: entry.editId, why: why))
-                continue
+        var minimum = currentSource().revision
+        reconciliationIncomplete = false
+        guard ledgerUsable, let l = ledger, durable != nil else {
+            status = "edit ledger unavailable (\(ledgerError ?? ledgerStatus)); capture insertion disabled until it is repaired"
+            reconciliationIncomplete = true
+            onChange()
+            return ([], minimum)
+        }
+        for round in 1...max(1, maxRounds) {
+            let export: EditLedgerV1.RecoveryExport
+            do { export = try await l.recoveryExport(timeout: statusTimeout) } catch {
+                ledgerError = "recovery export failed — \((error as? LineProcessFailure)?.text ?? "\(error)")"
+                reconciliationIncomplete = true
+                onChange()
+                return (actions, minimum)
             }
-            if st.applied?.editId == entry.editId {
-                try? ledger.update(editId: entry.editId) { $0.state = .confirmed; $0.documentBeforeText = nil }
-                minimum = max(minimum, (st.applied?.newRevision ?? 0) + 1)
-                actions.append(.confirmed(editId: entry.editId))
-                continue
+            guard ledger === l else { return (actions, minimum) }
+            durable = export.currentDocument
+            for tx in export.pendingReceipts { transactions[tx.edit.editId] = tx }
+            let pending = export.pendingReceipts.filter { $0.edit.path == path && $0.edit.projectId == projectId
+                && $0.edit.editId != pendingTransaction?.edit.editId } // a live transaction is not a restart case
+            if pending.isEmpty { break }
+            // Ask the bridge about every pending capture; classify for the helper and for the UI.
+            var observations: [EditLedgerV1.BridgeObservation] = []
+            var transient: [String: String] = [:], missing: [String: String] = [:]
+            for tx in pending {
+                let captureId = tx.edit.captureId
+                do {
+                    let st = try await client.request(.captureStatus, TransferV1.CaptureID(captureId: captureId),
+                                                      as: TransferV1.CaptureStatus.self, timeout: statusTimeout)
+                    guard ledger === l else { return (actions, minimum) }
+                    if let applied = st.applied, applied.editId == tx.edit.editId, applied.newRevision == tx.receipt.newRevision {
+                        observations.append(.applied(receipt: tx.receipt))
+                    } else if st.applied == nil, st.prepared == tx.edit {
+                        observations.append(.prepared(edit: tx.edit))
+                    } else {
+                        let why = st.applied != nil
+                            ? "bridge holds a different receipt for \(captureId) (\(st.applied!.editId) @ \(st.applied!.newRevision)); evidence kept"
+                            : "bridge holds no matching prepared edit for \(tx.edit.editId); evidence kept"
+                        missing[tx.edit.editId] = why
+                        observations.append(.unavailable(captureId: captureId, reason: why))
+                    }
+                } catch {
+                    let f = (error as? LineProcessFailure) ?? .undecodable("\(error)")
+                    if f.isTransient || !(f.code == "capture_missing" || f.code == "invalid_journal") {
+                        transient[tx.edit.editId] = f.text
+                    } else {
+                        missing[tx.edit.editId] = "bridge has no usable durable record for \(captureId) (\(f.text)); evidence kept in the edit ledger for explicit reconciliation"
+                    }
+                    observations.append(.unavailable(captureId: captureId, reason: f.text))
+                }
             }
-            switch entry.state {
-            case .applied:
-                guard st.prepared?.editId == entry.editId, let before = entry.documentBeforeText, let newRevision = entry.newRevision else {
-                    let why = "applied locally but the bridge holds no prepared edit \(entry.editId); receipt cannot be replayed"
-                    try? ledger.update(editId: entry.editId) { $0.state = .abandoned; $0.note = why; $0.documentBeforeText = nil }
-                    actions.append(.abandoned(editId: entry.editId, why: why))
+            // Hand the observations back under the snapshot token; the helper decides durably.
+            let plan: EditLedgerV1.RecoveryPlan
+            do { plan = try await l.recoveryImport(snapshotToken: export.snapshotToken, observations: observations, timeout: statusTimeout) } catch {
+                let f = (error as? LineProcessFailure) ?? .undecodable("\(error)")
+                guard ledger === l else { return (actions, minimum) }
+                if f.code == "stale_recovery_snapshot", round < maxRounds {
+                    note("recovery snapshot changed during the bridge round trip (round \(round)); exporting again")
                     continue
                 }
-                // Reopen the pre-edit snapshot, replay the receipt, then the caller resynchronizes the live source.
-                do {
-                    try await open(path: path, revision: entry.expectedRevision, text: before)
-                    _ = try await client.request(.captureApplied,
-                        TransferV1.CaptureApplied(captureId: entry.captureId, editId: entry.editId, newRevision: newRevision),
-                        as: TransferV1.CaptureApplied.self)
-                    try? ledger.update(editId: entry.editId) { $0.state = .confirmed; $0.documentBeforeText = nil }
-                    shadow[path] = (newRevision, entry.documentAfterSha256 == SourceDigest.sha256Hex(currentText) ? currentText : before)
-                    minimum = max(minimum, newRevision + 1)
-                    setCapture(entry.captureId, .confirmed, "receipt replayed after restart")
-                    actions.append(.replayedReceipt(editId: entry.editId, newRevision: newRevision))
-                } catch {
-                    let f = fail("receipt replay", error)
-                    actions.append(.abandoned(editId: entry.editId, why: "receipt replay refused (\(f.text)); ledger keeps the applied entry"))
-                }
-            case .prepared:
-                if st.prepared?.editId == entry.editId, currentSha == entry.documentBeforeSha256, currentRevision <= entry.expectedRevision,
-                   let p = st.proposal {
-                    minimum = max(minimum, entry.expectedRevision)
-                    let proposal = RuntimeV1.CaptureProposal(captureId: entry.captureId, latex: p.latex, ambiguities: p.ambiguities,
-                                                             requiredDependencies: p.requiredDependencies)
-                    setCapture(entry.captureId, .proposed, "prepared edit re-offered after restart")
-                    actions.append(.reoffered(captureId: entry.captureId, proposal: proposal))
-                } else {
-                    let why = currentSha == entry.documentBeforeSha256
-                        ? "editor revision \(currentRevision) passed the prepared revision \(entry.expectedRevision); use a new capture"
-                        : "buffer changed since edit \(entry.editId) was prepared; pin a new destination and submit a new capture"
-                    try? ledger.update(editId: entry.editId) { $0.state = .abandoned; $0.note = why; $0.documentBeforeText = nil }
-                    setCapture(entry.captureId, .needsReselection, why)
-                    actions.append(.reselectionRequired(editId: entry.editId, why: why))
-                }
-            case .confirmed, .abandoned:
-                break
+                ledgerError = f.code == "stale_recovery_snapshot" ? nil : "recovery import refused — \(f.text)"
+                status = "reconciliation could not be recorded — \(f.text)"
+                reconciliationIncomplete = true
+                note(status)
+                onChange()
+                return (actions, minimum)
             }
+            guard ledger === l else { return (actions, minimum) }
+            durable = plan.recovery.currentDocument
+            for tx in plan.recovery.pendingReceipts { transactions[tx.edit.editId] = tx }
+            for action in plan.actions {
+                switch action {
+                case .confirmed(let receipt):
+                    transactions[receipt.editId]?.confirmed = true
+                    transactions[receipt.editId]?.documentBefore = nil
+                    needsReconciliation[receipt.editId] = nil
+                    minimum = max(minimum, receipt.newRevision + 1)
+                    actions.append(.confirmed(editId: receipt.editId))
+                case .replayReceipt(let before, let receipt):
+                    // Reopen the pre-edit snapshot on the bridge, replay the receipt, confirm locally on an
+                    // exact acknowledgement; the caller resynchronizes the live source afterwards.
+                    do {
+                        try await open(path: path, revision: before.revision, text: before.text)
+                        let ack = try await client.request(.captureApplied, receipt, as: TransferV1.CaptureApplied.self, timeout: statusTimeout)
+                        guard ledger === l else { return (actions, minimum) }
+                        guard ack == receipt else {
+                            let why = "bridge acknowledged \(ack.editId) @ \(ack.newRevision), not the durable receipt \(receipt.newRevision); evidence kept"
+                            needsReconciliation[receipt.editId] = why
+                            actions.append(.needsReconciliation(editId: receipt.editId, why: why))
+                            continue
+                        }
+                        _ = try await l.confirm(receipt)
+                        transactions[receipt.editId]?.confirmed = true
+                        transactions[receipt.editId]?.documentBefore = nil
+                        needsReconciliation[receipt.editId] = nil
+                        let now = currentSource()
+                        shadow[path] = (receipt.newRevision, transactions[receipt.editId]?.documentAfterSha256 == SourceDigest.sha256Hex(now.text) ? now.text : before.text)
+                        minimum = max(minimum, receipt.newRevision + 1)
+                        setCapture(receipt.captureId, .confirmed, "receipt replayed after restart")
+                        actions.append(.replayedReceipt(editId: receipt.editId, newRevision: receipt.newRevision))
+                    } catch {
+                        let f = fail("receipt replay", error)
+                        reconciliationIncomplete = reconciliationIncomplete || f.isTransient
+                        actions.append(.retryLater(editId: receipt.editId, why: "receipt replay refused (\(f.text)); the edit ledger keeps the transaction"))
+                    }
+                case .retryStatus(let captureId, let reason):
+                    guard let editId = transactions.values.first(where: { $0.edit.captureId == captureId })?.edit.editId else { continue }
+                    if let why = missing[editId] {
+                        needsReconciliation[editId] = why
+                        setCapture(captureId, .needsReselection, why)
+                        actions.append(.needsReconciliation(editId: editId, why: why))
+                    } else {
+                        reconciliationIncomplete = true
+                        note("capture_status \(captureId) failed (\(transient[editId] ?? reason)); transaction \(editId) kept for retry")
+                        actions.append(.retryLater(editId: editId, why: transient[editId] ?? reason))
+                    }
+                }
+            }
+            break
         }
         onChange()
         return (actions, minimum)
+    }
+
+    /// Explicit human resolution of a transaction the bridge has no durable
+    /// record for: the operator confirms the insertion is in the document, so
+    /// the helper may drop its recovery snapshot. Evidence is only dropped here.
+    func resolveReconciliation(editId: String, note why: String) async throws {
+        guard let tx = transactions[editId], let l = ledger else { throw LedgerError.unusable("no such transaction") }
+        _ = try await l.confirm(tx.receipt)
+        transactions[editId]?.confirmed = true
+        transactions[editId]?.documentBefore = nil
+        needsReconciliation[editId] = nil
+        note("transaction \(editId) resolved by operator: \(why)")
+        onChange()
     }
 }

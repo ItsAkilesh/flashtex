@@ -44,6 +44,8 @@ final class ShellModel: ObservableObject {
     @Published var bridgeCaptures: [BridgeSession.Capture] = []
     @Published var bridgeDestination: TransferV1.Anchor?
     private(set) var bridge: BridgeSession?
+    /// Deadline for each `capture_status` during restart reconciliation.
+    var bridgeStatusTimeout: TimeInterval = 15
     @Published var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
