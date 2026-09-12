@@ -131,7 +131,7 @@ fn check_invariants(items: &[Item], out: &Lines) {
 fn trailing_line_break_yields_an_empty_last_line() {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&TestFont, 10.0, "Hello ", 0);
+    b.text(&TestFont, 10.0, "Hello ", 0).unwrap();
     b.line_break();
     let it = b.finish(Glue::fil());
     assert_eq!(it.len(), 7);
@@ -173,9 +173,9 @@ fn trailing_line_break_yields_an_empty_last_line() {
 fn mid_paragraph_line_break_is_unchanged() {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&TestFont, 10.0, "Hello ", 0);
+    b.text(&TestFont, 10.0, "Hello ", 0).unwrap();
     b.line_break();
-    b.text(&TestFont, 10.0, "world", 8);
+    b.text(&TestFont, 10.0, "world", 8).unwrap();
     let it = b.finish(Glue::fil());
     // [Box Glue Glue Pen | Box Pen Glue Pen]
     assert_eq!(it.len(), 8);
@@ -238,7 +238,7 @@ fn paragraph_of_only_a_forced_break() {
 fn consecutive_forced_breaks_yield_consecutive_empty_lines() {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&TestFont, 10.0, "Hello", 0);
+    b.text(&TestFont, 10.0, "Hello", 0).unwrap();
     b.line_break();
     b.line_break();
     let it = b.finish(Glue::fil());
@@ -261,12 +261,12 @@ fn consecutive_forced_breaks_yield_consecutive_empty_lines() {
 fn forced_break_followed_by_discardable_glue() {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.word(&TestFont, 10.0, "aaaa", 0);
+    b.word(&TestFont, 10.0, "aaaa", 0).unwrap();
     b.penalty(FORCED_BREAK);
     b.space(&TestFont, 10.0, 4..5);
     b.kern(4.0);
     b.space(&TestFont, 10.0, 5..6);
-    b.word(&TestFont, 10.0, "bbbb", 6);
+    b.word(&TestFont, 10.0, "bbbb", 6).unwrap();
     let it = b.finish(Glue::fil());
     // [Box Pen Glue Kern Glue Box Pen(inf) Glue(parfill) Pen]
     assert_eq!(it.len(), 9);
@@ -343,7 +343,7 @@ fn random_item_sequences_ending_in_forced_breaks_never_panic_or_drop_boxes() {
                 0..=3 => {
                     let n = 1 + rng.below(6) as usize;
                     let word: String = "abcdefgh".chars().take(n).collect();
-                    b.word(&TestFont, 10.0, &word, src);
+                    b.word(&TestFont, 10.0, &word, src).unwrap();
                     src += n;
                 }
                 4..=5 => {
