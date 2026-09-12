@@ -62,7 +62,7 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 16 library tests and three subprocess tests pass on Linux. They
+Validation: 32 library tests and three subprocess tests pass on Linux. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,
@@ -71,6 +71,40 @@ Clippy passes with warnings denied. No Xcode/device test or physical power-loss
 claim is made; durability relies on the host filesystem honoring sync and atomic
 same-directory rename. Linux and macOS filesystems are the intended targets.
 
+## Background service adapter
+
+`service::BackgroundService::start` spawns a worker that opens and exclusively
+owns the store. Native library callers use `try_submit(frame)` and
+`PendingReply::try_recv()`; these methods never open/sync files or write pipes.
+Reply serialization, JSON decoding, document hashing and filesystem transactions run
+on the worker. Do not use the blocking `wait()` convenience on MainActor.
+The executable hosts the same service; its stdin/stdout host may block, so a
+native Process adapter must keep pipe I/O on its own serial background queue.
+No Swift/FFI binding or native integration is claimed by this Rust crate.
+
+Admission accepts exactly one newline-terminated request of at most 12 MiB.
+Default capacity is four outstanding commands including undrained replies;
+`busy` is returned immediately before accepting excess work. Each command has
+one reply slot, so a stalled/dropped reply reader cannot block other admitted
+commands. Dropping a reply does not cancel an accepted transaction: export and
+reconcile durable state before retrying. Dropping the last service handle closes
+admission; its worker finishes accepted work and releases the store lock.
+
+Replies include ledger-local `session_id`, monotonic execution `sequence`,
+`document_revision`, `document_sha256`, and `command_succeeded`. Native consumers
+must compare the current session identity before updating UI and reject older
+sequence/revision observations. These fields do not alter transfer-v1 bridge
+messages. Startup lock/storage errors arrive as asynchronous request error events.
+
+Reply size defaults to 16 MiB (configurable up to 128 MiB); oversized payloads are
+omitted with `reply_too_large`. `command_succeeded: true` and the durable revision
+still report a completed operation, so never interpret omitted output as rollback.
+Use a sufficiently bounded background recovery consumer for large documents.
+The library caps capacity at 16 and retains at most the configured outstanding
+request/reply count internally. Caller-owned collected replies are the caller's
+responsibility. Tests cover capacity, frames, omitted payloads, startup errors,
+distinct sessions, and competing stale edits with revision-aware replies.
+
 ## Private JSON Lines helper
 
 Launch `flashtex-edit-ledger --store /private/existing-parent/document-store`.
@@ -78,8 +112,8 @@ Use private stdin/stdout pipes from a serial background adapter. Each request is
 one newline-terminated UTF-8 JSON object, at most 12 MiB, with a nonempty `id` of
 at most 128 bytes. This is a local storage protocol, not a replacement for the
 bridge's runtime envelopes. Responses preserve valid IDs and contain either
-`payload` or structured `error: {code,message}`. Fatal framing/startup errors
-terminate the helper. Request operations:
+`payload` or structured `error: {code,message}`. Fatal framing errors terminate
+the helper; startup errors arrive as service error replies. Request operations:
 
 | Operation | Fields | Successful payload |
 |---|---|---|

@@ -14,6 +14,7 @@ use std::{
 
 pub mod recovery;
 pub mod retention;
+pub mod service;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_REPLACEMENT_BYTES: usize = 64 * 1024;
