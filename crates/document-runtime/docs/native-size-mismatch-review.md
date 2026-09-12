@@ -35,3 +35,21 @@ expansion remain independently bounded; matching producer/runtime line caps is
 not a universal helper-output fit guarantee. Increasing the runtime ceiling alone
 is neither a responsiveness fix nor full-budget negotiation. No page/delta change
 is justified or activated by this review.
+
+## Published launch-policy review
+
+Read exact helper71049ffa (no suite rerun). `producer_command_with_limit` sets a
+child-local environment value; both initial session startup and explicit restart
+use it. UTF8/usize/positive parsing matches9aa. Although the helper does not
+explicitly repeat the producer16MiB clamp, its validated maximum is15MiB, making
+the results equivalent. It reserves exactly one framing newline and preserves
+stricter positive settings, including1. That setting may yield a larger minimal
+failed envelope; the patch does not claim one-byte wire compliance.
+
+Owner tests cover actual child environment and startup/restart, plus invalid,
+zero, whitespace, negative, leading-plus, leading-zero and overflow inputs.
+Suggested additional boundary assertions (not defects found): empty/nonUTF8
+values, exact ceiling, and128/default8MiB/maximum15MiB receiving limits.
+No accepted-sibling validation, optional queue policy or decoder lifecycle is
+relaxed. Actual oversized-producer decline acceptance remains the owner's next
+gate, distinct from this source review and reported synthetic test passes.
