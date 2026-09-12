@@ -628,3 +628,132 @@ fn compiler_restart_never_revalidates_older_index_snapshot() {
         .unwrap();
     assert!(controller.index().snapshot().generation > restarted.generation);
 }
+
+fn historical_fixture(dir: &std::path::Path) -> Controller {
+    let body = format!("import pathlib\n{}", ECHO.replace("time.sleep(.02)",
+        "\n while p['revision'] > 1 and not pathlib.Path(__file__).with_name('release').exists(): time.sleep(.001)"));
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir)],
+        command(dir, &body),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.configure_completed_snapshots(true).unwrap();
+    controller.compile_current().unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "new source with changed offsets".into(),
+        )
+        .unwrap();
+    wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Runtime(Event::Stale { revision: 1, .. })))
+    });
+    controller
+}
+
+#[test]
+fn historical_preview_binds_original_versions_and_cannot_regress_after_current_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = historical_fixture(dir.path());
+    let historical = controller.take_completed_snapshot().unwrap();
+    assert_eq!(historical.source_versions().documents["main.tex"], 1);
+    assert_eq!(controller.index().snapshot().documents["main.tex"], 2);
+    assert_eq!(historical.request_id(), "preview-1");
+    assert_eq!(historical.result()["payload"]["revision"], 1);
+    assert!(controller.claim_historical_display(&historical));
+    assert!(!controller.claim_historical_display(&historical));
+    std::fs::write(dir.path().join("release"), b"ok").unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let current = events
+        .into_iter()
+        .find_map(|event| match event {
+            Update::Preview(p) => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    assert!(controller.is_current_preview(&current));
+    assert!(!controller.claim_historical_display(&historical));
+    assert!(controller.take_completed_snapshot().is_none());
+}
+
+#[test]
+fn historical_callbacks_are_invalid_after_policy_layout_restart_close_or_other_controller() {
+    for transition in ["policy", "layout", "restart", "close", "other"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut controller = historical_fixture(dir.path());
+        let historical = controller.take_completed_snapshot().unwrap();
+        match transition {
+            "policy" => {
+                controller.configure_completed_snapshots(false).unwrap();
+                controller.configure_completed_snapshots(true).unwrap();
+            }
+            "layout" => {
+                controller.configure_layout(vec![]).unwrap();
+            }
+            "restart" => {
+                controller
+                    .restart(command(dir.path(), ECHO), Limits::default())
+                    .unwrap();
+            }
+            "close" => {
+                controller.close().unwrap();
+            }
+            "other" => {
+                let other_dir = tempfile::tempdir().unwrap();
+                let mut other = historical_fixture(other_dir.path());
+                assert!(!other.claim_historical_display(&historical));
+                continue;
+            }
+            _ => unreachable!(),
+        }
+        assert!(!controller.claim_historical_display(&historical));
+    }
+}
+
+#[test]
+fn optional_historical_metadata_eviction_never_rejects_a_durable_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.configure_completed_snapshots(true).unwrap();
+    for index in 0..80 {
+        let previous = controller.document("main.tex").unwrap().clone();
+        let outcome = controller
+            .replace_document(
+                "main.tex",
+                previous.revision,
+                &previous.source_sha256,
+                format!("durable edit {index}"),
+            )
+            .unwrap();
+        assert!(outcome.preview_error.is_none());
+        assert!(controller.historical_binding_count() <= 64);
+    }
+    assert_eq!(
+        controller.document("main.tex").unwrap().text,
+        "durable edit 79"
+    );
+    drop(controller);
+    assert_eq!(
+        store(dir.path()).document().unwrap().unwrap().text,
+        "durable edit 79"
+    );
+}
