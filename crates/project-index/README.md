@@ -89,8 +89,9 @@ Limitations remain explicit: no BibTeX/Biber database parsing, custom citation o
 reference macro recognition, conditional execution, macro expansion, runtime scoping,
 include graph execution, `lstlisting`/`minted` catcodes, or proof that a document
 compiles. Definitions inside macro bodies are lexical source occurrences, not a
-claim they execute. Whole-document replacement is supported; this is not a measured
-incremental parser or a latency guarantee. Malformed inputs are handled conservatively,
+claim they execute. Incremental reuse occurs between documents; each changed
+document is scanned in full. Measurements below concern lexical indexing only,
+not compiler or editor latency. Malformed inputs are handled conservatively,
 and highly nested/unclosed groups may require rescanning. Native consumers must
 adapt the Rust API and preserve the snapshot/source-range checks.
 
@@ -129,3 +130,57 @@ runtime scoping and indirect labels remain outside this lexical operation.
 
 Rename checkpoint: all 26 tests pass, including seven plan/source-guard tests;
 strict Clippy and formatting pass. No automatic document mutation was introduced.
+
+## Dependency diagnostics and measured document reuse
+
+`unresolved_references(snapshot)` returns label/citation names that have no lexical
+definition anywhere in the indexed project, each with its exact source span.
+This query is separate from syntax `diagnostics`, preserving the distinction
+between a malformed argument and a missing lexical target. Command uses are not
+reported as unresolved because builtin definitions, packages and macro scopes are
+not interpreted. Bibliography databases are not parsed; unresolved citations are
+lexical findings, not a claim that the actual TeX/Biber workflow fails.
+
+The index maintains definition and reader maps keyed by `(Category, name)`, with
+sets of contributing documents. Updating a document replaces only its lexical
+index. Its own reference diagnostics are refreshed for new offsets/revision; other
+documents' diagnostics are rechecked only when availability of a definition they
+read changes. A second definition disappearing does not invalidate readers while
+another definition survives. Deletion removes cached diagnostics and updates the
+same dependency maps. Label and citation namespaces remain independent.
+
+Every successful replacement returns `UpdateSummary.metrics: ReindexMetrics`.
+`last_reindex_metrics(snapshot)` also exposes metrics for replacement or deletion,
+with stale-query checks. Counters record the input bytes reindexed, number of
+document indexes rescanned/reused, changes to definition availability, and reference
+documents rechecked. Input byte counts are not parser instruction counts; malformed
+groups can require rescanning. Nanosecond lexical and total update timings use the
+local monotonic clock and are actual local samples, not deterministic outputs or
+provider costs. Failed updates leave the prior metrics and index unchanged.
+
+Run the bounded release-build example:
+
+```sh
+cargo run --release --offline --manifest-path crates/project-index/Cargo.toml \
+  --example reindex_measure
+```
+
+The example fixes its workload to 24 source documents, 80 lines each, and 12 edits
+to one document's label definition. It compares complete symbols and unresolved
+references with a clean rebuilt index after every edit, retaining actual cold,
+edit and clean-build timings plus reuse/diagnostic counters in JSON on stdout.
+It starts no provider, compiler, native app or background loop. This is a small
+synthetic index benchmark; its latency does not establish full-document typesetting
+performance or any end-to-end editor guarantee. Every sample is from a single
+local run and should be regenerated on the target hardware.
+
+[Retained sample](evidence/reindex-sample.json) binds the library/example source
+hashes, compiler version and exact command to the measured result: all 12 comparisons
+equal, 276 document indexes reused over 12 edits, and 144 dependent-document
+diagnostic refreshes. The median edit sample was 85,370 ns on this host. This is
+evidence for this small lexical workload only, with the limitations above.
+
+Dependency checkpoint: 32 total tests pass, including six dependency/cache tests
+and 16 successive clean-rebuild equivalence checks inside the test suite. The
+bounded measurement additionally checks 12 whole-index equivalences. Strict Clippy
+and formatting pass. Rename remains a plan-only operation.
