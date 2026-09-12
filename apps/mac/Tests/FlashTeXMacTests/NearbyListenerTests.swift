@@ -637,3 +637,148 @@ final class NearbyStateTests: XCTestCase {
         XCTFail("timed out waiting for \(what)")
     }
 }
+
+// MARK: - plaintext peers and bridge forwarding
+
+final class NearbyPlaintextTests: XCTestCase {
+    /// The companion at origin/agent/aarush-macbook/companion-capture e7ce5b9
+    /// connects with `NWParameters.tcp` and sends its hello line in the clear.
+    /// The listener must refuse that cleanly: handshake failure, no session,
+    /// nothing parsed, one closed event, and it keeps serving TLS peers.
+    func testPlainTCPClientIsRefusedWithoutParsingAndListenerSurvives() throws {
+        let sink = RecordingSink()
+        let h = ListenerHarness(psks: [.init(identity: "pair-a", key: NearbyListenerTests.pskA, isBootstrap: false)],
+                                sink: sink, destinations: nil)
+        try h.start()
+        defer { h.stop() }
+
+        let queue = DispatchQueue(label: "nearby.test.plain")
+        let plain = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: h.port)!, using: .tcp)
+        let ready = XCTestExpectation(description: "tcp ready")
+        let ended = XCTestExpectation(description: "server ended the plaintext connection")
+        plain.stateUpdateHandler = { state in
+            switch state {
+            case .ready: ready.fulfill()
+            case .failed, .cancelled: ended.fulfill()
+            default: break
+            }
+        }
+        plain.start(queue: queue)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, "TCP itself connects; TLS is what refuses")
+        let theirHello = "{\"protocol_version\":1,\"type\":\"hello\",\"id\":\"\(UUID().uuidString)\",\"payload\":{\"role\":\"companion\"}}\n"
+        plain.send(content: Data(theirHello.utf8), completion: .contentProcessed { _ in })
+        var fixture = try Data(contentsOf: NearbyListenerTests.fixtureURL)
+        if fixture.last != 0x0A { fixture.append(0x0A) }
+        plain.send(content: fixture, completion: .contentProcessed { _ in })
+        var received = Data()
+        func drain() {
+            plain.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, complete, error in
+                if let data { received.append(data) }
+                if complete || error != nil { ended.fulfill(); return }
+                drain()
+            }
+        }
+        drain()
+        XCTAssertEqual(XCTWaiter.wait(for: [ended], timeout: 5), .completed, "server must drop a plaintext peer")
+        // Whatever came back is a TLS alert at most, never a JSON line.
+        XCTAssertFalse(String(decoding: received, as: UTF8.self).contains("protocol_version"), "no plaintext reply")
+        XCTAssertEqual(sink.count, 0)
+        let events = h.snapshot
+        XCTAssertFalse(events.contains(.connectionOpened), "\(events)")
+        let closed = events.filter { if case .connectionClosed(let id, _) = $0 { return id == nil }; return false }
+        XCTAssertEqual(closed.count, 1, "exactly one closed event for the refused peer: \(events)")
+        plain.cancel()
+
+        // Still serving paired peers.
+        let good = NearbyTestClient(port: h.port, identity: "pair-a", psk: NearbyListenerTests.pskA)
+        XCTAssertEqual(XCTWaiter.wait(for: [good.ready], timeout: 5), .completed, "\(String(describing: good.failure))")
+        let nonce = "after-plain"
+        good.send(id: "h", type: "hello", NearbyV1.Hello(pairId: "pair-a", companionName: "x", nonce: nonce,
+                                                         proof: Pairing.helloProof(psk: NearbyListenerTests.pskA, nonce: nonce)))
+        XCTAssertEqual(good.lines(atLeast: 1).count, 1)
+        good.cancel()
+    }
+}
+
+@MainActor
+final class NearbyBridgeForwardingTests: XCTestCase {
+    private func waitUntil(_ what: String, timeout: TimeInterval = 10, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+
+    /// With the fake bridge attached, a nearby capture is forwarded and the
+    /// bridge's durable acknowledgement (or error) is what the companion gets;
+    /// `hello_ack.destination` follows the bridge's pinned anchor.
+    func testNearbyCaptureIsForwardedToAttachedBridge() async throws {
+        let model = ShellModel()
+        model.autoCompile = false
+        let store = try BridgeClientTests.tempStore()
+        let ok = await model.attachBridgeAndWait(executable: BridgeClientTests.python, arguments: [BridgeClientTests.fakeBridge.path], storeDirectory: store)
+        XCTAssertTrue(ok, model.bridgeStatus)
+
+        model.caretUTF16 = 6
+        model.pinAnchorAtCaret()
+        try await waitUntil("bridge pin") { model.bridgeDestination != nil }
+        let dest = try XCTUnwrap(model.nearbyDestination)
+        XCTAssertEqual(dest.destinationId, model.bridgeDestination?.destinationId)
+        XCTAssertEqual(dest.baseRevision, model.bridgeDestination?.pinnedRevision)
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-fwd-\(UUID().uuidString)")
+        let state = NearbyState(store: PairStore(url: dir.appendingPathComponent("pairs.json")), macName: "Bridge Mac", loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        let psk = Pairing.mintLongTermPSK()
+        XCTAssertTrue(state.store.upsert(PairRecord(pairId: "companion1", psk: psk.base64EncodedString(), companionName: "c", createdAt: Date(), lastSeenAt: nil)))
+        state.refreshPairs()
+        state.startAdvertising()
+        try await waitUntil("advertising") { state.port != nil }
+        let client = NearbyTestClient(port: state.port!, identity: "companion1", psk: psk)
+        try await waitUntil("client ready") { client.isReady }
+        let nonce = UUID().uuidString
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: "companion1", companionName: "c", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: psk, nonce: nonce)))
+        try await waitUntil("hello_ack") { client.lineCount >= 1 }
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: client.allLines[0])
+        XCTAssertEqual(ack.payload.destination, dest)
+
+        var submit = try BridgeClientTests.fixtureCapture()
+        submit.destinationId = dest.destinationId
+        submit.baseRevision = dest.baseRevision
+        submit.captureId = "nearby-1"
+        client.send(id: "c1", type: "capture_submit", submit)
+        try await waitUntil("capture_received") { client.lineCount >= 2 }
+        let received = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: client.allLines[1])
+        XCTAssertEqual(received.id, "c1")
+        XCTAssertTrue(received.payload.durable, "the bridge's acknowledgement is durable")
+        XCTAssertEqual(model.bridgeCaptures.last?.captureId, "nearby-1")
+        XCTAssertEqual(model.nearbyInbox.received.count, 0, "forwarded captures are not kept in the fallback inbox")
+        XCTAssertEqual(model.nearbyInbox.lastCaptureId, "nearby-1")
+
+        // Bridge errors pass through with their code.
+        submit.captureId = "nearby-2"
+        submit.instructions = "%error:invalid_image"
+        client.send(id: "c2", type: "capture_submit", submit)
+        try await waitUntil("error") { client.lineCount >= 3 }
+        let err = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: client.allLines[2])
+        XCTAssertEqual(err.id, "c2")
+        XCTAssertEqual(err.payload.code, "invalid_image")
+
+        // Without the bridge the inbox answers non-durably.
+        model.detachBridge()
+        submit.captureId = "nearby-3"
+        submit.instructions = "plain"
+        client.send(id: "c3", type: "capture_submit", submit)
+        try await waitUntil("fallback ack") { client.lineCount >= 4 }
+        let fallback = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: client.allLines[3])
+        XCTAssertFalse(fallback.payload.durable)
+        XCTAssertEqual(model.nearbyInbox.received.count, 1)
+
+        client.cancel()
+        state.stopAdvertising()
+        try? FileManager.default.removeItem(at: dir)
+    }
+}

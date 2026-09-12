@@ -254,7 +254,12 @@ final class NearbyListener {
                 guard let self else { return }
                 switch state {
                 case .ready: self.authenticated()
-                case .failed(let error): self.finish(reason: "failed before ready: \(error)")
+                case .failed(let error):
+                    // Typical for a plaintext or wrong-key peer: the handshake
+                    // failed. A failed connection still needs cancel to release
+                    // its socket; the second, `.cancelled`, pass is a no-op.
+                    self.finish(reason: self.session == nil ? "handshake failed: \(error)" : "failed: \(error)")
+                    self.nw.cancel()
                 case .cancelled: self.finish(reason: "cancelled")
                 default: break
                 }

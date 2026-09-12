@@ -1,0 +1,13 @@
+diff --git a/apps/companion/FlashTeXCompanion/Views/DrawingCanvasView.swift b/apps/companion/FlashTeXCompanion/Views/DrawingCanvasView.swift
+index c286988..1732d14 100644
+--- a/apps/companion/FlashTeXCompanion/Views/DrawingCanvasView.swift
++++ b/apps/companion/FlashTeXCompanion/Views/DrawingCanvasView.swift
+@@ -130,7 +130,7 @@ struct DestinationStrip: View {
+     var body: some View {
+         HStack(spacing: 6) {
+             Image(systemName: "mappin.circle.fill")
+-                .foregroundStyle(.accentColor)
++                .foregroundStyle(Color.accentColor)
+                 .font(.caption)
+             Text(store.currentDestinationID)
+                 .font(.caption.weight(.medium))

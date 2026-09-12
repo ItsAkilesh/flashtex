@@ -1,0 +1,123 @@
+diff --git a/apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj b/apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj
+index 3678fa6..646521c 100644
+--- a/apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj
++++ b/apps/companion/FlashTeXCompanion.xcodeproj/project.pbxproj
+@@ -19,6 +19,7 @@
+ 		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+ 		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
+ 		A1000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000009; };
++		A100000D /* BonjourTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXFileReference section */
+@@ -35,6 +36,7 @@
+ 		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+ 		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
+ 		A200000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
++		A200000E /* BonjourTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourTransport.swift; sourceTree = "<group>"; };
+ 		A3000001 /* FlashTeXCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlashTeXCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+ /* End PBXFileReference section */
+ 
+@@ -53,18 +55,7 @@
+ 			isa = PBXGroup;
+ 			children = (
+ 				A5000002 /* FlashTeXCompanion */,
+-				A5000006 /* Services */ = {
+-			isa = PBXGroup;
+-			children = (
+-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+-		A200000B /* CaptureTransport.swift */,
+-				A200000D /* ImageValidator.swift */,
+-			);
+-			path = Services;
+-			sourceTree = "<group>";
+-		};
+-		A5000005 /* Products */,
++				A5000005 /* Products */,
+ 			);
+ 			sourceTree = "<group>";
+ 		};
+@@ -76,10 +67,7 @@
+ 				A5000004 /* Models */,
+ 				A5000006 /* Services */,
+ 				A2000009 /* Assets.xcassets */,
+-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+-		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
+-		A200000A /* Info.plist */,
++				A200000A /* Info.plist */,
+ 			);
+ 			path = FlashTeXCompanion;
+ 			sourceTree = "<group>";
+@@ -92,8 +80,7 @@
+ 				A2000004 /* CameraCaptureView.swift */,
+ 				A2000007 /* PayloadPreviewView.swift */,
+ 				A2000008 /* CaptureHistoryView.swift */,
+-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+-		A200000C /* SettingsView.swift */,
++				A200000C /* SettingsView.swift */,
+ 			);
+ 			path = Views;
+ 			sourceTree = "<group>";
+@@ -110,10 +97,9 @@
+ 		A5000006 /* Services */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+-		A200000B /* CaptureTransport.swift */,
++				A200000B /* CaptureTransport.swift */,
+ 				A200000D /* ImageValidator.swift */,
++				A200000E /* BonjourTransport.swift */,
+ 			);
+ 			path = Services;
+ 			sourceTree = "<group>";
+@@ -170,18 +156,7 @@
+ 				Base,
+ 			);
+ 			mainGroup = A5000001;
+-			productRefGroup = A5000006 /* Services */ = {
+-			isa = PBXGroup;
+-			children = (
+-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
+-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+-		A200000B /* CaptureTransport.swift */,
+-				A200000D /* ImageValidator.swift */,
+-			);
+-			path = Services;
+-			sourceTree = "<group>";
+-		};
+-		A5000005 /* Products */;
++			productRefGroup = A5000005 /* Products */;
+ 			projectDirPath = "";
+ 			projectRoot = "";
+ 			targets = (
+@@ -195,10 +170,7 @@
+ 			isa = PBXResourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+-		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
+-		A1000009 /* Assets.xcassets in Resources */,
++				A1000009 /* Assets.xcassets in Resources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -217,12 +189,10 @@
+ 				A1000006 /* CaptureStore.swift in Sources */,
+ 				A1000007 /* PayloadPreviewView.swift in Sources */,
+ 				A1000008 /* CaptureHistoryView.swift in Sources */,
+-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
+-		A100000A /* CaptureTransport.swift in Sources */,
+-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
+-		A100000B /* SettingsView.swift in Sources */,
++				A100000A /* CaptureTransport.swift in Sources */,
++				A100000B /* SettingsView.swift in Sources */,
+ 				A100000C /* ImageValidator.swift in Sources */,
++				A100000D /* BonjourTransport.swift in Sources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};

@@ -30,6 +30,30 @@
         "crates/compiler"
       ],
       "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
+        "Included output preserves exact source file identity and UTF-8 byte ranges",
+        "Compiler and PDF paths share one layout/font representation or document a tested adapter"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage4",
+      "name": "Macro, multifile, and PDF convergence",
+      "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
+      "owned_paths": ["crates/compiler"],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
+        "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
+        "Every remaining unsupported corpus feature is explicit with a reproducible case"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage5",
+      "name": "Compiler recovery and compatibility gate",
+      "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
+      "owned_paths": ["crates/compiler"],
+      "timebox_minutes": 45
     }
   ],
   "task_id": "FT-002"
