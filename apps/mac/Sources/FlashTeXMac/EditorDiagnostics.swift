@@ -162,7 +162,7 @@ enum EditorDiagnostics {
         gapPhrases.contains { message.contains($0) }
     }
     private static let gapPhrases = ["not implemented", "not supported by this compiler version",
-                                     "not supported in math mode", "is unsupported"]
+                                     "not supported in math mode", "not supported in the document preamble", "is unsupported"]
 
     /// Errors and warnings that are not gaps, and the gaps, of `diagnostics`.
     static func counts(_ diagnostics: [RuntimeV1.Diagnostic]) -> (errors: Int, warnings: Int, gaps: Int) {
