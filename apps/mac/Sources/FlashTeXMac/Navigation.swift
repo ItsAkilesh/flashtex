@@ -224,7 +224,7 @@ extension ShellModel {
 
 /// `Navigate` menu, added from `FlashTeXMacApp` with one line.
 struct NavigationCommands: Commands {
-    @ObservedObject var model: ShellModel
+    var model: ShellModel
 
     var body: some Commands {
         CommandMenu("Navigate") {
