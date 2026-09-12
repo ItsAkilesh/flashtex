@@ -1,7 +1,9 @@
 //! FT-002 acceptance tests, stated against docs/contracts/runtime-v1.md.
 
 use flashtex_compiler::json::{self, Value};
-use flashtex_compiler::protocol::{handle_line, read_request_line, RequestLine, MAX_LINE_BYTES};
+use flashtex_compiler::protocol::{
+    handle_line, read_request_line, RequestLine, MAX_LINE_BYTES, MAX_RESULT_BYTES,
+};
 use std::io::{BufReader, Cursor};
 
 fn compile_line(id: &str, revision: i64, path: &str, text: &str) -> String {
@@ -469,4 +471,53 @@ fn warm_session_cache_is_bounded_and_stays_correct_after_eviction() {
             "spans must survive eviction unchanged"
         );
     }
+}
+
+/// Issue #21: a valid large project must not produce a reply the consumer will
+/// reject. It may deliver fewer pages, but only while saying so explicitly.
+#[test]
+fn a_large_project_reply_fits_the_transport_frame_and_says_what_it_dropped() {
+    let mut text = String::from("\\documentclass{article}\n\\begin{document}\n");
+    while text.len() < 500_000 {
+        text.push_str("Paragraph with a reasonable number of words that wrap across a line.\n\n");
+    }
+    text.push_str("\\end{document}\n");
+
+    let line = compile_line("oversized", 1, "main.tex", &text);
+    let raw = handle_line(&line);
+    assert!(
+        raw.len() <= MAX_RESULT_BYTES,
+        "reply of {} bytes exceeds the {MAX_RESULT_BYTES}-byte transport frame; \
+         the consumer would reject it as malformed",
+        raw.len()
+    );
+
+    let response = json::parse(&raw).expect("reply must still be valid JSON");
+    let pages = response
+        .get("payload")
+        .and_then(|p| p.get("pages"))
+        .and_then(|p| p.as_arr())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        !pages.is_empty(),
+        "a valid document must still deliver pages"
+    );
+
+    // Dropping pages silently is what the issue explicitly rules out.
+    let diagnostics = response
+        .get("payload")
+        .and_then(|p| p.get("diagnostics"))
+        .and_then(|v| v.as_arr())
+        .cloned()
+        .unwrap_or_default();
+    let announced = diagnostics.iter().any(|d| {
+        d.get("message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.contains("transport frame") && m.contains("were not delivered"))
+    });
+    assert!(
+        announced,
+        "pages were truncated without an explicit diagnostic saying so"
+    );
 }
