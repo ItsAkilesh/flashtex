@@ -69,7 +69,7 @@ final class PairingCoordinator: PairingConfirmer {
             guard Date() < p.expiresAt else { lastRefusal = "pairing code expired"; return nil }
             let psk = Pairing.mintLongTermPSK()
             let r = PairRecord(pairId: pairId, psk: psk.base64EncodedString(), companionName: companionName,
-                               createdAt: Date(), lastSeenAt: Date())
+                               createdAt: Date(), lastSeenAt: Date(), generation: p.generation) // pairs.json v2
             guard store.upsert(r) else { lastRefusal = "pair store refused the record"; return nil } // not persisted → not paired
             confirmed[pairId] = p.generation
             lastRefusal = nil

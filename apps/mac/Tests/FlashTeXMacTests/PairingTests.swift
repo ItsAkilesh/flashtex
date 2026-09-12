@@ -472,7 +472,12 @@ final class PairingPersistenceTests: XCTestCase {
         let ok = Data("""
         {"version": 1, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": []}
         """.utf8)
-        XCTAssertEqual(try PairStore.decode(ok).get().1, .loaded(version: 1))
+        // Schema v2 (per-record `generation`): a v1 file is upgraded in place, its records keep generation nil.
+        XCTAssertEqual(try PairStore.decode(ok).get().1, .upgraded(from: 1))
+        let current = Data("""
+        {"version": 2, "salt": "000102030405060708090a0b0c0d0e0f", "pairs": []}
+        """.utf8)
+        XCTAssertEqual(try PairStore.decode(current).get().1, .loaded(version: 2))
         let badSalt = Data("""
         {"version": 1, "salt": "0001", "pairs": []}
         """.utf8)

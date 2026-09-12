@@ -101,10 +101,14 @@ struct PairRecord: Codable, Equatable, Identifiable, CustomStringConvertible, Cu
     var companionName: String
     var createdAt: Date
     var lastSeenAt: Date?
+        /// Pairing attempt (`PairingCoordinator.Pending.generation`) that confirmed
+        /// this record; nil for records written by schema v1 files.
+        var generation: Int? = nil
+        
     var id: String { pairId }
     enum CodingKeys: String, CodingKey {
         case pairId = "pair_id", psk, companionName = "companion_name"
-        case createdAt = "created_at", lastSeenAt = "last_seen_at"
+        case createdAt = "created_at", lastSeenAt = "last_seen_at", generation
     }
     var pskData: Data? { Data(base64Encoded: psk) }
 
@@ -124,7 +128,7 @@ final class PairStore {
     /// a newer build (`version > schemaVersion`) is left untouched and the store
     /// starts empty with `loadError` set; an older version is upgraded in
     /// memory by `upgrade(_:)` and rewritten on the next persist.
-    static let schemaVersion = 1
+    static let schemaVersion = 2 // v2: per-record optional `generation`; v1 records decode with nil
 
     struct File: Codable {
         var version: Int
