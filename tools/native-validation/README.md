@@ -13,6 +13,7 @@ failures in those are written up in `reports/` for their owners.
 | `check_protocol.py` | Runtime-v1 checks against the real compiler binary over stdin/stdout JSON Lines: fixture request/response comparison (texts + ranges; positions INFO only), fixture self-consistency, Unicode byte-span round trip (`naïve café — 😀 end`), revision echo for out-of-order revisions, source editing changes output and is deterministic, diagnostics for unsupported input, `error` envelopes for `protocol_version: 2`, unknown `type`, malformed JSON, worker survives errors, and edit-to-result latency over 20 requests (min/median/max). | yes |
 | `check_ui_capabilities.sh` | Probes (never fails): `screencapture -x`, `osascript` System Events process listing, `osascript` UI scripting (Accessibility), `xcrun simctl list devices available`, whether the built `FlashTeXMac` launches and survives 3 s, whether it is frontmost / has enumerable windows, and the launchd session type. Records exact stderr for every failure. | no |
 | `check_pdf_export.py` | Stdlib inspector for a PDF exported by the app (`File > Export PDF…`): page count, MediaBoxes, and the page background fill colour before the first rectangle fill; exit 1 when a page background is not white. Validated against CoreGraphics PDFs painted `gray 1.0` (`1.0 sc`, PASS) and `gray 0.16` (`0.16 sc`, FAIL); not yet against an app-exported file (save panel needs a human). | manual input |
+| `oracle_compare.sh` / `oracle_compare.py` / `oracle_extract.swift` | Reference-oracle comparison (issue #10): pdflatex is run **only as a measuring stick, never by the product**. For each `oracle-samples/*.tex` and each oracle variant: pdflatex (`-interaction=batchmode`, temp dir) -> oracle PDF; FlashTeX compiler (preamble stripped) -> `compile_result` -> `flashtex-pdf --verify` -> our PDF; PDFKit word boxes for both (`oracle_extract.swift`, no third-party packages); page count / MediaBox equality, word-sequence equality after normalisation, per-word x/y deltas (mean/max, 10 largest), line-start agreement. Writes `reports/oracle-<UTC>.md` and a compact `.json` with every per-word delta. Exit 1 only when a tool fails; layout disagreement is a finding, not a failure. | findings |
 | `expectations.md` | Human checklist for what automation cannot verify here: visual click-to-source, Unicode selection, stale-preview banner, dark preview vs export, capture review. | manual |
 
 ## Running
@@ -30,6 +31,8 @@ python3 tools/native-validation/check_protocol.py \
   --compiler crates/compiler/target/release/flashtex-compiler --repo .
 # capability probes alone
 tools/native-validation/check_ui_capabilities.sh --mac-dir apps/mac --repo .
+# reference-oracle comparison (needs BasicTeX/TeX Live pdflatex at /Library/TeX/texbin/pdflatex)
+tools/native-validation/oracle_compare.sh --compiler-ref main=origin/main --compiler-ref de1020c=de1020c --pdf-ref c0f3837
 # inspect a PDF a human exported with File > Export PDF…
 python3 tools/native-validation/check_pdf_export.py ~/Desktop/demo-r3.pdf --expect-pages 1
 ```
@@ -128,3 +131,79 @@ pass/fail pattern (28 Swift tests then; 34 now).
 
 No compiler (`crates/compiler`) failure was found. No app (`apps/mac`) test or
 build failure was found; the export behavior above is the only app discrepancy.
+
+## Reference-oracle comparison (issue #10) — run 2026-09-12T05:09:58Z
+
+Report: `reports/oracle-20260912T050958Z.md` (+ `.json`, 1.3 MB, every per-word delta).
+Oracle: `/Library/TeX/texbin/pdflatex` = pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026),
+BasicTeX system install (`/usr/local/texlive/2026basic`). `kpsewhich times.sty geometry.sty`
+found both; **nothing was installed** (BasicTeX's `tlmgr` would need sudo, so a missing
+package is reported, not installed). Compilers: `main` = origin/main `342e1e0`
+(placeholder glyph metrics) and `de1020c` (real Times AFM metrics); PDF writer
+`flashtex-pdf` at `c0f3837`. The product never invokes pdflatex.
+
+Samples (`oracle-samples/`): `fixture-hello.tex` (the runtime-v1 fixture text),
+`demo.tex` (apps/mac/Samples/demo.tex from mac-shell `4c6bf47`, body verbatim),
+`wrap-sample.tex` (hand-written: `\section`, `\textbf`, `\emph`, naïve/café, a
+paragraph that wraps several times). Each file carries the minimal wrapper
+`\documentclass{article}` … `\begin{document}` … `\end{document}`.
+
+**What is stripped for our compiler:** everything before `\begin{document}` — for
+all three samples that is exactly the line `\documentclass{article}` (plus comment
+lines). It has to be stripped: the compiler at both revisions renders
+`\documentclass{article}` as the literal word `article` with the diagnostic
+"\documentclass is not supported by this compiler version". The oracle variants
+replace that preamble with their own.
+
+Oracle variants (the report lists the exact preambles):
+
+- `A-default` — as-is: `\documentclass{article}` + `\pagestyle{empty}` (Computer Modern 10pt,
+  LaTeX default margins, paragraph indent, numbered sections). **Not** apples-to-apples.
+- `B-times12-1in` — **apples-to-apples for font/size/margins**: `[12pt]{article}`, `\usepackage[T1]{fontenc}`,
+  `\usepackage{times}`, `\usepackage[margin=1in]{geometry}`, `\parindent 0pt`, `\setcounter{secnumdepth}{0}`
+  (our compiler does not indent paragraphs or number sections), `\pagestyle{empty}`.
+- `C-times12-1in-ragged` — B + `\raggedright` + hyphenation off: the closest match to our
+  greedy, unjustified, non-hyphenating line breaker. Use C for line-break and x comparisons,
+  B for "what LaTeX would actually produce with the same font and margins".
+
+Headline numbers (ours minus oracle; y = glyph-box bottom from page top, i.e. baseline + descent, so a
+constant ~0.46 pt offset is the substituted font's descent, not a baseline error):
+
+| Sample | Variant | Compiler | Pages o/u | MediaBox | Word sequence | mean\|dx\| | max\|dx\| | mean\|dy\| | max\|dy\| | Line starts agree |
+|---|---|---|---|---|---|---|---|---|---|---|
+| fixture-hello | B | de1020c | 1/1 | equal | equal | 0.05 | 0.11 | 0.46 | 0.46 | 1.00 |
+| fixture-hello | B | main | 1/1 | equal | equal | 1.90 | 3.81 | 0.46 | 0.46 | 1.00 |
+| fixture-hello | A | either | 1/1 | equal | equal | ~73 | 76.7 | 49.7 | 49.7 | 1.00 |
+| wrap-sample | C | de1020c | 1/1 | equal | equal (102 words) | 9.0 | 450.7 | 25.1 | 40.7 | 0.98 |
+| wrap-sample | B | de1020c | 1/1 | equal | equal | 33.7 | 445.8 | 25.5 | 40.8 | 0.94 |
+| wrap-sample | C | main | 1/1 | equal | no (94/102 aligned) | 112.2 | 400.8 | 30.2 | 46.6 | 0.91 |
+| demo | C | de1020c | 2/**3** | **no** | 2 diffs, 964/966 aligned | 13.7 | 445.3 | 97.6 | 168.5 | 0.98 |
+| demo | B | de1020c | 2/**3** | **no** | 2 diffs | 33.7 | 446.7 | 97.9 | 182.8 | 0.95 |
+| demo | C | main | 2/**3** | **no** | 31 diffs, 904/966 aligned | 147.3 | 418.0 | 147.4 | 278.0 | 0.89 |
+
+Findings for the owners (nothing was changed in the compiler or PDF crate):
+
+1. **Compiler (de1020c), line breaking:** within a line ours drifts right by 0.1–0.3 pt per word
+   because pdflatex applies kerning pairs and ligatures and our layout uses plain AFM advance widths.
+   By the end of a full line ours is ~2 pt further right, so words that pdflatex keeps on the line
+   wrap in ours: `demo`/C, `onto` at oracle x 517.26 (right edge 538.6 < 540) versus ours at 519.35
+   (right edge 540.7 > 540) -> wrapped. Every large `max|dx|` (~400–450 pt) is one of these
+   end-of-line wraps; the mean is small. Line-start agreement 0.98 on both wrapping samples.
+2. **Compiler, vertical spacing and pagination:** line pitch matches (oracle 14.45 pt vs ours 14.4 pt), but
+   measured on `demo`/C page 1 ours gains +14.75 pt at the first body line after each heading, +5.9 pt at
+   every paragraph break (`PARAGRAPH_GAP_PT = 6`; article's `\parskip` is 0 pt) and +14.4 pt for every
+   extra wrapped line from finding 1 (the +20 pt jumps are 6 + 14.4), so `demo` runs to 3 pages against
+   pdflatex's 2 (page count and MediaBox list differ). `mean|dy|` of ~98 pt on `demo` is this accumulated
+   drift, not a per-line error; the heading line itself is only 5.1 pt lower than LaTeX's.
+3. **Compiler, punctuation after a group:** `\textbf{clear observation}:` emits `observation` and `:` as
+   two items (oracle: one word `observation:`), the only word-sequence difference on `demo` with de1020c.
+4. **Compiler (main, placeholder metrics):** words are so mis-measured that consecutive words touch in the
+   PDF and PDFKit merges them (`Anaive`, `whenthe`, `Resumeof` …, 31 sequence diffs on `demo`); position
+   error `mean|dx|` 112–147 pt. Superseded by de1020c's real metrics; recorded as the baseline.
+5. **Oracle-side artefacts, not FlashTeX bugs:** variant A extracts OT1 accents as `na¨ıve`/`caf´e` (the
+   comparison normalises accents away and folds fi/ff ligature code points), numbers sections (`1`, `1.1`
+   appear as words) and indents paragraphs (first word x = 148.7 pt versus our 72 pt); variant B/C removes
+   the last two. `demo` with de1020c under variant A still aligns 952/974 words.
+
+The per-word deltas for every sample/variant/compiler are in the `.json`
+(`results[].comparisons[].deltas[]`: word, pages, oracle/ours x and y, dx, dy, line-start flags).

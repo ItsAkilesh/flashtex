@@ -1,0 +1,13 @@
+%% Oracle sample: hand-written body exercising \section, \textbf, \emph, accented words,
+%% and one paragraph long enough to wrap at least twice at 12pt with 1in margins.
+%% The preamble (everything before \begin{document}) is stripped for the FlashTeX compiler; see README.md.
+\documentclass{article}
+\begin{document}
+\section{Wrapping and accents}
+A naïve reader at the café expects the layout to follow the source.
+The \textbf{bold phrase} and the \emph{emphasised phrase} keep their words in order.
+
+This paragraph is deliberately long so that a real TeX engine and the FlashTeX compiler both have to break it into several lines, which lets the comparison tool report where each line starts and how far every word drifts from the oracle position. It keeps going with ordinary prose, a few longer words such as verification and reproducibility, and finally ends here.
+
+Short last paragraph with fine coffee and an em dash — done.
+\end{document}
