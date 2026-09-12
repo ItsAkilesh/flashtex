@@ -8,29 +8,29 @@
     "appkit",
     "swiftui"
   ],
-  "code_revision": "cd58fc2e",
+  "code_revision": "90e8d6d6",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 15
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005",
-  "next_action": "Coverage audit done (coordination/mac-diagnostics-2.md); implementing HW1 real-compiler partial-output + stale-invalidation tests, failed-result mark retention, identical-diagnostic grouping",
+  "next_action": "Parent merges agent/mac-diagnostics-2/partial-output and applies docs/evidence/mac-diagnostics-2-hooks-2026-09-12.diff (ShellModel retainedMarks + 3 binding hooks, Navigation, ContentView grouped rows, new ShellModel+DiagnosticRetention.swift, shell-level test) from \u2026-applied afc8adf9",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Base; earlier diagnostics lanes (exact marks, explanations, quick fix) and navigation lanes are merged, so EditorDiagnostics.swift is edited in place and keyboard navigation is reused rather than re-implemented",
+      "adaptation": "Base; earlier diagnostics lanes (exact marks, explanations, quick fix) and navigation lanes merged, so EditorDiagnostics.swift is extended in place and goToDiagnostic/navigateExactly are reused, not re-implemented; mac-shell moved to 2fa51729 (visual-oracle) after branching, no owned-file overlap",
       "reviewed_utc": "2026-09-12T16:20:00Z",
       "sha": "cd58fc2e"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Editor diagnostics item 9 replenishment: audit found keyboard navigation and follow-up 2 (cross-document jump) already covered; uncovered: real-compiler partial-output marks on HW1 (119 diagnostics), failed-result retention of last marks, multi-edit stale invalidation, grouping identical diagnostics",
+  "state": "ready_for_integration",
+  "summary": "Item 9 replenishment: audit found keyboard navigation and follow-up 2 (cross-document jump) already covered. Added: failed-result retention (a failed result with no pages keeps the last marks rebased and flagged, never cleared/duplicated), identical-diagnostic grouping with per-occurrence jump (follow-up 1), and EditorDiagnosticsPartialOutputTests (6) on the live compiler over HW1 (recovered, 2 pages, 119 sourced diagnostics; macro-expansion diagnostics land on the call site) incl. multi-edit stale invalidation. README paragraph. Parent-file hooks as diff + applied branch.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T16:20:00Z",
+  "updated_utc": "2026-09-12T16:52:00Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "lane 90e8d6d6: swift build --build-tests OK; filter EditorDiagnostics 33 tests/2 skipped(FLASHTEX_EXPLAIN)/0 failures; HistoricalPreview|SourceEditorView|EditorDiagnostics|Navigation|EditorDiagnosticsAccessibility 72/2 skipped/0 failures (FLASHTEX_COMPILER main-checkout release, load 22-46, no full suite); applied afc8adf9: build OK, retention shell test + 18 others 19/1 skipped/0 failures",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
