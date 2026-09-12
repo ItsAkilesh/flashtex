@@ -1,0 +1,97 @@
+{
+  "agent_id": "mac-claude-a",
+  "archived_utc": "2026-09-12T04:30:26Z",
+  "assignment": {
+    "acceptance": [
+      "Prove actual Rust output changes when source changes",
+      "Delayed older responses cannot replace newer output",
+      "Report measured edit-to-preview latency and native build command",
+      "After source edits, do not navigate with stale byte offsets unless a validated edit mapping rebases them; cover this in tests"
+    ],
+    "agent_id": "mac-claude-a",
+    "allocation_id": "claude-mac20x-shell-stage2",
+    "branch": "agent/mac-claude-a/mac-shell",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+    "objective": "Connect the Mac app to the original Rust runtime over runtime-v1 JSONLines. Add debounced edits, revision ordering, cancellation/coalescing, and clear build status. Original compiler arrival may lag: implement and test the real subprocess transport now using a clearly labeled protocol test child; switch to crates/compiler when available. Preserve existing dark preview and Unicode navigation.",
+    "owned_paths": [
+      "apps/mac"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-003",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T04:21:55Z"
+  },
+  "report": {
+    "agent_id": "mac-claude-a",
+    "allocation_id": "openai-mac-plus-ft003",
+    "assignment_acknowledgements": {
+      "FT-003": {
+        "acknowledged_utc": "2026-09-12T04:30:04Z",
+        "adaptation": "Accepted FT-003 rev 2 (Live compiler integration) at input main 25a92a9; delivered at fd2a26e: real subprocess transport (Python test double clearly labeled + real crates/compiler 29221d8 via RealCompilerTests), stale-guard for older responses, debounced auto-compile with coalescing, edit mapping that refuses stale offsets unless rebased, measured latency 0.5-9 ms/request. Children mac-pdf (FT-009) and mac-validation (FT-010) running in worktrees.",
+        "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-claude-a/mac-shell",
+    "capabilities": [
+      "swift",
+      "xcode",
+      "rust",
+      "macos-simulators"
+    ],
+    "code_revision": "fd2a26e5deea9151138d8c59e9c7bc8b757f3334",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
+    "next_action": "Queue step 1 Native editor and preview quality; collect mac-pdf/mac-validation; register children via coord.py",
+    "reviewed_peers": {
+      "origin/agent/aarush-macbook/companion-capture": {
+        "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
+        "reviewed_utc": "2026-09-12T04:16:05Z",
+        "sha": "eb1c2fcb75b8f51cfe99d8facbec91c7c9857546"
+      },
+      "origin/agent/claude/compiler-foundation": {
+        "adaptation": "Attached shell to the real compiler; protocol compatible without changes; added binary auto-discovery",
+        "reviewed_utc": "2026-09-12T04:20:14Z",
+        "sha": "29221d8b15d412f4feb877879d5bfc02f6086a98"
+      },
+      "origin/agent/commander/coordination-tools": {
+        "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
+        "reviewed_utc": "2026-09-12T04:24:53Z",
+        "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
+      },
+      "origin/main": {
+        "adaptation": "Main 09031ef dispatches FT-003 rev 2 = the step just completed; FT-007 is Commander-owned; fixture compile-result.json text/range mismatch reported",
+        "reviewed_utc": "2026-09-12T04:30:04Z",
+        "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-003 rev 2 complete at fd2a26e: real JSONLines transport, revision ordering, debounce/coalescing, stale-offset refusal with validated rebase, latency 0.5-9ms; 34/34 tests with real compiler; xcodebuild OK; PDF export + caret sync merged",
+    "tool": "Claude Code",
+    "updated_utc": "2026-09-12T04:30:04Z",
+    "usage": {
+      "evidence": "Claude Max 20x per user + CMD-006; 4 subagents run so far; no purchases",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 22,
+  "report_path": "coordination/agents/mac-claude-a.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-003",
+  "worker_branch": "agent/mac-claude-a/mac-shell",
+  "worker_report_sha": "1c3ff1332e7b9d0cf716a45da3d2a1424bf6e2f0"
+}
