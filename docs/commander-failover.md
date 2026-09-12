@@ -102,3 +102,24 @@ match process pin and observed main to the current authority/config, and indepen
 confirm the host witness is the configured monitor. A receipt is not a blanket
 permission to take over a different/restarted session. If main/authority changed,
 reconcile before any claim. No claim runner has been installed on the Mac yet.
+
+## Autonomous claim executor (explicitly authorized, no sleeping-user prompt)
+
+`scripts/claim_commander.py` now implements the one-shot non-force authority claim.
+The parent monitor must independently review the exact witness branch commit and
+supply `--reviewed-witness SHA`, plus fresh capacity evidence, actual successor
+machine/unique ID, truthful local executor/coauthor, and a private journal path.
+It checks the configured witness author/executor/direct parent, exact process pin,
+main SHA, <=120-second terminal receipt, every stopped service, no pending jobs,
+current project/authority and resource selection before creating any claim. The
+claim changes only authority.json; any competing main push rejects without merge
+or retry. A pending journal requires reconciliation, including uncertain delivery.
+The isolated bare-remote test exercises a real claim and duplicate/competing refusal.
+
+This executor calls no model and requires no extra confirmation beyond the existing
+user authorization. It must NOT run while Astra lives. Install/route the existing
+remote monitor to this command only after its host can validate the actual witness
+and resource evidence. A script being published does not prove that remote hookup
+or a quota-to-terminal host adapter works. After successful claim, the selected
+parent invokes its already-authorized orchestrator session and resumes queues;
+first reread authority. Re-pin the new host witness before future succession.
