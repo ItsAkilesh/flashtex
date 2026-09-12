@@ -690,6 +690,12 @@ impl P {
         display: bool,
         para: &mut Vec<Inline>,
     ) {
+        // Unterminated math inside an expansion can report a content end past the
+        // token stream: the closing token the caller expected was never produced.
+        // Clamp rather than slice out of range — the diagnostic for the unclosed
+        // construct is emitted by the caller either way.
+        let content_start = content_start.min(self.t.len());
+        let content_end = content_end.clamp(content_start, self.t.len());
         let mut raw = Vec::new();
         for input in &self.t[content_start..content_end] {
             if input.maps_to_invocation {

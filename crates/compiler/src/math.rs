@@ -62,19 +62,47 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
     MathParser {
         tokens: &split,
         i: 0,
+        depth: 0,
         diagnostics,
     }
     .list(false)
 }
 
+/// Maximum nesting of braced math groups, scripts, fractions and radicals.
+///
+/// The list parser is recursive descent, so a document full of unclosed openers
+/// recurses once per opener. Without a bound, a pathological file — or a
+/// half-typed one — overflows the stack and kills the worker mid-keystroke.
+/// Exceeding the bound is an explicit diagnostic, not a crash.
+pub const MAX_MATH_DEPTH: usize = 256;
+
 struct MathParser<'a> {
     tokens: &'a [Token],
     i: usize,
+    depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
 
 impl MathParser<'_> {
     fn list(&mut self, stop_at_brace: bool) -> MathList {
+        if self.depth >= MAX_MATH_DEPTH {
+            // Consume the rest so the caller cannot loop on the same tokens.
+            let span = self.tokens.get(self.i).map(|t| t.span);
+            self.diagnostics.push(Diagnostic::error(
+                format!("math nesting deeper than {MAX_MATH_DEPTH} levels is not supported"),
+                span,
+                Some("stopped descending and typeset nothing further in this expression".into()),
+            ));
+            self.i = self.tokens.len();
+            return MathList { atoms: Vec::new() };
+        }
+        self.depth += 1;
+        let result = self.list_inner(stop_at_brace);
+        self.depth -= 1;
+        result
+    }
+
+    fn list_inner(&mut self, stop_at_brace: bool) -> MathList {
         let mut atoms: Vec<MathAtom> = Vec::new();
         while self.i < self.tokens.len() {
             let token = self.tokens[self.i].clone();

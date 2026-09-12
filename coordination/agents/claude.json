@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "c1a5901a51bed2f188854d0dc0a8155e5defc3b5",
+  "code_revision": "53d1b6f5c9579df85eb63684d7058e92f30a90f6",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Integration of 6b13034 and 46ff2ac into main. crates/compiler on main is still a pre-rev-3 snapshot lacking incremental reuse, latency evidence and recovery work.",
+  "next_action": "Integration of 6b13034, 46ff2ac and this commit. Available for further dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Ran the FT-012 conformance checker against real compiler output rather than fixtures, so runtime-v1 conformance is now evidenced by a tool this agent did not write. Confirmed FT-018/019/020 are parallel replacement crates whose assignments forbid editing the active compiler, so crates/compiler remains the live implementation and my pdf.rs and metrics.rs stay in place until the Commander integrates the replacements.",
-      "reviewed_utc": "2026-09-12T05:43:44Z",
+      "adaptation": "Chose crash-hunting as the next work because a panic is the worst demo failure mode: the worker dies mid-keystroke and the preview freezes, and recovery diagnostics only help if the process survives to emit them. Both defects were reachable from ordinary half-typed LaTeX, not only from adversarial input.",
+      "reviewed_utc": "2026-09-12T05:46:48Z",
       "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Branch merged up to current main (c1a5901) with zero conflicts; all 54 tests still pass after the merge. Cross-validated against another agent tooling: the compiler live stdout passes scripts/check_runtime.py (FT-012) with valid true, zero errors, exit 0, all responses classified current.",
+  "summary": "Added a panic-hunting robustness suite and fixed the two real crashes it found: an out-of-range slice in the math parser and a stack overflow on deeply nested math. 59 tests pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:43:44Z",
+  "updated_utc": "2026-09-12T05:46:48Z",
   "usage": {
-    "evidence": "git merge origin/main clean; cargo test 54 pass post-merge; scripts/check_runtime.py on a 6-line transcript of real compiler output returned valid true with no errors and no pending requests",
-    "status": "No model calls in this step; merge and verification only. Both Claude and Codex on this machine are near limits per the user."
+    "evidence": "cargo test 59 pass (38 lib, 11 acceptance, 5 recovery, 5 robustness); clippy -D warnings clean; fmt clean; harness 21/21; corpus 14/14 answered 7 ok, 9/9 expectations",
+    "status": "No Codex worker used for this step; written and verified directly to conserve the near-limit allocations"
   }
 }
