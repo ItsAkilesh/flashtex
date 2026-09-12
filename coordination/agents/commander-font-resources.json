@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "43b343e25b2d1522517443c2bc1e34936fb60c72",
+  "code_revision": "5c8950140e390b8daa81f28930f8529b5961672d",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "79bdadafab843c86525ad85f5c86742783cb5ad3",
-  "next_action": "Next queued bounded rational matrix adapter then standardflex only under explicit profile; preserve actual LM context refusal. No peerwrites/providers/pending commands, product checkpoint clean.",
+  "next_action": "Hold flex per Commander. Await published FT049 ownership fence before document-runtime work; no runtime edits. Clean matrix checkpoint ready for integration.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT024r16 ACK; published exact-rational Type1 raw API sharing existing bounded interpreter. Legacy default/dyadic inventories unchanged; real LM320accepted/502callothersubr refused, all171prior dyadic results exact across commands/widths/stems/source/identity. Rational thirds/overflow tests, fullsuite/clippy/pinnedreplay pass. Conditional matrixcontext and PS/OtherSubrs gates unchanged.",
+  "summary": "FT024r16 matrix checkpoint 5c89501: exact-rational Type1 transform shares verified Context and checked geometry, preserves identity/source chains and untranslated widths. Full offline suite passes (105 unit plus integrations), 5 matrix tests, all-target clippy, pinned LM inventory pass; actual conditional LM context remains refused.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:39:12Z",
+  "updated_utc": "2026-09-12T10:49:11Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
