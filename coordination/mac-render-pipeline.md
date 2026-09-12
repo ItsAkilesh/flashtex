@@ -7,8 +7,10 @@ font/paragraph/math boxes" + follow-ups (large-edit cost, capability/provenance 
 Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c0bacc`
 (local branch `rp/resume`, pushed as `agent/mac-render-pipeline/unified`)
 State: geometry lane done for every fixture the compiler can parse; incremental reuse
-shipped (byte-identical); every pushed SHA is a tested checkpoint (`cargo test --release`:
-42 passed + 1 ignored slow test at a8e39c1)
+shipped (byte-identical); math roman family on optical faces with resource-profile provenance;
+every pushed SHA is a tested checkpoint (`cargo test --release`: 43 passed + 1 ignored at
+0b09be5). Session was cut by a Claude Max 429 at ~11:2xZ (reset 13:20Z, no purchase); the WIP
+(assembled-items cache) was verified and committed on resume.
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
 `coordination/mac-render-pipeline.md`, `coordination/agents/mac-render-pipeline.json`
 Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crates/math-layout
@@ -36,11 +38,25 @@ Main integrated through: merged origin/main 60c40c1 (d556519); compiler vendored
 - Incremental layout reuse (a8e39c1): per-block cache keyed by relative-offset items + flags +
   style fingerprint; relocation + diagnostic replay; 200-edit/27-page and 30-edit/107-page
   scripts byte-identical vs fresh; display-list-v2 declined from a size estimate.
+- Math roman family (digits, parens, operators) drawn from lmroman12/8/6 — the optical OpenType
+  siblings of lmr12/8/6 — with original GIDs; italic/symbol/extension stay on Latin Modern Math
+  and are reported per TFM font as `math_resource_profile` warnings (f762f82). 07: 5 072 -> 3 849
+  differing px, 06: 4 110 -> 3 556 (text-only floor 4 450).
+- Assembled-items cache with tick-exact placement (0b09be5): display items built per block in
+  line-local coordinates, placed by integer tick/byte moves; y = baseline_tick + local_tick.
+- Pinned-TFM layouts (0b09be5): texmf tree (`<root>/fonts/tfm/public/lm/*.tfm` +
+  `<root>/doc/fonts/lm/GUST-FONT-LICENSE.TXT`) or a flat directory (OTFs + the four TFMs +
+  `GUST-FONT-LICENSE.TXT`, e.g. `Contents/Resources/Fonts` or any `FLASHTEX_FONT_DIRS` /
+  `FLASHTEX_TFM_DIRS` entry); `<exe>/../Resources/texmf/fonts/opentype/public/{lm,lm-math}` is a
+  default search dir. For 10/11 pt documents and headings the bundle should also carry the
+  non-pinned TFMs (ec-lmr5..17, ec-lmbx5..12, ec-lmri7..12, ec-lmbxi10, rm-lmr5..10) or the
+  compile reports `tfm_missing` (GH34's ec-lmr10 case).
 
 ## Tests (exact evidence)
-`cd crates/render-pipeline && cargo test --release`: 42 passed (unit 21; cli_e2e 3; golden v1 3;
+`cd crates/render-pipeline && cargo test --release`: 43 passed (unit 21; cli_e2e 3; golden v1 3;
 incremental 1 (+1 ignored: 107 pages, run with `--ignored`); latex_structure 6;
-metrics_provenance 2; v2_and_math 5). Oracle harness:
+metrics_provenance 3; v2_and_math 5). Math documents now carry `math_resource_profile`
+warnings, so their status is `recovered` (tests assert exactly that). Oracle harness:
 `scratchpad/run_oracle.sh` → `scratchpad/table.py pdflatex-lm`; per-word `scratchpad/words.py`.
 Edit cost: `scratchpad/rp/editcost.py <reps> <edits>`; stages: `cargo run --release --example
 stages -- file.tex 2`.
@@ -54,9 +70,10 @@ stages -- file.tex 2`.
 - Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
 ## Next steps (in order)
-1. Cut the remaining per-edit cost at 27 pages: cache assembled display items per block
-   (tick-exact relocation) and a per-block adapter cache keyed by the compiler's block
-   dependencies; measure on a quiet machine.
+1. Per-block adapter cache (script drafted at scratchpad/rp/edit_adaptcache.py, not applied):
+   items keyed by inline kinds/texts/relative spans + source slice + style state + label table,
+   relocated on hit; then measure on a quiet machine. Remaining floor after that is output
+   construction (v1 + JSON ≈ 12 ms, assemble/place ≈ 7 ms at 27 pages).
 2. Extensible delimiter/radical assemblies → LM Math glyph assemblies (math-layout API ask).
 3. When the compiler adds `\left`/`\right`/Greek, re-run 13/14 and update the evidence table.
 4. Keep `docs/oracle-evidence.md` and README in step; un-vendor siblings as they merge.
@@ -75,4 +92,4 @@ is recorded in docs/oracle-evidence.md.
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T11:15:00Z
+Updated: 2026-09-12T13:40:00Z
