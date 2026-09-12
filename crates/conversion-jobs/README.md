@@ -81,3 +81,31 @@ capacity 1–4096 are permitted; callers should use small UI buffers.
 These are process-local measurements, not cumulative provider billing or quota;
 `provider_billing_known` is always false. Cancellation does not free an executing
 slot early. Fifteen tests cover the scheduler, recovery and event/backpressure paths.
+
+## Actual bridge adapter example (offline)
+
+`cargo run --manifest-path crates/conversion-jobs/Cargo.toml --example capture_pipeline`
+uses the real bridge document/context/journal APIs with an explicitly offline
+converter. It persists a conservative attempt-intent record before starting a job,
+so a crash before the first job checkpoint cannot silently retry a possibly charged
+call. A durable existing proposal wins over stale scheduler metadata. A pending
+intent without a proposal requires explicit reconciliation; it never retries itself.
+
+The example keeps document ownership separate from the worker closure, fingerprints
+complete supplied source snapshots, checks current context before promoting a result,
+and persists the bridge proposal before retiring the job/intent. It does not edit
+source. Two example tests exercise persisted-result deduplication across owner reopen
+and the unresolved-intent retry gate. The example uses a single capture and an
+exclusive bridge store; production needs per-capture intent names and a native
+document transaction, not one shared static intent filename.
+
+Compiler validation is a subsequent independent step. Root's separately published
+`Bridge::validate_capture`/`capture_validate` adapter builds a hypothetical source
+snapshot and runs the explicitly configured original Rust compiler. Integrate that
+API through the sole integration owner, display its actual diagnostics, and require
+review before preparing an edit. This example does not invoke compilation and makes
+no full-compatibility or live-Grok claim.
+
+Final adapter checkpoint: `cargo test --all-targets` passes 17 tests; strict Clippy
+and formatting pass; actual example run prints `Offline fixture journaled for
+review: $x^2$`. No Grok, Claude or other provider request is made by these checks.
