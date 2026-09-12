@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "4e08ddb89ac346af0de8c0354a661e3faeba6c05",
-  "objective": "Verify release versus debug exact response equality on helper owner supplied50KB request and unchanged licensed assets",
+  "input_main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+  "objective": "Independently audit actual sustained grouped typing request ordering revision hashes and permanent receipts from published helper capture",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 24,
+  "revision": 25,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:13:08Z"
+  "updated_utc": "2026-09-12T13:15:49.023748+00:00"
 }
