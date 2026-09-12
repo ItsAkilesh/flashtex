@@ -128,7 +128,12 @@ configurable runtime input limits, renderer pair/event limits and complete helpe
 JSONL limits are not interchangeable. The runtime's default producer-output frame bound is8 MiB, not a helper request
 limit. Current helper stdin is bounded at1 MiB; serialized helper JSONL at16 MiB
 including newline, with its configurable producer-frame ceiling at15 MiB to leave
-wrapper headroom. Pair/helper-event validation is16 MiB; the generic parser's32 MiB
+wrapper headroom. The current helper launcher sets the child producer JSON budget
+at most runtime frame capacity minus one newline byte at startup and restart,
+preserving a stricter valid inherited budget. Tiny configured budgets retain the
+producer minimal-failed-reply exception documented in the size review. This is
+launcher policy, not a numeric wire negotiation or a helper wrapper-size guarantee.
+Pair/helper-event validation is16 MiB; the generic parser's32 MiB
 ceiling is not a helper transport allowance. Framing newline, wrapper metadata and numeric
 reserialization may change counted size. Consult the pinned
 [producer size review](../../crates/document-runtime/docs/producer-size-contract.md).

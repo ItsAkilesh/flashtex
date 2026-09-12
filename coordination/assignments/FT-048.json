@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8f6ce14bb126d8fbff54dcbafb5a85b9691ab4ba",
-  "objective": "Prepare isolated exact-base vee and Rightarrow compiler command/export candidate using verified Adobe and downstream mappings; preserve unsupported mid setminus Longrightarrow diagnostics",
+  "input_main_sha": "904197db20de983f10b0f3ef049ac8f20822bdc2",
+  "objective": "Prepare isolated literal Text math AST using existing token stream and explicit Roman intent through compiler layout/export; no second parser or mathbb substitution",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 40,
+  "revision": 41,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:18:24.032767+00:00"
+  "updated_utc": "2026-09-12T15:32:47.359100+00:00"
 }
