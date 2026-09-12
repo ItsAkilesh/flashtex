@@ -64,6 +64,16 @@ impl Store {
                 "Capture journal identity or integrity check failed",
             ));
         }
+        // Disk recovery must satisfy the same proposal bounds as a fresh
+        // provider response before any cached conversion can bypass validation.
+        if let Some(proposal) = &record.proposal {
+            proposal.validate().map_err(|error| {
+                BridgeError::new(
+                    "invalid_journal",
+                    format!("Saved proposal is invalid: {}", error.message),
+                )
+            })?;
+        }
         Ok(Some(record))
     }
     pub fn require(&self, id: &str) -> Result<CaptureRecord> {
