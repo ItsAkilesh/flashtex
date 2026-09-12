@@ -259,3 +259,363 @@ fn delete_of_an_already_deleted_element_is_idempotent_not_double_counted() {
     assert_eq!(doc.text(), "");
     assert_eq!(doc.len_chars(), 0);
 }
+
+// ==========================================================================
+// Revision 4: expanded adversarial bounds (beyond revision 3's 9 cases).
+// Every case below still asserts a specific typed `Err`/`None` result (or,
+// where noted, a well-defined `Ok`) — never a panic.
+// ==========================================================================
+
+// --- Concurrent inserts at the identical anchor from N replicas -----------
+
+#[test]
+fn concurrent_inserts_at_identical_anchor_from_five_replicas_produce_one_deterministic_total_order()
+{
+    // Base "ac"; replicas 2..=6 (five replicas) each concurrently insert a
+    // digit character equal to their own replica id, anchored to the
+    // identical gap (left = 'a', right = 'c'). Every op shares counter 1,
+    // so the total order is decided purely by comparing `OpId.replica`:
+    // per the documented tie-break, the *largest* id sorts closest to
+    // `left`, so the deterministic order is descending replica id:
+    // 6, 5, 4, 3, 2 — not merely "some" consistent order, this exact one.
+    let mut base = Document::new();
+    let mut bb = OpBuilder::new(r(1));
+    base.apply(bb.insert_at(&base, 0, 'a').unwrap()).unwrap();
+    base.apply(bb.insert_at(&base, 1, 'c').unwrap()).unwrap();
+    let a_id = base.char_id_at(0).unwrap();
+    let c_id = base.char_id_at(1).unwrap();
+
+    let ops: Vec<Op> = (2u64..=6)
+        .map(|replica| Op {
+            id: OpId {
+                counter: 1,
+                replica: r(replica),
+            },
+            payload: OpPayload::Insert {
+                left: Some(a_id),
+                right: Some(c_id),
+                value: char::from_digit(replica as u32, 10).unwrap(),
+            },
+        })
+        .collect();
+    assert_eq!(ops.len(), 5, "pinned replica count for this case");
+
+    const EXPECTED: &str = "a65432c";
+
+    let orders: [[usize; 5]; 4] = [
+        [0, 1, 2, 3, 4], // ascending replica (generation order)
+        [4, 3, 2, 1, 0], // descending replica
+        [2, 0, 4, 1, 3], // arbitrary shuffle
+        [1, 4, 0, 3, 2], // another arbitrary shuffle
+    ];
+    for order in orders {
+        let mut doc = base.clone();
+        for idx in order {
+            doc.apply(ops[idx]).unwrap();
+        }
+        assert_eq!(
+            doc.text(),
+            EXPECTED,
+            "delivery order {order:?} must not change the deterministic total order"
+        );
+    }
+}
+
+// --- Interleaved delete/insert on the same element -------------------------
+
+#[test]
+fn interleaved_delete_then_insert_on_the_same_element_converges_across_delivery_orders() {
+    // Base "ac". Replica 2 deletes 'a'. Concurrently, replica 3 inserts an
+    // 'X' anchored (left = a_id, right = c_id) — i.e. anchored to the very
+    // element replica 2 is concurrently deleting. Replica 4 then deletes
+    // that same 'X' as a third, independent concurrent operation (it only
+    // depends on X's id, which is why generating it does not require
+    // either of the other two operations to have been delivered anywhere
+    // yet). Every causally valid delivery order (X's insert must precede
+    // its own delete) must converge on the same result: 'a' tombstoned,
+    // 'X' inserted then also tombstoned, 'c' untouched -> visible text "c".
+    let mut base = Document::new();
+    let mut bb = OpBuilder::new(r(1));
+    base.apply(bb.insert_at(&base, 0, 'a').unwrap()).unwrap();
+    base.apply(bb.insert_at(&base, 1, 'c').unwrap()).unwrap();
+    let a_id = base.char_id_at(0).unwrap();
+    let c_id = base.char_id_at(1).unwrap();
+
+    let delete_a = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(2),
+        },
+        payload: OpPayload::Delete { target: a_id },
+    };
+    let insert_x = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(3),
+        },
+        payload: OpPayload::Insert {
+            left: Some(a_id),
+            right: Some(c_id),
+            value: 'X',
+        },
+    };
+    let delete_x = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(4),
+        },
+        payload: OpPayload::Delete {
+            target: insert_x.id,
+        },
+    };
+
+    let ops = [delete_a, insert_x, delete_x];
+    // Every ordering in which `insert_x` (index 1) precedes `delete_x`
+    // (index 2) is causally valid; `delete_a` (index 0) has no dependency
+    // on either of the other two. That is exactly half of the 6
+    // permutations of 3 elements.
+    let orders: [[usize; 3]; 3] = [[0, 1, 2], [1, 0, 2], [1, 2, 0]];
+    for order in orders {
+        let mut doc = base.clone();
+        for idx in order {
+            doc.apply(ops[idx]).unwrap();
+        }
+        assert_eq!(doc.text(), "c", "order {order:?} diverged from the pinned result");
+        assert_eq!(doc.len_chars(), 1);
+    }
+}
+
+// --- Replay of an entire op log in reverse and shuffled order --------------
+
+/// A small mixed insert/delete op log (5 sequential inserts, 1 concurrent
+/// insert, 2 deletes — 8 operations total) plus the document that results
+/// from applying it forward, once, in generation order.
+fn full_op_log_fixture() -> (Vec<Op>, Document) {
+    let mut doc = Document::new();
+    let mut b1 = OpBuilder::new(r(1));
+    let mut ops = Vec::new();
+    for (i, ch) in "hello".chars().enumerate() {
+        let op = b1.insert_at(&doc, i, ch).unwrap();
+        doc.apply(op).unwrap();
+        ops.push(op);
+    }
+    // A concurrent insert from a second replica, anchored inside the word.
+    let left = doc.char_id_at(1).unwrap(); // 'e'
+    let right = doc.char_id_at(2).unwrap(); // 'l'
+    let concurrent = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(2),
+        },
+        payload: OpPayload::Insert {
+            left: Some(left),
+            right: Some(right),
+            value: 'X',
+        },
+    };
+    doc.apply(concurrent).unwrap();
+    ops.push(concurrent);
+    let del1 = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(3),
+        },
+        payload: OpPayload::Delete {
+            target: doc.char_id_at(0).unwrap(),
+        },
+    };
+    doc.apply(del1).unwrap();
+    ops.push(del1);
+    let del2 = Op {
+        id: OpId {
+            counter: 2,
+            replica: r(3),
+        },
+        payload: OpPayload::Delete {
+            target: concurrent.id,
+        },
+    };
+    doc.apply(del2).unwrap();
+    ops.push(del2);
+    (ops, doc)
+}
+
+#[test]
+fn replaying_the_full_op_log_in_reverse_order_is_idempotent() {
+    let (ops, reference) = full_op_log_fixture();
+    assert_eq!(ops.len(), 8, "pinned op-log length");
+    let reference_text = reference.text();
+
+    // `reference` already has every op applied; replay the identical log,
+    // in reverse, into a clone of it. Every dependency is already
+    // satisfied (the whole log was already applied once), so dedup makes
+    // this a pure no-op regardless of delivery order: `Document::apply`
+    // checks `self.applied.contains(&op.id)` before it ever looks at
+    // left/right/target.
+    let mut doc = reference.clone();
+    for &op in ops.iter().rev() {
+        assert_eq!(doc.apply(op), Ok(ApplyOutcome::Duplicate));
+    }
+    assert_eq!(
+        doc.text(),
+        reference_text,
+        "reverse replay of an already-applied log must not mutate the document"
+    );
+}
+
+#[test]
+fn replaying_the_full_op_log_in_shuffled_order_is_idempotent() {
+    let (ops, reference) = full_op_log_fixture();
+    let reference_text = reference.text();
+
+    // A fixed, non-monotonic shuffle of the 8 op-log indices.
+    const SHUFFLE: [usize; 8] = [4, 0, 7, 2, 5, 1, 6, 3];
+    assert_eq!(SHUFFLE.len(), ops.len());
+    let mut doc = reference.clone();
+    for idx in SHUFFLE {
+        assert_eq!(doc.apply(ops[idx]), Ok(ApplyOutcome::Duplicate));
+    }
+    assert_eq!(
+        doc.text(),
+        reference_text,
+        "shuffled replay of an already-applied log must not mutate the document"
+    );
+}
+
+// --- Pending buffer boundary: zero capacity --------------------------------
+
+#[test]
+fn pending_buffer_zero_capacity_rejects_the_very_first_blocked_operation() {
+    // `max_pending = 0` is the degenerate "one past capacity, from empty"
+    // bound: the buffer can never hold anything, so the very first
+    // operation whose dependency is missing must be rejected immediately,
+    // never buffered even momentarily.
+    let mut doc = Document::new();
+    let mut pending = PendingOps::new(0);
+    let ghost = OpId {
+        counter: 1,
+        replica: r(500),
+    };
+    let op = Op {
+        id: OpId {
+            counter: 1,
+            replica: r(1),
+        },
+        payload: OpPayload::Insert {
+            left: Some(ghost),
+            right: None,
+            value: 'x',
+        },
+    };
+    assert_eq!(
+        pending.receive(&mut doc, op),
+        Err(CrdtError::PendingBufferFull { max_pending: 0 })
+    );
+    assert_eq!(pending.pending_len(), 0);
+    assert!(pending.is_empty());
+}
+
+// --- Checkpoint entry bound: growing a document one past a fixed bound ----
+
+#[test]
+fn checkpoint_bound_fixed_document_grows_from_within_bound_to_one_past_it() {
+    let mut doc = Document::new();
+    let mut b = OpBuilder::new(r(1));
+    for (i, ch) in "abcd".chars().enumerate() {
+        doc.apply(b.insert_at(&doc, i, ch).unwrap()).unwrap();
+    }
+    const MAX_ENTRIES: usize = 4;
+    // At exactly 4 elements, checkpointing at the bound succeeds.
+    let at_bound = doc
+        .checkpoint(MAX_ENTRIES)
+        .expect("4 entries at a bound of 4 must succeed");
+    assert_eq!(at_bound.entry_count(), 4);
+
+    // One more insert grows the document to exactly one past the same,
+    // unchanged bound; the identical `checkpoint` call now fails typed,
+    // not truncated or silently clamped.
+    let fifth = b.insert_at(&doc, 4, 'e').unwrap();
+    doc.apply(fifth).unwrap();
+    assert_eq!(
+        doc.checkpoint(MAX_ENTRIES),
+        Err(CheckpointError::TooLarge {
+            entries: 5,
+            max_entries: MAX_ENTRIES
+        })
+    );
+}
+
+// --- Truncated checkpoint bytes inside the delete-op-ids section ----------
+
+#[test]
+fn checkpoint_bytes_truncated_inside_the_delete_op_ids_section_is_rejected() {
+    let mut doc = Document::new();
+    let mut b = OpBuilder::new(r(1));
+    for (i, ch) in "abc".chars().enumerate() {
+        doc.apply(b.insert_at(&doc, i, ch).unwrap()).unwrap();
+    }
+    // A delete-operation id (not present among the elements) so
+    // `delete_op_ids` is non-empty and its bytes appear last in the
+    // encoding.
+    let del = Op {
+        id: OpId {
+            counter: 99,
+            replica: r(2),
+        },
+        payload: OpPayload::Delete {
+            target: doc.char_id_at(0).unwrap(),
+        },
+    };
+    doc.apply(del).unwrap();
+    let cp = doc.checkpoint(100).unwrap();
+    assert_eq!(cp.entry_count(), 4, "3 elements + 1 delete-op id");
+    let mut bytes = cp.to_bytes();
+    // Cut off the last 4 of the 16 bytes that encode the sole delete-op id
+    // (8-byte counter + 8-byte replica), landing inside that field
+    // specifically rather than at a field or section boundary.
+    bytes.truncate(bytes.len() - 4);
+    assert_eq!(
+        Checkpoint::from_bytes(&bytes),
+        Err(CheckpointDecodeError::Truncated)
+    );
+}
+
+// --- Counter at u64::MAX across two different replicas ---------------------
+
+#[test]
+fn two_replicas_both_at_u64_max_counter_coexist_without_id_conflict() {
+    // `OpId` uniqueness is the pair `(counter, replica)`, not `counter`
+    // alone, so two different replicas both issuing `u64::MAX` as their
+    // counter must coexist rather than colliding.
+    let mut doc = Document::new();
+    let op_from_1 = Op {
+        id: OpId {
+            counter: u64::MAX,
+            replica: r(1),
+        },
+        payload: OpPayload::Insert {
+            left: None,
+            right: None,
+            value: 'x',
+        },
+    };
+    let x_id = op_from_1.id;
+    let op_from_2 = Op {
+        id: OpId {
+            counter: u64::MAX,
+            replica: r(2),
+        },
+        payload: OpPayload::Insert {
+            left: Some(x_id),
+            right: None,
+            value: 'y',
+        },
+    };
+    assert_eq!(doc.apply(op_from_1), Ok(ApplyOutcome::Applied));
+    assert_eq!(doc.apply(op_from_2), Ok(ApplyOutcome::Applied));
+    assert_eq!(doc.text(), "xy");
+    assert_ne!(
+        op_from_1.id, op_from_2.id,
+        "same counter, different replica, must not collide"
+    );
+}
