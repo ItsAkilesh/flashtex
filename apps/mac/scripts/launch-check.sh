@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Launches a packaged FlashTeX.app, confirms it actually opened a window,
-# confirms the bundled flashtex-compiler attached (via FLASHTEX_LOG status
-# lines and as a child process), kills that child to exercise worker-crash
-# recovery, and asserts the app itself survives and logs the recovery.
+# confirms the bundled flashtex-compiler AND flashtex-bridge each attached
+# (via FLASHTEX_LOG status lines and as child processes), kills each child in
+# turn to exercise crash recovery, and asserts the app itself survives and
+# logs each recovery.
 #
 # Usage: apps/mac/scripts/launch-check.sh [--app <path to .app>] [--evidence <file>]
 set -euo pipefail
@@ -95,17 +96,18 @@ fi
 
 # --- 2. Launch --------------------------------------------------------------
 COMPILER_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-compiler"
+BRIDGE_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-bridge"
 LOG_FILE="$WORK_DIR/flashtex.log"
 : > "$LOG_FILE"
 step "Launching $APP_DIR"
 pkill -x FlashTeX >/dev/null 2>&1 || true
 sleep 1
-if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
+if [[ -x "$COMPILER_IN_BUNDLE" || -x "$BRIDGE_IN_BUNDLE" ]]; then
   open --env FLASHTEX_AUTOATTACH=1 --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
-  note "bundled flashtex-compiler present; launched with FLASHTEX_AUTOATTACH=1 FLASHTEX_LOG=$LOG_FILE"
+  note "bundled compiler/bridge present; launched with FLASHTEX_AUTOATTACH=1 FLASHTEX_LOG=$LOG_FILE"
 else
   open --env "FLASHTEX_LOG=$LOG_FILE" "$APP_DIR"
-  note "no bundled flashtex-compiler in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path>' to exercise the attach/kill/log checks below"
+  note "no bundled flashtex-compiler/flashtex-bridge in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path> --bridge <path>' to exercise the attach/kill/log checks below"
 fi
 
 APP_PID=""
@@ -192,6 +194,54 @@ if [[ -n "$COMPILER_PID" ]]; then
   fi
 fi
 
+# --- 5b. Confirm the bundled bridge attached (log + child process) ---------
+# The bridge auto-attaches whenever it is bundled next to the executable (see
+# ShellModel.init()'s hasBundledBridge check) — no extra env var beyond
+# FLASHTEX_AUTOATTACH=1 (already set above) is needed.
+BRIDGE_PID=""
+if [[ -x "$BRIDGE_IN_BUNDLE" ]]; then
+  step "Checking for a flashtex-bridge child of pid $APP_PID"
+  for _ in $(seq 1 10); do
+    BRIDGE_PID="$(pgrep -P "$APP_PID" -x flashtex-bridge || true)"
+    [[ -n "$BRIDGE_PID" ]] && break
+    sleep 0.5
+  done
+  if [[ -n "$BRIDGE_PID" ]]; then
+    note "flashtex-bridge attached, pid=$BRIDGE_PID (child of $APP_PID)"
+  else
+    fail "no flashtex-bridge child process found under pid $APP_PID within 5s"
+  fi
+
+  step "Checking FLASHTEX_LOG for a bridge 'attached:' status line"
+  if wait_for_log "bridge: attached:" 10; then
+    note "log shows a bridge 'attached:' status line within 10s"
+  else
+    fail "no 'bridge: attached:' line in $LOG_FILE within 10s"
+  fi
+fi
+
+# --- 5c. Kill the bridge child and assert the app survives and logs it -----
+if [[ -n "$BRIDGE_PID" ]]; then
+  step "Killing flashtex-bridge (pid $BRIDGE_PID) and checking app survival"
+  kill "$BRIDGE_PID"
+  sleep 2
+  if kill -0 "$APP_PID" 2>/dev/null; then
+    note "FlashTeX (pid $APP_PID) is still running after its bridge child was killed"
+  else
+    fail "FlashTeX (pid $APP_PID) exited after its bridge child was killed"
+  fi
+  if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    note "flashtex-bridge (pid $BRIDGE_PID) confirmed gone"
+  fi
+
+  step "Checking FLASHTEX_LOG for a 'bridge exited (' status line"
+  if wait_for_log "bridge exited (" 5; then
+    note "log shows a 'bridge exited (' status line within 5s"
+  else
+    fail "no 'bridge exited (' line in $LOG_FILE within 5s"
+  fi
+fi
+
 # --- 6. Quit -----------------------------------------------------------------
 step "Quitting FlashTeX"
 osascript -e 'tell application "FlashTeX" to quit' >/dev/null 2>&1 || pkill -x FlashTeX >/dev/null 2>&1 || true
@@ -208,6 +258,7 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
     echo
     echo "App: $APP_DIR"
     echo "Compiler bundled: $([[ -x "$COMPILER_IN_BUNDLE" ]] && echo yes || echo no)"
+    echo "Bridge bundled: $([[ -x "$BRIDGE_IN_BUNDLE" ]] && echo yes || echo no)"
     echo
     printf '%s\n' "${REPORT_LINES[@]}"
     echo
