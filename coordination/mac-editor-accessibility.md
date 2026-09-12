@@ -16,7 +16,7 @@
   `agent/mac-editor-accessibility/responsive`, based on
   `origin/agent/mac-claude-a/mac-shell` d8baed6 (merged after it advanced past
   6b43a3a; `EditorDiagnostics.Mark` gained identity/resultStatus, tests adapted)
-  and merged with `origin/main` 5499e41 (780f145 reviewed: no apps/mac changes).
+  and merged with `origin/main` 780f145 (no apps/mac changes came from main).
   Worktree: `.claude/worktrees/agent-ac192954cb317fe5e`.
 - State: ready for integration (parent review). All three lane items done.
 
