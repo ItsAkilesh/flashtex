@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-document-runtime",
+  "task_id": "FT-021",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Fault and restart recovery with explicit cancellation",
+      "objective": "Fault and restart recovery with explicit cancellation",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    },
+    {
+      "name": "Safe project lifecycle and resource release",
+      "objective": "Safe project lifecycle and resource release",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "timebox_minutes": 30,
+      "allocation_id": "hosted-openai-product"
+    }
+  ]
+}

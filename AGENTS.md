@@ -7,8 +7,9 @@ and higher-priority platform instructions take precedence.
 
 ## Current user authorization — September 12
 
-The user explicitly authorizes autonomous project work until they stop it or the
-entire project, including extra features, is implemented and fully tested. The
+The user explicitly authorizes continuous autonomous project improvement until
+they explicitly stop it. Verified completion starts another improvement cycle;
+it is never an automatic stop condition. The
 former 10am deadline and stabilization window are no longer stop conditions.
 Do not stop solely because a task time estimate elapsed. Keep individual model
 calls bounded, publish recovery evidence on failures, and continue other eligible
@@ -18,6 +19,15 @@ remain blockers to report; never claim they have been bypassed or granted remote
 Read `docs/autonomous-workers.md` for the executable startup and task loop.
 
 ## Command and dispatch
+
+Current sole orchestrator: **orchestrator-astra**, hosted agent handle
+`/root/runtime_validator`, on linux-primary, explicitly selected by the user.
+All organizational work, resources, queues and global integration belong to this
+role. The six hosted Astra engineers perform product work only. The root agent
+continues product engineering and does not concurrently write main/control files.
+Read `coordination/authority.json` before every global mutation; obsolete role names
+below are historical. Sol explicitly handed over after stopping publication jobs.
+
 
 The user designated the primary Codex agent on `linux-primary` as **Commander**,
 responsible for orchestration, task/resource assignment, and integration of main.
@@ -106,6 +116,18 @@ using a paid CLI/API, changing resource allocations, or making commits.
   account totals must remain unknown.
 
 ### Commit identity and truthful provenance
+
+**Latest explicit user override (all computers):** when Cursor usage limits are
+hit, the current implementing agent may execute Git commits directly. Do not wait
+for Cursor quota, purchase more usage, or mislabel execution. Use the actual agent
+identity and truthful `Implementation-Agent` / `Commit-Executor` trailers, plus
+`Co-authored-by` for the GitHub user authenticated on that computer. Preserve the
+mac-m1max-a primary-author exception. This supersedes older mandatory-Cursor wording
+only for the observed Cursor-limit fallback; actual Cursor commits remain truthful.
+The local Cursor limit was confirmed by terminal ActionRequiredError on the Astra
+authority and bridge recovery publication attempts. Product work and publication
+continue through direct-agent Git execution under this user authorization.
+
 
 New agent-generated commits use the project automation identity:
 `Cursor <cursor@flashtex.invalid>`. This is a project label with a deliberately

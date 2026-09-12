@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "owner": "commander-corpus; visual fixture subtree only",
+  "purpose": "Pixel-level oracle comparison for an original Rust compiler; reference TeX never compiles product output.",
+  "profiles": {
+    "pdflatex-cm-12pt-letter-144dpi": {
+      "reference_engine": "pdflatex (pdfTeX with LaTeX format)",
+      "engine_version": "must be recorded from actual generator; not installed on fixture author machine",
+      "latex_format_and_packages": "record actual format date, amsmath/amssymb versions from .log and .fls",
+      "font_policy": "Computer Modern default OT1 text/OML OMS OMX math; record all actual font names and font/metric file hashes; no viewer substitution",
+      "required_packages": [
+        "article",
+        "amsmath",
+        "amssymb"
+      ],
+      "page_media_box_bp": [
+        0,
+        0,
+        612,
+        792
+      ],
+      "dpi": 144,
+      "expected_page_pixels": [
+        1224,
+        1584
+      ],
+      "rasterizer": "pdftoppm",
+      "rasterizer_version": "26.01.0 available on fixture author; baseline generation must pin one build for both PDFs",
+      "raster_argv": [
+        "pdftoppm",
+        "-r",
+        "144",
+        "-png",
+        "-aa",
+        "yes",
+        "-aaVector",
+        "yes",
+        "-thinlinemode",
+        "none",
+        "INPUT.pdf",
+        "OUTPUT_PREFIX"
+      ],
+      "comparison": {
+        "primary": "decoded pixel equality per entire corresponding page",
+        "required_max_channel_delta": 0,
+        "required_differing_pixel_count": 0,
+        "color_channels": "RGB on opaque white background; reject incompatible color/profile conversion",
+        "forbidden_adjustments": [
+          "auto-alignment",
+          "rescaling",
+          "cropping",
+          "blur",
+          "font substitution",
+          "threshold relaxation"
+        ],
+        "secondary_diagnostics": [
+          "absolute-difference heatmap",
+          "differing pixel bounding boxes",
+          "per-page differing pixel count",
+          "maximum channel delta"
+        ],
+        "secondary_metrics_are_not_a_pass": true
+      }
+    }
+  },
+  "reference_provenance_required": [
+    "source_sha256",
+    "engine_version",
+    "format_date",
+    "package_versions",
+    "font_file_hashes",
+    "rasterizer_version_and_build",
+    "raster_argv",
+    "reference_pdf_sha256",
+    "reference_page_pixel_hashes",
+    "generation_host",
+    "generation_time_utc"
+  ],
+  "cases": [
+    {
+      "id": "paragraph-linebreaks",
+      "entry_path": "paragraph-linebreaks.tex",
+      "source_sha256": "7f52d264f2cd7df55ac1f1acde86ecd5a3dada69ab5d7637d79010cd607a4051",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "paragraph-breaking",
+        "justification",
+        "hyphenation"
+      ],
+      "comparison_gates": [
+        "Exact line endings and hyphen locations match the reference.",
+        "Compare left/right edges and baseline positions; short final lines retain natural spacing."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "kerning-ligatures",
+      "entry_path": "kerning-ligatures.tex",
+      "source_sha256": "e10feb2b3fe35ce4d3ff2d3a6f1a851773a06537bbd50f30df6f38b07057aa25",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "kerning",
+        "ligatures",
+        "punctuation"
+      ],
+      "comparison_gates": [
+        "Natural pair kerning/ligatures differ from explicit zero-kern-separated control.",
+        "Glyph shapes, pair spacing, quotation marks and dashes match actual oracle pixels."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "font-faces",
+      "entry_path": "font-faces.tex",
+      "source_sha256": "00b7c8349511897a9aa323aa170b07b59ff6190d3ec4b9276c66be6e9558abbf",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "font-selection",
+        "font-metrics",
+        "size-changes"
+      ],
+      "comparison_gates": [
+        "Every face/size uses the intended Computer Modern family and metrics.",
+        "Do not substitute Times or infer weight from size; mixed-size baselines follow the oracle."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "math-fractions",
+      "entry_path": "math-fractions.tex",
+      "source_sha256": "965629881fe08387d9118b876a5271a5a3d26f714e6e5c05c1b76570c9b3e570",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "fractions",
+        "math-axis",
+        "nested-layout"
+      ],
+      "comparison_gates": [
+        "Numerator/denominator baselines, math-axis position, gaps and rule thickness match.",
+        "Fraction rules are visible geometry, never missing glyphs/question marks."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "math-scripts",
+      "entry_path": "math-scripts.tex",
+      "source_sha256": "5290cff0fdf72877fdfc00f78ee8c28a40773952c073776aca436324887a1cfe",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "superscripts",
+        "subscripts",
+        "nested-script-sizes",
+        "operator-limits"
+      ],
+      "comparison_gates": [
+        "Nested script sizes and offsets agree with the reference, including combined super/subscript.",
+        "Inline versus display operator limits and italic correction match."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "math-radicals",
+      "entry_path": "math-radicals.tex",
+      "source_sha256": "c582d0cd025a5c0179b1c43a4a51ad57a83a7c4ce9d6f01335b568c26c2935e8",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "radicals",
+        "root-index",
+        "stretchy-glyphs"
+      ],
+      "comparison_gates": [
+        "Radical overbars cover the full radicand and glyphs scale with height/depth.",
+        "Root index placement and nested radical clearances match reference pixels."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "math-delimiters",
+      "entry_path": "math-delimiters.tex",
+      "source_sha256": "34bf02428b64eea12b24a589b1d2b83926c3a9714b695c5aca954378ab049c7d",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 1,
+      "features": [
+        "delimiters",
+        "matrices",
+        "aligned-math"
+      ],
+      "comparison_gates": [
+        "Delimiter sizing and invisible right delimiter preserve math spacing.",
+        "Matrix/alignment baselines and column gaps match; no source syntax prints."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    },
+    {
+      "id": "multipage-baselines",
+      "entry_path": "multipage-baselines.tex",
+      "source_sha256": "9e586a7a933ef7d2c1ce8bbae6db61468f335fdc7f973f87782b65397d7af895",
+      "profile": "pdflatex-cm-12pt-letter-144dpi",
+      "expected_page_count": 3,
+      "features": [
+        "pagination",
+        "baselines",
+        "vertical-glue",
+        "page-origins"
+      ],
+      "comparison_gates": [
+        "Exactly three pages in source order with equal MediaBoxes.",
+        "Top and bottom markers and tall-math baseline movement match per page.",
+        "Compare whole pages without independently translating/aligning content."
+      ],
+      "reference_state": "not_generated",
+      "candidate_state": "not_measured"
+    }
+  ]
+}

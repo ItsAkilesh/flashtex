@@ -1,0 +1,75 @@
+{
+  "observed_utc": "2026-09-12T05:21:54.859837+00:00",
+  "machine": "linux-primary",
+  "scope": "Read-only PATH inventory; no tools installed and no reference images generated.",
+  "tools": {
+    "pdflatex": {
+      "path": null,
+      "available_in_path": false
+    },
+    "xelatex": {
+      "path": null,
+      "available_in_path": false
+    },
+    "lualatex": {
+      "path": null,
+      "available_in_path": false
+    },
+    "tectonic": {
+      "path": null,
+      "available_in_path": false
+    },
+    "latexmk": {
+      "path": null,
+      "available_in_path": false
+    },
+    "kpsewhich": {
+      "path": null,
+      "available_in_path": false
+    },
+    "pdftoppm": {
+      "path": "/usr/bin/pdftoppm",
+      "available_in_path": true,
+      "version_output": [
+        "pdftoppm version 26.01.0",
+        "Copyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org",
+        "Copyright 1996-2011, 2022 Glyph & Cog, LLC"
+      ]
+    },
+    "pdftocairo": {
+      "path": "/usr/bin/pdftocairo",
+      "available_in_path": true,
+      "version_output": [
+        "pdftocairo version 26.01.0",
+        "Copyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org",
+        "Copyright 1996-2011, 2022 Glyph & Cog, LLC"
+      ]
+    },
+    "pdffonts": {
+      "path": "/usr/bin/pdffonts",
+      "available_in_path": true,
+      "version_output": [
+        "pdffonts version 26.01.0",
+        "Copyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org",
+        "Copyright 1996-2011, 2022 Glyph & Cog, LLC"
+      ]
+    },
+    "gs": {
+      "path": "/usr/bin/gs",
+      "available_in_path": true,
+      "version_output": [
+        "10.06.0"
+      ]
+    },
+    "magick": {
+      "path": "/usr/bin/magick",
+      "available_in_path": true,
+      "version_output": [
+        "Version: ImageMagick 7.1.2-13 Q16-HDRI x86_64 23522 https://imagemagick.org",
+        "Copyright: (C) 1999 ImageMagick Studio LLC",
+        "License: https://imagemagick.org/license/"
+      ]
+    }
+  },
+  "oracle_state": "blocked locally: no TeX reference executable found in PATH; assign reference generation to registered TeX machine"
+}

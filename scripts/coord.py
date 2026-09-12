@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -49,10 +50,25 @@ def identifier(value):
     return value
 
 
+def published_branch_assignment(root, agent, name):
+    """Allow legacy branch names only through an exact fetched-main assignment."""
+    paths = git(root, 'ls-tree', '-r', '--name-only', 'origin/main',
+                'coordination/assignments', check=False).splitlines()
+    for path in paths:
+        if not path.endswith('.json'):
+            continue
+        obj = peer_json(root, 'origin/main', path)
+        if (obj.get('agent_id') == agent and obj.get('branch') == name
+                and obj.get('state') == 'assigned'):
+            return True
+    return False
+
+
 def branch(root, agent=None):
     name = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     match = BRANCH.fullmatch(name)
-    if not match or '..' in name or (agent and match.group(1) != agent):
+    if not match or '..' in name or (agent and match.group(1) != agent
+            and not published_branch_assignment(root, agent, name)):
         raise ValueError('use your own agent/<id>/<task> branch, never main or detached HEAD')
     return name
 
@@ -163,7 +179,8 @@ def dispatch(root, args):
     task, agent = identifier(args.task), identifier(args.agent)
     if args.minutes <= 0:
         raise ValueError('timebox must be positive')
-    if not args.branch.startswith(f'agent/{agent}/') or not BRANCH.fullmatch(args.branch):
+    if not BRANCH.fullmatch(args.branch) or (not args.branch.startswith(f'agent/{agent}/')
+            and not published_branch_assignment(root, agent, args.branch)):
         raise ValueError('assignment branch must belong to the assignee')
     if run(['git', 'merge-base', '--is-ancestor', 'origin/main', 'HEAD'], cwd=root, check=False).returncode:
         raise ValueError('incorporate current origin/main before issuing assignments')
@@ -370,7 +387,12 @@ def publish(root, args):
     before = git(root, 'rev-parse', 'HEAD')
     tree = git(root, 'write-tree')
     coauthor = current_git_user_trailer(root)
+    direct = bool(getattr(args, 'direct_agent_commit', False))
     expected_identity = commit_identity(root, coauthor)
+    if direct and not expected_identity.startswith('jay3332 '):
+        if not args.implementation.strip() or any(c in args.implementation for c in '\r\n<>'):
+            raise ValueError('direct commit needs a valid actual implementation-agent name')
+        expected_identity = args.implementation + ' <agent@flashtex.invalid>'
     prompt = ('Read AGENTS.md. The user requires you, Cursor CLI, to execute this commit. '
               'This is one authorized bounded commit session under allocation ' + args.allocation + '. '
               'No nested model/Claude calls, purchases, branch switching, push, history rewriting, '
@@ -380,8 +402,19 @@ def publish(root, args):
               'Include trailers Implementation-Agent: ' + args.implementation + '\nCommit-Executor: Cursor CLI\n'
               + coauthor + '\n'
               'Verify staged whitespace. Return the SHA. Stop if the staged changes are unsuitable.')
-    result = run(['cursor-agent', '--print', '--trust', '--auto-review', '--output-format', 'text', prompt],
-                 cwd=root, timeout=args.timeout, check=False)
+    if direct:
+        # Explicit latest user authorization after observed Cursor quota exhaustion.
+        # This branch never launches Cursor or misattributes execution to Cursor CLI.
+        author_name, author_email = expected_identity.rsplit(' <', 1)
+        env = dict(os.environ, GIT_AUTHOR_NAME=author_name, GIT_AUTHOR_EMAIL=author_email[:-1],
+                   GIT_COMMITTER_NAME=author_name, GIT_COMMITTER_EMAIL=author_email[:-1])
+        message = (args.message + '\n\nImplementation-Agent: ' + args.implementation +
+                   '\nCommit-Executor: git via current agent (authorized Cursor-limit fallback)\n' + coauthor + '\n')
+        result = subprocess.run(['git', 'commit', '-F', '-'], input=message, cwd=root, env=env,
+                                text=True, capture_output=True, timeout=args.timeout)
+    else:
+        result = run(['cursor-agent', '--print', '--trust', '--auto-review', '--output-format', 'text', prompt],
+                     cwd=root, timeout=args.timeout, check=False)
     if result.returncode:
         raise RuntimeError('Cursor failed; inspect Git state before retrying. ' + result.stderr[-1500:])
     after = git(root, 'rev-parse', 'HEAD')
@@ -395,7 +428,8 @@ def publish(root, args):
     if ident != [expected_identity] * 2:
         raise RuntimeError('unexpected author/committer; not pushing')
     message = git(root, 'show', '-s', '--format=%B', after)
-    if not re.search(r'^Commit-Executor: Cursor CLI$', message, re.M) or not re.search(r'^Implementation-Agent: .+$', message, re.M):
+    executor = 'git via current agent (authorized Cursor-limit fallback)' if direct else 'Cursor CLI'
+    if 'Commit-Executor: ' + executor not in message.splitlines() or not re.search(r'^Implementation-Agent: .+$', message, re.M):
         raise RuntimeError('missing truthful provenance trailers; not pushing')
     if coauthor not in message.splitlines():
         raise RuntimeError('missing authenticated GitHub user coauthor; not pushing')
@@ -425,6 +459,7 @@ def parser():
     r = sub.add_parser('publish'); r.add_argument('-m', '--message', required=True)
     r.add_argument('--implementation', required=True); r.add_argument('--allocation', required=True)
     r.add_argument('--timeout', type=int, default=180)
+    r.add_argument('--direct-agent-commit', action='store_true', help='explicit user-authorized fallback after Cursor quota exhaustion; truthful direct Git provenance')
     return p
 
 
