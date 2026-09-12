@@ -1,7 +1,9 @@
 //! `\setlist` list-spacing coverage: `itemsep`/`topsep` actually move item
 //! baselines by the requested amount, unimplemented keys are named once in a
-//! single diagnostic, and a document with no `\setlist` at all keeps using
-//! plain `Block::Paragraph` items (so its layout is exactly today's).
+//! single diagnostic, and a document with no `\setlist` at all keeps every
+//! item's itemsep/topsep gap at zero (so vertical spacing is exactly
+//! today's; every item is still a `Block::ListItem`, for the hanging indent
+//! implemented separately — audit A6).
 
 use flashtex_compiler::json::{self, Value};
 use flashtex_compiler::parser::{self, Block};
@@ -177,16 +179,29 @@ fn unimplemented_keys_are_named_once_and_implemented_ones_are_not() {
 }
 
 #[test]
-fn no_setlist_keeps_items_as_plain_paragraphs() {
-    // The exact HW1 shape, minus \setlist: default output must be
-    // byte-identical to before this feature existed.
+fn no_setlist_keeps_item_spacing_at_zero() {
+    // The exact HW1 shape, minus \setlist: every item is a `Block::ListItem`
+    // regardless of `\setlist` (that's the hanging-indent fix, audit A6), but
+    // without a `\setlist` override its itemsep/topsep gaps must stay zero,
+    // so vertical spacing is exactly today's (this feature's own byte-exact
+    // guarantee is about spacing, not about which `Block` variant is used).
     let parsed = parser::parse(&doc(""));
-    assert!(
-        parsed
-            .blocks
-            .iter()
-            .all(|block| !matches!(block, Block::ListItem { .. })),
-        "no \\setlist means every item stays a plain Block::Paragraph: {:?}",
+    let gaps: Vec<(f64, f64)> = parsed
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::ListItem {
+                extra_gap_before_pt,
+                extra_gap_after_pt,
+                ..
+            } => Some((*extra_gap_before_pt, *extra_gap_after_pt)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        gaps,
+        vec![(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)],
+        "{:?}",
         parsed.blocks
     );
 }

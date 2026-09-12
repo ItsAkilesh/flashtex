@@ -98,18 +98,6 @@ pub struct MathRow {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Paragraph(Vec<Inline>),
-    /// One `\item` inside `itemize`/`enumerate` whose list has a `\setlist`
-    /// itemsep/topsep override. Lists without `\setlist` keep using
-    /// `Paragraph` for their items, so default output is unaffected.
-    ListItem {
-        content: Vec<Inline>,
-        /// Extra gap before this item, beyond the ordinary paragraph gap:
-        /// `topsep` before the list's first item, `itemsep` before the rest.
-        extra_gap_before_pt: f64,
-        /// Extra gap after this item: `topsep`, set only on the list's last
-        /// item.
-        extra_gap_after_pt: f64,
-    },
     Heading {
         level: u8,
         number: String,
@@ -124,6 +112,24 @@ pub enum Block {
     Styled {
         style: ParagraphStyle,
         content: Vec<Inline>,
+    },
+    /// One paragraph of an `itemize`/`enumerate` `\item`. `level` (1 =
+    /// outermost) drives the hanging-indent margin; `label` carries the
+    /// marker text and the `\item` span, and is `None` for a continuation
+    /// paragraph of the same item (a blank line inside `\item`'s text) so the
+    /// marker is not repeated while the hanging indent still applies.
+    /// `extra_gap_before_pt`/`extra_gap_after_pt` are `\setlist`
+    /// itemsep/topsep overrides (`0.0` without `\setlist`).
+    ListItem {
+        level: u8,
+        label: Option<(String, Span)>,
+        content: Vec<Inline>,
+        /// Extra gap before this item, beyond the ordinary paragraph gap:
+        /// `topsep` before the list's first item, `itemsep` before the rest.
+        extra_gap_before_pt: f64,
+        /// Extra gap after this item: `topsep`, set only on the list's last
+        /// item.
+        extra_gap_after_pt: f64,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -547,6 +553,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        pending_item_label: None,
         paragraph_styles: Vec::new(),
         document_global_state: false,
         style: TextStyle::default(),
@@ -615,6 +622,12 @@ struct P<'a> {
     /// Environment name, item count, an enumitem label template if given,
     /// and the `\setlist` spacing resolved when this list's `\begin` ran.
     list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
+    /// The marker text and span set by the most recent `\item`, consumed by
+    /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
+    /// or a later one if the item's text is empty). `None` once consumed, so
+    /// later paragraphs of the same item render with the hanging indent but
+    /// no repeated label.
+    pending_item_label: Option<(String, Span)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Current text style; saved on `{` and environment entry, restored on
@@ -888,11 +901,7 @@ impl P<'_> {
                         } else {
                             "•".to_string()
                         };
-                        para.push(Inline::Text {
-                            text: marker,
-                            span,
-                            style: TextStyle::default(),
-                        });
+                        self.pending_item_label = Some((marker, span));
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -2278,20 +2287,17 @@ impl P<'_> {
     }
 
     fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
-        if !paragraph.is_empty() {
-            let content = std::mem::take(paragraph);
-            blocks.push(match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None => Block::Paragraph(content),
-            });
-            self.finish_block_dependencies();
-        }
+        self.flush_list_item(blocks, paragraph, 0.0, 0.0);
     }
 
-    /// Like `flush_paragraph`, but for the content of one list `\item`:
-    /// attaches any `\setlist` itemsep/topsep gap due before or after it.
-    /// Falls back to an ordinary `Block::Paragraph` when neither applies, so
-    /// default output (no `\setlist`) stays byte-identical.
+    /// Flushes the accumulated paragraph. Inside a list, this attaches the
+    /// pending `\item` marker (for the first paragraph of an item; later
+    /// paragraphs of the same item get the hanging indent without repeating
+    /// it), the item's nesting level, and any `\setlist` itemsep/topsep gap
+    /// due before or after it (`0.0`/`0.0` from `flush_paragraph`, meaning no
+    /// override — mid-item paragraph breaks never get itemsep/topsep, which
+    /// are gaps between items, not between paragraphs within one). Falls
+    /// back to an ordinary `Block::Paragraph`/`Block::Styled` outside a list.
     fn flush_list_item(
         &mut self,
         blocks: &mut Vec<Block>,
@@ -2299,21 +2305,34 @@ impl P<'_> {
         extra_gap_before_pt: f64,
         extra_gap_after_pt: f64,
     ) {
-        if !paragraph.is_empty() {
-            let content = std::mem::take(paragraph);
-            blocks.push(match self.paragraph_styles.last() {
-                Some(&style) => Block::Styled { style, content },
-                None if extra_gap_before_pt != 0.0 || extra_gap_after_pt != 0.0 => {
-                    Block::ListItem {
-                        content,
-                        extra_gap_before_pt,
-                        extra_gap_after_pt,
-                    }
-                }
-                None => Block::Paragraph(content),
-            });
-            self.finish_block_dependencies();
+        let label = self.pending_item_label.take();
+        if paragraph.is_empty() && label.is_none() {
+            return;
         }
+        let content = std::mem::take(paragraph);
+        // A list level is "current" only once its first `\item` has been
+        // seen (`count > 0`); text typed directly inside `itemize`/
+        // `enumerate` before any `\item` falls back to an ordinary
+        // paragraph, same as before this paragraph became list-aware.
+        let list_level = self
+            .list_stack
+            .last()
+            .filter(|(_, count, _, _)| *count > 0)
+            .map(|_| self.list_stack.len() as u8);
+        blocks.push(match list_level {
+            Some(level) => Block::ListItem {
+                level,
+                label,
+                content,
+                extra_gap_before_pt,
+                extra_gap_after_pt,
+            },
+            None => match self.paragraph_styles.last() {
+                Some(&style) => Block::Styled { style, content },
+                None => Block::Paragraph(content),
+            },
+        });
+        self.finish_block_dependencies();
     }
 
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued

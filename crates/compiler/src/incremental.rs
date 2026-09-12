@@ -380,15 +380,6 @@ fn shift_span(span: Span, delta: isize) -> Span {
 fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
     Some(match block {
         Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
-        Block::ListItem {
-            content,
-            extra_gap_before_pt,
-            extra_gap_after_pt,
-        } => Block::ListItem {
-            content: shift_inlines(content, changes, deltas)?,
-            extra_gap_before_pt: *extra_gap_before_pt,
-            extra_gap_after_pt: *extra_gap_after_pt,
-        },
         Block::Heading {
             level,
             number,
@@ -406,6 +397,22 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
         Block::Styled { style, content } => Block::Styled {
             style: *style,
             content: shift_inlines(content, changes, deltas)?,
+        },
+        Block::ListItem {
+            level,
+            label,
+            content,
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+        } => Block::ListItem {
+            level: *level,
+            label: match label {
+                Some((text, span)) => Some((text.clone(), mapped_span(*span, changes, deltas)?)),
+                None => None,
+            },
+            content: shift_inlines(content, changes, deltas)?,
+            extra_gap_before_pt: *extra_gap_before_pt,
+            extra_gap_after_pt: *extra_gap_after_pt,
         },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
