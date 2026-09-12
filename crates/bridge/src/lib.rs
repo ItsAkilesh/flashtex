@@ -2,6 +2,7 @@
 pub mod context;
 pub mod grok;
 pub mod store;
+pub mod validation;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
