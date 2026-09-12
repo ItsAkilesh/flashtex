@@ -214,15 +214,25 @@ impl Engine<'_> {
         Some(self.make_accent(accent, &MathList::from(scripted), Some((*ch, g)), style))
     }
 
-    /// Upright operator text: roman glyphs side by side, no italic
-    /// correction (they are `math_text_char`s of a font with a space).
+    /// Upright operator text: roman glyphs side by side. Characters followed
+    /// by another character of the same font are `math_text_char`s of a font
+    /// with a nonzero space, so they get no italic correction (tex.web §752);
+    /// the last one is a plain `math_char` and keeps it (pdfTeX \showbox:
+    /// `\kern0.05731` after `lim` in cmr12).
     fn make_text(&mut self, text: &str, style: Style) -> MathBox {
         let mut items = Vec::new();
+        let mut last_italic = 0.0;
         for ch in text.chars() {
             match self.m.text_glyph(ch, style.size_class()) {
-                Some(g) => items.push(MathBox::glyph(&g)),
+                Some(g) => {
+                    last_italic = g.italic;
+                    items.push(MathBox::glyph(&g));
+                }
                 None => self.limitations.push(Limitation::MissingGlyph(ch)),
             }
+        }
+        if last_italic != 0.0 {
+            items.push(MathBox::kern(last_italic));
         }
         MathBox::hlist(items)
     }
@@ -693,7 +703,10 @@ impl Engine<'_> {
             None => h.min(p.x_height),
         };
         let y = MathBox::glyph(chosen);
-        let accent_dx = s + (w - y.width) / 2.0;
+        // `char_box` widths include the italic correction (1.846pt for the
+        // cmmi12 \vec accent), which TeX centres with; the box itself keeps
+        // width 0 in TeX, so only the shift depends on it.
+        let accent_dx = s + (w - (y.width + chosen.italic)) / 2.0;
         // Stack: accent, kern −δ, base; baseline at the base's baseline.
         let accent_dy = -(h - delta) - y.depth;
         let mut height = (h - delta) + y.depth + y.height;

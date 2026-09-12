@@ -13,7 +13,11 @@ pub mod boxes;
 pub mod cm;
 pub mod cm_tfm;
 #[doc(hidden)]
+pub mod corpus;
+#[doc(hidden)]
 pub mod fixtures;
+#[doc(hidden)]
+pub mod json;
 pub mod layout;
 pub mod mathlist;
 pub mod metrics;

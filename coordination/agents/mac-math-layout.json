@@ -3,10 +3,10 @@
   "allocation_id": "claude-mac20x-math-layout",
   "assignment_acknowledgements": {
     "FT-020": {
-      "acknowledged_utc": "2026-09-12T06:18:28Z",
-      "adaptation": "Accepted FT-020 rev 2: extensible delimiters/radicals from cmex10 TFM recipes as stacked Glyph boxes, \\overline/\\underline rules, accents over scripted bases, \\lim-style text operators, style overrides, no-fake-rule assertions, and three new oracle expressions; OpenType MathVariants via a trait method with TFM-only implementation unless font-engine exposes it.",
-      "main_sha": "09b5e3b36475cab31bef8061317401935d571063",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T06:32:17Z",
+      "adaptation": "Accepted FT-020 rev 3: declare a math visual corpus (fixtures/visual, >=10 cases) wired to the mac-visual-oracle harness via tools/run_visual.sh, corpus-wide structural gate with thresholds and --regress, runtime-v1 compile_result emission with rules-v1/font-hints-v1 and a PDF-vs-CoreText box check, tuning only where the corpus shows deltas, explicit unsupported list.",
+      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
+      "revision": 3
     }
   },
   "branch": "agent/mac-math-layout/math-boxes",
@@ -14,14 +14,14 @@
     "rust",
     "math"
   ],
-  "code_revision": "3e1d5d24cfab428848dd37cda8504fa4ec9e0db4",
+  "code_revision": "2f12a7ed43b9a4613dd03a993a8abacf8ed4a26b",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
     "pessimistic": 10
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "09b5e3b36475cab31bef8061317401935d571063",
+  "main_integrated_through": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
   "next_action": "Final report to parent; MathFontMetrics on FT-018 Face and OpenType MathVariants once exposed",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
@@ -36,10 +36,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "FT-020 rev 2 implemented: extensible delimiters/radicals (TFM recipes as stacked glyph boxes), sqrt degree, overline/underline rules, text operators with limits per style, style overrides, scripted-base accents; 34 tests; stage-2 oracle comparison within 0.003 bp",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:30:03Z",
+  "updated_utc": "2026-09-12T06:32:17Z",
   "usage": {
     "evidence": "cargo test 34 passed; docs/comparison.md stage 2 max deviation 0.003 bp vs pdfTeX 1.40.29 incl. extensible pieces",
     "status": "unknown"

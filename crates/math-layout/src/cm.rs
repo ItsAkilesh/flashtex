@@ -45,19 +45,58 @@ pub enum ExtensionSizing {
     Scaled,
 }
 
+/// Every embedded font, indexed by `FontId`.
+pub static ALL_FONTS: [&TfmFont; 18] = [
+    &CMR10, &CMR7, &CMR5, &CMMI10, &CMMI7, &CMMI5, &CMSY10, &CMSY7, &CMSY5, &CMEX10, &CMR12, &CMR8,
+    &CMR6, &CMMI12, &CMMI8, &CMMI6, &CMSY8, &CMSY6,
+];
+
+fn font_id_of(font: &'static TfmFont) -> FontId {
+    let i = ALL_FONTS
+        .iter()
+        .position(|f| std::ptr::eq(*f, font))
+        .expect("font is in ALL_FONTS");
+    FontId(i as u32)
+}
+
 #[derive(Debug, Clone)]
 pub struct CmMathMetrics {
     /// Font sizes for text, script, scriptscript.
     pub sizes: [f64; 3],
     pub extension: ExtensionSizing,
+    /// Fonts for families 0–2 (roman, math italic, symbols) at the three sizes.
+    pub families: [[&'static TfmFont; 3]; 3],
 }
 
 impl CmMathMetrics {
-    /// LaTeX 10pt (and plain TeX): 10/7/5 pt with family 3 fixed at 10pt.
+    /// LaTeX 10pt (and plain TeX): 10/7/5 pt (`\DeclareMathSizes{10}{10}{7}{5}`,
+    /// fonts cmr/cmmi/cmsy 10/7/5) with family 3 fixed at 10pt.
     pub fn latex_10pt() -> CmMathMetrics {
         CmMathMetrics {
             sizes: [10.0, 7.0, 5.0],
             extension: ExtensionSizing::Fixed,
+            families: [
+                [&CMR10, &CMR7, &CMR5],
+                [&CMMI10, &CMMI7, &CMMI5],
+                [&CMSY10, &CMSY7, &CMSY5],
+            ],
+        }
+    }
+
+    /// LaTeX 12pt: `\DeclareMathSizes{12}{12}{8}{6}` with the fonts the
+    /// standard `.fd` files load — cmr12/cmmi12 and cmsy10 scaled to 12pt for
+    /// text, cmr8/cmmi8/cmsy8 for scripts, cmr6/cmmi6/cmsy6 for scriptscripts,
+    /// and cmex10 fixed at 10pt (`omxcmex.fd`). `lmodern` uses the same
+    /// metrics under the Latin Modern names.
+    pub fn latex_12pt() -> CmMathMetrics {
+        CmMathMetrics {
+            sizes: [12.0, 8.0, 6.0],
+            extension: ExtensionSizing::Fixed,
+            families: [
+                [&CMR12, &CMR8, &CMR6],
+                [&CMMI12, &CMMI8, &CMMI6],
+                [&CMSY10, &CMSY8, &CMSY6],
+            ],
         }
     }
 
@@ -67,14 +106,13 @@ impl CmMathMetrics {
     }
 
     /// Scales the 10/7/5 pt design proportionally to another base size.
-    /// This is an approximation: real LaTeX uses `cmr8`/`cmr6` at 11–12pt
-    /// and keeps `cmex10` at 10pt, whereas this scales family 3 with the
-    /// text size.
+    /// This is an approximation: real LaTeX uses `cmr8`/`cmr6` at 11–12pt.
+    /// Prefer [`CmMathMetrics::latex_12pt`] for 12pt documents.
     pub fn scaled(base: f64) -> CmMathMetrics {
         let k = base / 10.0;
         CmMathMetrics {
             sizes: [10.0 * k, 7.0 * k, 5.0 * k],
-            extension: ExtensionSizing::Fixed,
+            ..CmMathMetrics::latex_10pt()
         }
     }
 
@@ -92,19 +130,28 @@ impl CmMathMetrics {
 
     fn font(&self, family: Family, size: SizeClass) -> (&'static TfmFont, FontId, f64) {
         let i = Self::size_index(size);
-        let (fonts, base): (&[&TfmFont; 3], u32) = match family {
-            Family::Roman => (&[&CMR10, &CMR7, &CMR5], 0),
-            Family::Italic => (&[&CMMI10, &CMMI7, &CMMI5], 3),
-            Family::Symbol => (&[&CMSY10, &CMSY7, &CMSY5], 6),
+        let fam = match family {
+            Family::Roman => 0,
+            Family::Italic => 1,
+            Family::Symbol => 2,
             Family::Extension => {
                 let at = match self.extension {
+                    // cmex10 is `sfixed` at its 10pt design size in LaTeX.
+                    ExtensionSizing::Fixed => CMEX10.design_size,
                     ExtensionSizing::Scaled => self.sizes[i],
-                    ExtensionSizing::Fixed => self.sizes[0],
                 };
-                return (&CMEX10, FontId(9), at);
+                return (&CMEX10, font_id_of(&CMEX10), at);
             }
         };
-        (fonts[i], FontId(base + i as u32), self.sizes[i])
+        let font = self.families[fam][i];
+        (font, font_id_of(font), self.sizes[i])
+    }
+
+    /// The roman text font at text size with its interword space (fontdimen
+    /// 2), for setting words of a mixed text/math line.
+    pub fn text_space(&self) -> f64 {
+        let (font, _, at) = self.font(Family::Roman, SizeClass::Text);
+        font.fontdimen(2, at)
     }
 
     fn make_glyph(&self, family: Family, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
@@ -306,6 +353,9 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{02D8}' => (Roman, 0x15),
         '\u{02C7}' => (Roman, 0x14),
         '\u{20D7}' => (Italic, 0x7E),
+        // \imath, \jmath
+        '\u{0131}' => (Italic, 0x7B),
+        '\u{0237}' => (Italic, 0x7C),
         _ => return None,
     })
 }
@@ -377,20 +427,10 @@ impl MathFontMetrics for CmMathMetrics {
     }
 
     fn font_name(&self, font: FontId) -> String {
-        let name = match font.0 {
-            0 => "cmr10",
-            1 => "cmr7",
-            2 => "cmr5",
-            3 => "cmmi10",
-            4 => "cmmi7",
-            5 => "cmmi5",
-            6 => "cmsy10",
-            7 => "cmsy7",
-            8 => "cmsy5",
-            9 => "cmex10",
-            _ => "unknown",
-        };
-        name.to_string()
+        ALL_FONTS
+            .get(font.0 as usize)
+            .map(|f| f.name.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
     }
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
