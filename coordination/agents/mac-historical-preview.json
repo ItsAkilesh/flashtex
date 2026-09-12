@@ -7,18 +7,39 @@
     "swift",
     "macos"
   ],
-  "code_revision": "6bbe6a10d84bd2d0ba194fdb0f2fcd773065d143",
-  "eta_minutes": null,
+  "code_revision": "5a812313e6db823807e33d35b4a6679c5da471a5",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "main_integrated_through": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+  "next_action": "Parent re-applies commit 5c35587 (or the listed diffs) into mac-shell and fixes the 4 math-font-bundled test expectations; decide a hybrid release policy; helper owner: skip superseded queued compiles",
+  "reviewed_peers": {
+    "origin/agent/commander-preview-performance/preview-performance": {
+      "adaptation": "Helper branch read through 397bff7: no change to the negotiated wire after ab945e6 (diagnostic timings, frame bounds, undo payloads only), so the ab945e6 build remains the tested helper; mac-shell b898cfc merged cleanly (multi-file + LM Math font), no interface change to adopt; main read, nothing to adopt",
+      "reviewed_utc": "2026-09-12T10:19:37Z",
+      "sha": "397bff766d04d9dc1ec543a7eaba71c9e8239a8e"
+    },
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Helper branch read through 397bff7: no change to the negotiated wire after ab945e6 (diagnostic timings, frame bounds, undo payloads only), so the ab945e6 build remains the tested helper; mac-shell b898cfc merged cleanly (multi-file + LM Math font), no interface change to adopt; main read, nothing to adopt",
+      "reviewed_utc": "2026-09-12T10:19:37Z",
+      "sha": "b898cfc9db6bf14ac6f4522e5ef41b5f64312935"
+    },
+    "origin/main": {
+      "adaptation": "Helper branch read through 397bff7: no change to the negotiated wire after ab945e6 (diagnostic timings, frame bounds, undo payloads only), so the ab945e6 build remains the tested helper; mac-shell b898cfc merged cleanly (multi-file + LM Math font), no interface change to adopt; main read, nothing to adopt",
+      "reviewed_utc": "2026-09-12T10:19:37Z",
+      "sha": "4248b491159c6f38f12830bf8e3e1444d48543ae"
+    }
+  },
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "ready_for_integration",
+  "summary": "Native consumer for the helper's completed_snapshot channel on agent/mac-historical-preview/consumer (merged mac-shell b898cfc): HistoricalPreview.swift (negotiation configure_completed_snapshots {capability,enabled}, default OFF via FLASHTEX_COMPLETED_SNAPSHOTS=1, per-submission source_binding_token ftx1:<nonce>:<rev>, HistoricalFrame decoder refusing malformed/foreign frames, one pending frame, monotonic display floor, session+project+token recheck at paint, explicit historicalPreview flag gating navigation/diagnostic jump/caret sync/pin/export, label 'revision N shown - revision M compiling'), fake_preview_controller.py, 13 tests incl. a real-helper ab945e6 burst. Full suite with real workers + ab945e6 helper before the merge: 393 tests, 6 skipped (env-gated), 0 failures; after merging mac-shell b898cfc: 435 tests, 6 skipped, 4 failures all pre-existing in the parent's b898cfc (PreviewV2ShellTests x3 and RenderingV2Tests.testMathFixtureFailsClosedWithoutTheMathFontBundled assume latinmodern-math.otf is NOT bundled; b898cfc vendors it), none in this lane. Acceptance bench docs/evidence/historical-preview-2026-09-12T1010Z.md: works end to end, but with one durable edit per keystroke the current preview starves during continuous typing (k->current p95 1.6 s demo, 5.6 s 60 KB) while historical lag is 93/119/146 ms (demo) and 316/414/441 ms (60 KB) - not better than hold-until-preview; keep OFF. Parent diffs isolated in commit 5c35587 and listed in coordination/mac-historical-preview.md",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:15:29Z",
+  "updated_utc": "2026-09-12T10:19:37Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "docs/evidence/historical-preview-2026-09-12T1010Z.md; coordination/mac-historical-preview.md validation section",
+    "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
   }
 }

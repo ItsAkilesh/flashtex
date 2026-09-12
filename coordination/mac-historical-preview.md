@@ -1,6 +1,6 @@
 # mac-historical-preview handoff — native consumer for `completed_snapshot`
 
-- Updated UTC: 2026-09-12T10:20Z
+- Updated UTC: 2026-09-12T10:22Z
 - Agent / parent / machine: `mac-historical-preview` (Claude Code subagent) / parent
   `mac-claude-a` / `mac-m1max-a`
 - Lane: native consumer for the helper's `completed_snapshot` side channel
@@ -19,7 +19,8 @@
   `.claude/worktrees/agent-a25f8f8ba4a279a48`; based on `origin/agent/mac-claude-a/mac-shell`
   40d53b7. Commits: 0cec2a1 (owned files), 5c35587 (**requested parent diffs**, applied
   locally so the branch builds/tests — parent-retained files, see below), 6bbe6a1 (real-helper
-  test), then evidence + handoff.
+  test), a2cb509 (evidence + handoff), 5a81231 merge of `origin/agent/mac-claude-a/mac-shell`
+  b898cfc (clean; multi-file integration + LM Math font), then the coord report.
 - Rules honoured: no purchases; no network calls; no edits to transferred crates; the parent
   diffs are isolated in one commit (5c35587) so the parent can cherry-pick or re-apply from the
   diff below; app launched only by the bench with `FLASHTEX_NO_ACTIVATE=1`; commits carry the
@@ -93,6 +94,13 @@ between A and B makes the test order deterministic.
   checkout; helper ab945e6 scratch build 58daf00b…): **393 tests, 6 skipped (pre-existing
   env-gated: pdf-exact, nearby serve, screenshot dir, assistant-context ×3), 0 failures**
   (`swift test`, 88 s). `PreviewControllerTests` ran against the ab945e6 helper and passed.
+  After merging mac-shell b898cfc: **435 tests, 6 skipped, 4 failures — all pre-existing in the
+  parent's b898cfc**, none in this lane: `PreviewV2ShellTests` ×3
+  (`testRefusedDisplayListShowsNoFrame`, `testLoadingRetainsThePreviousFrameAsStale…`,
+  `testStaleLoadResultNeverOverwritesANewerState`) and
+  `RenderingV2Tests.testMathFixtureFailsClosedWithoutTheMathFontBundled` expect
+  `latinmodern-math.otf` to be absent; b898cfc vendors it. `HistoricalPreviewTests` 13/13 and
+  the real-helper burst passed again in that run.
 - Acceptance measurement: `docs/evidence/historical-preview-2026-09-12T1010Z.md`. Load 7–17.
   demo 30 ms: baseline (hold-until-preview) first paint p50/p95/p99 65/92/118, 0 historical;
   historical mode 178 paints (87 historical / 101 current), historical lag 93/119/146,
