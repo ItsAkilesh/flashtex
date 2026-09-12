@@ -8,7 +8,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case openLaTeXFile, save, saveAs, openFixture, reloadFixture
     case attachBuiltCompiler, attachWorker, compile
     case exportPDF, exportPDFViaRust
-    case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture
+    case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case undo, completion
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
@@ -79,6 +79,9 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Convert capture", shortcuts: ["⌘⇧G"], menu: "Edit",
                          description: "Sends capture_convert for the latest received capture; the proposal opens for review.",
                          requires: "a received capture")
+        case .nearbyCompanion:
+            return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
+                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal).")
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
                          description: "Undoes the last edit, including an approved capture insertion.")

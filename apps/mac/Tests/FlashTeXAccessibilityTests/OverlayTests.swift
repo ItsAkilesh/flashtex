@@ -43,6 +43,11 @@ final class OverlayTests: XCTestCase {
         XCTAssertEqual(r.minX, 200)
         XCTAssertEqual(r.width, 2 * RuleConvention.advanceEm * 8.4 * 2, accuracy: 0.001, "2 segments × 0.5 em × 8.4 pt × scale 2")
         XCTAssertEqual(r.height, RuleConvention.thicknessEm * 8.4 * 2, accuracy: 0.001)
+        // The preview's face resolver changes the measured width; an unknown name falls back to Times.
+        let helvetica = AccessibilityOverlay(page: res.pages[0], scale: 1, fontName: { _ in "Helvetica" }) { _, _ in }.slots[0].frame
+        XCTAssertNotEqual(helvetica.width, f.width)
+        let unknown = AccessibilityOverlay(page: res.pages[0], scale: 1, fontName: { "NoSuchFace-\($0)" }) { _, _ in }.slots[0].frame
+        XCTAssertEqual(unknown.width, f.width)
     }
 
     func testOverlayActionForwardsSourceAndText() throws {

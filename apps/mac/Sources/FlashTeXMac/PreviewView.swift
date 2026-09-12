@@ -53,7 +53,7 @@ private struct PageView: View {
         let size = CGSize(width: page.widthPt * scale, height: page.heightPt * scale)
         HitTestCanvas(page: page, dark: dark, scale: scale, caretItems: caretItems, onSelect: onSelect)
             .frame(width: size.width, height: size.height)
-            .overlay(alignment: .topLeading) { AccessibilityOverlay(page: page, scale: scale, onSelect: onSelect) } // FlashTeXAccessibility
+            .overlay(alignment: .topLeading) { AccessibilityOverlay(page: page, scale: scale, fontName: { PreviewFonts.postScriptName(size: $0) }, onSelect: onSelect) } // FlashTeXAccessibility
             .background(dark ? Color(white: 0.16) : .white)
             .shadow(radius: 4)
             .overlay(alignment: .bottomTrailing) {

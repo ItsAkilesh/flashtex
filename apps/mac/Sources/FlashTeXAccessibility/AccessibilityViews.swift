@@ -27,8 +27,11 @@ public struct AccessibilityOverlay: View {
     ///   - page: the page being drawn.
     ///   - totalPages: page count for "Page 1 of 2" (0 = unknown).
     ///   - scale: display scale (1 = 1 pt per screen point).
+    ///   - fontName: PostScript name of the face the preview draws a given
+    ///     point size with (default Times-Roman); used only to size AX frames.
     ///   - onSelect: the preview's click handler (source range, item text).
     public init(page: RuntimeV1.Page, totalPages: Int = 0, scale: CGFloat,
+                fontName: @escaping (Double) -> String = { _ in "Times-Roman" },
                 onSelect: @escaping (RuntimeV1.SourceRange?, String?) -> Void) {
         self.page = page
         self.totalPages = totalPages
@@ -38,7 +41,8 @@ public struct AccessibilityOverlay: View {
         self.lines = lines
         let ordered = lines.flatMap(\.elements)
         self.slots = ordered.enumerated().map { i, e in
-            Slot(element: e, frame: Self.frame(for: e, in: page, scale: scale), priority: Double(ordered.count - i))
+            Slot(element: e, frame: Self.frame(for: e, in: page, scale: scale, fontName: fontName),
+                 priority: Double(ordered.count - i))
         }
     }
 
@@ -61,14 +65,16 @@ public struct AccessibilityOverlay: View {
         AccessibleDocumentModel.PageSummary(number: page.number, lines: lines, totalPages: totalPages).label
     }
 
-    /// Bounding box of an element in view points: measured with Times-Roman
-    /// (the face the preview draws with) or the rule rectangle.
-    static func frame(for element: AccessibleDocumentModel.Element, in page: RuntimeV1.Page, scale: CGFloat) -> CGRect {
+    /// Bounding box of an element in view points: measured with the preview's
+    /// face (Times-Roman unless told otherwise) or the rule rectangle.
+    static func frame(for element: AccessibleDocumentModel.Element, in page: RuntimeV1.Page, scale: CGFloat,
+                      fontName: (Double) -> String = { _ in "Times-Roman" }) -> CGRect {
         guard element.itemIndex < page.items.count, case .text(let item) = page.items[element.itemIndex] else { return .zero }
         if let r = RuleConvention.rect(for: item) {
             return CGRect(x: r.x * scale, y: r.y * scale, width: r.width * scale, height: max(1, r.height * scale))
         }
-        let font = NSFont(name: "Times-Roman", size: item.fontSizePt) ?? NSFont.systemFont(ofSize: item.fontSizePt)
+        let font = NSFont(name: fontName(item.fontSizePt), size: item.fontSizePt)
+            ?? NSFont(name: "Times-Roman", size: item.fontSizePt) ?? NSFont.systemFont(ofSize: item.fontSizePt)
         let width = NSAttributedString(string: item.text, attributes: [.font: font]).size().width
         let top = item.baselineYPt - Double(font.ascender)
         let height = Double(font.ascender - font.descender)

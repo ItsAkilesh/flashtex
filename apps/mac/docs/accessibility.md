@@ -49,7 +49,7 @@ visible behavior changed.
 
 | Hook | Effect for VoiceOver |
 |---|---|
-| `PreviewView` `PageView.overlay { AccessibilityOverlay(…) }` | Each page is a container labelled `Page N[ of T], k lines`; each item is a static-text element (label = spoken form, value = size/source context, hint = `Page N, line k`) in reading order (`accessibilitySortPriority`), with a `Go to source` custom action that calls the same closure as a mouse click. Hit testing is disabled, so mouse behavior is unchanged. |
+| `PreviewView` `PageView.overlay { AccessibilityOverlay(…) }` | Each page is a container labelled `Page N[ of T], k lines`; each item is a static-text element (label = spoken form, value = size/source context, hint = `Page N, line k`) in reading order (`accessibilitySortPriority`), with a `Go to source` custom action that calls the same closure as a mouse click. Frames are measured with the face the preview draws (`PreviewFonts.postScriptName(size:)`: Latin Modern or Times). Hit testing is disabled, so mouse behavior is unchanged. |
 | `ContentView` diagnostics row `.accessibleDiagnostic(d, index:, total:)` | The row is one element: `Diagnostic 1 of 2: Error: Missing } inserted for \textbf.`, value `recovery: …`, custom action `Go to source` (or hint `No source mapping; listed only.`). |
 | `ContentView` capture bar `.accessibleCaptureBar(anchor:, proposals:)` | Group `Capture bar` with value `Insertion point pinned: a1 at main.tex byte 66, revision 3; 1 proposal to review` (or `No insertion point pinned; 0 proposals to review`); the buttons inside stay reachable. |
 | `SourceEditorView` `tv.setAccessibilityLabel("LaTeX source")` | The `NSTextView` is announced as `LaTeX source, text area`. Native VoiceOver text navigation (VO-arrows, line/word/character) is AppKit's. |
@@ -57,7 +57,8 @@ visible behavior changed.
 ## What can be verified here, and what needs a human
 
 Verified by unit tests (`swift test`, target `FlashTeXAccessibilityTests`,
-23 tests): reading order across the multipage sample's pages and lines, the
+23 tests; README shortcut parity fails the suite when a shortcut is added to
+the README without a command entry — it caught `⌘⇧N` on merge): reading order across the multipage sample's pages and lines, the
 exact label/value/action strings above, UTF-8↔UTF-16 offsets on non-ASCII
 (`naïve`, `Résumé`, decomposed `ï`, emoji), rebase/refusal after edits,
 script/fraction/second-order grouping on a synthetic math line, heading-vs-body
