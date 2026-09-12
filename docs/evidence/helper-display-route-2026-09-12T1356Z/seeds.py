@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Seeds for run.sh: apps/mac/Samples/demo.tex body repeated until the producer
-lays out >= 3 pages (p3) and >= 27 pages (p27). Page counts are PROBED through
+lays out >= 3 pages (p3) and >= 27 pages (p27), plus pmax: the largest body
+multiple whose display-list-v2 sibling fits the HELPER's compiler-frame cap
+(V2_LIMIT bytes, default the helper's 8 MiB default; the producer itself only
+declines above its 16 MiB line limit, and a sibling between the two caps makes
+the helper fail the compiler session). Page counts are PROBED through
 the actual producer (one direct compile with display-list-v2 requested), so the
 recorded counts and whether the producer declined the v2 sibling are facts of
 this build, not assumptions. Usage: seeds.py <repo root> <work dir> <flashtex-render> <fonts dir>"""
@@ -38,9 +42,36 @@ def build(target_pages):
         n += 1
 
 
-for name, target in (("p3", 3), ("p27", 27)):
-    text, n, pages, has_v2, declined, v2_bytes = build(target)
+def report(name, text, n, pages, has_v2, declined, v2_bytes):
     open(os.path.join(work, name + ".tex"), "w", encoding="utf-8").write(text)
     print("seed %-4s body x%-2d %6d bytes -> %2d page(s); v2 sibling: %s%s" % (
         name, n, len(text.encode("utf-8")), pages,
         ("%d bytes" % v2_bytes) if has_v2 else "none", " (display_list_declined by the producer)" if declined else ""))
+
+
+V2_LIMIT = int(os.environ.get("V2_LIMIT") or 8 * 1024 * 1024)
+
+
+def build_max():
+    last = None
+    n = 1
+    while n <= 64:
+        text = head + "\\begin{document}\n" + body * n + "\\end{document}\n"
+        pages, has_v2, declined, v2_bytes = probe(text)
+        if not has_v2 or declined or v2_bytes > V2_LIMIT:
+            break
+        last = (text, n, pages, has_v2, declined, v2_bytes)
+        n += 1
+    return last
+
+
+seeds = dict(os.environ).get("SEEDS", "p3 p27 pmax").split()
+for name, target in (("p3", 3), ("p27", 27)):
+    if name in seeds:
+        report(name, *build(target))
+if "pmax" in seeds:
+    found = build_max()
+    if found:
+        report("pmax", *found)
+    else:
+        print("seed pmax: no body multiple has a v2 sibling within %d bytes" % V2_LIMIT)

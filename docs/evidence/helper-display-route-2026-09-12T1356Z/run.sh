@@ -14,14 +14,14 @@
 #
 # Requires a checkout that has the parent-retained hook lines applied
 # (agent/mac-helper-display/route-applied or later integration).
-# Usage: FLASHTEX_RENDER=<flashtex-render> [FLASHTEX_PREVIEW_CONTROLLER=<helper>] \
-#        [INTERVALS="30 0"] [SEEDS="p3 p27"] run.sh
+# Usage: FLASHTEX_RENDER=<flashtex-render> [RENDER_SHA=<its source sha>] [FLASHTEX_PREVIEW_CONTROLLER=<helper>] \
+#        [INTERVALS="30 0"] [SEEDS="p3 pmax p27"] [CAP15_SEEDS=pmax] [V2_LIMIT=<bytes>] [SKIP_BUILD=1] run.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 MAC="$ROOT/apps/mac"
 INTERVALS="${INTERVALS:-30 0}"
-SEEDS="${SEEDS:-p3 p27}"
+SEEDS="${SEEDS:-p3 pmax p27}"
 RENDER="${FLASHTEX_RENDER:?set FLASHTEX_RENDER to a built flashtex-render}"
 HELPER="${FLASHTEX_PREVIEW_CONTROLLER:-$ROOT/crates/preview-controller/target/release/flashtex-preview-controller}"
 [[ -x "$RENDER" && -x "$HELPER" ]] || { echo "producer/helper not executable: $RENDER / $HELPER" >&2; exit 1; }
@@ -32,12 +32,14 @@ RAW="$HERE/raw"; mkdir -p "$RAW"
 load1() { sysctl -n vm.loadavg | awk '{print $2}'; }
 step() { echo "==> $*"; }
 
-step "building FlashTeXMac (release) at $(git -C "$ROOT" rev-parse --short HEAD) ($(git -C "$ROOT" rev-parse --abbrev-ref HEAD))"
-swift build -c release --package-path "$MAC" 2>&1 | tail -1
+if [[ -z "${SKIP_BUILD:-}" ]]; then
+  step "building FlashTeXMac (release) at $(git -C "$ROOT" rev-parse --short HEAD) ($(git -C "$ROOT" rev-parse --abbrev-ref HEAD))"
+  swift build -c release --package-path "$MAC" 2>&1 | tail -1
+fi
 APP="$MAC/.build/release/FlashTeXMac"
 
 step "seeds (page counts probed through the producer)"
-python3 "$HERE/seeds.py" "$ROOT" "$WORK" "$RENDER" "$MAC/Fonts" | tee "$WORK/seeds.txt"
+SEEDS="$SEEDS ${CAP15_SEEDS:-}" V2_LIMIT="${V2_LIMIT:-}" python3 "$HERE/seeds.py" "$ROOT" "$WORK" "$RENDER" "$MAC/Fonts" | tee "$WORK/seeds.txt"
 
 run_cell() { # route seed interval
   local route="$1" seed="$2" ms="$3"
@@ -47,6 +49,9 @@ run_cell() { # route seed interval
   local -a extra=(FLASHTEX_PREVIEW_CONTROLLER="$HELPER" FLASHTEX_COMPILER="$RENDER" FLASHTEX_CONTROLLER_LEDGER_ROOT="$cell/ledger")
   case "$route" in
     helper-v2) extra+=(FLASHTEX_PREVIEW_V2=1 FLASHTEX_DISPLAY_CANDIDATES=1) ;;
+    # Same route with the helper's compiler-frame cap raised to its 15 MiB maximum
+    # (FLASHTEX_CONTROLLER_MAX_FRAME_BYTES): admits siblings the 8 MiB default rejects.
+    helper-v2cap15) extra+=(FLASHTEX_PREVIEW_V2=1 FLASHTEX_DISPLAY_CANDIDATES=1 FLASHTEX_CONTROLLER_MAX_FRAME_BYTES=15728640) ;;
     helper-v1) ;;
   esac
   local before; before="$(load1)"
@@ -83,7 +88,11 @@ d["candidate_counters"] = {
     "candidates_invalid": c(r"display-candidate: invalid "),
     "candidates_dropped_at_paint": c(r"display-candidate: dropped "),
     "declined_display_list_v2": c(r"declined layout capabilities.*display-list-v2"),
+    "compiler_session_failed": c(r"compiler session failed"),
 }
+m = re.search(r"controller ready: compiler frames ≤ (\S+ \S+), helper output ≤ (\S+ \S+)", text)
+if m:
+    d["helper_caps"] = {"compiler_frame": m.group(1), "helper_output": m.group(2)}
 m = re.findall(r"display-candidate: validated \S+ in ([0-9.]+) ms", text)
 if m:
     v = sorted(float(x) for x in m)
@@ -101,9 +110,14 @@ PY
 for seed in $SEEDS; do
   for ms in $INTERVALS; do run_cell helper-v2 "$seed" "$ms"; done
 done
-# v1 control on the first seed only (same helper + producer, v1 pane).
-first="${SEEDS%% *}"
-for ms in $INTERVALS; do run_cell helper-v1 "$first" "$ms"; done
+for seed in ${CAP15_SEEDS:-}; do
+  for ms in $INTERVALS; do run_cell helper-v2cap15 "$seed" "$ms"; done
+done
+# v1 control on every seed (same helper + producer, v1 pane): the only latency
+# number a seed whose sibling the producer declines can have.
+for seed in $SEEDS; do
+  for ms in $INTERVALS; do run_cell helper-v1 "$seed" "$ms"; done
+done
 
 step "writing $HERE/summary.md"
-python3 "$HERE/summarize.py" "$HERE/summary.md" "$RAW" "$ROOT" "$UTC" "$HELPER" "$RENDER" "$WORK/seeds.txt"
+RENDER_SHA="${RENDER_SHA:-unrecorded}" python3 "$HERE/summarize.py" "$HERE/summary.md" "$RAW" "$ROOT" "$UTC" "$HELPER" "$RENDER" "$WORK/seeds.txt"

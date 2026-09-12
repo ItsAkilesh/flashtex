@@ -126,10 +126,32 @@ sibling arrives (admitted or refused) or 80 ms elapse. Counters
 Suggested helper-side fix (not applied, Commander owns the crate): keep a
 queued optional frame across required enqueues while the writer is idle, or
 write the optional frame FIFO behind the required ones instead of clearing it.
+`origin/main` `77c8cab1` only adds tracing (`evicted`) to that slot; the
+eviction itself is unchanged.
+
+Second helper interaction (display.rs): a candidate is forwarded only while
+the helper's current source is the one it was compiled from, so under
+continuous typing the NEXT edit (released by the shell as soon as the v1
+preview for the in-flight edit arrives) invalidates the sibling before the
+helper checks it. Measured without the hold: 3 of 102 candidates forwarded in
+a 200-keystroke burst. Native mitigation: when the route is negotiated and the
+producer accepted `display-list-v2`, the in-flight edit release is held with
+the completion refresh (`displayCandidatesAfterSibling(..., holdsRelease:
+true)`) until the sibling arrives (admitted or refused) or the bound
+(`FLASHTEX_DISPLAY_CANDIDATES_WAIT_MS`, default 80 ms) elapses;
+`FLASHTEX_DISPLAY_CANDIDATES_HOLD=0` disables the hold for comparison. Held
+work is a list per request, runs in order, and is never dropped: a newer
+request's hold releases the older request's work first (`superseded`), and
+invalidation (close / helper exit / restart) releases it too (`invalidated`);
+each piece guards the controller it was queued for. Counters
+`deferredReleasedByCandidate/Timeout/Supersession/Invalidation`. The price is
+paid only while candidates are ON: v1 previews per 200-keystroke burst fall
+(the edit pipeline waits for the sibling), so the v1 pane is not slower when
+the route is OFF (default) — see the measurement.
 
 ## Tests (apps/mac/Tests/FlashTeXMacTests)
 
-`DisplayCandidateTests` (10):
+`DisplayCandidateTests` (12):
 - pure: decoder contract (flags, identity, v2 envelope, foreign session);
   gate (not negotiated, toggled session, other project, not the applied
   request, generation/versions mismatch, active path, display floor);
@@ -145,7 +167,10 @@ write the optional frame FIFO behind the required ones instead of clearing it.
   (final frame == final revision, document sha == buffer, fonts by raw-byte
   hash, `negotiation.accepted` includes `display-list-v2`, no violation),
   tampered sibling refused off-main with v1 and the previous frame kept,
-  foreign-session frame refused at admission; disable → no candidates and
+  foreign-session frame refused at admission; ordering on the real helper
+  (GH36: `configure_layout` with `display-list-v2` before the opt-in → the
+  exact refusal and legacy v1 continues; opt-in acknowledged first → the same
+  `configure_layout` accepted and candidates paint); disable → no candidates and
   capability removed, restart → fresh opt-in and a new paint, close →
   invalidated, reattach → paints again; mutual exclusion with
   `FLASHTEX_COMPLETED_SNAPSHOTS=1` refused by the helper with v1 unaffected.
@@ -154,10 +179,16 @@ before CGFont construction under both hash spellings and nothing cached; a
 verified CGFont stays the same object after the file changes; unknown hash /
 length mismatch still refused.
 
-## Parent-retained hook diff (apply from here or cherry-pick fd5ce63a)
+## Parent-retained hook diff (apply from here or take the LOCAL APPLICATION commit on `route-applied`)
+
+Files: `FlashTeXMacApp.swift`, `ShellModel.swift`, `ShellModel+Controller.swift`
+(diff against lane tip `3db719cf`'s parent-retained state, i.e. the parent's
+`5bc3fc0f` merged with main `6472a5d2`). `ContentView.swift`, `PreviewView.swift`,
+`SourceEditorView.swift` unchanged.
 
 ```diff
 diff --git a/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift b/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
+index d3564c37..8ff8e495 100644
 --- a/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
 +++ b/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
 @@ -94,6 +94,12 @@ struct FlashTeXMacApp: App {
@@ -174,6 +205,7 @@ diff --git a/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift b/apps/mac/Source
                  Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
              }
 diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
+index e2006040..f26c313c 100644
 --- a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
 +++ b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
 @@ -118,6 +118,7 @@ extension ShellModel {
@@ -230,7 +262,20 @@ diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac
          }
      }
  
-@@ -408,7 +418,8 @@ extension ShellModel {
+@@ -395,7 +405,11 @@ extension ShellModel {
+         // active path's version says nothing about it.
+         if let inFlight = controllerState.inFlight, let want = inFlight.durableRevision,
+            let got = update.sourceVersions[inFlight.path], got >= want {
+-            controllerReleaseInFlight()
++            // Held briefly for this request's display-candidate sibling when that route is
++            // negotiated (ShellModel+DisplayCandidates.swift); otherwise released now.
++            displayCandidatesAfterSibling(of: update.requestID, acceptedLayout: update.result.payload.layoutCapabilities ?? [], holdsRelease: true) { [weak self] in
++                self?.controllerReleaseInFlight()
++            }
+         }
+         guard let durableRevision = versionForActive,
+               let editorRev = controllerState.editorRevisionByDurable[activePath]?[durableRevision] else {
+@@ -408,7 +422,8 @@ extension ShellModel {
          }
          var incoming = update.result.payload
          incoming.revision = editorRev
@@ -240,7 +285,7 @@ diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac
          if let violation = LayoutNegotiation.violation(in: incoming, requested: requested) {
              log("rejected controller preview \(update.requestID): \(violation)")
              controllerStatus = "protocol violation: \(violation)"
-@@ -418,6 +429,7 @@ extension ShellModel {
+@@ -418,6 +433,7 @@ extension ShellModel {
          resultID = update.result.id
          previewSource = .worker("flashtex-preview-controller")
          historicalNoteCurrentPreview(compileRevision: update.compileRevision)
@@ -248,7 +293,7 @@ diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac
          bindLayout(of: incoming, requested: requested)
          if !update.missingLayoutCapabilities.isEmpty {
              log("controller: compiler declined layout capabilities \(update.missingLayoutCapabilities)")
-@@ -433,9 +445,14 @@ extension ShellModel {
+@@ -433,9 +449,14 @@ extension ShellModel {
          workerStatus = String(format: "revision %d: %@, %d diagnostics in %.0f ms (durable r%d)", editorRev,
                                incoming.status.rawValue, incoming.diagnostics.count, ms, durableRevision)
          selection = nil
@@ -266,6 +311,7 @@ diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac
      }
  }
 diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel.swift b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
+index e8f37f4d..f34d4b0c 100644
 --- a/apps/mac/Sources/FlashTeXMac/ShellModel.swift
 +++ b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
 @@ -81,6 +81,8 @@ final class ShellModel {
@@ -279,29 +325,99 @@ diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel.swift b/apps/mac/Sources/Fl
      var completionMetadata: Completion.Metadata?
 ```
 
-## Measurement harness (runs when the parent opens the low-load window)
+## Measurement (done 2026-09-12T14:21–14:27Z, quiet window, load 4–7)
 
-`docs/evidence/helper-display-route-<UTC>/run.sh` builds `FlashTeXMac` release
-from the applied branch and runs `TypingBench` (tools/typing-bench conventions:
-`FLASHTEX_TYPING_BENCH=tools/typing-bench/typed-200.txt`, 30 ms and 0 ms
-intervals, `FLASHTEX_NO_ACTIVATE=1`) over the helper route with
-`FLASHTEX_PREVIEW_CONTROLLER` + `FLASHTEX_COMPILER=<flashtex-render>` +
-`FLASHTEX_PREVIEW_V2=1` + `FLASHTEX_DISPLAY_CANDIDATES=1`, so the recorded
-paint point is the v2 pane's bitmap blit of the candidate frame for the typed
-revision (PageV2View → TypingBench.willRender/didDraw). Seeds: a 3-page and a
-multi-page document generated from `apps/mac/Samples/demo.tex`. Records
-`uptime` before/after each cell and the candidate counters from the log.
+`docs/evidence/helper-display-route-2026-09-12T1356Z/summary.md` (+ `raw/*.json`,
+one per cell, with per-keystroke samples). Real FlashTeXMac release build of
+`route-applied` @ `c5fa71cd` driven by TypingBench (`typed-200.txt`, 200
+keystrokes, 30 ms and 0 ms intervals, `FLASHTEX_NO_ACTIVATE=1`) through the
+real helper (this tree's `flashtex-preview-controller`, sha256 c95a26a3…) owning
+`flashtex-render` built from `origin/agent/mac-render-pipeline/unified`
+`9aaec57a` (sha256 ed729b02…). Paint point: the v2 pane's bitmap blit of the
+validated candidate for the typed revision (v1 control: PreviewView's Canvas
+pass). Seeds from `apps/mac/Samples/demo.tex`: p3 = 4 pages (3.9 MB sibling),
+pmax = 8 pages (7.8 MB, the largest sibling under the helper's default 8 MiB
+compiler-frame cap), p27 = 28 pages (sibling declined by the producer).
+
+| cell | p50 | p95 | p99 | max | v1 previews / 200 keys | cand. painted | refused | dropped@paint | load |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| helper-v2 p3 30 ms | 296 | 405 | 435 | 452 | 45 | 44 | 0 | 1 | 4.2→6.3 |
+| helper-v2 p3 0 ms | 209 | 286 | 333 | 378 | 29 | 28 | 0 | 1 | 6.3→6.0 |
+| helper-v2 pmax 30 ms | 382 | 481 | 560 | 623 | 35 | 33 | 0 | 2 | 6.0→6.7 |
+| helper-v2 pmax 0 ms | 359 | 474 | 502 | 526 | 16 | 15 | 0 | 1 | 6.7→6.8 |
+| helper-v2 p27 (both) | — | — | — | — | 3 | 0 (sibling declined ×3) | 0 | 0 | 5.8→4.3 |
+| helper-v1 p3 30 ms | 61 | 83 | 96 | 125 | 191 | — | — | — | 4.6→4.8 |
+| helper-v1 p3 0 ms | 61 | 80 | 154 | 188 | 149 | — | — | — | 4.8→4.7 |
+| helper-v1 pmax 30 ms | 81 | 104 | 115 | 123 | 132 | — | — | — | 4.7→4.8 |
+| helper-v1 p27 30 ms | 202 | 241 | 250 | 263 | 55 | — | — | — | 4.7→4.4 |
+| helper-v1 p27 0 ms | 196 | 236 | 247 | 252 | 24 | — | — | — | 4.4→4.2 |
+
+(ms; every keystroke painted, unpainted ones covered by the next painted
+revision = "coalesced"; candidate validation p50 23–28 ms for p3, 46 ms for
+pmax.) Earlier passes are kept for the load story: `smoke-under-load/` (load
+30: v2 p3 p50 275), `pass1-load33-94/` (load 33–94: v2 p3 p50 705/745, v1 p50
+60/61), `pass2-load5-10-partial/` (v2 p3 p50 245/265 at load 9–10).
+
+Findings from the measurement:
+- The helper route paints ~4–6× later than the v1 pane for the same helper
+  and producer (p3: 296 vs 61 ms p50). The cycle is dominated by the sibling
+  itself: the producer serialises 3.9–7.8 MB JSON per keystroke, the helper
+  reads and re-emits it, the shell decodes/prepares it off-main (23–46 ms), and
+  the edit pipeline is held for the sibling so v1 previews per burst drop from
+  191 to 45 (p3) — only while candidates are ON; OFF (default) is unaffected.
+- Sibling size caps disagree: the producer declines above its 16 MiB line
+  limit (p27), but the helper's default compiler-frame cap is 8 MiB and a
+  sibling between the two (14 pages, 13.7 MB) makes the helper FAIL the
+  compiler session (`compiler session failed; create a new session with
+  complete snapshots`; the v1 pane stops until a restart) rather than drop the
+  frame — `pass4-cap15-14pages/` (`helper-v2-pmax-30ms`, session failed = 1).
+  With `FLASHTEX_CONTROLLER_MAX_FRAME_BYTES=15728640` the same seed paints
+  (`helper-v2cap15-pmax-30ms`: p50 1239 / p95 2205 / p99 2446 ms, 20 admitted,
+  7 painted, 13 dropped at the paint-time recheck because a newer revision
+  had been applied meanwhile). Reported for the helper/producer owners; the
+  native route does not change either cap.
+
+## Exact wire of one exchange (GH36 review 5646386345)
+
+`docs/evidence/helper-display-route-2026-09-12T1356Z/exchange/`: `helper-stdin.jsonl`
+(every frame the shell wrote), `helper-stdout.jsonl` (every frame the helper
+wrote back, byte for byte, including the `update{kind:"display_candidate"}`
+lines with the sibling inside), `app.log` (native admission/validation/paint
+decisions), `bench.json`, and `README.md` (frame index; absolute paths of this
+machine are present in the frames and listed there, nothing removed).
+Reproducible with `capture-exchange.sh`. Order on the wire: `configure_layout
+[rules-v1, font-hints-v1]` (never `display-list-v2`) → `configure_display_candidates
+{capability, enabled:true, renderer_support_confirmed:true}` → its `result` →
+the helper's own recompile carries `display-list-v2` (the accepted set in the
+following `preview` update) → `edit` → `preview` → `display_candidate`.
+`DisplayCandidateTests.testHelperOrderingEnableBeforeLayoutWithDisplayListV2`
+drives the reversed order on the real helper (`configure_layout` with
+`display-list-v2` before the opt-in → exactly `display candidates must be
+enabled before requesting their layout`, session continues as legacy v1) and
+the required order (opt-in acknowledged, then `configure_layout` with
+`display-list-v2` accepted, candidates paint).
+
+## Measurement harness
+
+`run.sh` (see its header; `SKIP_BUILD=1`, `SEEDS`, `CAP15_SEEDS`, `V2_LIMIT`,
+`RENDER_SHA`, `INTERVALS`), `seeds.py` (page counts and sibling sizes probed
+through the actual producer), `summarize.py`, `capture-exchange.sh`.
 
 ## Limitations (honest)
 
 - No pixel-parity claim: the frame painted is the producer's v2 sibling
   validated by hash/length/fonts/geometry, not compared against a PDF raster.
-- No latency claim yet: the measurement is pending the low-load window.
-- The helper's optional slot can still drop a candidate when any required
-  reply (durable edit ack, snapshot, etc.) is enqueued inside the writer's
-  2 ms idle window; the shell then keeps v1 and the previous v2 frame. The
-  drop rate is what the measurement will report (received vs previews).
-- Oversized candidates: the helper refuses >16 MiB optional frames
-  (`serialization_refused`) and the client's existing 16 MiB frame bound
-  terminates a helper that violates it; no native test produces a >16 MiB
-  sibling through the real producer.
+- Latency is from one machine (M1 Max) at load 4–7 with other agents idle,
+  not an isolated benchmark; the 27-page fixture has NO v2 latency because the
+  pinned producer declines its sibling — the v1 control (p50 ~200 ms) is that
+  seed's number through the same helper.
+- The helper's optional slot can still drop a candidate when a required reply
+  lands inside its writer's 2 ms idle window; in the quiet-window cells every
+  admitted candidate except the 1–2 dropped at the paint-time recheck painted.
+- The in-flight-edit hold (only while candidates are ON) costs v1 throughput:
+  45 v1 previews per 200-keystroke burst instead of 191.
+- Oversized siblings between the helper's 8 MiB compiler-frame cap and the
+  producer's 16 MiB limit cost the compiler session (helper behaviour); no
+  native test produces one through the real producer, the measurement does.
+- Full `swift test` was not run in this session (filtered suites only:
+  52/52, 0 skips); the parent's integration run covers the whole suite.
