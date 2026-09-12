@@ -1,3 +1,64 @@
-{"schema_version":1,"agent_id":"mac-math-layout","task_id":"FT-020","next_index":0,"steps":[
-{"name":"Advanced math boxes and font constants","objective":"Add operators, accents, extensible delimiters, nested styles and font-derived math constants with explicit glyph/rule geometry.","acceptance":["Golden tests cover nested and extensible constructs","No flattened fraction or fake rule glyph","Reference geometry deltas are measured"],"owned_paths":["crates/math-layout"],"timebox_minutes":45,"allocation_id":"claude-mac20x-math-layout-stage2"},
-{"name":"Math visual convergence","objective":"Integrate declared math visual cases and tune spacing, scripts, rules, roots and delimiters against pinned TeX oracles without overclaiming beyond the corpus.","acceptance":["Raster overlays and structural geometry both gate changes","Preview/PDF consume identical boxes","Remaining unsupported constructs are explicit"],"owned_paths":["crates/math-layout"],"timebox_minutes":45,"allocation_id":"claude-mac20x-math-layout-stage3"}]}
+{
+  "agent_id": "mac-math-layout",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Golden tests cover nested and extensible constructs",
+        "No flattened fraction or fake rule glyph",
+        "Reference geometry deltas are measured"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage2",
+      "name": "Advanced math boxes and font constants",
+      "objective": "Add operators, accents, extensible delimiters, nested styles and font-derived math constants with explicit glyph/rule geometry.",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Raster overlays and structural geometry both gate changes",
+        "Preview/PDF consume identical boxes",
+        "Remaining unsupported constructs are explicit"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage3",
+      "name": "Math visual convergence",
+      "objective": "Integrate declared math visual cases and tune spacing, scripts, rules, roots and delimiters against pinned TeX oracles without overclaiming beyond the corpus.",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Raster overlays and structural geometry both gate changes",
+        "Preview/PDF consume identical boxes",
+        "Remaining unsupported constructs are explicit"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage3",
+      "name": "Exact TeX math spacing and size-dependent symbol metrics",
+      "objective": "Exact TeX math spacing and size-dependent symbol metrics",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Raster overlays and structural geometry both gate changes",
+        "Preview/PDF consume identical boxes",
+        "Remaining unsupported constructs are explicit"
+      ],
+      "allocation_id": "claude-mac20x-math-layout-stage3",
+      "name": "Nested math font and delimiter reference convergence",
+      "objective": "Nested math font and delimiter reference convergence",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "timebox_minutes": 45
+    }
+  ],
+  "task_id": "FT-020"
+}

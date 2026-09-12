@@ -2,9 +2,9 @@
   "agent_id": "commander-edit-ledger",
   "assignment_path": "coordination/assignments/FT-026.json",
   "branch": "agent/mac-contract-review/edit-ledger",
-  "previous_report_sha": "7ab357677748ad6326fe6629ea638fdc9babd9a7",
-  "revision": 2,
+  "previous_report_sha": "eb42eba5a5506a69ce1d0d842d65c9143ae9182a",
+  "revision": 3,
   "schema_version": 1,
   "task_id": "FT-026",
-  "updated_utc": "2026-09-12T06:01:54Z"
+  "updated_utc": "2026-09-12T06:14:06Z"
 }
