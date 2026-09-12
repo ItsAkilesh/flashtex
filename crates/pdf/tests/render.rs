@@ -1530,3 +1530,35 @@ fn latin_modern_hint_without_installation_is_substituted_by_times() {
         assert!(find(&out.bytes, b"/BaseFont /Times-Bold").is_some());
     }
 }
+
+#[test]
+fn latin_modern_math_hint_embeds_the_math_font_instead_of_writing_question_marks() {
+    // The compiler hints blackboard bold, \setminus and \Longrightarrow as
+    // "Latin Modern Math". Its roman siblings lack those glyphs, so the hint
+    // must resolve to latinmodern-math.otf itself.
+    let lm_dir = flashtex_pdf::embed::candidate_paths()
+        .into_iter()
+        .find(|p| p.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE) && p.is_file())
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let has_math = lm_dir.as_ref().is_some_and(|d| {
+        d.join("latinmodern-math.otf").is_file()
+            || d.join("../lm-math/latinmodern-math.otf").is_file()
+    });
+    if !has_math {
+        eprintln!("skipped: Latin Modern Math not installed beside Latin Modern");
+        return;
+    }
+    let items = r#"{"kind":"text","text":"ℝ∖ℚ⟹ℤ","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Math","weight":"normal","style":"normal"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    assert!(find(&out.bytes, b"LatinModernMath-Regular").is_some());
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    assert!(
+        placed
+            .iter()
+            .all(|p| p.font == "F4" && !p.bytes.contains(&b'?')),
+        "every glyph drawn from the embedded math font: {placed:?}"
+    );
+}
