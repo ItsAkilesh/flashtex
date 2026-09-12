@@ -8,23 +8,34 @@
     "appkit",
     "accessibility"
   ],
-  "code_revision": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
+  "code_revision": "f979a2e9dd4a8e5012db65c42a303a89d9201948",
   "eta_minutes": {
-    "likely": 20,
+    "likely": 0,
     "optimistic": 0,
-    "pessimistic": 60
+    "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
-  "next_action": "Merge origin/agent/mac-claude-a/mac-shell 71675cd (Mark gained identity/resultStatus) and adapt tests; push; report to parent",
-  "reviewed_peers": {},
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Parent mac-claude-a reviews and merges into mac-shell; no lane items left",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
+      "reviewed_utc": "2026-09-12T09:05:12Z",
+      "sha": "d8baed6bc2ef1e333ecad48d3d056478a9f984fd"
+    },
+    "origin/main": {
+      "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
+      "reviewed_utc": "2026-09-12T09:05:12Z",
+      "sha": "780f1458c125d9702b994ab9df377aed96a1113f"
+    }
+  },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "SourceEditorView: VoiceOver label/value/selection + line-column announcements; windowed diagnostic marks (0.3-0.4 ms for 200 marks on 60 KB); navigation selections deferred while typing (never move caret back) or IME; capture insertion one undo step delivered once via onEditApplied; native UTF-8 text for the binding (keystroke round trip 4.2 ms -> 0.11 ms p50 on 60 KB); 60 KB/200-keystroke benchmark with exact UTF-8 caret bytes. swift test 198/198 with real workers.",
+  "state": "ready_for_integration",
+  "summary": "SourceEditorView: VoiceOver label/value/selection + line-column announcements; windowed diagnostic marks (0.3-0.5 ms CPU for 200 marks on 60 KB); navigation selections deferred while typing (never move caret back) or IME; capture insertion one undo step delivered once via onEditApplied and verified against fake bridge+ledger (undo/redo order, tombstone); native UTF-8 text for the binding (keystroke round trip 4.2 ms -> 0.11 ms p50 on 60 KB); 60 KB/200-keystroke benchmark with exact UTF-8 caret bytes. swift test 320/320 (5 pre-existing skips) with real workers after merging mac-shell d8baed6 and main 5499e41.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:50:37Z",
+  "updated_utc": "2026-09-12T09:05:12Z",
   "usage": {
-    "evidence": "apps/mac SourceEditorViewTests 13/13 (prints per-pass ms); full suite 198 tests 0 failures",
+    "evidence": "apps/mac SourceEditorViewTests 14/14 x3 runs; full suite 320 tests 0 failures 5 skips; numbers in coordination/mac-editor-accessibility.md",
     "status": "shared Claude Max 20x quota of parent; figure unknown"
   }
 }

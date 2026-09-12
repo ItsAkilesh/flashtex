@@ -410,7 +410,7 @@ struct SourceEditorView: NSViewRepresentable {
         func applyPendingEdit(_ edit: ShellModel.PendingEdit, to tv: NSTextView) {
             let ns = edit.nsRange
             var applied = false
-            if ns.location >= 0, NSMaxRange(ns) <= (tv.string as NSString).length {
+            if ns.location >= 0, NSMaxRange(ns) <= (tv.textStorage?.length ?? 0) {
                 tv.breakUndoCoalescing() // preceding typing stays its own undo step
                 if tv.shouldChangeText(in: ns, replacementString: edit.text) {
                     programmaticChanges += 1
@@ -445,7 +445,9 @@ struct SourceEditorView: NSViewRepresentable {
 
         func applySelection(_ selection: ShellModel.Selection, to tv: NSTextView) {
             let range = selection.nsRange
-            guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= (tv.string as NSString).length else { return }
+            guard range.location >= 0, range.length >= 0, NSMaxRange(range) <= (tv.textStorage?.length ?? 0) else {
+                deferredSelection = nil; return // no longer a range of the buffer
+            }
             if tv.hasMarkedText() {
                 deferSelection(selection, for: 0.1); return
             }
