@@ -15,6 +15,8 @@ pub const SUBSCRIPT_LOWER_EM: f64 = 0.2;
 pub const MATH_AXIS_EM: f64 = 0.25;
 pub const FRACTION_GAP_EM: f64 = 0.16;
 pub const FRACTION_RULE_EM: f64 = 0.06;
+pub const MATRIX_COLUMN_GAP_EM: f64 = 1.0;
+pub const MATRIX_ROW_GAP_EM: f64 = 0.3;
 pub const QUAD_EM: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,7 +46,31 @@ pub enum Nucleus {
         denominator: MathList,
     },
     Radical(MathList),
+    /// `array`, `cases` and the amsmath matrix environments: a grid of cells
+    /// with per-column alignment (`l`, `c`, `r`) and optional stretched fences.
+    Matrix {
+        rows: Vec<Vec<MathList>>,
+        columns: String,
+        left: String,
+        right: String,
+    },
 }
+
+/// Math-mode environments implemented as grids: (name, default column
+/// alignment repeated for every column, left fence, right fence).
+const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
+    ("array", 'c', "", ""),
+    ("matrix", 'c', "", ""),
+    ("smallmatrix", 'c', "", ""),
+    ("pmatrix", 'c', "(", ")"),
+    ("bmatrix", 'c', "[", "]"),
+    ("Bmatrix", 'c', "{", "}"),
+    ("vmatrix", 'c', "|", "|"),
+    ("Vmatrix", 'c', "‖", "‖"),
+    ("cases", 'l', "{", ""),
+    ("aligned", 'c', "", ""),
+    ("gathered", 'c', "", ""),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MathItem {
@@ -235,6 +261,20 @@ impl MathParser<'_> {
                     word.len(),
                     "word tokens must be split before math parsing"
                 );
+                // The lexer turns the control symbols `\,` `\:` `\;` into a
+                // one-character word spanning two source bytes; in math they are
+                // thin/medium/thick spaces (3, 4 and 5 mu), not punctuation.
+                if token.span.end - token.span.start == 2 {
+                    let mu = match ch {
+                        ',' => 3.0,
+                        ':' => 4.0,
+                        ';' => 5.0,
+                        _ => 0.0,
+                    };
+                    if mu > 0.0 {
+                        return Some(space(mu / 18.0, token.span));
+                    }
+                }
                 Some(symbol(ch.to_string(), span))
             }
             TokenKind::Command(name) => Some(self.command_atom(name, token.span)),
@@ -272,6 +312,7 @@ impl MathParser<'_> {
                     subscript: None,
                 }
             }
+            "begin" => self.grid_environment(span),
             "sqrt" => MathAtom {
                 nucleus: Nucleus::Radical(self.required_group("sqrt", span)),
                 span,
@@ -456,6 +497,173 @@ impl MathParser<'_> {
         (text, open.span.merge(end))
     }
 
+    /// Reads `{name}` after a `\begin` as plain characters.
+    fn environment_name(&mut self) -> Option<String> {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        if !matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::LBrace)
+        ) {
+            return None;
+        }
+        let mut cursor = self.i + 1;
+        let mut name = String::new();
+        loop {
+            match self.tokens.get(cursor).map(|t| &t.kind) {
+                Some(TokenKind::Word(ch)) => name.push_str(ch),
+                Some(TokenKind::RBrace) => break,
+                _ => return None,
+            }
+            cursor += 1;
+        }
+        self.i = cursor + 1;
+        Some(name)
+    }
+
+    /// `\begin{env} cell & cell \\ ... \end{env}` for the grid environments.
+    fn grid_environment(&mut self, span: Span) -> MathAtom {
+        let unsupported = |name: &str| format!("\\begin{{{name}}} is not supported in math mode");
+        let Some(name) = self.environment_name() else {
+            self.diagnostics.push(Diagnostic::error(
+                "\\begin requires a braced environment name",
+                Some(span),
+                Some("typeset the command literally and continued".into()),
+            ));
+            return symbol("\\begin".into(), span);
+        };
+        let Some(&(_, default_align, left, right)) =
+            GRID_ENVIRONMENTS.iter().find(|(env, ..)| *env == name)
+        else {
+            self.diagnostics.push(Diagnostic::error(
+                unsupported(&name),
+                Some(span),
+                Some("typeset the environment body inline".into()),
+            ));
+            return symbol(String::new(), span);
+        };
+        let mut columns = String::new();
+        if name == "array" {
+            if let Some(TokenKind::LBrace) = self.tokens.get(self.i).map(|t| &t.kind) {
+                self.i += 1;
+                while let Some(token) = self.tokens.get(self.i) {
+                    self.i += 1;
+                    match &token.kind {
+                        TokenKind::RBrace => break,
+                        TokenKind::Word(ch) if matches!(ch.as_str(), "l" | "c" | "r") => {
+                            columns.push_str(ch)
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if name == "aligned" {
+            columns = "rl".repeat(8);
+        }
+        let mut rows: Vec<Vec<Vec<Token>>> = vec![vec![Vec::new()]];
+        let mut depth = 0usize;
+        let mut nesting = 0usize;
+        let mut closed = false;
+        while let Some(token) = self.tokens.get(self.i).cloned() {
+            self.i += 1;
+            let top = depth == 0 && nesting == 0;
+            match &token.kind {
+                TokenKind::Command(command) if command == "begin" => nesting += 1,
+                TokenKind::Command(command) if command == "end" => {
+                    if nesting == 0 && depth == 0 {
+                        let before = self.i;
+                        if self.environment_name().as_deref() == Some(name.as_str()) {
+                            closed = true;
+                            break;
+                        }
+                        self.i = before;
+                    }
+                    nesting = nesting.saturating_sub(1);
+                }
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            let row = rows.last_mut().expect("at least one row");
+            match &token.kind {
+                TokenKind::LineBreak if top => {
+                    // Skip an optional `[<length>]` row-spacing argument.
+                    if matches!(&self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[")
+                    {
+                        while let Some(t) = self.tokens.get(self.i) {
+                            self.i += 1;
+                            if matches!(&t.kind, TokenKind::Word(w) if w == "]") {
+                                break;
+                            }
+                        }
+                    }
+                    rows.push(vec![Vec::new()]);
+                }
+                TokenKind::Word(w) if top && w == "&" => row.push(Vec::new()),
+                _ => row.last_mut().expect("at least one cell").push(token),
+            }
+        }
+        if !closed {
+            self.diagnostics.push(Diagnostic::error(
+                format!(
+                    "\\begin{{{name}}} has no matching \\end{{{name}}} in this math expression"
+                ),
+                Some(span),
+                Some("closed the environment at the math delimiter".into()),
+            ));
+        }
+        if rows.len() > 1
+            && rows.last().is_some_and(|cells| {
+                cells.iter().flatten().all(|t| {
+                    matches!(
+                        t.kind,
+                        TokenKind::Space | TokenKind::Comment | TokenKind::ParBreak
+                    )
+                })
+            })
+        {
+            rows.pop();
+        }
+        let rows = rows
+            .into_iter()
+            .map(|cells| {
+                cells
+                    .into_iter()
+                    .map(|cell| {
+                        MathParser {
+                            tokens: &cell,
+                            i: 0,
+                            depth: self.depth,
+                            diagnostics: self.diagnostics,
+                        }
+                        .list(false)
+                    })
+                    .collect()
+            })
+            .collect::<Vec<Vec<MathList>>>();
+        let width = rows.iter().map(Vec::len).max().unwrap_or(0);
+        let mut columns: String = columns.chars().take(width).collect();
+        while columns.chars().count() < width {
+            columns.push(default_align);
+        }
+        MathAtom {
+            nucleus: Nucleus::Matrix {
+                rows,
+                columns,
+                left: left.into(),
+                right: right.into(),
+            },
+            span,
+            superscript: None,
+            subscript: None,
+        }
+    }
+
     fn required_group(&mut self, command: &str, span: Span) -> MathList {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),
@@ -532,6 +740,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("vee", "∨"),
     ("Rightarrow", "⇒"),
     ("mid", "∣"),
+    // Symbol.afm has no 0x27F8..0x27FF long-arrow range, only the shorter
+    // 0x21D2 double-arrow already used for `\Rightarrow`. Reusing that real
+    // glyph loses only the extra stroke length — the same approximation
+    // class `take_delimiter` already makes for `\bigl`/`\bigr` (real parens,
+    // no size scaling).
+    ("Longrightarrow", "⇒"),
 ];
 
 /// The rule character used to draw fraction bars.
@@ -713,6 +927,138 @@ fn layout_nucleus(
                 descent: (den.descent + den_dy).max(size * 0.2),
             }
         }
+        Nucleus::Matrix {
+            rows,
+            columns,
+            left,
+            right,
+        } => layout_matrix(
+            atom,
+            rows,
+            columns,
+            (left, right),
+            size,
+            root_size,
+            level,
+            diagnostics,
+        ),
+    }
+}
+
+/// Lays out a grid centred on the math axis, with fences scaled to its height.
+#[allow(clippy::too_many_arguments)]
+fn layout_matrix(
+    atom: &MathAtom,
+    rows: &[Vec<MathList>],
+    columns: &str,
+    fences: (&str, &str),
+    size: f64,
+    root_size: f64,
+    level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
+    let boxes: Vec<Vec<MathBox>> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|cell| layout_list(cell, size, root_size, level, diagnostics))
+                .collect()
+        })
+        .collect();
+    let aligns: Vec<char> = columns.chars().collect();
+    let mut widths = vec![0.0f64; aligns.len()];
+    for row in &boxes {
+        for (column, b) in row.iter().enumerate() {
+            widths[column] = widths[column].max(b.width);
+        }
+    }
+    let column_gap = MATRIX_COLUMN_GAP_EM * size;
+    let row_gap = MATRIX_ROW_GAP_EM * size;
+    // Row baselines relative to the first row's baseline.
+    let mut baselines = Vec::with_capacity(boxes.len());
+    let mut y = 0.0;
+    for (index, row) in boxes.iter().enumerate() {
+        let ascent = row.iter().map(|b| b.ascent).fold(size * 0.7, f64::max);
+        if index > 0 {
+            y += ascent + row_gap;
+        }
+        baselines.push(y);
+        y += row.iter().map(|b| b.descent).fold(size * 0.2, f64::max);
+    }
+    let first_ascent = boxes.first().map_or(size * 0.7, |row| {
+        row.iter().map(|b| b.ascent).fold(size * 0.7, f64::max)
+    });
+    let height = first_ascent + y;
+    // Centre the grid on the math axis.
+    let shift = -MATH_AXIS_EM * size - height / 2.0 + first_ascent;
+    let (left, right) = fences;
+    let fence_size = height.max(size);
+    let fence_width = |text: &str, diagnostics: &mut Vec<Diagnostic>| {
+        if text.is_empty() {
+            0.0
+        } else {
+            crate::layout::shaped_width(
+                text,
+                fence_size,
+                crate::layout::math_font(text),
+                atom.span,
+                diagnostics,
+            )
+            .0
+        }
+    };
+    let left_width = fence_width(left, diagnostics);
+    let mut items = Vec::new();
+    // A fence glyph's visual centre sits roughly 0.3em above its baseline.
+    let fence_baseline = -MATH_AXIS_EM * size + 0.3 * fence_size;
+    if !left.is_empty() {
+        items.push(MathItem {
+            font: None,
+            text: left.into(),
+            x: 0.0,
+            baseline: fence_baseline,
+            size: fence_size,
+            span: atom.span,
+            rule: None,
+        });
+    }
+    let pad = if left.is_empty() { 0.0 } else { 0.15 * size };
+    let mut grid_width = 0.0;
+    for (row, baseline) in boxes.into_iter().zip(&baselines) {
+        let mut x = left_width + pad;
+        for (column, mut b) in row.into_iter().enumerate() {
+            let dx = match aligns[column] {
+                'r' => widths[column] - b.width,
+                'c' => (widths[column] - b.width) / 2.0,
+                _ => 0.0,
+            };
+            offset_items(&mut b.items, x + dx, baseline + shift);
+            items.extend(b.items);
+            x += widths[column] + column_gap;
+        }
+    }
+    if !widths.is_empty() {
+        grid_width = widths.iter().sum::<f64>() + column_gap * (widths.len() - 1) as f64;
+    }
+    let mut width = left_width + pad + grid_width;
+    if !right.is_empty() {
+        width += 0.15 * size;
+        items.push(MathItem {
+            font: None,
+            text: right.into(),
+            x: width,
+            baseline: fence_baseline,
+            size: fence_size,
+            span: atom.span,
+            rule: None,
+        });
+        width += fence_width(right, diagnostics);
+    }
+    MathBox {
+        items,
+        width,
+        ascent: (first_ascent - shift).max(size),
+        descent: (y + shift).max(0.2 * size),
     }
 }
 
@@ -779,6 +1125,20 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 denominator: shift_list(denominator, delta),
             },
             Nucleus::Radical(inner) => Nucleus::Radical(shift_list(inner, delta)),
+            Nucleus::Matrix {
+                rows,
+                columns,
+                left,
+                right,
+            } => Nucleus::Matrix {
+                rows: rows
+                    .iter()
+                    .map(|row| row.iter().map(|cell| shift_list(cell, delta)).collect())
+                    .collect(),
+                columns: columns.clone(),
+                left: left.clone(),
+                right: right.clone(),
+            },
         },
         span: shift(atom.span, delta),
         superscript: atom.superscript.as_ref().map(|l| shift_list(l, delta)),
@@ -816,6 +1176,8 @@ mod parse_tests {
             })
             .collect();
         assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
+        let _ = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]
@@ -898,6 +1260,12 @@ mod shift_tests {
                             denominator,
                         } => min_start(numerator).min(min_start(denominator)),
                         Nucleus::Radical(inner) => min_start(inner),
+                        Nucleus::Matrix { rows, .. } => rows
+                            .iter()
+                            .flatten()
+                            .map(min_start)
+                            .min()
+                            .unwrap_or(usize::MAX),
                     };
                     let scripts = a
                         .superscript

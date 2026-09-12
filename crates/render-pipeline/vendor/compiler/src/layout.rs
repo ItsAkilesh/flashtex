@@ -11,7 +11,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, Inline};
+use crate::parser::{Block, Inline, MathRow, ParagraphStyle};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -27,6 +27,13 @@ pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
+pub const QUOTE_INDENT_PT: f64 = 25.0;
+/// amsmath `\jot`: extra gap between rows of a multi-row display. Measured
+/// against pdflatex (12pt article + amsmath): row gap = `\baselineskip` + 3pt.
+pub const JOT_PT: f64 = 3.0;
+/// Horizontal gap between right/left column pairs of an `align` row.
+pub const ALIGN_PAIR_GAP_EM: f64 = 2.0;
 /// References normally settle in two passes; the cap also covers page-number
 /// changes caused by a resolved reference changing line or page breaks.
 pub const REFERENCE_ITERATION_LIMIT: usize = 5;
@@ -261,6 +268,8 @@ pub struct LayoutCursor {
     collected_labels: BTreeMap<String, ReferenceValue>,
     emit_heading_numbers: bool,
     diagnostics: Vec<Diagnostic>,
+    /// Active only while rendering a `Block::Styled` paragraph.
+    style: Option<ParagraphStyle>,
 }
 
 impl LayoutCursor {
@@ -291,15 +300,45 @@ impl LayoutCursor {
             collected_labels: BTreeMap::new(),
             emit_heading_numbers,
             diagnostics: Vec::new(),
+            style: None,
         }
     }
 
     fn right_edge(&self) -> f64 {
-        MARGIN_PT + self.constraints.measure_pt
+        MARGIN_PT + self.constraints.measure_pt - self.indent()
+    }
+
+    fn left_edge(&self) -> f64 {
+        MARGIN_PT + self.indent()
+    }
+
+    fn indent(&self) -> f64 {
+        if self.style == Some(ParagraphStyle::Quote) {
+            QUOTE_INDENT_PT
+        } else {
+            0.0
+        }
+    }
+
+    /// Shift the current line for `center`/`flushright` before it is closed.
+    fn align_current_line(&mut self) {
+        let factor = match self.style {
+            Some(ParagraphStyle::Center) => 0.5,
+            Some(ParagraphStyle::FlushRight) => 1.0,
+            _ => return,
+        };
+        let line_end = self.x - word_space(self.constraints.font_size_pt, Font::TimesRoman);
+        let shift = ((self.right_edge() - line_end) * factor).max(0.0);
+        if let Some(page) = self.pages.last_mut() {
+            for item in page.items.iter_mut().skip(self.line_start) {
+                item.x_pt = round2(item.x_pt + shift);
+            }
+        }
     }
 
     fn newline(&mut self, size: f64) {
-        self.x = MARGIN_PT;
+        self.align_current_line();
+        self.x = self.left_edge();
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
@@ -317,13 +356,29 @@ impl LayoutCursor {
     }
 
     fn vertical_gap(&mut self, gap: f64) {
-        self.x = MARGIN_PT;
+        self.x = self.left_edge();
         self.y += gap;
+    }
+
+    /// `\newpage`: start a fresh page unconditionally, even if the current
+    /// one still has room. Unlike `newline`'s overflow break, this always
+    /// creates a new page rather than only doing so past the bottom margin.
+    fn force_page_break(&mut self) {
+        self.x = MARGIN_PT;
+        let n = self.pages.len() as u32 + 1;
+        self.pages.push(Page {
+            number: n,
+            width_pt: PAGE_WIDTH_PT,
+            height_pt: PAGE_HEIGHT_PT,
+            items: Vec::new(),
+        });
+        self.y = MARGIN_PT + self.constraints.font_size_pt;
+        self.line_start = 0;
     }
 
     fn place(&mut self, text: String, size: f64, span: Span, font: Font) {
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
-        if self.x > MARGIN_PT && self.x + w > self.right_edge() {
+        if self.x > self.left_edge() && self.x + w > self.right_edge() {
             self.newline(size);
         }
         self.ensure_extents(size, size * (LINE_SPACING - 1.0));
@@ -359,7 +414,7 @@ impl LayoutCursor {
     }
 
     fn place_math(&mut self, b: MathBox, size: f64) {
-        if self.x > MARGIN_PT && self.x + b.width > self.right_edge() {
+        if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
             self.newline(size);
         }
         self.ensure_extents(b.ascent, b.descent);
@@ -387,6 +442,8 @@ impl LayoutCursor {
     }
 
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
+        // Displays centre themselves; line alignment must not move them again.
+        let style = self.style.take();
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -399,22 +456,97 @@ impl LayoutCursor {
         self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
         self.place_math(b, size);
         if let Some((number, span)) = number {
-            let text = format!("({number})");
-            let width = glyph_width(&text, size, Font::TimesRoman);
-            let x_pt = round2(self.right_edge() - width);
-            let page = self.pages.last_mut().expect("at least one page");
-            page.items.push(TextItem {
-                text,
-                x_pt,
-                baseline_y_pt: round2(self.y),
-                font_size_pt: size,
-                span,
-                font: Font::TimesRoman,
-                rule: None,
-            });
+            self.place_equation_number(number, span, size);
         }
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.style = style;
+    }
+
+    fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
+        let text = format!("({number})");
+        let width = glyph_width(&text, size, Font::TimesRoman);
+        let x_pt = round2(self.right_edge() - width);
+        let page = self.pages.last_mut().expect("at least one page");
+        page.items.push(TextItem {
+            text,
+            x_pt,
+            baseline_y_pt: round2(self.y),
+            font_size_pt: size,
+            span,
+            font: Font::TimesRoman,
+            rule: None,
+        });
+    }
+
+    /// Multi-row display (`gather`/`align`). `gather` rows are centred one by
+    /// one; `align` cells alternate right/left alignment against column widths
+    /// shared by every row, and the whole block is centred.
+    fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
+        // Displays centre themselves; line alignment must not move them again.
+        let style = self.style.take();
+        if self.x > MARGIN_PT
+            || self
+                .pages
+                .last()
+                .is_some_and(|p| p.items.len() > self.line_start)
+        {
+            self.newline(size);
+        }
+        self.vertical_gap(PARAGRAPH_GAP_PT);
+        let boxes: Vec<Vec<MathBox>> = rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| math::layout(cell, size, &mut self.diagnostics))
+                    .collect()
+            })
+            .collect();
+        let columns = boxes.iter().map(Vec::len).max().unwrap_or(0);
+        let mut widths = vec![0.0f64; columns];
+        for row in &boxes {
+            for (column, b) in row.iter().enumerate() {
+                widths[column] = widths[column].max(b.width);
+            }
+        }
+        let gap = ALIGN_PAIR_GAP_EM * size;
+        let total: f64 = widths.iter().sum::<f64>() + gap * (columns / 2) as f64;
+        let measure = self.right_edge() - MARGIN_PT;
+        for (index, (row, cells)) in rows.iter().zip(boxes).enumerate() {
+            if index > 0 {
+                self.newline(size);
+                self.vertical_gap(JOT_PT);
+            }
+            if aligned {
+                let mut column_x = MARGIN_PT + (measure - total).max(0.0) / 2.0;
+                for (column, b) in cells.into_iter().enumerate() {
+                    let width = widths[column];
+                    // Even columns are right-aligned, odd columns left-aligned.
+                    self.x = if column % 2 == 0 {
+                        column_x + width - b.width
+                    } else {
+                        column_x
+                    };
+                    self.place_math(b, size);
+                    column_x += width + if column % 2 == 1 { gap } else { 0.0 };
+                }
+            } else {
+                let width: f64 = cells.iter().map(|b| b.width).sum();
+                self.x = MARGIN_PT + (measure - width).max(0.0) / 2.0;
+                for b in cells {
+                    let next = self.x + b.width;
+                    self.place_math(b, size);
+                    self.x = next;
+                }
+            }
+            if let Some(number) = &row.number {
+                self.place_equation_number(number, row.span, size);
+            }
+        }
+        self.newline(self.constraints.font_size_pt);
+        self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.style = style;
     }
 
     /// Apply the inter-block spacing and return the state used as a cache key.
@@ -438,10 +570,27 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
-            Block::FigureCaption { .. } => {
+            Block::FigureCaption { .. } | Block::Styled { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
                     self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
+            Block::VSpace { pt } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                }
+                self.vertical_gap(*pt);
+            }
+            Block::Rule { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
+            Block::PageBreak => {
+                if !self.first_block {
+                    self.force_page_break();
                 }
             }
         }
@@ -455,6 +604,13 @@ impl LayoutCursor {
         let body_size = self.constraints.font_size_pt;
         match block {
             Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::Styled { style, content } => {
+                self.style = Some(*style);
+                self.x = self.left_edge();
+                emit(self, content, body_size, Font::TimesRoman);
+                self.align_current_line();
+                self.style = None;
+            }
             Block::Heading {
                 level,
                 number,
@@ -492,6 +648,29 @@ impl LayoutCursor {
                     .sum();
                 self.x = MARGIN_PT + (self.constraints.measure_pt - width).max(0.0) / 2.0;
                 emit(self, content, body_size, Font::TimesRoman);
+                self.newline(body_size);
+            }
+            Block::VSpace { .. } | Block::PageBreak => {}
+            Block::Rule { span } => {
+                let width = self.constraints.measure_pt;
+                let item = TextItem {
+                    text: math::FRACTION_RULE_CHAR.to_string(),
+                    x_pt: round2(self.x),
+                    baseline_y_pt: round2(self.y),
+                    font_size_pt: body_size,
+                    span: *span,
+                    font: Font::TimesRoman,
+                    rule: Some(RuleGeometry {
+                        y_pt: round2(self.y),
+                        width_pt: round2(width),
+                        height_pt: 0.5,
+                    }),
+                };
+                self.pages
+                    .last_mut()
+                    .expect("at least one page")
+                    .items
+                    .push(item);
                 self.newline(body_size);
             }
         }
@@ -653,9 +832,12 @@ pub fn layout_converged(
 
 fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
-        let inlines = match block {
+        let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. } | Block::FigureCaption { content } => content,
+            Block::Heading { content, .. }
+            | Block::FigureCaption { content }
+            | Block::Styled { content, .. } => content,
+            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
         };
         for inline in inlines {
             if let Inline::Reference { key, span, .. } = inline {
@@ -691,6 +873,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     c.place_math(b, size);
                 }
             }
+            Inline::MathRows { rows, aligned, .. } => c.display_rows(rows, *aligned, size),
             Inline::Label { key, value, .. } => {
                 c.collected_labels.insert(
                     key.clone(),

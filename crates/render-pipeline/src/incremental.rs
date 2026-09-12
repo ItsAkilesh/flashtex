@@ -259,6 +259,19 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 4u8.hash(h);
                 em.to_bits().hash(h);
             }
+            Nucleus::Matrix { rows, columns, left, right } => {
+                5u8.hash(h);
+                columns.hash(h);
+                left.hash(h);
+                right.hash(h);
+                rows.len().hash(h);
+                for row in rows {
+                    row.len().hash(h);
+                    for cell in row {
+                        hash_math(cell, h);
+                    }
+                }
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -400,6 +413,11 @@ fn shift_math(list: &mut MathList, delta: isize) {
                 shift_math(denominator, delta);
             }
             Nucleus::Radical(r) => shift_math(r, delta),
+            Nucleus::Matrix { rows, .. } => {
+                for cell in rows.iter_mut().flatten() {
+                    shift_math(cell, delta);
+                }
+            }
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);

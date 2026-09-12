@@ -13,10 +13,10 @@ because the siblings depend on each other by `../<name>` path.
 
 | Directory | Branch | Commit | Owner |
 | --- | --- | --- | --- |
-| `compiler` | `main` | `887bf21e` (was `49e6eb43`: +`\in \forall \exists \vee \Rightarrow \mid \quad \qquad \bigl \bigr`, `Nucleus::Text` for `\text{}`, `Nucleus::Space` glue, `\mathbb`, math spacing) | compiler lead |
+| `compiler` | `main` | `79986817` (was `887bf21e`: +amsmath `gather`/`align`/`equation*` and grid environments (`array`, `cases`, matrix family, `aligned`), `\Longrightarrow`, `\bigl`/`\bigr` real delimiters, `center`/`flushleft`/`flushright`/`quote`/`quotation`, enumitem label templates and `\setlist`, `\setlength`/geometry preamble, `\vspace`/`\hrule`/`\newpage`/`\pagestyle`, unnumbered displays never numbered) | compiler lead |
 | `font-resources` | `main` | `d5440b0` (crates/font-resources last changed by `5c89501`; shared TFM reader `tfm.rs`/`tfm_run.rs`, `required_tfm.rs`) | commander-corpus |
 | `project-files` | `main` | `d5440b0` (last changed by `d92db37`; `ProjectRoot` for the rooted TFM reads) | project-files owner |
-| `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` | mac-font-engine |
+| `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` (main's only later font-engine change, `1ff6abc0` Core14 Symbol U+2223 `afm_char` mapping, adds no API the `79986817` compiler pin needs; not carried here) | mac-font-engine |
 | `paragraph-layout` | `agent/mac-paragraph-layout/linebreak` | `70209e2` | mac-paragraph-layout |
 | `math-layout` | `agent/mac-math-layout/math-boxes` | `db90047` | mac-math-layout |
 | `pdf` | `agent/mac-pdf/pdf-output` | `4bd8c2e` | mac-pdf |

@@ -120,6 +120,17 @@ pub fn render_cached(
             .map(|d| display::Diagnostic::from_compiler(d, &paths))
             .collect();
         diagnostics.extend(doc.diagnostics.iter().cloned());
+        diagnostics.extend(doc.limitations.iter().map(|(code, span, message)| {
+            display::Diagnostic::warning(
+                code,
+                message.clone(),
+                vec![display::SourceRange {
+                    path: std::rc::Rc::from(paths.get(span.document.0).copied().unwrap_or("")),
+                    start_byte: span.start,
+                    end_byte: span.end,
+                }],
+            )
+        }));
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
         let laid = typeset::build(&mut ctx, &doc, cache);
         diagnostics.extend(ctx.take_diagnostics());

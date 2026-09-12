@@ -622,6 +622,15 @@ impl<'a> Context<'a> {
         let texts = self.texts;
         let fence = |sp: &Span| fence_before(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let ml_list = convert_math_fenced(list, &mut sink, &fence);
+        let mut grids = Vec::new();
+        math_grids(list, &mut grids);
+        for (rows, cols) in grids {
+            if rows > 1 {
+                let src = self.source(span);
+                let msg = format!("{rows}x{cols} array/cases/matrix set as a single row inside its fences: math-layout has no array atom");
+                self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+            }
+        }
         let glue_em = math_glue_em(list);
         if glue_em > 0.0 {
             let src = self.source(span);
@@ -1319,6 +1328,30 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
+            // `array`/`cases`/matrix grids: math-layout has no array atom,
+            // so the cells are set in reading order as one row inside the
+            // environment's fences (`\left`/`\right`-sized when they are
+            // single characters). `math_box` reports the grid once per
+            // formula as a typed math_limitation.
+            N::Matrix { rows, left, right, .. } => {
+                let mut body = Vec::new();
+                for row in rows {
+                    for cell in row {
+                        body.extend(sub(cell, sink).atoms);
+                    }
+                }
+                let fence_char = |s: &str| {
+                    let mut it = s.chars();
+                    match (it.next(), it.next()) {
+                        (Some(c), None) => Some(c),
+                        _ => None,
+                    }
+                };
+                match (fence_char(left), fence_char(right), left.is_empty() && right.is_empty()) {
+                    (_, _, true) => vec![ml::Atom::group(ml::MathList::new(body))],
+                    (l, r, false) => vec![ml::Atom::left_right(l, r, ml::MathList::new(body))],
+                }
+            }
         };
         if let Some(last) = out.last_mut() {
             if let Some(sup) = &a.superscript {
@@ -1344,6 +1377,34 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
     ml::MathList::new(atoms)
 }
 
+/// Every `array`/`cases`/matrix grid in `list` and its sub-formulas as
+/// `(rows, columns)`; see the `Matrix` arm of [`convert_math_fenced`].
+fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, usize)>) {
+    use flashtex_compiler::math::Nucleus as N;
+    for a in &list.atoms {
+        match &a.nucleus {
+            N::Matrix { rows, .. } => {
+                out.push((rows.len(), rows.iter().map(Vec::len).max().unwrap_or(0)));
+                for cell in rows.iter().flatten() {
+                    math_grids(cell, out);
+                }
+            }
+            N::Fraction { numerator, denominator } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            N::Radical(r) => math_grids(r, out),
+            N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
+        }
+        if let Some(s) = &a.superscript {
+            math_grids(s, out);
+        }
+        if let Some(s) = &a.subscript {
+            math_grids(s, out);
+        }
+    }
+}
+
 /// Total explicit math glue (`\quad`/`\qquad`, in ems) in `list` and its
 /// sub-formulas; see the `Space` arm of [`convert_math_fenced`].
 fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
@@ -1355,6 +1416,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 N::Space { em } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
                 N::Radical(r) => math_glue_em(r),
+                N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
                 N::Symbol(_) | N::Text(_) => 0.0,
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
@@ -1375,6 +1437,18 @@ fn symbol_atoms(c: char) -> Vec<ml::Atom> {
         '\u{2209}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('\u{2208}')],
         _ => vec![ml::Atom::symbol(c)],
     }
+}
+
+/// Adds `pt` points of `\vspace` glue (compiler `Block::VSpace`) to the
+/// block's before-skip. Zero is a no-op so cached blocks stay identical.
+fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
+    if pt == 0.0 {
+        return;
+    }
+    v.space_before = Some(match v.space_before {
+        Some((n, s, k)) => (n + pt, s, k),
+        None => (pt, 0.0, 0.0),
+    });
 }
 
 /// Lays out every block of `doc` onto pages. With `cache`, blocks whose
@@ -1403,12 +1477,18 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
     };
     for block in &doc.blocks {
         match block {
-            Block::Heading { level, items, eject_before } => {
+            Block::Heading {
+                level,
+                items,
+                eject_before,
+                vspace_before,
+            } => {
                 let (key, origin) = key_for(b'H', items, &[u64::from(*level)]);
                 if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.heading_block(*level, items)) {
                     if *eject_before {
                         b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                     }
+                    add_vspace(&mut b.vertical, *vspace_before);
                     blocks.push(b);
                     after_heading = true;
                 }
@@ -1417,9 +1497,11 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 parts,
                 indent,
                 eject_before,
+                vspace_before,
             } => {
                 let mut first = true;
                 let mut eject = *eject_before;
+                let mut vspace = *vspace_before;
                 // TeX's pre_display_size: the width of the line before a
                 // display plus 2em; -infinity when nothing precedes it.
                 let mut pre_display: Option<f64> = None;
@@ -1436,6 +1518,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
+                                add_vspace(&mut b.vertical, std::mem::take(&mut vspace));
                                 blocks.push(b);
                             }
                         }
@@ -1450,6 +1533,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                                 if std::mem::take(&mut eject) {
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
+                                add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
                                 blocks.push(opener);
                                 pre_display = Some(size);
                             }
