@@ -14,7 +14,7 @@
     "rust",
     "math"
   ],
-  "code_revision": "84af7cde66cdb3a3007845bb93c96780e0a39f08",
+  "code_revision": "3e1d5d24cfab428848dd37cda8504fa4ec9e0db4",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
@@ -22,26 +22,26 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "09b5e3b36475cab31bef8061317401935d571063",
-  "next_action": "Final report to parent; implement MathFontMetrics on FT-018 Face when merged",
+  "next_action": "Final report to parent; MathFontMetrics on FT-018 Face and OpenType MathVariants once exposed",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
-      "adaptation": "FT-018 font engine landed with OpenType MATH constants, FontId content hash and GlyphId; MathFontMetrics can be implemented on its Face via the LuaTeX OpenType->TeX parameter mapping (to be added as MathParams::from_opentype)",
-      "reviewed_utc": "2026-09-12T06:04:19Z",
-      "sha": "bd60519138bf3f99bd05a44b1a65e16bc660669d"
+      "adaptation": "font-engine parses MathConstants but not MathVariants; TFM-only extensible path shipped behind trait hooks, MathVariants requested in README",
+      "reviewed_utc": "2026-09-12T06:29:52Z",
+      "sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803"
     },
     "origin/main": {
-      "adaptation": "main through 0a3d8e2 has no math-layout files; FT-020 still rev 1",
-      "reviewed_utc": "2026-09-12T06:11:59Z",
-      "sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6"
+      "adaptation": "main integrated rev-1 math-layout commits unchanged and published FT-020 rev 2; merging main into the branch, no conflicts",
+      "reviewed_utc": "2026-09-12T06:30:03Z",
+      "sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "crates/math-layout complete for FT-020 rev 1: Appendix G boxes, CM metrics matching pdfTeX to 1sp, OpenType MATH mapping, oracle comparison within 0.003bp; 25 tests",
+  "state": "ready_for_integration",
+  "summary": "FT-020 rev 2 implemented: extensible delimiters/radicals (TFM recipes as stacked glyph boxes), sqrt degree, overline/underline rules, text operators with limits per style, style overrides, scripted-base accents; 34 tests; stage-2 oracle comparison within 0.003 bp",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:18:28Z",
+  "updated_utc": "2026-09-12T06:30:03Z",
   "usage": {
-    "evidence": "cargo test 25 passed; docs/comparison.md max deviation 0.003 bp vs pdfTeX 1.40.29",
+    "evidence": "cargo test 34 passed; docs/comparison.md stage 2 max deviation 0.003 bp vs pdfTeX 1.40.29 incl. extensible pieces",
     "status": "unknown"
   }
 }

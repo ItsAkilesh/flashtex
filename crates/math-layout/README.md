@@ -5,9 +5,12 @@ Appendix G, `tex.web` §§720–767) that turns a math list into explicit boxes
 carrying glyph identity and rule geometry. No TeX engine runs at runtime and
 no external crates are used (edition 2024).
 
-Owner: FT-020 (`mac-math-layout`). Status: second checkpoint — model, spacing,
-fractions, scripts, radicals, delimiters, operators, accents, oracle
-comparison. See "Unsupported" for the honest scope.
+Owner: FT-020 (`mac-math-layout`), revision 2. Status: model, spacing,
+fractions, scripts, radicals (with degree), fixed and extensible delimiters
+and radicals, operators (symbol and text, limits per style), accents
+(including over scripted bases, `\widehat`/`\widetilde`), `\overline`/
+`\underline`, explicit style overrides, oracle comparisons. See
+"Unsupported" for the honest scope.
 
 ## API
 
@@ -27,8 +30,11 @@ let runs = positioned_runs(&root, (72.0, 700.0));         // glyphs + rules in p
 
 - `MathList` / `Atom` (`mathlist.rs`): atoms with the eight TeX classes
   (`Ord Op Bin Rel Open Close Punct Inner`), a nucleus (`Symbol`, `List`,
-  `Fraction`, `Radical`, `Accent`, `Delimited`, `Empty`), optional
-  sub/superscript lists and a `Limits` mode. `Atom::symbol(ch)` classifies
+  `Fraction`, `Radical { radicand, degree }`, `Accent`, `Delimited`, `Text`
+  for `\lim`/`\sin`-style upright operators, `Overline`, `Underline`,
+  `Styled { style, body }` for `{\displaystyle …}` overrides, `Empty`),
+  optional sub/superscript lists and a `Limits` mode
+  (`DisplayLimits`/`Limits`/`NoLimits`). `Atom::symbol(ch)` classifies
   Unicode symbols after plain.tex's `\mathcode`s; explicit constructors
   (`Atom::bin`, `Atom::rel`, …) override.
 - `Style` (`style.rs`): D, T, S, SS plus the cramped flag, with the
@@ -67,6 +73,8 @@ let runs = positioned_runs(&root, (72.0, 700.0));         // glyphs + rules in p
 | `large_operator(ch, size)` | display-size variant of a big operator (Rule 13) |
 | `delimiter_sizes(ch, size)` / `radical_sizes(size)` | size lists, smallest first (Rule 19 / 11) |
 | `accent_sizes(ch, size)` | accent variants, narrowest first (Rule 12) |
+| `delimiter_extensible(ch, size)` / `radical_extensible(size)` | `Extensible { top, mid, bot, rep }` recipe used when every size is too small (default `None`) |
+| `text_glyph(ch, size)` | upright operator text (`\operator@font`), default = `glyph` |
 | `font_name(id)` | human-readable identity for reports and renderers |
 
 `FontId` is opaque and provider-defined; once the FT-018 font engine
@@ -101,11 +109,17 @@ TeX parameters with the LuaTeX correspondence. Until then two adapters ship:
 ## What the engine implements (Appendix G)
 
 - Rules 5/6: Bin→Ord conversion at list edges and next to Op/Rel/Open/Punct.
+- Rules 9/10: `\overline` = overbar(x, 3θ, θ) on the cramped body;
+  `\underline` = body, kern 3θ, rule θ, extra θ below.
 - Rule 11: radicals — `ψ = θ + θ/4` (text) or `θ + x_height/4` (display),
   sign chosen from the size list, excess depth split around the radicand,
   overbar = kern θ' + rule θ' + kern ψ, θ' = height of the sign glyph.
+  `\sqrt[n]` follows LaTeX's `\r@@t`: `\mkern5mu`, the degree in
+  scriptscript style raised by 0.6(h − d), `\mkern-10mu`.
 - Rule 12: accents — accent widened along its chain while ≤ base width,
-  centred with the base glyph's skew kern, lowered by min(h, x_height).
+  centred with the base glyph's skew kern, lowered by min(h, x_height). For
+  an accented single character with scripts, the scripts move under the
+  accent and the box grows (tex.web §742).
 - Rule 13/13a: operators — display-size variant, axis centring, italic
   correction handling, limits stacked with ξ9–ξ13 gaps and ±δ/2 shifts.
 - Rule 15: fractions — num1/denom1 (display) or num2/denom2 (text), rule
@@ -116,39 +130,56 @@ TeX parameters with the LuaTeX correspondence. Until then two adapters ship:
   δ offset of the superscript.
 - Rule 19: `\left … \right` — δ = max(h − a, d + a), size =
   max(2δ·factor, 2δ − shortfall), centred on the axis.
+- `var_delimiter` (tex.web §713): when no size fits, the extensible recipe
+  is stacked — bot, n×rep, mid, n×rep, top — as explicit `Glyph` boxes in a
+  `VBox`; the same path builds tall radical signs.
 - Rule 20: inter-atom glue from the spacing table.
 
 ## Validation
 
-`cargo test` (25 tests): unit tests for styles, spacing, parameters, the
-OpenType MATH mapping, and
-`tests/golden.rs` — nested scripts, stacked fractions in text and display,
-radical overbar geometry and sign selection, `\left(\frac{a}{b}\right)`
-sizing, the largest-available fallback with a reported limitation, `\sum`
-with limits (display) and scripts (text), `\int` italic offset, `\hat{x}`,
-spacing classes, Bin→Ord, determinism, origin translation, and the Times
-fallback. Every expected number is asserted at pdfTeX's `\showbox`
+`cargo test` (34 tests): unit tests for styles, spacing, parameters, the
+OpenType MATH mapping, and `tests/golden.rs` — nested scripts, stacked
+fractions in text and display, radical overbar geometry and sign selection,
+`\sqrt[3]`, `\left(\frac{a}{b}\right)` sizing, the extensible brace and
+radical stacks piece by piece, `\sum` with limits (display) and scripts
+(text), `\lim`/`\sin`, `\int` italic offset, `\hat{x}`, `\hat{x}^2`,
+`\widehat{xyz}`, `\overline`/`\underline`, style overrides, spacing
+classes, Bin→Ord, determinism, origin translation, the Times fallback with
+reported shortfalls, and an all-fixtures check that every bar is a `Rule`
+primitive and no U+2500 box-drawing glyph appears (CM and Times, 4 styles). Every expected number is asserted at pdfTeX's `\showbox`
 precision and its derivation is written next to it.
 
 `cargo run --example dump -- [--display] [index]` prints `\showbox`-style
 trees and flattened runs for the fixtures in `src/fixtures.rs`.
 
-`docs/comparison.md` compares three expressions against pdfTeX (the oracle,
-never in the product path): every glyph origin and rule matches within
-0.003 bp, the reference's own output rounding. `tools/oracle_compare.py` and
+`docs/comparison.md` compares seven expressions against pdfTeX (the oracle,
+never in the product path), including the extensible brace and radical
+stacks: every glyph origin and rule matches within 0.003 bp, the reference's
+own output rounding. `tools/oracle_compare.py` and
 `tools/oracle_glyphs.swift` regenerate it; `examples/emit_runs.rs` feeds it.
 
 ## Unsupported / limitations
 
-- No `\mathchoice`, no matrices/arrays/`\overset`, no `\overline`/
-  `\underline`, no stretchy (wide) accents beyond the `cmex` `\widehat`/
-  `\widetilde` chains, no extensible delimiters or radicals: sizes beyond
-  the size list fall back to the largest glyph and are reported as
-  `Limitation::DelimiterTooSmall` / `RadicalTooSmall`.
+- No `\mathchoice` (use `Nucleus::Styled` for explicit overrides), no
+  matrices/arrays/`\overset`, no stretchy accents beyond the `cmex`
+  `\widehat`/`\widetilde` chains, no horizontal extensible constructs.
+- Extensible delimiters and radicals come from TFM recipes only. The
+  OpenType `MathVariants` table (vertical glyph construction/assembly for
+  Latin Modern Math) is **not** consumed: `crates/font-engine`
+  (`agent/mac-font-engine/tex-fonts`) parses `MathConstants`, italics
+  correction and top-accent attachment but states `MathVariants` is not
+  parsed. Request to the FT-018 owner: expose `MathVariants` vertical
+  assemblies (parts with start/end connector lengths, advance, extender
+  flag) and glyph variant lists; this crate's `delimiter_extensible` /
+  `radical_extensible` / `delimiter_sizes` are the hooks, and connector
+  overlap (absent in TFM) would be added to `stack_extensible` then.
+  Providers without recipes (Times) still fall back to the largest glyph and
+  report `Limitation::DelimiterTooSmall` / `RadicalTooSmall`.
 - No inter-character kerning or ligatures between adjacent Ord characters
   (TeX's `math_text_char` rule); italic corrections are applied.
-- Accents on atoms with scripts (`\hat{x}^2`) accent only the base; TeX
-  additionally lifts the accent over the script box.
+- Accents on a scripted *list* base (`\hat{xy}^2`) accent the base and
+  place the scripts after it; TeX's script-swap applies only to a single
+  character, which is implemented.
 - Glue has no stretch/shrink; line breaking is out of scope.
 - `CmMathMetrics::scaled(base)` scales the 10/7/5pt design proportionally;
   real LaTeX picks `cmr8`/`cmr6` at 11–12pt and keeps `cmex10` at 10pt.

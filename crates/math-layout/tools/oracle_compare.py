@@ -131,7 +131,10 @@ def parse_content(stream, font_table):
 def split_formulas(glyphs, rules):
     """Formula k = glyphs after the k-th 'Formula X:' label, up to the next."""
     # Labels are cmr10 runs spelling F o r m u l a ... :
-    label_idx = [i for i, g in enumerate(glyphs) if g["font"] == "cmr10" and g["code"] == ord("F")]
+    def spells(i, word):
+        return all(i + k < len(glyphs) and glyphs[i + k]["font"] == "cmr10"
+                   and glyphs[i + k]["code"] == ord(ch) for k, ch in enumerate(word))
+    label_idx = [i for i in range(len(glyphs)) if spells(i, "Formula")]
     chunks = []
     for k, start in enumerate(label_idx):
         end = label_idx[k + 1] if k + 1 < len(label_idx) else len(glyphs)

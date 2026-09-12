@@ -1,5 +1,6 @@
-//! Emits the positioned runs of the three oracle-comparison formulas
-//! (`docs/oracle/compare.tex`) as JSON for `tools/oracle_compare.py`.
+//! Emits the positioned runs of the oracle-comparison formulas as JSON for
+//! `tools/oracle_compare.py`: stage 1 (`docs/oracle/compare.tex`, formulas
+//! A–C) by default, stage 2 (`compare2.tex`, D–G) with the argument `2`.
 //! Units are TeX points with a top-left origin at (0, 0) per formula.
 
 use flashtex_math_layout::{
@@ -7,7 +8,20 @@ use flashtex_math_layout::{
     positioned_runs,
 };
 
-fn formulas() -> Vec<(&'static str, MathList)> {
+fn formulas(stage: u32) -> Vec<(&'static str, MathList)> {
+    if stage == 2 {
+        // D: \left\{ tall stack \right\}  (extensible brace)
+        // E: \sqrt[3]{\frac{a}{b}}
+        // F: \lim_{x\to 0}\frac{\sin x}{x}
+        // G: \sqrt{ tall stack }  (extensible radical over the brace stack)
+        let g = MathList::from(Atom::sqrt(fixtures::tall_braces()));
+        return vec![
+            ("D", fixtures::tall_braces()),
+            ("E", fixtures::cube_root_frac()),
+            ("F", fixtures::lim_sin_x_over_x()),
+            ("G", g),
+        ];
+    }
     // A: \frac{\frac{a}{b}}{c}=1
     let mut a = fixtures::stacked_fraction();
     a.atoms.push(Atom::symbol('='));
@@ -23,9 +37,13 @@ fn formulas() -> Vec<(&'static str, MathList)> {
 }
 
 fn main() {
+    let stage: u32 = std::env::args()
+        .nth(1)
+        .and_then(|a| a.parse().ok())
+        .unwrap_or(1);
     let m = CmMathMetrics::latex_10pt();
     let mut out = String::from("[");
-    for (i, (name, list)) in formulas().into_iter().enumerate() {
+    for (i, (name, list)) in formulas(stage).into_iter().enumerate() {
         let l = layout_with_report(&list, Style::DISPLAY, &m);
         let runs = positioned_runs(&l.root, (0.0, 0.0));
         if i > 0 {
