@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-preview-performance",
+  "task_id": "FT-048",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
+      "objective": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
+      "owned_paths": [
+        "crates/preview-controller"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
+    },
+    {
+      "name": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
+      "objective": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
+      "owned_paths": [
+        "crates/preview-controller"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
+    }
+  ]
+}
