@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T09:17:09Z",
-      "adaptation": "Delivered real-helper exact-current, unread-ack recovery and burst checkpoints throughc9e36bc; no compiler/native ownership assumed. Await next interface revision.",
-      "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T09:18:15Z",
+      "adaptation": "Current main merged; exclusive document-runtime and preview-controller scope. Prototype bounded opt-in historical completion side channel with immutable identity; no Event::Preview semantics or native wire activation change.",
+      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+      "revision": 3
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c9e36bc0605261bef5a33ea3534a202c36867af3",
+  "code_revision": "e8a69be742e48cac95ec206be881370d97662df0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "4db4a7a94a06f9873c1bb2148f567054fce12b3c",
-  "next_action": "Commander coordinate runtime/native interface ownership before implementation; continue compiler throughput work separately.",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+  "next_action": "Add bounded original-identity completed-snapshot side channel and runtime lifecycle/default compatibility tests.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "FT048 completed-snapshot proposal prepared from actual burst evidence; identifies missing runtime stale-result API, immutable origin binding, bounded queues and native source-action gates. No default behavior changed or feature activated.",
+  "state": "in_progress",
+  "summary": "FT048r3 accepted; main merged. Runtime stale-result prototype begins after concrete proposalc9e36bc and validated burst evidence.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:17:09Z",
+  "updated_utc": "2026-09-12T09:18:15Z",
   "usage": {
     "status": "unknown"
   }
