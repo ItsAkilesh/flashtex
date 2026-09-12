@@ -130,3 +130,14 @@ checkpoint commits under the user's existing commit authorization; report usage.
 
 Grant `cursor-dispatch-commit-005`: one bounded Cursor session to commit this
 registration/dispatch follow-up. Monetary cost unknown; no nested agents.
+
+## Integration loop allocations — September 12, 03:56 UTC
+
+`cursor-dispatch-commit-005` completed as b932149; monetary usage unknown, no call
+in flight. `ORCH-003-R1`: one hosted Codex read-only integration-design review,
+5-minute limit, no descendants or external calls; completed, findings incorporated.
+`cursor-integration-tools-006`: one bounded Cursor commit session for integration
+helper, tests, and instructions. `cursor-inventory-merge-007`: one bounded Cursor
+merge session for reviewed Kabir capability inventory, after tooling validation.
+Both Cursor sessions use the existing user-authorized commit route; no purchases,
+overages, Claude calls, or invented monetary balances. Actual costs remain unknown.

@@ -7,23 +7,29 @@
     "coordination",
     "git"
   ],
-  "code_revision": "276bb1c8586aa84fd548520c84423bc1812f9713",
+  "code_revision": "b932149f800f42f5690a150117a236208e00fb80",
   "eta_minutes": {
-    "likely": 5,
-    "optimistic": 2,
-    "pessimistic": 10
+    "likely": 6,
+    "optimistic": 3,
+    "pessimistic": 12
   },
   "machine": "linux-primary",
-  "main_integrated_through": "276bb1c8586aa84fd548520c84423bc1812f9713",
-  "next_action": "Cursor commit and push; verify remote, then inspect worker acknowledgements and patch submissions",
-  "reviewed_peers": {},
+  "main_integrated_through": "b932149f800f42f5690a150117a236208e00fb80",
+  "next_action": "Publish integration helper; integrate reviewed Kabir inventory using actual Cursor merge",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "All three assignments now authoritative; preserve their separate owned paths and integrate independently",
+      "reviewed_utc": "2026-09-12T03:55:11Z",
+      "sha": "b932149f800f42f5690a150117a236208e00fb80"
+    }
+  },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "Coordination CLI passes 12 integration tests; watcher active. Runtime v1 and FT-003/FT-004 assignments ready for publication.",
+  "state": "in_progress",
+  "summary": "Coordination and merge tooling: 22 tests pass; three product assignments published, acknowledgements pending",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T03:45:28Z",
+  "updated_utc": "2026-09-12T03:55:11Z",
   "usage": {
-    "evidence": "One hosted review; three earlier Cursor commit sessions; no Claude calls",
+    "evidence": "One additional hosted review; Cursor dispatch commit b932149 completed; no Claude calls",
     "status": "unknown"
   }
 }
