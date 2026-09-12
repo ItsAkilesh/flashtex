@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """TEST DOUBLE for the FT-007 capture bridge (transfer-v1 JSON Lines).
 
-Not the real bridge: no durable journal, no image decoding, no Grok. It mirrors
-the request/reply table of docs/contracts/transfer-v1.md and the checks in
-crates/bridge/src/lib.rs (bridge commit b5ca96b) with an in-memory journal so
-the Mac shell's review -> prepare -> apply -> applied flow and its error paths
-can be exercised hermetically. Conversion is deterministic:
+Not the real bridge: no image decoding, no Grok, one JSON file instead of the
+real per-capture journal. It mirrors the request/reply table of
+docs/contracts/transfer-v1.md and the checks in crates/bridge/src/lib.rs
+(bridge commit b5ca96b) so the Mac shell's review -> prepare -> apply ->
+applied flow, its error paths and its crash recovery can be exercised hermetically. Conversion is deterministic:
     latex = "\\fakecapture{<capture_id>}", one ambiguity, no dependencies.
 
 Usage: python3 fake_bridge.py --store <dir> [--enable-grok]
@@ -17,25 +17,85 @@ Test directives in `capture_submit.instructions`:
     %trailing       emit a partial line and exit
     %exit           exit without replying
     %stall:<sec>    stop reading stdin for that long before replying (slow conversion)
+    %crash          exit abnormally (status 3) before journaling, no reply (every time)
+    %crash-once     like %crash, but only the first time for this capture ID
+                    (marker file in the store); the identical resubmission succeeds
+    %crash-once-journaled
+                    journal the capture durably, then exit 3 without replying, once;
+                    the identical resubmission returns the journaled record
 Test directives in `capture_status.capture_id`:
     err-<code>-*    reply with an error envelope carrying <code>
     garbage-*       emit a non-JSON line instead of a reply
     stall-<sec>-*   sleep before answering normally
+    crash-status-*  exit abnormally (status 3) without replying
+Test directives in `capture_applied.capture_id`:
+    crash-applied-before-once-*
+                    exit 3 before recording the receipt, once (the retry succeeds)
+    crash-applied-once-*
+                    record the receipt durably, then exit 3 without replying, once
+
+Like the real bridge, the capture journal is durable in `--store`
+(`fake_journal.json`, rewritten atomically on every change) so a relaunched
+process answers `capture_status` for earlier captures; documents and anchors
+are in memory and must be resynchronized after a restart.
 """
 import base64
 import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
 import time
 
 MAX_FRAME = 12 * 1024 * 1024
 IDENT = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+CRASH_STATUS = 3
 
 documents = {}   # (project, path) -> {"revision": int, "text": bytes}
 anchors = {}     # destination_id -> anchor dict (offsets in bytes)
 journal = {}     # capture_id -> record dict
 enable_grok = "--enable-grok" in sys.argv[1:]
+store_dir = None
+
+
+def journal_path():
+    return os.path.join(store_dir, "fake_journal.json")
+
+
+def load_journal():
+    global journal
+    try:
+        with open(journal_path(), "rb") as f:
+            journal = json.loads(f.read().decode("utf-8"))
+    except FileNotFoundError:
+        journal = {}
+
+
+def persist_journal():
+    """Atomic rewrite (temp file + fsync + rename), as the real bridge does per record."""
+    data = json.dumps(journal).encode("utf-8")
+    fd, tmp = tempfile.mkstemp(dir=store_dir)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, journal_path())
+
+
+def crash():
+    sys.stdout.flush()
+    os._exit(CRASH_STATUS)
+
+
+def crash_once(key):
+    """Crashes the first time `key` is seen for this store; later calls proceed."""
+    marker = os.path.join(store_dir, "fake_crashed_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16])
+    if os.path.exists(marker):
+        return
+    with open(marker, "w") as f:
+        f.write(key)
+    crash()
 
 
 class Err(Exception):
@@ -171,6 +231,12 @@ def dispatch(kind, p):
             sys.exit(0)
         if ins.startswith("%exit"):
             sys.exit(0)
+        if ins.startswith("%crash-once-journaled"):
+            pass  # journaled below, then crashes once
+        elif ins.startswith("%crash-once"):
+            crash_once("submit:" + p["capture_id"])
+        elif ins.startswith("%crash"):
+            crash()
         if ins.startswith("%stall:"):
             time.sleep(float(ins[len("%stall:"):].split()[0]))
         if len(ins.encode("utf-8")) > 4096:
@@ -192,6 +258,9 @@ def dispatch(kind, p):
             old = {"capture": p, "proposal": None, "context": None, "prepared": None, "applied": None,
                    "rejected": False, "destination_binding": dict(binding)}
             journal[p["capture_id"]] = old
+            persist_journal()
+        if ins.startswith("%crash-once-journaled"):
+            crash_once("submit-journaled:" + p["capture_id"])
         return "capture_received", {"capture_id": p["capture_id"], "durable": True,
                                     "has_proposal": old["proposal"] is not None,
                                     "applied": old["applied"] is not None}
@@ -210,6 +279,7 @@ def dispatch(kind, p):
             rec["proposal"] = {"latex": "\\fakecapture{%s}" % p["capture_id"],
                                "ambiguities": ["fake bridge: deterministic transcription, not a real conversion"],
                                "required_dependencies": []}
+            persist_journal()
         pr = rec["proposal"]
         return "capture_proposal", {"capture_id": p["capture_id"], "latex": pr["latex"],
                                     "ambiguities": pr["ambiguities"],
@@ -243,6 +313,7 @@ def dispatch(kind, p):
                 "removed_text": doc["text"][a["start_byte"]:a["end_byte"]].decode("utf-8"),
                 "replacement": rec["proposal"]["latex"], "document_before_sha256": sha(doc["text"])}
         rec["prepared"] = edit
+        persist_journal()
         return "capture_edit", edit
     if kind == "capture_applied":
         rec = require(p["capture_id"])
@@ -258,7 +329,12 @@ def dispatch(kind, p):
         doc = document(e["project_id"], e["path"])
         if doc["revision"] != e["expected_revision"] or sha(doc["text"]) != e["document_before_sha256"]:
             raise Err("revision_conflict", "Source changed after insertion was prepared; reconcile Mac edit ledger")
+        if p["capture_id"].startswith("crash-applied-before-once-"):
+            crash_once("applied-before:" + p["capture_id"])
         rec["applied"] = {"edit_id": p["edit_id"], "new_revision": p["new_revision"]}
+        persist_journal()
+        if p["capture_id"].startswith("crash-applied-once-"):
+            crash_once("applied-after:" + p["capture_id"])
         apply_edit(e["project_id"], e["path"], e["expected_revision"], p["new_revision"],
                    e["start_byte"], e["end_byte"], e["replacement"])
         return "capture_application_received", {"capture_id": p["capture_id"], **rec["applied"]}
@@ -270,6 +346,8 @@ def dispatch(kind, p):
             return None, "status garbage"
         if cid.startswith("stall-"):
             time.sleep(float(cid.split("-")[1]))
+        if cid.startswith("crash-status-"):
+            crash()
         rec = require(p["capture_id"])
         return "capture_status", {"capture_id": p["capture_id"], "proposal": rec["proposal"],
                                   "prepared": rec["prepared"], "applied": rec["applied"],
@@ -279,6 +357,7 @@ def dispatch(kind, p):
         if rec["prepared"] is not None or rec["applied"] is not None:
             raise Err("receipt_conflict", "A prepared edit requires Mac ledger reconciliation; rejection cannot revoke an issued edit")
         rec["rejected"] = True
+        persist_journal()
         return "capture_rejected", {"capture_id": p["capture_id"]}
     raise Err("unsupported_type", "Unknown bridge request type")
 
@@ -289,10 +368,16 @@ def reply(obj):
 
 
 def main():
-    if "--store" not in sys.argv[1:]:
+    global store_dir
+    args = sys.argv[1:]
+    if "--store" not in args or args.index("--store") + 1 >= len(args):
         print("invalid_arguments: --store DIRECTORY required", file=sys.stderr)
         sys.exit(1)
-    print("fake_bridge: started (test double, not the real bridge)", file=sys.stderr, flush=True)
+    store_dir = args[args.index("--store") + 1]
+    os.makedirs(store_dir, mode=0o700, exist_ok=True)
+    load_journal()
+    print("fake_bridge: started (test double, not the real bridge; %d journaled capture(s))" % len(journal),
+          file=sys.stderr, flush=True)
     for raw in sys.stdin.buffer:
         if len(raw) > MAX_FRAME:
             reply({"protocol_version": 1, "id": None, "type": "error",
