@@ -33,9 +33,11 @@ struct ContentView: View {
                     if model.problemsVisible {
                         // Drag the handle to give the diagnostics list more or less
                         // room; the list scrolls within whatever height it has.
-                        PanelResizeHandle(height: $problemsHeight,
-                                          range: ProblemsPanel.minHeight...max(ProblemsPanel.minHeight, geo.size.height - 240))
-                        ProblemsPanel().frame(height: min(problemsHeight, max(ProblemsPanel.minHeight, geo.size.height - 240)))
+                        // Never more than 40 % of the window: at 1000×640 the
+                        // editor keeps ~15 lines instead of 10 (daniel-fable-ui-qa #3).
+                        let panelCap = max(ProblemsPanel.minHeight, min(geo.size.height - 240, geo.size.height * 0.4))
+                        PanelResizeHandle(height: $problemsHeight, range: ProblemsPanel.minHeight...panelCap)
+                        ProblemsPanel().frame(height: min(problemsHeight, panelCap))
                     }
                     Divider()
                     StatusBar()
@@ -183,7 +185,10 @@ private struct EditorPane: View {
                 }
             )
             CaptureBar()
-            BridgeBar()
+            // The bridge line is lifecycle telemetry: shown once a bridge is
+            // attached or a capture exists, not as a permanent orange
+            // "no bridge attached" strip under the editor (daniel-fable-ui-qa #5).
+            if model.bridgeStatus != "no bridge attached" || !model.bridgeCaptures.isEmpty || model.bridgeDestination != nil { BridgeBar() }
         }
     }
 }
@@ -258,6 +263,7 @@ private struct PreviewPane: View {
             Divider()
             if model.previewV2 {
                 PreviewV2Pane() // experimental v2 path (PreviewV2View.swift); v1 below stays the default
+                    .modifier(PreviewMagnify()) // pinch to zoom (PreviewZoom.swift)
             } else if let result = model.result {
                 PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems,
                             zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 }) { source, text in
@@ -311,7 +317,7 @@ private struct PreviewHeader: View {
                     .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
                 Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
                 if r.status == .recovered {
-                    Text("provisional rendering").font(.caption).foregroundStyle(.orange)
+                    Text("provisional rendering").font(.caption).foregroundStyle(.orange).lineLimit(1).fixedSize()
                         .help("recovered: preview shown with provisional rendering")
                 }
                 if model.inFlightRevision != nil { ProgressView().controlSize(.mini) }
@@ -395,17 +401,18 @@ private struct StatusBar: View {
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
             let diags = model.displayedDiagnostics
             if !diags.isEmpty {
-                let errors = diags.filter { $0.severity == .error }.count
+                let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
                 Button {
                     model.problemsVisible.toggle()
                 } label: {
                     HStack(spacing: 6) {
                         if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
-                        if diags.count - errors > 0 { Label("\(diags.count - errors)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                        if gaps > 0 { Label("\(gaps)", systemImage: "puzzlepiece.extension").foregroundStyle(.secondary) }
                     }
                 }
                 .buttonStyle(.plain)
-                .help("Errors and warnings of the last result — click to show or hide the Problems panel (⌘⇧M)")
+                .help("Errors, warnings and not-implemented gaps of the last result — click to show or hide the Problems panel (⌘⇧M)")
             }
             Divider().frame(height: 12)
             Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus

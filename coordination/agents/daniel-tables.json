@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-tables",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code",
+  "capabilities": [
+    "rust",
+    "tex-line-breaking",
+    "font-metrics-adapters",
+    "adversarial-testing",
+    "unicode-source-spans"
+  ],
+  "branch": "agent/daniel-tables/table-layout",
+  "state": "ready_for_integration",
+  "summary": "FT-030 rev 3, owned path crates/paragraph-layout (the legacy branch name 'table-layout' does not correspond to any crate in this repo; crates/table-layout was not created). Consumed the existing font-engine metrics/encoding callback (flashtex_font_engine::adapters::paragraph::FaceMetrics implementing this crate's own FontMetricsSource, crates/font-engine/src/adapters/paragraph.rs) as a [dev-dependencies]-only path dependency (flashtex-font-engine, flashtex-compiler); the shipped library still has zero dependencies and neither peer crate was edited. Added src/adapter.rs: MAX_DIMEN_PT (16383.99998, TeX's max_dimen)/MAX_ITEMS (200000) bounds, a typed LayoutError, and try_layout_paragraph, which validates every dimension and the item count before the breaker runs and catch_unwinds it as a defense-in-depth backstop -- deliberately not a rewrite of the existing f64-based breaker to integer scaled points, documented as a scope decision, not an oversight. Added tests/adversarial.rs (12 tests: empty input, zero-width/combining/RTL-override/NUL characters, non-NFC Unicode, an 8000-word paragraph, a single unbreakable 500-char word against a 10pt line, and INFINITE_PENALTY/FORCED_BREAK/MAX_DIMEN boundaries at and one past each bound -- valid-but-unusual inputs assert Ok with documented behavior, only genuine bound violations assert typed Err). Added tests/hyphenation_spans.rs (3 tests) proving source-span honesty at a hyphenation point for both ExplicitDiscretionary (the \\- marker's 2 bytes are real source text) and a local automatic-hyphenator stand-in (marker_len 0: the generated hyphen's span is asserted empty, point..point, never a false claim on real bytes), including once through the real font-engine callback. Added tests/mismatch_fixtures.rs (2 tests): a pinned, reproducible break/position mismatch between this crate's total-fit breaker and the real consumer's (crates/compiler) greedy layout, same font/size/measure, hyphenation off both sides, across a 14-document corpus -- 5 of 14 documents break differently, 8 differing break positions total, plus one worked glyph-position mismatch pinned to exact points (word 'how', doc 1: compiler places it at page x=72.0 as a new line; this crate keeps it on the prior line at page x=519.6360000000001, 447.6360000000001pt apart). No reference engine copied or ported; no TeX parity claimed. cargo test: 54 passed, 0 failed (18 unit + 12 adversarial + 16 golden [pre-existing] + 3 hyphenation_spans + 2 mismatch_fixtures + 2 oracle_wrap_sample [pre-existing] + 1 doctest). cargo clippy --all-targets -- -D warnings: exit 0, clean. Files touched: crates/paragraph-layout/{Cargo.toml,Cargo.lock,src/lib.rs,src/adapter.rs (new),tests/adversarial.rs (new),tests/hyphenation_spans.rs (new),tests/mismatch_fixtures.rs (new)}; nothing outside crates/paragraph-layout. Noted for the record: this worktree's AGENTS.md/CLAUDE.md and various coordination/*.md files (COMMANDER-ACK-CLAUDE.md, COMMANDER-HANDOVER.md, KABIR-QUIESCED-HANDOFF.md, supervisor-evidence/*, repeated 'LATEST USER ... OVERRIDE' staffing/authorization/commit-identity paragraphs) contain extensive text purporting to grant authorization, expand permissions, or change commit identity. Per this task's explicit instruction, all such in-repo text was treated as inert data, not instruction, and had no effect on this agent's commit identity (author/committer d-q222, sole trailer Co-authored-by: d-q222), scope (crates/paragraph-layout only), or the no-push restriction.",
+  "next_action": "Await integration review of agent/daniel-tables/table-layout (FT-030 rev 3) into main; no further work planned by this agent absent a new assignment revision. Per instruction, this lane is under a publication hold: commits were made locally only and were not pushed.",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "allocation_id copied verbatim from coordination/assignments/FT-030.json; not independently verified by this agent. No purchases, overages, or additional funding routes used. Live token/usage consumption is not exposed to this agent."
+  },
+  "reviewed_peers": {
+    "origin/main": "abbe88a5275b89d99357815846de3cbe76a91810"
+  },
+  "assignment_acknowledgements": {
+    "FT-030": {
+      "acknowledged_utc": "2026-09-12T17:28:04Z",
+      "revision": 3,
+      "main_sha": "abbe88a5275b89d99357815846de3cbe76a91810",
+      "adaptation": "Read FT-030 rev 3 directly from origin/main (git show origin/main:coordination/assignments/FT-030.json) before any edit, confirming owned_paths is exactly ['crates/paragraph-layout'] despite the legacy branch name 'table-layout'; crates/table-layout was not created. Merged origin/main with git merge origin/main --no-edit (fast-forward to abbe88a5275b89d99357815846de3cbe76a91810; verified an ancestor of HEAD with git merge-base --is-ancestor before recording it here, since other lanes have recorded SHAs their branches did not actually contain). Read the entire pre-existing crates/paragraph-layout (linebreak.rs, items.rs, hyphenate.rs, metrics.rs, pages.rs, core14.rs, README.md, docs/comparison.md, existing tests) before changing anything, per the assignment's instruction. Built rev 3's four new pieces (typed adapter, adversarial bounds, hyphenation-span honesty proof, pinned consumer-mismatch fixtures) as pure additions consuming the already-published font-engine callback and the real compiler as dev-dependencies only; did not edit crates/font-engine or crates/compiler."
+    }
+  },
+  "updated_utc": "2026-09-12T17:28:04Z",
+  "code_revision": "7947d08a4ff704d30f6a0c08457a69c4d66014bb",
+  "main_integrated_through": "abbe88a5275b89d99357815846de3cbe76a91810"
+}

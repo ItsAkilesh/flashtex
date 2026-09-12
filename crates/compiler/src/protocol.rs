@@ -376,7 +376,11 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
                 json::write_number_into(it.baseline_y_pt, &mut out);
                 if capabilities.font_hints_v1 {
                     out.push_str(",\"font\":");
-                    out.push_str(font_json_literal(it.font));
+                    out.push_str(if crate::lm_math::covers(&it.text) {
+                        LM_MATH_FONT_JSON
+                    } else {
+                        font_json_literal(it.font)
+                    });
                 }
                 out.push_str(",\"font_size_pt\":");
                 json::write_number_into(it.font_size_pt, &mut out);
@@ -398,6 +402,10 @@ fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilitie
     out.push(']');
     Value::Raw(out)
 }
+
+/// `font-hints-v1` family for glyphs bound to `crate::lm_math`.
+const LM_MATH_FONT_JSON: &str =
+    r#"{"family":"Latin Modern Math","style":"normal","weight":"normal"}"#;
 
 fn font_json_literal(font: Font) -> &'static str {
     match font {
@@ -671,6 +679,17 @@ fn compile(id: &str, payload: &Value) -> Value {
             Some("the preview shows it correctly; the exported PDF will not".into()),
         ));
     }
+    if offenders
+        .iter()
+        .any(|c| crate::lm_math::advance(*c).is_some())
+    {
+        diags.push(Diagnostic::warning(
+            "blackboard bold, \\setminus and \\Longrightarrow use Latin Modern Math glyphs \
+             (unicode-math design); their widths differ from pdfLaTeX's msbm10/cmsy10",
+            first_span,
+            Some("drew the real glyphs; this is not pixel parity with pdfLaTeX".into()),
+        ));
+    }
     let paths: Vec<&str> = project.iter().map(|(p, _)| p.as_str()).collect();
 
     let mut p = Value::obj();
@@ -710,5 +729,14 @@ mod font_literal_tests {
                 "{font:?} literal drifted from its serialised form"
             );
         }
+    }
+
+    #[test]
+    fn latin_modern_math_literal_matches_its_serialised_value() {
+        let mut value = Value::obj();
+        value.set("family", str_(crate::lm_math::FAMILY));
+        value.set("weight", str_("normal"));
+        value.set("style", str_("normal"));
+        assert_eq!(LM_MATH_FONT_JSON, json::write(&value));
     }
 }

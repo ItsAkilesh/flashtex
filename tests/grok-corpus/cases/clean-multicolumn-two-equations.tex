@@ -1,0 +1,28 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage[paperwidth=5.5in,paperheight=1.6in,margin=0.3in]{geometry}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\begin{document}
+% Two independent minipage "columns" side by side: far more predictable than
+% multicols + \columnbreak, which does not reliably break exactly where asked
+% for two very short columns.
+\noindent
+\begin{minipage}[t]{0.46\linewidth}
+% GT-BEGIN
+Pythagorean theorem:
+\[
+a^2 + b^2 = c^2
+\]
+% GT-END
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.46\linewidth}
+% GT-BEGIN
+Euler's identity:
+\[
+e^{i\pi} + 1 = 0
+\]
+% GT-END
+\end{minipage}
+\end{document}

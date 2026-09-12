@@ -5,13 +5,14 @@
   "steps": [
     {
       "acceptance": [
-        "Both input paths produce protocol-compatible payloads",
-        "Cancellation and retry preserve user work and do not duplicate submission IDs",
-        "Xcode build passes; document simulator and device test coverage honestly"
+        "All project references resolve to exact existing source/test/resource paths; test host and shared scheme are explicit",
+        "Retain real xcodebuild list/build/test commands and distinguish not-run physical Mac gates",
+        "MIME and encoded PNG/JPEG payload agreement dedup cancellation retry evidence stays explicit",
+        "Report actual session/tool executor and non-secret capacity; no unavailable Cursor retry or funding expansion; compiler bonus remains separate unadopted proposal"
       ],
       "allocation_id": "openai-aarush-plus-ft004-stage2",
-      "name": "Capture reliability and context",
-      "objective": "Improve Pencil and camera capture with image orientation handling, context input, retained destination ID/revision, review-before-send UI, and accessibility. Keep capture_submit protocol unchanged.",
+      "name": "Audit exact repaired companion project file graph test target scheme and capture MIME payload gates within apps/companion; prepare precise physical-Mac validation handoff",
+      "objective": "Audit exact repaired companion project file graph test target scheme and capture MIME payload gates within apps/companion; prepare precise physical-Mac validation handoff",
       "owned_paths": [
         "apps/companion"
       ],
@@ -19,13 +20,29 @@
     },
     {
       "acceptance": [
-        "Use explicit pairing/authorization rather than unauthenticated insertion",
-        "Exercise receipt, disconnect/retry, and capture-ID dedup with a documented test receiver",
-        "Mark real Mac-to-device integration pending until tested with the Mac owner"
+        "All project references resolve to exact existing source/test/resource paths; test host and shared scheme are explicit",
+        "Retain real xcodebuild list/build/test commands and distinguish not-run physical Mac gates",
+        "MIME and encoded PNG/JPEG payload agreement dedup cancellation retry evidence stays explicit",
+        "Report actual session/tool executor and non-secret capacity; no unavailable Cursor retry or funding expansion; compiler bonus remains separate unadopted proposal"
       ],
-      "allocation_id": "openai-aarush-plus-ft004-stage3",
-      "name": "Nearby transport proposal and implementation",
-      "objective": "Implement a configurable local-network sender for capture_submit and document the receiver requirements under apps/companion. Coordinate receiver contract with Commander; do not change shared contracts unilaterally.",
+      "allocation_id": "openai-aarush-plus-ft004-stage2",
+      "name": "Record actual source graph checks and executable Mac commands; distinguish unexecuted Xcode and physical-device acceptance from Linux checks",
+      "objective": "Record actual source graph checks and executable Mac commands; distinguish unexecuted Xcode and physical-device acceptance from Linux checks",
+      "owned_paths": [
+        "apps/companion"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "All project references resolve to exact existing source/test/resource paths; test host and shared scheme are explicit",
+        "Retain real xcodebuild list/build/test commands and distinguish not-run physical Mac gates",
+        "MIME and encoded PNG/JPEG payload agreement dedup cancellation retry evidence stays explicit",
+        "Report actual session/tool executor and non-secret capacity; no unavailable Cursor retry or funding expansion; compiler bonus remains separate unadopted proposal"
+      ],
+      "allocation_id": "openai-aarush-plus-ft004-stage2",
+      "name": "Publish current revision ACK actual session and available capacity; retain protected allowance and no new purchases or unauthorized compiler PDF edits",
+      "objective": "Publish current revision ACK actual session and available capacity; retain protected allowance and no new purchases or unauthorized compiler PDF edits",
       "owned_paths": [
         "apps/companion"
       ],

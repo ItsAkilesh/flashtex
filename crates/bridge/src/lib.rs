@@ -1,10 +1,12 @@
 //! Durable capture receipt and reviewed source edits. No TeX engine is embedded.
 pub mod context;
+pub mod features;
 pub mod grok;
 pub mod store;
 pub mod validation;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use image::ImageDecoder;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fmt, io::Cursor};
@@ -109,7 +111,13 @@ pub struct CaptureSubmit {
     pub instructions: String,
 }
 impl CaptureSubmit {
-    pub fn validate(&self) -> Result<()> {
+    /// Validates the capture and, in place, normalizes the image: phone photos are
+    /// near-universally stored pre-rotation with an EXIF orientation tag, and
+    /// decoding raw pixels while ignoring it would send sideways or upside-down
+    /// handwriting to Grok. When a non-default orientation is found, the pixels are
+    /// rotated/flipped to match it and losslessly re-encoded as PNG so every later
+    /// reader (including the Grok request body) sees an already-upright image.
+    pub fn validate(&mut self) -> Result<()> {
         identifier(&self.capture_id)?;
         identifier(&self.destination_id)?;
         if self.instructions.len() > 4096 {
@@ -139,25 +147,62 @@ impl CaptureSubmit {
             _ => {
                 return Err(BridgeError::new(
                     "unsupported_image",
-                    "Only PNG and JPEG captures are accepted",
+                    "Only PNG and JPEG captures are accepted; convert HEIC/HEIF or other phone formats to JPEG before capture",
                 ))
             }
         };
-        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(8192);
-        limits.max_image_height = Some(8192);
-        limits.max_alloc = Some(64 * 1024 * 1024);
-        reader.limits(limits);
-        reader.decode().map_err(|_| {
+        let invalid_image = || {
             BridgeError::new(
                 "invalid_image",
                 "Image is malformed, MIME-mismatched or exceeds decoded image limits",
             )
-        })?;
+        };
+
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(64 * 1024 * 1024);
+
+        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
+        reader.limits(limits.clone());
+        let mut decoder = reader.into_decoder().map_err(|_| invalid_image())?;
+        // `into_decoder` checks width/height against `limits` at construction, but
+        // — unlike `ImageReader::decode` — it does not also bound the decoded pixel
+        // buffer's allocation. Reproduce that guard explicitly so a small file can't
+        // declare huge-but-in-range dimensions and force a large allocation (the
+        // classic decompression-bomb shape), before any pixel data is decoded.
+        limits
+            .reserve(decoder.total_bytes())
+            .map_err(|_| invalid_image())?;
+        let orientation = decoder.orientation().map_err(|_| invalid_image())?;
+        let mut decoded =
+            image::DynamicImage::from_decoder(decoder).map_err(|_| invalid_image())?;
+
+        if orientation != image::metadata::Orientation::NoTransforms {
+            decoded.apply_orientation(orientation);
+            let mut normalized = Vec::new();
+            decoded
+                .write_to(Cursor::new(&mut normalized), image::ImageFormat::Png)
+                .map_err(|_| invalid_image())?;
+            if normalized.len() > MAX_IMAGE_BYTES {
+                return Err(BridgeError::new(
+                    "image_too_large",
+                    "Orientation-corrected image exceeds 8 MiB decoded limit",
+                ));
+            }
+            self.image.mime_type = "image/png".to_string();
+            self.image.data_base64 = STANDARD.encode(&normalized);
+        }
         Ok(())
     }
 }
+
+/// Grok is instructed (see `grok::request_body`) to prefix any `ambiguities`
+/// entry describing a construct it could not honestly express with the
+/// supported feature list — as opposed to an ordinary handwriting ambiguity —
+/// with this marker. Such entries are load-bearing: see
+/// `Proposal::blocks_direct_insertion`.
+pub const UNSUPPORTED_CONSTRUCT_PREFIX: &str = "UNSUPPORTED:";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -175,6 +220,11 @@ impl Proposal {
                 "LaTeX must contain 1–65536 UTF-8 bytes without NUL",
             ));
         }
+        // Explicit control-sequence denylist and structural checks (shell
+        // escape, file I/O, catcode/macro redefinition, unbalanced grouping,
+        // embedded `\end{document}`, bidi-override characters, ...). See
+        // `validation::scan_latex` for the full threat model.
+        validation::scan_latex(&self.latex)?;
         for list in [&self.ambiguities, &self.required_dependencies] {
             if list.len() > 32 || list.iter().any(|v| v.len() > 2048 || v.contains('\0')) {
                 return Err(BridgeError::new(
@@ -185,6 +235,77 @@ impl Proposal {
         }
         Ok(())
     }
+    /// True when this proposal must not be inserted as a plain reviewed edit:
+    /// either Grok itself reported an unsupported/unexpressible construct
+    /// (an `ambiguities` entry tagged `UNSUPPORTED_CONSTRUCT_PREFIX`), or the
+    /// LaTeX contains a deterministic empty-argument artifact — the measured
+    /// failure mode where an unsupported operator (e.g. `\sqrt`) is dropped
+    /// but its now-meaningless operand braces are kept, silently producing
+    /// something that renders cleanly but is mathematically false (issues
+    /// #51/#23). Ordinary handwriting ambiguities (untagged) do not block
+    /// insertion; they are only surfaced for human review.
+    pub fn blocks_direct_insertion(&self) -> bool {
+        self.ambiguities
+            .iter()
+            .any(|a| a.trim_start().starts_with(UNSUPPORTED_CONSTRUCT_PREFIX))
+            || has_empty_argument_artifact(&self.latex)
+    }
+}
+
+/// Scans for a mandatory-argument brace group that is empty or whitespace-only
+/// immediately after a command name, `^`, or `_` (e.g. `\sqrt{ }`, `\frac{}{2}`,
+/// `^{ }`), or for an unbalanced `{` — both signs of a dropped operator whose
+/// hollow operand was kept rather than honestly reported. Deterministic; runs
+/// on every proposal regardless of what Grok says about itself.
+fn has_empty_argument_artifact(latex: &str) -> bool {
+    let bytes = latex.as_bytes();
+    // Every '{' is checked independently (not just top-level groups) so a
+    // hollow argument nested inside an otherwise-nonempty group, e.g. the
+    // \sqrt{ } inside \frac{\sqrt{ }}{2}, is still caught.
+    for (i, &b) in bytes.iter().enumerate() {
+        if b != b'{' {
+            continue;
+        }
+        match matching_brace(bytes, i) {
+            Some(end) => {
+                if latex[i + 1..end].trim().is_empty() && preceded_by_command_or_script(latex, i) {
+                    return true;
+                }
+            }
+            None => return true, // Unbalanced group: truncated/malformed proposal.
+        }
+    }
+    false
+}
+fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+fn preceded_by_command_or_script(latex: &str, brace_index: usize) -> bool {
+    let trimmed = latex[..brace_index].trim_end();
+    if trimmed.ends_with('^') || trimmed.ends_with('_') {
+        return true;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut k = bytes.len();
+    while k > 0 && (bytes[k - 1] as char).is_ascii_alphabetic() {
+        k -= 1;
+    }
+    k > 0 && bytes[k - 1] == b'\\' && k < bytes.len()
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContextDependency {
@@ -453,7 +574,7 @@ impl Bridge {
         }
         Ok(a)
     }
-    pub fn receive(&mut self, capture: CaptureSubmit) -> Result<CaptureRecord> {
+    pub fn receive(&mut self, mut capture: CaptureSubmit) -> Result<CaptureRecord> {
         capture.validate()?;
         if let Some(old) = self.store.get(&capture.capture_id)? {
             if old.capture != capture {
@@ -523,7 +644,19 @@ impl Bridge {
         {
             return Ok(record);
         }
-        let proposal = converter.convert(&record.capture, &context)?;
+        let mut proposal = converter.convert(&record.capture, &context)?;
+        proposal.validate()?;
+        // Hard violations already failed above; surface non-fatal but
+        // reviewer-worthy findings (e.g. deep nesting, `\loop`/`\repeat`)
+        // through the same `ambiguities` channel the review UI already
+        // renders alongside `latex`, so a human sees them before approving
+        // `prepare_insert`. Re-validate afterward so an unreasonable number
+        // of findings cannot silently exceed the proposal's own bounds.
+        for advisory in validation::scan_latex(&proposal.latex)?.advisories {
+            if !proposal.ambiguities.contains(&advisory) {
+                proposal.ambiguities.push(advisory);
+            }
+        }
         proposal.validate()?;
         record.context = Some(context);
         record.proposal = Some(proposal);
@@ -601,6 +734,15 @@ impl Bridge {
                 "Convert the capture before reviewing insertion",
             )
         })?;
+        if proposal.blocks_direct_insertion() {
+            return Err(BridgeError::new(
+                "unsupported_construct_requires_confirmation",
+                "This proposal reports an unsupported/unexpressible construct or a hollow \
+                 empty-argument artifact (e.g. \\sqrt{ }); it cannot be inserted as a plain \
+                 reviewed edit. Have a human directly re-author this passage instead of \
+                 approving it as-is.",
+            ));
+        }
         self.verify_proposal_context(&record)?;
         if doc.text.len() - (a.end_byte - a.start_byte) + proposal.latex.len() > MAX_DOCUMENT_BYTES
         {
@@ -685,5 +827,76 @@ impl Bridge {
             replacement: edit.replacement.clone(),
         })?;
         Ok(applied)
+    }
+}
+
+#[cfg(test)]
+mod proposal_gate_tests {
+    use super::*;
+
+    fn proposal(latex: &str, ambiguities: Vec<&str>) -> Proposal {
+        Proposal {
+            latex: latex.into(),
+            ambiguities: ambiguities.into_iter().map(String::from).collect(),
+            required_dependencies: vec![],
+        }
+    }
+
+    #[test]
+    fn clean_proposal_does_not_block() {
+        assert!(!proposal("$x^2$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn ordinary_handwriting_ambiguity_does_not_block() {
+        assert!(!proposal("$x$", vec!["AMBIGUOUS: could be 1 or l"]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn tagged_unsupported_construct_ambiguity_blocks() {
+        assert!(proposal(
+            "$x$",
+            vec!["UNSUPPORTED: cannot express the Greek letter pi"]
+        )
+        .blocks_direct_insertion());
+    }
+
+    #[test]
+    fn tagged_ambiguity_blocks_even_with_leading_whitespace() {
+        assert!(
+            proposal("$x$", vec!["  UNSUPPORTED: dropped an operator"]).blocks_direct_insertion()
+        );
+    }
+
+    #[test]
+    fn empty_sqrt_argument_blocks() {
+        assert!(proposal("$\\frac{\\sqrt{ }}{2}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_frac_numerator_blocks() {
+        assert!(proposal("$\\frac{ }{2}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_superscript_blocks() {
+        assert!(proposal("$x^{ }$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_subscript_blocks() {
+        assert!(proposal("$x_{}$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn unbalanced_brace_blocks() {
+        assert!(proposal("$\\frac{ }{$", vec![]).blocks_direct_insertion());
+    }
+
+    #[test]
+    fn empty_braces_not_after_a_command_do_not_block() {
+        // A plain empty group is legal TeX (e.g. spacing idioms); only flag it
+        // when it directly follows a command name, `^`, or `_`.
+        assert!(!proposal("$x{}y$", vec![]).blocks_direct_insertion());
     }
 }

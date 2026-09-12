@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "616ca60a1a14452e70cce3acdf067b3781c7b42c",
+  "code_revision": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
-  "next_action": "Root implements only verified vee/Rightarrow tables; preserve mid refusal pending explicit export semantics.",
+  "main_integrated_through": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
+  "next_action": "Owner correct script evidence and run matching pixel/extraction gates; root reviews compiler/bounds",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Independent combined97a audit: mid4/vee4/Rightarrow3; safe SymbolDA/DE candidates verified; mid absent direct mapping remains blocked despite CM/cmap support.",
+  "summary": "Reviewed Text owner65ce; targeted metrics fixes evidenced, script unchanged claim disproved by own pair",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:17:43Z",
+  "updated_utc": "2026-09-12T16:37:17Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/hw1-logical/independent-pins.json",
-    "status": "Existing OpenAI; primary mapping/read-only output+AFM+cmap checks, no builds/native/providers/descendants."
+    "evidence": "Nine declared hashes match; five baseline JSON frames match f261; superscript baseline delta122743 ticks",
+    "status": "Read-only existing peer artifacts; no build/provider/descendant"
   }
 }

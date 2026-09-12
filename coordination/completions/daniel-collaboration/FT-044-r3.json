@@ -1,0 +1,77 @@
+{
+  "agent_id": "daniel-collaboration",
+  "archived_utc": "2026-09-12T16:48:36Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-collaboration",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-collaboration/collaboration-core",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "6c89f26ff65929428ae9fb1e0dd670318159b0f6",
+    "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Integrate an explicit published consumer adapter without peer ownership edits",
+    "owned_paths": [
+      "crates/collaboration-core"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-044",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:44:37Z"
+  },
+  "report": {
+    "agent_id": "daniel-collaboration",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-044": {
+        "acknowledged_utc": "2026-09-12T16:44:55Z",
+        "adaptation": "Accepted FT-044 rev 3's new requirement, an explicit published consumer contract, on top of rev 1's convergence/dedup core and rev 2's checkpoint/recovery layer. Reused and extended the prior interrupted run's work after judging it sound: verified every documented signature against src/lib.rs, checkpoint.rs, and recovery.rs directly rather than trusting the prose, and confirmed by repo-wide grep that no consumer exists today, so none was invented and no other crate was edited. Also added the six required adversarial cases as typed-error tests, which surfaced and fixed a genuine OpBuilder counter-overflow defect. main already contained input_main_sha 6c89f26f as an ancestor; merged origin/main (git merge origin/main --no-edit reported already up to date at 486b759c).",
+        "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-collaboration/collaboration-core",
+    "capabilities": [
+      "rust",
+      "crdt",
+      "offline-collaboration",
+      "checkpoint-serialization"
+    ],
+    "code_revision": "a13aaf3f5caed1887210ac100261d07a9b617680",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+    "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core (rev 3) into main; no follow-up work planned by this agent absent a new assignment revision.",
+    "reviewed_peers": {
+      "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-044 rev 3: fixed a real OpBuilder counter-overflow defect (checked_add instead of a panicking/wrapping += 1) found while writing adversarial coverage; added crates/collaboration-core/tests/adversarial.rs covering all six required bounded-adversarial categories (operation referencing an unknown replica, counter at u64::MAX, pending buffer at and past capacity, checkpoint at and past its entry bound, truncated/corrupted checkpoint bytes never panicking, insert anchored to a tombstoned element) plus an idempotent-double-delete case, each asserting a typed Err/None result rather than a panic; and published the full typed consumer contract (construct, submit local edit, receive remote op, recover from a gap via PendingOps, checkpoint/restore, read text+frontier) with a worked two-replica offline/reconcile example in coordination/daniel-collaboration.md, verified against the actual public API. Rev 1 convergence/dedup and rev 2 checkpoint equivalence are unchanged and still pass. 44/44 tests pass, clippy --all-targets -D warnings clean, zero dependencies. Repo-wide grep confirms no consumer of this crate exists yet.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:44:55Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no API billing. Live consumption not exposed to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 221,
+  "report_path": "coordination/agents/daniel-collaboration.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-044",
+  "worker_branch": "agent/daniel-collaboration/collaboration-core",
+  "worker_report_sha": "bee829424702b2d1e08ce8d455a57e830ed3f982"
+}

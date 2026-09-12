@@ -147,6 +147,32 @@ enum EditorDiagnostics {
         }
     }
 
+    // MARK: gap category (coordination/daniel-mac-ui-redesign.md §6.4, heuristic route)
+
+    /// Whether a diagnostic says "FlashTeX does not do this yet" rather than
+    /// "the source is wrong": the compiler's not-implemented / not-supported
+    /// messages (`packages … are recognised but not implemented`, `\x is not
+    /// supported by this compiler version`, `\x is not supported in math mode`,
+    /// `environment 'x' is not implemented`, `\includegraphics is unsupported`).
+    /// Gaps are listed and marked, but counted apart from errors and warnings
+    /// so an all-gap document such as HW1 reads "0 errors, 30 not implemented"
+    /// instead of "24 errors". A message heuristic until runtime-v1 carries a
+    /// category; the strings are the compiler's own (crates/compiler).
+    static func isGap(_ message: String) -> Bool {
+        gapPhrases.contains { message.contains($0) }
+    }
+    private static let gapPhrases = ["not implemented", "not supported by this compiler version",
+                                     "not supported in math mode", "not supported in the document preamble", "is unsupported"]
+
+    /// Errors and warnings that are not gaps, and the gaps, of `diagnostics`.
+    static func counts(_ diagnostics: [RuntimeV1.Diagnostic]) -> (errors: Int, warnings: Int, gaps: Int) {
+        var errors = 0, warnings = 0, gaps = 0
+        for d in diagnostics {
+            if isGap(d.message) { gaps += 1 } else if d.severity == .error { errors += 1 } else { warnings += 1 }
+        }
+        return (errors, warnings, gaps)
+    }
+
     /// Recovery line for a diagnostic of a result with `status` (see `Mark.recoveryLine`).
     static func recoveryLine(recovery: String?, status: RuntimeV1.Status) -> String? {
         if let recovery { return "recovery: " + recovery }

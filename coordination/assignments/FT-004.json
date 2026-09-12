@@ -1,23 +1,24 @@
 {
   "acceptance": [
-    "Both input paths produce protocol-compatible payloads",
-    "Cancellation and retry preserve user work and do not duplicate submission IDs",
-    "Xcode build passes; document simulator and device test coverage honestly"
+    "All project references resolve to exact existing source/test/resource paths; test host and shared scheme are explicit",
+    "Retain real xcodebuild list/build/test commands and distinguish not-run physical Mac gates",
+    "MIME and encoded PNG/JPEG payload agreement dedup cancellation retry evidence stays explicit",
+    "Report actual session/tool executor and non-secret capacity; no unavailable Cursor retry or funding expansion; compiler bonus remains separate unadopted proposal"
   ],
   "agent_id": "aarush-macbook",
   "allocation_id": "openai-aarush-plus-ft004-stage2",
   "branch": "agent/aarush-macbook/companion-capture",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a744cd869544dcdb91b87d11381c8c82aabac684",
-  "objective": "Improve Pencil and camera capture with image orientation handling, context input, retained destination ID/revision, review-before-send UI, and accessibility. Keep capture_submit protocol unchanged.",
+  "input_main_sha": "904197db20de983f10b0f3ef049ac8f20822bdc2",
+  "objective": "Audit exact repaired companion project file graph test target scheme and capture MIME payload gates within apps/companion; prepare precise physical-Mac validation handoff",
   "owned_paths": [
     "apps/companion"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-004",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T15:22:31Z"
+  "updated_utc": "2026-09-12T15:32:47.359100+00:00"
 }

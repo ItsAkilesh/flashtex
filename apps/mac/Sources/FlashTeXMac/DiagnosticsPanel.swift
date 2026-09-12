@@ -268,17 +268,35 @@ struct DiagnosticsListView: View {
         .focusedSceneValue(\.diagnosticsPanel, panel)
     }
 
+    /// "3 of 12: main.tex line 41" for a group, "main.tex line 3" for one
+    /// diagnostic when the compiled text is known (an author never thinks in
+    /// bytes; "bytes a..<b" stays the fallback), "no source mapping" otherwise.
+    private func location(of g: EditorDiagnostics.Group, occurrence k: Int, diagnostic d: RuntimeV1.Diagnostic,
+                          group: DiagnosticRowAccessibility.GroupInfo?) -> String {
+        if g.count > 1 { return "\(k + 1) of \(g.count): \(group?.location ?? "no source")" }
+        guard let src = d.source else { return "no source mapping" }
+        if let text = model.compiledDocuments[src.path], let line = EditorDiagnostics.lineNumber(ofByte: src.startByte, in: text) {
+            return "\(src.path) line \(line)"
+        }
+        return "\(src.path) bytes \(src.startByte)..<\(src.endByte)"
+    }
+
     @ViewBuilder
     private func row(_ g: EditorDiagnostics.Group, in diags: [RuntimeV1.Diagnostic], status: RuntimeV1.Status) -> some View {
         let k = panel.currentOccurrence(of: g)
         let i = g.first
         let d = diags[i]
         let group = EditorDiagnostics.groupInfo(g, occurrence: k, in: diags, texts: model.compiledDocuments)
+        let gap = EditorDiagnostics.isGap(d.message) // FlashTeX gap, not an authoring error: grey puzzle piece
         HStack(alignment: .top) {
-            Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(d.severity == .error ? .red : .orange)
+            Image(systemName: gap ? "puzzlepiece.extension" : d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(gap ? Color.secondary : d.severity == .error ? .red : .orange)
             VStack(alignment: .leading) {
-                Text(g.title)
+                // Title and location on one line: a 30-diagnostic TeX list is two lines per row, not three.
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(g.title)
+                    Text(location(of: g, occurrence: k, diagnostic: d, group: group)).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
                 if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: status) {
                     Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
                 }
@@ -289,13 +307,6 @@ struct DiagnosticsListView: View {
                    let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
                    model.editorMarkReport.staleIdentities.contains(id) {
                     Text("underline withheld: span edited since the compile").font(.caption2).foregroundStyle(.orange)
-                }
-                if g.count > 1 {
-                    Text("\(k + 1) of \(g.count): \(group?.location ?? "no source")").font(.caption2).foregroundStyle(.tertiary)
-                } else if let src = d.source {
-                    Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
-                } else {
-                    Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
             Spacer()
@@ -310,13 +321,17 @@ struct DiagnosticsListView: View {
                 }
                 .fixedSize()
                 .help("Jump to one occurrence of this diagnostic (⌘⌥] / ⌘⌥[ step through them)")
-            } else if d.source != nil { Button("Go to source") { model.goToOccurrence(0, of: g, panel: panel) } }
+            } else if d.source != nil {
+                Button("Go to source") { model.goToOccurrence(0, of: g, panel: panel) }
+                    .help("Select the diagnostic's span in the editor (Return does the same)")
+            }
             if let x = model.explanations.explanation(resultID: model.resultID, index: i),
                x.suggestions.contains(where: { !$0.edits.isEmpty }) {
                 Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
                     .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
             }
         }
+        .controlSize(.small) // 30 TeX diagnostics must fit a 260 pt panel: small trailing controls, tight rows
         .tag(g.id)
         .accessibleDiagnostic(d, index: i, total: diags.count, status: status,
                               explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line,

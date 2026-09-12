@@ -87,6 +87,28 @@ enum PreviewFonts {
         return false
     }()
 
+    /// PostScript name of `latinmodern-math.otf`, the `lm.math` resource the
+    /// compiler binds blackboard bold, `\setminus` and `\Longrightarrow` to.
+    static let latinModernMathPostScriptName = "LatinModernMath-Regular"
+
+    /// Whether `latinmodern-math.otf` is registered with CoreText for this
+    /// process: the first search directory holding it wins. The roman
+    /// registration above deliberately takes only `lmroman*` files.
+    private(set) static var latinModernMathRegistered: Bool = {
+        for dir in latinModernSearchPaths {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("latinmodern-math.otf")
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            CTFontManagerRegisterFontURLs([url] as CFArray, .process, true, nil)
+            invalidateResources()
+            return true
+        }
+        return false
+    }()
+
+    static func isLatinModernMathFamily(_ family: String) -> Bool {
+        family.lowercased().trimmingCharacters(in: .whitespaces) == "latin modern math"
+    }
+
     /// Set by the shell from the attached producer: `flashtex-render` (the new
     /// pipeline, Latin Modern metrics) → `.latinModern`; `flashtex-compiler`
     /// (Core-14 Times metrics today) → `.times`. `FLASHTEX_PREVIEW_FACE` overrides.
@@ -234,6 +256,16 @@ enum PreviewFonts {
     static func resolve(hint: RuntimeV1.PageItem.FontHint?, size: Double) -> Resolved {
         guard let hint else { return Resolved(postScriptName: postScriptName(size: size), substitution: nil) }
         let bold = hint.weight == .bold, italic = hint.style == .italic
+        // Checked before the roman families: "Latin Modern Math" also has the
+        // "latin modern" prefix, but the roman masters lack its glyphs.
+        if isLatinModernMathFamily(hint.family) {
+            if latinModernMathRegistered {
+                return Resolved(postScriptName: latinModernMathPostScriptName, substitution: nil)
+            }
+            let times = postScriptName(face: .times, size: size, bold: bold, italic: italic)
+            return Resolved(postScriptName: times,
+                            substitution: Substitution(family: hint.family, weight: hint.weight, style: hint.style, usedFace: times))
+        }
         if isLatinModernFamily(hint.family), latinModernRegistered {
             return Resolved(postScriptName: postScriptName(face: .latinModern, size: size, bold: bold, italic: italic), substitution: nil)
         }

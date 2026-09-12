@@ -212,8 +212,7 @@ private struct ProblemsSection: View {
 
     var body: some View {
         let diags = model.displayedDiagnostics
-        let errors = diags.filter { $0.severity == .error }.count
-        let warnings = diags.count - errors
+        let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
         Section {
             if diags.isEmpty {
                 Label { Text("No problems").foregroundStyle(.secondary) } icon: { Image(systemName: "checkmark.circle").foregroundStyle(.green) }
@@ -221,6 +220,7 @@ private struct ProblemsSection: View {
             } else {
                 row("\(errors) error\(errors == 1 ? "" : "s")", icon: "xmark.octagon.fill", tint: .red, filter: .error, enabled: errors > 0)
                 row("\(warnings) warning\(warnings == 1 ? "" : "s")", icon: "exclamationmark.triangle.fill", tint: .orange, filter: .warning, enabled: warnings > 0)
+                if gaps > 0 { row("\(gaps) not implemented", icon: "puzzlepiece.extension", tint: .secondary, filter: nil, enabled: true) }
                 row("All \(diags.count)", icon: "list.bullet.rectangle", tint: .secondary, filter: nil, enabled: true)
             }
         } header: {

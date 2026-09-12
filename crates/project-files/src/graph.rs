@@ -10,12 +10,12 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::json::Json;
 use crate::path::{PathError, ProjectPath};
+use crate::save::{DEFAULT_READ_LIMIT, ProjectRoot, Refused, SaveError};
 use crate::scan::{ByteSpan, Reference, ReferenceKind, scan_references};
 use crate::sha256::{Digest, sha256};
 
@@ -197,11 +197,16 @@ impl ProjectGraph {
         if !root.is_dir() {
             return Err(DiscoverError::RootNotDirectory(root.to_path_buf()));
         }
-        let canonical_root = fs::canonicalize(root)
+        // Opens the root once as a directory handle; every subsequent read
+        // walks from this handle with `openat(O_NOFOLLOW)` at each
+        // component (see `sys.rs`/`save.rs`), so containment is enforced on
+        // the exact file descriptor that is then read — never re-resolved
+        // from a path string after being validated (issue #45).
+        let project_root = ProjectRoot::open(root)
             .map_err(|_| DiscoverError::RootNotDirectory(root.to_path_buf()))?;
         let mut d = Discovery {
             root: root.to_path_buf(),
-            canonical_root,
+            project_root,
             overlay,
             graph: ProjectGraph {
                 root: root.to_path_buf(),
@@ -215,14 +220,24 @@ impl ProjectGraph {
         };
         // The entry must load; anything else is a diagnostic.
         match d.load(entry, FileKind::Tex) {
-            Loaded::Ok(file) => {
+            Resolution::Other(Loaded::Ok(file)) => {
                 if file.text.is_none() {
                     return Err(DiscoverError::EntryNotUtf8(entry.clone()));
                 }
                 d.visit_loaded(file);
             }
-            Loaded::Missing => return Err(DiscoverError::EntryMissing(entry.clone())),
-            Loaded::Error(e) => return Err(DiscoverError::EntryUnreadable(entry.clone(), e)),
+            Resolution::Other(Loaded::Missing) => {
+                return Err(DiscoverError::EntryMissing(entry.clone()));
+            }
+            Resolution::Other(Loaded::Error(e)) => {
+                return Err(DiscoverError::EntryUnreadable(entry.clone(), e));
+            }
+            Resolution::Escapes => {
+                return Err(DiscoverError::EntryUnreadable(
+                    entry.clone(),
+                    io::Error::other("entry file is a symlink; refusing to follow it"),
+                ));
+            }
         }
         Ok(d.graph)
     }
@@ -333,9 +348,47 @@ enum Loaded {
     Error(io::Error),
 }
 
+/// Outcome of a single fd-based, symlink-refusing disk access. `Escapes` is
+/// pulled out as its own case (rather than folded into `Loaded::Error`) so
+/// callers can distinguish "refused for safety" from an ordinary I/O
+/// failure and raise the right diagnostic.
+enum Resolution {
+    Other(Loaded),
+    /// The rooted walk refused a symlink component (the file itself or an
+    /// ancestor directory) or detected a walked directory's `..` no longer
+    /// matching the handle it was opened from.
+    Escapes,
+}
+
+/// Maps a rooted-access refusal to how discovery should treat it. Only a
+/// symlink component or a `..`-identity mismatch counts as an escape
+/// attempt; everything else becomes a typed I/O error (never a panic, never
+/// silently ignored).
+fn classify_refusal(refused: Refused) -> Resolution {
+    match refused {
+        Refused::SymlinkComponent { .. } | Refused::EscapesRoot { .. } => Resolution::Escapes,
+        // A directory component turned out not to be a directory: treat
+        // like "the candidate doesn't actually exist", matching how a
+        // plain ENOENT is handled.
+        Refused::NotADirectory { .. } => Resolution::Other(Loaded::Missing),
+        Refused::NotARegularFile { component } => Resolution::Other(Loaded::Error(
+            io::Error::other(format!("{component} exists but is not a regular file")),
+        )),
+        Refused::TooLarge { limit, size } => Resolution::Other(Loaded::Error(io::Error::other(
+            format!("file is {size} bytes, larger than the {limit}-byte discovery limit"),
+        ))),
+        Refused::LockUnavailable { .. } => Resolution::Other(Loaded::Error(io::Error::other(
+            "unexpected lock contention while reading",
+        ))),
+        Refused::Unsupported => Resolution::Other(Loaded::Error(io::Error::other(
+            "rooted file access is not supported on this platform",
+        ))),
+    }
+}
+
 struct Discovery<'a> {
     root: PathBuf,
-    canonical_root: PathBuf,
+    project_root: ProjectRoot,
     overlay: &'a Overlay,
     graph: ProjectGraph,
     index: BTreeMap<ProjectPath, usize>,
@@ -347,11 +400,16 @@ impl Discovery<'_> {
         self.overlay.get(path).is_some() || path.to_os_path(&self.root).is_file()
     }
 
-    fn load(&self, path: &ProjectPath, kind: FileKind) -> Loaded {
+    /// Loads `path` through the rooted, symlink-refusing primitive that
+    /// `save.rs` already uses: containment is checked and the content is
+    /// read from the exact same file descriptor in one walk, so there is no
+    /// window between "is this safe" and "read it" for a symlink swap to
+    /// win (issue #45 finding 1).
+    fn load(&self, path: &ProjectPath, kind: FileKind) -> Resolution {
         if kind != FileKind::Graphic
             && let Some(text) = self.overlay.get(path)
         {
-            return Loaded::Ok(ProjectFile {
+            return Resolution::Other(Loaded::Ok(ProjectFile {
                 path: path.clone(),
                 kind,
                 source: FileSource::Overlay,
@@ -359,41 +417,33 @@ impl Discovery<'_> {
                 sha256: sha256(text.as_bytes()),
                 bytes: text.len() as u64,
                 references: Vec::new(),
-            });
+            }));
         }
-        let os = path.to_os_path(&self.root);
-        let bytes = match fs::read(&os) {
-            Ok(b) => b,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Loaded::Missing,
-            Err(e) => return Loaded::Error(e),
-        };
-        let digest = sha256(&bytes);
-        let len = bytes.len() as u64;
-        let text = if kind == FileKind::Graphic {
-            None
-        } else {
-            String::from_utf8(bytes).ok()
-        };
-        Loaded::Ok(ProjectFile {
-            path: path.clone(),
-            kind,
-            source: FileSource::Disk,
-            text,
-            sha256: digest,
-            bytes: len,
-            references: Vec::new(),
-        })
-    }
-
-    /// True if `path` exists on disk as a symlink that resolves outside the root.
-    fn escapes_via_symlink(&self, path: &ProjectPath) -> bool {
-        if self.overlay.get(path).is_some() {
-            return false;
-        }
-        let os = path.to_os_path(&self.root);
-        match fs::canonicalize(&os) {
-            Ok(canon) => !canon.starts_with(&self.canonical_root),
-            Err(_) => false,
+        match self.project_root.read(path, DEFAULT_READ_LIMIT) {
+            Ok(Some(r)) => {
+                let len = r.bytes.len() as u64;
+                let text = if kind == FileKind::Graphic {
+                    None
+                } else {
+                    String::from_utf8(r.bytes).ok()
+                };
+                Resolution::Other(Loaded::Ok(ProjectFile {
+                    path: path.clone(),
+                    kind,
+                    source: FileSource::Disk,
+                    text,
+                    sha256: r.sha256,
+                    bytes: len,
+                    references: Vec::new(),
+                }))
+            }
+            Ok(None) => Resolution::Other(Loaded::Missing),
+            Err(SaveError::Refused(refused)) => classify_refusal(refused),
+            Err(SaveError::Io(e)) => Resolution::Other(Loaded::Error(e)),
+            Err(SaveError::DirectorySync(e)) => Resolution::Other(Loaded::Error(e)),
+            Err(SaveError::Conflict(c)) => Resolution::Other(Loaded::Error(io::Error::other(
+                format!("unexpected conflict during read: {c:?}"),
+            ))),
         }
     }
 
@@ -509,20 +559,28 @@ impl Discovery<'_> {
             );
             return;
         };
-        if self.escapes_via_symlink(&target) {
-            self.diag(
-                from,
-                r,
-                Severity::Error,
-                format!(
-                    "\\{}{{{}}}: {target} is a symlink outside the project root",
-                    r.kind.command(),
-                    r.argument
-                ),
-                DiagnosticKind::EscapesRootViaSymlink { target },
-            );
-            return;
-        }
+        // Single fd-based check-and-read: safety and content come from the
+        // exact same rooted operation (see `load`), so there is no window
+        // for a symlink swapped in after a separate check to be followed
+        // (issue #45 finding 1). The result is reused below rather than
+        // touching disk a second time.
+        let loaded = match self.load(&target, kind) {
+            Resolution::Escapes => {
+                self.diag(
+                    from,
+                    r,
+                    Severity::Error,
+                    format!(
+                        "\\{}{{{}}}: {target} is a symlink outside the project root",
+                        r.kind.command(),
+                        r.argument
+                    ),
+                    DiagnosticKind::EscapesRootViaSymlink { target },
+                );
+                return;
+            }
+            Resolution::Other(loaded) => loaded,
+        };
         self.graph.edges.push(Edge {
             from: from.clone(),
             to: target.clone(),
@@ -566,7 +624,7 @@ impl Discovery<'_> {
             );
             return;
         }
-        match self.load(&target, kind) {
+        match loaded {
             Loaded::Ok(file) => {
                 if kind == FileKind::Tex {
                     self.visit_loaded(file);

@@ -3,33 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T14:15:29Z",
-      "adaptation": "Pausedtelemetrycandidate preserved outsideworktree; helperpage/delta reviewonly with exactinstalledbase, fullresync and boundedcost constraints.",
-      "main_sha": "c364f838c8dc783064ae489e2bcf2c69172a1871",
-      "revision": 32
+      "acknowledged_utc": "2026-09-12T16:24:59Z",
+      "adaptation": "Read r44 owned preview edit/index/submit audit. Static inspection finds metadata replacement already moves source and borrows it for indexing; required full-source clone crosses owned runtime Request API. No speculative implementation or runtime edits; report audit and request owner coordination for substantive ownership change.",
+      "main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
+      "revision": 44
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "97a15831b4b7010a880c9456cda1a01f4935c2fc",
+  "code_revision": "8dd9170dccc9f2a809c5537ca13c08459d4c91f5",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 40
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "e90b75a3e7646ae152fdfb36323b7f8cb8b0649a",
-  "next_action": "Commander/compiler owner integration; next assigned compatibility task after verified renderer mapping.",
+  "main_integrated_through": "8b676e7212042493c690848026cc33cc1900b0fe",
+  "next_action": "Commander coordinate runtime owner for borrowed/request ownership investigation if prioritized; root can adapt helper to a reviewed API. Await Kabir Text overlap acknowledgement. All owned processes terminal; ready for authority transfer fence.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Threecandidate97a15831 gate95tests/strictlint and84HW1diagnostics; exactbasecombinedpatch now freshly applies and all7changedfiles match tested source bytes.",
+  "state": "ready_for_integration",
+  "summary": "FT048r44 static audit completed at8dd9170d: metadata edits move replacement source into durable store, borrow saved source for indexing and return source-free metadata. Remaining full-source copy in compile_current_with_admission supplies runtime-owned InputDocument strings. No material removable source copy found within owned paths; no speculative code changes or benchmark sweep. Current-base Text handoff8b/8dd remains no-build and fenced.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T15:15:09Z",
+  "updated_utc": "2026-09-12T16:25:15Z",
   "usage": {
-    "evidence": "97a15831; hw1-quantifiers/combined-apply-check.json",
-    "status": "Retained hosted engineer; no paid calls; quota unknown; no active jobs."
+    "evidence": "crates/preview-controller/src/metadata_edit.rs; crates/preview-controller/src/lib.rs:312; crates/preview-controller/src/lib.rs:444; crates/document-runtime/src/lib.rs:28",
+    "status": "Existing hosted allocation only; no paid API or CLI calls; remaining quota unknown."
   }
 }

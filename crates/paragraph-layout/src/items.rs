@@ -9,8 +9,9 @@
 //! All lengths are in the caller's linear unit (points in this project).
 
 use std::ops::Range;
+use std::panic::{self, AssertUnwindSafe};
 
-use crate::hyphenate::Hyphenator;
+use crate::hyphenate::{Hyphenator, HyphenatorError};
 use crate::metrics::{FontId, FontMetricsSource};
 
 /// A penalty at or above this value forbids a break (TeX `\penalty10000`).
@@ -196,13 +197,19 @@ impl<'h> ParagraphBuilder<'h> {
 
     /// Appends text starting at source byte `source_start`. Whitespace becomes
     /// interword glue; each maximal non-space chunk is a word.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`HyphenatorError`] from [`Self::word`] the first time the
+    /// configured [`Hyphenator`] misbehaves; text already appended before
+    /// that word stays in the builder.
     pub fn text(
         &mut self,
         font: &dyn FontMetricsSource,
         size: f64,
         text: &str,
         source_start: usize,
-    ) {
+    ) -> Result<(), HyphenatorError> {
         let bytes = text.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -217,21 +224,69 @@ impl<'h> ParagraphBuilder<'h> {
                 while i < bytes.len() && !is_ws(bytes[i]) {
                     i += 1;
                 }
-                self.word(font, size, &text[start..i], source_start + start);
+                self.word(font, size, &text[start..i], source_start + start)?;
             }
         }
+        Ok(())
     }
 
     /// Appends one word (no whitespace), applying kerns, ligatures and the
     /// hyphenator. `\-` markers are consulted through the hyphenator.
+    ///
+    /// The configured [`Hyphenator`] is implemented by the caller, so it is
+    /// untrusted from this crate's point of view: this call is guarded the
+    /// same way [`crate::adapter::try_layout_paragraph`] guards the breaker
+    /// itself, via [`std::panic::catch_unwind`]. A `hyphenate` call that
+    /// panics — and a `hyphenate` call that returns normally but names a
+    /// byte offset that is not a valid place to split `word` (out of range,
+    /// off a UTF-8 char boundary, or out of order), which would otherwise
+    /// panic a few lines below when it is used to slice `word` — both become
+    /// [`HyphenatorError`] instead of a panic escaping this function.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HyphenatorError`] if the hyphenator panics or returns an
+    /// invalid [`HyphenationPoint`]. Nothing is appended to the builder in
+    /// that case.
     pub fn word(
         &mut self,
         font: &dyn FontMetricsSource,
         size: f64,
         word: &str,
         source_start: usize,
-    ) {
-        let points = self.hyphenator.hyphenate(word);
+    ) -> Result<(), HyphenatorError> {
+        let hyphenator = self.hyphenator;
+        let points = panic::catch_unwind(AssertUnwindSafe(|| hyphenator.hyphenate(word))).map_err(
+            |payload| HyphenatorError::Panicked {
+                word: word.to_string(),
+                message: crate::panic_message(&*payload),
+            },
+        )?;
+
+        // Validate every point before mutating `self` or slicing `word`: a
+        // misbehaving-but-non-panicking implementation can still name an
+        // offset that isn't a legal split point, and slicing `word` with it
+        // below would panic instead of erroring.
+        let mut cursor = 0usize;
+        for p in &points {
+            let end = p
+                .offset
+                .checked_add(p.marker_len)
+                .filter(|&e| e <= word.len());
+            let valid = end.is_some_and(|end| {
+                p.offset >= cursor && word.is_char_boundary(p.offset) && word.is_char_boundary(end)
+            });
+            if !valid {
+                return Err(HyphenatorError::InvalidPoint {
+                    word: word.to_string(),
+                    offset: p.offset,
+                    reason: "offset is out of range, not a UTF-8 char boundary, \
+                             or out of order with a previous point",
+                });
+            }
+            cursor = end.expect("checked by `valid` above");
+        }
+
         let mut frag_start = 0;
         for p in &points {
             let frag = &word[frag_start..p.offset];
@@ -257,6 +312,7 @@ impl<'h> ParagraphBuilder<'h> {
             frag_start = p.offset + p.marker_len;
         }
         self.fragment(font, size, &word[frag_start..], source_start + frag_start);
+        Ok(())
     }
 
     fn fragment(
@@ -485,7 +541,7 @@ pub fn shape_run(
 mod tests {
     use super::*;
     use crate::core14::Core14Times;
-    use crate::hyphenate::{ExplicitDiscretionary, NoHyphenation};
+    use crate::hyphenate::{ExplicitDiscretionary, HyphenationPoint, NoHyphenation};
 
     #[test]
     fn shaping_applies_kerns_and_ligatures() {
@@ -574,7 +630,8 @@ mod tests {
     fn builder_spaces_follow_space_factor() {
         let h = NoHyphenation;
         let mut b = ParagraphBuilder::new(&h);
-        b.text(&Core14Times::ROMAN, 10.0, "end. Next, one; two: A. b", 0);
+        b.text(&Core14Times::ROMAN, 10.0, "end. Next, one; two: A. b", 0)
+            .unwrap();
         let glue: Vec<&Glue> = b
             .items()
             .iter()
@@ -598,7 +655,7 @@ mod tests {
     fn explicit_discretionary_builds_flagged_penalty_with_hyphen() {
         let h = ExplicitDiscretionary;
         let mut b = ParagraphBuilder::new(&h);
-        b.word(&Core14Times::ROMAN, 10.0, "re\\-pro", 100);
+        b.word(&Core14Times::ROMAN, 10.0, "re\\-pro", 100).unwrap();
         let items = b.items();
         assert_eq!(items.len(), 3);
         match &items[1] {
@@ -615,6 +672,68 @@ mod tests {
             assert_eq!(r.source, 104..107);
         } else {
             panic!("expected box");
+        }
+    }
+
+    /// Regression for a `Hyphenator` (implemented by callers, so untrusted
+    /// from this crate's point of view) that returns a byte offset landing
+    /// inside a multi-byte UTF-8 character. Before the fix, `word` used that
+    /// offset to slice `word` directly (`&word[frag_start..p.offset]`),
+    /// which panicked past every one of this crate's own safety nets:
+    /// `try_layout_paragraph`'s `catch_unwind` only wraps the later
+    /// `layout_paragraph` call, not this item-building step. Now the offset
+    /// is validated before any slicing happens, and misbehaviour is a typed
+    /// [`HyphenatorError`] instead of a panic.
+    struct BadOffsetHyphenator;
+
+    impl Hyphenator for BadOffsetHyphenator {
+        fn hyphenate(&self, _word: &str) -> Vec<HyphenationPoint> {
+            // "café" is c,a,f (1 byte each) + é (2 bytes) = 5 bytes; offset 4
+            // is the second byte of 'é', not a char boundary.
+            vec![HyphenationPoint {
+                offset: 4,
+                marker_len: 0,
+                automatic: true,
+            }]
+        }
+    }
+
+    #[test]
+    fn hyphenator_bad_byte_offset_is_a_typed_error_not_a_panic() {
+        let h = BadOffsetHyphenator;
+        let mut b = ParagraphBuilder::new(&h);
+        assert_eq!(
+            b.word(&Core14Times::ROMAN, 10.0, "café", 0),
+            Err(HyphenatorError::InvalidPoint {
+                word: "café".to_string(),
+                offset: 4,
+                reason: "offset is out of range, not a UTF-8 char boundary, \
+                         or out of order with a previous point",
+            })
+        );
+        // Nothing was appended: a failed word leaves the builder untouched.
+        assert!(b.items().is_empty());
+    }
+
+    /// Regression for a `Hyphenator` whose `hyphenate` implementation itself
+    /// panics (as opposed to returning a bad-but-non-panicking offset, above).
+    /// Both are untrusted-caller-code failure modes this crate must not let
+    /// escape past its public API.
+    struct PanickingHyphenator;
+
+    impl Hyphenator for PanickingHyphenator {
+        fn hyphenate(&self, word: &str) -> Vec<HyphenationPoint> {
+            panic!("adversarial hyphenator blew up on {word:?}");
+        }
+    }
+
+    #[test]
+    fn hyphenator_panic_is_a_typed_error_not_a_panic() {
+        let h = PanickingHyphenator;
+        let mut b = ParagraphBuilder::new(&h);
+        match b.word(&Core14Times::ROMAN, 10.0, "word", 0) {
+            Err(HyphenatorError::Panicked { word, .. }) => assert_eq!(word, "word"),
+            other => panic!("expected Panicked, got {other:?}"),
         }
     }
 }

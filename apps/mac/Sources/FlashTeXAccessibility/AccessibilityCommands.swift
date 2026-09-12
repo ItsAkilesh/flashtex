@@ -137,15 +137,15 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Toggle Problems")
         case .zoomIn:
             return Entry(command: self, title: "Zoom in preview", shortcuts: ["⌘="], menu: "View",
-                         description: "Enlarges the preview by 25 % over its fit-to-width scale (up to 400 %); pages wider than the pane scroll horizontally. Pinching on the preview and the header's + button do the same.",
+                         description: "Multiplies preview zoom by 1.25 (up to 4x fit width); pages wider than the pane scroll horizontally. Pinching on the preview and the header's + button do the same.",
                          menuItem: "Zoom In")
         case .zoomOut:
             return Entry(command: self, title: "Zoom out preview", shortcuts: ["⌘-"], menu: "View",
-                         description: "Shrinks the preview by 25 % (down to 25 % of fit-to-width); the header's − button does the same.",
+                         description: "Divides preview zoom by 1.25 (down to 0.25x fit width); the header's − button does the same.",
                          menuItem: "Zoom Out")
         case .actualSize:
             return Entry(command: self, title: "Actual size preview", shortcuts: ["⌘0"], menu: "View",
-                         description: "Sets the preview zoom so one PDF point is one screen point (100 %), whatever the pane width.",
+                         description: "Sets one PDF point to one screen point (100 %) when the 0.25x…4x zoom bounds permit it.",
                          menuItem: "Actual Size")
         case .fitWidth:
             return Entry(command: self, title: "Fit width preview", shortcuts: ["⌘9"], menu: "View",

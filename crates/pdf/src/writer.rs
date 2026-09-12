@@ -38,7 +38,9 @@
 //! Font hints: with `font-hints-v1` negotiated, each text item may name a
 //! family/weight/style. Latin Modern resolves to the matching
 //! `lmroman10-*.otf` embedded as its own font object; Times resolves to the
-//! base-14 Times variants; anything else is substituted by the document face
+//! base-14 Times variants; Courier and Helvetica resolve to their base-14
+//! variants; Symbol resolves to the base-14 Symbol font `/F2`
+//! with its built-in encoding; anything else is substituted by the document face
 //! at the requested weight/style and reported in the warnings. Additional
 //! faces get resources `/F4`, `/F5`, … and their objects follow the document
 //! font after the pages.
@@ -119,9 +121,41 @@ fn is_latin_modern_family(family: &str) -> bool {
     f.starts_with("latin modern") || f.starts_with("lmroman") || f == "lm roman" || f == "lm"
 }
 
+fn is_symbol_family(family: &str) -> bool {
+    family.eq_ignore_ascii_case("symbol")
+}
+
 fn is_times_family(family: &str) -> bool {
     let f = family.to_ascii_lowercase();
     f.starts_with("times")
+}
+
+/// Base-14 Courier or Helvetica at a weight/style, when `family` names one.
+fn sans_or_mono_base_font(family: &str, weight: Weight, style: Style) -> Option<&'static str> {
+    let f = family.to_ascii_lowercase();
+    let [regular, bold, oblique, bold_oblique] = if f.starts_with("courier") {
+        [
+            "Courier",
+            "Courier-Bold",
+            "Courier-Oblique",
+            "Courier-BoldOblique",
+        ]
+    } else if f.starts_with("helvetica") {
+        [
+            "Helvetica",
+            "Helvetica-Bold",
+            "Helvetica-Oblique",
+            "Helvetica-BoldOblique",
+        ]
+    } else {
+        return None;
+    };
+    Some(match (weight, style) {
+        (Weight::Normal, Style::Normal) => regular,
+        (Weight::Bold, Style::Normal) => bold,
+        (Weight::Normal, Style::Italic) => oblique,
+        (Weight::Bold, Style::Italic) => bold_oblique,
+    })
 }
 
 /// One font written after the pages: the document's embedded font or a face
@@ -248,18 +282,23 @@ impl FontTable {
                 embedded: None,
             };
         }
+        self.base14(variant.base_font())
+    }
+
+    /// A WinAnsi-encoded base-14 text face written as its own font object.
+    fn base14(&mut self, name: &'static str) -> Resolved {
         let existing = self.fonts.iter().find_map(|f| match f {
             TrailingFont::Base14 {
                 resource,
                 base_font,
-            } if *base_font == variant.base_font() => Some(*resource),
+            } if *base_font == name => Some(*resource),
             _ => None,
         });
         let resource = existing.unwrap_or_else(|| {
             let resource = self.allocate_extra();
             self.fonts.push(TrailingFont::Base14 {
                 resource,
-                base_font: variant.base_font(),
+                base_font: name,
             });
             resource
         });
@@ -326,6 +365,15 @@ impl FontTable {
             }
         } else if is_times_family(&hint.family) {
             self.times_variant(variant)
+        } else if let Some(name) = sans_or_mono_base_font(&hint.family, weight, style) {
+            self.base14(name)
+        } else if is_symbol_family(&hint.family) {
+            // Base-14 Symbol (`/F2`, built-in encoding) is always written.
+            Resolved {
+                face: encoding::Face::Times,
+                primary: encoding::Font::Symbol,
+                embedded: None,
+            }
         } else {
             // Unknown family: the document face at the requested weight/style,
             // reported as a substitution and never claimed preserved.

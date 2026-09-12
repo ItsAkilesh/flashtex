@@ -21,7 +21,8 @@ enum PreviewZoom {
     /// Display scale: the pane's fit-to-width scale times the zoom multiplier.
     static func scale(fit: CGFloat, zoom: CGFloat) -> CGFloat { fit * clamped(zoom) }
 
-    /// The zoom that makes a page render at 1 pt per screen point ("Actual Size").
+    /// The zoom that makes a page render at 1 pt per screen point ("Actual Size"),
+    /// clamped when a very narrow pane would require more than the 4x limit.
     static func actualSizeZoom(fit: CGFloat) -> CGFloat { fit > 0 ? clamped(1 / fit) : 1 }
 
     static func percent(fit: CGFloat, zoom: CGFloat) -> Int { Int((scale(fit: fit, zoom: zoom) * 100).rounded()) }
@@ -76,6 +77,7 @@ struct PreviewMagnify: ViewModifier {
 /// highlighter read the font, so they follow). Installed as a local event
 /// monitor because the editor's scroll view is created by `CompletingTextView`.
 enum EditorFontMagnifier {
+    @MainActor
     static func install(on scroll: NSScrollView) -> Any? {
         NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak scroll] event in
             guard let scroll, event.window === scroll.window else { return event }

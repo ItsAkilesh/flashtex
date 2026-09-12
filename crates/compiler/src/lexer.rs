@@ -45,6 +45,78 @@ fn is_special(c: char) -> bool {
     matches!(c, '\\' | '{' | '}' | '%' | '$' | '^' | '_')
 }
 
+/// Applies TeX's classic text-mode input ligatures to one word's literal text.
+///
+/// TeX's font ligature programs combine a double backtick or a double
+/// apostrophe into a curly double quote, a lone backtick or apostrophe into a
+/// curly single quote (a lone apostrophe is always a *right* single quote,
+/// exactly as plain typing behaves — TeX has no separate left-single-quote
+/// key), three hyphens into an em dash, two hyphens into an en dash, and an
+/// exclamation mark or question mark followed by a backtick into the inverted
+/// exclamation or question mark. Matching is greedy and leftmost-longest,
+/// which is what reproduces TeX's own left-to-right ligature building (for
+/// example four hyphens give an em dash followed by a literal hyphen, not two
+/// en dashes).
+///
+/// Callers must only apply this to genuine text-mode words. This crate has no
+/// verbatim, `\texttt`, or `\ttfamily` state yet (see the README's honest
+/// boundary), and math is parsed through an entirely separate path that never
+/// calls this function, so every [`TokenKind::Word`] reachable from ordinary
+/// paragraph text or a supported command's text argument is fair game.
+pub fn apply_text_ligatures(word: &str) -> String {
+    if !word
+        .bytes()
+        .any(|b| matches!(b, b'`' | b'\'' | b'-' | b'!' | b'?'))
+    {
+        return word.to_string();
+    }
+    let chars: Vec<char> = word.chars().collect();
+    let mut out = String::with_capacity(word.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let next = chars.get(i + 1).copied();
+        match (chars[i], next) {
+            ('-', Some('-')) if chars.get(i + 2) == Some(&'-') => {
+                out.push('\u{2014}'); // --- -> em dash
+                i += 3;
+            }
+            ('-', Some('-')) => {
+                out.push('\u{2013}'); // -- -> en dash
+                i += 2;
+            }
+            ('`', Some('`')) => {
+                out.push('\u{201C}'); // `` -> left double quote
+                i += 2;
+            }
+            ('\'', Some('\'')) => {
+                out.push('\u{201D}'); // '' -> right double quote
+                i += 2;
+            }
+            ('!', Some('`')) => {
+                out.push('\u{00A1}'); // !` -> inverted exclamation mark
+                i += 2;
+            }
+            ('?', Some('`')) => {
+                out.push('\u{00BF}'); // ?` -> inverted question mark
+                i += 2;
+            }
+            ('`', _) => {
+                out.push('\u{2018}'); // ` -> left single quote
+                i += 1;
+            }
+            ('\'', _) => {
+                out.push('\u{2019}'); // ' -> right single quote (apostrophe)
+                i += 1;
+            }
+            (c, _) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 pub fn tokenize(text: &str) -> Vec<Token> {
     tokenize_document(text, DocumentId::default())
 }
@@ -223,5 +295,43 @@ mod tests {
         let toks = tokenize("\\section \\\\");
         assert_eq!(toks[0].kind, TokenKind::Command("section".into()));
         assert_eq!(toks[2].kind, TokenKind::LineBreak);
+    }
+
+    #[test]
+    fn quote_and_dash_ligatures_convert() {
+        assert_eq!(apply_text_ligatures("``quoted''"), "\u{201C}quoted\u{201D}");
+        assert_eq!(apply_text_ligatures("don't"), "don\u{2019}t");
+        assert_eq!(apply_text_ligatures("`tis"), "\u{2018}tis");
+        assert_eq!(apply_text_ligatures("em---dash"), "em\u{2014}dash");
+        assert_eq!(apply_text_ligatures("en--dash"), "en\u{2013}dash");
+        assert_eq!(apply_text_ligatures("!`Hola?`"), "\u{A1}Hola\u{BF}");
+    }
+
+    #[test]
+    fn ligatures_apply_inside_a_single_compound_word() {
+        // No whitespace separates these from the surrounding text, so the
+        // lexer already emits them as one Word token; the ligature scan must
+        // still find and convert the embedded sequences.
+        assert_eq!(apply_text_ligatures("turn---after"), "turn\u{2014}after");
+        assert_eq!(
+            apply_text_ligatures("know''---characterize"),
+            "know\u{201D}\u{2014}characterize"
+        );
+    }
+
+    #[test]
+    fn greedy_left_to_right_matches_tex_ligature_building() {
+        // Four hyphens: (--)=en, (en,-)=em, trailing hyphen is unconsumed.
+        assert_eq!(apply_text_ligatures("----"), "\u{2014}-");
+        // Five hyphens: em dash then en dash, exactly as TeX's own ligature
+        // program reduces them pairwise left to right.
+        assert_eq!(apply_text_ligatures("-----"), "\u{2014}\u{2013}");
+    }
+
+    #[test]
+    fn plain_words_and_single_hyphens_are_unchanged() {
+        assert_eq!(apply_text_ligatures("hello"), "hello");
+        assert_eq!(apply_text_ligatures("well-known"), "well-known");
+        assert_eq!(apply_text_ligatures(""), "");
     }
 }
