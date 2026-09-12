@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "837c17efff77bf3e9fd16fafaebbe84ce1a17d5c",
+  "code_revision": "f01b56ffdbe15ad644d40bece26be428a37d9787",
   "eta_minutes": {
     "likely": 60,
     "optimistic": 30,
     "pessimistic": 120
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
-  "next_action": "Integrate search/history/validation-3/helper-display lanes as they land; relay render-pipeline producer-gap result; refill toward 15 lanes",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "D2 first-generation gate; consume grouped admission 3ffd57f; refill from Commander rulings",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Rebuilt preview-controller/compiler/assistant-context helpers at the merged tree; controller tests 16/16; helper display route delegated to lane mac-helper-display",
-      "reviewed_utc": "2026-09-12T11:21:51Z",
-      "sha": "5ab9eac199c59add83e52d705569d9f771053c4d"
+      "adaptation": "Merged main c11c005 (typed/grouped admissions, helper 71049ffa reply cap); helpers rebuilt; native release keyed on compile_request_id",
+      "reviewed_utc": "2026-09-12T15:35:45Z",
+      "sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Preferences lane integrated (3fcd2ad; full suite 510/510 with every helper); main 527ae54 merged (ff574d7); consumed e4c9252 helper display path and launched mac-helper-display for the native helper-route acceptance; census parent+5 live children posted (issue #2 5645568290)",
+  "summary": "53 lanes integrated today; tip f01b56f full suite 660/660 with every helper; helper display route + GH31, GH36 packaging, GH39, HW1 corpus harness, v2 conformance, admission correlation, page/delta proposal r5 delivered",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T11:21:51Z",
+  "updated_utc": "2026-09-12T15:35:45Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Claude Max 20x; no overage"
+    "status": "Claude Max 20x; user-reported 41% of 5h window at 14:47Z; Fable used to 14:59Z within the 60% authorization; no overage"
   }
 }
