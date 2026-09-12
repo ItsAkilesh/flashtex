@@ -109,3 +109,31 @@ no full-compatibility or live-Grok claim.
 Final adapter checkpoint: `cargo test --all-targets` passes 17 tests; strict Clippy
 and formatting pass; actual example run prints `Offline fixture journaled for
 review: $x^2$`. No Grok, Claude or other provider request is made by these checks.
+
+## Optional reusable asynchronous bridge adapter
+
+Enable `bridge-integration` for `bridge_adapter::BridgeAdapter`. Its injected
+`Arc<Provider>` accepts immutable `CaptureSubmit`, `Context` and cancellation token;
+the real bridge stays exclusively on the background document/journal actor.
+`start` first checks the durable capture and exclusively fsyncs a per-capture intent,
+then dispatches at most one provider attempt. An existing intent with no journaled
+proposal exposes `RecoveryRequired`; adapter restart, terminal failure, retirement
+and repeated start do not silently retry that capture identity. A new attempt must
+be an explicit application decision with new capture identity after reconciliation.
+
+`status_handle()` gives a cloneable handle that performs no filesystem/provider IO.
+Native UI can poll queued/running/awaiting-journal/recovery/terminal states without
+waiting for conversion. `reconcile(bridge,id)` belongs on the background document
+actor: compare the exact current Context (including dependency revision/hash set),
+then fsync the proposal before exposing `Proposal`. Source changes, cancellation
+before journal promotion, prepared/applied/rejected captures and conflicting results
+cannot be silently overwritten. Call reconciliation as part of every document
+update/result-consumption transaction; a cached status alone does not authorize
+insertion. Actual compiler validation and user review remain the next separate gate.
+
+`retire` releases bounded in-memory state only after the physical call finishes;
+durable intents/capture journal remain for deduplication. Queue rejection removes
+only the newly created intent because submission proves no provider started, so
+explicit backpressure retry remains possible. `usage` reports actual process-local
+calls and physical execution, not billing. Provider closures still need timeouts.
+The adapter does not implement the bridge CLI, networking or a native screen.

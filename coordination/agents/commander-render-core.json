@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-render-core",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-023": {
+      "acknowledged_utc": "2026-09-12T05:55:11Z",
+      "adaptation": "Reviewed FT-023 rev1 and exact runtime-v1 preservation gate. Published typed rendering core, hit index, immutable cache and font-resource adapter through25d159d; now implement original checked coordinate transforms and clips only within crates/rendering-core, with no native/PDF activation.",
+      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-render-core/rendering-core",
+  "capabilities": [
+    "rust",
+    "rendering"
+  ],
+  "code_revision": "aa9da1d951e575d04dae2cd0210ea9c4f7a18a0a",
+  "eta_minutes": {
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 30
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "25d159d652204b61479a86f3910431039a052d50",
+  "next_action": "Consume published exact font outlines and expose checked placement consumer API without activating production v2.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-023 validated bounded wire serialization and typed unsupported errors complete; all 43 Rust tests pass. Offline canonical roundtrip fixture passes at1263bytes.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T06:02:37Z",
+  "usage": {
+    "evidence": "43 Rust tests pass; strict clippy pass; validate_display example canonicalSHA a55775916d06d76c62a233d80bea5dc026a42c8c23ebbd6c849beccd5f527ec4.",
+    "status": "Hosted OpenAI authorized, no provider inference or purchases."
+  }
+}
