@@ -61,7 +61,13 @@ final class ShellModel: ObservableObject {
     @Published private(set) var latenciesMs: [Double] = []
     private var debounce: DispatchWorkItem?
     private var compileQueued = false
-    static let debounceInterval: TimeInterval = 0.25
+    /// Keystroke-to-compile delay. The compiler answers in ~1–9 ms for typical
+    /// documents, so the default is 0: every edit submits immediately and the
+    /// one-in-flight coalescing absorbs bursts. `FLASHTEX_DEBOUNCE_MS` overrides.
+    static let debounceInterval: TimeInterval = {
+        if let s = ProcessInfo.processInfo.environment["FLASHTEX_DEBOUNCE_MS"], let ms = Double(s) { return max(0, ms) / 1000 }
+        return 0
+    }()
     /// Revision of the compile request currently in flight (nil if idle).
     @Published private(set) var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
@@ -248,6 +254,7 @@ final class ShellModel: ObservableObject {
     private func scheduleAutoCompile() {
         guard autoCompile, workerAttached else { return }
         debounce?.cancel()
+        if Self.debounceInterval == 0 { compile(); return }
         let item = DispatchWorkItem { [weak self] in self?.compile() }
         debounce = item
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceInterval, execute: item)

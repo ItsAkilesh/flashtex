@@ -25,8 +25,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        // Automation launches (validation suites, launch-check) must never steal
+        // keyboard focus from a person typing at the machine.
+        if ProcessInfo.processInfo.environment["FLASHTEX_NO_ACTIVATE"] != "1" {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        } else {
+            NSApp.windows.first?.orderBack(nil)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

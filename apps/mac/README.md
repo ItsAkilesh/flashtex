@@ -326,6 +326,10 @@ FT-004's. What is implemented here (Mac side only):
 
 ## Launch hooks and evidence
 
+`FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
+automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
+keystroke-to-compile delay (default 0: every edit submits immediately; one
+request in flight, newest buffer coalesced).
 `FLASHTEX_LOG=<path>` appends timestamped worker/bridge status lines (e.g.
 `status: worker exited (9)`) for automation such as `scripts/launch-check.sh`.
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
