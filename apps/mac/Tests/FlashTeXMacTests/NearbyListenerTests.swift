@@ -391,7 +391,7 @@ final class NearbyListenerTests: XCTestCase {
         // A second bootstrap attempt with an expired code is refused at hello.
         _ = coordinator.begin(code: "654321", lifetime: -1)
         XCTAssertNil(coordinator.bootstrapEntry)
-        XCTAssertNil(coordinator.confirmPairing(pairId: Pairing.derive(code: "654321", salt: store.salt).pairId, companionName: "x"))
+        XCTAssertNil(coordinator.confirmPairing(pairId: Pairing.derive(code: "654321", salt: store.salt).pairId, companionName: "x", generation: nil))
 
         client.cancel(); again.cancel(); stale.cancel()
         h2.stop()
@@ -1547,5 +1547,208 @@ final class NearbyTranscriptAcceptanceTests: XCTestCase {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTFail("timed out waiting for \(what)")
+    }
+}
+
+// MARK: - events, progress, cancellation, resume, generations (mac-nearby-transport)
+
+final class PairingGenerationTests: XCTestCase {
+    func testReplacedAttemptCannotConfirmEvenWithTheSamePairId() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-gen-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let c = PairingCoordinator(store: store)
+        let first = c.begin(code: "123456")
+        XCTAssertEqual(first.generation, 1)
+        XCTAssertEqual(c.bootstrapEntry?.generation, 1)
+        // Same code again (the 10^-6 collision, forced): same pair_id, new generation.
+        let second = c.begin(code: "123456")
+        XCTAssertEqual(second.generation, 2)
+        XCTAssertEqual(second.derived.pairId, first.derived.pairId)
+        XCTAssertNil(c.confirmPairing(pairId: first.derived.pairId, companionName: "old", generation: 1))
+        XCTAssertEqual(c.lastRefusal, "bootstrap key from replaced attempt 1; current is 2")
+        XCTAssertNil(store.pair(id: first.derived.pairId))
+        XCTAssertNotNil(c.confirmPairing(pairId: second.derived.pairId, companionName: "new", generation: 2))
+        XCTAssertNil(c.lastRefusal)
+        XCTAssertEqual(c.confirmedGeneration(pairId: second.derived.pairId), 2)
+        XCTAssertNil(c.current, "confirmed attempt is consumed")
+        XCTAssertNil(c.confirmPairing(pairId: second.derived.pairId, companionName: "again", generation: 2))
+        XCTAssertEqual(c.lastRefusal, "no pairing code is pending")
+        // A journal-supplied generation is honoured and later internal ones stay above it.
+        XCTAssertEqual(c.begin(code: "222222", generation: 41).generation, 41)
+        XCTAssertEqual(c.begin(code: "333333").generation, 42)
+        XCTAssertNil(c.confirmPairing(pairId: "nobody", companionName: "x", generation: 42))
+        XCTAssertEqual(c.lastRefusal, "pair_id nobody is not the pending attempt")
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// Over the wire: a listener still holding the bootstrap key of a replaced
+    /// code refuses that session's hello at `confirmPairing` (pairing_expired).
+    func testSessionKeyedByReplacedCodeIsRefusedAtHello() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-gen2-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let c = PairingCoordinator(store: store)
+        let old = c.begin(code: "111111")
+        let oldKey = try XCTUnwrap(c.bootstrapEntry)
+        let h = ListenerHarness(psks: [oldKey], sink: nil, destinations: nil, pairing: c)
+        try h.start()
+        defer { h.stop() }
+        _ = c.begin(code: "999999") // replaced before the listener was rebuilt
+        let client = NearbyTestClient(port: h.port, identity: old.derived.pairId, psk: old.derived.psk)
+        XCTAssertEqual(XCTWaiter.wait(for: [client.ready], timeout: 5), .completed, "the stale key still authenticates TLS")
+        let nonce = "stale-gen"
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: old.derived.pairId, companionName: "late", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: old.derived.psk, nonce: nonce)))
+        let e = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: client.lines(atLeast: 1)[0])
+        XCTAssertEqual(e.payload.code, "pairing_expired")
+        XCTAssertEqual(XCTWaiter.wait(for: [client.closed], timeout: 5), .completed)
+        XCTAssertEqual(store.pairs, [])
+        XCTAssertTrue(c.lastRefusal?.contains("not the pending attempt") ?? false, "\(String(describing: c.lastRefusal))")
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
+
+final class NearbyReceivingProgressTests: XCTestCase {
+    func testProgressIsReportedPer64KiBAndOnCompletionOnly() throws {
+        let sink = RecordingSink()
+        let h = ListenerHarness(psks: [.init(identity: "pair-a", key: NearbyListenerTests.pskA, isBootstrap: false)],
+                                sink: sink, destinations: nil)
+        try h.start()
+        defer { h.stop() }
+        let client = NearbyTestClient(port: h.port, identity: "pair-a", psk: NearbyListenerTests.pskA)
+        XCTAssertEqual(XCTWaiter.wait(for: [client.ready], timeout: 5), .completed)
+        let nonce = "prog"
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: "pair-a", companionName: "p", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: NearbyListenerTests.pskA, nonce: nonce)))
+        _ = client.lines(atLeast: 1)
+        client.send(id: "q", type: "destination_query", NearbyV1.Empty())
+        _ = client.lines(atLeast: 2)
+        XCTAssertFalse(h.snapshot.contains { if case .receiving = $0 { return true }; return false }, "small lines report no progress")
+
+        // A ~330 KiB line, delivered in 16 KiB chunks with pauses so the server sees many reads.
+        let png = TestImages.png(width: 300, height: 300, noise: true)
+        let submit = RuntimeV1.CaptureSubmit(captureId: "prog-1", destinationId: "d", baseRevision: 1,
+                                             image: .init(mimeType: "image/png", dataBase64: png.base64EncodedString()), instructions: "p")
+        let line = NearbyV1.line(id: "c", type: "capture_submit", submit)
+        XCTAssertGreaterThan(line.count, 4 * NearbyListener.receivingReportInterval)
+        var i = 0
+        while i < line.count {
+            let end = min(i + 16 * 1024, line.count)
+            client.send(line[i..<end])
+            i = end
+            usleep(2_000)
+        }
+        _ = client.lines(atLeast: 3)
+        let progress = h.snapshot.compactMap { e -> Int? in
+            if case .receiving("pair-a", let bytes, nil) = e { return bytes }
+            return nil
+        }
+        XCTAssertEqual(progress.last, line.count, "completion reports the whole line")
+        XCTAssertGreaterThanOrEqual(progress.count, 2, "at least one interim report: \(progress)")
+        XCTAssertEqual(progress, progress.sorted(), "monotonic")
+        XCTAssertLessThanOrEqual(progress.count, line.count / NearbyListener.receivingReportInterval + 2, "bounded rate: \(progress)")
+        for (a, b) in zip(progress, progress.dropFirst()).dropLast() {
+            XCTAssertGreaterThanOrEqual(b - a, NearbyListener.receivingReportInterval, "interim reports at least 64 KiB apart: \(progress)")
+        }
+        XCTAssertEqual(sink.count, 1)
+        client.cancel()
+    }
+}
+
+@MainActor
+final class NearbyStateEventTests: XCTestCase {
+    private func waitUntil(_ what: String, timeout: TimeInterval = 5, _ cond: @escaping @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cond() { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+
+    func testOnEventCloseConnectionAndResumedPairing() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-ev-\(UUID().uuidString)")
+        let store = PairStore(url: dir.appendingPathComponent("pairs.json"))
+        let model = ShellModel()
+        model.autoCompile = false
+        let state = NearbyState(store: store, macName: "Event Mac", loopbackOnly: true)
+        state.attach(sink: model, destinations: model)
+        var events: [NearbyListener.Event] = []
+        state.onEvent = { events.append($0) }
+
+        // (4) Resume an interrupted attempt: the published code/expiry follow the resumed values.
+        let expires = Date().addingTimeInterval(20)
+        state.beginPairing(resuming: "123456", expiresAt: expires, generation: 7)
+        XCTAssertEqual(state.pairingCode, "123456")
+        XCTAssertEqual(state.codeExpiresAt, expires)
+        XCTAssertEqual(state.coordinator.current?.code, "123456")
+        XCTAssertEqual(state.coordinator.current?.generation, 7)
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        XCTAssertTrue(events.contains { if case .ready = $0 { return true }; return false }, "(1) onEvent saw the listener come up: \(events)")
+        let port = try XCTUnwrap(state.port)
+
+        // The resumed code pairs a companion.
+        let derived = Pairing.derive(code: "123456", salt: store.salt)
+        let client = NearbyTestClient(port: port, identity: derived.pairId, psk: derived.psk)
+        try await waitUntil("client ready (\(String(describing: client.failure)))") { client.isReady }
+        let nonce = UUID().uuidString
+        client.send(id: "h", type: "hello", NearbyV1.Hello(pairId: derived.pairId, companionName: "Resumed iPad", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: derived.psk, nonce: nonce)))
+        try await waitUntil("hello_ack") { client.lineCount >= 1 }
+        let ack = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: client.allLines[0])
+        XCTAssertNotNil(ack.payload.pairPsk)
+        try await waitUntil("paired") { state.pairs.count == 1 && state.pairingCode == nil }
+        XCTAssertEqual(state.coordinator.confirmedGeneration(pairId: derived.pairId), 7)
+        try await waitUntil("connected") { state.connectedPairIds == [derived.pairId] }
+        XCTAssertTrue(events.contains(.hello(pairId: derived.pairId, companionName: "Resumed iPad", bootstrap: true)), "\(events)")
+
+        // (2) Progress reaches the state and onEvent while a large line is in flight...
+        let png = TestImages.png(width: 260, height: 260, noise: true)
+        let submit = RuntimeV1.CaptureSubmit(captureId: "cancel-me", destinationId: "d", baseRevision: 1,
+                                             image: .init(mimeType: "image/png", dataBase64: png.base64EncodedString()), instructions: "p")
+        let line = NearbyV1.line(id: "c", type: "capture_submit", submit)
+        XCTAssertGreaterThan(line.count, 3 * NearbyListener.receivingReportInterval)
+        let half = line.count / 2
+        var i = 0
+        while i < half {
+            let end = min(i + 16 * 1024, half)
+            client.send(line[i..<end])
+            i = end
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+        try await waitUntil("progress visible") { (state.receivingBytes[derived.pairId] ?? 0) > 0 }
+        let seen = try XCTUnwrap(state.receivingBytes[derived.pairId])
+        XCTAssertLessThan(seen, line.count)
+        XCTAssertTrue(events.contains { if case .receiving(derived.pairId, seen, nil) = $0 { return true }; return false })
+
+        // (3) ...and the Mac can cancel it: the session closes, budget and progress are released, the pairing stays.
+        state.closeConnection(pairId: derived.pairId)
+        try await waitUntil("client closed") { client.isClosed }
+        try await waitUntil("disconnected") { state.connectedPairIds.isEmpty && state.receivingBytes[derived.pairId] == nil }
+        XCTAssertTrue(events.contains { if case .connectionClosed(derived.pairId, "closed by the Mac") = $0 { return true }; return false }, "\(events)")
+        XCTAssertEqual(state.pairs.count, 1, "closing a session does not forget the pairing")
+        XCTAssertNil(model.nearbyInbox.lastCaptureId, "the half-received capture never reached the inbox")
+        XCTAssertTrue(state.log.contains("closing sessions of \(derived.pairId)"))
+        XCTAssertTrue(state.isAdvertising)
+
+        // A reconnect with the long-term key still works after the cancel.
+        let longTerm = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(ack.payload.pairPsk)))
+        let again = NearbyTestClient(port: port, identity: derived.pairId, psk: longTerm)
+        try await waitUntil("reconnected") { again.isReady }
+        let n2 = UUID().uuidString
+        again.send(id: "h2", type: "hello", NearbyV1.Hello(pairId: derived.pairId, companionName: "Resumed iPad", nonce: n2,
+                                                           proof: Pairing.helloProof(psk: longTerm, nonce: n2)))
+        try await waitUntil("hello again") { again.lineCount >= 1 }
+        XCTAssertEqual(try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.HelloAck>.self, from: again.allLines[0]).type, "hello_ack")
+
+        // (4b) An expired attempt is not resumed.
+        let before = state.log.count
+        state.beginPairing(resuming: "654321", expiresAt: Date().addingTimeInterval(-1))
+        XCTAssertNil(state.pairingCode)
+        XCTAssertEqual(state.log.suffix(from: before), ["not resuming pairing code: already expired"])
+        XCTAssertNil(state.coordinator.current)
+
+        again.cancel()
+        state.stopAdvertising()
+        try? FileManager.default.removeItem(at: dir)
     }
 }

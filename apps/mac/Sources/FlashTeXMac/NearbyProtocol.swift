@@ -160,8 +160,11 @@ protocol DestinationProvider: AnyObject {
 
 /// Turns a bootstrap (code-derived) connection into a long-term pairing.
 /// Returns the freshly minted 32-byte PSK the companion must switch to.
+/// `generation` is the pairing attempt the bootstrap key was issued for
+/// (`PSKEntry.generation`); a confirmer refuses any other attempt, so a
+/// session keyed by a replaced code cannot confirm the current one.
 protocol PairingConfirmer: AnyObject {
-    func confirmPairing(pairId: String, companionName: String) -> Data?
+    func confirmPairing(pairId: String, companionName: String, generation: Int?) -> Data?
     func notePairSeen(pairId: String)
 }
 
@@ -897,7 +900,7 @@ final class NearbySession {
         let name = String(hello.companionName.prefix(64))
         var pairPsk: String?
         if isBootstrap {
-            guard let psk = pairing?.confirmPairing(pairId: hello.pairId, companionName: name) else {
+            guard let psk = pairing?.confirmPairing(pairId: hello.pairId, companionName: name, generation: entry.generation) else {
                 emit(NearbyV1.errorLine(id: id, code: "pairing_expired", message: "pairing code is no longer valid"))
                 return .closeAfterFlush("pairing expired")
             }

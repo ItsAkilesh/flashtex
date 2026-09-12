@@ -100,6 +100,9 @@ final class PairingFlowController: ObservableObject {
             apply(bootstrap ? .confirmed(pairId: id, companionName: name, generation: g) : .otherCompanionConnected(generation: g))
         case .connectionClosed(let id, let reason): apply(.peerGone(pairId: id, reason: reason, generation: g))
         case .capture(let id): apply(.captureReceived(pairId: nil, captureId: id))
+        case .receiving(let id, let bytes, let expected):
+            // Byte progress from the transport (mac-nearby-transport); unauthenticated peers have no pairId.
+            if let id { observeProgress(pairId: id, companionName: nil, captureId: nil, bytes: bytes, total: expected) }
         case .failed(let why): apply(.listenerFailed(why))
         // Refusals and acknowledged duplicates are shown by NearbyState's error
         // state (mac-nearby-transport); they do not move the pairing flow.

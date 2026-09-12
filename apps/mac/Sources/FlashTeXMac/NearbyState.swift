@@ -4,26 +4,50 @@ import Foundation
 /// Holds the one pairing in progress and finalizes it from the listener queue.
 /// Kept off the main actor because TLS sessions confirm pairings synchronously.
 final class PairingCoordinator: PairingConfirmer {
+    /// One pairing attempt. `generation` increases with every `begin` (or is
+    /// supplied by the caller's journal) and travels with the bootstrap key,
+    /// so a session opened by a replaced code is refused even if its
+    /// `pair_id` collides with the current one.
     struct Pending: Equatable {
         let code: String
         let derived: Pairing.Derived
         let expiresAt: Date
+        let generation: Int
     }
 
     let store: PairStore
     private let lock = NSLock()
     private var pending: Pending?
+    private var lastGeneration = 0
+    /// Generation that confirmed each pairing, in memory (pairs.json v2 will
+    /// persist it on `PairRecord.generation`).
+    private var confirmed: [String: Int] = [:]
     /// Called (on an arbitrary queue) when a bootstrap connection became a pairing.
     var onConfirmed: ((PairRecord) -> Void)?
+    /// Why the last `confirmPairing` refused, for the window and tests.
+    private(set) var lastRefusal: String?
 
     init(store: PairStore) { self.store = store }
 
     var current: Pending? { lock.withLock { pending } }
+    func confirmedGeneration(pairId: String) -> Int? { lock.withLock { confirmed[pairId] } }
 
-    func begin(code: String = Pairing.generateCode(), lifetime: TimeInterval = Pairing.codeLifetime) -> Pending {
-        let p = Pending(code: code, derived: Pairing.derive(code: code, salt: store.salt), expiresAt: Date().addingTimeInterval(lifetime))
-        lock.withLock { pending = p }
-        return p
+    /// Starts (or resumes) an attempt. Pass the journal's `generation` to
+    /// resume one; otherwise the next internal generation is used. Any earlier
+    /// pending attempt is replaced.
+    func begin(code: String = Pairing.generateCode(), lifetime: TimeInterval = Pairing.codeLifetime, generation: Int? = nil) -> Pending {
+        begin(code: code, expiresAt: Date().addingTimeInterval(lifetime), generation: generation)
+    }
+
+    /// Same, with the exact expiry a journal recorded for a resumed attempt.
+    func begin(code: String, expiresAt: Date, generation: Int? = nil) -> Pending {
+        lock.withLock {
+            let g = generation ?? (lastGeneration + 1)
+            lastGeneration = max(lastGeneration, g)
+            let p = Pending(code: code, derived: Pairing.derive(code: code, salt: store.salt), expiresAt: expiresAt, generation: g)
+            pending = p
+            return p
+        }
     }
 
     func cancel() { lock.withLock { pending = nil } }
@@ -31,16 +55,24 @@ final class PairingCoordinator: PairingConfirmer {
     /// Bootstrap PSK entry for the listener while a code is valid.
     var bootstrapEntry: NearbyListener.PSKEntry? {
         guard let p = current, Date() < p.expiresAt else { return nil }
-        return .init(identity: p.derived.pairId, key: p.derived.psk, isBootstrap: true)
+        return .init(identity: p.derived.pairId, key: p.derived.psk, isBootstrap: true, generation: p.generation)
     }
 
-    func confirmPairing(pairId: String, companionName: String) -> Data? {
+    func confirmPairing(pairId: String, companionName: String, generation: Int?) -> Data? {
         let record: PairRecord? = lock.withLock {
-            guard let p = pending, p.derived.pairId == pairId, Date() < p.expiresAt else { return nil }
+            guard let p = pending else { lastRefusal = "no pairing code is pending"; return nil }
+            guard p.derived.pairId == pairId else { lastRefusal = "pair_id \(pairId) is not the pending attempt"; return nil }
+            guard generation == nil || generation == p.generation else {
+                lastRefusal = "bootstrap key from replaced attempt \(generation ?? -1); current is \(p.generation)"
+                return nil
+            }
+            guard Date() < p.expiresAt else { lastRefusal = "pairing code expired"; return nil }
             let psk = Pairing.mintLongTermPSK()
             let r = PairRecord(pairId: pairId, psk: psk.base64EncodedString(), companionName: companionName,
                                createdAt: Date(), lastSeenAt: Date())
-            guard store.upsert(r) else { return nil } // not persisted → not paired
+            guard store.upsert(r) else { lastRefusal = "pair store refused the record"; return nil } // not persisted → not paired
+            confirmed[pairId] = p.generation
+            lastRefusal = nil
             pending = nil
             return r
         }
@@ -87,6 +119,13 @@ final class NearbyState: ObservableObject {
     @Published private(set) var duplicateCaptureCount = 0
     @Published private(set) var lastDuplicateCaptureId: String?
     static let maxReceiveErrors = 20
+
+    /// Raw listener events, forwarded on the main actor before `handle` acts
+    /// on them (the pairing flow controller's `observe(_:)` consumes these).
+    var onEvent: ((NearbyListener.Event) -> Void)?
+    /// Last `.receiving` progress per connected pairing (bytes of the line in
+    /// flight, or of the line just completed).
+    @Published private(set) var receivingBytes: [String: Int] = [:]
 
     let macName: String
     let store: PairStore
@@ -187,6 +226,7 @@ final class NearbyState: ObservableObject {
     }
 
     private func handle(_ event: NearbyListener.Event) {
+        onEvent?(event)
         switch event {
         case .ready(let p):
             port = p
@@ -224,7 +264,10 @@ final class NearbyState: ObservableObject {
             duplicateCaptureCount += 1
             lastDuplicateCaptureId = captureId
             note("duplicate \(captureId) from \(pairId ?? "?") acknowledged again, not re-delivered")
+        case .receiving(let id, let bytes, _):
+            if let id { receivingBytes[id] = bytes }
         case .connectionClosed(let id, let reason):
+            if let id { receivingBytes.removeValue(forKey: id) }
             if let id, let i = connectedPairIds.firstIndex(of: id) { connectedPairIds.remove(at: i) }
             note("closed \(id ?? "unauthenticated"): \(reason)")
         }
@@ -237,14 +280,42 @@ final class NearbyState: ObservableObject {
     func beginPairing() {
         if !wantAdvertising { wantAdvertising = true }
         let p = coordinator.begin()
+        show(p)
+        note("pairing code issued for \(p.derived.pairId)")
+        restartListener()
+    }
+
+    /// Resumes an attempt that was interrupted (relaunch, advertising off):
+    /// serves `code` until `expiresAt` with the same published code/expiry and
+    /// timer as `beginPairing()`. An already expired attempt is not resumed.
+    func beginPairing(resuming code: String, expiresAt: Date, generation: Int? = nil) {
+        guard expiresAt > Date() else {
+            note("not resuming pairing code: already expired")
+            return
+        }
+        if !wantAdvertising { wantAdvertising = true }
+        let p = coordinator.begin(code: code, expiresAt: expiresAt, generation: generation)
+        show(p)
+        note("pairing code resumed for \(p.derived.pairId)")
+        restartListener()
+    }
+
+    private func show(_ p: PairingCoordinator.Pending) {
         pairingCode = p.code
         codeExpiresAt = p.expiresAt
         expiry?.cancel()
         let item = DispatchWorkItem { [weak self] in self?.pairingExpired() }
         expiry = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + Pairing.codeLifetime, execute: item)
-        note("pairing code issued for \(p.derived.pairId)")
-        restartListener()
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, p.expiresAt.timeIntervalSinceNow), execute: item)
+    }
+
+    /// Closes every live session of one pairing (cancels a receive in
+    /// progress). The pairing itself is kept; `connectedPairIds` updates when
+    /// the listener reports the close.
+    func closeConnection(pairId: String) {
+        guard let listener else { return }
+        listener.closeConnections(identity: pairId)
+        note("closing sessions of \(pairId)")
     }
 
     func cancelPairing() {
