@@ -9,15 +9,15 @@
   "branch": "agent/bridge-context/conversion-jobs",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-  "objective": "Bridge adapter with durable intent and stale context guards",
+  "input_main_sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+  "objective": "Durable explicit review inbox with bounded per-project selection",
   "owned_paths": [
     "crates/conversion-jobs"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-022",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:12:26Z"
+  "updated_utc": "2026-09-12T06:27:23Z"
 }
