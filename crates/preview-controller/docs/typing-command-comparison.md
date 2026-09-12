@@ -61,3 +61,30 @@ The post-measurement grouped retry proves durable-command idempotency only. It
 still requests compilation and its later diagnostics are outside the measured
 ACK/current-preview pair. No claim of zero extra compilation or later-revision
 retry behavior follows from this particular experiment.
+
+## Release helper and release producer
+
+`benchmarks/typing-command-50kb-both-release` keeps the same helper binary, source,
+helper request bytes and actual edited producer request bytes as the preceding
+release-helper capture. The runtime engineer verified all355 original producer
+source files unchanged, built in an isolated target, preserved the debug binary,
+and compared all seven captured requests across four sessions: debug, release and
+original captured stdout matched byte-for-byte. The release producer SHA256 is
+1587245d9d68f426678176e45c0e0a4a971cd252c64d3a288147861ec16d62dd.
+
+| Mode | ACK arrival | Save/submit | Runtime interval | Controller interval | Preview frame arrival |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Full | 0.99ms | 0.67ms | 70.64ms | 71.32ms | 77.53ms |
+| Group | 1.59ms | 1.33ms | 74.61ms | 75.93ms | 80.33ms |
+
+Both actual current preview values equal the prior debug-producer results. Source
+hash, exact durable reopen and grouped retry remain correct; producer processes
+terminate. All original frames and their compressed hashes remain available.
+
+This fixture now delivers a current preview frame below200ms in the observed
+release setup. It is one sequential pair with the transparent capture proxy, not
+a calibrated speedup, worst-case guarantee, native paint measurement or arbitrary
+LaTeX compatibility result. Full versus group timing order reversed across samples;
+these observations support the request/reply byte savings, not a claimed timing
+winner between command formats. Native package metrics and UI adoption remain
+separate acceptance work.

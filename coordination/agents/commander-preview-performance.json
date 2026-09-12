@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
+  "code_revision": "53c0c71d1fc35e8bafe0473c60f4eaf277833482",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "eca6ab2582e18dc65ef759b4d39f8ec6502df777",
-  "next_action": "Runtime releaseproducer exactframe comparison then coordinated nextperformance sample; no repeatedrootmeasurements.",
+  "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
+  "next_action": "Commander integrate with runtimeproducerreleaseverification; nativepackaging and widerlatencyacceptance remain separate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r20 releasehelper50KBtyping preserves exact debugartifact preview/source/requests; actualproducertrace handed to runtime releasebuilder.",
+  "summary": "FT048r20 releasehelper+independentlyverifiedreleaseproducer50KBpair delivers currentframes77.53/80.33ms with exactprioroutputs/source.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:09:32Z",
+  "updated_utc": "2026-09-12T13:12:54Z",
   "usage": {
     "status": "unknown"
   }
