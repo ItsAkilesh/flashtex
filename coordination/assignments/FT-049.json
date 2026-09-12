@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "581a12e406f8614a8731d9812e5e80d64137d5ba",
-  "objective": "Review helper diagnostic sequence identity through required and optional admission replacement dequeue and write failure",
+  "input_main_sha": "37137adaa0654d95f43c6678e476b8513c3a09ef",
+  "objective": "Audit source-free metadata and receiver correlation with explicit clock and error-reporting limits",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 31,
+  "revision": 32,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:44:21.060827+00:00"
+  "updated_utc": "2026-09-12T13:48:47Z"
 }
