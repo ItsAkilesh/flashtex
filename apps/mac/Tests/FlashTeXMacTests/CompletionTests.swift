@@ -178,6 +178,18 @@ final class CompletionTests: XCTestCase {
         tv.string = "abc "
         tv.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertNil(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index))
+        // Stale or absurd ranges (text shrank after the range was computed) are refused, not trapped.
+        for bad in [NSRange(location: 2, length: 10), NSRange(location: NSNotFound, length: 0),
+                    NSRange(location: 99, length: 0), NSRange(location: -1, length: 1)] {
+            XCTAssertNil(tv.completions(forPartialWordRange: bad, indexOfSelectedItem: &index), "\(bad)")
+            tv.insertCompletion("\\section", forPartialWordRange: bad, movement: NSReturnTextMovement, isFinal: true)
+            XCTAssertEqual(tv.string, "abc ", "stale range \(bad) must not splice text")
+        }
+        // A valid final insertion replaces exactly the partial token.
+        tv.string = "x \\se"
+        tv.setSelectedRange(NSRange(location: 5, length: 0))
+        tv.insertCompletion("\\section", forPartialWordRange: tv.rangeForUserCompletion, movement: NSReturnTextMovement, isFinal: true)
+        XCTAssertEqual(tv.string, "x \\section")
     }
 
     // MARK: fault tolerance

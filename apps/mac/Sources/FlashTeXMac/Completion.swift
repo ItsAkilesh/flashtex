@@ -472,11 +472,25 @@ final class CompletingTextView: NSTextView {
 
     override func completions(forPartialWordRange charRange: NSRange,
                               indexOfSelectedItem index: UnsafeMutablePointer<Int>) -> [String]? {
-        let caret = NSMaxRange(charRange)
-        let items = Completion.suggestions(in: string, caretUTF16: caret, result: compileResult,
-                                          supported: supportedCommands)
         index.pointee = 0
+        // The range came from `rangeForUserCompletion`; the text may have changed
+        // since (or the caller may pass anything). Never index past the string.
+        let text = string
+        guard charRange.location != NSNotFound, charRange.location >= 0, charRange.length >= 0,
+              NSMaxRange(charRange) <= (text as NSString).length else { return nil }
+        let items = Completion.suggestions(in: text, caretUTF16: NSMaxRange(charRange), result: compileResult,
+                                          supported: supportedCommands)
         return items.isEmpty ? nil : items.map(\.insertText)
+    }
+
+    /// AppKit calls this with the chosen string; the default implementation
+    /// replaces `charRange`. Guard the range the same way so a stale range can
+    /// never splice text at the wrong place.
+    override func insertCompletion(_ word: String, forPartialWordRange charRange: NSRange,
+                                   movement: Int, isFinal flag: Bool) {
+        guard charRange.location != NSNotFound, charRange.location >= 0, charRange.length >= 0,
+              NSMaxRange(charRange) <= (string as NSString).length else { return }
+        super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: flag)
     }
 
     override func keyDown(with event: NSEvent) {
