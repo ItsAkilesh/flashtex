@@ -48,3 +48,30 @@ Carry a scalar generation-to-sequence association or explicitly leave that stage
 uncorrelated. Do not infer it from adjacent stderr records or equal frame lengths.
 Request sequence saturation also repeats u64MAX, unlike output sequence's checked
 exhaustion; use consistent exhaustion handling before claiming unique identities.
+
+## Final published implementation
+
+Read-only final review pinned to `e8b5a6fa`, after owner reported88555 terminal:
+16 unit and30 stdio tests passed (including enabled actual-producer gates), strict
+lint passed. These are owner execution results, not independently rerun tests.
+No measured workload was executed for this review.
+
+The final implementation closes the recorded findings. Historical generation is
+captured before snapshot consumption, passed through `offer_with_generation`, and
+retained in Frame with its numeric sequence. Admission, refusal, replacement,
+eviction, dequeue and write traces therefore retain a generation even when the
+frame never reaches the receiver. Optional serialization outcomes also name the
+generation. Request sequence exhaustion now yields None instead of repeatingMAX.
+Output sequence never wraps. Queue diagnostic emission occurs outside state locks.
+
+Client-wide receive ordinals include startup frames; explicit decode_started
+separates raw-wire capture from JSON decoding. Retained receiver records are capped
+at4096 with an explicit dropped-record count. Active writer sequence is included in
+watchdog timeout, distinct from successful write or write failure. Required FIFO,
+required-inflight exclusion, nonpreemptible started optional write, frame/queue
+bounds and diagnostic-off defaults remain unchanged by the inspected diff.
+
+No new source, token, path or external-ID fields appear in the added scalar logs.
+No remaining concrete review blocker was found. The documented clock-origin,
+diagnostic-overhead, cross-thread log-order and receiver/native-delivery caveats
+still apply; this is not a performance or native activation endorsement.
