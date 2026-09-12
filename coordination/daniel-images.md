@@ -6,10 +6,14 @@ Owned paths: `crates/image-assets/**`, `coordination/daniel-images.md`.
 State: ready for integration (standalone additive crate; not yet wired into
 any consumer — this doc is the proposed adapter contract for whoever
 integrates it).
-Tested commit: `bab2811ae7ab03e65f55c23f613157cbd51b75bd` (this branch, this
-worktree). `input_main_sha` from the assignment:
-`53fee3012b2902ca05bd31766defa515b3044cec`. No peer files touched — only the
-two owned paths above are in this commit.
+Tested commit: `2f77c61e5ec8b55090900d576fd81f1519efb347` (HEAD of this
+branch, this worktree; `cargo build`/`test`/`clippy -D warnings`/`fmt
+--check` re-verified clean at exactly this SHA). That commit supersedes the
+crate's initial commit, `bab2811ae7ab03e65f55c23f613157cbd51b75bd`, which
+had pre-`cargo fmt` whitespace only — no behavioral difference between the
+two. `input_main_sha` from the assignment:
+`53fee3012b2902ca05bd31766defa515b3044cec`. No peer files touched — only
+`crates/image-assets/**` and this doc are in either commit.
 
 ## Decoder reused
 
