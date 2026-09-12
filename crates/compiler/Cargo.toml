@@ -15,4 +15,3 @@ path = "src/main.rs"
 
 [dependencies]
 flashtex-font-engine = { path = "../font-engine" }
-flashtex-paragraph-layout = { path = "../paragraph-layout" }

@@ -2,9 +2,9 @@
 
 Original Rust compiler foundation for FlashTeX (task FT-002). No existing TeX
 engine is invoked, linked, or shelled out to. The compiler has no registry
-dependencies: it uses the in-repository `../font-engine` crate through a path
-dependency, so the build remains offline and deterministic. The JSON transport
-is hand-written.
+dependencies: it uses the in-repository `../font-engine` and
+`../paragraph-layout` crates through path dependencies, so the build remains
+offline and deterministic. The JSON transport is hand-written.
 
 Speaks runtime protocol v1 (`docs/contracts/runtime-v1.md`) over JSON Lines on
 stdin/stdout.
@@ -72,7 +72,11 @@ Implemented and tested:
   are enabled. Every shaping cluster retains the exact input byte range and text.
   Literal cluster-relative ranges are translated back into the originating
   document, while generated macro text keeps its real invocation span.
-- Greedy line breaking and page breaking onto 612×792 pt pages.
+- TeX-style total-fit paragraph breaking from `flashtex-paragraph-layout`, fed
+  by shaped runs from `flashtex-font-engine`. Explicit `\-` discretionaries
+  can break within a word; automatic pattern hyphenation is not shipped by the
+  adopted crate and remains unsupported here.
+- Page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
 - Numbered `\section{...}` and `\subsection{...}` headings, numbered display
@@ -106,9 +110,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - Environments other than `document`, `equation`, `figure`, `itemize`, and
   `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
-- No bidi, joining, complex-script reordering, hyphenation, or TeX optimal
-  paragraph breaking. The font engine reports unsupported shaping and missing
-  glyphs explicitly; the compiler never silently substitutes a missing glyph.
+- No bidi, joining, complex-script reordering, or automatic pattern
+  hyphenation. The font engine reports unsupported shaping and missing glyphs
+  explicitly; the compiler never silently substitutes a missing glyph.
 - `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
   visual weight and slant are not yet applied.
 
@@ -120,7 +124,7 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
 `\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
-`enumerate`, `\item`, `\par`, and `\\`. Macro
+`enumerate`, `\item`, `\par`, `\-`, and `\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -164,14 +168,24 @@ the compiler does not yet read a real math font.
 
 Layout measures Times-Roman body text, Times-Bold headings, and supported math
 symbols in Symbol through `flashtex-font-engine::shape`. The returned cluster
-advances already include AFM pair kerning and enabled standard ligatures. One
-item is still emitted per word rather than per line; its span is derived from the
-shaped clusters and remains an exact document byte range for literal text.
+advances already include AFM pair kerning and enabled standard ligatures. Those
+shaped clusters become `paragraph-layout` boxes directly; glue and penalties
+remain separate, and `layout_paragraph` positions the resulting runs.
 
-This is real Core 14 shaping, but it is not full TeX paragraph layout. Greedy
-line breaking, approximate math constants, no hyphenation, and the lack of a
-negotiated original-glyph rendering contract still prevent pixel or PDF identity
-claims.
+The adapter assigns each shaped box a unique paragraph-local range and keeps a
+side table back to the exact document `Span` and output kind. The local range is
+never exposed as a document offset. Positioned literal runs map back to exact
+UTF-8 source slices, including each half of a discretionary word. A generated
+discretionary hyphen maps to the complete word construct that produced it.
+Macro replacements continue to map to their invocation construct; no generated
+per-character source offsets are fabricated.
+
+This is real Core 14 shaping and TeX-style total-fit breaking, but it is not full
+TeX paragraph layout. Automatic pattern hyphenation, approximate math constants,
+and the lack of a negotiated original-glyph rendering contract still prevent
+pixel or PDF identity claims. A changed paragraph is broken again as a whole;
+unchanged blocks can still be reused, and incremental output remains required to
+be byte-identical to a clean full build.
 
 ## Pinned evidence and separate fidelity gates
 
@@ -208,42 +222,43 @@ ordinary word item's span slices back to exactly that word — is unchanged.
 
 ## Scaling, measured
 
-Run `cargo run --release --bin incremental_bench`. It deterministically generates
-the three inputs from the fixed xorshift seed and takes 30 samples per case. This
-run used binary SHA-256
-`7834876796e09502f0fbc030e80b4074bb57412c950f8d46789fa5f8e6f0ef23`.
+Run `cargo run --release --bin scaling_bench`. It deterministically generates
+the three inputs from a fixed seed and takes 30 samples per case (five samples
+for a fresh cold session). The post-adoption run used binary SHA-256 prefix
+`396d6d06005b0377`.
 
 | Input | Bytes / blocks | Input SHA-256 |
 |---|---:|---|
-| 5 KB | 5,064 / 26 | `d583e469e3bc2d058740b2574005ec1a1130cde48e8193f9185cfe60abb89f1b` |
-| 50 KB | 50,179 / 255 | `565d9b571775f9b0fd9fed9a5b49485c9fa4d7c123abee1744cf8b3829f2ff40` |
-| 500 KB | 500,196 / 2,510 | `18b183d26d930ad3f159e8ed4c7235b0c743b8175cc716523086467812396124` |
+| 5 KB | 5,019 / 84 | `343a997f84568daf` (prefix) |
+| 50 KB | 50,124 / 792 | `5e98259d014082a1` (prefix) |
+| 500 KB | 500,056 / 7,754 | `925e62ec2e45b868` (prefix) |
 
 | Input | Case | p50 | p95 | p99 |
 |---|---|---:|---:|---:|
-| 5 KB | Cold first compile | 0.807 ms | 1.696 ms | 2.337 ms |
-| 5 KB | Cold full compile | 0.769 ms | 1.595 ms | 1.904 ms |
-| 5 KB | Warm unchanged | 0.023 ms | 0.044 ms | 0.106 ms |
-| 5 KB | One-word edit | 0.303 ms | 0.636 ms | 1.287 ms |
-| 5 KB | Global macro edit | 0.832 ms | 1.527 ms | 1.858 ms |
-| 50 KB | Cold first compile | 7.357 ms | 8.195 ms | 8.275 ms |
-| 50 KB | Cold full compile | 6.965 ms | 7.750 ms | 8.675 ms |
-| 50 KB | Warm unchanged | 0.209 ms | 0.264 ms | 0.268 ms |
-| 50 KB | One-word edit | 2.666 ms | 2.878 ms | 3.432 ms |
-| 50 KB | Global macro edit | 7.974 ms | 8.523 ms | 8.843 ms |
-| 500 KB | Cold first compile | 76.317 ms | 81.172 ms | 84.124 ms |
-| 500 KB | Cold full compile | 71.945 ms | 75.125 ms | 76.550 ms |
-| 500 KB | Warm unchanged | 2.360 ms | 3.102 ms | 3.430 ms |
-| 500 KB | One-word edit | 30.904 ms | 32.797 ms | 33.203 ms |
-| 500 KB | Global macro edit | 81.358 ms | 86.829 ms | 92.968 ms |
+| 5 KB | Cold fresh session | 1.901 ms | 2.857 ms | 2.857 ms |
+| 5 KB | Warm unchanged | 0.054 ms | 0.064 ms | 0.091 ms |
+| 5 KB | One-word edit | 0.393 ms | 0.468 ms | 0.502 ms |
+| 5 KB | Global macro edit | 1.042 ms | 1.339 ms | 1.339 ms |
+| 50 KB | Cold fresh session | 7.872 ms | 8.554 ms | 8.554 ms |
+| 50 KB | Warm unchanged | 0.276 ms | 0.313 ms | 0.390 ms |
+| 50 KB | One-word edit | 2.219 ms | 2.425 ms | 2.461 ms |
+| 50 KB | Global macro edit | 8.115 ms | 8.802 ms | 8.802 ms |
+| 500 KB | Cold fresh session | 84.699 ms | 89.221 ms | 89.221 ms |
+| 500 KB | Warm unchanged | 3.122 ms | 3.411 ms | 4.801 ms |
+| 500 KB | One-word edit | 26.833 ms | 28.829 ms | 30.864 ms |
+| 500 KB | Global macro edit | 90.118 ms | 91.543 ms | 91.543 ms |
 
-The benchmark checks exact incremental-versus-clean output bytes outside every
-timed interval. The dedicated test repeats that assertion at all three sizes for
-ordinary edits, macro redefinition, multi-file includes, and forward references.
-At 500 KB the ordinary edit reused 2,509 of 2,510 blocks; the global macro edit
-correctly reused none.
+The benchmark checks exact incremental-versus-clean output outside every timed
+interval. At 500 KB the ordinary edit reused 7,753 of 7,754 blocks; the global
+macro edit correctly reused none. No measured case crossed 200 ms. Relative to
+the immediately preceding run on the same inputs, 500 KB cold p95 changed from
+92.341 ms to 89.221 ms, one-word-edit p95 from 29.125 ms to 28.829 ms, and
+global-macro-edit p95 from 84.732 ms to 91.543 ms. These are observed timings,
+not a claim that total-fit is intrinsically faster; short runs remain noisy and
+the algorithm does more work per changed paragraph than the former greedy loop.
 
-Revision 7 found two superlinear costs. Before the fixes, on these same inputs,
+Revision 7's earlier `incremental_bench` found two superlinear costs. Before the
+fixes, on that benchmark's inputs,
 the 500 KB one-word edit was 530.636/549.694/563.445 ms p50/p95/p99 and cold was
 569.313/579.248/579.635 ms. The old reuse loop made more than 3.15 million
 candidate comparisons for the one-word edit and 6,300,100 for the macro edit.

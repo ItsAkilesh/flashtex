@@ -49,9 +49,16 @@ compiler number can never be mistaken for the product number.
   input bytes, so advances reflect the ligature and click-to-source survives it.
   A test in `src/layout.rs` now pins that behaviour so the claim cannot drift
   from the code again. The README was already correct; this file was not.
-- Paragraph breaking is greedy, not TeX's optimal total-fit algorithm. Line
-  breaks will differ from TeX on the same input even with identical metrics.
-- No hyphenation.
+- Paragraph breaking now delegates to `flashtex-paragraph-layout`'s TeX-style
+  total-fit algorithm over font-engine-shaped boxes, finite interword glue and
+  discretionary penalties. This closes the former greedy-breaking gap, but it
+  is not by itself a claim that every TeX paragraph parameter is modelled.
+- Explicit `\-` discretionaries can now split a word. Both fragments retain
+  their literal UTF-8 slices and the generated hyphen is attributed to the
+  complete source word. Automatic pattern hyphenation remains missing because
+  `flashtex-paragraph-layout` currently ships only the `Hyphenator` interface,
+  `NoHyphenation`, and `ExplicitDiscretionary`; it explicitly does not ship a
+  pattern implementation. The compiler does not duplicate one locally.
 - Characters outside the base-14 repertoire are reported, not rendered, in the
   export path. `crates/compiler/src/export.rs` names each one and the reason.
 - The features in `UNSUPPORTED.md` are absent by design at this milestone, and
