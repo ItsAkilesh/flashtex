@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency, SourceDocument};
+use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument};
 use crate::Span;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -412,6 +412,10 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             span: mapped_span(*span, changes, deltas)?,
         },
         Block::PageBreak => Block::PageBreak,
+        Block::Styled { style, content } => Block::Styled {
+            style: *style,
+            content: shift_inlines(content, changes, deltas)?,
+        },
     })
 }
 
@@ -449,6 +453,28 @@ fn shift_inlines(
                     Some(span) => Some(mapped_span(*span, changes, deltas)?),
                     None => None,
                 },
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::MathRows {
+                rows,
+                aligned,
+                span,
+            } => Some(Inline::MathRows {
+                rows: rows
+                    .iter()
+                    .map(|row| {
+                        Some(MathRow {
+                            cells: row
+                                .cells
+                                .iter()
+                                .map(|cell| shift_math_list(cell, changes, deltas))
+                                .collect::<Option<Vec<_>>>()?,
+                            number: row.number.clone(),
+                            span: mapped_span(row.span, changes, deltas)?,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+                aligned: *aligned,
                 span: mapped_span(*span, changes, deltas)?,
             }),
             Inline::Label { key, value, span } => Some(Inline::Label {
@@ -490,6 +516,24 @@ fn shift_math_list(
                         Nucleus::Radical(list) => {
                             Nucleus::Radical(shift_math_list(list, changes, deltas)?)
                         }
+                        Nucleus::Matrix {
+                            rows,
+                            columns,
+                            left,
+                            right,
+                        } => Nucleus::Matrix {
+                            rows: rows
+                                .iter()
+                                .map(|row| {
+                                    row.iter()
+                                        .map(|cell| shift_math_list(cell, changes, deltas))
+                                        .collect::<Option<Vec<_>>>()
+                                })
+                                .collect::<Option<Vec<_>>>()?,
+                            columns: columns.clone(),
+                            left: left.clone(),
+                            right: right.clone(),
+                        },
                     },
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
@@ -567,11 +611,13 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::Styled { content, .. } => content,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
         Inline::Math { span, .. } => *span,
+        Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
     };
@@ -601,11 +647,13 @@ fn shifted_signature(
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::Styled { content, .. } => content,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
         Inline::Math { span, .. } => *span,
+        Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
     };

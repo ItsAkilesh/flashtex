@@ -455,7 +455,7 @@ over the Mac's own interfaces (loopback included) with no extra setup.
 4. Expected on the Mac window: "paired <device> (<pair_id>)", the device
    listed under *Paired companions* with a green "connected" badge, and the
    countdown gone. Expected on the companion: `hello_ack` with
-   `pair_psk` and the current `destination` (pin one first with ⌘⇧P).
+   `pair_psk` and the current `destination` (pin one first with ⌘⌥P).
 5. Send a capture from the companion; the Mac window's *Received captures*
    shows its `capture_id` and, with the bridge attached, the capture appears
    in the bridge list ready for **Convert Capture** (⌘⇧G).

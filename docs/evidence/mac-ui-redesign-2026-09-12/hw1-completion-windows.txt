@@ -1,0 +1,11 @@
+16096		layer=0	onscreen=false	1920x30
+16094		layer=0	onscreen=false	1920x30
+16093		layer=0	onscreen=false	1920x30
+16092		layer=0	onscreen=false	1512x33
+16091		layer=0	onscreen=false	1512x33
+16088		layer=0	onscreen=true	480x86
+16087		layer=0	onscreen=false	500x500
+16095		layer=0	onscreen=false	1920x30
+16090		layer=0	onscreen=false	1512x33
+16089		layer=0	onscreen=false	1512x33
+16086	FlashTeX	layer=0	onscreen=true	1498x1049

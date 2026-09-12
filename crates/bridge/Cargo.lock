@@ -192,6 +192,7 @@ name = "flashtex-bridge"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "flashtex-compiler",
  "fs2",
  "image",
  "reqwest",
@@ -200,6 +201,34 @@ dependencies = [
  "sha2",
  "tempfile",
 ]
+
+[[package]]
+name = "flashtex-compiler"
+version = "0.1.0"
+dependencies = [
+ "flashtex-font-engine",
+]
+
+[[package]]
+name = "flashtex-font-engine"
+version = "0.1.0"
+dependencies = [
+ "flashtex-math-layout",
+ "flashtex-paragraph-layout",
+ "flashtex-pdf",
+]
+
+[[package]]
+name = "flashtex-math-layout"
+version = "0.1.0"
+
+[[package]]
+name = "flashtex-paragraph-layout"
+version = "0.1.0"
+
+[[package]]
+name = "flashtex-pdf"
+version = "0.1.0"
 
 [[package]]
 name = "flate2"
