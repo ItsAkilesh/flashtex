@@ -229,6 +229,11 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 key.hash(h);
             }
             Item::ItalicCorrection => 6u8.hash(h),
+            Item::HFill => 7u8.hash(h),
+            Item::HSpace { pt } => {
+                8u8.hash(h);
+                pt.to_bits().hash(h);
+            }
         }
     }
 }
@@ -271,6 +276,33 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                         hash_math(cell, h);
                     }
                 }
+            }
+            Nucleus::Bold(s) => {
+                6u8.hash(h);
+                s.hash(h);
+            }
+            Nucleus::Framed { body, frame } => {
+                7u8.hash(h);
+                (*frame as u8).hash(h);
+                hash_math(body, h);
+            }
+            Nucleus::Stacked { base, over, under } => {
+                8u8.hash(h);
+                hash_math(base, h);
+                for part in [over, under] {
+                    match part {
+                        Some(l) => {
+                            1u8.hash(h);
+                            hash_math(l, h);
+                        }
+                        None => 0u8.hash(h),
+                    }
+                }
+            }
+            Nucleus::Accent { accent, body } => {
+                9u8.hash(h);
+                accent.command().hash(h);
+                hash_math(body, h);
             }
         }
         match &a.superscript {
@@ -407,12 +439,18 @@ fn shift_math(list: &mut MathList, delta: isize) {
     for a in &mut list.atoms {
         shift_span(&mut a.span, delta);
         match &mut a.nucleus {
-            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } => {}
+            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } | Nucleus::Bold(_) => {}
             Nucleus::Fraction { numerator, denominator } => {
                 shift_math(numerator, delta);
                 shift_math(denominator, delta);
             }
-            Nucleus::Radical(r) => shift_math(r, delta),
+            Nucleus::Radical(r) | Nucleus::Framed { body: r, .. } | Nucleus::Accent { body: r, .. } => shift_math(r, delta),
+            Nucleus::Stacked { base, over, under } => {
+                shift_math(base, delta);
+                for part in [over, under].into_iter().flatten() {
+                    shift_math(part, delta);
+                }
+            }
             Nucleus::Matrix { rows, .. } => {
                 for cell in rows.iter_mut().flatten() {
                     shift_math(cell, delta);

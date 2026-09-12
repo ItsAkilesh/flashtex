@@ -87,6 +87,11 @@ pub enum Item {
     /// `\/` after a `\textit`/`\emph`/`\textbf` argument (LaTeX's
     /// `\text@command` adds it unless `.` or `,` follows).
     ItalicCorrection,
+    /// `\hfill`/`\hfil` (compiler `Inline::HFill`): infinitely stretchable
+    /// glue; a legal break point that is discarded at a line break.
+    HFill,
+    /// `\hspace{<dimen>}` (compiler `Inline::HSpace`): fixed glue in points.
+    HSpace { pt: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -346,7 +351,9 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Math { span, .. }
         | Inline::MathRows { span, .. }
         | Inline::Label { span, .. }
-        | Inline::Reference { span, .. } => *span,
+        | Inline::Reference { span, .. }
+        | Inline::HFill { span }
+        | Inline::HSpace { span, .. } => *span,
     }
 }
 
@@ -967,6 +974,11 @@ fn items_cached(
                 key.hash(&mut h);
                 page.hash(&mut h);
             }
+            Inline::HFill { .. } => 6u8.hash(&mut h),
+            Inline::HSpace { pt, .. } => {
+                7u8.hash(&mut h);
+                pt.to_bits().hash(&mut h);
+            }
             Inline::MathRows { rows, aligned, .. } => {
                 5u8.hash(&mut h);
                 aligned.hash(&mut h);
@@ -1008,7 +1020,11 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 }
                 .unwrap_or_else(|| "??".to_string());
                 reference_spans.push(*span);
-                resolved.push(std::borrow::Cow::Owned(Inline::Text { text, span: *span }));
+                resolved.push(std::borrow::Cow::Owned(Inline::Text {
+                    text,
+                    span: *span,
+                    style: Default::default(),
+                }));
             }
             other => resolved.push(std::borrow::Cow::Borrowed(other)),
         }
@@ -1056,6 +1072,26 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_span = Some(*span);
                 factor = 1000;
             }
+            Inline::HFill { span } | Inline::HSpace { span, .. } => {
+                // Explicit horizontal glue: the interword space read before
+                // it stays (TeX keeps both glue nodes).
+                if space_between(prev_end, prev_span, *span) {
+                    let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                    items.push(Item::Space {
+                        style: gap_style,
+                        factor,
+                        no_break: false,
+                    });
+                }
+                items.push(match &**inline {
+                    Inline::HSpace { pt, .. } => Item::HSpace { pt: *pt },
+                    _ => Item::HFill,
+                });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+            }
             Inline::MathRows { rows, span, .. } => {
                 // Each row becomes its own display item (`is_display`
                 // recognises the row spans); the environment's span ends
@@ -1096,12 +1132,26 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_span = Some(*span);
                 factor = 1000;
             }
-            Inline::Text { text, span } => {
+            Inline::Text { text, span, .. } => {
                 let source = text_of(span.document);
-                let is_accent = span.end - span.start == 2
-                    && source.as_bytes().get(span.start) == Some(&b'\\')
-                    && text.chars().count() == 1
-                    && "\"'`^~=.".contains(text.as_str());
+                // The compiler (pin `8c0d65e7`) runs its text-ligature pass
+                // over the accent command's own character too, so `\'` and
+                // `\`` arrive as the curly quotes; map them back.
+                let accent_mark = |t: &str| -> Option<char> {
+                    let mut it = t.chars();
+                    match (it.next(), it.next()) {
+                        (Some('\u{2019}'), None) => Some('\''),
+                        (Some('\u{2018}'), None) => Some('`'),
+                        (Some(c), None) if "\"'`^~=.".contains(c) => Some(c),
+                        _ => None,
+                    }
+                };
+                let accent_char = if span.end - span.start == 2 && source.as_bytes().get(span.start) == Some(&b'\\') {
+                    accent_mark(text)
+                } else {
+                    None
+                };
+                let is_accent = accent_char.is_some();
                 let style = style_at(styles_of(span.document), span.start);
                 let has_space = space_between(prev_end, prev_span, *span);
                 if has_space {
@@ -1117,9 +1167,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     });
                     pending_accent = None;
                 }
-                if is_accent {
+                if let Some(mark) = accent_char {
                     pending_accent = Some((
-                        text.chars().next().unwrap(),
+                        mark,
                         CharSrc {
                             document: span.document,
                             start: span.start,

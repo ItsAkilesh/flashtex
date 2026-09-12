@@ -147,6 +147,7 @@ impl MathProvider {
     /// The face and original glyph id that draw a placed glyph.
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
         match self {
+            MathProvider::Tex(_) if g.font_id == crate::mathtex::OTF_FALLBACK_FONT => Some((self.otf().face().clone(), g.gid)),
             MathProvider::Tex(t) => t.otf_glyph(g.font_id, g.gid as u8, g.ch),
             MathProvider::Otf(o) => Some((o.face().clone(), g.gid)),
         }
@@ -632,7 +633,7 @@ impl<'a> Context<'a> {
         let fonts = self.math_fonts(span)?;
         let mut sink = crate::mathtext::TextSink::default();
         let texts = self.texts;
-        let fence = |sp: &Span| fence_before(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
+        let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let ml_list = convert_math_fenced(list, &mut sink, &fence);
         let mut grids = Vec::new();
         math_grids(list, &mut grids);
@@ -647,6 +648,12 @@ impl<'a> Context<'a> {
         if glue_em > 0.0 {
             let src = self.source(span);
             let msg = format!("\\quad/\\qquad glue ({glue_em} em in this formula) dropped: math-layout has no kern atom");
+            self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
+        }
+        let mut approximations = Vec::new();
+        math_approximations(list, &mut approximations);
+        for msg in approximations {
+            let src = self.source(span);
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
         }
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
@@ -796,6 +803,8 @@ impl<'a> Context<'a> {
                     let quad = self.text_params(base, size).quad;
                     push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(em * quad)), None);
                 }
+                AItem::HFill => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fil()), None),
+                AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
                     // `\/`: a kern of the last character's TFM italic
@@ -856,13 +865,11 @@ impl<'a> Context<'a> {
     /// `\@afterheading` (`\clubpenalty 10000`).
     fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
-        let (list, recs, labels) = self.hlist(items, size, TextStyle::default());
+        let (mut list, mut recs, labels) = self.hlist(items, size, TextStyle::default());
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        if self.refuse_trailing_break(items, &list) {
-            return None;
-        }
+        self.drop_trailing_break(items, &mut list, &mut recs);
         let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt));
         self.report_overfull(&lines, &list, &recs);
         let vertical = VBlock {
@@ -889,18 +896,40 @@ impl<'a> Context<'a> {
     }
 
     /// A paragraph whose last item is `\\` (TeX: an empty final line,
-    /// LaTeX's "Underfull \hbox" warning) is refused with a typed
-    /// diagnostic: the pinned paragraph-layout (`linebreak.rs:988`) panics on
-    /// a forced break followed by the paragraph-end sequence, which would
-    /// kill the worker mid-keystroke. Nothing is typeset for the paragraph
-    /// until the owner's fix lands (see `coordination/mac-render-text-gaps.md`).
-    fn refuse_trailing_break(&mut self, items: &[AItem], list: &[pl::Item]) -> bool {
+    /// LaTeX's "Underfull \hbox" warning): the pinned paragraph-layout
+    /// (`linebreak.rs:988`) panics on a forced break followed by the
+    /// paragraph-end sequence, which would kill the worker mid-keystroke.
+    /// Until the owner's fix lands (`docs/handoffs/paragraph-layout-forced-break/`
+    /// on the mac-shell branch) the trailing break and the discardable glue
+    /// before it are dropped before line breaking and reported as a typed
+    /// warning: the paragraph then sets as TeX would minus the empty last
+    /// line (one baseline pitch short). `list` and `recs` are the parallel
+    /// outputs of [`Self::hlist`].
+    fn drop_trailing_break(&mut self, items: &[AItem], list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>) -> bool {
         // `hlist` appends `\penalty10000 \parfillskip \penalty-10000`; the
         // item before that triple is the last one of the paragraph proper.
-        let n = list.len();
-        let trailing_break = n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK);
-        if !trailing_break {
+        let trailing_break = |list: &[pl::Item]| {
+            let n = list.len();
+            n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK)
+        };
+        if !trailing_break(list) {
             return false;
+        }
+        while trailing_break(list) {
+            let at = list.len() - 4;
+            list.remove(at);
+            recs.remove(at);
+            // The `\hfil` glue `\\` carries plus any glue read before it
+            // (discardable after a break, TeX §879); stop at the next `\\`
+            // so the outer loop drops it the same way.
+            loop {
+                let last = list.len() - 3; // the paragraph-end triple starts here
+                if last == 0 || !matches!(list[last - 1], pl::Item::Glue(_)) || trailing_break(list) {
+                    break;
+                }
+                list.remove(last - 1);
+                recs.remove(last - 1);
+            }
         }
         // Source: the last word/formula before the break (`\\` carries no
         // span of its own in the adapter's items).
@@ -912,9 +941,9 @@ impl<'a> Context<'a> {
         let sources = span.map(|s| vec![self.source(s)]).unwrap_or_default();
         self.emit(
             None,
-            Diagnostic::error(
+            Diagnostic::warning(
                 "paragraph_final_linebreak",
-                "\\\\ at the end of a paragraph: LaTeX sets an empty last line here (Underfull \\hbox); this paragraph is not typeset because the line breaker cannot lay out a trailing forced break yet",
+                "final \\\\ ignored: paragraph-layout forced-break fix pending (LaTeX sets an empty last line here, Underfull \\hbox; this paragraph is one line pitch shorter)",
                 sources,
             ),
         );
@@ -1274,10 +1303,26 @@ pub enum Fence {
     Right,
 }
 
+/// The fence a delimiter atom whose span starts at `at` was introduced by:
+/// the compiler pairs `\left`/`\right` but emits each delimiter as a plain
+/// symbol, so the fence is re-derived from the source. Since pin `87df3e4a`
+/// the delimiter's span starts at the control word itself (older pins
+/// started it at the delimiter character, with the control word before).
+pub fn fence_of(text: &str, at: usize) -> Option<Fence> {
+    let rest = text.get(at..)?;
+    for (word, fence) in [("\\left", Fence::Left), ("\\right", Fence::Right)] {
+        if let Some(after) = rest.strip_prefix(word) {
+            // `\leftarrow` is not a fence: the control word must end here.
+            if !after.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+                return Some(fence);
+            }
+        }
+    }
+    fence_before(text, at)
+}
+
 /// Whether the bytes of `text` before offset `at` end in `\left` or
 /// `\right` (spaces between the control word and the delimiter allowed).
-/// The compiler (pin `49e6eb43`) pairs the fences but emits each delimiter
-/// as a plain symbol; the fence is re-derived from the source here.
 pub fn fence_before(text: &str, at: usize) -> Option<Fence> {
     let before = text.get(..at)?.trim_end_matches([' ', '\t', '\n', '\r']);
     for (word, fence) in [("\\left", Fence::Left), ("\\right", Fence::Right)] {
@@ -1340,6 +1385,42 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
+            // `\mathbf{...}`: set like `\text` in the roman face (the text
+            // sink has no bold role); `math_box` reports it once per formula.
+            N::Bold(text) => vec![sink.atom(text)],
+            // `\overline`/`\underline` are Appendix G Rules 9/10 atoms;
+            // `\boxed` has no frame atom, so the body is set as a group and
+            // reported by `math_box`.
+            N::Framed { body, frame } => {
+                use flashtex_compiler::math::Frame;
+                let body = sub(body, sink);
+                vec![match frame {
+                    Frame::Over => ml::Atom::overline(body),
+                    Frame::Under => ml::Atom::underline(body),
+                    Frame::Box => ml::Atom::group(body),
+                }]
+            }
+            // amsmath's `\overset{a}{b}` is `\mathop{b}\limits^{a}` wrapped
+            // in the base's own class (`\binrel@`), which math-layout sets
+            // exactly (Rule 13a limits).
+            N::Stacked { base, over, under } => {
+                let class = match base.atoms.as_slice() {
+                    [only] if only.superscript.is_none() && only.subscript.is_none() => match &only.nucleus {
+                        N::Symbol(s) if s.chars().count() == 1 => ml::mathlist::default_class(s.chars().next().expect("one char")).0,
+                        _ => ml::AtomClass::Ord,
+                    },
+                    _ => ml::AtomClass::Ord,
+                };
+                let mut op = ml::Atom::new(ml::AtomClass::Op, ml::Nucleus::List(sub(base, sink))).with_limits(ml::Limits::Limits);
+                op.superscript = over.as_ref().map(|l| sub(l, sink));
+                op.subscript = under.as_ref().map(|l| sub(l, sink));
+                vec![ml::Atom::new(class, ml::Nucleus::List(ml::MathList::new(vec![op])))]
+            }
+            // `\hat`/`\bar`/...: Rule 12 accents with the unicode-math
+            // combining mark Latin Modern Math carries for each command
+            // (`\widehat`/`\widetilde` use the same mark; the horizontal
+            // variants are not read, so a wide base gets the plain one).
+            N::Accent { accent, body } => vec![ml::Atom::accent(accent_char(*accent), sub(body, sink))],
             // `array`/`cases`/matrix grids: math-layout has no array atom,
             // so the cells are set in reading order as one row inside the
             // environment's fences (`\left`/`\right`-sized when they are
@@ -1405,8 +1486,14 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 math_grids(numerator, out);
                 math_grids(denominator, out);
             }
-            N::Radical(r) => math_grids(r, out),
-            N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
+            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_grids(r, out),
+            N::Stacked { base, over, under } => {
+                math_grids(base, out);
+                for part in [over, under].into_iter().flatten() {
+                    math_grids(part, out);
+                }
+            }
+            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) => {}
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -1427,13 +1514,73 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
             let own = match &a.nucleus {
                 N::Space { em } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
-                N::Radical(r) => math_glue_em(r),
+                N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } => math_glue_em(r),
+                N::Stacked { base, over, under } => {
+                    math_glue_em(base) + [over, under].into_iter().flatten().map(math_glue_em).sum::<f64>()
+                }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
-                N::Symbol(_) | N::Text(_) => 0.0,
+                N::Symbol(_) | N::Text(_) | N::Bold(_) => 0.0,
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
         .sum()
+}
+
+/// The unicode-math combining mark for a compiler accent command, which is
+/// what Latin Modern Math's `MATH` table carries accent attachment for.
+fn accent_char(a: flashtex_compiler::math::Accent) -> char {
+    use flashtex_compiler::math::Accent as A;
+    match a {
+        A::Hat | A::WideHat => '\u{0302}',
+        A::Bar => '\u{0304}',
+        A::Vec => '\u{20D7}',
+        A::Tilde | A::WideTilde => '\u{0303}',
+        A::Dot => '\u{0307}',
+        A::Ddot => '\u{0308}',
+        A::Check => '\u{030C}',
+        A::Breve => '\u{0306}',
+        A::Acute => '\u{0301}',
+        A::Grave => '\u{0300}',
+    }
+}
+
+/// Constructs in `list` and its sub-formulas the pipeline sets only
+/// approximately, as `math_limitation` messages (one entry per occurrence;
+/// `math_box` deduplicates by message): `\mathbf` in the roman face and
+/// `\boxed` without its frame.
+fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<String>) {
+    use flashtex_compiler::math::{Frame, Nucleus as N};
+    for a in &list.atoms {
+        match &a.nucleus {
+            N::Bold(text) => out.push(format!("\\mathbf{{{text}}} set in the regular roman face: the math text sink has no bold role")),
+            N::Framed { body, frame } => {
+                if *frame == Frame::Box {
+                    out.push("\\boxed frame dropped: math-layout has no framed-box atom".to_string());
+                }
+                math_approximations(body, out);
+            }
+            N::Fraction { numerator, denominator } => {
+                math_approximations(numerator, out);
+                math_approximations(denominator, out);
+            }
+            N::Radical(r) | N::Accent { body: r, .. } => math_approximations(r, out),
+            N::Stacked { base, over, under } => {
+                math_approximations(base, out);
+                for part in [over, under].into_iter().flatten() {
+                    math_approximations(part, out);
+                }
+            }
+            N::Matrix { rows, .. } => {
+                for cell in rows.iter().flatten() {
+                    math_approximations(cell, out);
+                }
+            }
+            N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
+        }
+        for part in [&a.superscript, &a.subscript].into_iter().flatten() {
+            math_approximations(part, out);
+        }
+    }
 }
 
 /// The math-layout atoms for one compiler symbol character: plain.tex's

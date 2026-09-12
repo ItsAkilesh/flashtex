@@ -412,7 +412,8 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span } => Some(Inline::Text {
+            Inline::Text { text, span, style } => Some(Inline::Text {
+                style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
             }),
@@ -467,6 +468,13 @@ fn shift_inlines(
                 page: *page,
                 span: mapped_span(*span, changes, deltas)?,
             }),
+            Inline::HFill { span } => Some(Inline::HFill {
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::HSpace { pt, span } => Some(Inline::HSpace {
+                pt: *pt,
+                span: mapped_span(*span, changes, deltas)?,
+            }),
         })
         .collect()
 }
@@ -496,6 +504,22 @@ fn shift_math_list(
                         Nucleus::Radical(list) => {
                             Nucleus::Radical(shift_math_list(list, changes, deltas)?)
                         }
+                        Nucleus::Bold(text) => Nucleus::Bold(text.clone()),
+                        Nucleus::Framed { body, frame } => Nucleus::Framed {
+                            body: shift_math_list(body, changes, deltas)?,
+                            frame: *frame,
+                        },
+                        Nucleus::Stacked { base, over, under } => Nucleus::Stacked {
+                            base: shift_math_list(base, changes, deltas)?,
+                            over: match over {
+                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                                None => None,
+                            },
+                            under: match under {
+                                Some(list) => Some(shift_math_list(list, changes, deltas)?),
+                                None => None,
+                            },
+                        },
                         Nucleus::Matrix {
                             rows,
                             columns,
@@ -513,6 +537,10 @@ fn shift_math_list(
                             columns: columns.clone(),
                             left: left.clone(),
                             right: right.clone(),
+                        },
+                        Nucleus::Accent { accent, body } => Nucleus::Accent {
+                            accent: *accent,
+                            body: shift_math_list(body, changes, deltas)?,
                         },
                     },
                     span: mapped_span(atom.span, changes, deltas)?,
@@ -600,6 +628,8 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
+        Inline::HFill { span } => *span,
+        Inline::HSpace { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -636,6 +666,8 @@ fn shifted_signature(
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
         Inline::Reference { span, .. } => *span,
+        Inline::HFill { span } => *span,
+        Inline::HSpace { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -821,5 +853,23 @@ mod tests {
         eprintln!("constraint ReuseStats: {:?}", result.stats);
         assert!(result.stats.full_recompile);
         assert_byte_identical_to_full(&result, text, constraints);
+    }
+
+    #[test]
+    fn reused_hfill_block_keeps_its_resolved_right_edge() {
+        let result = compile_edit(
+            "left\\hfill right\n\nTail.",
+            "left\\hfill right\n\nTail changed.",
+        );
+        assert!(result.stats.blocks_reused >= 1, "{:?}", result.stats);
+        let right = result
+            .output
+            .pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .find(|item| item.text == "right")
+            .expect("right-hand text");
+        let width = layout::text_width("right", 12.0, layout::Font::TimesRoman);
+        assert!((right.x_pt + width - 540.0).abs() < 0.02);
     }
 }

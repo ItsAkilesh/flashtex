@@ -29,6 +29,11 @@ use crate::fonts::{FontSet, LoadedFace, Role, TfmStatus};
 use crate::mathfont::{MathFonts, MathSizes};
 use crate::tfm::Tfm;
 
+/// Font id of glyphs [`TexMathMetrics`] takes straight from Latin Modern
+/// Math because no CM TFM slot covers the character; `gid` is then the
+/// face's own glyph id (see `MathProvider::otf_glyph`).
+pub const OTF_FALLBACK_FONT: MathFontId = MathFontId(u32::MAX);
+
 pub struct TexMathMetrics {
     cm: CmMathMetrics,
     sizes: MathSizes,
@@ -138,6 +143,18 @@ impl TexMathMetrics {
             .entry(lm_name(&name))
             .or_insert((self.otf.face().name.clone(), false));
         Some((self.otf.face().clone(), gid))
+    }
+
+    /// A symbol outside the CM tables (compiler pin `87df3e4a` lists
+    /// `\cong`, `\propto`, `\aleph`, `\Re`, `\langle`, `\Longrightarrow`,
+    /// ... that math-layout's `cm` slot table does not carry): Latin Modern
+    /// Math's own glyph and OpenType box, tagged [`OTF_FALLBACK_FONT`] so the
+    /// painter draws that glyph id directly. Its width is the OpenType
+    /// advance, not the cmsy/msbm TFM width pdfLaTeX would use.
+    fn otf_fallback_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        let mut g = self.otf.glyph(ch, size)?;
+        g.font_id = OTF_FALLBACK_FONT;
+        Some(g)
     }
 
     /// The first roman-TFM failure, if any.
@@ -318,6 +335,9 @@ impl MathFontMetrics for TexMathMetrics {
     }
 
     fn font_name(&self, font: MathFontId) -> String {
+        if font == OTF_FALLBACK_FONT {
+            return self.otf.face().name.clone();
+        }
         self.cm.font_name(font)
     }
 
@@ -327,7 +347,7 @@ impl MathFontMetrics for TexMathMetrics {
             Some(_) => self.cm.glyph(ch, size),
             None => match extra_symbol_slot(ch) {
                 Some(code) => self.symbol_family_glyph(code, ch, size),
-                None => self.cm.glyph(ch, size),
+                None => self.cm.glyph(ch, size).or_else(|| self.otf_fallback_glyph(ch, size)),
             },
         }
     }

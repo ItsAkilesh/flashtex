@@ -7,7 +7,7 @@ mod common;
 
 use common::*;
 use flashtex_render_pipeline::display::Item;
-use flashtex_render_pipeline::typeset::{convert_math, fence_before, Fence};
+use flashtex_render_pipeline::typeset::{convert_math, fence_before, fence_of, Fence};
 use flashtex_math_layout::{AtomClass, Nucleus};
 
 fn doc(body: &str) -> String {
@@ -44,6 +44,11 @@ fn fences_are_recovered_from_the_source_bytes() {
     assert_eq!(fence_before("x \\right)", 8), Some(Fence::Right));
     assert_eq!(fence_before("x \\\\left(", 8), None, "an escaped backslash is not a control word");
     assert_eq!(fence_before("( x", 0), None);
+    // Compiler pin 87df3e4a: the delimiter span starts at the control word.
+    assert_eq!(fence_of("$\\left( x", 1), Some(Fence::Left));
+    assert_eq!(fence_of("x \\right)", 2), Some(Fence::Right));
+    assert_eq!(fence_of("$\\leftarrow", 1), None, "\\leftarrow is not a fence");
+    assert_eq!(fence_of("$\\left( x", 6), Some(Fence::Left), "older pins: span at the delimiter");
 }
 
 #[test]

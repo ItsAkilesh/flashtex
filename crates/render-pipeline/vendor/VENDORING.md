@@ -13,7 +13,7 @@ because the siblings depend on each other by `../<name>` path.
 
 | Directory | Branch | Commit | Owner |
 | --- | --- | --- | --- |
-| `compiler` | `main` | `79986817` (was `887bf21e`: +amsmath `gather`/`align`/`equation*` and grid environments (`array`, `cases`, matrix family, `aligned`), `\Longrightarrow`, `\bigl`/`\bigr` real delimiters, `center`/`flushleft`/`flushright`/`quote`/`quotation`, enumitem label templates and `\setlist`, `\setlength`/geometry preamble, `\vspace`/`\hrule`/`\newpage`/`\pagestyle`, unnumbered displays never numbered) | compiler lead |
+| `compiler` | `main` | `87df3e4a` (was `79986817`: +math accents `\hat`/`\bar`/`\vec`/... (`Nucleus::Accent`), `\mathbf` (`Bold`), `\boxed`/`\overline`/`\underline` (`Framed`), `\overset`/`\underset`/`\stackrel` (`Stacked`), real `\hfill`/`\hspace` glue (`Inline::HFill`/`HSpace`), `TextStyle` on `Inline::Text`, `\left`/`\right` spans starting at the control word, text ligatures applied by the lexer, Grok math symbol coverage, LM Math font hints, `\limits`/`\nolimits`). The `font-engine` pin below still satisfies it; no font-engine re-pin was needed | compiler lead |
 | `font-resources` | `main` | `d5440b0` (crates/font-resources last changed by `5c89501`; shared TFM reader `tfm.rs`/`tfm_run.rs`, `required_tfm.rs`) | commander-corpus |
 | `project-files` | `main` | `d5440b0` (last changed by `d92db37`; `ProjectRoot` for the rooted TFM reads) | project-files owner |
 | `font-engine` | `agent/mac-font-engine/tex-fonts` | `f418238` (main's only later font-engine change, `1ff6abc0` Core14 Symbol U+2223 `afm_char` mapping, adds no API the `79986817` compiler pin needs; not carried here) | mac-font-engine |
