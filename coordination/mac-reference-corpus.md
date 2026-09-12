@@ -1,33 +1,38 @@
 # mac-reference-corpus — user-assigned reference testing
 
-## Current checkpoint: HW1 isolated probes
+## Current checkpoint: extended incremental acceptance
 
-Follow-up tested/pushed code `5e42ec58`: six additional exact UTF-8 edit scenarios,
-14 total. Seven corpus checks pass; metadata acceptance is separate from still
-required incremental/clean/edited-reference parity. Merged Grok parent `624fcb14`
-preference migration/selection tests pass 2/2; explicit legacy false stays off
-with an injected key. No live provider call. Publication evidence and resource
-restrictions below continue; next is PR53 review and iPad outcome acceptance.
-
-- Direct user reference-test role; no new Commander assignment/ACK invented.
+- User-direct reference-test role; no new Commander assignment/ACK invented.
+  Active sole Commander in fetched authority is `claude` on mac-m5pro-kabir.
 - Branch `agent/mac-reference-corpus/hw1-probes`, worktree
   `/private/tmp/flashtex-hw1-reference-probes`, tested code
-  `e35a0281b31321073e313f9f830b8b39ca43a3ef` (pushed), stacked on PR42.
-- Six original TeX probes and six inspected one-page MacTeX PDFs; no reference
-  warnings. Corpus now 55 projects, 48 PDFs/57 pages, seven errors, eight edits.
-- Seven existing integrity/profile/request/byte-edit/timeout tests passed;
-  all new source/PDF hashes match provenance; old sources/PDFs unchanged.
-- Evidence `docs/evidence/hw1-reference-probes-20260912/README.md`. Local compiler
-  hash pinned, build source unknown; six recovered outputs/173 diagnostics.
-  No current-main support, PDF parity, or application performance claim.
-- Ownership: own corpus and evidence/report only. Root app checkout and Opus
-  iPad/Grok WIP untouched. Opus PID43863 last confirmed live this cycle.
-- Staffing/resources: current Codex only, no children, Claude calls, paid AI,
-  purchases or altered allocations. Monetary allowance unknown. Continuous
-  user-authorized light/medium work; no automatic deadline/completion stop.
-- Pending: this report publication and stacked PR; no in-flight model calls.
-  Next: Commander review, then validate Opus's published outcome/migration fixes
-  or continue another disjoint reference increment. No main/control writes.
+  `63d928379210442c29acd9331ae7d79cc8efaa30`, stacked PR53 on PR42.
+- Corpus: 55 projects, 48 inspected positive PDFs/57 pages, seven errors,
+  fourteen exact UTF-8 edits. Earlier six golden sources/PDFs remain unchanged.
+- New bounded incremental runner: original → edit → undo → reapply in one worker;
+  identical edited/undo/reapplied requests in three separate clean workers.
+  Fourteen scenarios × two capability profiles = 84 complete raw byte comparisons,
+  all pass. Thirteen development tests pass, including deliberate stale output,
+  correlation/malformed/missing replies, crashes, timeout and UTF-8 offsets.
+- Evidence `docs/evidence/extended-incremental-20260912/README.md`, report and
+  deterministic ZIP retaining every request/reply/stderr. Compiler hash unchanged
+  `1d615ef71e59435a45846aaf5b763d4e17589e6ce5ee1b55d4a47859c1c98238`;
+  build-source revision unknown. No current-main, TeX support or PDF parity claim.
+- Grok merged parent `624fcb14` migration/selection independently passes 2/2.
+  Fast explanation remains refused by source-bound helper; no successful fast
+  explanation claim. No live provider calls by this agent.
+- iPad read-only retry/origin-binding adversarial test handoff published exactly
+  once at GH2#5648747048. Prior outcome-ID and unknown-capture recovery fixes are
+  present in owner WIP. Opus PID43863 and owner UI simulator job31613 confirmed
+  live; do not duplicate, kill or edit that lane. Tests are not accepted until
+  owner publishes a tested revision. Root Cargo.lock changes belong to owner.
+- Ownership: own corpus/tool/evidence/report only; no root app or main/control
+  writes. Current Codex only, no new children, paid calls, purchases or allocation
+  changes; monetary allowance unknown. Do not restart paused engineers.
+- Pending at checkpoint: own report/handoff commit + branch push and PR53 body
+  update. No model calls in flight. After publication verify remote tip; next
+  continue a disjoint reference gate or test published iPad fixes. Continuous
+  work until user/Commander stop; no deadline/completion-based automatic stop.
 
 ## Historical checkpoints below
 

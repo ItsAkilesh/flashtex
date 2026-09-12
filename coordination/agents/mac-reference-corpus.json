@@ -7,7 +7,7 @@
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "5e42ec587aad443cea945798e975471ff97bb86d",
+  "code_revision": "63d928379210442c29acd9331ae7d79cc8efaa30",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -15,7 +15,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Commander review PR53; validate published iPad outcome recovery/binding fixes when ready or continue disjoint light/medium reference work.",
+  "next_action": "Commander review stacked PR53; continue disjoint reference acceptance while Opus handles iPad exact retry/origin-binding review. No owner or main writes.",
   "reviewed_peers": {
     "origin/agent/mac-grok-polish/fast-default": {
       "adaptation": "Read preference migration, provider selection and corresponding final tests; merged code preserves explicit legacy false and new mode precedence. Targeted injected-credential acceptance passes 2/2, no user Keychain/defaults or live call.",
@@ -25,11 +25,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "HW1 probe follow-up 5e42ec58 adds six exact UTF-8 incremental edits (14 total); seven corpus checks pass. Independently verified merged Grok legacy preference/selection acceptance 2/2 on parent 624fcb14; no live call.",
+  "summary": "63d92837 adds bounded extended incremental acceptance: 14 edits, 2 profiles, 84 raw byte-exact warm/clean comparisons pass on unchanged local compiler hash; 13 development tests pass including stale/transport fault injection. Source revision of compiler artifact unknown.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T21:15:00Z",
+  "updated_utc": "2026-09-12T21:23:00Z",
   "usage": {
-    "evidence": "docs/evidence/hw1-reference-probes-20260912/README.md; /private/tmp/flashtex-codex-grok-migration-fixed.log",
-    "status": "Current authorized Codex route only; no paid provider/Claude calls, purchases, children, or allocation changes; balance unknown."
+    "evidence": "docs/evidence/extended-incremental-20260912/README.md; docs/evidence/extended-incremental-20260912/raw-traces.zip; GH2#5648747048 iPad test handoff.",
+    "status": "User-authorized current Codex only; no paid provider/Claude calls, purchases, children or changed allocations; balance unknown."
   }
 }
