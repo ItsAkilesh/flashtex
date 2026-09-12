@@ -155,6 +155,45 @@ final class DisplayCandidateTests: XCTestCase {
         XCTAssertFalse(state.isNegotiated)
     }
 
+    func testHeldWorkRunsOnCandidateTimeoutOrSupersessionNeverDropped() async throws {
+        let state = DisplayCandidateState()
+        var ran: [String] = []
+        state.deferred = ("pc-1", [{ ran.append("a") }, { ran.append("b") }], DispatchWorkItem {})
+        state.releaseDeferred(.candidate)
+        XCTAssertEqual(ran, ["a", "b"], "held work runs in order when the sibling arrives")
+        XCTAssertNil(state.deferred); XCTAssertEqual(state.deferredReleasedByCandidate, 1)
+        state.releaseDeferred(.timeout)
+        XCTAssertEqual(state.deferredReleasedByTimeout, 0, "nothing held: nothing counted")
+        // Model-level: OFF (not negotiated) runs the work inline; negotiated + accepted display-list-v2 holds it,
+        // and a hold for a newer request runs the older request's work first (never drops it).
+        let model = ShellModel()
+        var inline = 0
+        model.displayCandidatesAfterSibling(of: "pc-1", acceptedLayout: ["display-list-v2"]) { inline += 1 }
+        XCTAssertEqual(inline, 1, "not negotiated: inline")
+        model.displayCandidates.beginNegotiation(sessionID: "s", projectID: "p", requestID: "n", enabling: true)
+        _ = model.displayCandidates.acknowledge(requestID: "n", payload: ["capability": "display-candidates-v1", "enabled": true])
+        model.displayCandidatesAfterSibling(of: "pc-2", acceptedLayout: ["rules-v1"]) { inline += 1 }
+        XCTAssertEqual(inline, 2, "producer did not accept display-list-v2: no sibling expected, inline")
+        var held: [String] = []
+        model.displayCandidatesAfterSibling(of: "pc-3", acceptedLayout: ["display-list-v2"]) { held.append("3a") }
+        model.displayCandidatesAfterSibling(of: "pc-3", acceptedLayout: ["display-list-v2"], holdsRelease: true) { held.append("3b") }
+        XCTAssertEqual(held, []); XCTAssertEqual(model.displayCandidates.deferred?.works.count, 2)
+        model.displayCandidatesAfterSibling(of: "pc-4", acceptedLayout: ["display-list-v2"]) { held.append("4") }
+        XCTAssertEqual(held, ["3a", "3b"], "a newer request's hold releases the older request's work first")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedBySupersession, 1)
+        try await Task.sleep(nanoseconds: UInt64((ShellModel.displayCandidateSiblingWaitMs + 40) * 1_000_000))
+        XCTAssertEqual(held, ["3a", "3b", "4"], "the bound releases a hold whose sibling never came")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedByTimeout, 1)
+        XCTAssertNil(model.displayCandidates.deferred)
+        // Invalidation (close / helper exit / restart) runs the held work too: a held in-flight release must never be lost.
+        model.displayCandidatesAfterSibling(of: "pc-5", acceptedLayout: ["display-list-v2"], holdsRelease: true) { held.append("5") }
+        XCTAssertEqual(held, ["3a", "3b", "4"])
+        model.displayCandidates.invalidate()
+        XCTAssertEqual(held, ["3a", "3b", "4", "5"], "invalidation releases held work instead of dropping it")
+        XCTAssertEqual(model.displayCandidates.deferredReleasedByInvalidation, 1)
+        XCTAssertNil(model.displayCandidates.deferred)
+    }
+
     func testModelRefusesCandidatesWhileOffAndKeepsTheV1Result() throws {
         let model = ShellModel()
         XCTAssertFalse(model.displayCandidates.requested, "default OFF")
@@ -227,6 +266,59 @@ final class DisplayCandidateTests: XCTestCase {
             XCTAssertEqual(model.displayCandidates.received, 0, "no candidate frames while OFF")
             XCTAssertNil(model.displayListV2)
             XCTAssertFalse(model.previewIsStale)
+            model.detachController()
+        }
+    }
+
+    /// GH36 review (Commander 5646386345): `display-list-v2` may reach `configure_layout` only AFTER
+    /// `configure_display_candidates {enabled:true}` has been acknowledged. The shell never puts it in
+    /// `configure_layout` itself (the helper enrols it on the opt-in); this test drives both orders on the wire.
+    func testHelperOrderingEnableBeforeLayoutWithDisplayListV2() async throws {
+        let (helper, render) = try requireHelperAndRender()
+        let p = try project(named: "ordering", text: Self.sample)
+        defer { try? FileManager.default.removeItem(at: p.root); unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        try await withProducer(render) {
+            let model = ShellModel()
+            model.autoCompile = true
+            XCTAssertEqual(model.openTex(at: p.tex), .opened)
+            model.attachController(at: helper)
+            try await waitUntil { model.result?.revision == model.editorRevision && model.previewSource == .worker("flashtex-preview-controller") }
+            let controller = try XCTUnwrap(model.controller)
+            @MainActor func layoutWithV2() -> [String] { model.requestedLayoutCapabilities.filter { $0 != "display-list-v2" } + ["display-list-v2"] }
+            @MainActor func configureLayout(_ caps: [String]) async throws -> Result<[String: Any], ControllerError> {
+                var outcome: Result<[String: Any], ControllerError>?
+                let id = try controller.configureLayout(capabilities: caps)
+                model.controllerState.awaiting[id] = { outcome = $0 }
+                try await waitUntil { outcome != nil }
+                return try XCTUnwrap(outcome)
+            }
+            // Reversed order: display-list-v2 through configure_layout while candidates are OFF -> the exact refusal,
+            // and the session continues as legacy v1 (no enrolment, no candidates).
+            guard case .failure(let refusal) = try await configureLayout(layoutWithV2()) else {
+                return XCTFail("configure_layout with display-list-v2 before the opt-in must be refused")
+            }
+            XCTAssertEqual(refusal.message, "display candidates must be enabled before requesting their layout")
+            model.updateActiveText(Self.sample.replacingOccurrences(of: "fi.", with: "fi, reversed order."))
+            var final = model.editorRevision
+            try await waitUntil { model.result?.revision == final && model.inFlightRevision == nil }
+            XCTAssertFalse(model.negotiation.accepted.contains("display-list-v2"), "refused layout: nothing enrolled")
+            XCTAssertEqual(model.displayCandidates.received, 0)
+            XCTAssertFalse(model.displayCandidatesNegotiated)
+            // Correct order: configure_display_candidates first, wait for its result...
+            model.setDisplayCandidates(true)
+            try await waitUntil { model.displayCandidatesNegotiated || model.displayCandidates.status.hasPrefix("refused") }
+            XCTAssertTrue(model.displayCandidatesNegotiated, model.displayCandidates.status)
+            // ...then a configure_layout that includes display-list-v2 is accepted by the same helper session.
+            guard case .success = try await configureLayout(layoutWithV2()) else {
+                return XCTFail("configure_layout with display-list-v2 after the acknowledged opt-in must be accepted")
+            }
+            model.updateActiveText(Self.sample.replacingOccurrences(of: "fi.", with: "fi, enabled then layout."))
+            final = model.editorRevision
+            try await waitUntil { model.result?.revision == final && model.inFlightRevision == nil }
+            XCTAssertTrue(model.negotiation.accepted.contains("display-list-v2"), "enrolled after the opt-in")
+            try await waitUntil { if case .loaded(let f, _)? = model.displayListV2 { return f.list.revision == final } else { return false } }
+            XCTAssertGreaterThan(model.displayCandidates.published, 0, "candidates paint once the order is right")
+            XCTAssertEqual(model.displayCandidates.invalid, 0, model.displayCandidates.lastRefusal ?? "")
             model.detachController()
         }
     }
@@ -304,6 +396,11 @@ final class DisplayCandidateTests: XCTestCase {
             XCTAssertEqual(try XCTUnwrap(last.list.documents.first).sha256, SourceDigest.sha256Hex(model.activeText))
             XCTAssertGreaterThanOrEqual(model.displayCandidates.published, 2)
             XCTAssertEqual(model.displayCandidates.invalid, 0, model.displayCandidates.lastRefusal ?? "")
+            // The required channel was held for the siblings (completion refresh + next-edit release) and the
+            // siblings arrived: the holds were released by candidates, not by the bound.
+            XCTAssertGreaterThan(model.displayCandidates.deferredReleasedByCandidate, 0)
+            XCTAssertNil(model.displayCandidates.deferred, "nothing is held once the burst settled")
+            XCTAssertEqual(model.controllerState.inFlight?.id, nil, "the held release ran: no edit is stuck in flight")
             XCTAssertTrue(model.displayCandidates.status.hasPrefix("enabled; painted"), model.displayCandidates.status)
 
             // A tampered sibling with the current identity: admitted, refused off-main by the source hash, v1 and the

@@ -187,17 +187,26 @@ final class DisplayCandidateState {
     /// elapsed): the helper discards a queued optional frame whenever a
     /// required reply is enqueued before its writer's 2 ms idle window, so
     /// the shell keeps the required channel quiet right after a v1 preview.
-    @ObservationIgnored var deferred: (requestID: String, work: () -> Void, timeout: DispatchWorkItem)?
+    @ObservationIgnored var deferred: (requestID: String, works: [() -> Void], timeout: DispatchWorkItem)?
     @ObservationIgnored private(set) var deferredReleasedByCandidate = 0
     @ObservationIgnored private(set) var deferredReleasedByTimeout = 0
+    @ObservationIgnored private(set) var deferredReleasedBySupersession = 0
+    @ObservationIgnored private(set) var deferredReleasedByInvalidation = 0
 
-    /// Runs and clears the held-back work (nil when nothing is held).
-    func releaseDeferred(byCandidate: Bool) {
+    enum DeferredRelease { case candidate, timeout, superseded, invalidated }
+
+    /// Runs (in order) and clears the held-back work; nothing when nothing is held.
+    func releaseDeferred(_ why: DeferredRelease) {
         guard let d = deferred else { return }
         d.timeout.cancel()
         deferred = nil
-        if byCandidate { deferredReleasedByCandidate += 1 } else { deferredReleasedByTimeout += 1 }
-        d.work()
+        switch why {
+        case .candidate: deferredReleasedByCandidate += 1
+        case .timeout: deferredReleasedByTimeout += 1
+        case .superseded: deferredReleasedBySupersession += 1
+        case .invalidated: deferredReleasedByInvalidation += 1
+        }
+        for work in d.works { work() }
     }
     // Counters for evidence and tests.
     @ObservationIgnored private(set) var received = 0
@@ -224,7 +233,9 @@ final class DisplayCandidateState {
         pending = nil; pendingActivePath = nil
         validating = nil
         displayedEditorRevision = nil
-        deferred?.timeout.cancel(); deferred = nil
+        // Held work (completion refresh, in-flight edit release) runs, never drops:
+        // each piece guards the controller it was queued for.
+        releaseDeferred(.invalidated)
     }
 
     func beginNegotiation(sessionID: String, projectID: String, requestID: String, enabling: Bool) {
@@ -451,26 +462,46 @@ extension ShellModel {
                                                                    sourceVersions: update.sourceVersions, editorRevision: editorRevision)
     }
 
-    /// Bound on how long a required request is held back for a sibling.
-    static let displayCandidateSiblingWaitMs = 80.0
+    /// Bound on how long required requests are held back for a sibling
+    /// (`FLASHTEX_DISPLAY_CANDIDATES_WAIT_MS`, default 80).
+    static let displayCandidateSiblingWaitMs: Double = {
+        if let s = ProcessInfo.processInfo.environment["FLASHTEX_DISPLAY_CANDIDATES_WAIT_MS"], let ms = Double(s), ms >= 0 { return ms }
+        return 80
+    }()
+
+    /// Whether the next edit's release is also held for the sibling
+    /// (`FLASHTEX_DISPLAY_CANDIDATES_HOLD=0` disables; default on). Without
+    /// the hold, the helper drops nearly every candidate under continuous
+    /// typing: the next edit changes its current source before the sibling
+    /// is checked, and a candidate is only forwarded for unchanged source
+    /// (measured: 3 of 102 candidates forwarded in a 200-keystroke burst).
+    static let displayCandidateHoldsRelease = ProcessInfo.processInfo.environment["FLASHTEX_DISPLAY_CANDIDATES_HOLD"] != "0"
 
     /// Runs `work` now unless a sibling of `requestID` is expected, in which
     /// case it runs when that candidate arrives (admitted or refused) or after
-    /// `displayCandidateSiblingWaitMs`. The helper's output slot discards a
+    /// `displayCandidateSiblingWaitMs`. Two reasons the required channel must
+    /// stay quiet after a v1 preview: the helper's output slot discards a
     /// queued optional frame whenever a required reply is enqueued before its
-    /// writer's 2 ms idle window (crates/preview-controller/src/output_delivery.rs
-    /// `try_send`), so the completion refresh that follows every v1 preview
-    /// would otherwise race the candidate off the wire. Hook for the
-    /// completion request in `applyControllerPreview`.
-    func displayCandidatesAfterSibling(of requestID: String, acceptedLayout: [String], _ work: @escaping () -> Void) {
-        guard displayCandidates.isNegotiated, acceptedLayout.contains(DisplayCandidates.layoutCapability) else { work(); return }
-        // An older request's refresh is superseded by this one's (its versions are stale anyway).
-        if let old = displayCandidates.deferred { old.timeout.cancel(); displayCandidates.deferred = nil }
+    /// writer's 2 ms idle window (output_delivery.rs `try_send`), and the
+    /// helper forwards a candidate only while its current source is the one
+    /// the candidate was compiled from (display.rs), so an edit admitted
+    /// before the sibling is checked invalidates it. Hooks: the completion
+    /// refresh and (when `displayCandidateHoldsRelease`) the in-flight edit
+    /// release in `applyControllerPreview`. Held work for an older request
+    /// runs first when a newer request's hold starts (never dropped).
+    func displayCandidatesAfterSibling(of requestID: String, acceptedLayout: [String], holdsRelease: Bool = false, _ work: @escaping () -> Void) {
+        guard displayCandidates.isNegotiated, acceptedLayout.contains(DisplayCandidates.layoutCapability),
+              !holdsRelease || Self.displayCandidateHoldsRelease else { work(); return }
+        if displayCandidates.deferred?.requestID == requestID {
+            displayCandidates.deferred?.works.append(work)
+            return
+        }
+        if displayCandidates.deferred != nil { displayCandidates.releaseDeferred(.superseded) }
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, self.displayCandidates.deferred?.requestID == requestID else { return }
-            self.displayCandidates.releaseDeferred(byCandidate: false)
+            self.displayCandidates.releaseDeferred(.timeout)
         }
-        displayCandidates.deferred = (requestID, work, timeout)
+        displayCandidates.deferred = (requestID, [work], timeout)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.displayCandidateSiblingWaitMs / 1000, execute: timeout)
     }
 
@@ -480,7 +511,7 @@ extension ShellModel {
         guard displayCandidates.deferred?.requestID == requestID else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.displayCandidates.deferred?.requestID == requestID else { return }
-            self.displayCandidates.releaseDeferred(byCandidate: true)
+            self.displayCandidates.releaseDeferred(.candidate)
         }
     }
 
