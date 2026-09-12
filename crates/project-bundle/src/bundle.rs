@@ -1,9 +1,33 @@
 use std::collections::HashSet;
 
-use sha2::{Digest, Sha256};
+use flashtex_project_files::{Digest, sha256, sha256_to_hex as hex};
 
 use crate::error::BundleError;
 use crate::root::ProjectRoot;
+
+/// Default cap on the number of entries in one bundle spec.
+pub const DEFAULT_MAX_ENTRIES: usize = 100_000;
+
+/// Default cap on the running total of read file bytes in one bundle.
+pub const DEFAULT_MAX_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Bounds enforced while building a [`Bundle`]. Every field has a typed
+/// error (see [`BundleError::TooManyEntries`], [`BundleError::TotalBytesExceeded`],
+/// [`BundleError::FileTooLarge`]) — nothing is silently truncated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BundleLimits {
+    pub max_entries: usize,
+    pub max_total_bytes: u64,
+}
+
+impl Default for BundleLimits {
+    fn default() -> Self {
+        Self {
+            max_entries: DEFAULT_MAX_ENTRIES,
+            max_total_bytes: DEFAULT_MAX_TOTAL_BYTES,
+        }
+    }
+}
 
 /// One file the caller wants in the bundle, named by its path relative to
 /// the [`ProjectRoot`].
@@ -26,7 +50,7 @@ impl BundleEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleFile {
     pub path: String,
-    pub sha256: [u8; 32],
+    pub sha256: Digest,
     pub size: u64,
     pub contents: Vec<u8>,
 }
@@ -64,7 +88,7 @@ impl Bundle {
 
     /// SHA-256 over [`Bundle::manifest_bytes`]: one fixed-size fingerprint
     /// for the whole bundle.
-    pub fn manifest_sha256(&self) -> [u8; 32] {
+    pub fn manifest_sha256(&self) -> Digest {
         sha256(&self.manifest_bytes())
     }
 
@@ -72,44 +96,70 @@ impl Bundle {
     pub fn manifest_hex(&self) -> String {
         hex(&self.manifest_sha256())
     }
+
+    /// Look up one file's built record by its declared path.
+    pub fn file(&self, path: &str) -> Option<&BundleFile> {
+        self.files.iter().find(|f| f.path == path)
+    }
+}
+
+/// Build a bundle from exactly `entries`, resolved through `root`, with
+/// [`BundleLimits::default`] applied.
+pub fn build_bundle(root: &ProjectRoot, entries: &[BundleEntry]) -> Result<Bundle, BundleError> {
+    build_bundle_with_limits(root, entries, &BundleLimits::default())
 }
 
 /// Build a bundle from exactly `entries`, resolved through `root`.
 ///
 /// No directory is ever listed or scanned: each entry is resolved one at a
 /// time through [`ProjectRoot::read_rooted`], which rejects traversal,
-/// absolute paths and symlinks escaping the root. The result is sorted by
-/// path before being returned, so the same `entries` (in any order) always
-/// produce the same [`Bundle::manifest_bytes`].
-pub fn build_bundle(root: &ProjectRoot, entries: &[BundleEntry]) -> Result<Bundle, BundleError> {
+/// absolute paths and symlinks via the rooted reader in
+/// `flashtex_project_files`. The result is sorted by path before being
+/// returned, so the same `entries` (in any order) always produce the same
+/// [`Bundle::manifest_bytes`].
+///
+/// Bounded: more than `limits.max_entries` entries is
+/// [`BundleError::TooManyEntries`] before any file is read; the running
+/// total of read bytes exceeding `limits.max_total_bytes` is
+/// [`BundleError::TotalBytesExceeded`], checked after every file so a
+/// caller never waits for a bundle that was always going to be rejected.
+/// Each individual file is additionally bounded by the `ProjectRoot`'s own
+/// per-file limit ([`BundleError::FileTooLarge`]).
+pub fn build_bundle_with_limits(
+    root: &ProjectRoot,
+    entries: &[BundleEntry],
+    limits: &BundleLimits,
+) -> Result<Bundle, BundleError> {
+    if entries.len() > limits.max_entries {
+        return Err(BundleError::TooManyEntries {
+            limit: limits.max_entries,
+            actual: entries.len(),
+        });
+    }
     let mut seen = HashSet::with_capacity(entries.len());
     let mut files = Vec::with_capacity(entries.len());
+    let mut total_bytes: u64 = 0;
     for entry in entries {
         if !seen.insert(entry.path.clone()) {
             return Err(BundleError::DuplicatePath(entry.path.clone()));
         }
-        let contents = root.read_rooted(&entry.path)?;
-        let digest = sha256(&contents);
+        let read = root
+            .read_rooted_optional(&entry.path)?
+            .ok_or_else(|| BundleError::NotFound(entry.path.clone()))?;
+        total_bytes = total_bytes.saturating_add(read.size);
+        if total_bytes > limits.max_total_bytes {
+            return Err(BundleError::TotalBytesExceeded {
+                limit: limits.max_total_bytes,
+                actual: total_bytes,
+            });
+        }
         files.push(BundleFile {
             path: entry.path.clone(),
-            sha256: digest,
-            size: contents.len() as u64,
-            contents,
+            sha256: read.sha256,
+            size: read.size,
+            contents: read.bytes,
         });
     }
     files.sort_by(|a, b| a.path.as_bytes().cmp(b.path.as_bytes()));
     Ok(Bundle { files })
-}
-
-fn sha256(data: &[u8]) -> [u8; 32] {
-    let digest = Sha256::digest(data);
-    digest.into()
-}
-
-fn hex(bytes: &[u8; 32]) -> String {
-    let mut s = String::with_capacity(64);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
 }

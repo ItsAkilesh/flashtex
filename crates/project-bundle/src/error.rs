@@ -1,56 +1,113 @@
 use std::fmt;
 
-/// Everything that can go wrong building a bundle.
+use flashtex_project_files::Digest;
+
+/// Everything that can go wrong building, previewing or applying a bundle.
 ///
 /// Every variant is typed and carries the offending caller-declared path (as
 /// given, not normalized) so callers can report precisely what was rejected
 /// and why, without parsing a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BundleError {
-    /// The bundle root does not exist, is not a directory, or could not be
-    /// canonicalized.
+    /// The bundle/target root does not exist, is not a directory, is a
+    /// symlink, or could not be opened for another reason reported by the
+    /// underlying rooted reader.
     InvalidRoot(String),
     /// A caller-supplied path was the empty string.
     EmptyPath,
-    /// A caller-supplied path started with `/` (an absolute path). Rejected
-    /// before any filesystem access.
+    /// A caller-supplied path started with `/` or `~` (an absolute path).
+    /// Rejected before any filesystem access.
     AbsolutePath(String),
-    /// A caller-supplied path contained a `..` component. Rejected before
-    /// any filesystem access, regardless of whether the target exists.
+    /// A caller-supplied path had a `..` component that would leave the
+    /// root, whether caught syntactically before any filesystem access or
+    /// by the walk-time device/inode check in the rooted reader. Rejected
+    /// regardless of whether anything exists at the escaped-to location.
     PathTraversal(String),
-    /// A caller-supplied path was malformed in some other way: a `.`
-    /// component, an empty component (`//` or a trailing `/`), or an
-    /// embedded NUL byte.
+    /// A caller-supplied path was malformed in some other way: a forbidden
+    /// character (backslash, colon, NUL, other control character), or a
+    /// parent path component that is not a directory.
     MalformedPath(String),
     /// The same bundle path was declared more than once in one spec.
     DuplicatePath(String),
-    /// The path resolved, after following symlinks, to a location outside
-    /// the bundle root.
-    SymlinkEscapesRoot(String),
+    /// A parent directory or the file itself is a symbolic link. The
+    /// underlying rooted reader (`flashtex-project-files`) refuses *every*
+    /// symlink component outright — whether or not it would resolve inside
+    /// the root — so this fires strictly more often than rev 1's
+    /// `SymlinkEscapesRoot` did; a symlink that stays inside the root is no
+    /// longer silently followed.
+    SymlinkRefused(String),
     /// The declared path does not exist under the root.
     NotFound(String),
     /// The declared path exists but is not a regular file (e.g. a
     /// directory). The crate never walks directories, so this is always a
     /// caller error, not a discovery decision.
     NotAFile(String),
-    /// Any other I/O failure reading the file, with context.
+    /// The declared path exists and is a regular file, but is larger than
+    /// the configured per-file read limit.
+    FileTooLarge { path: String, limit: u64, size: u64 },
+    /// More entries were supplied than `BundleLimits::max_entries` allows.
+    TooManyEntries { limit: usize, actual: usize },
+    /// The running total size of read files exceeded
+    /// `BundleLimits::max_total_bytes`.
+    TotalBytesExceeded { limit: u64, actual: u64 },
+    /// `apply_import` was asked to act on a file the preview marked as a
+    /// conflict, but `decisions` said nothing about that path at all. A
+    /// conflict must be given an explicit decision (`Write` or `Skip`); it
+    /// is never resolved by omission.
+    OverwriteNotDecided(String),
+    /// A write in `apply_import` was refused because the target changed
+    /// between the preview and the write: the file the caller decided about
+    /// is not the file that is actually there any more. This is the
+    /// underlying rooted writer's compare-and-swap firing, surfaced typed
+    /// rather than folded into a generic I/O error — it is exactly the "no
+    /// silent overwrite" guarantee catching a race, not a caller mistake.
+    ConcurrentModification {
+        path: String,
+        expected: Option<Digest>,
+        found: Option<Digest>,
+    },
+    /// Any other I/O failure reading or writing the file, with context.
     Io(String),
 }
 
 impl fmt::Display for BundleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BundleError::InvalidRoot(msg) => write!(f, "invalid bundle root: {msg}"),
+            BundleError::InvalidRoot(msg) => write!(f, "invalid root: {msg}"),
             BundleError::EmptyPath => write!(f, "empty bundle path"),
             BundleError::AbsolutePath(p) => write!(f, "absolute path not allowed: {p:?}"),
             BundleError::PathTraversal(p) => write!(f, "path traversal not allowed: {p:?}"),
             BundleError::MalformedPath(msg) => write!(f, "malformed path: {msg}"),
             BundleError::DuplicatePath(p) => write!(f, "duplicate bundle path: {p:?}"),
-            BundleError::SymlinkEscapesRoot(p) => {
-                write!(f, "symlink escapes bundle root: {p:?}")
+            BundleError::SymlinkRefused(p) => {
+                write!(f, "symlink component refused: {p:?}")
             }
             BundleError::NotFound(p) => write!(f, "not found under root: {p:?}"),
             BundleError::NotAFile(p) => write!(f, "not a regular file: {p:?}"),
+            BundleError::FileTooLarge { path, limit, size } => write!(
+                f,
+                "{path:?} is {size} bytes, over the {limit}-byte per-file limit"
+            ),
+            BundleError::TooManyEntries { limit, actual } => write!(
+                f,
+                "{actual} entries exceeds the {limit}-entry bundle limit"
+            ),
+            BundleError::TotalBytesExceeded { limit, actual } => write!(
+                f,
+                "bundle total {actual} bytes exceeds the {limit}-byte limit"
+            ),
+            BundleError::OverwriteNotDecided(p) => write!(
+                f,
+                "{p:?} conflicts with an existing file and no import decision was given for it"
+            ),
+            BundleError::ConcurrentModification {
+                path,
+                expected,
+                found,
+            } => write!(
+                f,
+                "{path:?} changed since the import preview was computed (expected {expected:?}, found {found:?}); refusing to overwrite"
+            ),
             BundleError::Io(msg) => write!(f, "I/O error: {msg}"),
         }
     }

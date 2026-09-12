@@ -1,4 +1,14 @@
 //! Bounded malformed-input and Unicode-filename coverage.
+//!
+//! Path syntax is now validated by `flashtex_project_files::ProjectPath`,
+//! which normalizes `.`  segments, empty (`//`) segments and a trailing `/`
+//! away rather than rejecting them outright (rev 1's own hand-rolled
+//! validator treated all three as hard `MalformedPath` errors). This is a
+//! relaxation of input *hygiene*, not a security property: every one of
+//! those forms still resolves, after normalization, to a plain
+//! project-relative path that cannot leave the root — the escape- and
+//! absolute-path checks below are unchanged and still fire before any
+//! filesystem access.
 
 mod common;
 
@@ -21,30 +31,43 @@ fn null_byte_in_path_is_rejected() {
 }
 
 #[test]
-fn double_slash_empty_component_is_rejected() {
+fn double_slash_empty_component_is_normalized_away() {
     let dir = TempDir::new("malformed-double-slash");
     dir.write("foo/bar.tex", b"x");
     let root = ProjectRoot::new(dir.path()).unwrap();
-    let err = root.read_rooted("foo//bar.tex").unwrap_err();
-    assert!(matches!(err, BundleError::MalformedPath(_)));
+    let bytes = root.read_rooted("foo//bar.tex").unwrap();
+    assert_eq!(bytes, b"x");
 }
 
 #[test]
-fn trailing_slash_is_rejected() {
+fn trailing_slash_is_normalized_away() {
     let dir = TempDir::new("malformed-trailing-slash");
     dir.write("foo.tex", b"x");
     let root = ProjectRoot::new(dir.path()).unwrap();
-    let err = root.read_rooted("foo.tex/").unwrap_err();
-    assert!(matches!(err, BundleError::MalformedPath(_)));
+    let bytes = root.read_rooted("foo.tex/").unwrap();
+    assert_eq!(bytes, b"x");
 }
 
 #[test]
-fn single_dot_component_is_rejected() {
+fn single_dot_component_is_normalized_away() {
     let dir = TempDir::new("malformed-dot");
     dir.write("foo.tex", b"x");
     let root = ProjectRoot::new(dir.path()).unwrap();
-    let err = root.read_rooted("./foo.tex").unwrap_err();
-    assert!(matches!(err, BundleError::MalformedPath(_)));
+    let bytes = root.read_rooted("./foo.tex").unwrap();
+    assert_eq!(bytes, b"x");
+}
+
+#[test]
+fn internal_dot_dot_that_stays_inside_the_root_is_normalized_not_rejected() {
+    // "a/../foo.tex" never leaves the root once normalized ("foo.tex"), so
+    // it is accepted — unlike rev 1, which rejected any ".." component on
+    // sight. A ".." that would actually leave the root is still rejected
+    // (see `dot_dot_traversal_is_rejected*` in tests/rooted.rs).
+    let dir = TempDir::new("malformed-internal-dotdot");
+    dir.write("foo.tex", b"x");
+    let root = ProjectRoot::new(dir.path()).unwrap();
+    let bytes = root.read_rooted("a/../foo.tex").unwrap();
+    assert_eq!(bytes, b"x");
 }
 
 #[test]

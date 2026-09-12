@@ -1,6 +1,7 @@
-//! Security: every read is rooted. A `..` traversal, an absolute path, and
-//! a symlink pointing outside the root must each be rejected with a typed
-//! error, not silently clamped.
+//! Security: every read is rooted, via `flashtex_project_files`'s
+//! `openat(O_NOFOLLOW)`-based reader. A `..` traversal, an absolute path,
+//! and any symlink (whether or not it would resolve outside the root) must
+//! each be rejected with a typed error, not silently clamped or followed.
 
 mod common;
 
@@ -83,22 +84,30 @@ fn symlink_escaping_root_is_rejected() {
 
     let root = ProjectRoot::new(dir.path()).unwrap();
     let err = root.read_rooted("link.txt").unwrap_err();
-    assert_eq!(err, BundleError::SymlinkEscapesRoot("link.txt".to_string()));
+    assert_eq!(err, BundleError::SymlinkRefused("link.txt".to_string()));
 }
 
+// Rev 1's own canonicalize-based rooting resolved a symlink and only
+// rejected it if the resolved target landed outside the root, so a link
+// staying inside the root was followed. The reused `flashtex_project_files`
+// reader is stricter: it opens every path component with
+// `openat(O_NOFOLLOW)` and refuses *any* symlink outright, whether or not
+// it would resolve inside the root. That is a tightening, not a gap — it
+// still rejects every escape rev 1 rejected, plus more — so this case is
+// now also refused rather than "allowed".
 #[cfg(unix)]
 #[test]
-fn symlink_staying_inside_root_is_allowed() {
+fn symlink_staying_inside_root_is_also_refused() {
     use std::os::unix::fs::symlink;
 
-    let dir = TempDir::new("rooted-symlink-inside-ok");
+    let dir = TempDir::new("rooted-symlink-inside-refused");
     dir.write("real.txt", b"real contents");
     let link = dir.path().join("link.txt");
     symlink(dir.path().join("real.txt"), &link).unwrap();
 
     let root = ProjectRoot::new(dir.path()).unwrap();
-    let bytes = root.read_rooted("link.txt").unwrap();
-    assert_eq!(bytes, b"real contents");
+    let err = root.read_rooted("link.txt").unwrap_err();
+    assert_eq!(err, BundleError::SymlinkRefused("link.txt".to_string()));
 }
 
 #[test]
