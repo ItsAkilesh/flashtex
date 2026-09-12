@@ -342,6 +342,7 @@ pub fn adapt_cached(
                 caption,
                 styled,
                 env_open,
+                after_env,
             } => {
                 for inline in inlines {
                     if let Inline::MathRows { rows, aligned, span } = inline {
@@ -395,7 +396,7 @@ pub fn adapt_cached(
                 // `\listparindent 0pt` for the ones after it.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && styled.is_none(),
+                    indent: !after_heading && !caption && styled.is_none() && !after_env,
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
@@ -471,6 +472,9 @@ enum UnitKind<'p> {
         /// The unit is the first paragraph of its environment (the gap
         /// before it holds `\begin{...}`); see [`EnvOpen`].
         env_open: Option<EnvOpen>,
+        /// LaTeX's `\@endpe`: text that follows `\end{center}`/... without
+        /// a blank line continues in the same paragraph, unindented.
+        after_env: bool,
     },
     Rule {
         span: Span,
@@ -499,6 +503,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
     let mut pending_limitations: Vec<(&'static str, Span, String)> = Vec::new();
     // The previous unit left TeX in vertical mode (a heading or a rule).
     let mut prev_vmode = false;
+    let mut prev_styled = false;
     for block in &parsed.blocks {
         match block {
             CBlock::PageBreak => {
@@ -550,6 +555,21 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
             let vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
             Some(EnvOpen { vmode })
         });
+        // `\@endpe`: a plain paragraph right after `\end{...}` (no blank line
+        // or `\par` between them) is not indented.
+        let after_env = styled.is_none()
+            && prev_styled
+            && first.zip(prev_end).is_some_and(|(f, p)| {
+                p.document == f.document
+                    && p.end <= f.start
+                    && texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)).is_some_and(|gap| {
+                        rfind_command(gap, "end").is_some_and(|end| {
+                            let after = gap[end..].split_once('}').map_or("", |(_, rest)| rest);
+                            !has_blank_line(after) && find_command(after, "par").is_none()
+                        })
+                    })
+            });
+        prev_styled = styled.is_some();
         prev_vmode = matches!(block, CBlock::Heading { .. });
         match block {
             CBlock::Heading {
@@ -584,6 +604,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                                 caption,
                                 styled,
                                 env_open: env_open.take(),
+                                after_env,
                             },
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
@@ -599,6 +620,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>>
                         caption,
                         styled,
                         env_open,
+                        after_env,
                     },
                     eject_before: eject,
                     vspace_before,
@@ -1516,6 +1538,7 @@ mod tests {
                 _ => panic!(),
             },
             Block::Heading { items, .. } => items.clone(),
+            Block::Rule { .. } => panic!("a rule holds no items"),
         }
     }
 
