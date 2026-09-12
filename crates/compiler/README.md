@@ -102,6 +102,10 @@ Implemented and tested:
   and math, but this milestone does not load images or place floating objects.
 - `\begin{itemize}...\item...\end{itemize}` and
   `\begin{enumerate}...\item...\end{enumerate}` with bullet and decimal markers.
+  `\setlist[<env>]{itemsep=<dimen>,topsep=<dimen>}` changes the vertical gap
+  between items and around the list; other enumitem keys (`leftmargin`,
+  `label`, `parsep`, `partopsep`, ...) have no layout equivalent yet and are
+  named in a diagnostic instead.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.

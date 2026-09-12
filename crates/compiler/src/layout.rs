@@ -657,6 +657,15 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT);
                 }
             }
+            Block::ListItem {
+                extra_gap_before_pt,
+                ..
+            } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT + extra_gap_before_pt);
+                }
+            }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
                 if !self.first_block {
@@ -698,6 +707,16 @@ impl LayoutCursor {
         let body_size = self.constraints.font_size_pt;
         match block {
             Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::ListItem {
+                content,
+                extra_gap_after_pt,
+                ..
+            } => {
+                emit(self, content, body_size, Font::TimesRoman);
+                if *extra_gap_after_pt != 0.0 {
+                    self.vertical_gap(*extra_gap_after_pt);
+                }
+            }
             Block::Styled { style, content } => {
                 self.style = Some(*style);
                 self.x = self.left_edge();
@@ -940,7 +959,8 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
         let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
-            Block::Heading { content, .. }
+            Block::ListItem { content, .. }
+            | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
             Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
