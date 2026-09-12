@@ -1,3 +1,10 @@
+> Latest user override: stop only on an explicit user instruction. A verified
+> completion milestone starts the next improvement cycle. Prioritize exact PDF
+> byte and pixel identity (separate gates), typing-to-visible preview below 200ms,
+> performance, native IDE polish, and broad TeX/LaTeX compatibility. Billing and
+> authentication restrictions remain; no autonomous purchases. This overrides
+> older completion/deadline stop wording below.
+
 # Autonomous worker operation
 
 The user authorized autonomous work until an explicit stop or verified whole-project

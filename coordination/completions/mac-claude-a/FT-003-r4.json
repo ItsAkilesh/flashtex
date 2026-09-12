@@ -1,0 +1,101 @@
+{
+  "agent_id": "mac-claude-a",
+  "archived_utc": "2026-09-12T06:16:47Z",
+  "assignment": {
+    "acceptance": [
+      "Transfer-v1 bridge client authenticates pairing and persists exactly-once native apply receipts across restart",
+      "PDF export preserves supported Unicode or emits an explicit faithful fallback without silent question-mark loss",
+      "Native end-to-end suite covers capture receipt/retry, reviewed accept/reject, stale context, and document recompile"
+    ],
+    "agent_id": "mac-claude-a",
+    "allocation_id": "claude-mac20x-shell-stage4",
+    "branch": "agent/mac-claude-a/mac-shell",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "609640558cafc6b02b650fd8757eada4d42fa604",
+    "objective": "Integrate the six Jaysen child streams for durable bridge insertion, authenticated nearby transport, Unicode PDF output, source-aware completion/navigation, packaging, and native end-to-end validation. Preserve exact child file ownership and test before merging.",
+    "owned_paths": [
+      "apps/mac"
+    ],
+    "revision": 4,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-003",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T05:18:58Z"
+  },
+  "report": {
+    "agent_id": "mac-claude-a",
+    "allocation_id": "openai-mac-plus-ft003",
+    "assignment_acknowledgements": {
+      "FT-003": {
+        "acknowledged_utc": "2026-09-12T05:20:43Z",
+        "adaptation": "Accepted FT-003 rev 4 (integrate six child streams) at input main 6096405. Running children: mac-bridge-client (transfer-v1 vs bridge b5ca96b), mac-nearby (TLS-PSK pairing listener), mac-pdf-unicode (crates/pdf 1ea4261 opt-in TrueType embedding), mac-completion, mac-packaging (ec94f89/983b627/99c805a merged), mac-native-e2e (oracle d3754f9 done; e2e running). Parent merges only after reviewing diffs and running swift test / xcodebuild.",
+        "main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+        "revision": 4
+      }
+    },
+    "branch": "agent/mac-claude-a/mac-shell",
+    "capabilities": [
+      "swift",
+      "xcode",
+      "rust",
+      "macos-simulators"
+    ],
+    "code_revision": "b18ed2f8d311ee92820e99d042f8966bbcfc6b50",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
+    "next_action": "Forward FT-020 r2; integrate render-pipeline (Opus) and font-engine/paragraph r2; re-merge main on Commander baseline",
+    "reviewed_peers": {
+      "origin/agent/aarush-macbook/companion-capture": {
+        "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
+        "reviewed_utc": "2026-09-12T04:16:05Z",
+        "sha": "eb1c2fcb75b8f51cfe99d8facbec91c7c9857546"
+      },
+      "origin/agent/claude/compiler-foundation": {
+        "adaptation": "Compiler 9f1033b: rustfmt + 8 MiB request bound, no interface change; documented limit in README",
+        "reviewed_utc": "2026-09-12T04:36:12Z",
+        "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+      },
+      "origin/agent/commander/capture-bridge": {
+        "adaptation": "transfer-v1 read; Mac integration started as a child against exact commit b5ca96b (unmerged dependency recorded)",
+        "reviewed_utc": "2026-09-12T05:05:25Z",
+        "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
+      },
+      "origin/agent/commander/coordination-tools": {
+        "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
+        "reviewed_utc": "2026-09-12T04:24:53Z",
+        "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
+      },
+      "origin/main": {
+        "adaptation": "Coordination-only merges; FT-019/020 rev 2 forwarded",
+        "reviewed_utc": "2026-09-12T06:16:25Z",
+        "sha": "928595ecbd1cf63af5924c7a4df76f12350b52af"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-003 rev 4 ready at b18ed2f: 136/136 tests with real compiler/pdf/bridge/edit-ledger; bridge defects fixed; LM default face; 11 child crates/streams ready",
+    "tool": "Claude Code",
+    "updated_utc": "2026-09-12T06:16:25Z",
+    "usage": {
+      "evidence": "Claude Max 20x; Fable agent stopped at user request, replaced by Opus; no purchases",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 21,
+  "report_path": "coordination/agents/mac-claude-a.json",
+  "review_required": true,
+  "revision": 4,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-003",
+  "worker_branch": "agent/mac-claude-a/mac-shell",
+  "worker_report_sha": "63896ee766366b01225a2d65d0cba7f6333bc931"
+}

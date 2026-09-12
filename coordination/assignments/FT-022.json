@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "agent_id": "bridge-context-jobs",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/bridge-context/conversion-jobs",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+  "objective": "Bridge adapter with durable intent and stale context guards",
+  "owned_paths": [
+    "crates/conversion-jobs"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-022",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:12:26Z"
+}

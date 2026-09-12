@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-021",
+  "agent_id": "commander-document-runtime",
+  "branch": "agent/commander/document-runtime",
+  "revision": 1,
+  "state": "integrated",
+  "objective": "Bounded persistent compiler sessions and exact replay equivalence",
+  "owned_paths": [
+    "crates/document-runtime"
+  ],
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "dependencies": [],
+  "allocation_id": "hosted-openai-product",
+  "timebox_minutes": 30,
+  "deadline_utc": null,
+  "input_main_sha": "b87334038ee33c78d2eee67b66eac562768a9798",
+  "updated_utc": "2026-09-12T06:09:29.165922+00:00",
+  "integration_evidence": "Maind9dd2d2 includes runtime90b6b46, focused suites passed; engineer now FT027 preview-controller."
+}

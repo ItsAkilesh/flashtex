@@ -1,25 +1,24 @@
 {
   "acceptance": [
-    "Harness renders identical declared fixtures through available reference engines and FlashTeX at fixed DPI/color settings",
-    "Artifacts include overlays, diff heatmaps, pixel error distributions, structural text/rule measurements, and exact provenance",
-    "Narrow-case results never claim general pixel perfection; unavailable engines/fonts are explicit",
-    "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, Max quota/reset/usage and in-flight calls"
+    "Every artifact pins engine/font/version/DPI/color profile",
+    "Registration error is separated from rendering error",
+    "Overlays retain fixture and component SHAs"
   ],
   "agent_id": "mac-visual-oracle",
-  "allocation_id": "claude-mac20x-visual-oracle",
+  "allocation_id": "claude-mac20x-visual-oracle-stage2",
   "branch": "agent/mac-visual-oracle/reference-raster",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
-  "objective": "Build reference-render and raster-diff harnesses for a declared visual corpus on Jaysen mac-m1max-a using Opus. pdfLaTeX, XeLaTeX, and LuaLaTeX are test oracles only; FlashTeX remains original Rust. Record exact engine/font versions, flags, page size, DPI, color profile, and fixture SHA; generate overlays, per-pixel and perceptual metrics, and separate preview/export comparisons.",
+  "input_main_sha": "41c461612a49931815849552b470231dda4ab1e4",
+  "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
   "owned_paths": [
     "tests/visual-corpus/harness",
     "tests/visual-corpus/evidence"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-017",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:20:25Z"
+  "updated_utc": "2026-09-12T06:13:32Z"
 }

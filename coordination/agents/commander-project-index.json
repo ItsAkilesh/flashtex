@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-project-index",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-025": {
+      "acknowledged_utc": "2026-09-12T05:59:03Z",
+      "adaptation": "Accepted exact FT-025 revision 1 on the published source-navigation branch. Extend lexical exclusions and explicitly declared bibliography documents in crates/project-index only; preserve source revision and rename guards, no native/compiler semantics or provider calls.",
+      "main_sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-project-index/source-navigation",
+  "capabilities": [
+    "rust",
+    "source-navigation"
+  ],
+  "code_revision": "f01a7520fd9b57e59c280bbfa57681c0f6bc0662",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "cfe441d3b95de22c0aa7089f36b2689ad21f43c9",
+  "next_action": "Review/integrate f01a752 and own report. Native consumers may call replace_bibliography_document and document_kind while preserving snapshot/source guards. No processes in flight; await next assigned product increment.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-025 ready: exact code f01a7520fd9b57e59c280bbfa57681c0f6bc0662 has 48 passing tests and strict Clippy/fmt. Bounded literal exclusions protect label/citation rename targets; explicitly declared bibliography sources supply Unicode citation keys and dependency-aware navigation without invoking BibTeX.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T06:12:06Z",
+  "usage": {
+    "evidence": "cargo test --offline:48 pass incl200 malformed Unicode bibliography samples plus existing200 TeX samples. StrictClippy -Dwarnings, fmt --check and diff --check pass. Current code measured as lexical source index only; no providers, engine execution, native UI or PDF parity claim.",
+    "status": "unknown"
+  }
+}

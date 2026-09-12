@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-document-runtime",
+  "machine": "linux-primary",
+  "tool": "Codex GPT-6 Astra",
+  "capabilities": [
+    "rust"
+  ],
+  "branch": "agent/commander/document-runtime",
+  "state": "in_progress",
+  "summary": "5c4bfab published: persistent runtime, exact replay, close cancellation;11 tests incl original compiler and strict Clippy pass. Manual report because assigned legacy branch fails coord.py own-ID prefix guard.",
+  "next_action": "Improve response validation scaling; cache gated on exact dependency/configuration identity.",
+  "eta_minutes": {
+    "optimistic": 10,
+    "likely": 20,
+    "pessimistic": 40
+  },
+  "allocation_id": "hosted-openai-product",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Active hosted /root session; no auxiliary paid calls; remaining hosted quota not exposed."
+  },
+  "reviewed_peers": {},
+  "assignment_acknowledgements": {
+    "FT-021": {
+      "revision": 1,
+      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
+      "adaptation": "Reviewed exact FT-021r1; own only document-runtime, maintain separate native paint and reference PDF acceptance.",
+      "acknowledged_utc": "2026-09-12T05:55:30.831395+00:00"
+    }
+  },
+  "updated_utc": "2026-09-12T05:55:30.831395+00:00",
+  "code_revision": "5c4bfab68babca4a00ae150da0af95689b561f3e",
+  "main_integrated_through": "5a3959b8ca40f1aea5b116bf4ade2891d9e33437"
+}

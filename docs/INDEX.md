@@ -54,3 +54,33 @@ commit credentials, access tokens, login URLs, or private captures.
   machine launch, noninteractive permissions, quota behavior, next-task queues.
 - [Machine capability evidence](resources/machines/README.md): per-machine reports;
   resource authority remains coordination/RESOURCES.md.
+
+## Current original Rust product interfaces
+
+Read the exact task-branch SHA in the worker report before using unpublished APIs.
+Main integration does not certify full LaTeX compatibility, PDF identity or native
+latency. Every consumer must retain source/project/revision and resource identity.
+
+- `crates/preview-controller/README.md`: durable editing, explicit reviewed insertions,
+  recovery and compiler/index integration; `STDIO.md` is the native IPC contract when integrated.
+- `crates/edit-ledger/README.md`: authoritative durable source, receipts, history,
+  background service and restart handling. Do not build a second independent undo ledger.
+- `crates/document-runtime/README.md`: persistent original compiler transport, stale
+  response suppression and replay metrics; native paint is excluded from its timings.
+- `crates/conversion-jobs/README.md`: bounded scheduling, durable intent, ambiguous
+  provider-call recovery, typed status and explicit reviewed handoff. No automatic retry.
+- `crates/project-index/README.md`: exact-revision source navigation and lexical
+  bibliography/rename facilities; lexical results do not establish TeX expansion semantics.
+- `crates/font-resources/README.md`: immutable font bytes, original GIDs, exact paths,
+  TFM metrics and explicit encoding bindings. TFM8bit codes are not Unicode or GIDs.
+- `crates/rendering-core/README.md`: experimental rendering-v2 validation, exact
+  positioning, clipping and unhinted path consumers. No automatic wire activation.
+- `crates/pdf/README.md`: original runtime-v1 PDF export; its font fallback and rule
+  conventions remain explicit fidelity blockers.
+- `docs/contracts/runtime-v1.md` and `docs/contracts/transfer-v1.md`: production
+  message contracts. `docs/contracts/rendering-v2-proposal.md` is a proposal, not permission
+  to change existing clients without negotiation and migration tests.
+
+The sole orchestrator owns global integration and task queues. Engineers own their
+assigned product paths plus their own reports. Only an explicit user stop ends
+improvement cycles; completed checkpoints trigger useful next work.

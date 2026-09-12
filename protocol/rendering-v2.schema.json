@@ -1,0 +1,776 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flashtex:experimental:rendering-v2",
+  "title": "Experimental FlashTeX display-list-v2 proposal",
+  "description": "Not negotiated production ABI. Opt-in version-2 envelope is experimental; runtime-v1 remains unchanged. Run scripts/check_rendering_v2.py for required cross-record, capability, UTF-8, digest, and arithmetic validation. Synthetic tests do not prove real font glyph correctness. RGBA is unpremultiplied sRGB with source-over compositing; each logical cluster is extracted once using ActualText, not once per glyph.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/offer"
+    },
+    {
+      "$ref": "#/$defs/selected"
+    },
+    {
+      "$ref": "#/$defs/rejected"
+    },
+    {
+      "$ref": "#/$defs/display_list"
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "tick": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "positive_tick": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "path": {
+      "type": "string",
+      "maxLength": 4096,
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*(?:^|/)\\.(?:/|$))(?!.*//)(?!.*[\\\\:\\u0000]).*[^/]$"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "path",
+        "start_byte",
+        "end_byte"
+      ],
+      "additionalProperties": false
+    },
+    "paint": {
+      "type": "object",
+      "properties": {
+        "r": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "g": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "b": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "a": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "r",
+        "g",
+        "b",
+        "a"
+      ],
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/tick"
+        },
+        "top": {
+          "$ref": "#/$defs/tick"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "x",
+        "top",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "caret": {
+      "type": "object",
+      "properties": {
+        "text_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "x": {
+          "$ref": "#/$defs/tick"
+        },
+        "top": {
+          "$ref": "#/$defs/tick"
+        },
+        "height": {
+          "$ref": "#/$defs/positive_tick"
+        }
+      },
+      "required": [
+        "text_byte",
+        "x",
+        "top",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "cluster": {
+      "type": "object",
+      "properties": {
+        "text_start_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "text_end_byte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hit_rects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rect"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "carets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/caret"
+          },
+          "minItems": 0,
+          "maxItems": 128
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "synthetic_reason": {
+          "type": "string",
+          "maxLength": 1024,
+          "minLength": 1
+        }
+      },
+      "required": [
+        "text_start_byte",
+        "text_end_byte",
+        "hit_rects",
+        "carets"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "sources"
+          ],
+          "not": {
+            "required": [
+              "synthetic_reason"
+            ]
+          }
+        },
+        {
+          "required": [
+            "synthetic_reason"
+          ],
+          "not": {
+            "required": [
+              "sources"
+            ]
+          }
+        }
+      ]
+    },
+    "glyph": {
+      "type": "object",
+      "properties": {
+        "gid": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "origin_x": {
+          "$ref": "#/$defs/tick"
+        },
+        "baseline_y": {
+          "$ref": "#/$defs/tick"
+        },
+        "advance_x": {
+          "$ref": "#/$defs/tick"
+        },
+        "advance_y": {
+          "$ref": "#/$defs/tick"
+        },
+        "cluster": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "gid",
+        "origin_x",
+        "baseline_y",
+        "advance_x",
+        "advance_y",
+        "cluster"
+      ],
+      "additionalProperties": false
+    },
+    "glyph_run": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "glyph_run"
+        },
+        "font_id": {
+          "$ref": "#/$defs/id"
+        },
+        "font_size": {
+          "$ref": "#/$defs/positive_tick"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1048576,
+          "minLength": 1
+        },
+        "glyphs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/glyph"
+          },
+          "minItems": 1,
+          "maxItems": 65536
+        },
+        "clusters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cluster"
+          },
+          "minItems": 1,
+          "maxItems": 65536
+        },
+        "paint": {
+          "$ref": "#/$defs/paint"
+        }
+      },
+      "required": [
+        "kind",
+        "font_id",
+        "font_size",
+        "text",
+        "glyphs",
+        "clusters",
+        "paint"
+      ],
+      "additionalProperties": false
+    },
+    "rule": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "rule"
+        },
+        "x": {
+          "$ref": "#/$defs/tick"
+        },
+        "top": {
+          "$ref": "#/$defs/tick"
+        },
+        "width": {
+          "$ref": "#/$defs/positive_tick"
+        },
+        "height": {
+          "$ref": "#/$defs/positive_tick"
+        },
+        "paint": {
+          "$ref": "#/$defs/paint"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "synthetic_reason": {
+          "type": "string",
+          "maxLength": 1024,
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "x",
+        "top",
+        "width",
+        "height",
+        "paint"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "sources"
+          ],
+          "not": {
+            "required": [
+              "synthetic_reason"
+            ]
+          }
+        },
+        {
+          "required": [
+            "synthetic_reason"
+          ],
+          "not": {
+            "required": [
+              "sources"
+            ]
+          }
+        }
+      ]
+    },
+    "page": {
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "width": {
+          "$ref": "#/$defs/positive_tick"
+        },
+        "height": {
+          "$ref": "#/$defs/positive_tick"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/glyph_run"
+              },
+              {
+                "$ref": "#/$defs/rule"
+              }
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 100000
+        }
+      },
+      "required": [
+        "number",
+        "width",
+        "height",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "font": {
+      "type": "object",
+      "properties": {
+        "font_id": {
+          "$ref": "#/$defs/id"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "format": {
+          "const": "static-truetype"
+        },
+        "face_index": {
+          "const": 0
+        },
+        "units_per_em": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 16384
+        },
+        "glyph_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 65536
+        },
+        "postscript_name": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        }
+      },
+      "required": [
+        "font_id",
+        "sha256",
+        "byte_length",
+        "format",
+        "face_index",
+        "units_per_em",
+        "glyph_count",
+        "postscript_name"
+      ],
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8388608
+        }
+      },
+      "required": [
+        "path",
+        "revision",
+        "sha256",
+        "byte_length"
+      ],
+      "additionalProperties": false
+    },
+    "feature": {
+      "enum": [
+        "glyph_run",
+        "rule",
+        "static-truetype",
+        "rgba-srgb",
+        "cluster-actualtext"
+      ]
+    },
+    "diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/id"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 4096,
+          "minLength": 1
+        },
+        "severity": {
+          "enum": [
+            "warning",
+            "error"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          },
+          "minItems": 0,
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "severity",
+        "sources"
+      ],
+      "additionalProperties": false
+    },
+    "offer": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": 2
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "render_capabilities"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "render_formats": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "runtime-v1",
+                  "display-list-v2"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 2
+            },
+            "features": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/feature"
+              },
+              "minItems": 0,
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "render_formats",
+            "features"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol_version",
+        "id",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "selected": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": 2
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "render_format_selected"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "render_format": {
+              "const": "display-list-v2"
+            },
+            "required_features": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/feature"
+              },
+              "minItems": 1,
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "render_format",
+            "required_features"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol_version",
+        "id",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "rejected": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": 2
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "render_format_rejected"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "unsupported_format",
+                "unsupported_feature",
+                "invalid_resource",
+                "invalid_display_list"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol_version",
+        "id",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "display_list": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": 2
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "display_list"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "render_format": {
+              "const": "display-list-v2"
+            },
+            "coordinate_unit": {
+              "const": "bp_2pow20"
+            },
+            "color_space": {
+              "const": "srgb"
+            },
+            "text_extraction": {
+              "const": "cluster-actualtext"
+            },
+            "project_id": {
+              "$ref": "#/$defs/id"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required_features": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/feature"
+              },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "documents": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/document"
+              },
+              "minItems": 1,
+              "maxItems": 4096
+            },
+            "fonts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/font"
+              },
+              "minItems": 0,
+              "maxItems": 256
+            },
+            "pages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/page"
+              },
+              "minItems": 0,
+              "maxItems": 10000
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/diagnostic"
+              },
+              "minItems": 0,
+              "maxItems": 10000
+            }
+          },
+          "required": [
+            "render_format",
+            "coordinate_unit",
+            "color_space",
+            "text_extraction",
+            "project_id",
+            "revision",
+            "required_features",
+            "documents",
+            "fonts",
+            "pages",
+            "diagnostics"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol_version",
+        "id",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

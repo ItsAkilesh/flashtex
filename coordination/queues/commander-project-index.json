@@ -1,0 +1,64 @@
+{
+  "agent_id": "commander-project-index",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Dependency-aware unresolved diagnostics",
+      "objective": "Dependency-aware unresolved diagnostics",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Measured incremental versus clean index equivalence",
+      "objective": "Measured incremental versus clean index equivalence",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Bounded bibliography values and string metadata",
+      "objective": "Bounded bibliography values and string metadata",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Incremental citation details and source navigation",
+      "objective": "Incremental citation details and source navigation",
+      "owned_paths": [
+        "crates/project-index"
+      ],
+      "timebox_minutes": 30
+    }
+  ],
+  "task_id": "FT-025"
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "agent_id": "commander-fleet",
+  "machine": "linux-primary",
+  "tool": "Codex Astra engineering worker",
+  "branch": "agent/commander-fleet/fleet-health",
+  "code_revision": "342e1e029f80e7a5b472ad202ae87d597274127b",
+  "main_integrated_through": "342e1e029f80e7a5b472ad202ae87d597274127b",
+  "state": "ready_for_integration",
+  "capabilities": ["python", "coordination-health-validation"],
+  "allocation_id": "openai-commander-fleet",
+  "assignment_acknowledgements": {},
+  "direct_assignment": {
+    "source": "orchestrator-sol task message",
+    "acknowledged": true,
+    "adaptation": "Implement read-only deterministic fleet health tooling in the four explicitly assigned paths; leave uncommitted for sole orchestrator Cursor publication. No descendants. No published FT revision was provided for this new distinct task."
+  },
+  "owned_paths": [
+    "scripts/fleet_health.py",
+    "tests/test_fleet_health.py",
+    "docs/fleet-health.md",
+    "coordination/agents/commander-fleet.json"
+  ],
+  "summary": "Ready and frozen: fleet collection plus review issue #13 fixes. Current assignment plus two follow-up coverage; completed workers await dispatch rather than count as executing; completion archive/report SHA, main publication pointer and next ACK/history are separately checked. Historical supervisor cycle and usage cannot prove live processes or available quota. Remote processes always remain unverified. No inference, assignment changes, issue mutations, commits or pushes performed.",
+  "checks": [
+    "python3 -m unittest discover -s tests -q: 105 tests passed in 74.608 seconds before the final origin/main guard test was added.",
+    "python3 -m unittest discover -s tests -p test_fleet_health.py -q: all 28 final fleet tests passed, including origin/main guard and forged archive/ACK links.",
+    "git diff --check: passed.",
+    "Read-only collect(fetch=True) smoke pinned main 984fa28f2537feadb9f848eb90f69de0327d1fa5: 15 assignments, 86 findings; mac-claude-a and chatgpt-a had one follow-up; mac-pdf and mac-validation were completion_pending_dispatch; chatgpt-a's published next revision was awaiting ACK. No remote process inference."
+  ],
+  "documentation": "docs/fleet-health.md",
+  "limitations": [
+    "Existing prose-only resource/process reports produce explicit unknown or unproven findings until workers emit documented structured evidence.",
+    "No remote liveness, provider quota authenticity, funding grant, authority transfer or whole-project completion is verified.",
+    "GitHub listing is capped at 1000 and flags possible truncation; unavailable systemd or auth remains a collection error.",
+    "Dispatcher journal is optional injected JSON and is unknown when absent."
+  ],
+  "eta_minutes": {"optimistic": 0, "likely": 0, "pessimistic": 5},
+  "next_action": "Frozen handoff to runtime_validator and orchestrator-sol: review the four untracked owned files and invoke actual Cursor for publication after authority handoff. No publication or test subprocess remains in flight. Resume checks with python3 -m unittest discover -s tests -p test_fleet_health.py -q. No commit has been made; branch HEAD remains the recorded base. Further fleet ownership transferred by runtime_validator's message; worker moves to product raster comparison.",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Existing hosted Commander OpenAI authorization; no external inference, purchases, protected Claude calls or Cursor calls. Only local tests and read-only Git/GitHub/systemctl observations."
+  },
+  "updated_utc": "2026-09-12T05:28:12Z"
+}
