@@ -19,10 +19,28 @@ Sources read: `apps/mac/Sources/FlashTeXMac/{ShellModel+Nearby,ShellModel+Bridge
 | (d) capture arriving after the anchor text changed → rebase-or-reselect, never silent insert | `InsertionTests.testResolveExactRebasedAndReselection` (pure), `ShellModelCaptureTests` (reselection), `ShellModelBridgeTests.testBufferChangedBetweenPrepareAndApplyIsRefusedWithReselection` (fake bridge+ledger, `revision_conflict`), `BridgeRecoveryTests.testDestinationLostWhenSourceMovedPastThePinIsReported` (fake). | **Uncovered** with the real bridge: a nearby capture bound to the destination advertised in `hello_ack`, submitted after an edit that deleted the anchor text → real bridge answers `destination_reselection_required` to the companion, nothing journaled/inserted; an edit elsewhere keeps the anchor valid (accepted, still no insert). |
 | (e) app restart between receipt and insert → survives or reported lost, never duplicated | `RealBridgeTests.testKilledBridgeIsRelaunchedWithJournalAndDestinationIntact` (bridge **process** crash, same ShellModel), `BridgeRecoveryTests.*` (fake), mac-live rows 303–305 (SIGKILL + restart, journal answers). No-bridge inbox: `NearbyListenerTests.testInboxAcknowledgesNonDurablyAndRefusesConflicts` (ack says `durable: false`). | **Uncovered**: a **new ShellModel** (app relaunch) attached to the same store: `capture_status` still answers, a companion resend of the same `capture_id` yields the identical receipt, one journal file, no duplicate row. Finding: transfer-v1 has no capture-list op, so the relaunched shell shows no received captures until the companion resends (documented in the test). |
 
+## Implemented (13:45Z)
+
+`apps/mac/Tests/FlashTeXMacTests/CaptureAcceptanceTests.swift` — 4 tests, all real helpers, XCTSkip without env:
+- `testDropAfterDeliveryThenReconnectIsJournaledOnceByTheRealBridge` (a+b)
+- `testAppRelaunchBetweenReceiptAndInsertKeepsOneJournaledCaptureWithoutDuplicates` (e)
+- `testCaptureAgainstAChangedAnchorIsRefusedByTheRealBridgeAndNeverInserted` (d)
+- `testExplicitInsertRidesTheRealPreviewControllerAsOneDurableEdit` (c, helper route)
+
+Evidence: `docs/evidence/capture-acceptance-2026-09-12T1340Z.md` (run 2: 4/4 in 1.08 s, uptime load 10.94/29.27/25.05
+under the parent's heavy-build window — not an isolated timing; env-less run: 4 skipped). `swift build --build-tests` clean.
+Full `swift test` deliberately NOT run (parent's heavy-build notice; parent runs it at integration under load < 15).
+Findings (not patched, product files are parent/Commander-owned): no capture-listing op in transfer-v1 (relaunched shell
+shows no pending captures until the companion resends); `bridgeDestination`/`hello_ack.destination` not refreshed after
+edits overlapping the pin (bridge refuses `destination_reselection_required`, which `NearbyError.needsNewCapture` does not
+classify); `BridgeSession.prepare` marks `.proposed` on `proposal_missing`; a reviewed insert through the real bridge + real
+ledger is impossible without a provider (stays covered by RealEditLedgerTests with the fake bridge proposal).
+Parent-retained files: untouched; no diffs to apply.
+
 ## Durable checkpoint
-- Task: Gap 7 (brief `prompt-mac-capture-acceptance.md`); branch `agent/mac-capture-acceptance/capture-acceptance`; worktree `.claude/worktrees/agent-a93d1274f0bb3f813`.
+- Task: Gap 7 (brief `prompt-mac-capture-acceptance.md`); branch `agent/mac-capture-acceptance/capture-acceptance` tip a9acc2a9 (+ this coordination commit); worktree `.claude/worktrees/agent-a93d1274f0bb3f813`.
 - Consumed: mac-shell 5bc3fc0f (main dda0b62 preview-controller compact edit acks).
 - Helpers built in-worktree: `crates/{bridge,edit-ledger,preview-controller,compiler}/target/release/*` (cargo release, zero deps).
-- Dirty files: this handoff, `coordination/agents/mac-capture-acceptance.json`, `apps/mac/Tests/FlashTeXMacTests/CaptureAcceptanceTests.swift` (new).
-- Next commands: `cd apps/mac && FLASHTEX_BRIDGE=… FLASHTEX_EDIT_LEDGER=… FLASHTEX_PREVIEW_CONTROLLER=… FLASHTEX_COMPILER=… swift test --filter CaptureAcceptanceTests`; commit with lane trailers; push.
-- Parent-retained files untouched (no diffs needed so far).
+- Dirty files: none after the coordination commit.
+- Next commands (parent): merge branch; `cd apps/mac && FLASHTEX_BRIDGE=… FLASHTEX_EDIT_LEDGER=… FLASHTEX_PREVIEW_CONTROLLER=… FLASHTEX_COMPILER=… swift test` under load < 15.
+- State: ready_for_integration; lane stopping (bounded task complete).
