@@ -88,9 +88,9 @@ pub fn badness(t_pt: f64, s_pt: f64) -> i64 {
 /// Appends interline glue for a box of `height` after a box of
 /// `prev_depth` (§679 `append_to_vlist`). `None` for the first box of the
 /// list (TeX's `ignore_depth`).
-fn interline_glue(p: &PageParams, prev_depth: Option<f64>, height: f64) -> Option<VItem> {
+fn interline_glue(p: &PageParams, baselineskip: f64, prev_depth: Option<f64>, height: f64) -> Option<VItem> {
     let prev = prev_depth?;
-    let mut g = p.baselineskip - prev - height;
+    let mut g = baselineskip - prev - height;
     if g < p.lineskiplimit {
         g = p.lineskip;
     }
@@ -126,6 +126,11 @@ pub struct VBlock {
     /// `penalty_before`).
     pub penalty_after: Option<i32>,
     pub space_after: Option<(f64, f64, f64)>,
+    /// `\nointerlineskip` before the first line (TeX's `ignore_depth`).
+    pub no_interline_first: bool,
+    /// `\baselineskip` in force while this block's lines are appended (a
+    /// heading's `\Large` value); `None` uses the page's.
+    pub baselineskip: Option<f64>,
 }
 
 /// Builds the vertical list with interline glue and penalties.
@@ -156,7 +161,8 @@ pub fn vlist(p: &PageParams, blocks: &[VBlock]) -> Vec<VItem> {
         }
         let n = b.lines.len();
         for (li, (h, d)) in b.lines.iter().enumerate() {
-            if let Some(g) = interline_glue(p, prev_depth, *h) {
+            let prev = if li == 0 && b.no_interline_first { None } else { prev_depth };
+            if let Some(g) = interline_glue(p, b.baselineskip.unwrap_or(p.baselineskip), prev, *h) {
                 out.push(g);
             }
             out.push(VItem::Box {
@@ -403,6 +409,8 @@ mod tests {
             widow_penalty: 150,
             penalty_after: None,
             space_after: None,
+            no_interline_first: false,
+            baselineskip: None,
         }
     }
 
@@ -458,6 +466,8 @@ mod tests {
             widow_penalty: 0,
             penalty_after: Some(INF_PENALTY),
             space_after: Some((12.4, 1.0, 0.0)),
+            no_interline_first: false,
+            baselineskip: Some(22.0),
         };
         let mut after = para(3);
         after.club_penalty = INF_PENALTY;

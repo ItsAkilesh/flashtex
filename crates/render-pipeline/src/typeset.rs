@@ -493,6 +493,8 @@ impl<'a> Context<'a> {
             widow_penalty: WIDOW_PENALTY,
             penalty_after: None,
             space_after: None,
+            no_interline_first: false,
+            baselineskip: None,
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -518,12 +520,10 @@ impl<'a> Context<'a> {
         }
         let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt));
         self.report_overfull(&lines, &list, &recs);
-        // The heading paragraph carries its own \baselineskip; paragraph-layout
-        // applies one page-wide value, so the difference is folded into the
-        // before-skip (exact unless \lineskip takes over). Requested sibling
-        // API: per-block baselineskip.
-        let mut before = h.before;
-        before.natural += h.baselineskip_pt - self.style.baselineskip_pt;
+        // The heading's lines are appended under its own \baselineskip
+        // (`\Large` is in force inside \@sect's group); the before/after
+        // skips are body-font `ex`.
+        let before = h.before;
         // \@startsection: \addpenalty\@secpenalty, \addvspace{before},
         // the title with \interlinepenalty\@M, \nobreak, \vskip{after}.
         let vertical = VBlock {
@@ -536,6 +536,8 @@ impl<'a> Context<'a> {
             widow_penalty: 0,
             penalty_after: Some(pagebuild::INF_PENALTY),
             space_after: Some(skip_tuple(h.after)),
+            no_interline_first: false,
+            baselineskip: Some(h.baselineskip_pt),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -549,6 +551,71 @@ impl<'a> Context<'a> {
             vertical,
             labels,
         })
+    }
+
+    /// The empty line TeX sets when a display opens a paragraph: the
+    /// `\parindent` box alone (`$$`, `equation`), or LaTeX's
+    /// `\nointerlineskip\makebox[.6\linewidth]{}` for `\[`. It carries
+    /// `\parskip`, has no height or depth, and decides the display's
+    /// `pre_display_size` (its width plus 2em).
+    fn display_opener_block(&mut self, bracket: bool) -> (BuiltBlock, f64) {
+        let s = self.style;
+        let width = s.parindent_pt + if bracket { 0.6 * s.text_width_pt } else { 0.0 };
+        let line = pl::Line {
+            index: 0,
+            runs: Vec::new(),
+            baseline_y: 0.0,
+            height: 0.0,
+            depth: 0.0,
+            natural_width: width,
+            set_width: s.text_width_pt,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..0,
+            hyphenated: false,
+        };
+        let lines = pl::Lines {
+            lines: vec![line],
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: 1,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+                emergency_pass_used: false,
+            },
+            diagnostics: Vec::new(),
+            height: 0.0,
+        };
+        let quad = params::text_params(s.family, false, false, design_size(s.family, s.body_size_pt))
+            .at(s.body_size_pt)
+            .quad;
+        let vertical = VBlock {
+            lines: vec![(0.0, 0.0)],
+            penalty_before: None,
+            space_before: None,
+            parskip: Some(skip_tuple(s.parskip)),
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: bracket,
+            baselineskip: None,
+        };
+        (
+            BuiltBlock {
+                block: pl::ParagraphBlock::body(lines),
+                items: Vec::new(),
+                recs: Vec::new(),
+                vertical,
+                labels: Vec::new(),
+            },
+            width + 2.0 * quad,
+        )
     }
 
     /// A display equation. `pre_display_size` is TeX's measure of the line
@@ -684,6 +751,8 @@ impl<'a> Context<'a> {
             widow_penalty: 0,
             penalty_after: None,
             space_after: Some(skip_tuple(below)),
+            no_interline_first: false,
+            baselineskip: None,
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -810,26 +879,50 @@ pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
         .quad;
     for block in &doc.blocks {
         match block {
-            Block::Heading { level, items } => {
-                if let Some(b) = ctx.heading_block(*level, items) {
+            Block::Heading { level, items, eject_before } => {
+                if let Some(mut b) = ctx.heading_block(*level, items) {
+                    if *eject_before {
+                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                    }
                     blocks.push(b);
                     after_heading = true;
                 }
             }
-            Block::Paragraph { parts, indent } => {
+            Block::Paragraph {
+                parts,
+                indent,
+                eject_before,
+            } => {
                 let mut first = true;
+                let mut eject = *eject_before;
                 // TeX's pre_display_size: the width of the line before a
                 // display plus 2em; -infinity when nothing precedes it.
                 let mut pre_display: Option<f64> = None;
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
-                            if let Some(b) = ctx.paragraph_block(items, *indent && first, first, after_heading && first) {
+                            if let Some(mut b) = ctx.paragraph_block(items, *indent && first, first, after_heading && first) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
+                                if std::mem::take(&mut eject) {
+                                    b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                }
                                 blocks.push(b);
                             }
                         }
-                        ParaPart::Display { list, span, number } => {
+                        ParaPart::Display {
+                            list,
+                            span,
+                            number,
+                            bracket,
+                        } => {
+                            if first {
+                                let (mut opener, size) = ctx.display_opener_block(*bracket);
+                                if std::mem::take(&mut eject) {
+                                    opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                }
+                                blocks.push(opener);
+                                pre_display = Some(size);
+                            }
                             if let Some(b) = ctx.display_block(list, *span, pre_display, number.as_ref()) {
                                 blocks.push(b);
                             }

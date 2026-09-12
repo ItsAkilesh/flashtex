@@ -91,17 +91,31 @@ pub enum ParaPart {
     Lines(Vec<Item>),
     /// A display; `number` is the `equation` counter text and the
     /// environment's source span (`\eqno` at the right margin).
+    /// `bracket` marks LaTeX's `\[`/`displaymath`, which in vertical mode
+    /// first sets an empty `.6\linewidth` box with `\nointerlineskip`.
     Display {
         list: MathList,
         span: Span,
         number: Option<(String, Span)>,
+        bracket: bool,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
-    Paragraph { parts: Vec<ParaPart>, indent: bool },
-    Heading { level: u8, items: Vec<Item> },
+    Paragraph {
+        parts: Vec<ParaPart>,
+        indent: bool,
+        /// `\newpage`/`\clearpage`/`\pagebreak` stood between the previous
+        /// block and this one (the compiler reports and drops the command;
+        /// the break is recovered from the source bytes).
+        eject_before: bool,
+    },
+    Heading {
+        level: u8,
+        items: Vec<Item>,
+        eject_before: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -182,7 +196,21 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
     let styles: Vec<Vec<(usize, usize, StyleKind)>> = texts.iter().map(|t| style_intervals(t)).collect();
     let mut blocks = Vec::new();
     let mut after_heading = false;
+    let mut prev_end: Option<Span> = None;
     for block in &parsed.blocks {
+        // Page-break commands are not in the parse tree; find them in the
+        // source gap between this block and the previous one.
+        let first = block_first_span(block);
+        let eject_before = match (prev_end, first) {
+            (Some(prev), Some(first)) if prev.document == first.document && prev.end <= first.start => {
+                let gap = texts.get(first.document.0).and_then(|t| t.get(prev.end..first.start)).unwrap_or("");
+                ["newpage", "clearpage", "pagebreak"].iter().any(|c| find_command(gap, c).is_some())
+            }
+            _ => false,
+        };
+        if let Some(last) = block_last_span(block) {
+            prev_end = Some(last);
+        }
         match block {
             CBlock::Heading {
                 level,
@@ -209,6 +237,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 blocks.push(Block::Heading {
                     level: *level,
                     items,
+                    eject_before,
                 });
                 after_heading = true;
             }
@@ -222,8 +251,17 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                             if !current.is_empty() {
                                 parts.push(ParaPart::Lines(std::mem::take(&mut current)));
                             }
-                            let number = display_number(inlines, span);
-                            parts.push(ParaPart::Display { list, span, number });
+                            // The compiler counts every closed display; LaTeX
+                            // numbers only the `equation` environment.
+                            let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
+                            let number = display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}"));
+                            let bracket = rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}");
+                            parts.push(ParaPart::Display {
+                                list,
+                                span,
+                                number,
+                                bracket,
+                            });
                         }
                         other => current.push(other),
                     }
@@ -241,6 +279,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 blocks.push(Block::Paragraph {
                     parts,
                     indent: !after_heading && !caption,
+                    eject_before,
                 });
                 after_heading = false;
             }
@@ -251,6 +290,27 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
         blocks,
         diagnostics: Vec::new(),
     }
+}
+
+fn inline_span(i: &Inline) -> Span {
+    match i {
+        Inline::Text { span, .. }
+        | Inline::LineBreak { span }
+        | Inline::Math { span, .. }
+        | Inline::Label { span, .. }
+        | Inline::Reference { span, .. } => *span,
+    }
+}
+
+fn block_first_span(block: &CBlock) -> Option<Span> {
+    if let CBlock::Heading { number_span, .. } = block {
+        return Some(*number_span);
+    }
+    inlines_of(block).iter().map(inline_span).next()
+}
+
+fn block_last_span(block: &CBlock) -> Option<Span> {
+    inlines_of(block).iter().map(inline_span).last()
 }
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {
