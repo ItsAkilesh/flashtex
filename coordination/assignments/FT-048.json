@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "4bcd708710d87ca5790fae5d11086a53b5226ff6",
-  "objective": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
+  "input_main_sha": "d34865e807f3fa327ae9c26bc814101e123956a7",
+  "objective": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 24,
+  "revision": 25,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:38:12.447923+00:00"
+  "updated_utc": "2026-09-12T13:40:53.443568+00:00"
 }

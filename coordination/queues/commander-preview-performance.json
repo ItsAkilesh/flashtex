@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
-      "objective": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
+      "name": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
+      "objective": "Attribute existing processsender pair diagnostics to helper encoding writer and receiver stages without a workload rerun",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Run one quiet-window current and explicitly historical burst pair with exact source bytes and actual cadence reporting",
-      "objective": "Run one quiet-window current and explicitly historical burst pair with exact source bytes and actual cadence reporting",
+      "name": "Identify missing scalar telemetry before proposing a measured product optimization and qualify cleanup limits",
+      "objective": "Identify missing scalar telemetry before proposing a measured product optimization and qualify cleanup limits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded timing evidence with final clean reopen and receipt guards and no native or universal latency claims",
-      "objective": "Publish bounded timing evidence with final clean reopen and receipt guards and no native or universal latency claims",
+      "name": "Implement only a reviewed bounded instrumentation or product change with meaningful gates and no native/default promotion",
+      "objective": "Implement only a reviewed bounded instrumentation or product change with meaningful gates and no native/default promotion",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

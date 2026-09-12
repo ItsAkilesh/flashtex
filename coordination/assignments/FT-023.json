@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ffe199d89302a4353f621923c0914707b5611a80",
-  "objective": "Review newly published native validation evidence for exact helper route asset assumptions and historical current-paint limits",
+  "input_main_sha": "d34865e807f3fa327ae9c26bc814101e123956a7",
+  "objective": "Review exact published producer discovery build and Linux sibling bundle test feasibility with existing official assets",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 19,
+  "revision": 20,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:33:32.337444+00:00"
+  "updated_utc": "2026-09-12T13:40:53.443568+00:00"
 }

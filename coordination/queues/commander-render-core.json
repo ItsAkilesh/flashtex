@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Review newly published native validation evidence for exact helper route asset assumptions and historical current-paint limits",
-      "objective": "Review newly published native validation evidence for exact helper route asset assumptions and historical current-paint limits",
+      "name": "Review exact published producer discovery build and Linux sibling bundle test feasibility with existing official assets",
+      "objective": "Review exact published producer discovery build and Linux sibling bundle test feasibility with existing official assets",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Review GH31 and GH36 owner publications when available against existing immutable-resource and packaging contracts",
-      "objective": "Review GH31 and GH36 owner publications when available against existing immutable-resource and packaging contracts",
+      "name": "After a coordinated build window verify unchanged producer rooted asset discovery missing or corrupt refusal and explicit override provenance",
+      "objective": "After a coordinated build window verify unchanged producer rooted asset discovery missing or corrupt refusal and explicit override provenance",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded native evidence handoff without claiming unexecuted native verification or editing peer sources",
-      "objective": "Publish bounded native evidence handoff without claiming unexecuted native verification or editing peer sources",
+      "name": "Publish reproducible source binary asset evidence while separating Linux sibling layout from sealed native app acceptance",
+      "objective": "Publish reproducible source binary asset evidence while separating Linux sibling layout from sealed native app acceptance",
       "owned_paths": [
         "crates/rendering-core"
       ],
