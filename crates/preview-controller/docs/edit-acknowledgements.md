@@ -117,3 +117,21 @@ allocation/reallocation requests totaling5,002,401bytes for the full API versus2
 requests totaling4,502,328bytes for status. The500,073byte difference is the removed
 response Document clone. These are cumulative allocation requests, not peak memory,
 wall-clock latency or native paint. History/commit allocations remain.
+
+## Parsed edit source ownership
+
+The helper moves the already parsed JSON `text` String into the existing durable
+edit API for both full and metadata replies. It parses response policy, path,
+revision, hash and text type before taking that String. Invalid input remains
+untouched; source revision/hash and project membership are still checked by the
+same controller/ledger paths. Envelope identity is checked before dispatch. The
+small optional source-binding token remains owned across the mutable dispatch so
+historical bindings retain their existing behavior.
+
+The500KB parsed Unicode request test keeps the prior `.to_owned()` control alive:
+that control has a distinct500,000byte buffer, while the new input retains the
+exact original parsed pointer and500,000byte capacity. This proves elimination of
+that one source clone. It is not a measurement of aggregate allocations or latency;
+small path/hash/token copies and durable/index/compiler allocations remain. The
+test also checks invalid fields leave the request intact and omitted/full response
+policies preserve legacy selection. Full stdio30/30 and strict lint pass.
