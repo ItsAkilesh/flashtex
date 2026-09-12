@@ -17,6 +17,7 @@ use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
 use crate::parser::{self, Block, Inline, MacroDependency, SourceDocument};
 use crate::Span;
+use std::collections::HashMap;
 use std::ops::Range;
 
 pub use crate::layout::LayoutConstraints;
@@ -27,6 +28,8 @@ pub struct ReuseStats {
     pub blocks_total: usize,
     pub blocks_reused: usize,
     pub blocks_recomputed: usize,
+    /// Full dependency-and-block equality checks after indexed lookup.
+    pub candidate_comparisons: usize,
     pub full_recompile: bool,
 }
 
@@ -87,6 +90,7 @@ struct CachedBlock {
     prepared_state: FlowState,
     end_state: FlowState,
     placed: Vec<PlacedItem>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +100,7 @@ struct Revision {
     constraints: LayoutConstraints,
     preamble_source: String,
     incremental_safe: bool,
+    document_global_state: bool,
     output: CompileOutput,
     blocks: Vec<CachedBlock>,
 }
@@ -138,6 +143,7 @@ impl Session {
                         blocks_total: total,
                         blocks_reused: total,
                         blocks_recomputed: 0,
+                        candidate_comparisons: 0,
                         full_recompile: false,
                     },
                 };
@@ -160,6 +166,8 @@ impl Session {
                 && parsed.incremental_safe
                 && previous.constraints == constraints
                 && previous.preamble_source == parsed.preamble_source
+                && !previous.document_global_state
+                && !parsed.document_global_state
         });
         let changes: Vec<ChangedBytes> = self.previous.as_ref().map_or_else(Vec::new, |previous| {
             previous
@@ -186,15 +194,84 @@ impl Session {
             ..ReuseStats::default()
         };
 
+        if parsed.document_global_state {
+            let (pages, mut layout_diagnostics) =
+                layout::layout_converged(&parsed.blocks, constraints);
+            let mut diagnostics = parsed.diagnostics;
+            diagnostics.append(&mut layout_diagnostics);
+            stats.full_recompile = true;
+            stats.blocks_recomputed = parsed.blocks.len();
+            let output = CompileOutput {
+                blocks: parsed.blocks,
+                diagnostics,
+                pages,
+            };
+            self.previous = Some(Revision {
+                documents: snapshot,
+                entry_path: entry_path.to_string(),
+                constraints,
+                preamble_source: parsed.preamble_source,
+                incremental_safe: parsed.incremental_safe,
+                document_global_state: true,
+                output: output.clone(),
+                blocks: Vec::new(),
+            });
+            return IncrementalResult { output, stats };
+        }
+
+        // Shift each cached block ONCE, not once per comparison.
+        //
+        // This lookup used to shift a cached block inside the inner scan, so a
+        // 500-block document performed 500 x 500 deep clone-and-shift operations
+        // per edit. That made a one-word edit six times slower than a full cold
+        // compile despite reusing 499 of 500 blocks, and pushed the measured
+        // warm-edit p95 from 21 ms to 177 ms against a 200 ms target.
+        // Index the shifted candidates by a cheap signature so the lookup below is
+        // not a scan over every cached block.
+        //
+        // Measured before this change: a one-word edit was 0.801 ms p95 at 5 KB,
+        // 7.402 ms at 50 KB and 473.759 ms at 7 754 blocks (500 KB) — 64x the
+        // time for 10x the blocks, i.e. quadratic, and far past the 200 ms
+        // budget. The signature is the block's first and last source offsets,
+        // which are already computed; full structural equality still gates
+        // acceptance, so a signature collision can never cause a wrong reuse.
+        // Build the index without eagerly materializing a second copy of the
+        // whole cache. A shifted signature needs only the boundary spans. Each
+        // signature hit is still shifted and compared structurally below, and
+        // every reused placed item still needs a current-revision source span;
+        // those confirmation/output walks are linear in reused content.
+        let mut candidate_index: HashMap<BlockSignature, Vec<usize>> = HashMap::new();
+        if can_reuse {
+            if let Some(previous) = self.previous.as_ref() {
+                for (slot, cached) in previous.blocks.iter().enumerate() {
+                    if let Some(signature) = shifted_signature(&cached.block, &changes, &deltas) {
+                        candidate_index.entry(signature).or_default().push(slot);
+                    }
+                }
+            }
+        }
+
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
             let prepared_state = cursor.prepare_block(block);
+            let diagnostics_start = cursor.diagnostics_len();
             let candidate = if can_reuse {
                 self.previous.as_ref().and_then(|previous| {
-                    previous.blocks.iter().find(|cached| {
-                        cached.dependencies == dependencies
-                            && shift_block(&cached.block, &changes, &deltas).as_ref() == Some(block)
-                    })
+                    candidate_index
+                        .get(&block_signature(block))
+                        .into_iter()
+                        .flatten()
+                        .find(|slot| {
+                            stats.candidate_comparisons += 1;
+                            let cached = &previous.blocks[**slot];
+                            // Full equality still decides: the signature only
+                            // narrows the search, it never authorises a reuse.
+                            // The shift happens here, for this one candidate.
+                            cached.dependencies == dependencies
+                                && shift_block(&cached.block, &changes, &deltas).as_ref()
+                                    == Some(block)
+                        })
+                        .map(|slot| &previous.blocks[*slot])
                 })
             } else {
                 None
@@ -204,7 +281,10 @@ impl Session {
                 if prepared_state.same_geometry(cached.prepared_state) {
                     let shifted = shift_placed(&cached.placed, &changes, &deltas)
                         .expect("candidate spans were already validated");
-                    cursor.append_reused(&shifted, cached.end_state);
+                    let shifted_diagnostics =
+                        shift_diagnostics(&cached.diagnostics, &changes, &deltas)
+                            .expect("candidate diagnostic spans were already validated");
+                    cursor.append_reused(&shifted, &shifted_diagnostics, cached.end_state);
                     stats.blocks_reused += 1;
                     shifted
                 } else {
@@ -216,19 +296,24 @@ impl Session {
                 cursor.render_prepared_block(block)
             };
             let end_state = cursor.state();
+            let block_diagnostics = cursor.diagnostics_since(diagnostics_start).to_vec();
             cache.push(CachedBlock {
                 block: block.clone(),
                 dependencies,
                 prepared_state,
                 end_state,
                 placed,
+                diagnostics: block_diagnostics,
             });
         }
 
+        let (pages, mut layout_diagnostics) = cursor.into_pages_and_diagnostics();
+        let mut diagnostics = parsed.diagnostics;
+        diagnostics.append(&mut layout_diagnostics);
         let output = CompileOutput {
             blocks: parsed.blocks,
-            diagnostics: parsed.diagnostics,
-            pages: cursor.into_pages(),
+            diagnostics,
+            pages,
         };
         self.previous = Some(Revision {
             documents: snapshot,
@@ -236,6 +321,7 @@ impl Session {
             constraints,
             preamble_source: parsed.preamble_source,
             incremental_safe: parsed.incremental_safe,
+            document_global_state: false,
             output: output.clone(),
             blocks: cache,
         });
@@ -255,10 +341,12 @@ pub fn compile_full_project(
     constraints: LayoutConstraints,
 ) -> CompileOutput {
     let parsed = parser::parse_project(documents, entry_path);
-    let pages = layout::layout_with_constraints(&parsed.blocks, constraints);
+    let (pages, mut layout_diagnostics) = layout::layout_converged(&parsed.blocks, constraints);
+    let mut diagnostics = parsed.diagnostics;
+    diagnostics.append(&mut layout_diagnostics);
     CompileOutput {
         blocks: parsed.blocks,
-        diagnostics: parsed.diagnostics,
+        diagnostics,
         pages,
     }
 }
@@ -290,8 +378,18 @@ fn shift_span(span: Span, delta: isize) -> Span {
 fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
     Some(match block {
         Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
-        Block::Heading { level, content } => Block::Heading {
+        Block::Heading {
+            level,
+            number,
+            number_span,
+            content,
+        } => Block::Heading {
             level: *level,
+            number: number.clone(),
+            number_span: mapped_span(*number_span, changes, deltas)?,
+            content: shift_inlines(content, changes, deltas)?,
+        },
+        Block::FigureCaption { content } => Block::FigureCaption {
             content: shift_inlines(content, changes, deltas)?,
         },
     })
@@ -315,10 +413,27 @@ fn shift_inlines(
             Inline::Math {
                 list,
                 display,
+                number,
+                number_span,
                 span,
             } => Some(Inline::Math {
                 list: shift_math_list(list, changes, deltas)?,
                 display: *display,
+                number: number.clone(),
+                number_span: match number_span {
+                    Some(span) => Some(mapped_span(*span, changes, deltas)?),
+                    None => None,
+                },
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Label { key, value, span } => Some(Inline::Label {
+                key: key.clone(),
+                value: value.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Reference { key, page, span } => Some(Inline::Reference {
+                key: key.clone(),
+                page: *page,
                 span: mapped_span(*span, changes, deltas)?,
             }),
         })
@@ -383,10 +498,105 @@ fn shift_placed(
                     baseline_y_pt: placed.item.baseline_y_pt,
                     font_size_pt: placed.item.font_size_pt,
                     span: mapped_span(placed.item.span, changes, deltas)?,
+                    font: placed.item.font,
+                    rule: placed.item.rule,
                 },
             })
         })
         .collect()
+}
+
+fn shift_diagnostics(
+    diagnostics: &[Diagnostic],
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<Vec<Diagnostic>> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            Some(Diagnostic {
+                severity: diagnostic.severity,
+                message: diagnostic.message.clone(),
+                span: match diagnostic.span {
+                    Some(span) => Some(mapped_span(span, changes, deltas)?),
+                    None => None,
+                },
+                recovery: diagnostic.recovery.clone(),
+            })
+        })
+        .collect()
+}
+
+/// A cheap, collision-tolerant signature used only to narrow candidate search.
+///
+/// It is NOT an identity: two different blocks may share a signature. Full
+/// structural equality still gates every reuse, so a collision costs one extra
+/// comparison and can never produce a wrong result.
+type BlockSignature = (usize, usize, usize, usize, usize);
+
+fn block_signature(block: &Block) -> BlockSignature {
+    let inlines: &[Inline] = match block {
+        Block::Paragraph(inlines) => inlines,
+        Block::Heading { content, .. } => content,
+        Block::FigureCaption { content } => content,
+    };
+    let span_of = |inline: &Inline| match inline {
+        Inline::Text { span, .. } => *span,
+        Inline::LineBreak { span } => *span,
+        Inline::Math { span, .. } => *span,
+        Inline::Label { span, .. } => *span,
+        Inline::Reference { span, .. } => *span,
+    };
+    let first = inlines.first().map(span_of);
+    let last = inlines.last().map(span_of);
+    (
+        first.map_or(usize::MAX, |s| s.document.0),
+        first.map_or(usize::MAX, |s| s.start),
+        last.map_or(usize::MAX, |s| s.document.0),
+        last.map_or(usize::MAX, |s| s.end),
+        inlines.len(),
+    )
+}
+
+/// Signature a cached block WOULD have after shifting, computed from its spans
+/// and the byte delta without cloning or shifting the block.
+///
+/// Returns `None` when the block overlaps the changed range, which is exactly
+/// when it cannot be reused anyway.
+fn shifted_signature(
+    block: &Block,
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<BlockSignature> {
+    let inlines: &[Inline] = match block {
+        Block::Paragraph(inlines) => inlines,
+        Block::Heading { content, .. } => content,
+        Block::FigureCaption { content } => content,
+    };
+    let span_of = |inline: &Inline| match inline {
+        Inline::Text { span, .. } => *span,
+        Inline::LineBreak { span } => *span,
+        Inline::Math { span, .. } => *span,
+        Inline::Label { span, .. } => *span,
+        Inline::Reference { span, .. } => *span,
+    };
+    let first = inlines.first().map(span_of);
+    let last = inlines.last().map(span_of);
+    let start = match first {
+        Some(span) => mapped_span(span, changes, deltas)?.start,
+        None => usize::MAX,
+    };
+    let end = match last {
+        Some(span) => mapped_span(span, changes, deltas)?.end,
+        None => usize::MAX,
+    };
+    Some((
+        first.map_or(usize::MAX, |s| s.document.0),
+        start,
+        last.map_or(usize::MAX, |s| s.document.0),
+        end,
+        inlines.len(),
+    ))
 }
 
 #[cfg(test)]

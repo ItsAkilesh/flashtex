@@ -2,7 +2,7 @@
 //! the FeatureList/LookupList walk used by both `GPOS` and `GSUB`.
 
 use crate::Error;
-use crate::reader::{u16_at, u32_at};
+use crate::reader::{slice, u16_at, u32_at};
 
 /// A parsed Coverage table: glyph id -> coverage index.
 #[derive(Debug, Clone)]
@@ -104,23 +104,79 @@ impl ClassDef {
     }
 }
 
-/// Lookup indices referenced by every FeatureRecord with `tag`, in the order
-/// the LookupList orders them, deduplicated.
+/// Lookup indices of feature `tag` for the default language system of the
+/// `DFLT` script (falling back to `latn`, then the first script), in
+/// LookupList order, deduplicated.
 ///
-/// This walks the FeatureList directly rather than ScriptList/LangSys: the
-/// engine has no script/language selection yet, so every script's `kern` or
-/// `liga` feature contributes. That is documented as a simplification.
+/// Going through ScriptList/LangSys matters: fonts such as Latin Modern
+/// register language-specific `liga`/`kern` FeatureRecords (Turkish without
+/// `fi`, Polish alternates, ...) and a naive union of every record with the
+/// tag would apply them all. Only the default language system is selected;
+/// there is no per-run language tag yet, and that is documented.
 pub fn lookups_for_feature(b: &[u8], tag: &[u8; 4]) -> Result<Vec<u16>, Error> {
     let version_major = u16_at(b, 0)?;
     if version_major != 1 {
-        return Err(Error::Unsupported(format!("layout table version {version_major}")));
+        return Err(Error::Unsupported(format!(
+            "layout table version {version_major}"
+        )));
     }
+    let script_list = usize::from(u16_at(b, 4)?);
     let feature_list = usize::from(u16_at(b, 6)?);
-    let n = usize::from(u16_at(b, feature_list)?);
+
+    // Pick the script: DFLT, else latn, else the first one listed.
+    let n_scripts = usize::from(u16_at(b, script_list)?);
+    let mut chosen: Option<usize> = None;
+    let mut first: Option<usize> = None;
+    let mut latn: Option<usize> = None;
+    for i in 0..n_scripts {
+        let rec = script_list + 2 + 6 * i;
+        let script_tag = slice(b, rec, 4)?;
+        let off = script_list + usize::from(u16_at(b, rec + 4)?);
+        if first.is_none() {
+            first = Some(off);
+        }
+        match script_tag {
+            b"DFLT" => chosen = Some(off),
+            b"latn" => latn = Some(off),
+            _ => {}
+        }
+    }
+    let Some(script) = chosen.or(latn).or(first) else {
+        return Ok(Vec::new());
+    };
+    // Default LangSys, else the first LangSysRecord.
+    let default_off = usize::from(u16_at(b, script)?);
+    let lang_sys = if default_off != 0 {
+        script + default_off
+    } else {
+        let n = usize::from(u16_at(b, script + 2)?);
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        script + usize::from(u16_at(b, script + 4 + 4)?)
+    };
+    // LangSys: lookupOrderOffset, requiredFeatureIndex, featureIndexCount, [indices]
+    let required = u16_at(b, lang_sys + 2)?;
+    let n_feat = usize::from(u16_at(b, lang_sys + 4)?);
+    let mut feature_indices: Vec<u16> = Vec::with_capacity(n_feat + 1);
+    if required != 0xFFFF {
+        feature_indices.push(required);
+    }
+    for i in 0..n_feat {
+        feature_indices.push(u16_at(b, lang_sys + 6 + 2 * i)?);
+    }
+
+    let n_features = usize::from(u16_at(b, feature_list)?);
     let mut out: Vec<u16> = Vec::new();
-    for i in 0..n {
-        let rec = feature_list + 2 + 6 * i;
-        if &b[rec..rec + 4] != tag {
+    for fi in feature_indices {
+        let fi = usize::from(fi);
+        if fi >= n_features {
+            return Err(Error::Malformed(format!(
+                "feature index {fi} >= {n_features}"
+            )));
+        }
+        let rec = feature_list + 2 + 6 * fi;
+        if slice(b, rec, 4)? != tag {
             continue;
         }
         let feat = feature_list + usize::from(u16_at(b, rec + 4)?);
@@ -150,14 +206,25 @@ pub fn lookup(b: &[u8], index: u16, ext_type: u16) -> Result<Lookup, Error> {
         return Err(Error::Malformed(format!("lookup index {index} >= {count}")));
     }
     let at = lookup_list + usize::from(u16_at(b, lookup_list + 2 + 2 * usize::from(index))?);
-    let mut lookup_type = u16_at(b, at)?;
+    let declared_type = u16_at(b, at)?;
+    let mut lookup_type = declared_type;
     let n = usize::from(u16_at(b, at + 4)?);
     let mut subtables = Vec::with_capacity(n);
     for i in 0..n {
         let mut st = at + usize::from(u16_at(b, at + 6 + 2 * i)?);
-        if lookup_type == ext_type {
-            // Extension: format 1, extensionLookupType, extensionOffset (u32).
+        if declared_type == ext_type {
+            // Extension: format 1, extensionLookupType, extensionOffset (u32),
+            // relative to the extension subtable. Every subtable of one
+            // extension lookup must name the same inner type.
+            if u16_at(b, st)? != 1 {
+                return Err(Error::Malformed("extension subtable format".into()));
+            }
             let inner_type = u16_at(b, st + 2)?;
+            if i > 0 && inner_type != lookup_type {
+                return Err(Error::Malformed(
+                    "extension subtables disagree on lookup type".into(),
+                ));
+            }
             st += u32_at(b, st + 4)? as usize;
             lookup_type = inner_type;
         }

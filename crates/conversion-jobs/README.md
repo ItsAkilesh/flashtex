@@ -137,3 +137,86 @@ only the newly created intent because submission proves no provider started, so
 explicit backpressure retry remains possible. `usage` reports actual process-local
 calls and physical execution, not billing. Provider closures still need timeouts.
 The adapter does not implement the bridge CLI, networking or a native screen.
+
+## Typed background command/event boundary
+
+`bridge_adapter::native` provides bounded typed requests (`protocol_version`,
+correlation `id`, `command`) for Admit, Start, Status, Reconcile and Cancel. This
+is an internal adapter API, not an added bridge CLI message. Each command includes
+an exact capture ID and ContextIdentity (project, path, revision, context SHA-256).
+Admission confirms an existing durable capture without starting a provider. Start
+requires the unchanged admitted context; reconciliation takes the exact current
+context and preserves the original conversion identity in returned snapshots.
+
+Snapshots distinguish durable receipt, absent/durable attempt intent, queued/running,
+awaiting journal promotion, proposal-ready and recovery-required states. Restored
+intents are visible at admission before any dispatch. `NativeStatusHandle` reads
+only memory; typed events carry capture and admitted context identity. Full event
+channels remain lossy and clients resynchronize from status. Old buffered events
+are excluded when an identity is retired and newly admitted.
+
+Command bytes are bounded to 16 KiB before parsing. Snapshot serialization uses a
+writer that stops before exceeding its output budget (maximum 512 KiB); it never
+returns partial JSON. Unknown fields/types and mismatched identities fail closed.
+Provider failure messages are bounded to 2048 UTF-8 bytes. Twenty-five tests,
+strict Clippy and formatting pass for this checkpoint. No new CLI/provider call.
+
+## Ledger handoff and concurrent projects
+
+The optional-feature suite now contains 28 passing tests. The actual edit-ledger
+handoff test verifies its durable document bytes remain unchanged throughout
+conversion and proposal promotion. Only the explicit caller then prepares/reviews
+an edit, applies it through edit-ledger, acknowledges the bridge receipt, and
+confirms the ledger transaction. Reopening both stores and replaying the same
+receipt does not insert twice. This verifies storage handoff, not native review UI
+or compiler acceptance. Conversion jobs do not write document source.
+
+A two-project test holds one converter pending while another project completes;
+cancelling the first does not cancel or overwrite the second. Admission is bounded
+FIFO with fixed worker count, not weighted per-project quota scheduling. Native
+reconciliation also revokes exposed status when a full snapshot replacement
+invalidates the original anchor and no current context can be assembled.
+
+## Durable multi-capture review inbox
+
+`bridge_adapter::review::ReviewInbox` persists bounded proposal cards, explicit
+current selection and decision history under an exclusive journal lock. The caller
+admits only journaled proposals with their actual ContextIdentity. No card is
+selected or accepted automatically. `decide(DecisionRequest)` requires the selected
+capture, exact proposal hash and explicit `AcceptForPreparation` or `RejectCapture`
+intent. Identical decision retries return the same context-bound handoff; reuse of
+an ID with altered data or a contradictory second decision fails closed.
+
+A `ReviewIntentHandoff` is a durable intention, not proof of human presence or final
+approval of a PreparedEdit. As coordinated with the controller owner, the caller
+must validate it against actual current context, request preparation, display the
+exact resulting edit and obtain explicit approval before constructing ApprovedEdit
+or invoking the controller's apply action. The inbox never calls bridge prepare,
+reject, apply, providers or source-writing APIs itself.
+
+Context changes and cancellation revoke handoffs. Explicit rejection of a stale
+proposal is possible using its current context. Terminal cards can be retired while
+bounded decision history and capture tombstones preserve deduplication; full limits
+return capacity errors rather than silently evicting history. A cloneable InboxView
+returns immutable snapshots without disk IO. Any persistence uncertainty poisons
+this handle and its view until reopen; bounded-serialization rejection leaves the
+previous checkpoint intact. Reopen validates record and decision identity invariants.
+
+The inbox adds eight tests; 36 all-feature/all-target tests, strict Clippy and
+formatting pass. Cases cover reopen, selection, duplicate/tampered decisions,
+context changes, cancellation, retirement, bounded serialization, corrupt state,
+exclusive ownership and recovery after real storage failure.
+
+Review follow-up: `InboxView::visible_ids(InboxFilter)` returns arrival-ordered
+IDs filtered by project and optional undecided status, without copying proposal
+bodies or reading disk. `navigate` changes selection only; it never accepts a card.
+Selection persists across reopen; reaching an end keeps it unchanged, and navigating
+an empty filtered view clears it. `admit_ready` consumes only the native adapter's
+fresh, durably journaled proposal state and leaves selection/decision empty.
+
+Inbox event subscribers use bounded nonblocking channels. Notifications carry
+capture/project IDs and durable generation, not proposal bodies or approval tokens.
+Full consumers lose notifications; dropped-delivery counts and immutable view
+snapshots support resynchronization. Persistence uncertainty emits a distinct event
+and makes view reads fail until reopen. Thirty-nine tests, strict Clippy and
+formatting pass, including actual native-ready snapshot admission into this inbox.

@@ -16,8 +16,9 @@
   ],
   "revision": 1,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-012",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T04:18:57Z"
+  "updated_utc": "2026-09-12T06:14:51.538696+00:00",
+  "integration_evidence": "f596c4c integrated mainc89ca86;45validator tests and realcompiler/bridge probes passed"
 }

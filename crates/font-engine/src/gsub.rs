@@ -18,9 +18,12 @@ struct LigatureSubtable {
     sets: Vec<Vec<(u16, Vec<u16>)>>,
 }
 
+/// Ligature lookups in LookupList order. Each lookup is one shaping pass
+/// over the whole run (OpenType semantics), so a font can build `ffi` as
+/// `f`+`f` -> `ff` in one lookup and `ff`+`i` -> `ffi` in the next.
 #[derive(Debug, Clone, Default)]
 pub struct GsubLigatures {
-    subtables: Vec<LigatureSubtable>,
+    lookups: Vec<Vec<LigatureSubtable>>,
     pub unsupported: Vec<Unsupported>,
 }
 
@@ -32,6 +35,7 @@ impl GsubLigatures {
             if lk.lookup_type != 4 {
                 out.unsupported.push(Unsupported {
                     table: "GSUB",
+                    feature: "liga",
                     detail: format!(
                         "liga lookup {} is type {} (only LigatureSubst type 4 is applied)",
                         lk.index, lk.lookup_type
@@ -39,46 +43,53 @@ impl GsubLigatures {
                 });
                 continue;
             }
+            let mut subtables = Vec::with_capacity(lk.subtables.len());
             for st in lk.subtables {
-                out.subtables.push(parse_ligature_subtable(gsub, st)?);
+                subtables.push(parse_ligature_subtable(gsub, st)?);
             }
+            out.lookups.push(subtables);
         }
         Ok(out)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.subtables.is_empty()
+        self.lookups.is_empty()
     }
 
-    /// Exact match for the full component sequence.
+    /// Number of passes (lookups).
+    pub fn passes(&self) -> usize {
+        self.lookups.len()
+    }
+
+    /// Result of running every pass over exactly `components`; `Some` only
+    /// when they collapse to a single glyph.
     pub fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId> {
-        let first = components.first()?;
-        for sub in &self.subtables {
-            let Some(ci) = sub.coverage.index(first.0) else {
-                continue;
-            };
-            for (lig, rest) in &sub.sets[usize::from(ci)] {
-                if rest.len() == components.len() - 1
-                    && rest.iter().zip(&components[1..]).all(|(a, b)| *a == b.0)
-                {
-                    return Some(GlyphId(*lig));
+        let mut run: Vec<GlyphId> = components.to_vec();
+        for pass in 0..self.passes() {
+            let mut i = 0;
+            while i < run.len() {
+                if let Some((lig, len)) = self.longest_in_pass(pass, &run[i..]) {
+                    run.splice(i..i + len, [lig]);
                 }
+                i += 1;
             }
         }
-        None
+        (run.len() == 1 && components.len() > 1).then(|| run[0])
     }
 
-    /// Longest ligature starting at `glyphs[0]`; returns (ligature, length).
-    pub fn longest(&self, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
+    /// Longest ligature of pass `pass` starting at `glyphs[0]`; returns
+    /// (ligature, component count).
+    pub fn longest_in_pass(&self, pass: usize, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
         let first = glyphs.first()?;
         let mut best: Option<(GlyphId, usize)> = None;
-        for sub in &self.subtables {
+        for sub in self.lookups.get(pass)? {
             let Some(ci) = sub.coverage.index(first.0) else {
                 continue;
             };
             for (lig, rest) in &sub.sets[usize::from(ci)] {
                 let len = rest.len() + 1;
                 if len <= glyphs.len()
+                    && len >= 2
                     && rest.iter().zip(&glyphs[1..]).all(|(a, b)| *a == b.0)
                     && best.is_none_or(|(_, l)| len > l)
                 {
@@ -86,7 +97,7 @@ impl GsubLigatures {
                 }
             }
             if best.is_some() {
-                // First subtable covering the glyph decides (lookup order).
+                // First subtable covering the glyph decides within a lookup.
                 return best;
             }
         }

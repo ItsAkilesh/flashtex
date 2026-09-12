@@ -1,35 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "bridge-context-jobs",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-022": {
+      "acknowledged_utc": "2026-09-12T06:25:28Z",
+      "adaptation": "Reviewed exact r3 main assignment. Existing bridge adapter completed at296f16e; ongoing explicit orchestrator task adds durable review inbox and filtered navigation, preserving controller exact-edit approval boundary. No CLI/core writes.",
+      "main_sha": "3730c236086204a603de7c55ecc77584c5999080",
+      "revision": 3
+    }
+  },
   "branch": "agent/bridge-context/conversion-jobs",
-  "machine": "linux-primary",
-  "tool": "Codex Astra hosted /root/bridge_context",
   "capabilities": [
     "rust",
     "conversion-jobs",
     "bridge-journal"
   ],
-  "allocation_id": "hosted-openai-product",
-  "state": "ready_for_integration",
-  "updated_utc": "2026-09-12T06:01:44.129548+00:00",
-  "assignment_acknowledgements": {
-    "FT-022": {
-      "revision": 1,
-      "acknowledged_utc": "2026-09-12T05:55:46.584469+00:00",
-      "main_sha": "254193c175534e78bfd9e5206b4850b86123cbe6",
-      "adaptation": "Exact assignment pair manually acknowledged under orchestrator authorization while coord.py branch-alias check is fixed. Own optional async bridge adapter only inside conversion-jobs; no global/core edits."
-    }
-  },
-  "summary": "FT-022 optional reusable async bridge adapter complete: durable single-attempt intents, nonblocking status handles, exact source context check before journal promotion; 22 tests, strict clippy, fmt pass.",
-  "usage": {
-    "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized.",
-    "evidence": "cargo test --all-features --all-targets:22 pass; cargo clippy same flags -D warnings:pass; cargo fmt --check:pass. No provider calls."
-  },
+  "code_revision": "c1d403b021648bf8010f27bdf9937809c50be0c3",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
     "pessimistic": 0
   },
-  "next_action": "Orchestrator integrates exact code_revision; native adapter integration must keep document/journal actor separate from UI status. Await next product task.",
-  "code_revision": "296f16efeb69fd386a80fd25a7d2010b7977d402"
+  "machine": "linux-primary",
+  "main_integrated_through": "fed1739a3b415b772eeea048166b3ff3ced0f94e",
+  "next_action": "Integrate exact code revision. Controller must validate ReviewIntentHandoff against actual current context then separately obtain approval for exact PreparedEdit; inbox never prepares/applies source.",
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Durable bounded review inbox, explicit accept-for-preparation/reject decisions, revocable handoffs, project filtering/navigation and bounded events complete. Root controller exact PreparedEdit approval remains separate.",
+  "tool": "Codex Astra hosted /root/bridge_context",
+  "updated_utc": "2026-09-12T06:27:06.468455+00:00",
+  "usage": {
+    "evidence": "39 all-feature/all-target tests, strict Clippy, fmt passed. Includes native durable-proposal admission, reopened decisions, corruption/storage failure, cancellation, stale context and event backpressure. No provider calls.",
+    "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized."
+  }
 }

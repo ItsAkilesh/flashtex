@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-collaboration",
+  "task_id": "FT-044",
+  "revision": 1,
+  "branch": "agent/daniel-collaboration/collaboration-core",
+  "assignment_path": "coordination/assignments/FT-044.json",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

@@ -1,25 +1,24 @@
 {
   "acceptance": [
-    "Harness renders identical declared fixtures through available reference engines and FlashTeX at fixed DPI/color settings",
-    "Artifacts include overlays, diff heatmaps, pixel error distributions, structural text/rule measurements, and exact provenance",
-    "Narrow-case results never claim general pixel perfection; unavailable engines/fonts are explicit",
-    "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, Max quota/reset/usage and in-flight calls"
+    "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+    "Native preview/export differences are classified",
+    "Narrow corpus scope remains explicit"
   ],
   "agent_id": "mac-visual-oracle",
-  "allocation_id": "claude-mac20x-visual-oracle",
+  "allocation_id": "claude-mac20x-visual-oracle-stage3",
   "branch": "agent/mac-visual-oracle/reference-raster",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
-  "objective": "Build reference-render and raster-diff harnesses for a declared visual corpus on Jaysen mac-m1max-a using Opus. pdfLaTeX, XeLaTeX, and LuaLaTeX are test oracles only; FlashTeX remains original Rust. Record exact engine/font versions, flags, page size, DPI, color profile, and fixture SHA; generate overlays, per-pixel and perceptual metrics, and separate preview/export comparisons.",
+  "input_main_sha": "59a49ab895df3598b3f5d895b593b4fbd3dd7972",
+  "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
   "owned_paths": [
     "tests/visual-corpus/harness",
     "tests/visual-corpus/evidence"
   ],
-  "revision": 1,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-017",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:20:25Z"
+  "updated_utc": "2026-09-12T08:21:08Z"
 }

@@ -1,23 +1,26 @@
 {
   "acceptance": [
-    "Clean and incremental results match",
-    "Diagnostics cite source boxes",
-    "Reference line breaks are measured"
+    "Page and baseline metrics have golden tests",
+    "Preview/PDF positions agree",
+    "Visual deltas are quantified"
   ],
   "agent_id": "mac-paragraph-layout",
-  "allocation_id": "claude-mac20x-paragraph-layout-stage2",
+  "allocation_id": "claude-mac20x-paragraph-layout-stage3",
   "branch": "agent/mac-paragraph-layout/linebreak",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "5e75574b562fca57bb24803d1e7d557794da43ee",
-  "objective": "Add deterministic hyphenation boundaries, penalties, emergency stretch and overfull/underfull diagnostics with exact box provenance.",
+  "input_main_sha": "baa3b9f8053f7516f9a1404182a415a249a64b12",
+  "objective": "Exact paragraph linebreak and glue/penalty convergence",
   "owned_paths": [
     "crates/paragraph-layout"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-019",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:08:51Z"
+  "updated_utc": "2026-09-12T06:42:27Z",
+  "transfer_to": "FT-030",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return",
+  "cancellation_reason": "User-authorized ownership transfer to Daniel during Jaysen quota cooldown; old work preserved, old worker must not resume these paths"
 }

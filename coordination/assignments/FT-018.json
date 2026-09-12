@@ -1,23 +1,26 @@
 {
   "acceptance": [
-    "Roundtrip extraction and native rendering preserve supported Unicode",
-    "Fallback is explicit and deterministic",
-    "Subset bytes are reproducible"
+    "One shared metric source drives all three consumers",
+    "Visual corpus quantifies remaining differences",
+    "Unsupported shaping fails explicitly"
   ],
   "agent_id": "mac-font-engine",
-  "allocation_id": "claude-mac20x-font-engine-stage2",
+  "allocation_id": "claude-mac20x-font-engine-stage3",
   "branch": "agent/mac-font-engine/tex-fonts",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
-  "objective": "Extend glyph clustering, kerning, combining marks, fallback identity, subset embedding and ToUnicode with licensed pinned fonts.",
+  "input_main_sha": "1654e8ac0ecf5aff20ac17316a6e698bf3bda119",
+  "objective": "Bind exact TFM8bitencoding to declared original font GIDs",
   "owned_paths": [
     "crates/font-engine"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-018",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:04:03Z"
+  "updated_utc": "2026-09-12T06:39:21Z",
+  "transfer_to": "FT-031",
+  "resume_rule": "Do not resume these owned files after cooldown; ownership is transferred to Daniel until explicit return",
+  "cancellation_reason": "User-authorized ownership transfer to Daniel during Jaysen quota cooldown; old work preserved, old worker must not resume these paths"
 }

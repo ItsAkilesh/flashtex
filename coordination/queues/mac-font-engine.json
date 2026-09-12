@@ -1,6 +1,6 @@
 {
   "agent_id": "mac-font-engine",
-  "next_index": 1,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -26,6 +26,34 @@
       "allocation_id": "claude-mac20x-font-engine-stage3",
       "name": "Compiler-preview-PDF font convergence",
       "objective": "Provide adapters and evidence so compiler layout, native preview and PDF use identical font identity, advances, clusters and glyph mapping.",
+      "owned_paths": [
+        "crates/font-engine"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "One shared metric source drives all three consumers",
+        "Visual corpus quantifies remaining differences",
+        "Unsupported shaping fails explicitly"
+      ],
+      "allocation_id": "claude-mac20x-font-engine-stage3",
+      "name": "Bind exact TFM8bitencoding to declared original font GIDs",
+      "objective": "Bind exact TFM8bitencoding to declared original font GIDs",
+      "owned_paths": [
+        "crates/font-engine"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "One shared metric source drives all three consumers",
+        "Visual corpus quantifies remaining differences",
+        "Unsupported shaping fails explicitly"
+      ],
+      "allocation_id": "claude-mac20x-font-engine-stage3",
+      "name": "Prove font metrics/glyph resources against pinned reference without substitution",
+      "objective": "Prove font metrics/glyph resources against pinned reference without substitution",
       "owned_paths": [
         "crates/font-engine"
       ],

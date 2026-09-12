@@ -17,17 +17,22 @@
 //! embedding helper and returns the old-to-new map. See README.md for the
 //! proposed ABI and the list of unsupported features.
 
+pub mod adapters;
 pub mod core14;
 pub mod embed;
+pub mod encoding;
+#[rustfmt::skip]
 mod generated;
 mod gpos;
 mod gsub;
 mod kern;
+pub mod manifest;
+pub mod math;
 mod otl;
 mod reader;
 pub mod resolve;
-pub mod shape;
 pub mod sha256;
+pub mod shape;
 pub mod subset;
 pub mod truetype;
 
@@ -36,7 +41,7 @@ use std::path::{Path, PathBuf};
 
 pub use core14::Core14Face;
 pub use shape::{Cluster, Glyph, MissingGlyph, ShapeOptions, Shaped};
-pub use truetype::TrueTypeFace;
+pub use truetype::{Outlines, TrueTypeFace};
 
 /// Errors from loading, parsing, shaping or subsetting.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +59,14 @@ pub enum Error {
         ch: char,
         byte_offset: usize,
         reason: &'static str,
+    },
+    /// A requested shaping feature depends on a lookup type this engine does
+    /// not implement in this font (e.g. contextual kerning). Raised instead
+    /// of shaping partially when `ShapeOptions::fail_on_unsupported_lookups`.
+    UnsupportedFeature {
+        table: &'static str,
+        feature: &'static str,
+        detail: String,
     },
 }
 
@@ -74,6 +87,11 @@ impl fmt::Display for Error {
                 "cannot shape U+{:04X} at byte {byte_offset}: {reason}",
                 *ch as u32
             ),
+            Error::UnsupportedFeature {
+                table,
+                feature,
+                detail,
+            } => write!(f, "{table} feature {feature}: {detail}"),
         }
     }
 }
@@ -162,6 +180,9 @@ pub enum KerningSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unsupported {
     pub table: &'static str,
+    /// The OpenType feature (`kern`, `liga`, `mark`) or table area the note
+    /// belongs to, so the shaper can fail when that feature is requested.
+    pub feature: &'static str,
     pub detail: String,
 }
 
@@ -181,10 +202,18 @@ pub trait Face {
     /// Horizontal kerning adjustment for the pair, in font units (usually
     /// negative), and which table supplied it.
     fn kerning(&self, left: GlyphId, right: GlyphId) -> (i16, KerningSource);
-    /// Ligature glyph for the exact glyph sequence, if the font declares one.
+    /// Which kerning data this face would consult (regardless of any pair).
+    fn kerning_source(&self) -> KerningSource;
+    /// Ligature glyph the face's lookups produce for exactly this sequence.
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId>;
-    /// Longest ligature starting at `glyphs[0]` (returns component count).
-    fn longest_ligature(&self, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)>;
+    /// GPOS MarkToBase attachment: offset (dx, dy) in font units from the
+    /// base glyph's origin at which `mark` is drawn, if the font defines it.
+    fn mark_attachment(&self, base: GlyphId, mark: GlyphId) -> Option<(i16, i16)>;
+    /// Number of ligature passes (GSUB lookups) to run in order.
+    fn ligature_passes(&self) -> usize;
+    /// Longest ligature of pass `pass` starting at `glyphs[0]`; returns the
+    /// ligature glyph and the number of components it replaces (>= 2).
+    fn longest_ligature(&self, pass: usize, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)>;
     fn unsupported(&self) -> &[Unsupported];
     /// PostScript name (`name` id 6 or AFM FontName).
     fn postscript_name(&self) -> &str;

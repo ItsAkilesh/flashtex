@@ -47,6 +47,16 @@ pub struct MathItem {
     pub baseline: f64,
     pub size: f64,
     pub span: Span,
+    /// A real rectangular rule represented alongside the legacy text fallback.
+    /// Coordinates are relative to the surrounding math baseline.
+    pub rule: Option<MathRule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MathRule {
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -306,45 +316,61 @@ fn symbol(text: String, span: Span) -> MathAtom {
     }
 }
 
+/// Every named symbol the math layer can emit, as (command, rendered glyph).
+///
+/// The export adapter in `crate::export` is tested against this exact table, so
+/// adding a symbol here without giving it an export mapping fails the build's
+/// tests rather than silently producing a glyph the PDF path turns into `?`.
+pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
+    ("alpha", "α"),
+    ("beta", "β"),
+    ("gamma", "γ"),
+    ("delta", "δ"),
+    ("theta", "θ"),
+    ("lambda", "λ"),
+    ("mu", "μ"),
+    ("pi", "π"),
+    ("sigma", "σ"),
+    ("phi", "φ"),
+    ("omega", "ω"),
+    ("times", "×"),
+    ("div", "÷"),
+    ("pm", "±"),
+    ("leq", "≤"),
+    ("geq", "≥"),
+    ("neq", "≠"),
+    ("approx", "≈"),
+    ("cdot", "·"),
+    ("infty", "∞"),
+    ("sum", "∑"),
+    ("int", "∫"),
+];
+
+/// The rule character used to draw fraction bars.
+///
+/// This is a stand-in, not a real glyph: runtime-v1 has no rule item type yet
+/// (see issue #9). No font contains it, so it is deliberately unrepresentable in
+/// the export adapter and is reported rather than silently substituted.
+pub const FRACTION_RULE_CHAR: char = '\u{2500}';
+
 fn command_glyph(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "alpha" => "α",
-        "beta" => "β",
-        "gamma" => "γ",
-        "delta" => "δ",
-        "theta" => "θ",
-        "lambda" => "λ",
-        "mu" => "μ",
-        "pi" => "π",
-        "sigma" => "σ",
-        "phi" => "φ",
-        "omega" => "ω",
-        "times" => "×",
-        "div" => "÷",
-        "pm" => "±",
-        "leq" => "≤",
-        "geq" => "≥",
-        "neq" => "≠",
-        "approx" => "≈",
-        "cdot" => "·",
-        "infty" => "∞",
-        "sum" => "∑",
-        "int" => "∫",
-        _ => return None,
-    })
+    COMMAND_GLYPHS
+        .iter()
+        .find(|(command, _)| *command == name)
+        .map(|(_, glyph)| *glyph)
 }
 
-/// Math symbols are measured with the same real metrics as body text, at the
-/// script size in force, so a superscript's advance is not a rough guess.
-fn glyph_width(text: &str, size: f64) -> f64 {
-    crate::metrics::string_width(crate::metrics::Font::TimesRoman, text, size)
+pub fn layout(list: &MathList, size: f64, diagnostics: &mut Vec<Diagnostic>) -> MathBox {
+    layout_list(list, size, size, 0, diagnostics)
 }
 
-pub fn layout(list: &MathList, size: f64) -> MathBox {
-    layout_list(list, size, size, 0)
-}
-
-fn layout_list(list: &MathList, size: f64, root_size: f64, level: usize) -> MathBox {
+fn layout_list(
+    list: &MathList,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
     let mut out = MathBox {
         items: Vec::new(),
         width: 0.0,
@@ -352,7 +378,7 @@ fn layout_list(list: &MathList, size: f64, root_size: f64, level: usize) -> Math
         descent: 0.2 * size,
     };
     for atom in &list.atoms {
-        let mut nucleus = layout_nucleus(atom, size, root_size, level);
+        let mut nucleus = layout_nucleus(atom, size, root_size, level, diagnostics);
         let nucleus_width = nucleus.width;
         offset_items(&mut nucleus.items, out.width, 0.0);
         out.ascent = out.ascent.max(nucleus.ascent);
@@ -366,7 +392,7 @@ fn layout_list(list: &MathList, size: f64, root_size: f64, level: usize) -> Math
         };
         let mut script_width: f64 = 0.0;
         if let Some(sup) = &atom.superscript {
-            let mut b = layout_list(sup, script_size, root_size, level + 1);
+            let mut b = layout_list(sup, script_size, root_size, level + 1, diagnostics);
             let dy = -SUPERSCRIPT_RAISE_EM * size;
             offset_items(&mut b.items, out.width + nucleus_width, dy);
             out.ascent = out.ascent.max(b.ascent - dy);
@@ -374,7 +400,7 @@ fn layout_list(list: &MathList, size: f64, root_size: f64, level: usize) -> Math
             out.items.extend(b.items);
         }
         if let Some(sub) = &atom.subscript {
-            let mut b = layout_list(sub, script_size, root_size, level + 1);
+            let mut b = layout_list(sub, script_size, root_size, level + 1, diagnostics);
             let dy = SUBSCRIPT_LOWER_EM * size;
             offset_items(&mut b.items, out.width + nucleus_width, dy);
             out.descent = out.descent.max(b.descent + dy);
@@ -386,7 +412,13 @@ fn layout_list(list: &MathList, size: f64, root_size: f64, level: usize) -> Math
     out
 }
 
-fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> MathBox {
+fn layout_nucleus(
+    atom: &MathAtom,
+    size: f64,
+    root_size: f64,
+    level: usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathBox {
     match &atom.nucleus {
         Nucleus::Symbol(text) => MathBox {
             items: vec![MathItem {
@@ -395,14 +427,29 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                 baseline: 0.0,
                 size,
                 span: atom.span,
+                rule: None,
             }],
-            width: glyph_width(text, size),
+            width: crate::layout::shaped_width(
+                text,
+                size,
+                crate::layout::math_font(text),
+                atom.span,
+                diagnostics,
+            )
+            .0,
             ascent: size,
             descent: 0.2 * size,
         },
         Nucleus::Radical(body) => {
-            let mut b = layout_list(body, size, root_size, level);
-            let radical_width = glyph_width("√", size);
+            let mut b = layout_list(body, size, root_size, level, diagnostics);
+            let radical_width = crate::layout::shaped_width(
+                "√",
+                size,
+                crate::layout::math_font("√"),
+                atom.span,
+                diagnostics,
+            )
+            .0;
             offset_items(&mut b.items, radical_width, 0.0);
             b.items.insert(
                 0,
@@ -412,6 +459,7 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                     baseline: 0.0,
                     size,
                     span: atom.span,
+                    rule: None,
                 },
             );
             b.width += radical_width;
@@ -426,15 +474,16 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
             } else {
                 root_size * SECOND_ORDER_SCRIPT_SCALE
             };
-            let mut num = layout_list(numerator, child_size, root_size, level + 1);
-            let mut den = layout_list(denominator, child_size, root_size, level + 1);
+            let mut num = layout_list(numerator, child_size, root_size, level + 1, diagnostics);
+            let mut den = layout_list(denominator, child_size, root_size, level + 1, diagnostics);
             let pad = 0.12 * size;
             let natural_width = num.width.max(den.width) + 2.0 * pad;
             let axis = -MATH_AXIS_EM * size;
             let rule = FRACTION_RULE_EM * size;
-            let dash_width = glyph_width("─", child_size).max(0.01);
-            let rule_text = "─".repeat((natural_width / dash_width).ceil().max(1.0) as usize);
-            let width = glyph_width(&rule_text, child_size);
+            // This legacy string is only a paint fallback. Its geometry is the
+            // real rule width and does not pretend U+2500 exists in a Core 14 face.
+            let rule_text = "─".to_string();
+            let width = natural_width;
             let num_dy = axis - FRACTION_GAP_EM * size - rule / 2.0 - num.descent;
             let den_dy = axis + FRACTION_GAP_EM * size + rule / 2.0 + den.ascent;
             let num_x = (width - num.width) / 2.0;
@@ -448,6 +497,11 @@ fn layout_nucleus(atom: &MathAtom, size: f64, root_size: f64, level: usize) -> M
                 baseline: axis + rule / 2.0,
                 size: child_size,
                 span: atom.span,
+                rule: Some(MathRule {
+                    y: axis - rule / 2.0,
+                    width,
+                    height: rule,
+                }),
             });
             items.extend(den.items);
             MathBox {

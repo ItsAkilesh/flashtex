@@ -2,6 +2,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+mod bibliography;
+mod bibliography_values;
+pub use bibliography_values::*;
+mod search;
+pub use search::*;
+
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GROUP_BYTES: usize = 64 * 1024;
 const MAX_GROUP_DEPTH: usize = 128;
@@ -24,6 +30,12 @@ pub enum Category {
     Label,
     Citation,
     Command,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentKind {
+    Latex,
+    Bibliography,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -129,6 +141,10 @@ pub enum IndexError {
         name: String,
     },
     InvalidRenamePlan,
+    InvalidSearchRequest,
+    IncompleteSearch,
+    InvalidSearchPlan,
+    ReplacementPlanTooLarge,
     DocumentTooLarge {
         bytes: usize,
         limit: usize,
@@ -184,10 +200,12 @@ pub struct RenamePlan {
 }
 
 struct Document {
+    kind: DocumentKind,
     revision: u64,
     source: String,
     symbols: Vec<Symbol>,
     diagnostics: Vec<Diagnostic>,
+    records: Vec<BibliographyRecord>,
 }
 
 pub struct ProjectIndex {
@@ -200,6 +218,8 @@ pub struct ProjectIndex {
     readers: DependencyMap,
     unresolved: BTreeMap<String, Vec<UnresolvedReference>>,
     last_metrics: Option<ReindexMetrics>,
+    metadata_cache: BTreeMap<String, CitationMetadata>,
+    metadata_metrics: MetadataCacheMetrics,
 }
 
 impl ProjectIndex {
@@ -217,6 +237,8 @@ impl ProjectIndex {
             readers: BTreeMap::new(),
             unresolved: BTreeMap::new(),
             last_metrics: None,
+            metadata_cache: BTreeMap::new(),
+            metadata_metrics: MetadataCacheMetrics::default(),
         })
     }
 
@@ -230,6 +252,51 @@ impl ProjectIndex {
                 .map(|(file, doc)| (file.clone(), doc.revision))
                 .collect(),
         }
+    }
+
+    /// Replace an explicitly reviewed full membership snapshot atomically.
+    /// Unlike incremental replacement, unchanged durable revisions may be reopened.
+    /// Removed revision watermarks survive; ordinary updates still reject them.
+    pub fn replace_membership(
+        &mut self,
+        expected: &VersionSnapshot,
+        documents: &[(&str, u64, &str, DocumentKind)],
+    ) -> Result<(), IndexError> {
+        self.check(expected)?;
+        let generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(IndexError::GenerationExhausted)?;
+        let mut next = Self::new(&self.project_id)?;
+        for &(path, revision, source, kind) in documents {
+            if next.documents.contains_key(path) {
+                return Err(IndexError::InvalidPath);
+            }
+            if let Some(&current) = self.last_revisions.get(path) {
+                if revision < current {
+                    return Err(IndexError::StaleDocument {
+                        current_revision: current,
+                        proposed_revision: revision,
+                    });
+                }
+            }
+            if let Some(old) = self.documents.get(path) {
+                if old.revision == revision && (old.source != source || old.kind != kind) {
+                    return Err(IndexError::StaleDocument {
+                        current_revision: old.revision,
+                        proposed_revision: revision,
+                    });
+                }
+            }
+            next.replace_source(path, revision, source, kind)?;
+        }
+        for (path, revision) in &self.last_revisions {
+            next.last_revisions.entry(path.clone()).or_insert(*revision);
+        }
+        next.generation = generation;
+        next.last_metrics = None;
+        *self = next;
+        Ok(())
     }
 
     fn check(&self, snapshot: &VersionSnapshot) -> Result<(), IndexError> {
@@ -264,6 +331,39 @@ impl ProjectIndex {
         revision: u64,
         source: &str,
     ) -> Result<UpdateSummary, IndexError> {
+        self.replace_source(file, revision, source, DocumentKind::Latex)
+    }
+
+    /// Explicitly declares a bibliography source; extensions never infer its kind.
+    pub fn replace_bibliography_document(
+        &mut self,
+        file: &str,
+        revision: u64,
+        source: &str,
+    ) -> Result<UpdateSummary, IndexError> {
+        self.replace_source(file, revision, source, DocumentKind::Bibliography)
+    }
+
+    pub fn document_kind(
+        &self,
+        snapshot: &VersionSnapshot,
+        file: &str,
+    ) -> Result<DocumentKind, IndexError> {
+        self.check(snapshot)?;
+        validate_path(file)?;
+        self.documents
+            .get(file)
+            .map(|document| document.kind)
+            .ok_or(IndexError::MissingDocument)
+    }
+
+    fn replace_source(
+        &mut self,
+        file: &str,
+        revision: u64,
+        source: &str,
+        kind: DocumentKind,
+    ) -> Result<UpdateSummary, IndexError> {
         let started = Instant::now();
         let generation = self.check_update(file, revision)?;
         if source.len() > MAX_DOCUMENT_BYTES {
@@ -273,7 +373,13 @@ impl ProjectIndex {
             });
         }
         let lexical_started = Instant::now();
-        let (symbols, diagnostics) = scan(file, revision, source);
+        let (symbols, diagnostics, records) = match kind {
+            DocumentKind::Latex => {
+                let (symbols, diagnostics) = scan(file, revision, source);
+                (symbols, diagnostics, Vec::new())
+            }
+            DocumentKind::Bibliography => bibliography::scan(file, revision, source),
+        };
         let lexical_elapsed_nanos = lexical_started.elapsed().as_nanos();
         let symbol_count = symbols.len();
         let diagnostic_copy = diagnostics.clone();
@@ -281,10 +387,12 @@ impl ProjectIndex {
             .commit_document(
                 file,
                 Some(Document {
+                    kind,
                     revision,
                     source: source.to_owned(),
                     symbols,
                     diagnostics,
+                    records,
                 }),
             );
         self.last_revisions.insert(file.to_owned(), revision);
@@ -332,6 +440,32 @@ impl ProjectIndex {
 
     /// Update dependency memberships; only changed definition availability wakes readers.
     fn commit_document(&mut self, file: &str, replacement: Option<Document>) -> (usize, usize) {
+        let mut dirty_metadata = BTreeSet::new();
+        let mut changed_macros = BTreeSet::new();
+        for document in [self.documents.get(file), replacement.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            dirty_metadata.extend(
+                document
+                    .symbols
+                    .iter()
+                    .filter(|s| s.kind.category() == Category::Citation)
+                    .map(|s| s.name.clone()),
+            );
+            changed_macros.extend(
+                document
+                    .records
+                    .iter()
+                    .filter(|r| r.entry_type == "string")
+                    .flat_map(|r| r.fields.iter().map(|f| f.name.clone())),
+            );
+        }
+        for (key, metadata) in &self.metadata_cache {
+            if !metadata.macro_dependencies.is_disjoint(&changed_macros) {
+                dirty_metadata.insert(key.clone());
+            }
+        }
         let (old_definitions, old_readers) = relation_keys(self.documents.get(file));
         let (new_definitions, new_readers) = relation_keys(replacement.as_ref());
         let availability: Vec<_> = old_definitions
@@ -389,6 +523,24 @@ impl ProjectIndex {
                 .collect();
             self.unresolved.insert(path.clone(), unresolved);
         }
+        let mut recomputed = 0;
+        let mut removed = 0;
+        for key in dirty_metadata {
+            let symbol_key = (Category::Citation, key.clone());
+            if self.definitions.contains_key(&symbol_key) || self.readers.contains_key(&symbol_key)
+            {
+                let metadata = bibliography_values::resolve(self, &key);
+                self.metadata_cache.insert(key, metadata);
+                recomputed += 1;
+            } else if self.metadata_cache.remove(&key).is_some() {
+                removed += 1;
+            }
+        }
+        self.metadata_metrics = MetadataCacheMetrics {
+            keys_recomputed: recomputed,
+            keys_reused: self.metadata_cache.len() - recomputed,
+            keys_removed: removed,
+        };
         (changed, affected.len())
     }
 
@@ -615,6 +767,44 @@ impl ProjectIndex {
             candidate.occurrences.push(symbol.source);
         }
         Ok(candidates.into_values().take(limit).collect())
+    }
+
+    pub fn citation_metadata(
+        &self,
+        snapshot: &VersionSnapshot,
+        key: &str,
+    ) -> Result<CitationMetadata, IndexError> {
+        self.check(snapshot)?;
+        Ok(self
+            .metadata_cache
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| CitationMetadata::missing(key)))
+    }
+
+    /// Sorted citation names with metadata details, including unresolved references.
+    pub fn complete_citations(
+        &self,
+        snapshot: &VersionSnapshot,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<CitationMetadata>, IndexError> {
+        self.check(snapshot)?;
+        Ok(self
+            .metadata_cache
+            .iter()
+            .filter(|(key, _)| key.starts_with(prefix))
+            .take(limit)
+            .map(|(_, metadata)| metadata.clone())
+            .collect())
+    }
+
+    pub fn metadata_cache_metrics(
+        &self,
+        snapshot: &VersionSnapshot,
+    ) -> Result<MetadataCacheMetrics, IndexError> {
+        self.check(snapshot)?;
+        Ok(self.metadata_metrics.clone())
     }
 }
 

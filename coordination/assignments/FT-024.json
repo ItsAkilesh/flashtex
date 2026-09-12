@@ -1,23 +1,22 @@
 {
   "acceptance": [
-    "Meaningful tests and strict lint pass",
-    "Publish truthful execution provenance and exact tested SHA",
-    "No native integration or PDF parity claim without measured evidence"
+    "Meaningful bounded behavior tests and strict lint pass",
+    "Preserve exact identities; publish measured evidence and unsupported gates"
   ],
   "agent_id": "commander-font-resources",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "1befb923fb8c248a704a1ff5148d77b5f581130f",
-  "objective": "Composite transform geometry and exact bounds",
+  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
+  "objective": "Implement exact TFM boundary ligature/kern programs with bounded execution and source intervals",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 3,
+  "revision": 9,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:04:38Z"
+  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
 }

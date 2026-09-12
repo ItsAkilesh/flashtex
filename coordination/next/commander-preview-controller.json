@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-preview-controller",
-  "task_id": "FT-027",
-  "revision": 1,
-  "branch": "agent/commander/preview-controller",
   "assignment_path": "coordination/assignments/FT-027.json",
-  "updated_utc": "2026-09-12T06:09:29.165922+00:00"
+  "branch": "agent/commander/preview-controller",
+  "previous_report_sha": "929940d653ced50ee21e49a061bc69a9fcc6c39c",
+  "revision": 7,
+  "schema_version": 1,
+  "task_id": "FT-027",
+  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
 }

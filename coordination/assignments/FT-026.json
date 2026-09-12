@@ -9,15 +9,16 @@
   "branch": "agent/mac-contract-review/edit-ledger",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "bce4982f5db9e0b08063c7bc3200f9a1e5bcf711",
-  "objective": "Implement guarded durable grouped source history with restart-safe undo/redo while preserving capture IDs and receipt dedup; explicit bounded retention only.",
+  "input_main_sha": "47645249b66f7f5814f0ddd576971ca7a3eec7b7",
+  "objective": "Finish preserved atomic checkpoint rotation and interrupted-write recovery with bounded retention and explicit import",
   "owned_paths": [
     "crates/edit-ledger"
   ],
-  "revision": 2,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:01:55Z"
+  "updated_utc": "2026-09-12T08:18:56.142617+00:00",
+  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
 }

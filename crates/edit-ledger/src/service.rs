@@ -1,15 +1,17 @@
 //! Bounded background adapter. Admission/polling never perform filesystem or
 //! pipe I/O. Native consumers must discard events from superseded session IDs.
 use crate::{
-    recovery::RecoveryImport, retention::RetentionPolicy, AppliedReceipt, Document, Error,
-    PreparedEdit, Result, Store,
+    history::{GroupedEdit, HistoryMove, HistoryRetentionPolicy},
+    recovery::RecoveryImport,
+    retention::RetentionPolicy,
+    AppliedReceipt, Document, Error, PreparedEdit, Result, Store,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
         Arc,
     },
@@ -79,6 +81,19 @@ enum Operation {
     Compact {
         policy: RetentionPolicy,
     },
+    ApplyGroup {
+        group: GroupedEdit,
+    },
+    Undo {
+        command: HistoryMove,
+    },
+    Redo {
+        command: HistoryMove,
+    },
+    RetainHistory {
+        policy: HistoryRetentionPolicy,
+    },
+    HistoryStatus,
 }
 fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
     match operation {
@@ -107,6 +122,11 @@ fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
         Operation::RecoveryExport => Ok(json!(store.export_recovery()?)),
         Operation::RecoveryImport { recovery } => Ok(json!(store.import_recovery(recovery)?)),
         Operation::Compact { policy } => Ok(json!(store.compact(policy)?)),
+        Operation::ApplyGroup { group } => Ok(json!(store.apply_group(group)?)),
+        Operation::Undo { command } => Ok(json!(store.undo(command)?)),
+        Operation::Redo { command } => Ok(json!(store.redo(command)?)),
+        Operation::RetainHistory { policy } => Ok(json!(store.retain_history(policy)?)),
+        Operation::HistoryStatus => Ok(json!(store.history_status()?)),
     }
 }
 struct Work {
@@ -157,6 +177,20 @@ pub struct BackgroundService {
     sender: SyncSender<Work>,
     in_flight: Arc<AtomicUsize>,
     options: ServiceOptions,
+    stopped: Arc<AtomicBool>,
+}
+pub struct ShutdownWatch(Arc<AtomicBool>);
+impl ShutdownWatch {
+    /// Nonblocking proof that worker cleanup and store unlock finished.
+    pub fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+struct Completion(Arc<AtomicBool>);
+impl Drop for Completion {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 impl BackgroundService {
     /// Opens the store on its worker. Startup errors become request error
@@ -184,7 +218,12 @@ impl BackgroundService {
         let (sender, receiver) = mpsc::sync_channel::<Work>(options.capacity);
         let worker_session = session_id.clone();
         let max_reply = options.max_reply_bytes;
+        let stopped = Arc::new(AtomicBool::new(false));
+        let finished = stopped.clone();
         std::thread::Builder::new().name("flashtex-edit-ledger".into()).spawn(move || {
+            // Declared before Store, so its completion flag becomes true only
+            // after Store drops and explicitly releases the writer lock.
+            let _completion = Completion(finished);
             let mut store = Store::open(root);
             for (index, work) in receiver.into_iter().enumerate() {
                 let mut reply = process_frame(&mut store, &worker_session, index as u64 + 1, &work.frame);
@@ -202,10 +241,16 @@ impl BackgroundService {
             sender,
             in_flight: Arc::new(AtomicUsize::new(0)),
             options,
+            stopped,
         })
     }
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+    /// Close this admission handle. All clones must close before the worker
+    /// drains and stops. Poll the returned watch before reopening the same store.
+    pub fn shutdown(self) -> ShutdownWatch {
+        ShutdownWatch(self.stopped.clone())
     }
     /// Nonblocking admission: busy means nothing was accepted/executed.
     pub fn try_submit(&self, frame: Vec<u8>) -> Result<PendingReply> {

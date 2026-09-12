@@ -14,23 +14,23 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "632f0280f01e57fb18d09498792e76fe557815fb",
+  "code_revision": "8f48b549375fc0268fc8863e3b7c99b2a4d01c56",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 10,
-    "pessimistic": 25
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "15d2e56387bd424e25e2a5b1aa4a462ebd6954c8",
-  "next_action": "Add explicitly declared bibliography-document indexing and source-only citation navigation; retain existing revision/dependency guards.",
+  "main_integrated_through": "9372296059270ce3e8a6d578bcd87bed94be4421",
+  "next_action": "Orchestrator integration and independent product review; no provider calls or engine semantics claimed.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT-025 lexical-exclusion checkpoint: 39 Rust tests and strict Clippy pass. Literal code/comment environments and inline forms excluded from navigation/rename; escaped delimiters and source/group bounds tested.",
+  "state": "ready_for_integration",
+  "summary": "Published bounded bibliography value parser and incremental citation metadata cache. Exact UTF8 key/field/expression/atom spans; explicit malformed/duplicate/missing/cyclic states; author/title/year inspection and source navigation; 60 tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:04:54Z",
+  "updated_utc": "2026-09-12T06:23:56Z",
   "usage": {
-    "evidence": "Local offline Cargo tests39 pass; fmt and strictClippy clean. No provider or native/package execution.",
+    "evidence": "cargo test --offline: 60 passed; cargo clippy --offline --all-targets -- -D warnings passed; cargo fmt and git diff --check passed. Metadata rebuild equivalence, transitive invalidation, malformed recovery, Unicode spans, comment shielding and expansion bounds tested.",
     "status": "unknown"
   }
 }

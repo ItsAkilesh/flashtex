@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-calc",
+  "task_id": "FT-045",
+  "revision": 1,
+  "branch": "agent/daniel-calc/tex-calc",
+  "assignment_path": "coordination/assignments/FT-045.json",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+}

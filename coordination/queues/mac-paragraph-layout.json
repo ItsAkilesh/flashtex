@@ -1,6 +1,6 @@
 {
   "agent_id": "mac-paragraph-layout",
-  "next_index": 1,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -26,6 +26,34 @@
       "allocation_id": "claude-mac20x-paragraph-layout-stage3",
       "name": "Vertical page layout convergence",
       "objective": "Add paragraph spacing, baseline grid, widow/orphan control and deterministic page breaking, then compare page geometry to declared TeX oracles.",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Page and baseline metrics have golden tests",
+        "Preview/PDF positions agree",
+        "Visual deltas are quantified"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+      "name": "Exact paragraph linebreak and glue/penalty convergence",
+      "objective": "Exact paragraph linebreak and glue/penalty convergence",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Page and baseline metrics have golden tests",
+        "Preview/PDF positions agree",
+        "Visual deltas are quantified"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+      "name": "Incremental paragraph state versus clean layout equivalence",
+      "objective": "Incremental paragraph state versus clean layout equivalence",
       "owned_paths": [
         "crates/paragraph-layout"
       ],

@@ -88,7 +88,8 @@ non-overlapping assignments and open a recovery issue; they do not elect another
 Commander.
 
 The one chosen successor fetches current main, creates its authority claim from that
-exact SHA, publishes through actual Cursor, and pushes main non-force. If main moved,
+exact SHA, publishes with the currently authorized truthful commit executor (including
+the explicit Cursor-limit direct-agent fallback), and pushes main non-force. If main moved,
 the claim is abandoned and rebuilt from the new tip. Before each later global write,
 the leader fetches and rereads the current authority record. A resumed former leader
 must do the same and must not write until a new explicit handoff names it.
@@ -137,10 +138,37 @@ computers continue. The runner does not promise a provider-independent billing c
 
 ## Stop and completion
 
-`coordination/control.json` is authoritative. `running` continues; `user_stopped`
-and `verified_complete` stop workers at their next boundary. Only Commander changes
-this, using the user's instruction or whole-project acceptance evidence. A finished
-queue is a request for Commander planning, not completion of the product.
+`coordination/control.json` is authoritative. Only `user_stopped` stops workers
+at their next boundary. A legacy `verified_complete` value is a milestone and does
+not stop improvement work. Only the Commander records an explicit user stop.
+A finished queue requires useful next assignments, never automatic project termination.
 
 Local Ctrl-C/service stop remains available. Sleeps and waiting polls do not mean
 an implementation task is active; check the actual process and published reports.
+
+## Copyable revival prompt
+
+> Resume FlashTeX using the repository's current AGENTS.md, docs/INDEX.md,
+> coordination/authority.json, control.json, PROJECT.md, RESOURCES.md, assignments,
+> queues, next pointers and each worker's exact published report. Do not assume you
+> are Commander. First fetch and pin main. If the active Commander has explicitly
+> named you in a positively quiesced handoff, independently verify all its publication
+> and integration jobs are stopped. Otherwise require positive evidence that the
+> exact former process/session terminated and all its publisher/dispatcher jobs stopped.
+> Silence, missing heartbeats, a quota error, network failure or a stale PID report
+> is insufficient. If you cannot verify termination, keep your existing nonoverlapping
+> product work and report the uncertainty; do not claim leadership.
+>
+> After verified handoff/termination, select one successor identity and atomically
+> publish its authority claim from the exact fetched main using non-force Git and
+> the currently authorized truthful commit executor. If another claim wins, stop
+> global writes. Recheck authority immediately before every later main/control write.
+> Inspect pending paid-call/publication journals before resuming anything; never replay
+> an uncertain paid call. Reconcile all worker ACKs, actual sessions, current resource
+> evidence and frozen patches. Restore the fenced dispatcher only under your claimed
+> ID, assign each eligible engineer current work plus two followups, and integrate
+> tested product checkpoints. Unknown balances remain unknown; no purchases or
+> protected account use. Completed milestones start another improvement cycle.
+> Continue until the user explicitly stops work. Persist a concise resumption packet
+> with exact SHAs, dirty paths, running handles, blockers and next commands before
+> compaction, so the next session does not repeat work or spend.

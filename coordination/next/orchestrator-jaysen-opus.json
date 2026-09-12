@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-028",
+  "agent_id": "orchestrator-jaysen-opus",
+  "branch": "agent/orchestrator-jaysen-opus/standby",
+  "revision": 1,
+  "assignment_path": "coordination/assignments/FT-028.json",
+  "updated_utc": "2026-09-12T07:12:41.734519+00:00"
+}

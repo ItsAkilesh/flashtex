@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
-    "Included output preserves exact source file identity and UTF-8 byte ranges",
-    "Compiler and PDF paths share one layout/font representation or document a tested adapter"
+    "Pinned input/binary hashes and p50/p95/p99 measurements",
+    "Exact incremental-clean equality and no lost corpus checks",
+    "Native paint and raw PDF byte equality remain separate gates"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage4",
+  "allocation_id": "openai-kabir-plus-ft002-stage6",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "81f02dc739a650a6a704157bf96eadeb5d13c392",
-  "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
+  "input_main_sha": "a526c7f0c784ce657d54ddcd9d8ea6f9e9b3473f",
+  "objective": "Extend pinned corpus breadth and repeated burst-edit/recovery performance gates; preserve exact source and capability identities. Publish unresolved byte/pixel parity separately from compiler latency.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 4,
+  "revision": 8,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:41:35Z"
+  "updated_utc": "2026-09-12T08:01:53Z"
 }

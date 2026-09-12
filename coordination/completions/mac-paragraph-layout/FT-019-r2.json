@@ -1,0 +1,84 @@
+{
+  "agent_id": "mac-paragraph-layout",
+  "archived_utc": "2026-09-12T06:27:23Z",
+  "assignment": {
+    "acceptance": [
+      "Clean and incremental results match",
+      "Diagnostics cite source boxes",
+      "Reference line breaks are measured"
+    ],
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph-layout-stage2",
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "5e75574b562fca57bb24803d1e7d557794da43ee",
+    "objective": "Add deterministic hyphenation boundaries, penalties, emergency stretch and overfull/underfull diagnostics with exact box provenance.",
+    "owned_paths": [
+      "crates/paragraph-layout"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-019",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:08:51Z"
+  },
+  "report": {
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph",
+    "assignment_acknowledgements": {
+      "FT-019": {
+        "acknowledged_utc": "2026-09-12T06:12:30Z",
+        "adaptation": "Merged origin/main c59aa5b into the branch (a95e14d, no conflicts). Plan: Liang pattern hyphenator behind Hyphenator with a documented subset of TeX Live hyph-en-us.tex (Kuiken 2005-05-30, permissive licence) plus hyphenmins/penalties; emergency-stretch third pass test; hfuzz/hbadness diagnostics citing run source ranges in runtime-v1 shape; relayout with reuse of unaffected paragraphs and a random-edit equality property; oracle pdflatex hyphenation sample measured via the native-verification extractor.",
+        "main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+        "revision": 2
+      }
+    },
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "capabilities": [
+      "rust",
+      "typesetting"
+    ],
+    "code_revision": "92eb5ba7d25fcff57464375eea206658248bbf12",
+    "eta_minutes": {
+      "likely": 5,
+      "optimistic": 0,
+      "pessimistic": 15
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+    "next_action": "Await orchestrator review/integration; follow-ups on request (more patterns, parshape).",
+    "reviewed_peers": {
+      "origin/agent/mac-font-engine/tex-fonts": {
+        "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+        "reviewed_utc": "2026-09-12T06:08:14Z",
+        "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
+      },
+      "origin/main": {
+        "adaptation": "main integrated the rev-1 crate unchanged (c689b1a); merged origin/main 3730c23 into the branch with no conflicts; later main commits (through df9e26e) do not touch crates/paragraph-layout.",
+        "reviewed_utc": "2026-09-12T06:27:02Z",
+        "sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-019 rev 2 delivered: Liang pattern hyphenator (420 Knuth patterns from hyph-en-us.tex, licence quoted; 110/110 words equal pdflatex showhyphens), TeX word/first-word rules and hyphen penalties, emergency-stretch third pass test, hfuzz/hbadness diagnostics in runtime-v1 shape citing every box's source range, document::relayout with 300-random-edit equality property, oracle hyphenating sample: 92/92 line starts, 5/5 hyphenated line ends, mean|dx| 0.003 bp.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:27:02Z",
+    "usage": {
+      "evidence": "cargo test: 34 passed; cargo clippy --all-targets: 0 warnings",
+      "status": "Claude Max 20x shared quota; remaining unknown"
+    }
+  },
+  "report_age_seconds": 20,
+  "report_path": "coordination/agents/mac-paragraph-layout.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-019",
+  "worker_branch": "agent/mac-paragraph-layout/linebreak",
+  "worker_report_sha": "b2e7bcb240b874a85234b882cea5354e80ef1bb5"
+}

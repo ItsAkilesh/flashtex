@@ -1,23 +1,24 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-025",
-  "agent_id": "commander-project-index",
-  "branch": "agent/commander-project-index/source-navigation",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Source navigation, guarded rename and incremental diagnostics",
-  "owned_paths": [
-    "crates/project-index"
-  ],
   "acceptance": [
     "Meaningful tests and strict lint pass",
     "Publish truthful execution provenance and exact tested SHA",
     "No native integration or PDF parity claim without measured evidence"
   ],
-  "dependencies": [],
+  "agent_id": "commander-project-index",
   "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
+  "branch": "agent/commander-project-index/source-navigation",
   "deadline_utc": null,
-  "input_main_sha": "b87334038ee33c78d2eee67b66eac562768a9798",
-  "updated_utc": "2026-09-12T05:53:31.661939+00:00"
+  "dependencies": [],
+  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+  "objective": "Finish preserved bounded literal search/replace plans and native serialization with exact source revision guards",
+  "owned_paths": [
+    "crates/project-index"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-025",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T08:18:56.142617+00:00",
+  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
 }

@@ -1,38 +1,68 @@
 {
-  "schema_version": 1,
   "agent_id": "mac-visual-oracle",
-  "task_id": "FT-017",
-  "next_index": 0,
+  "next_index": 2,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Oracle expansion and alignment diagnostics",
-      "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
       "acceptance": [
         "Every artifact pins engine/font/version/DPI/color profile",
         "Registration error is separated from rendering error",
         "Overlays retain fixture and component SHAs"
       ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage2",
+      "name": "Oracle expansion and alignment diagnostics",
+      "objective": "Expand declared visual fixtures across text, Unicode, paragraphs, math and multipage cases; add page registration, crop/alignment diagnostics and region metrics.",
       "owned_paths": [
         "tests/visual-corpus/harness",
         "tests/visual-corpus/evidence"
       ],
-      "timebox_minutes": 45,
-      "allocation_id": "claude-mac20x-visual-oracle-stage2"
+      "timebox_minutes": 45
     },
     {
-      "name": "Preview-export visual non-regression",
-      "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
       "acceptance": [
         "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
         "Native preview/export differences are classified",
         "Narrow corpus scope remains explicit"
       ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage3",
+      "name": "Preview-export visual non-regression",
+      "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
       "owned_paths": [
         "tests/visual-corpus/harness",
         "tests/visual-corpus/evidence"
       ],
-      "timebox_minutes": 45,
-      "allocation_id": "claude-mac20x-visual-oracle-stage3"
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+        "Native preview/export differences are classified",
+        "Narrow corpus scope remains explicit"
+      ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage3",
+      "name": "Exact PDF raw-byte identity analysis separate from zero-pixel gate",
+      "objective": "Exact PDF raw-byte identity analysis separate from zero-pixel gate",
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Exact zero pixel difference and separate raw PDF byte equality; report mismatches honestly without normalization",
+        "Native preview/export differences are classified",
+        "Narrow corpus scope remains explicit"
+      ],
+      "allocation_id": "claude-mac20x-visual-oracle-stage3",
+      "name": "Native typing-to-visible p95/p99 measurement with pinned renderer resources",
+      "objective": "Native typing-to-visible p95/p99 measurement with pinned renderer resources",
+      "owned_paths": [
+        "tests/visual-corpus/harness",
+        "tests/visual-corpus/evidence"
+      ],
+      "timebox_minutes": 45
     }
-  ]
+  ],
+  "task_id": "FT-017"
 }

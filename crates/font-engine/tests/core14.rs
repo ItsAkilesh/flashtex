@@ -43,12 +43,22 @@ fn all_seven_faces_have_ascii_and_latin1_widths() {
             assert!(f.glyph_id(c).is_some(), "{which:?} lacks {c:?}");
         }
         for c in (0xA0u32..=0xFF).map(|c| char::from_u32(c).unwrap()) {
-            assert!(f.glyph_id(c).is_some(), "{which:?} lacks U+{:04X}", c as u32);
+            assert!(
+                f.glyph_id(c).is_some(),
+                "{which:?} lacks U+{:04X}",
+                c as u32
+            );
         }
     }
     assert_eq!(Core14Face::new(Core14::Courier).width_units('W'), Some(600));
-    assert_eq!(Core14Face::new(Core14::Helvetica).width_units('W'), Some(944));
-    assert_eq!(Core14Face::new(Core14::TimesBoldItalic).width_units('W'), Some(889));
+    assert_eq!(
+        Core14Face::new(Core14::Helvetica).width_units('W'),
+        Some(944)
+    );
+    assert_eq!(
+        Core14Face::new(Core14::TimesBoldItalic).width_units('W'),
+        Some(889)
+    );
 }
 
 #[test]
@@ -87,7 +97,10 @@ fn combining_acute_composes_to_precomposed_e_acute() {
     let precomposed = shape(&f, "\u{00E9}", &ShapeOptions::default()).unwrap();
     assert_eq!(composed.clusters.len(), 1);
     assert_eq!(composed.clusters[0].glyphs.len(), 1);
-    assert_eq!(composed.clusters[0].glyphs[0].gid, precomposed.clusters[0].glyphs[0].gid);
+    assert_eq!(
+        composed.clusters[0].glyphs[0].gid,
+        precomposed.clusters[0].glyphs[0].gid
+    );
     assert_eq!(composed.advance_units(), precomposed.advance_units());
     assert_eq!(composed.clusters[0].source_range, 0..3);
     assert_eq!(composed.clusters[0].text, "e\u{0301}");
@@ -153,7 +166,9 @@ fn av_kerning_is_negative_and_optional() {
 fn unsupported_scripts_fail_closed() {
     let err = shape(&times(), "ab\u{05D0}", &ShapeOptions::default()).unwrap_err();
     match err {
-        flashtex_font_engine::Error::UnsupportedScript { ch, byte_offset, .. } => {
+        flashtex_font_engine::Error::UnsupportedScript {
+            ch, byte_offset, ..
+        } => {
             assert_eq!(ch, '\u{05D0}');
             assert_eq!(byte_offset, 2);
         }
@@ -195,4 +210,13 @@ fn vertical_metrics_come_from_afm_headers() {
     assert_eq!(Core14Face::new(Core14::TimesItalic).italic_angle(), -15.5);
     assert_eq!(f.postscript_name(), "Times-Roman");
     assert!(Core14Face::new(Core14::Courier).is_fixed_pitch());
+}
+
+#[test]
+fn courier_never_ligates_even_though_its_afm_has_fi() {
+    let f = Core14Face::new(Core14::Courier);
+    assert!(f.glyph_id('\u{FB01}').is_some());
+    let s = shape(&f, "fi fl", &ShapeOptions::default()).unwrap();
+    assert_eq!(s.ligatures_applied, 0);
+    assert_eq!(s.advance_units(), 5 * 600);
 }

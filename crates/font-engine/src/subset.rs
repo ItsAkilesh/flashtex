@@ -45,6 +45,11 @@ const COPIED_IF_PRESENT: [&[u8; 4]; 3] = [b"cvt ", b"fpgm", b"prep"];
 
 /// Builds the subset containing `gids` (any order, duplicates allowed).
 pub fn subset(face: &TrueTypeFace, gids: &[GlyphId]) -> Result<Subset, Error> {
+    if face.outlines() == crate::truetype::Outlines::Cff {
+        return Err(Error::Unsupported(
+            "CFF subsetting is not implemented; embed the whole program (FontFile3)".into(),
+        ));
+    }
     let mut wanted: BTreeSet<u16> = BTreeSet::new();
     wanted.insert(0);
     let mut stack: Vec<u16> = gids.iter().map(|g| g.0).collect();
@@ -96,7 +101,8 @@ pub fn subset(face: &TrueTypeFace, gids: &[GlyphId]) -> Result<Subset, Error> {
     loca.push(glyf.len() as u32);
     let loca_bytes: Vec<u8> = loca.iter().flat_map(|o| o.to_be_bytes()).collect();
 
-    let src = |tag: &[u8; 4]| -> Vec<u8> { face.table(tag).map(<[u8]>::to_vec).unwrap_or_default() };
+    let src =
+        |tag: &[u8; 4]| -> Vec<u8> { face.table(tag).map(<[u8]>::to_vec).unwrap_or_default() };
     let mut head = src(b"head");
     if head.len() < 54 {
         return Err(Error::Malformed("head table too short".into()));
@@ -219,7 +225,10 @@ pub fn verify_checksums(data: &[u8]) -> Result<(), Error> {
         let off = u32_at(data, rec + 8)? as usize;
         let len = u32_at(data, rec + 12)? as usize;
         let table = data.get(off..off + len).ok_or_else(|| {
-            Error::Malformed(format!("table {} overruns file", String::from_utf8_lossy(tag)))
+            Error::Malformed(format!(
+                "table {} overruns file",
+                String::from_utf8_lossy(tag)
+            ))
         })?;
         let mut got = checksum(table);
         if tag == b"head" {

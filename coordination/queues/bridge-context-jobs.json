@@ -1,6 +1,6 @@
 {
   "agent_id": "bridge-context-jobs",
-  "next_index": 1,
+  "next_index": 3,
   "schema_version": 1,
   "steps": [
     {
@@ -26,6 +26,34 @@
       "allocation_id": "hosted-openai-product",
       "name": "Bridge adapter with durable intent and stale context guards",
       "objective": "Bridge adapter with durable intent and stale context guards",
+      "owned_paths": [
+        "crates/conversion-jobs"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Durable explicit review inbox with bounded per-project selection",
+      "objective": "Durable explicit review inbox with bounded per-project selection",
+      "owned_paths": [
+        "crates/conversion-jobs"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Review handoff and event-backpressure recovery",
+      "objective": "Review handoff and event-backpressure recovery",
       "owned_paths": [
         "crates/conversion-jobs"
       ],

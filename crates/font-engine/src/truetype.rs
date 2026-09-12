@@ -1,25 +1,42 @@
 //! TrueType / OpenType (`glyf`) font parsing.
 //!
-//! Tables read: `head`, `hhea`, `hmtx`, `maxp`, `loca`, `glyf`, `cmap`
-//! (formats 4 and 12; optional so subset programs re-parse), `OS/2`, `post`, `name`, `kern` (format 0), `GPOS`
-//! (PairPos under `kern`), `GSUB` (LigatureSubst under `liga`). TrueType
-//! collections (`ttcf`) are supported by face index. `CFF `-based OpenType
-//! (`OTTO`), variable fonts (`fvar`/`gvar`) and bitmap-only fonts are
-//! rejected with [`Error::Unsupported`] rather than partially parsed.
+//! Tables read: `head`, `hhea`, `hmtx`, `maxp`, `loca`, `glyf` (or `CFF `),
+//! `cmap` (formats 4 and 12; optional so subset programs re-parse), `OS/2`,
+//! `post`, `name`, `kern` (format 0), `GPOS` (PairPos under `kern`), `GSUB`
+//! (LigatureSubst under `liga`), `MATH` (constants, italics correction, top
+//! accent). TrueType collections (`ttcf`) are supported by face index.
+//!
+//! `CFF `-based OpenType (`OTTO`, e.g. Latin Modern) parses with the same
+//! metric/cmap/layout tables; its outlines are exposed as the raw `CFF `
+//! table for whole-program embedding ([`Outlines::Cff`]). CFF glyph parsing
+//! and subsetting are not implemented. Variable fonts (`fvar`/`gvar`) and
+//! bitmap-only fonts are rejected with [`Error::Unsupported`] rather than
+//! partially parsed.
 
 use std::collections::BTreeMap;
 
-use crate::gpos::GposKerning;
+use crate::gpos::{GposKerning, MarkAttachment};
 use crate::gsub::GsubLigatures;
 use crate::kern::KernTable;
+use crate::math::MathTable;
 use crate::reader::{i16_at, i32_at, slice, u16_at, u32_at};
 use crate::{
     Error, Face, FontId, FontSource, GlyphId, KerningSource, Style, Unsupported, VerticalMetrics,
 };
 
+/// Which outline format the program carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outlines {
+    /// `glyf`/`loca` TrueType outlines; subsetting available.
+    Glyf,
+    /// `CFF ` (Type 2 charstrings); raw table exposed, whole-program embedding.
+    Cff,
+}
+
 #[derive(Debug, Clone)]
 pub struct TrueTypeFace {
     data: Vec<u8>,
+    outlines: Outlines,
     /// Table tag -> (offset, length) into `data`.
     tables: BTreeMap<[u8; 4], (usize, usize)>,
     id: FontId,
@@ -38,11 +55,13 @@ pub struct TrueTypeFace {
     pub fs_type: u16,
     kern: KernTable,
     gpos: GposKerning,
+    marks: MarkAttachment,
     gsub: GsubLigatures,
+    math: Option<MathTable>,
     unsupported: Vec<Unsupported>,
 }
 
-const REQUIRED: [&[u8; 4]; 6] = [b"head", b"hhea", b"hmtx", b"maxp", b"loca", b"glyf"];
+const REQUIRED: [&[u8; 4]; 4] = [b"head", b"hhea", b"hmtx", b"maxp"];
 
 impl TrueTypeFace {
     /// Parses face 0 of an in-memory font program.
@@ -76,15 +95,11 @@ impl TrueTypeFace {
             0
         };
         let sfnt_version = u32_at(b, dir)?;
-        match sfnt_version {
-            0x0001_0000 | 0x7472_7565 => {} // 1.0, 'true'
-            0x4F54_544F => {
-                return Err(Error::Unsupported(
-                    "CFF-based OpenType (OTTO) outlines are not implemented".into(),
-                ));
-            }
+        let outlines = match sfnt_version {
+            0x0001_0000 | 0x7472_7565 => Outlines::Glyf, // 1.0, 'true'
+            0x4F54_544F => Outlines::Cff,                // 'OTTO'
             v => return Err(Error::Malformed(format!("sfnt version 0x{v:08X}"))),
-        }
+        };
         let n_tables = usize::from(u16_at(b, dir + 4)?);
         let mut tables = BTreeMap::new();
         for i in 0..n_tables {
@@ -105,14 +120,27 @@ impl TrueTypeFace {
                 return Err(Error::MissingTable(String::from_utf8_lossy(t).into_owned()));
             }
         }
+        match outlines {
+            Outlines::Glyf => {
+                for t in [b"loca", b"glyf"] {
+                    if !tables.contains_key(t) {
+                        return Err(Error::MissingTable(String::from_utf8_lossy(t).into_owned()));
+                    }
+                }
+            }
+            Outlines::Cff => {
+                if !tables.contains_key(b"CFF ") {
+                    return Err(Error::MissingTable("CFF ".into()));
+                }
+            }
+        }
         if tables.contains_key(b"fvar") || tables.contains_key(b"gvar") {
             return Err(Error::Unsupported(
                 "variable fonts (fvar/gvar) are not implemented".into(),
             ));
         }
-        let table = |tag: &[u8; 4]| -> Option<&[u8]> {
-            tables.get(tag).map(|(o, l)| &b[*o..*o + *l])
-        };
+        let table =
+            |tag: &[u8; 4]| -> Option<&[u8]> { tables.get(tag).map(|(o, l)| &b[*o..*o + *l]) };
 
         let head = table(b"head").unwrap();
         if u32_at(head, 12)? != 0x5F0F_3CF5 {
@@ -156,19 +184,24 @@ impl TrueTypeFace {
             }
         }
 
-        let loca_t = table(b"loca").unwrap();
-        let mut loca = Vec::with_capacity(usize::from(num_glyphs) + 1);
-        for g in 0..=usize::from(num_glyphs) {
-            loca.push(if long_loca {
-                u32_at(loca_t, 4 * g)?
-            } else {
-                u32::from(u16_at(loca_t, 2 * g)?) * 2
-            });
-        }
-        let glyf_len = tables[b"glyf"].1;
-        for w in loca.windows(2) {
-            if w[0] > w[1] || w[1] as usize > glyf_len {
-                return Err(Error::Malformed("loca offsets out of order or past glyf".into()));
+        let mut loca = Vec::new();
+        if outlines == Outlines::Glyf {
+            let loca_t = table(b"loca").unwrap();
+            loca.reserve(usize::from(num_glyphs) + 1);
+            for g in 0..=usize::from(num_glyphs) {
+                loca.push(if long_loca {
+                    u32_at(loca_t, 4 * g)?
+                } else {
+                    u32::from(u16_at(loca_t, 2 * g)?) * 2
+                });
+            }
+            let glyf_len = tables[b"glyf"].1;
+            for w in loca.windows(2) {
+                if w[0] > w[1] || w[1] as usize > glyf_len {
+                    return Err(Error::Malformed(
+                        "loca offsets out of order or past glyf".into(),
+                    ));
+                }
             }
         }
 
@@ -222,20 +255,21 @@ impl TrueTypeFace {
             italic_angle = f64::from(i32_at(post, 4)?) / 65536.0;
             is_fixed_pitch = u32_at(post, 12)? != 0;
         }
-        if !metrics.cap_height_declared {
-            // Derive from the 'H' glyph's yMax when possible.
-            if let Some(&g) = cmap.get(&u32::from(b'H')) {
-                if let Some(y) = glyph_y_max(b, &tables, &loca, g) {
-                    metrics.cap_height = y;
-                }
-            }
+        // Derive undeclared heights from the 'H' / 'x' glyph yMax when possible
+        // (glyf only; CFF charstrings are not parsed).
+        if outlines == Outlines::Glyf
+            && !metrics.cap_height_declared
+            && let Some(&g) = cmap.get(&u32::from(b'H'))
+            && let Some(y) = glyph_y_max(b, &tables, &loca, g)
+        {
+            metrics.cap_height = y;
         }
-        if !metrics.x_height_declared {
-            if let Some(&g) = cmap.get(&u32::from(b'x')) {
-                if let Some(y) = glyph_y_max(b, &tables, &loca, g) {
-                    metrics.x_height = y;
-                }
-            }
+        if outlines == Outlines::Glyf
+            && !metrics.x_height_declared
+            && let Some(&g) = cmap.get(&u32::from(b'x'))
+            && let Some(y) = glyph_y_max(b, &tables, &loca, g)
+        {
+            metrics.x_height = y;
         }
 
         let (family, postscript_name) = table(b"name")
@@ -260,6 +294,7 @@ impl TrueTypeFace {
                 Err(Error::Unsupported(d)) => {
                     unsupported.push(Unsupported {
                         table: "kern",
+                        feature: "kern",
                         detail: d,
                     });
                     KernTable::default()
@@ -268,9 +303,9 @@ impl TrueTypeFace {
             },
             None => KernTable::default(),
         };
-        let gpos = match table(b"GPOS") {
-            Some(t) => GposKerning::parse(t)?,
-            None => GposKerning::default(),
+        let (gpos, marks) = match table(b"GPOS") {
+            Some(t) => (GposKerning::parse(t)?, MarkAttachment::parse(t)?),
+            None => (GposKerning::default(), MarkAttachment::default()),
         };
         let gsub = match table(b"GSUB") {
             Some(t) => GsubLigatures::parse(t)?,
@@ -278,7 +313,21 @@ impl TrueTypeFace {
         };
         unsupported.extend(kern.unsupported.iter().cloned());
         unsupported.extend(gpos.unsupported.iter().cloned());
+        unsupported.extend(marks.unsupported.iter().cloned());
         unsupported.extend(gsub.unsupported.iter().cloned());
+        let math = match table(b"MATH") {
+            Some(t) => Some(MathTable::parse(t)?),
+            None => None,
+        };
+        if outlines == Outlines::Cff {
+            unsupported.push(Unsupported {
+                table: "CFF ",
+                feature: "outlines",
+                detail: "CFF outlines are exposed raw; glyph parsing, bbox derivation and \
+                         subsetting are not implemented (embed the whole program)"
+                    .into(),
+            });
+        }
 
         let mut hash_input = data.clone();
         hash_input.extend_from_slice(&face_index.to_be_bytes());
@@ -293,6 +342,7 @@ impl TrueTypeFace {
                 content_sha256,
             },
             data,
+            outlines,
             tables,
             units_per_em,
             num_glyphs,
@@ -307,9 +357,28 @@ impl TrueTypeFace {
             fs_type,
             kern,
             gpos,
+            marks,
             gsub,
+            math,
             unsupported,
         })
+    }
+
+    pub fn outlines(&self) -> Outlines {
+        self.outlines
+    }
+
+    /// The raw `CFF ` table for CFF-based faces (`FontFile3` payload).
+    pub fn cff_table(&self) -> Option<&[u8]> {
+        match self.outlines {
+            Outlines::Cff => self.table(b"CFF "),
+            Outlines::Glyf => None,
+        }
+    }
+
+    /// OpenType `MATH` table data, if the face has one.
+    pub fn math(&self) -> Option<&MathTable> {
+        self.math.as_ref()
     }
 
     /// Raw bytes of a table, if present.
@@ -322,7 +391,13 @@ impl TrueTypeFace {
     }
 
     /// Raw `glyf` data of one glyph (empty for glyphs without outlines).
+    /// CFF faces return [`Error::Unsupported`].
     pub fn glyph_data(&self, gid: GlyphId) -> Result<&[u8], Error> {
+        if self.outlines == Outlines::Cff {
+            return Err(Error::Unsupported(
+                "CFF glyph data is not parsed; use cff_table()".into(),
+            ));
+        }
         let g = usize::from(gid.0);
         if g >= usize::from(self.num_glyphs) {
             return Err(Error::GlyphOutOfRange(gid.0));
@@ -339,15 +414,15 @@ impl TrueTypeFace {
             .ok_or(Error::GlyphOutOfRange(gid.0))
     }
 
-    /// Whether `kern` is served by GPOS (preferred) or the legacy table.
-    pub fn kerning_source(&self) -> KerningSource {
-        if !self.gpos.is_empty() {
-            KerningSource::Gpos
-        } else if !self.kern.is_empty() {
-            KerningSource::KernTable
-        } else {
-            KerningSource::None
-        }
+    /// The legacy `kern` table's value for the pair even when GPOS is
+    /// preferred; for diagnostics and cross-checks.
+    pub fn legacy_kern_table_kerning(&self, left: GlyphId, right: GlyphId) -> Option<i16> {
+        self.kern.kerning(left, right)
+    }
+
+    /// Whether the face has GPOS MarkToBase data.
+    pub fn has_mark_attachment(&self) -> bool {
+        !self.marks.is_empty()
     }
 
     pub fn has_gsub_ligatures(&self) -> bool {
@@ -411,14 +486,21 @@ impl Face for TrueTypeFace {
     }
 
     fn glyph_id(&self, ch: char) -> Option<GlyphId> {
-        self.cmap.get(&(ch as u32)).copied().filter(|g| *g != 0).map(GlyphId)
+        self.cmap
+            .get(&(ch as u32))
+            .copied()
+            .filter(|g| *g != 0)
+            .map(GlyphId)
     }
 
     fn kerning(&self, left: GlyphId, right: GlyphId) -> (i16, KerningSource) {
         // GPOS supersedes the legacy table when it carries a kern feature,
         // which is how OpenType-aware renderers behave.
         if !self.gpos.is_empty() {
-            return (self.gpos.kerning(left, right).unwrap_or(0), KerningSource::Gpos);
+            return (
+                self.gpos.kerning(left, right).unwrap_or(0),
+                KerningSource::Gpos,
+            );
         }
         if let Some(v) = self.kern.kerning(left, right) {
             return (v, KerningSource::KernTable);
@@ -426,12 +508,31 @@ impl Face for TrueTypeFace {
         (0, KerningSource::None)
     }
 
+    /// GPOS is preferred over the legacy table when it carries a kern feature.
+    fn kerning_source(&self) -> KerningSource {
+        if !self.gpos.is_empty() {
+            KerningSource::Gpos
+        } else if !self.kern.is_empty() {
+            KerningSource::KernTable
+        } else {
+            KerningSource::None
+        }
+    }
+
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId> {
         self.gsub.ligature(components)
     }
 
-    fn longest_ligature(&self, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
-        self.gsub.longest(glyphs)
+    fn mark_attachment(&self, base: GlyphId, mark: GlyphId) -> Option<(i16, i16)> {
+        self.marks.attach(base, mark)
+    }
+
+    fn ligature_passes(&self) -> usize {
+        self.gsub.passes()
+    }
+
+    fn longest_ligature(&self, pass: usize, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
+        self.gsub.longest_in_pass(pass, glyphs)
     }
 
     fn unsupported(&self) -> &[Unsupported] {
@@ -499,10 +600,8 @@ fn parse_cmap(cmap: &[u8]) -> Result<BTreeMap<u32, u16>, Error> {
                     let g = if ro == 0 {
                         c.wrapping_add(delta)
                     } else {
-                        let addr = range_offsets
-                            + 2 * s
-                            + usize::from(ro)
-                            + 2 * usize::from(c - start);
+                        let addr =
+                            range_offsets + 2 * s + usize::from(ro) + 2 * usize::from(c - start);
                         let raw = u16_at(cmap, addr)?;
                         if raw == 0 { 0 } else { raw.wrapping_add(delta) }
                     };
@@ -558,8 +657,10 @@ fn parse_names(name: &[u8]) -> Result<(Option<String>, Option<String>), Error> {
         let (rank, text) = match (platform, encoding) {
             (3, 1) | (3, 10) | (0, _) => {
                 let units: Vec<u16> = bytes
-                    .chunks_exact(2)
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| u16::from_be_bytes(*c))
                     .collect();
                 (2u8, String::from_utf16_lossy(&units))
             }
