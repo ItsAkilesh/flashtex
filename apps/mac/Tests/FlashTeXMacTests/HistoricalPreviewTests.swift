@@ -456,6 +456,81 @@ final class HistoricalPreviewTests: XCTestCase {
         XCTAssertNil(model.result)
     }
 
+    // MARK: real helper (ab945e6 or later) with the real compiler
+
+    static var realHelper: URL? {
+        ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_CONTROLLER"].map { URL(fileURLWithPath: $0) }
+    }
+
+    /// The published helper negotiates the channel, echoes the token on a
+    /// `completed_snapshot` for a compile that completed after a newer edit was
+    /// submitted, and the shell paints it labelled/gated and then replaces it
+    /// with the current preview bound to the final editor revision. Skipped
+    /// unless `FLASHTEX_PREVIEW_CONTROLLER` (ab945e6+) and `FLASHTEX_COMPILER`
+    /// point at built binaries. Whether a given burst yields a historical frame
+    /// depends on compile timing; the test asserts the invariants on every frame
+    /// that did arrive and reports the counts.
+    func testRealHelperNegotiatesEchoesTokensAndPaintsHistoryDuringABurst() async throws {
+        guard let helper = Self.realHelper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER (ab945e6+) and FLASHTEX_COMPILER to built binaries")
+        }
+        let demo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Samples/demo.tex")
+        let seed = try String(contentsOf: demo, encoding: .utf8)
+        let h = try makeHarness(text: seed, name: "real")
+        defer { teardown(h) }
+        let model = h.model
+        model.attachController(at: helper)
+        try await waitUntil("initial preview", timeout: 30) { model.result?.revision == model.editorRevision && model.previewSource == .worker("flashtex-preview-controller") }
+        try await waitUntil("negotiation answered") { model.historicalNegotiated || model.workerLog.contains { $0.contains("historical: helper") } }
+        XCTAssertTrue(model.historicalNegotiated, "the real helper acknowledged \(CompletedSnapshots.capability): \(model.workerLog.filter { $0.contains("historical") })")
+
+        // A burst: 40 edits at ~5 ms, released on the durable receipt (negotiated
+        // mode) so compiles overlap; those completing after a newer submission
+        // come back as completed snapshots.
+        let marker = "\\end{document}"
+        let insertAt = try XCTUnwrap(seed.range(of: marker))
+        var text = seed
+        var paintedHistorical: [HistoricalDisplay] = []
+        var submitted: [Int] = []
+        for _ in 1...40 {
+            text.insert(contentsOf: "x", at: insertAt.lowerBound)
+            model.updateActiveText(text)
+            submitted.append(model.editorRevision)
+            let deadline = Date().addingTimeInterval(0.005)
+            while Date() < deadline {
+                try await Task.sleep(nanoseconds: 1_000_000)
+                if let hp = model.historicalPreview, paintedHistorical.last != hp { paintedHistorical.append(hp) }
+            }
+        }
+        let final = model.editorRevision
+        let start = Date()
+        while Date().timeIntervalSince(start) < 30 {
+            if let hp = model.historicalPreview, paintedHistorical.last != hp { paintedHistorical.append(hp) }
+            if model.result?.revision == final, model.historicalPreview == nil, model.controllerState.inFlight == nil, !model.controllerState.queued { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(model.result?.revision, final, "the current preview is bound to the final editor revision")
+        XCTAssertNil(model.historicalPreview)
+        XCTAssertFalse(model.previewIsStale)
+        XCTAssertEqual(model.compiledDocuments["main.tex"], model.activeText)
+        // Every painted historical frame was an editor revision we submitted with a
+        // token, older than the revision it said was compiling, painted in
+        // increasing generation order (the display floor).
+        for (i, hp) in paintedHistorical.enumerated() {
+            XCTAssertTrue(submitted.contains(hp.shownEditorRevision), "shown \(hp.shownEditorRevision) was submitted")
+            XCTAssertLessThan(hp.shownEditorRevision, hp.compilingEditorRevision, hp.label)
+            XCTAssertLessThan(hp.shownCompileRevision, hp.currentCompileRevision, hp.label)
+            if i > 0 { XCTAssertGreaterThan(hp.shownCompileRevision, paintedHistorical[i - 1].shownCompileRevision, "monotonic") }
+        }
+        let st = model.historicalState
+        let log = model.workerLog.filter { $0.hasPrefix("historical:") }
+        print("real helper burst: historical painted=\(st.painted) refused=\(st.refused) dropped=\(st.dropped) observed=\(paintedHistorical.map(\.label)) log=\(log)")
+        XCTAssertGreaterThanOrEqual(st.painted, paintedHistorical.count)
+        XCTAssertTrue(log.contains { $0.contains("acknowledged") })
+    }
+
     // MARK: -
 
     private func waitUntil(_ what: String, timeout: TimeInterval = 10, _ cond: () -> Bool) async throws {
