@@ -193,8 +193,23 @@ struct NearbyReceiveLimits: Equatable {
     var maxSessionsPerPeer = 4
     /// Accepted TCP connections, authenticated or not.
     var maxConnections = 16
-    /// Per-session `(capture_id, base_revision, digest)` memory for duplicate detection.
+    /// Per-pairing `(capture_id, base_revision, digest)` memory for duplicate
+    /// detection, shared by every session of that pairing on one listener.
     var maxRememberedCaptures = 256
+    /// Seconds an accepted TCP connection may take to complete the TLS
+    /// handshake; a silent peer is closed (no application bytes are owed).
+    var handshakeTimeout: TimeInterval = 10
+    /// Seconds an authenticated connection may stay silent before `hello`.
+    var helloTimeout: TimeInterval = 10
+    /// Seconds one frame may take from its first byte to its newline (a
+    /// slow-loris partial line is refused with `frame_timeout`). The default
+    /// admits a full 12 MiB frame at 200 KiB/s.
+    var frameTimeout: TimeInterval = 60
+    /// TCP keepalive probes so a peer that vanished without a FIN (sleep,
+    /// Wi-Fi drop) releases its session in about idle + interval × count.
+    var keepaliveIdleSeconds = 15
+    var keepaliveIntervalSeconds = 5
+    var keepaliveCount = 4
 
     static let base64Overhead = 4.0 / 3.0
     /// Longest base64 string that can encode `maxImageBytes`.
@@ -256,6 +271,144 @@ final class NearbyReceiveBudget {
             let n = (sessionsByPeer[pairId] ?? 1) - 1
             if n <= 0 { sessionsByPeer.removeValue(forKey: pairId) } else { sessionsByPeer[pairId] = n }
         }
+    }
+}
+
+/// Refusals decided from framing alone, before any line is decoded and, for
+/// the size cases, before the offending bytes are buffered. `code` is what
+/// the companion sees in the `error` envelope; the handshake case has none
+/// because an unauthenticated peer is owed no application bytes.
+enum NearbyFrameError: Error, Equatable {
+    /// A terminated line longer than the limit.
+    case lineTooLong(bytes: Int, limit: Int)
+    /// An unterminated line that cannot end inside the limit.
+    case unterminatedLineTooLong(limit: Int)
+    /// A frame that did not reach its newline within `frameTimeout`.
+    case frameTimeout(seconds: TimeInterval, pendingBytes: Int)
+    /// An authenticated connection that sent no `hello` within `helloTimeout`.
+    case helloTimeout(seconds: TimeInterval)
+    /// A TCP peer that did not finish TLS within `handshakeTimeout`.
+    case handshakeTimeout(seconds: TimeInterval)
+
+    var code: String? {
+        switch self {
+        case .lineTooLong, .unterminatedLineTooLong: return "line_too_long"
+        case .frameTimeout: return "frame_timeout"
+        case .helloTimeout: return "hello_timeout"
+        case .handshakeTimeout: return nil
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .lineTooLong(let bytes, let limit): return "line of \(bytes) bytes exceeds \(limit) bytes"
+        case .unterminatedLineTooLong(let limit): return "unterminated line exceeds \(limit) bytes"
+        case .frameTimeout(let s, let pending): return "frame not completed within \(Self.seconds(s)) (\(pending) bytes pending)"
+        case .helloTimeout(let s): return "no hello within \(Self.seconds(s))"
+        case .handshakeTimeout(let s): return "TLS handshake not completed within \(Self.seconds(s))"
+        }
+    }
+
+    /// `connectionClosed` reason.
+    var reason: String {
+        switch self {
+        case .lineTooLong: return "line too long"
+        case .unterminatedLineTooLong: return "unterminated line too long"
+        case .frameTimeout(let s, _): return "frame timed out after \(Self.seconds(s))"
+        case .helloTimeout(let s): return "hello timed out after \(Self.seconds(s))"
+        case .handshakeTimeout(let s): return "handshake timed out after \(Self.seconds(s))"
+        }
+    }
+
+    static func seconds(_ s: TimeInterval) -> String {
+        s == s.rounded() ? "\(Int(s))s" : String(format: "%.2fs", s)
+    }
+}
+
+/// Acknowledgement memory per pairing, shared by every session of that
+/// pairing on one listener (and carried across a restart by
+/// `adoptConnections`), so a companion that reconnects and re-sends a capture
+/// the Mac already accepted is acknowledged again and never re-delivered.
+/// A retry that arrives while the first delivery is still pending — on any
+/// session — waits for that one answer. Thread-safe: sink replies may land
+/// after the delivering session is gone.
+final class NearbyAckMemory {
+    struct Remembered {
+        var baseRevision: Int
+        var digest: Data
+        var ack: NearbyV1.CaptureReceived?
+        var waiting: [(id: String, emit: (Data) -> Void)] = []
+    }
+    private let lock = NSLock()
+    private var byPair: [String: [String: Remembered]] = [:]
+    private var order: [String: [String]] = [:]
+    private var maxPerPair: Int
+
+    init(maxPerPair: Int) { self.maxPerPair = maxPerPair }
+
+    var limit: Int {
+        get { lock.withLock { maxPerPair } }
+        set { lock.withLock { maxPerPair = newValue } }
+    }
+
+    func lookup(pairId: String, captureId: String) -> Remembered? {
+        lock.withLock { byPair[pairId]?[captureId] }
+    }
+
+    func count(pairId: String) -> Int { lock.withLock { byPair[pairId]?.count ?? 0 } }
+    var pairIds: [String] { lock.withLock { Array(byPair.keys) } }
+
+    /// Records a capture as pending; evicts the oldest acknowledged entries
+    /// beyond the per-pair bound (pending ones are never evicted).
+    func remember(pairId: String, captureId: String, baseRevision: Int, digest: Data) {
+        lock.withLock {
+            byPair[pairId, default: [:]][captureId] = Remembered(baseRevision: baseRevision, digest: digest, ack: nil)
+            order[pairId, default: []].append(captureId)
+            var i = 0
+            while (byPair[pairId]?.count ?? 0) > maxPerPair, i < (order[pairId]?.count ?? 0) {
+                let old = order[pairId]![i]
+                if byPair[pairId]?[old]?.ack != nil {
+                    byPair[pairId]?.removeValue(forKey: old)
+                    order[pairId]?.remove(at: i)
+                } else { i += 1 }
+            }
+        }
+    }
+
+    /// Queues a retry behind a pending delivery. False when nothing is pending.
+    func wait(pairId: String, captureId: String, id: String, emit: @escaping (Data) -> Void) -> Bool {
+        lock.withLock {
+            guard byPair[pairId]?[captureId] != nil, byPair[pairId]?[captureId]?.ack == nil else { return false }
+            byPair[pairId]?[captureId]?.waiting.append((id, emit))
+            return true
+        }
+    }
+
+    /// Stores the sink's acknowledgement and hands back every queued retry.
+    func acknowledge(pairId: String, captureId: String, ack: NearbyV1.CaptureReceived) -> [(id: String, emit: (Data) -> Void)] {
+        lock.withLock {
+            guard byPair[pairId]?[captureId] != nil else { return [] }
+            let w = byPair[pairId]?[captureId]?.waiting ?? []
+            byPair[pairId]?[captureId]?.ack = ack
+            byPair[pairId]?[captureId]?.waiting = []
+            return w
+        }
+    }
+
+    /// Drops a refused capture (so a retry is delivered again) and hands back
+    /// every queued retry so it can be refused too.
+    func forget(pairId: String, captureId: String) -> [(id: String, emit: (Data) -> Void)] {
+        lock.withLock {
+            let w = byPair[pairId]?[captureId]?.waiting ?? []
+            byPair[pairId]?.removeValue(forKey: captureId)
+            if let i = order[pairId]?.firstIndex(of: captureId) { order[pairId]?.remove(at: i) }
+            return w
+        }
+    }
+
+    /// A forgotten pairing takes its memory with it.
+    func forget(pairId: String) {
+        lock.withLock { byPair.removeValue(forKey: pairId); order.removeValue(forKey: pairId) }
     }
 }
 
@@ -586,22 +739,18 @@ final class NearbySession {
     private var admittedPeer: String?
     private var ended = false
 
-    /// Dedup memory keyed by `capture_id`: the accepted revision and payload
-    /// digest, the acknowledgement once the sink answered, and retries that
-    /// arrived while the first delivery was still pending.
-    private struct Remembered {
-        var baseRevision: Int
-        var digest: Data
-        var ack: NearbyV1.CaptureReceived?
-        var waiting: [(id: String, emit: (Data) -> Void)] = []
-    }
-    private var remembered: [String: Remembered] = [:]
-    private var rememberedOrder: [String] = []
+    /// Dedup memory keyed by `(pair_id, capture_id)`: the accepted revision and
+    /// payload digest, the acknowledgement once the sink answered, and retries
+    /// that arrived while the first delivery was still pending. Shared with
+    /// the other sessions of the pairing when the listener supplies it, so a
+    /// reconnect never causes a second delivery; private to this session
+    /// otherwise (tests driving bytes directly).
+    let memory: NearbyAckMemory
 
     init(keys: [NearbyListener.PSKEntry], macName: String, sink: CaptureSink?,
          destinations: DestinationProvider?, pairing: PairingConfirmer?,
          limits: NearbyReceiveLimits = .init(), budget: NearbyReceiveBudget? = nil,
-         decodeQueue: DispatchQueue? = nil,
+         decodeQueue: DispatchQueue? = nil, memory: NearbyAckMemory? = nil,
          onStateQueue: @escaping (@escaping () -> Void) -> Void = { $0() },
          acceptNonce: @escaping (String) -> Bool = { _ in true }, events: @escaping (Event) -> Void) {
         self.acceptNonce = acceptNonce
@@ -610,6 +759,7 @@ final class NearbySession {
         self.limits = limits
         self.budget = budget
         self.decodeQueue = decodeQueue
+        self.memory = memory ?? NearbyAckMemory(maxPerPair: limits.maxRememberedCaptures)
         self.onStateQueue = onStateQueue
         self.sink = sink
         self.destinations = destinations
@@ -618,10 +768,14 @@ final class NearbySession {
     }
 
     var helloCompleted: Bool { pairId != nil }
-    var rememberedCaptureCount: Int { remembered.count }
+    /// Captures remembered for this session's pairing (pending or acknowledged).
+    var rememberedCaptureCount: Int { pairId.map { memory.count(pairId: $0) } ?? 0 }
 
     /// Releases every budget share and the peer's session slot. Idempotent;
-    /// the connection calls it once the stream is closed either way.
+    /// the connection calls it once the stream is closed either way. The
+    /// pairing's acknowledgement memory is kept: a delivery still pending in
+    /// the sink completes there, and a retry on the next session is answered
+    /// from it rather than delivered again.
     func end() {
         guard !ended else { return }
         ended = true
@@ -630,8 +784,6 @@ final class NearbySession {
         bytesInFlight = 0
         if let p = admittedPeer { budget?.leaveSession(pairId: p) }
         admittedPeer = nil
-        remembered.removeAll()
-        rememberedOrder.removeAll()
     }
 
     /// Handles one complete line (without its newline). `emit` may be called
@@ -785,13 +937,14 @@ final class NearbySession {
         return Data(h.finalize())
     }
 
-    /// State queue: dedup by (session, capture_id, base_revision, digest);
+    /// State queue: dedup by (pairing, capture_id, base_revision, digest);
     /// a new capture is remembered as pending, validated off-queue, then
     /// delivered (or forgotten and refused, with any coalesced retries).
     private func deliver(_ v: Parsed, id: String, release: @escaping () -> Void, emit: @escaping (Data) -> Void) {
         let p = v.envelope.payload
         let captureId = p.captureId
-        if let known = remembered[captureId] {
+        let pair = pairId ?? ""
+        if let known = memory.lookup(pairId: pair, captureId: captureId) {
             guard known.baseRevision == p.baseRevision else {
                 release()
                 refuse(id: id, captureId: captureId, code: "revision_mismatch",
@@ -808,8 +961,13 @@ final class NearbySession {
             events(.duplicate(captureId: captureId))
             if let ack = known.ack {
                 emit(NearbyV1.line(id: id, type: "capture_received", ack))
-            } else {
-                remembered[captureId]?.waiting.append((id, emit))
+            } else if !memory.wait(pairId: pair, captureId: captureId, id: id, emit: emit) {
+                // Answered (or forgotten) between the lookup and the wait.
+                if let ack = memory.lookup(pairId: pair, captureId: captureId)?.ack {
+                    emit(NearbyV1.line(id: id, type: "capture_received", ack))
+                } else {
+                    refuse(id: id, captureId: captureId, code: "unavailable", message: "capture was not acknowledged", emit: emit)
+                }
             }
             return
         }
@@ -818,16 +976,24 @@ final class NearbySession {
             refuse(id: id, captureId: captureId, code: "unavailable", message: "no capture sink attached", emit: emit)
             return
         }
-        remember(captureId, Remembered(baseRevision: p.baseRevision, digest: v.digest, ack: nil))
+        memory.remember(pairId: pair, captureId: captureId, baseRevision: p.baseRevision, digest: v.digest)
+        let memory = memory
+        let abandon: () -> Void = {
+            // Session gone before the sink saw it: nothing was delivered, so a
+            // retry must be delivered afresh.
+            for w in memory.forget(pairId: pair, captureId: captureId) {
+                w.emit(NearbyV1.errorLine(id: w.id, code: "unavailable", message: "capture was not acknowledged"))
+            }
+            release()
+        }
         offQueue { [weak self] in
-            guard let self else { release(); return }
+            guard let self else { abandon(); return }
             let checked = self.validateImage(p)
             self.onStateQueue { [weak self] in
-                guard let self, !self.ended else { release(); return }
+                guard let self, !self.ended else { abandon(); return }
                 switch checked {
                 case .failure(let e):
-                    let waiting = self.remembered[captureId]?.waiting ?? []
-                    self.forget(captureId)
+                    let waiting = memory.forget(pairId: pair, captureId: captureId)
                     release()
                     self.refuse(id: id, captureId: captureId, code: e.code, message: e.message, emit: emit)
                     for w in waiting { w.emit(NearbyV1.errorLine(id: w.id, code: e.code, message: e.message)) }
@@ -839,27 +1005,30 @@ final class NearbySession {
     }
 
     /// State queue: hand a validated, remembered capture to the sink and
-    /// answer it (and any coalesced retries) from the sink's reply.
+    /// answer it (and any coalesced retries) from the sink's reply. The reply
+    /// is applied to the pairing's memory even when this session is gone by
+    /// then (the companion dropped mid-delivery): the retry it sends on its
+    /// next session is acknowledged from memory, never delivered again.
     private func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, to sink: CaptureSink, id: String,
                         release: @escaping () -> Void, emit: @escaping (Data) -> Void) {
         let captureId = envelope.payload.captureId
+        let pair = pairId ?? ""
         let events = events
+        let memory = memory
+        let pairing = pairing
         sink.submit(envelope) { [weak self] reply in
             let finish: () -> Void = { [weak self] in
-                guard let self else { release(); return }
                 release()
-                let waiting = self.remembered[captureId]?.waiting ?? []
-                self.remembered[captureId]?.waiting = []
                 if let header = try? RuntimeV1.header(of: reply), header.type == "capture_received",
                    let env = try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: reply) {
-                    self.remembered[captureId]?.ack = env.payload
-                    if let pairId = self.pairId { self.pairing?.noteCapture(pairId: pairId, captureId: captureId) }
+                    let waiting = memory.acknowledge(pairId: pair, captureId: captureId, ack: env.payload)
+                    if !pair.isEmpty { pairing?.noteCapture(pairId: pair, captureId: captureId) }
                     events(.capture(captureId: captureId))
                     emit(reply)
                     for w in waiting { w.emit(NearbyV1.line(id: w.id, type: "capture_received", env.payload)) }
                 } else {
                     // Refused by the sink: forget it so a retry is delivered again.
-                    self.forget(captureId)
+                    let waiting = memory.forget(pairId: pair, captureId: captureId)
                     emit(reply)
                     if let err = try? JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.ErrorPayload>.self, from: reply) {
                         events(.refused(captureId: captureId, code: err.payload.code, message: err.payload.message))
@@ -871,21 +1040,6 @@ final class NearbySession {
             }
             if let self { self.onStateQueue(finish) } else { finish() }
         }
-    }
-
-    private func remember(_ captureId: String, _ r: Remembered) {
-        remembered[captureId] = r
-        rememberedOrder.append(captureId)
-        var i = 0
-        while remembered.count > limits.maxRememberedCaptures, i < rememberedOrder.count {
-            let old = rememberedOrder[i]
-            if remembered[old]?.ack != nil { remembered.removeValue(forKey: old); rememberedOrder.remove(at: i) } else { i += 1 }
-        }
-    }
-
-    private func forget(_ captureId: String) {
-        remembered.removeValue(forKey: captureId)
-        if let i = rememberedOrder.firstIndex(of: captureId) { rememberedOrder.remove(at: i) }
     }
 
     // MARK: hello

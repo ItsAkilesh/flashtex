@@ -86,6 +86,10 @@ final class NearbyListener {
     /// Listener-wide in-flight bytes and sessions per peer; shared with the
     /// replacement listener on restart so the caps survive a PSK table change.
     private(set) var budget: NearbyReceiveBudget
+    /// Acknowledged/pending captures per pairing, shared by that pairing's
+    /// sessions and by the replacement listener on restart, so a reconnecting
+    /// companion's retry is acknowledged from memory and never re-delivered.
+    private(set) var memory: NearbyAckMemory
     /// Off-queue JSON/base64/image work; concurrency is bounded by the budget.
     private let decodeQueue: DispatchQueue
 
@@ -95,6 +99,7 @@ final class NearbyListener {
         self.configuration = configuration
         self.queue = queue
         self.budget = NearbyReceiveBudget(limits: configuration.limits)
+        self.memory = NearbyAckMemory(maxPerPair: configuration.limits.maxRememberedCaptures)
         self.decodeQueue = DispatchQueue(label: "flashtex.nearby.decode", qos: .utility, attributes: .concurrent)
         queue.setSpecific(key: Self.queueKey, value: true)
         self.sink = sink
@@ -121,9 +126,16 @@ final class NearbyListener {
         return tls
     }
 
-    static func parameters(psks: [(identity: String, key: Data)], loopbackOnly: Bool) -> NWParameters {
+    static func parameters(psks: [(identity: String, key: Data)], loopbackOnly: Bool,
+                           limits: NearbyReceiveLimits = .init()) -> NWParameters {
         let tcp = NWProtocolTCP.Options()
+        // Half-open detection: a peer that vanished without a FIN is probed
+        // and dropped after about idle + interval × count seconds, which
+        // releases its session slot and any in-flight budget.
         tcp.enableKeepalive = true
+        tcp.keepaliveIdle = limits.keepaliveIdleSeconds
+        tcp.keepaliveInterval = limits.keepaliveIntervalSeconds
+        tcp.keepaliveCount = limits.keepaliveCount
         tcp.noDelay = true
         let params = NWParameters(tls: tlsOptions(psks: psks), tcp: tcp)
         params.allowLocalEndpointReuse = true
@@ -153,7 +165,7 @@ final class NearbyListener {
 
     func start() throws {
         let params = Self.parameters(psks: configuration.psks.map { ($0.identity, $0.key) },
-                                     loopbackOnly: configuration.loopbackOnly)
+                                     loopbackOnly: configuration.loopbackOnly, limits: configuration.limits)
         let nwPort: NWEndpoint.Port = configuration.port.flatMap { NWEndpoint.Port(rawValue: $0) } ?? .any
         let listener = try NWListener(using: params, on: nwPort)
         if let ad = configuration.advertisement {
@@ -253,6 +265,11 @@ final class NearbyListener {
             recentNonces = other.recentNonces
             budget = other.budget
             budget.limits = configuration.limits
+            // Acknowledgement memory follows the pairings that survive; a
+            // forgotten pairing's retries must not be answered from it.
+            memory = other.memory
+            memory.limit = configuration.limits.maxRememberedCaptures
+            for id in memory.pairIds where !keep.contains(id) { memory.forget(pairId: id) }
         }
     }
 
@@ -291,12 +308,17 @@ final class NearbyListener {
         private var reportedPending = 0
         private(set) var identity: String?
         private let maxLineBytes: Int
+        private let limits: NearbyReceiveLimits
         private let queue: DispatchQueue
+        /// One armed deadline at a time: handshake, then hello, then the
+        /// frame in progress (none while idle between complete lines).
+        private var deadline: DispatchWorkItem?
 
         init(_ nw: NWConnection, owner: NearbyListener) {
             self.nw = nw
             self.owner = owner
             self.maxLineBytes = owner.configuration.maxLineBytes
+            self.limits = owner.configuration.limits
             self.queue = owner.queue
         }
 
@@ -315,7 +337,38 @@ final class NearbyListener {
                 default: break
                 }
             }
+            // A TCP peer that never starts (or never finishes) TLS must not
+            // hold one of the connection slots: no bytes are owed to it.
+            arm(after: limits.handshakeTimeout) { [weak self] in
+                guard let self, self.session == nil else { return }
+                self.close(reason: NearbyFrameError.handshakeTimeout(seconds: self.limits.handshakeTimeout).reason)
+            }
             nw.start(queue: queue)
+        }
+
+        // MARK: deadlines (all on `queue`)
+
+        private func arm(after seconds: TimeInterval, _ fire: @escaping () -> Void) {
+            deadline?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self, !self.closing else { return }
+                self.deadline = nil
+                fire()
+            }
+            deadline = item
+            queue.asyncAfter(deadline: .now() + max(0, seconds), execute: item)
+        }
+
+        private func disarm() {
+            deadline?.cancel()
+            deadline = nil
+        }
+
+        /// Refuses on framing grounds: the typed error's code goes to the peer
+        /// (when it has one), its reason to the listener's event.
+        private func refuse(_ error: NearbyFrameError) {
+            if let code = error.code { send(NearbyV1.errorLine(id: nil, code: code, message: error.message)) }
+            closeAfterFlush(reason: error.reason)
         }
 
         /// Called only after TLS completed with one of the table keys. The
@@ -326,29 +379,42 @@ final class NearbyListener {
                 close(reason: "unexpected TLS parameters")
                 return
             }
+            var sessionIdentity: String?
             session = NearbySession(keys: owner.configuration.psks, macName: owner.configuration.macName,
                                     sink: owner.sink, destinations: owner.destinations, pairing: owner.pairing,
                                     limits: owner.configuration.limits, budget: owner.budget,
-                                    decodeQueue: owner.decodeQueue,
+                                    decodeQueue: owner.decodeQueue, memory: owner.memory,
                                     onStateQueue: { [weak self] work in
                                         guard let self, let owner = self.owner else { work(); return }
                                         owner.onQueue(work)
                                     },
-                                    acceptNonce: { [weak self] key in self?.owner?.acceptNonce(key) ?? false }) { [weak self] e in
-                guard let self else { return }
+                                    acceptNonce: { [weak self] key in self?.owner?.acceptNonce(key) ?? false }) { [weak self, weak owner] e in
+                // A capture the sink acknowledges after this connection is
+                // gone (the companion dropped mid-delivery) is still reported
+                // to the listener that now owns the pairing's memory.
+                let listener = self?.owner ?? owner
+                let identity = self?.identity ?? sessionIdentity
                 switch e {
                 case .hello(let p, let n, let b):
-                    self.identity = p
-                    self.owner?.emitEvent(.hello(pairId: p, companionName: n, bootstrap: b))
-                case .capture(let id): self.owner?.emitEvent(.capture(captureId: id))
+                    sessionIdentity = p
+                    self?.identity = p
+                    self?.disarm()
+                    listener?.emitEvent(.hello(pairId: p, companionName: n, bootstrap: b))
+                case .capture(let id): listener?.emitEvent(.capture(captureId: id))
                 case .refused(let id, let code, let message):
-                    self.owner?.emitEvent(.captureRefused(identity: self.identity, captureId: id, code: code, message: message))
+                    listener?.emitEvent(.captureRefused(identity: identity, captureId: id, code: code, message: message))
                 case .duplicate(let id):
-                    self.owner?.emitEvent(.captureDuplicate(identity: self.identity, captureId: id))
+                    listener?.emitEvent(.captureDuplicate(identity: identity, captureId: id))
                 case .violation: break
                 }
             }
             owner.emitEvent(.connectionOpened)
+            // Authenticated but silent: the slot and the per-peer session
+            // count are not held open for a peer that never says hello.
+            arm(after: limits.helloTimeout) { [weak self] in
+                guard let self, self.identity == nil else { return }
+                self.refuse(.helloTimeout(seconds: self.limits.helloTimeout))
+            }
             receiveLoop()
         }
 
@@ -364,12 +430,23 @@ final class NearbyListener {
 
         private func consume(_ data: Data) {
             guard let session else { return }
+            // Bound before buffering: a chunk that cannot complete the pending
+            // line inside the limit is refused without being appended, so the
+            // receive buffer never holds more than `maxLineBytes`.
+            let pendingBefore = splitter.pendingBytes
+            if pendingBefore + data.count > maxLineBytes {
+                let room = maxLineBytes - pendingBefore
+                let head = room > 0 ? data.prefix(room) : data.prefix(0)
+                if !head.contains(0x0A) {
+                    refuse(.unterminatedLineTooLong(limit: maxLineBytes))
+                    return
+                }
+            }
             let lines = splitter.append(data)
             reportProgress(completedLines: lines)
             for line in lines {
                 if line.count + 1 > maxLineBytes {
-                    send(NearbyV1.errorLine(id: nil, code: "line_too_long", message: "line exceeds \(maxLineBytes) bytes"))
-                    closeAfterFlush(reason: "line too long")
+                    refuse(.lineTooLong(bytes: line.count + 1, limit: maxLineBytes))
                     return
                 }
                 let disposition = session.handle(line: line) { [weak self] reply in
@@ -381,9 +458,29 @@ final class NearbyListener {
                     return
                 }
             }
-            if splitter.pendingBytes >= maxLineBytes {
-                send(NearbyV1.errorLine(id: nil, code: "line_too_long", message: "unterminated line exceeds \(maxLineBytes) bytes"))
-                closeAfterFlush(reason: "unterminated line too long")
+            let pending = splitter.pendingBytes
+            if pending >= maxLineBytes {
+                refuse(.unterminatedLineTooLong(limit: maxLineBytes))
+                return
+            }
+            // Frame deadline: armed by the first byte of a line, cleared by its
+            // newline; a partial frame that outlives it is refused, however
+            // slowly it is being fed. Before hello it never outlasts the hello
+            // deadline by more than that deadline.
+            if pending == 0 {
+                if pendingBefore > 0 { disarm() }
+                if identity == nil, deadline == nil {
+                    arm(after: limits.helloTimeout) { [weak self] in
+                        guard let self, self.identity == nil else { return }
+                        self.refuse(.helloTimeout(seconds: self.limits.helloTimeout))
+                    }
+                }
+            } else if pendingBefore == 0 || !lines.isEmpty {
+                let seconds = identity == nil ? min(limits.frameTimeout, limits.helloTimeout) : limits.frameTimeout
+                arm(after: seconds) { [weak self] in
+                    guard let self else { return }
+                    self.refuse(.frameTimeout(seconds: seconds, pendingBytes: self.splitter.pendingBytes))
+                }
             }
         }
 
@@ -414,6 +511,7 @@ final class NearbyListener {
         private func closeAfterFlush(reason: String) {
             guard !closing else { return }
             closing = true
+            disarm()
             nw.send(content: nil, contentContext: .finalMessage, isComplete: true,
                     completion: .contentProcessed { [weak self] _ in self?.nw.cancel() })
             reportClosed(reason)
@@ -422,6 +520,7 @@ final class NearbyListener {
         func close(reason: String) {
             guard !closing else { return }
             closing = true
+            disarm()
             nw.cancel()
             reportClosed(reason)
         }
@@ -433,6 +532,7 @@ final class NearbyListener {
                 closing = true
                 reportClosed(reason)
             }
+            disarm()
             session?.end()
             owner?.forget(self)
         }
