@@ -119,8 +119,8 @@ fn real_glyphs_are_emitted_with_the_latin_modern_math_hint() {
     }
     assert_eq!(
         items.iter().find(|(text, _)| text == "A").unwrap().1,
-        "Times-Roman",
-        "ordinary math letters keep their base-14 hint"
+        "Times-Italic",
+        "ordinary math letters keep a base-14 (math italic) hint"
     );
 
     let messages = messages(&reply);

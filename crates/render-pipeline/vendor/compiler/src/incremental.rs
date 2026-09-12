@@ -151,6 +151,7 @@ impl Session {
         }
 
         let parsed = parser::parse_project(documents, entry_path);
+        let constraints = parsed.preamble_constraints(constraints);
         let same_document_set = self.previous.as_ref().is_some_and(|previous| {
             previous.entry_path == entry_path
                 && previous.documents.len() == snapshot.len()
@@ -341,6 +342,7 @@ pub fn compile_full_project(
     constraints: LayoutConstraints,
 ) -> CompileOutput {
     let parsed = parser::parse_project(documents, entry_path);
+    let constraints = parsed.preamble_constraints(constraints);
     let (pages, mut layout_diagnostics) = layout::layout_converged(&parsed.blocks, constraints);
     let mut diagnostics = parsed.diagnostics;
     diagnostics.append(&mut layout_diagnostics);
@@ -418,6 +420,10 @@ fn shift_inlines(
                 span: mapped_span(*span, changes, deltas)?,
             }),
             Inline::LineBreak { span } => Some(Inline::LineBreak {
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::TextGlue { em, span } => Some(Inline::TextGlue {
+                em: *em,
                 span: mapped_span(*span, changes, deltas)?,
             }),
             Inline::Math {
@@ -624,6 +630,7 @@ fn block_signature(block: &Block) -> BlockSignature {
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
@@ -662,6 +669,7 @@ fn shifted_signature(
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
@@ -848,6 +856,7 @@ mod tests {
         let constraints = LayoutConstraints {
             font_size_pt: 13.0,
             measure_pt: 320.0,
+            parskip_pt: None,
         };
         let result = session.compile(text, constraints);
         eprintln!("constraint ReuseStats: {:?}", result.stats);

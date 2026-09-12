@@ -468,7 +468,8 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Label { span, .. }
         | Inline::Reference { span, .. }
         | Inline::HFill { span }
-        | Inline::HSpace { span, .. } => *span,
+        | Inline::HSpace { span, .. }
+        | Inline::TextGlue { span, .. } => *span,
     }
 }
 
@@ -1172,7 +1173,7 @@ struct BodyCursor {
 }
 
 /// The bytes TeX read between the previous token and this one, in the
-/// order it read them, so that [`gap_has_space`] and [`gap_fills`] can be
+/// order it read them, so that [`gap_has_space`] can be
 /// applied to them uniformly: the source between two exact spans; the
 /// definition text between two tokens of one replacement (`\hfill
 /// \normalfont[` between `#1` and `[`); and across the boundary between a
@@ -1207,7 +1208,13 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
                 *cursor = Some(BodyCursor { inv: span, at: start });
                 return prev_end.map(|_| " ".to_string());
             };
-            match body.get(start..).and_then(|rest| rest.find(text)) {
+            // A control word (the glue arms pass `\hfill`/`\quad`/...) is
+            // matched as a whole word, so `\hfil` never stops at `\hfill`.
+            let find_text = |rest: &str| match text.strip_prefix('\\') {
+                Some(name) if name.chars().all(|c| c.is_ascii_alphabetic()) => find_command(rest, name),
+                _ => rest.find(text),
+            };
+            match body.get(start..).and_then(find_text) {
                 Some(p) => {
                     let pos = start + p;
                     *cursor = Some(BodyCursor { inv: span, at: pos + text.len() });
@@ -1243,24 +1250,6 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
     }
     *cursor = None;
     prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps))
-}
-
-/// The `\hfill`/`\hfil` control words in a gap (outside comments), each
-/// as its `fill` order, and whether an interword space follows the last
-/// one (`\hfill{} x`; the space right after the control word is eaten).
-fn gap_fills(gap: &str) -> (Vec<bool>, bool) {
-    let mut fills = Vec::new();
-    let mut after = 0usize;
-    let mut from = 0usize;
-    while let Some(at) = find_command(&gap[from..], "hfil").or_else(|| find_command(&gap[from..], "hfill")).map(|a| a + from) {
-        // `find_command` matches the whole word: pick whichever is here.
-        let fill = !is_control_word(gap, at, "hfil");
-        fills.push(fill);
-        after = at + if fill { "\\hfill".len() } else { "\\hfil".len() };
-        from = after;
-    }
-    let space_after = !fills.is_empty() && gap_has_space_after_control_word(&gap[after..]);
-    (fills, space_after)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
@@ -1562,6 +1551,10 @@ fn items_cached(
                 7u8.hash(&mut h);
                 pt.to_bits().hash(&mut h);
             }
+            Inline::TextGlue { em, .. } => {
+                8u8.hash(&mut h);
+                em.to_bits().hash(&mut h);
+            }
             Inline::MathRows { rows, aligned, .. } => {
                 5u8.hash(&mut h);
                 aligned.hash(&mut h);
@@ -1627,35 +1620,27 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
 
     // Where the reader stands in a macro's replacement text (`token_gap`).
     let mut cursor: Option<BodyCursor> = None;
-    // Emits an interword space if the bytes TeX read between `prev` and
-    // `span` held one (`token_gap`); in a heading, also the `\hfill`
-    // glue the compiler drops from a title (as `Item::HFill`, with the
-    // space before it): `(space, fills, space after the fills)`. `text` is
-    // the current token's text (a word).
-    let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>| -> (bool, Vec<bool>, bool) {
+    // Whether the previous token was a glue control word (`\hfill`,
+    // `\quad`, `\hspace`): TeX eats the whitespace right after it, and
+    // the gap read next starts at that whitespace.
+    let mut after_control_word = false;
+    // Whether the bytes TeX read between `prev` and `span` held an
+    // interword space (`token_gap`). `text` is the current token's text (a
+    // word, or the glue's control word). `\hfill` in a title is the
+    // compiler's own `Inline::HFill` (pin `3d3d5ae3`, also inside macro
+    // bodies), so the gap is never scanned for fills here.
+    let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>, after_control_word: bool| -> bool {
         let src = text_of(span.document);
         match token_gap(src, prev_end, prev_span, span, text, &mut cursor) {
-            None => (false, Vec::new(), false),
-            Some(gap) => {
-                let (fills, space_after) = if heading { gap_fills(&gap) } else { (Vec::new(), false) };
-                let before = match fills.is_empty() {
-                    true => gap.as_str(),
-                    false => &gap[..find_command(&gap, "hfil").or_else(|| find_command(&gap, "hfill")).unwrap_or(0)],
-                };
-                (gap_has_space(before), fills, space_after)
-            }
+            None => false,
+            Some(gap) if after_control_word => gap_has_space_after_control_word(&gap),
+            Some(gap) => gap_has_space(&gap),
         }
     };
-    // Pushes the space/fills `space_between` found.
-    let push_gap = |items: &mut Vec<Item>, (space, fills, space_after): (bool, Vec<bool>, bool), style: TextStyle, factor: u32| {
+    // Pushes the space `space_between` found.
+    let push_gap = |items: &mut Vec<Item>, space: bool, style: TextStyle, factor: u32| {
         if space {
             items.push(Item::Space { style, factor, no_break: false });
-        }
-        for fill in fills {
-            items.push(Item::HFill { fill });
-        }
-        if space_after {
-            items.push(Item::Space { style, factor: 1000, no_break: false });
         }
     };
 
@@ -1669,31 +1654,44 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
+                after_control_word = false;
             }
-            Inline::HFill { span } | Inline::HSpace { span, .. } => {
+            Inline::HFill { span } | Inline::HSpace { span, .. } | Inline::TextGlue { span, .. } => {
                 // Explicit horizontal glue: the interword space read before
-                // it stays (TeX keeps both glue nodes).
-                let gap = space_between(prev_end, prev_span, *span, None);
+                // it stays (TeX keeps both glue nodes). `TextGlue` is the
+                // compiler's text-mode `\quad`/`\qquad` (`em` ems of the
+                // current font, like the `\quad` after a section number).
+                // The control word is passed as the token's text so that
+                // a macro-body cursor moves past it (`Problem #1 \hfill
+                // \normalfont[#2 points]`): the compiler gives the glue the
+                // invocation's span, and the next token's gap must start
+                // after the word, not before it.
+                let (item, word) = match &**inline {
+                    Inline::HSpace { pt, .. } => (Item::HSpace { pt: *pt }, "\\hspace"),
+                    Inline::TextGlue { em, .. } => (Item::Quad { em: *em }, if *em >= 2.0 { "\\qquad" } else { "\\quad" }),
+                    _ => {
+                        let fill = !is_control_word(text_of(span.document), span.start, "hfil");
+                        (Item::HFill { fill }, if fill { "\\hfill" } else { "\\hfil" })
+                    }
+                };
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
                 let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
                 push_gap(&mut items, gap, gap_style, factor);
-                items.push(match &**inline {
-                    Inline::HSpace { pt, .. } => Item::HSpace { pt: *pt },
-                    _ => Item::HFill {
-                        fill: !is_control_word(text_of(span.document), span.start, "hfil"),
-                    },
-                });
+                items.push(item);
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
                 pending_accent = None;
+                after_control_word = true;
             }
             Inline::MathRows { rows, span, .. } => {
                 // Each row becomes its own display item (`is_display`
                 // recognises the row spans); the environment's span ends
                 // the preceding text like `\[`.
-                let gap = space_between(prev_end, prev_span, *span, None);
+                let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
                 let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
                 push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
                 for row in rows {
                     items.push(Item::Math {
                         list: math_row_list(row),
@@ -1706,9 +1704,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
             }
             Inline::Math { list, span, .. } => {
                 // The glue is the current font's where the space sits.
-                let gap = space_between(prev_end, prev_span, *span, None);
+                let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
                 let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
                 push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
                 items.push(Item::Math {
                     list: list.clone(),
                     span: *span,
@@ -1736,7 +1735,6 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 } else {
                     None
                 };
-                let is_accent = accent_char.is_some();
                 let mut style = style_at(styles_of(span.document), span.start);
                 if heading {
                     // `\@startsection` sets `\bfseries`; the compiler's
@@ -1746,15 +1744,15 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     style.medium = !cs.bold;
                     style.italic |= cs.italic;
                 }
-                let gap = space_between(prev_end, prev_span, *span, Some(text));
-                let has_space = gap.0 || !gap.1.is_empty();
+                let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
+                after_control_word = false;
                 if has_space {
                     // TeX sizes an interword space with the font current
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
                     let gap_style = space_style(texts, styles, prev_end, *span, style);
-                    push_gap(&mut items, gap, gap_style, factor);
+                    push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
                 }
                 if let Some(mark) = accent_char {
@@ -2029,6 +2027,51 @@ mod tests {
         let doc2 = adapt(&[src2], 0, &flashtex_compiler::parser::parse(src2), &RenderOptions::default(), &Labels::default());
         assert_eq!(doc2.style.body_size_pt, 10.0);
         assert_eq!(doc2.style.parindent_pt, 15.0);
+    }
+
+    /// Shorthand for an item list: `W` word, `S` space, `F` fill, `Q` quad.
+    fn shape(items: &[Item]) -> String {
+        items
+            .iter()
+            .map(|i| match i {
+                Item::Word(_) => 'W',
+                Item::Space { .. } => 'S',
+                Item::HFill { .. } => 'F',
+                Item::Quad { .. } => 'Q',
+                Item::HSpace { .. } => 'H',
+                _ => '?',
+            })
+            .collect()
+    }
+
+    #[test]
+    fn compiler_glue_is_taken_once_and_eats_the_space_after_its_control_word() {
+        // The compiler (pin `3d3d5ae3`) emits `Inline::HFill` inside titles,
+        // through macro bodies too, and `Inline::TextGlue` for text-mode
+        // `\quad`/`\qquad`; the pipeline must not add a second fill from
+        // the macro body's bytes, and the whitespace after the control word
+        // is TeX's to eat.
+        let src = "\\documentclass[11pt]{article}\n\\newcommand{\\problem}[2]{\\subsection*{Problem #1 \\hfill \\normalfont[#2 points]}}\n\\begin{document}\n\\problem{1}{4}\n\\subsection*{Bonus \\hfill \\normalfont[1 pt]}\nA \\quad B\\qquad C.\n\\end{document}\n";
+        let doc = adapt(&[src], 0, &flashtex_compiler::parser::parse(src), &RenderOptions::default(), &Labels::default());
+        let shapes: Vec<String> = doc
+            .blocks
+            .iter()
+            .map(|b| match b {
+                Block::Heading { items, .. } => shape(items),
+                Block::Paragraph { parts, .. } => parts
+                    .iter()
+                    .map(|p| match p {
+                        ParaPart::Lines(items) => shape(items),
+                        ParaPart::Display { .. } => "D".to_string(),
+                    })
+                    .collect(),
+                Block::Rule { .. } => "R".to_string(),
+            })
+            .collect();
+        // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.
+        // `A \quad B\qquad C.`: the space before `\quad` stays, the one after
+        // is eaten; `B\qquad` has none before.
+        assert_eq!(shapes, ["WSWSFWSW", "WSFWSW", "WSQWQW"]);
     }
 
     #[test]

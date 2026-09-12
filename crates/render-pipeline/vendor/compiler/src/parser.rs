@@ -34,6 +34,16 @@ pub enum Inline {
     LineBreak {
         span: Span,
     },
+    /// Explicit text-mode horizontal glue (`\quad` is 1em, `\qquad` is 2em),
+    /// measured in ems of the surrounding body text size. Named distinctly
+    /// from `HSpace` below (a fixed-point `\hspace{<dimen>}` glue) since the
+    /// two behave differently at a line break: this discardable glue mirrors
+    /// TeX by breaking the line rather than overflowing it (see
+    /// `layout::LayoutCursor::text_glue`).
+    TextGlue {
+        em: f64,
+        span: Span,
+    },
     Math {
         list: MathList,
         display: bool,
@@ -232,6 +242,10 @@ pub struct Parsed {
     pub diagnostics: Vec<Diagnostic>,
     /// The argument of the first valid `\documentclass`, if present.
     pub document_class: Option<String>,
+    /// Body size from a `10pt`/`11pt`/`12pt` `\documentclass` option.
+    pub class_size_pt: Option<f64>,
+    /// `\setlength{\parskip}{..}` from the preamble, in points.
+    pub parskip_pt: Option<f64>,
     /// Package names mentioned by valid `\usepackage` commands.
     pub packages: Vec<String>,
     /// One dependency list per block, in `blocks` order.
@@ -242,6 +256,20 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+}
+
+impl Parsed {
+    /// Layout constraints with the preamble's body size and `\parskip` applied.
+    pub fn preamble_constraints(
+        &self,
+        constraints: crate::layout::LayoutConstraints,
+    ) -> crate::layout::LayoutConstraints {
+        crate::layout::LayoutConstraints {
+            font_size_pt: self.class_size_pt.unwrap_or(constraints.font_size_pt),
+            parskip_pt: self.parskip_pt.or(constraints.parskip_pt),
+            ..constraints
+        }
+    }
 }
 
 const BUILT_INS: &[&str] = &[
@@ -261,6 +289,7 @@ const BUILT_INS: &[&str] = &[
     "end",
     "par",
     "documentclass",
+    "setlength",
     "usepackage",
     "setlist",
     "newcommand",
@@ -292,12 +321,27 @@ const BUILT_INS: &[&str] = &[
     "tt",
     "rm",
     "sf",
+    "quad",
+    "qquad",
+    "bigskip",
+    "medskip",
+    "smallskip",
     "vspace",
     "hrule",
     "newpage",
     "pagestyle",
     "listfiles",
     "noindent",
+    "tiny",
+    "scriptsize",
+    "footnotesize",
+    "small",
+    "normalsize",
+    "large",
+    "Large",
+    "LARGE",
+    "huge",
+    "Huge",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -309,6 +353,11 @@ const BUILT_INS: &[&str] = &[
 /// `layout.rs`), unlike `in`/`cm`/`mm` below, which follow TeX's own
 /// 72.27-per-inch point.
 pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
+    parse_dimen_pt_at(text, crate::layout::BODY_SIZE_PT)
+}
+
+/// `parse_dimen_pt` with `em`/`ex` relative to `body_pt`.
+pub(crate) fn parse_dimen_pt_at(text: &str, body_pt: f64) -> Option<f64> {
     let text = text.trim();
     let unit_len = text
         .chars()
@@ -326,8 +375,8 @@ pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
         "in" => 72.27,
         "cm" => 72.27 / 2.54,
         "mm" => 72.27 / 25.4,
-        "em" => crate::layout::BODY_SIZE_PT,
-        "ex" => crate::layout::BODY_SIZE_PT * 0.5,
+        "em" => body_pt,
+        "ex" => body_pt * 0.5,
         _ => return None,
     };
     Some(value * per_pt)
@@ -347,6 +396,15 @@ fn looks_like_recoverable_argument(content: &str) -> bool {
     parse_dimen_pt(content).is_some()
         || (content.chars().count() > 1 && content.chars().all(|ch| ch.is_ascii_lowercase()))
 }
+
+/// Plain TeX's conventional `\smallskipamount`/`\medskipamount`/
+/// `\bigskipamount`, in points. Real TeX also gives each a `plus`/`minus`
+/// stretch component; this layout model has no rubber lengths (see
+/// `Block::VSpace`, which `\vspace` already feeds a flat point value), so
+/// these are the flat amounts with the stretch/shrink honestly dropped.
+const SMALL_SKIP_PT: f64 = 3.0;
+const MEDIUM_SKIP_PT: f64 = 6.0;
+const BIG_SKIP_PT: f64 = 12.0;
 
 /// Project-relative paths only: no absolute paths or parent traversal.
 pub(crate) fn path_is_safe(path: &str) -> bool {
@@ -407,6 +465,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         in_body: !has_document,
         document_ended: false,
         document_class: None,
+        class_size_pt: None,
+        parskip_pt: None,
         packages: Vec::new(),
         block_dependencies: Vec::new(),
         current_dependencies: BTreeMap::new(),
@@ -452,6 +512,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         blocks,
         diagnostics: p.diags,
         document_class: p.document_class,
+        class_size_pt: p.class_size_pt,
+        parskip_pt: p.parskip_pt,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
         preamble_source: preamble_source(entry_document.text, has_document),
@@ -472,6 +534,8 @@ struct P<'a> {
     in_body: bool,
     document_ended: bool,
     document_class: Option<String>,
+    class_size_pt: Option<f64>,
+    parskip_pt: Option<f64>,
     packages: Vec<String>,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
@@ -616,6 +680,7 @@ impl P<'_> {
 
         match name {
             "documentclass" => self.document_class(span),
+            "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
@@ -798,7 +863,33 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
+            // Font-size declarations: this layout has no per-run size
+            // scaling for body text, so honestly doing nothing is preferred
+            // over fabricating a size change the renderer cannot represent.
+            "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large"
+            | "LARGE" | "huge" | "Huge" => {}
+            // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
+            // in math mode (`src/math.rs`); this arm covers the same commands
+            // used directly in running text, 1em/2em of the body text size.
+            "quad" => para.push(Inline::TextGlue {
+                em: math::QUAD_EM,
+                span,
+            }),
+            "qquad" => para.push(Inline::TextGlue {
+                em: 2.0 * math::QUAD_EM,
+                span,
+            }),
             "par" => self.flush_paragraph(blocks, para),
+            "bigskip" | "medskip" | "smallskip" => {
+                let pt = match name {
+                    "bigskip" => BIG_SKIP_PT,
+                    "medskip" => MEDIUM_SKIP_PT,
+                    _ => SMALL_SKIP_PT,
+                };
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::VSpace { pt });
+                self.finish_block_dependencies();
+            }
             "vspace" => {
                 let (tokens, argument_span) = self.required_group(name, span);
                 let raw = token_text(&tokens);
@@ -939,7 +1030,17 @@ impl P<'_> {
     }
 
     fn document_class(&mut self, span: Span) {
-        let _options = self.optional_bracket_argument();
+        let options = self.optional_bracket_argument();
+        if self.class_size_pt.is_none() {
+            self.class_size_pt = options.and_then(|(options, _)| {
+                options.split(',').find_map(|option| match option.trim() {
+                    "10pt" => Some(10.0),
+                    "11pt" => Some(11.0),
+                    "12pt" => Some(12.0),
+                    _ => None,
+                })
+            });
+        }
         let (tokens, _) = self.required_group("documentclass", span);
         let class = token_text(&tokens).trim().to_string();
         if class.is_empty() {
@@ -950,6 +1051,50 @@ impl P<'_> {
             ));
         } else if self.document_class.is_none() {
             self.document_class = Some(class);
+        }
+    }
+
+    /// `\setlength{\parskip}{..}` and `\setlength{\parindent}{..}` in the
+    /// preamble. `em`/`ex` resolve against the class body size. This engine
+    /// never indents paragraphs, so only a zero `\parindent` is exact.
+    fn set_length(&mut self, span: Span) {
+        let (target_tokens, _) = self.required_group("setlength", span);
+        let (value_tokens, value_span) = self.required_group("setlength", span);
+        let span = span.merge(value_span);
+        let target = token_text(&target_tokens)
+            .trim()
+            .trim_start_matches('\\')
+            .to_string();
+        let raw = token_text(&value_tokens);
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let Some(pt) = parse_dimen_pt_at(&raw, body) else {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "\\setlength requires a recognised dimension, got '{}'",
+                    raw.trim()
+                ),
+                Some(span),
+                Some("ignored the length assignment".into()),
+            ));
+            return;
+        };
+        let in_preamble = self.has_document && !self.in_body;
+        match target.as_str() {
+            "parskip" if in_preamble => self.parskip_pt = Some(pt),
+            "parindent" if in_preamble && pt == 0.0 => {}
+            "parindent" if in_preamble => self.diags.push(Diagnostic::warning(
+                "\\parindent is recognised but paragraph indentation is not implemented",
+                Some(span),
+                Some("paragraphs are not indented".into()),
+            )),
+            _ => self.diags.push(Diagnostic::warning(
+                format!(
+                    "\\setlength{{\\{}}} is recognised but not implemented here",
+                    target
+                ),
+                Some(span),
+                Some("ignored the length assignment".into()),
+            )),
         }
     }
 
@@ -1894,6 +2039,22 @@ impl P<'_> {
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
                 }),
+                // `\hfill`/`\hfil` take no argument, so — unlike `\hspace`,
+                // which needs a following brace group this flat,
+                // one-token-at-a-time pass has no way to consume — they fit
+                // here directly. This is what makes `\problem`-style macro
+                // bodies like `\subsection*{Problem #1 \hfill [#2 points]}`
+                // (see the `problem_style_macro...` test below) right-flush:
+                // heading/caption/`\textbf`-style content all reach the page
+                // through this function rather than through `command`'s
+                // ordinary dispatch. General nested-command dispatch inside
+                // that content remains out of scope, per the module doc
+                // comment.
+                TokenKind::Command(name) if name == "hfill" || name == "hfil" => {
+                    content.push(Inline::HFill {
+                        span: input.token.span,
+                    })
+                }
                 _ => {}
             }
         }
@@ -2794,6 +2955,161 @@ mod tests {
         assert_eq!(labels, [("h", "1"), ("j", "2")]);
     }
 
+    #[test]
+    fn hfill_right_flushes_a_problem_style_subsection_header() {
+        // The exact HW1 shape: `\hfill` inside a starred subsection built by
+        // a user macro, which routes through `inlines_from_tokens` rather
+        // than `command`'s ordinary dispatch.
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \hfill \normalfont[#2 points]}}\problem{1}{4}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let problem = items.iter().find(|i| i.text == "Problem").unwrap();
+        let points = items.iter().find(|i| i.text == "points]").unwrap();
+        assert_eq!(problem.x_pt, layout::MARGIN_PT);
+        let points_width = layout::text_width("points]", points.font_size_pt, points.font);
+        assert!(
+            (points.x_pt + points_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5,
+            "expected 'points]' flushed to the right margin, got x_pt={} width={}",
+            points.x_pt,
+            points_width
+        );
+    }
+
+    #[test]
+    fn multiple_hfills_on_one_line_share_the_leftover_space_equally() {
+        let (parsed, items) = items(r"A \hfill B \hfill C");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let c = items.iter().find(|i| i.text == "C").unwrap();
+        assert_eq!(a.x_pt, layout::MARGIN_PT);
+        let c_width = layout::text_width("C", c.font_size_pt, c.font);
+        assert!(
+            (c.x_pt + c_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5,
+            "expected the last item flushed to the right margin, got {}",
+            c.x_pt
+        );
+        // Two equal-sized fill gaps: B sits roughly a third of the way across
+        // the leftover space, not at the midpoint (one fill) or the margin
+        // (no fill).
+        let leftover = c.x_pt - a.x_pt;
+        assert!(
+            (b.x_pt - a.x_pt - leftover / 2.0).abs() < 0.5,
+            "expected B roughly midway between A and C, got a={} b={} c={}",
+            a.x_pt,
+            b.x_pt,
+            c.x_pt
+        );
+    }
+
+    #[test]
+    fn hfil_behaves_like_hfill() {
+        let (parsed, items) = items(r"A \hfil B");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let b_width = layout::text_width("B", b.font_size_pt, b.font);
+        assert_eq!(a.x_pt, layout::MARGIN_PT);
+        assert!((b.x_pt + b_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5);
+    }
+
+    #[test]
+    fn hspace_inserts_a_fixed_non_stretching_gap() {
+        let (parsed, items) = items(r"A\hspace{36pt}B");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let a_width = layout::text_width("A", a.font_size_pt, a.font);
+        // `hspace` (layout.rs) starts from the preceding item's true end
+        // (`content_end`), not from the cursor's eagerly reserved trailing
+        // inter-word space, so it adds exactly the requested 36pt on top of
+        // "A"'s real width — no separate word gap is also added. See the
+        // doc comment on `LayoutCursor::hspace`.
+        assert!(
+            (b.x_pt - (a.x_pt + a_width) - 36.0).abs() < 0.02,
+            "a={} a_width={} b={}",
+            a.x_pt,
+            a_width,
+            b.x_pt
+        );
+    }
+
+    #[test]
+    fn hspace_star_and_malformed_dimension_are_handled() {
+        let (starred_parsed, starred_items) = items(r"A\hspace*{1em}B");
+        assert!(
+            starred_parsed.diagnostics.is_empty(),
+            "{:?}",
+            starred_parsed.diagnostics
+        );
+        assert!(
+            starred_items.iter().any(|i| i.text == "A")
+                && starred_items.iter().any(|i| i.text == "B")
+        );
+
+        let (malformed_parsed, malformed_items) = items(r"A\hspace{oops}B");
+        assert!(malformed_parsed.diagnostics.iter().any(|d| d
+            .message
+            .contains(r"\hspace requires a recognised dimension")));
+        assert!(!malformed_items.iter().any(|i| i.text == "oops"));
+    }
+
+    #[test]
+    fn unsupported_command_dimension_or_keyword_argument_is_silently_skipped() {
+        let (parsed, items) = items(r"Visible \foocmd{0.6em} \barcmd{empty} Tail.");
+        assert!(!items.iter().any(|i| i.text == "0.6em"));
+        assert!(!items.iter().any(|i| i.text == "empty"));
+        assert!(items.iter().any(|i| i.text == "Visible"));
+        assert!(items.iter().any(|i| i.text == "Tail."));
+        let messages: Vec<&str> = parsed
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert!(messages.iter().any(|m| m.contains(r"\foocmd")));
+        assert!(messages.iter().any(|m| m.contains(r"\barcmd")));
+        assert!(parsed.diagnostics.iter().any(|d| d
+            .recovery
+            .as_deref()
+            .is_some_and(|r| r.contains("looked like a parameter"))));
+    }
+
+    #[test]
+    fn unsupported_command_prose_argument_is_never_swallowed() {
+        // Multiple words, and a single capitalized word, both fail the
+        // dimension/keyword heuristic and must survive as visible text.
+        let (parsed, items) = items(r"\foocmd{Hello world} \barcmd{Capitalized}");
+        let _ = parsed;
+        assert!(items.iter().any(|i| i.text == "Hello"));
+        assert!(items.iter().any(|i| i.text == "world"));
+        assert!(items.iter().any(|i| i.text == "Capitalized"));
+    }
+
+    #[test]
+    fn unsupported_command_single_letter_argument_is_never_swallowed() {
+        // A lone lowercase letter is excluded from the keyword heuristic:
+        // it is far more likely to be real one-letter content (as in
+        // `\def\x{y}`, from crates/compiler/tests/unsupported_inventory.rs)
+        // than a parameter like `empty` or `arabic`.
+        let (parsed, items) = items(r"\foocmd{y}");
+        let _ = parsed;
+        assert!(items.iter().any(|i| i.text == "y"));
+    }
+
+    #[test]
+    fn known_arity_unimplemented_command_always_skips_its_argument() {
+        // `1.5` has no unit suffix, so the dimension heuristic alone would
+        // never match it: this exercises the explicit
+        // `KNOWN_ARITY_UNIMPLEMENTED` list instead.
+        let (parsed, items) = items(r"\linespread{1.5} Visible.");
+        assert!(!items.iter().any(|i| i.text == "1.5"));
+        assert!(items.iter().any(|i| i.text == "Visible."));
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains(r"\linespread")));
+    }
+
     fn font_of(items: &[crate::layout::TextItem], text: &str) -> layout::Font {
         items
             .iter()
@@ -2811,7 +3127,8 @@ mod tests {
         for (text, font) in [
             ("a", Font::TimesRoman),
             ("b", Font::TimesBold),
-            ("x", Font::TimesRoman),
+            // Math variables are math italic even inside \textbf.
+            ("x", Font::TimesItalic),
             ("c", Font::TimesBold),
             ("d", Font::TimesItalic),
             ("e", Font::TimesBoldItalic),
