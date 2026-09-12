@@ -6,6 +6,11 @@
 # page rectangle in the capture, resample it to the reference raster size, and
 # write <out>/<fixture>/<compiler>/native-p1.{png,rgba,rgba.json} for diff.py.
 #
+# Process hygiene: the script launches its own FlashTeXMac instance per fixture/compiler,
+# finds its window by the launched PID (CGWindowList owner PID) and terminates only that
+# PID afterwards; it never kills FlashTeXMac by name (other lanes run the app concurrently)
+# and launches with FLASHTEX_NO_ACTIVATE=1 so it does not steal focus.
+#
 # Requirements: Screen Recording permission for the terminal; the app built from
 # origin/agent/mac-claude-a/mac-shell (`cd apps/mac && swift build`). The page is
 # fitted to the preview pane width, so the capture is UPSAMPLED or DOWNSAMPLED to
@@ -70,10 +75,10 @@ PY
     set +e
     for attempt in 1 2; do
       log="$dir/app.log"; : > "$log"
-      pkill -x "$APP_NAME" >/dev/null 2>&1
-      sleep 0.5
+      # Only ever touch the instance launched here: other lanes run FlashTeXMac concurrently
+      # on this machine (never pkill by name). FLASHTEX_NO_ACTIVATE keeps it from stealing focus.
       FLASHTEX_REPO="$REPO" FLASHTEX_COMPILER="$bin" FLASHTEX_AUTOATTACH=1 FLASHTEX_SEED_FILE="$dir/seed.tex" \
-        FLASHTEX_LOG="$log" "$APP" > "$dir/app.stdout" 2>&1 &
+        FLASHTEX_NO_ACTIVATE=1 FLASHTEX_LOG="$log" "$APP" > "$dir/app.stdout" 2>&1 &
       app_pid=$!
       status="timeout"
       if wait_for "$log" 'status: revision [0-9]+: (ok|recovered|failed)' 30; then
@@ -82,12 +87,13 @@ PY
       sleep 1.5   # let SwiftUI lay out and draw the page
       win="$("$RASTERIZE" window-id "$APP_NAME" 2>/dev/null || echo '[]')"
       echo "$win" > "$dir/window.json"
-      wid="$(python3 -c 'import json,sys; w=[x for x in json.load(sys.stdin) if x["layer"]==0]; print(w[0]["id"] if w else "")' <<<"$win" 2>/dev/null)"
+      # The window must belong to OUR process (pid), not to another lane's FlashTeXMac.
+      wid="$(python3 -c 'import json,sys; pid=int(sys.argv[1]); w=[x for x in json.load(sys.stdin) if x["layer"]==0 and x.get("pid")==pid]; print(w[0]["id"] if w else "")' "$app_pid" <<<"$win" 2>/dev/null)"
       capture_ok=0
       if [[ -n "$wid" ]]; then
         screencapture -x -o -l "$wid" "$dir/window.png" && capture_ok=1
       fi
-      kill "$app_pid" >/dev/null 2>&1
+      kill "$app_pid" >/dev/null 2>&1   # our own instance only
       wait "$app_pid" 2>/dev/null
       page="{}"
       if [[ $capture_ok -eq 1 ]]; then
