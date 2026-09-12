@@ -275,4 +275,301 @@ mod tests {
             evaluate("4pt").unwrap()
         );
     }
+
+    // ---- Revision 3: bounded adversarial tests ----------------------------
+    //
+    // Every case below targets a specific bound or diagnostic this crate
+    // promises never to silently approximate, exactly at and one past the
+    // bound wherever "at and past" makes sense, asserting the exact
+    // `CalcError` variant (and, where rev 2 added one, its diagnostic
+    // payload) rather than just `is_err()`.
+
+    #[test]
+    fn expression_at_and_past_max_dimen_cap() {
+        // Exactly MAX_DIMEN_SP / -MAX_DIMEN_SP succeed; one `sp` further in
+        // either direction is a typed overflow, through the full `evaluate`
+        // pipeline (not just `Unit::to_sp` directly, as `sp.rs` covers).
+        assert_eq!(evaluate("1073741823sp").unwrap(), Sp::MAX);
+        assert_eq!(evaluate("-1073741823sp").unwrap(), Sp::MIN);
+        assert!(matches!(
+            evaluate("1073741824sp"),
+            Err(CalcError::Overflow(_))
+        ));
+        assert!(matches!(
+            evaluate("-1073741824sp"),
+            Err(CalcError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn nested_parentheses_at_and_past_the_depth_bound() {
+        use crate::parser::MAX_PARSE_DEPTH;
+        // `N` opening parens wrapping a primary reach recursion depth `N +
+        // 1` (the outermost `parse_unary` call itself is depth 1), so `N =
+        // MAX_PARSE_DEPTH - 1` is exactly at the cap and `N =
+        // MAX_PARSE_DEPTH` is exactly one past it.
+        let at_cap = MAX_PARSE_DEPTH - 1;
+        let ok_src = format!("{}1pt{}", "(".repeat(at_cap), ")".repeat(at_cap));
+        assert!(evaluate(&ok_src).is_ok());
+
+        let past_cap = MAX_PARSE_DEPTH;
+        let err_src = format!("{}1pt{}", "(".repeat(past_cap), ")".repeat(past_cap));
+        assert!(matches!(evaluate(&err_src), Err(CalcError::Parse { .. })));
+    }
+
+    #[test]
+    fn dependency_chain_at_and_past_max_resolution_depth() {
+        // Letters-only names (as in real TeX control words), same scheme as
+        // `long_acyclic_chain_hits_bounded_depth_not_stack_overflow` above.
+        fn name(i: usize) -> String {
+            let mut s = String::new();
+            let mut n = i;
+            loop {
+                s.push((b'a' + (n % 26) as u8) as char);
+                n /= 26;
+                if n == 0 {
+                    break;
+                }
+                n -= 1;
+            }
+            s
+        }
+        // A chain of `k` names: `\l0 = 1sp`, `\l1 = \l0 + 1sp`, ...,
+        // referencing the last one.
+        fn chain_src(k: usize) -> String {
+            let mut src = String::new();
+            src.push_str(&format!(r"\setlength{{\{}}}{{1sp}};", name(0)));
+            for i in 1..k {
+                src.push_str(&format!(
+                    r"\setlength{{\{}}}{{\{}+1sp}};",
+                    name(i),
+                    name(i - 1)
+                ));
+            }
+            src.push_str(&format!(r"\{}", name(k - 1)));
+            src
+        }
+
+        // The exact number of resolution-depth units consumed per chain
+        // link is an internal detail of `eval::force`/`eval_expr`, not a
+        // published constant, so find the exact boundary by search rather
+        // than hard-coding a multiplier: `lo` is confirmed to succeed, `hi`
+        // to fail, then binary search narrows to the adjacent pair where the
+        // cap is crossed.
+        let lo_start = 1usize;
+        let hi_start = 500usize;
+        assert!(evaluate(&chain_src(lo_start)).is_ok());
+        assert!(matches!(
+            evaluate(&chain_src(hi_start)),
+            Err(CalcError::ResolutionDepthExceeded)
+        ));
+
+        let mut lo = lo_start;
+        let mut hi = hi_start;
+        while lo + 1 < hi {
+            let mid = lo + (hi - lo) / 2;
+            match evaluate(&chain_src(mid)) {
+                Ok(_) => lo = mid,
+                Err(CalcError::ResolutionDepthExceeded) => hi = mid,
+                other => panic!("unexpected result at chain length {mid}: {other:?}"),
+            }
+        }
+        // `lo` is exactly at the cap (the longest chain that still
+        // resolves); `hi` is exactly one link past it.
+        assert!(evaluate(&chain_src(lo)).is_ok());
+        assert_eq!(
+            evaluate(&chain_src(hi)),
+            Err(CalcError::ResolutionDepthExceeded)
+        );
+    }
+
+    #[test]
+    fn overflow_at_each_binary_operator_is_typed_with_the_right_op_name() {
+        match evaluate("-16383pt - 16383pt") {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "-"),
+            other => panic!("expected a typed overflow via `-`, got {other:?}"),
+        }
+        match evaluate("16383pt * 2") {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "*"),
+            other => panic!("expected a typed overflow via `*`, got {other:?}"),
+        }
+        match evaluate("16383pt / 0.5") {
+            // Dividing by a scalar less than 1 increases magnitude, so `/`
+            // can overflow too, not just `*`.
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "/"),
+            other => panic!("expected a typed overflow via `/`, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn division_by_a_named_length_that_evaluates_to_zero_is_typed() {
+        // The zero-divisor check applies after resolving a named length's
+        // value, not just to a literal `0` token in the source text.
+        let src = r"\setlength{\zero}{0}; 1pt / \zero";
+        assert_eq!(evaluate(src), Err(CalcError::DivisionByZero));
+    }
+
+    #[test]
+    fn literal_with_an_enormous_number_of_digits_is_a_typed_parse_error() {
+        // Far beyond i128::MAX (~39 digits): the literal parser must return
+        // a typed `Parse` error, never panic on the failed `i128` parse.
+        let src = format!("{}pt", "9".repeat(200));
+        assert!(matches!(evaluate(&src), Err(CalcError::Parse { .. })));
+    }
+
+    #[test]
+    fn unit_suffix_unknown_empty_or_partially_matching_is_never_approximated() {
+        // Wholly unknown unit.
+        assert_eq!(
+            evaluate("1parsec"),
+            Err(CalcError::UnsupportedUnit("parsec".to_string()))
+        );
+        // Shares a prefix with a real unit (`pt`) but is a distinct token:
+        // never silently accepted as the unit it merely starts with.
+        assert_eq!(
+            evaluate("1pts"),
+            Err(CalcError::UnsupportedUnit("pts".to_string()))
+        );
+        assert_eq!(
+            evaluate("1ptx"),
+            Err(CalcError::UnsupportedUnit("ptx".to_string()))
+        );
+        // No unit suffix at all is a dimensionless scalar, never an implicit
+        // `pt`.
+        assert!(matches!(evaluate("5"), Err(CalcError::TypeMismatch(_))));
+        // The empty string is never a valid unit at the `Unit` level either.
+        assert_eq!(crate::sp::Unit::parse(""), None);
+    }
+
+    #[test]
+    fn name_shadowing_itself_in_a_nested_group_is_a_self_cycle_not_the_outer_value() {
+        // The inner `\setlength{\x}{...}` shadows the outer `\x` immediately
+        // -- before its own right-hand side is evaluated -- so `\x` inside
+        // that right-hand side resolves to the new, still-being-forced
+        // inner binding (a self-cycle), never falling back to the outer
+        // 1pt binding it shadows.
+        let src = r"\setlength{\x}{1pt}; { \setlength{\x}{\x + 1pt}; \x }";
+        assert_eq!(
+            evaluate(src),
+            Err(CalcError::CyclicLength(vec![
+                "x".to_string(),
+                "x".to_string()
+            ]))
+        );
+    }
+
+    // ---- Revision 3: named adversarial categories, each a typed variant ---
+    //
+    // `malformed_input_never_panics` and `unicode_and_emoji_never_panic`
+    // above already sweep a wide variety of garbage without asserting a
+    // specific variant (their job is only "never panics"). Every category
+    // the assignment names explicitly also gets its own test here that
+    // asserts the exact `CalcError` variant produced, not just `is_err()`.
+
+    #[test]
+    fn nul_byte_is_a_typed_parse_error_not_a_panic() {
+        assert!(matches!(evaluate("\0"), Err(CalcError::Parse { .. })));
+        // A NUL embedded after otherwise-valid tokens still lexes the good
+        // prefix before hitting the typed error on the bad byte.
+        assert!(matches!(evaluate("1pt\0"), Err(CalcError::Parse { .. })));
+        assert!(matches!(
+            evaluate("1pt + \0 2pt"),
+            Err(CalcError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn non_nfc_unicode_is_a_typed_parse_error_not_a_panic() {
+        // "e" + COMBINING ACUTE ACCENT (U+0301) is the decomposed (non-NFC)
+        // form of "é" -- two `char`s, not one. The combining mark is not
+        // `char::is_alphabetic` (Unicode category Mn), so the lexer's
+        // backslash-name loop stops after "e" and the bare combining mark
+        // is then an unrecognized character: a typed `Parse` error, never a
+        // panic on the multi-byte, non-normalized encoding.
+        assert!(matches!(
+            evaluate("\\e\u{0301}"),
+            Err(CalcError::Parse { .. })
+        ));
+        // Same combining mark stray in the middle of an otherwise-valid
+        // expression.
+        assert!(matches!(
+            evaluate("1pt\u{0301} + 1pt"),
+            Err(CalcError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn rtl_override_character_is_a_typed_parse_error_not_a_panic() {
+        // U+202E RIGHT-TO-LEFT OVERRIDE (a Unicode format character, not
+        // whitespace, not alphabetic, not a digit): rejected as an
+        // unrecognized character wherever it appears, never silently
+        // skipped and never a panic on the bidi control point.
+        assert!(matches!(
+            evaluate("\u{202E}1pt"),
+            Err(CalcError::Parse { .. })
+        ));
+        assert!(matches!(
+            evaluate("1\u{202E}pt"),
+            Err(CalcError::Parse { .. })
+        ));
+        assert!(matches!(
+            evaluate("\\setlength{\\x\u{202E}}{1pt}; \\x"),
+            Err(CalcError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn lone_operators_are_typed_parse_errors_not_panics() {
+        for src in ["+", "-", "*", "/"] {
+            assert!(
+                matches!(evaluate(src), Err(CalcError::Parse { .. })),
+                "expected a typed parse error for lone operator {src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn absurdly_long_flat_expression_is_bounded_not_unbounded_work() {
+        // 10,000 terms joined by `+` parses in one iterative loop (no
+        // recursion in `parse_expr`'s own loop), but the resulting
+        // left-leaning `Add` tree is exactly 10,000 levels deep, so
+        // *evaluating* it recurses through `eval_expr` far past
+        // `crate::eval::MAX_RESOLUTION_DEPTH` (200). This proves an
+        // absurdly long flat input is typed-rejected in bounded work
+        // (this test itself completes immediately) rather than either
+        // hanging or blowing the Rust call stack.
+        let terms = 10_000;
+        let src = format!("1sp{}", "+1sp".repeat(terms - 1));
+        assert_eq!(evaluate(&src), Err(CalcError::ResolutionDepthExceeded));
+    }
+
+    #[test]
+    fn numeric_literal_past_i32_and_i64_range_is_typed_overflow_not_panic() {
+        // Both values fit comfortably in the `i128` the lexer/parser use for
+        // literal numerators (no `Parse` error from a failed integer parse,
+        // unlike `literal_with_an_enormous_number_of_digits_is_a_typed_parse_error`
+        // above), but each is already far past `MAX_DIMEN_SP`. `sp` is the
+        // identity unit, so this exercises `Sp::from_i128`'s bounds check
+        // directly on an out-of-`i32`/out-of-`i64` magnitude without any
+        // intermediate multiplication, proving the `i128` comparison never
+        // wraps or panics the way a native `i64` add/compare would.
+        let past_i32 = (i32::MAX as i128) + 1;
+        let past_i64 = (i64::MAX as i128) + 1;
+        assert!(matches!(
+            evaluate(&format!("{past_i32}sp")),
+            Err(CalcError::Overflow(_))
+        ));
+        assert!(matches!(
+            evaluate(&format!("{past_i64}sp")),
+            Err(CalcError::Overflow(_))
+        ));
+        assert!(matches!(
+            evaluate(&format!("-{past_i32}sp")),
+            Err(CalcError::Overflow(_))
+        ));
+        assert!(matches!(
+            evaluate(&format!("-{past_i64}sp")),
+            Err(CalcError::Overflow(_))
+        ));
+    }
 }

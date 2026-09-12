@@ -413,6 +413,23 @@ mod tests {
     }
 
     #[test]
+    fn neg_overflow_is_typed_not_panic() {
+        // `Sp`'s own bound is symmetric ([-MAX_DIMEN_SP, MAX_DIMEN_SP]), so
+        // no value this crate's own parser/evaluator can ever produce
+        // overflows on negation (unlike, say, `i64::MIN`). `checked_neg` is
+        // still exercised directly against a deliberately out-of-range `Sp`
+        // -- constructed via its public tuple field, bypassing every normal
+        // constructor -- to prove the check is real and total rather than
+        // dead code that merely never sees an overflowing input in
+        // practice.
+        let out_of_range = Sp(i64::MIN);
+        match out_of_range.checked_neg() {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "neg"),
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn mul_overflow_is_typed_not_panic() {
         match Sp::MAX.checked_mul_scalar(2, 1) {
             Err(CalcError::Overflow(info)) => assert_eq!(info.op, "*"),

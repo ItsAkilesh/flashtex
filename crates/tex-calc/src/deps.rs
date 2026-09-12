@@ -12,6 +12,72 @@
 //! ([`LengthTable::stale_dependents`]) — nothing else — so a later
 //! [`LengthTable::get`] only recomputes the stale part of the graph, reusing
 //! every other cached value.
+//!
+//! ## Published consumer contract
+//!
+//! This is the exact typed surface a downstream consumer (e.g. a layout
+//! pass that wants document-scoped named lengths, not just one-shot
+//! expression evaluation) uses: define lengths, evaluate them, cross the
+//! `document-style` boundary, and handle every failure as a typed
+//! [`CalcError`] variant rather than a panic or a silent default.
+//!
+//! ```
+//! use flashtex_tex_calc::{parse, CalcError, LengthTable, Sp};
+//!
+//! let mut lengths = LengthTable::new();
+//!
+//! // 1. Define named lengths (each `Expr` comes from `parse`, e.g. read
+//! //    from a document's preamble).
+//! lengths.define("margin", parse(r"1in").unwrap());
+//! lengths.define("gutter", parse(r"\margin / 2").unwrap());
+//!
+//! // 2. Evaluate one length -- or `eval_all_incremental()` / `eval_all_fresh()`
+//! //    for the whole table -- to an exact `Sp`.
+//! let margin = lengths.get("margin").unwrap();
+//! assert_eq!(margin, Sp(4_736_286));
+//! assert_eq!(lengths.get("gutter").unwrap(), Sp(4_736_286 / 2));
+//!
+//! // 3. Cross the `document-style` boundary at the edge of the consumer's
+//! //    own layout code, not inside this crate's arithmetic.
+//! let margin_pt = margin.to_style_pt(); // flashtex_document_style::length::Pt
+//! assert_eq!(Sp::try_from_style_pt(margin_pt).unwrap(), margin);
+//!
+//! // 4. Every failure mode a consumer must handle is one of these typed
+//! //    `CalcError` variants -- never a panic, never an implicit zero.
+//! lengths.define("cyclic", parse(r"\cyclic + 1pt").unwrap());
+//! lengths.define("huge", parse(r"16384pt").unwrap());
+//! lengths.define("stray", parse(r"1pt / 0").unwrap());
+//! lengths.define("dimensionless", parse(r"2 + 2").unwrap());
+//!
+//! assert!(matches!(lengths.get("cyclic"), Err(CalcError::CyclicLength(_))));
+//! assert!(matches!(lengths.get("huge"), Err(CalcError::Overflow(_))));
+//! assert!(matches!(lengths.get("stray"), Err(CalcError::DivisionByZero)));
+//! assert!(matches!(lengths.get("dimensionless"), Err(CalcError::TypeMismatch(_))));
+//! assert!(matches!(
+//!     lengths.get("nonexistent"),
+//!     Err(CalcError::UndefinedLength(_))
+//! ));
+//! assert!(matches!(
+//!     parse(r"1cc"),
+//!     Err(CalcError::UnsupportedUnit(_))
+//! ));
+//! assert!(matches!(parse("("), Err(CalcError::Parse { .. })));
+//! ```
+//!
+//! `CalcError::ResolutionDepthExceeded` is the eighth variant: it surfaces
+//! from [`LengthTable::get`] exactly as it does from plain `evaluate`, when
+//! a dependency chain nests past [`crate::eval::MAX_RESOLUTION_DEPTH`] (see
+//! `dependency_chain_at_and_past_max_resolution_depth` in `lib.rs`'s test
+//! suite for a worked boundary case); it is omitted from the doctest above
+//! only because building a 200-deep chain inline is unwieldy, not because
+//! it needs different handling from any other variant.
+//!
+//! As of this revision, nothing in this repository consumes
+//! `flashtex-tex-calc` yet (confirmed by grepping the whole tree for
+//! `tex-calc`/`tex_calc`: the only hits are this crate's own files and
+//! `daniel-calc`'s own coordination records) -- this contract is published
+//! for whenever a consumer appears, not because a consumer's stated needs
+//! already do or do not fit it.
 
 use std::collections::{HashMap, HashSet};
 

@@ -18,9 +18,23 @@ use crate::ast::{Expr, Stmt};
 use crate::lexer::{Spanned, Tok, lex};
 use crate::sp::{CalcError, Unit};
 
+/// Upper bound on recursive-descent nesting depth (each level of `( ... )`,
+/// `{ ... }`, or a unary `-` chain counts as one level). Parsing recurses
+/// through `parse_expr -> parse_term -> parse_unary -> parse_primary`, and
+/// `parse_primary` calls back into `parse_expr`/`parse_body` for `(`/`{`, so
+/// unbounded input nesting would otherwise recurse the Rust call stack
+/// without limit; this makes "too deeply nested" a typed [`CalcError::Parse`]
+/// instead of a stack overflow, mirroring [`crate::eval::MAX_RESOLUTION_DEPTH`]
+/// on the evaluation side.
+pub const MAX_PARSE_DEPTH: usize = 200;
+
 pub fn parse(source: &str) -> Result<Expr, CalcError> {
     let toks = lex(source)?;
-    let mut p = Parser { toks, pos: 0 };
+    let mut p = Parser {
+        toks,
+        pos: 0,
+        depth: 0,
+    };
     let expr = p.parse_body()?;
     p.expect_eof()?;
     Ok(expr)
@@ -29,6 +43,8 @@ pub fn parse(source: &str) -> Result<Expr, CalcError> {
 struct Parser {
     toks: Vec<Spanned>,
     pos: usize,
+    /// Current recursive-descent nesting depth; see [`MAX_PARSE_DEPTH`].
+    depth: usize,
 }
 
 impl Parser {
@@ -153,11 +169,25 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, CalcError> {
-        if *self.peek() == Tok::Minus {
-            self.advance();
-            return Ok(Expr::Neg(Box::new(self.parse_unary()?)));
+        self.depth += 1;
+        if self.depth > MAX_PARSE_DEPTH {
+            // Every recursive path back into `parse_unary` — a nested `(`,
+            // a nested `{`, or a chained unary `-` — goes through here, so
+            // this one check bounds all three forms of unbounded nesting.
+            let err = self.err(format!(
+                "expression nesting exceeds maximum depth of {MAX_PARSE_DEPTH}"
+            ));
+            self.depth -= 1;
+            return Err(err);
         }
-        self.parse_primary()
+        let result = if *self.peek() == Tok::Minus {
+            self.advance();
+            self.parse_unary().map(|inner| Expr::Neg(Box::new(inner)))
+        } else {
+            self.parse_primary()
+        };
+        self.depth -= 1;
+        result
     }
 
     fn parse_primary(&mut self) -> Result<Expr, CalcError> {
