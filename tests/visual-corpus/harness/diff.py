@@ -782,16 +782,36 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
                  "a page-count mismatch is DIFFERENT. Times-font oracles (`pdflatex`) match the current compiler's metrics; the "
                  "Latin Modern oracles (`pdflatex-lm`) are LaTeX's default look. xelatex/lualatex variants are in `metrics.json` → `gates[].oracle`.\n")
         shown = [e for e in ("pdflatex", "pdflatex-lm") if e in (gs.get("oracle_labels") or [])] or (gs.get("oracle_labels") or [])[:2]
-        L.append("| Fixture | Compiler | Oracle | raw PDF bytes = pinned oracle | raw PDF bytes = live oracle | oracle live = pin | zero-pixel raster = oracle |")
-        L.append("|---|---|---|---|---|---|---|")
+        L.append("| Fixture | Candidate | Oracle | raw PDF bytes = pinned oracle | raw PDF bytes = live oracle | oracle live = pin | zero-pixel raster = oracle | classify categories (exact route vs pdflatex-lm) |")
+        L.append("|---|---|---|---|---|---|---|---|")
         for g in gates:
             for eng in shown:
                 o = g.get("oracle", {}).get(eng)
                 if not o:
                     continue
-                L.append(f"| {g['fixture']} | {g['compiler']} | {eng} | {bcell(o['raw_bytes_vs_pinned_oracle'])} | {bcell(o['raw_bytes_vs_live_oracle'])} | "
-                         f"{bcell(o['oracle_live_equals_pin'])}{' (reused PDF)' if o.get('oracle_reused') else ''} | {cell(o['zero_pixel'])} |")
+                cl = g.get("classify") or {}
+                cats = ("; ".join(cl["categories"]) if cl.get("categories") else ("identical" if cl.get("categories") == [] else "-")) if g.get("route") == "exact" else "-"
+                L.append(f"| {g['fixture']} | {g['compiler']}{' (exact route)' if g.get('route') == 'exact' else ''} | {eng} | {bcell(o['raw_bytes_vs_pinned_oracle'])} | {bcell(o['raw_bytes_vs_live_oracle'])} | "
+                         f"{bcell(o['oracle_live_equals_pin'])}{' (reused PDF)' if o.get('oracle_reused') else ''} | {cell(o['zero_pixel'])} | {cats} |")
         L.append("")
+        ex = [g for g in gates if g.get("route") == "exact"]
+        if ex:
+            L.append("### Exact route per fixture (candidate `exact`: flashtex-render --v2 → flashtex-pdf-exact from-v2)\n")
+            L.append("Categories come from `flashtex-pdf-exact classify <pdflatex-lm reference> <ours>` (ContentOperators / FontProgram / FontMetadata / "
+                     "ObjectLayout / Compression / DocumentIdentity / page geometry); an empty list would mean byte-identical content. "
+                     "Zero-pixel and byte columns above are the acceptance signals; the categories explain the difference, never excuse it.\n")
+            L.append("| Fixture | from-v2 summary | classify categories | deviations reported by the tool | zero-pixel vs pdflatex-lm | differing px |")
+            L.append("|---|---|---|---|---|---|")
+            for g in ex:
+                cl = g.get("classify") or {}
+                o = g.get("oracle", {}).get("pdflatex-lm") or {}
+                zp = o.get("zero_pixel")
+                dpx = "-"
+                if isinstance(zp, list):
+                    dpx = "; ".join(f"p{i + 1} {x.get('differing_pixels', '?')}/{x.get('pixels', '?')}" + (f" max {x['max_abs_diff']}" if "max_abs_diff" in x else "") if not x.get("equal") else f"p{i + 1} 0" for i, x in enumerate(zp))
+                L.append(f"| {g['fixture']} | {cl.get('from_v2_summary') or ('from-v2 exit ' + str(cl.get('pdf_exit')))} | {'; '.join(cl.get('categories') or []) or ('identical' if cl.get('categories') == [] else '-')} | "
+                         f"{'; '.join(cl.get('deviations') or []) or 'none'} | {cell(zp) if zp is not None else '-'} | {dpx} |")
+            L.append("")
         L.append("## Gate 1 — FlashTeX self-regression (byte identity with its own pinned prior output)\n")
         L.append(f"Pinned in `{os.path.basename(args.profile) if args.profile else 'none'}`: the SHA-256 of FlashTeX's own `flashtex.pdf` "
                  "(writer + compiler at pin time). EQUAL means the candidate reproduces the earlier FlashTeX output byte for byte; it is a "
@@ -889,6 +909,12 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
     for c in prov.get("compilers", []):
         if c.get("build_ok") is False:
             L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate')}/{c.get('binary')}) — **DID NOT BUILD**, not compared: `{c.get('build_error')}`")
+        elif c.get("route") == "exact":
+            L.append(f"- **exact route** `{c['label']}`: `flashtex-render --secnumdepth 0 --v2` from `{c['ref']}` @ `{c['sha']}` (crates/render-pipeline) → "
+                     f"`flashtex-pdf-exact from-v2` from `{c.get('exact_pdf_ref')}` @ `{c.get('exact_pdf_sha')}` (crates/pdf) — {c.get('note', '')}. "
+                     "Glyphs by original GID at the producer's exact tick origins, GID-preserving CFF subsets of the Latin Modern OTFs resolved by content hash. "
+                     "Known deviation reported by the tool on every fixture: the producer's font `sha256` is SHA-256(bytes ‖ face_index) (font-engine's content hash), "
+                     "not SHA-256(bytes) as the rendering-v2 validator requires; from-v2 accepts it and says so.")
         else:
             L.append(f"- compiler `{c['label']}`: `{c['ref']}` @ `{c['sha']}` ({c.get('crate', 'crates/compiler')}) — {c.get('note', '')}")
     p = prov.get("pdf_writer", {})
@@ -1111,7 +1137,8 @@ def main():
                     entry = {"fixture": fx, "engine": eng, "compiler": comp, "side": side,
                              "engine_available": bool(einfo.get("available")), "engine_exit": einfo.get("exit"),
                              "status": build.get("status"), "ref_pages": len(ref_pages), "our_pages": len(our_pages),
-                             "build": {k: build.get(k) for k in ("diagnostics", "diagnostic_count", "rule_items", "pdf_re_f_count", "pdf_re_f_rects", "pdf_exit", "compile_exit")}}
+                             "build": {k: build.get(k) for k in ("diagnostics", "diagnostic_count", "rule_items", "pdf_re_f_count", "pdf_re_f_rects", "pdf_exit", "compile_exit",
+                                                                 "route", "from_v2_summary", "deviations", "fonts_embedded", "classify_categories", "classify_reference", "classify_same", "display_list") if k in build}}
                     if not ref_pages or not our_pages:
                         if not ref_pages:
                             entry["skipped"] = "reference unavailable" if not einfo.get("available") else "no reference raster"
@@ -1132,6 +1159,7 @@ def main():
                     font = ("times/T1" if eng == "pdflatex" else "lmodern/T1" if eng == "pdflatex-lm"
                             else "Latin Modern OTF" if eng.endswith("-lm") else "Times New Roman TTF")
                     entry["provenance"] = {"fixture_sha256": fx_sha, "engine": eng, "engine_version": eng_ver, "font": font,
+                                           "route": comp_info.get("route", "compile_result -> flashtex-pdf"), "exact_pdf_sha": comp_info.get("exact_pdf_sha"),
                                            "reference_pdf_sha256": einfo.get("pdf_sha256"),
                                            "reference_reused_from_run": (reused or {}).get("run"),
                                            "compiler_sha": comp_info.get("sha"), "pdf_writer_sha": (prov.get("pdf_writer") or {}).get("sha"),
@@ -1139,8 +1167,10 @@ def main():
                                            "side": side, "run": prov.get("generated_utc")}
                     footer = (f"fixture {fx}.tex sha256 {fx_sha[:16]} | oracle {eng} {eng_ver} {font}"
                               + (f" (PDF reused from run {reused.get('run')})" if reused else "")
-                              + f" | compiler {comp}@{(comp_info.get('sha') or '')[:12]}"
-                              f" | flashtex-pdf {((prov.get('pdf_writer') or {}).get('sha') or '')[:12]} | side {side} | {args.dpi:g} DPI sRGB RGBA8 | run {prov.get('generated_utc')}")
+                              + (f" | exact route: flashtex-render@{(comp_info.get('sha') or '')[:12]} --v2 -> flashtex-pdf-exact@{(comp_info.get('exact_pdf_sha') or '')[:12]} from-v2"
+                                 if comp_info.get("route") == "exact" else f" | compiler {comp}@{(comp_info.get('sha') or '')[:12]}")
+                              + (f" | side {side}" if comp_info.get("route") == "exact" else f" | flashtex-pdf {((prov.get('pdf_writer') or {}).get('sha') or '')[:12]} | side {side}")
+                              + f" | {args.dpi:g} DPI sRGB RGBA8 | run {prov.get('generated_utc')}")
                     pages = compare_pages(ref_pages, our_pages, out_dir, tag, args.threshold, args.dpi, args.max_png_bytes, args.evidence, want_images,
                                           ref_words=ref_words, footer=footer, rasterize=args.rasterize)
                     entry["pages"] = pages
@@ -1188,6 +1218,12 @@ def main():
         for comp in (sorted(os.listdir(os.path.join(args.flashtex, fx))) if os.path.isdir(os.path.join(args.flashtex, fx)) else []):
             fdir = os.path.join(args.flashtex, fx, comp)
             g = {"fixture": fx, "compiler": comp}
+            bj = os.path.join(fdir, "build.json")
+            b = json.load(open(bj)) if os.path.exists(bj) else {}
+            if b.get("route") == "exact":
+                g["route"] = "exact"
+                g["classify"] = {"reference": b.get("classify_reference"), "categories": b.get("classify_categories"),
+                                 "from_v2_summary": b.get("from_v2_summary"), "deviations": b.get("deviations"), "pdf_exit": b.get("pdf_exit")}
             exp, pre = page_prefixes(fdir, "export"), page_prefixes(fdir, "preview")
             nat = page_prefixes(os.path.join(args.native, fx, comp), "native") if args.native and os.path.isdir(os.path.join(args.native, fx, comp)) else []
             # (3) native/export parity

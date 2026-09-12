@@ -20,6 +20,11 @@
 #          [--profile <json>] pinned raw-PDF SHA-256 profile (default harness/reference-profile.json)
 #          [--pin-profile]    explicitly re-baseline the profile from this run's PDFs
 #          [--gate]           exit 5 when an exact-equality gate fails (default: report only)
+#          [--exact-route auto|none|<pdf ref>[:<render ref>]]  third candidate column `exact`:
+#                             flashtex-render --v2 (built from the pipeline ref) -> flashtex-pdf-exact from-v2
+#                             (built from <pdf ref>, default origin/agent/mac-pdf/v2-adapter, crates/pdf).
+#                             auto (default) adds it whenever both build; a build failure is reported.
+#          [--font-dir <dir>] extra font directory for from-v2 (default: the TeX Live Latin Modern dirs it finds itself)
 #          [--oracle-profile <json>] pinned ESTABLISHED-ENGINE profile (default harness/oracle-profile.json):
 #                             SHA-256 of the oracle PDF per fixture/oracle with engine version, distribution,
 #                             fonts, preamble, flags and render environment. Candidate bytes are compared to it raw.
@@ -38,6 +43,7 @@ SCRATCH="${TMPDIR:-/tmp}/flashtex-visual-corpus"; EVROOT="$REPO/tests/visual-cor
 ENGINES=(); THRESHOLDS="$HERE/thresholds.json"; REGRESS=""; NATIVE=""; SKIP_BUILD=0; APP=""
 PROFILE="$HERE/reference-profile.json"; PIN=0; GATE=0; REF_FROM=()
 ORACLE_PROFILE="$HERE/oracle-profile.json"; PIN_ORACLE=0
+EXACT_ROUTE="auto"; EXACT_PDF_REF="origin/agent/mac-pdf/v2-adapter"; EXACT_RENDER_REF=""; FONT_DIRS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --compiler-ref) COMPILER_REFS+=("$2"); shift 2 ;;
@@ -58,6 +64,8 @@ while [[ $# -gt 0 ]]; do
     --reference-from) REF_FROM+=("$2"); shift 2 ;;
     --oracle-profile) ORACLE_PROFILE="$2"; shift 2 ;;
     --pin-oracle) PIN_ORACLE=1; shift ;;
+    --exact-route) EXACT_ROUTE="$2"; shift 2 ;;
+    --font-dir) FONT_DIRS+=("$2"); shift 2 ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -116,7 +124,35 @@ for spec in "${COMPILER_REFS[@]}"; do
   COMPILER_ARGS+=(--compiler "$label=$bin")
   COMPILER_JSON+="{\"label\":\"$label\",\"ref\":\"$ref\",\"sha\":\"$sha\",\"crate\":\"$crate\",\"binary\":\"$binname\",\"build_ok\":true,\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$subject")},"
 done
-COMPILER_JSON="${COMPILER_JSON%,}]"
+# --- exact route (third candidate column): flashtex-render --v2 -> flashtex-pdf-exact from-v2
+EXACT_ARGS=()
+if [[ "$EXACT_ROUTE" != "none" ]]; then
+  if [[ "$EXACT_ROUTE" != "auto" ]]; then
+    EXACT_PDF_REF="${EXACT_ROUTE%%:*}"; [[ "$EXACT_ROUTE" == *:* ]] && EXACT_RENDER_REF="${EXACT_ROUTE#*:}"
+  fi
+  [[ -n "$EXACT_RENDER_REF" ]] || EXACT_RENDER_REF="origin/agent/mac-render-pipeline/unified"
+  if git -C "$REPO" rev-parse --verify -q "$EXACT_PDF_REF^{commit}" >/dev/null \
+     && git -C "$REPO" rev-parse --verify -q "$EXACT_RENDER_REF^{commit}" >/dev/null \
+     && git -C "$REPO" cat-file -e "$EXACT_RENDER_REF:crates/render-pipeline/Cargo.toml" 2>/dev/null; then
+    read -r xr_sha xr_bin xr_log < <(build_crate exact-render "$EXACT_RENDER_REF" crates/render-pipeline flashtex-render | tail -1)
+    read -r xp_sha xp_bin xp_log < <(build_crate exact-pdf "$EXACT_PDF_REF" crates/pdf flashtex-pdf-exact | tail -1)
+    if [[ "$xr_bin" != "FAILED" && "$xp_bin" != "FAILED" ]]; then
+      EXACT_ARGS=(--exact "exact=$xr_bin:$xp_bin")
+      note="$(git -C "$REPO" log -1 --format=%s "$xp_sha")"
+      COMPILER_JSON="${COMPILER_JSON%]}"; [[ "$COMPILER_JSON" != "[" ]] && COMPILER_JSON+=","
+      COMPILER_JSON+="{\"label\":\"exact\",\"route\":\"exact\",\"ref\":\"$EXACT_RENDER_REF\",\"sha\":\"$xr_sha\",\"crate\":\"crates/render-pipeline\",\"binary\":\"flashtex-render --secnumdepth 0 --v2\",\"exact_pdf_ref\":\"$EXACT_PDF_REF\",\"exact_pdf_sha\":\"$xp_sha\",\"exact_pdf_crate\":\"crates/pdf\",\"exact_pdf_binary\":\"flashtex-pdf-exact from-v2\",\"build_ok\":true,\"note\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$note")}]"
+      echo "exact route available: render $EXACT_RENDER_REF @ ${xr_sha:0:7}, pdf-exact $EXACT_PDF_REF @ ${xp_sha:0:7}"
+    else
+      err="$( { [[ "$xr_bin" == "FAILED" ]] && grep -m1 -E '^error' "$xr_log"; [[ "$xp_bin" == "FAILED" ]] && grep -m1 -E '^error' "$xp_log"; } 2>/dev/null | head -1 || echo unknown)"
+      COMPILER_JSON="${COMPILER_JSON%]}"; [[ "$COMPILER_JSON" != "[" ]] && COMPILER_JSON+=","
+      COMPILER_JSON+="{\"label\":\"exact\",\"route\":\"exact\",\"ref\":\"$EXACT_RENDER_REF\",\"sha\":\"$xr_sha\",\"exact_pdf_ref\":\"$EXACT_PDF_REF\",\"exact_pdf_sha\":\"$xp_sha\",\"build_ok\":false,\"build_error\":$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1][:300]))' "$err"),\"note\":\"exact route did not build (render $xr_bin, pdf-exact $xp_bin)\"}]"
+      echo "exact route did not build (render $xr_bin, pdf-exact $xp_bin); reported, not used"
+    fi
+  else
+    echo "exact route not available ($EXACT_PDF_REF or $EXACT_RENDER_REF missing); skipping"
+  fi
+fi
+FONT_ARGS=(); for fd in "${FONT_DIRS[@]}"; do FONT_ARGS+=(--font-dir "$fd"); done
 [[ ${#COMPILER_ARGS[@]} -gt 0 ]] || { echo "no compiler built" >&2; exit 1; }
 read -r pdf_sha PDF_BIN pdf_log < <(build_crate pdf "$PDF_REF" crates/pdf flashtex-pdf | tail -1)
 [[ "$PDF_BIN" != "FAILED" ]] || { echo "flashtex-pdf did not build ($pdf_log)" >&2; exit 1; }
@@ -175,7 +211,7 @@ else:
     print("no fresh reference renders this run; no reference store written")
 PY
 "$HERE/render_flashtex.sh" --out "$WORK/flashtex" --rasterize "$WORK/rasterize" --pdf-bin "$PDF_BIN" \
-  "${COMPILER_ARGS[@]}" --dpi "$DPI" --embed-font auto
+  "${COMPILER_ARGS[@]}" "${EXACT_ARGS[@]}" "${FONT_ARGS[@]}" --reference "$WORK/reference" --dpi "$DPI" --embed-font auto
 
 # --- native preview capture (optional; the actual SwiftUI preview, not the preview-equivalent raster)
 if [[ -n "$APP" ]]; then
