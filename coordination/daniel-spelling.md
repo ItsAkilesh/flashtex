@@ -140,12 +140,14 @@ tree; `cargo build`/`test`/`clippy` ran entirely from the local toolchain).
 
 ## Exact tested commit
 
-SHA: **`<FILLED IN AFTER COMMIT — see below>`**
+SHA: **`9adc652f743c8f397363e73bf6ef8d6234a2602d`**
+(`agent/daniel-spelling/spellcheck`, "Add flashtex-spellcheck: offline
+bounded source-aware spelling suggestions")
 
-(Populated by `git rev-parse HEAD` immediately after committing this file
-and the crate together; `cargo build`, `cargo test`, and `cargo clippy` were
-all re-run clean against that exact commit's working tree before recording
-it here.)
+`cargo build`, `cargo test`, and `cargo clippy --all-targets -- -D warnings`
+were run clean against this exact commit's `crates/spellcheck` tree (the
+crate source is identical between that commit and this follow-up, which
+only records the SHA here).
 
 ## Interface changes / consumer actions
 
