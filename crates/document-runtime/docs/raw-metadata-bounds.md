@@ -79,3 +79,31 @@ calibrated allocator counts or native speed claims. Full evidence is in
 `../benchmarks/raw-metadata-bounded`; rejected frames still produce no candidate.
 The empty-record unit test directly proves zero retained entries after 50001
 records. Permit and cancellation tests cover budget replacement and reset.
+
+## Actual producer acceptance (FT049 revision 10)
+
+`benchmarks/raw-bounded-producer` preserves compressed complete evidence for the
+unchanged pinned `6e696616cca27a6bff19d88f7e0fd51e64458e81` producer. Its binary
+SHA and all 77 previously pinned assets were reverified; no producer rebuild,
+cap increase or repeated memory probe was performed. Requested, legacy, declined
+and failed negotiation pass. All 12 small fresh/persistent case/cap combinations
+have equal v1 results and exact raw sibling bytes where accepted, and their
+semantic results/envelopes match the earlier Value-route evidence. Cancellation
+followed immediately by a two-document request with a longer UTF-8 path accepts
+only the current candidate and verifies both exact source digests and lengths.
+The additional source is an uploaded snapshot; this test does not claim include
+layout coverage. Existing 11pt fixture diagnostics remain in the evidence.
+
+To reproduce with the pinned binary and existing assets, set
+`FLASHTEX_RAW_REPLAY=1`, `FLASHTEX_REPLAY_PRODUCER` to the provenance binary,
+`FLASHTEX_FONT_DIRS=/tmp/flashtex-render-reference-stage/fonts` and
+`FLASHTEX_TFM_DIRS=/tmp/flashtex-official-lm-root/fonts/tfm/public/lm`. Optionally
+set `FLASHTEX_REPLAY_OUTPUT` to an existing temporary directory plus `runtime.json`.
+Run each exact ignored test in `real_display_producer`:
+
+- `published_producer_negotiates_source_bound_candidates`
+- `actual_incremental_producer_fresh_and_persistent_runtime_equivalence`
+- `actual_raw_cancelled_request_then_changed_source_budget`
+
+These prove transport/cache/source acceptance only, not native render authority,
+visual fidelity, or typing-to-visible latency. The default route remains unchanged.

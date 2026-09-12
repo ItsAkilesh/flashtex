@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:05:06Z",
-      "adaptation": "Read exactr8. Bound proposal uses exact accepted pending request source count, existing128-byte identity cap and request-derived path length, not arbitraryglobal doc cap. Measure modest malformed metadata allocation before implementation; preserve default/legacy behavior and single permit.",
-      "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T12:19:12Z",
+      "adaptation": "Existing residency evidence 00490d56 preserved without repeated probes. Exact pinned6e69661 raw acceptance passes all12 fresh/persistent combinations and queued cancellation to changed source set; no producer rebuild or speed claim.",
+      "main_sha": "b4088b471190527e73d8bcea8ceb1b500c14071e",
+      "revision": 10
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "dcac0108f593653c505644b18b6a2171f49a177e",
+  "code_revision": "9db023326dd54c210815b52ca8dff952ef900ceb",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
-  "next_action": "Commander review request-derived capture design, then implement only authorized bounds with original request held through stale/cancelled sibling and full serde validation for nonretained entries. No extra queues/threads, globallegacycaps or provider calls.",
+  "next_action": "Commander integration review; preserve defaultOFF/raw opt-in and untrusted renderer gate. All test/build handles terminal; clean checkpoint after report publication. Current bounded metadata00490d56 acceptance evidence complete.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r8 analysis/probe complete: malformed150145B/50k emptydocs peaks7528KB vs3748KB baseline;512KBidentity peaks4928KB. All reject/no candidate. Proposed actual-request source-count/path budgets and existing128byte IDs/SHA64, no arbitraryglobal documents cap. Explicit pre-v1/payload-first bounded-retention markers preserve v1 unknown-field policy; no code bounds implemented yet. Probe/example strictlint pass.",
+  "summary": "FT049 r10 product9db02332: actual pinned6e69661 bounded raw requested/legacy/declined/failed pass; all12 fresh/persistent pairs exact raw equal and match prior Value envelopes; cancelled request then2 sources/UTF8 longer path passes. Binary plus77 asset hashes reverified. Three actual tests and strict lint pass; no producer rebuild or repeated memory probe.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:07:35Z",
+  "updated_utc": "2026-09-12T12:20:35Z",
   "usage": {
     "status": "unknown"
   }
