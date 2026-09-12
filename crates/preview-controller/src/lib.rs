@@ -3,7 +3,9 @@ pub mod completed_protocol;
 mod display;
 mod metadata_edit;
 pub use display::RawDisplayPayload;
-pub use metadata_edit::{DocumentMetadata, MetadataEditOutcome};
+pub use metadata_edit::{
+    DocumentMetadata, MetadataEditOutcome, MetadataGroupOutcome, MetadataHistory,
+};
 pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
