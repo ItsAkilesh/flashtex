@@ -160,6 +160,52 @@ impl GrokClient {
     }
 }
 
+/// Provider bytes tied to the exact dispatched registry request.
+pub struct RoutedReply {
+    request_id: String,
+    context_id: String,
+    reply: ProviderReply,
+}
+impl RoutedReply {
+    pub fn receive(
+        self,
+        registry: &mut crate::ExplanationRegistry,
+        current: &[Document],
+    ) -> Result<ExplanationProposal, String> {
+        registry.receive(
+            &self.request_id,
+            &self.context_id,
+            self.reply.untrusted_bytes(),
+            current,
+        )
+    }
+}
+impl GrokClient {
+    /// Consume the flight's single dispatch lease. Registry cancellation may race
+    /// an in-flight call; only RoutedReply::receive can release its proposal.
+    pub fn request_lease(
+        &self,
+        lease: crate::RequestLease,
+        current: &[Document],
+    ) -> Result<RoutedReply, String> {
+        self.request_lease_at(ENDPOINT, lease, current)
+    }
+    fn request_lease_at(
+        &self,
+        endpoint: &str,
+        lease: crate::RequestLease,
+        current: &[Document],
+    ) -> Result<RoutedReply, String> {
+        lease.check_current(current)?;
+        let reply = self.request_at(endpoint, lease.context(), current)?;
+        Ok(RoutedReply {
+            request_id: lease.request_id().to_owned(),
+            context_id: lease.payload().context_id.clone(),
+            reply,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,6 +324,44 @@ mod tests {
         }
         assert!(GrokClient::new("secret\n".into(), "test".into(), Duration::from_secs(1)).is_err());
         assert!(GrokClient::new("secret".into(), "".into(), Duration::from_secs(1)).is_err());
+    }
+    #[test]
+    fn leased_http_workflow_validates_only_live_current_flights() {
+        for mode in ["success", "cancel", "stale", "expired"] {
+            let (bound, docs) = context();
+            let context_id = bound.payload().context_id.clone();
+            let mut registry =
+                crate::ExplanationRegistry::new(format!("workflow_{mode}"), 1, 2).unwrap();
+            let timeout = if mode == "expired" {
+                Duration::from_millis(20)
+            } else {
+                Duration::from_secs(2)
+            };
+            let id = registry.submit(bound, &docs, timeout).unwrap();
+            let lease = registry.lease(&id, &docs).unwrap();
+            let body = json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":json!({"context_id":context_id,"explanation":"Explain","edits":[]}).to_string()}]}]}).to_string();
+            let (endpoint, server) = server_mode(200, body, false, Duration::from_millis(50));
+            let client =
+                GrokClient::new("dummy".into(), "test".into(), Duration::from_secs(2)).unwrap();
+            // request_lease_at performs the real local HTTP exchange using the
+            // sole shared Context, with no second context construction.
+            let reply = client.request_lease_at(&endpoint, lease, &docs).unwrap();
+            server.join().unwrap();
+            if mode == "cancel" {
+                assert!(registry.cancel(&id));
+            }
+            let current = if mode == "stale" {
+                vec![Document::new("p".into(), "main.tex".into(), 2, "changed".into()).unwrap()]
+            } else {
+                docs
+            };
+            assert_eq!(
+                reply.receive(&mut registry, &current).is_ok(),
+                mode == "success",
+                "{mode}"
+            );
+            assert!(!registry.fail(&id));
+        }
     }
     #[test]
     fn delayed_chunked_and_cancelled_responses_are_bounded() {

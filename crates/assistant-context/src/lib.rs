@@ -446,7 +446,7 @@ pub enum FlightState {
 /// Local lifecycle only; the native caller owns the actual provider task and must
 /// cancel that task separately. An invalid/late response never revives a flight.
 pub struct ExplanationFlight {
-    context: Context,
+    context: std::sync::Arc<Context>,
     deadline: std::time::Instant,
     state: FlightState,
 }
@@ -461,7 +461,7 @@ impl ExplanationFlight {
             return Err("explanation timeout must be positive and at most120seconds".into());
         }
         Ok(Self {
-            context,
+            context: std::sync::Arc::new(context),
             deadline: std::time::Instant::now() + timeout,
             state: FlightState::AwaitingResponse,
         })
@@ -506,7 +506,7 @@ impl ExplanationFlight {
 }
 
 mod registry;
-pub use registry::ExplanationRegistry;
+pub use registry::{ExplanationRegistry, RequestLease};
 #[cfg(unix)]
 mod client;
 #[cfg(unix)]

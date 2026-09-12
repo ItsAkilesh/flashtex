@@ -3,7 +3,11 @@ use crate::{Context, ExplanationFlight, ExplanationProposal, FlightState, Prompt
 use flashtex_edit_ledger::Document;
 use std::{
     collections::{BTreeMap, VecDeque},
-    time::Duration,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
 };
 
 /// Request IDs belong to one registry session. The caller must supply a fresh
@@ -15,6 +19,7 @@ pub struct ExplanationRegistry {
     terminal_limit: usize,
     pending: BTreeMap<String, ExplanationFlight>,
     terminal: VecDeque<(String, FlightState)>,
+    leases: BTreeMap<String, Arc<AtomicBool>>,
 }
 impl ExplanationRegistry {
     pub fn new(
@@ -39,10 +44,14 @@ impl ExplanationRegistry {
             terminal_limit,
             pending: BTreeMap::new(),
             terminal: VecDeque::new(),
+            leases: BTreeMap::new(),
         })
     }
     fn retire(&mut self, id: String, state: FlightState) {
         self.pending.remove(&id);
+        if let Some(active) = self.leases.remove(&id) {
+            active.store(false, Ordering::Release);
+        }
         if self.terminal_limit != 0 {
             self.terminal.push_back((id, state));
             while self.terminal.len() > self.terminal_limit {
@@ -146,5 +155,68 @@ impl ExplanationRegistry {
     }
     pub fn retained_counts(&self) -> (usize, usize) {
         (self.pending.len(), self.terminal.len())
+    }
+}
+
+/// One transport dispatch per flight. Source context is shared immutably with
+/// the registry; dropping/cancelling the registry revokes undispatched leases.
+/// A lease is not Clone and does not authorize editing or bypass response checks.
+pub struct RequestLease {
+    id: String,
+    context: Arc<Context>,
+    active: Arc<AtomicBool>,
+    deadline: Instant,
+}
+impl RequestLease {
+    pub fn request_id(&self) -> &str {
+        &self.id
+    }
+    pub fn payload(&self) -> &PromptPayload {
+        self.context.payload()
+    }
+    pub fn check_current(&self, current: &[Document]) -> Result<(), String> {
+        if !self.active.load(Ordering::Acquire) || Instant::now() >= self.deadline {
+            return Err("transport lease revoked or expired".into());
+        }
+        self.context.check_current(current)
+    }
+    #[cfg(feature = "grok")]
+    pub(crate) fn context(&self) -> &Context {
+        &self.context
+    }
+}
+impl ExplanationRegistry {
+    pub fn lease(&mut self, id: &str, current: &[Document]) -> Result<RequestLease, String> {
+        self.sweep();
+        if self.leases.contains_key(id) {
+            return Err("request already leased; no automatic retry".into());
+        }
+        let flight = self.pending.get(id).ok_or("unknown or terminal request")?;
+        flight.context.check_current(current)?;
+        let active = Arc::new(AtomicBool::new(true));
+        let lease = RequestLease {
+            id: id.to_owned(),
+            context: Arc::clone(&flight.context),
+            active: Arc::clone(&active),
+            deadline: flight.deadline,
+        };
+        self.leases.insert(id.to_owned(), active);
+        Ok(lease)
+    }
+    /// Report a terminal provider failure without retaining untrusted error text.
+    pub fn fail(&mut self, id: &str) -> bool {
+        self.sweep();
+        if !self.pending.contains_key(id) {
+            return false;
+        }
+        self.retire(id.to_owned(), FlightState::Failed);
+        true
+    }
+}
+impl Drop for ExplanationRegistry {
+    fn drop(&mut self) {
+        for active in self.leases.values() {
+            active.store(false, Ordering::Release);
+        }
     }
 }

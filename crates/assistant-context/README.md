@@ -165,3 +165,14 @@ Additional local HTTP coverage exercises delayed responses, chunked bodies witho
 Content-Length, oversized chunked output, and a successful reply arriving after
 registry cancellation. These validate timeout/size/lifecycle behavior without
 calling xAI; they do not prove server-side cancellation or live model accuracy.
+
+For registry-owned requests, use `registry.lease(id,current)` followed by
+`GrokClient::request_lease(lease,current)` on a background worker. A lease shares
+the immutable Context with the registry and is issued at most once per request.
+It cannot be cloned; cancellation, expiry or registry destruction invalidates
+preflight dispatch. The resulting `RoutedReply::receive(registry,fresh_sources)`
+keeps exact request/context correlation and terminal response ownership inside
+the registry. Call `registry.fail(id)` on a terminal provider error. No retry is
+implied by failure. Cancellation can race network dispatch; late successful HTTP
+results still cannot revive the registry flight. Held leases retain their bounded
+context until dropped, so the host must bound queued/in-flight provider workers.

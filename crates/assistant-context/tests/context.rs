@@ -503,3 +503,29 @@ fn supervised_client_handles_real_helper_and_bounds_stalled_pipes() {
     }
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn dispatch_lease_is_single_use_shared_and_revoked_with_owner() {
+    use flashtex_assistant_context::ExplanationRegistry;
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("lease_test".into(), 2, 2).unwrap();
+    let id = registry
+        .submit(build(&docs), &docs, Duration::from_secs(5))
+        .unwrap();
+    let lease = registry.lease(&id, &docs).unwrap();
+    assert!(std::ptr::eq(
+        lease.payload(),
+        registry.payload(&id).unwrap()
+    ));
+    assert!(registry.lease(&id, &docs).is_err());
+    assert!(lease.check_current(&docs).is_ok());
+    assert!(registry.cancel(&id));
+    assert!(lease.check_current(&docs).is_err());
+    let id = registry
+        .submit(build(&docs), &docs, Duration::from_secs(5))
+        .unwrap();
+    let lease = registry.lease(&id, &docs).unwrap();
+    drop(registry);
+    assert!(lease.check_current(&docs).is_err());
+}
