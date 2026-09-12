@@ -1,5 +1,6 @@
 //! Lexical source navigation, not a TeX interpreter or macro expansion engine.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
@@ -61,7 +62,32 @@ pub struct Diagnostic {
 pub struct UpdateSummary {
     pub symbol_count: usize,
     pub diagnostics: Vec<Diagnostic>,
+    pub metrics: ReindexMetrics,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReindexMetrics {
+    pub generation: u64,
+    /// Input bytes of changed documents, not a parser instruction/byte-visit count.
+    pub input_bytes_reindexed: usize,
+    pub documents_reindexed: usize,
+    pub document_indexes_reused: usize,
+    pub definition_availability_changes: usize,
+    pub reference_documents_rechecked: usize,
+    pub lexical_elapsed_nanos: u128,
+    pub total_elapsed_nanos: u128,
+}
+
+/// No lexical project definition exists. This is not a TeX compile error claim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnresolvedReference {
+    pub category: Category,
+    pub name: String,
+    pub source: SourceSpan,
+}
+
+type SymbolKey = (Category, String);
+type DependencyMap = BTreeMap<SymbolKey, BTreeSet<String>>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IndexError {
@@ -149,6 +175,10 @@ pub struct ProjectIndex {
     documents: BTreeMap<String, Document>,
     /// Tombstones prevent an old document replacement from resurrecting a deletion.
     last_revisions: BTreeMap<String, u64>,
+    definitions: DependencyMap,
+    readers: DependencyMap,
+    unresolved: BTreeMap<String, Vec<UnresolvedReference>>,
+    last_metrics: Option<ReindexMetrics>,
 }
 
 impl ProjectIndex {
@@ -162,6 +192,10 @@ impl ProjectIndex {
             generation: 0,
             documents: BTreeMap::new(),
             last_revisions: BTreeMap::new(),
+            definitions: BTreeMap::new(),
+            readers: BTreeMap::new(),
+            unresolved: BTreeMap::new(),
+            last_metrics: None,
         })
     }
 
@@ -209,35 +243,142 @@ impl ProjectIndex {
         revision: u64,
         source: &str,
     ) -> Result<UpdateSummary, IndexError> {
+        let started = Instant::now();
         let generation = self.check_update(file, revision)?;
+        let lexical_started = Instant::now();
         let (symbols, diagnostics) = scan(file, revision, source);
-        let result = UpdateSummary {
-            symbol_count: symbols.len(),
-            diagnostics: diagnostics.clone(),
-        };
-        self.documents.insert(
-            file.to_owned(),
-            Document {
-                revision,
-                source: source.to_owned(),
-                symbols,
-                diagnostics,
-            },
-        );
+        let lexical_elapsed_nanos = lexical_started.elapsed().as_nanos();
+        let symbol_count = symbols.len();
+        let diagnostic_copy = diagnostics.clone();
+        let (definition_availability_changes, reference_documents_rechecked) = self
+            .commit_document(
+                file,
+                Some(Document {
+                    revision,
+                    source: source.to_owned(),
+                    symbols,
+                    diagnostics,
+                }),
+            );
         self.last_revisions.insert(file.to_owned(), revision);
         self.generation = generation;
-        Ok(result)
+        let metrics = ReindexMetrics {
+            generation,
+            input_bytes_reindexed: source.len(),
+            documents_reindexed: 1,
+            document_indexes_reused: self.documents.len() - 1,
+            definition_availability_changes,
+            reference_documents_rechecked,
+            lexical_elapsed_nanos,
+            total_elapsed_nanos: started.elapsed().as_nanos(),
+        };
+        self.last_metrics = Some(metrics.clone());
+        Ok(UpdateSummary {
+            symbol_count,
+            diagnostics: diagnostic_copy,
+            metrics,
+        })
     }
 
     pub fn remove_document(&mut self, file: &str, revision: u64) -> Result<(), IndexError> {
+        let started = Instant::now();
         let generation = self.check_update(file, revision)?;
         if !self.documents.contains_key(file) {
             return Err(IndexError::MissingDocument);
         }
-        self.documents.remove(file);
+        let (definition_availability_changes, reference_documents_rechecked) =
+            self.commit_document(file, None);
         self.last_revisions.insert(file.to_owned(), revision);
         self.generation = generation;
+        self.last_metrics = Some(ReindexMetrics {
+            generation,
+            input_bytes_reindexed: 0,
+            documents_reindexed: 0,
+            document_indexes_reused: self.documents.len(),
+            definition_availability_changes,
+            reference_documents_rechecked,
+            lexical_elapsed_nanos: 0,
+            total_elapsed_nanos: started.elapsed().as_nanos(),
+        });
         Ok(())
+    }
+
+    /// Update dependency memberships; only changed definition availability wakes readers.
+    fn commit_document(&mut self, file: &str, replacement: Option<Document>) -> (usize, usize) {
+        let (old_definitions, old_readers) = relation_keys(self.documents.get(file));
+        let (new_definitions, new_readers) = relation_keys(replacement.as_ref());
+        let availability: Vec<_> = old_definitions
+            .union(&new_definitions)
+            .map(|key| (key.clone(), self.definitions.contains_key(key)))
+            .collect();
+        remove_memberships(&mut self.definitions, file, &old_definitions);
+        remove_memberships(&mut self.readers, file, &old_readers);
+        for key in new_definitions {
+            self.definitions
+                .entry(key)
+                .or_default()
+                .insert(file.to_owned());
+        }
+        for key in new_readers {
+            self.readers.entry(key).or_default().insert(file.to_owned());
+        }
+        if let Some(document) = replacement {
+            self.documents.insert(file.to_owned(), document);
+        } else {
+            self.documents.remove(file);
+            self.unresolved.remove(file);
+        }
+        let mut affected = BTreeSet::new();
+        if self.documents.contains_key(file) {
+            affected.insert(file.to_owned());
+        }
+        let mut changed = 0;
+        for (key, before) in availability {
+            if self.definitions.contains_key(&key) != before {
+                changed += 1;
+                if let Some(readers) = self.readers.get(&key) {
+                    affected.extend(readers.iter().cloned());
+                }
+            }
+        }
+        for path in &affected {
+            let document = &self.documents[path];
+            let unresolved = document
+                .symbols
+                .iter()
+                .filter(|symbol| {
+                    matches!(
+                        symbol.kind,
+                        SymbolKind::LabelReference | SymbolKind::CitationReference
+                    ) && !self
+                        .definitions
+                        .contains_key(&(symbol.kind.category(), symbol.name.clone()))
+                })
+                .map(|symbol| UnresolvedReference {
+                    category: symbol.kind.category(),
+                    name: symbol.name.clone(),
+                    source: symbol.source.clone(),
+                })
+                .collect();
+            self.unresolved.insert(path.clone(), unresolved);
+        }
+        (changed, affected.len())
+    }
+
+    pub fn unresolved_references(
+        &self,
+        snapshot: &VersionSnapshot,
+    ) -> Result<Vec<UnresolvedReference>, IndexError> {
+        self.check(snapshot)?;
+        Ok(self.unresolved.values().flatten().cloned().collect())
+    }
+
+    pub fn last_reindex_metrics(
+        &self,
+        snapshot: &VersionSnapshot,
+    ) -> Result<Option<ReindexMetrics>, IndexError> {
+        self.check(snapshot)?;
+        Ok(self.last_metrics.clone())
     }
 
     pub fn symbols(&self, snapshot: &VersionSnapshot) -> Result<Vec<Symbol>, IndexError> {
@@ -447,6 +588,36 @@ impl ProjectIndex {
             candidate.occurrences.push(symbol.source);
         }
         Ok(candidates.into_values().take(limit).collect())
+    }
+}
+
+fn relation_keys(document: Option<&Document>) -> (BTreeSet<SymbolKey>, BTreeSet<SymbolKey>) {
+    let mut definitions = BTreeSet::new();
+    let mut readers = BTreeSet::new();
+    if let Some(document) = document {
+        for symbol in &document.symbols {
+            if symbol.kind.category() == Category::Command {
+                continue;
+            }
+            let key = (symbol.kind.category(), symbol.name.clone());
+            if symbol.kind.is_definition() {
+                definitions.insert(key);
+            } else {
+                readers.insert(key);
+            }
+        }
+    }
+    (definitions, readers)
+}
+
+fn remove_memberships(map: &mut DependencyMap, file: &str, keys: &BTreeSet<SymbolKey>) {
+    for key in keys {
+        if let Some(files) = map.get_mut(key) {
+            files.remove(file);
+            if files.is_empty() {
+                map.remove(key);
+            }
+        }
     }
 }
 
