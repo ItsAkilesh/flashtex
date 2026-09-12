@@ -29,3 +29,18 @@ manual-compile or other-operation IDs must not be guessed from editor revisions.
 Grouped/history/apply result schemas remain outside this change. No missing runtime
 identity field was demonstrated for the explicitly scoped full/metadata edit path;
 the owner's additional actual wire mapping gate is separate acceptance evidence.
+
+## Grouped permanent retry followup
+
+Pinned helperac0a860e extends only `apply_group` wire output, in full and metadata
+modes. Both use the same operation-local admission path. The owner wire test holds
+the child, applies a command at document revision2, advances current source to3,
+and retries the permanent command: command_revision2/replayed remain durable
+history, while a fresh compile ID/revision refers to current document3 and matches
+the later preview. Neither the original command admission nor an intervening
+submission is reused. Null admission on failure remains the existing path.
+Undo/redo omit the new wire keys; an explicit undo key-absence assertion protects
+that scope. No owner tests were repeated. The additional grouped encode-refusal
+check is pending separately from this exact-SHA review. A minor stale STDIO line
+claiming all group schemas unchanged was reported for documentation cleanup; the
+new following paragraph and implementation clearly describe the additive change.
