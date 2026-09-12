@@ -531,3 +531,6 @@ pub use outline::{OutlinePoint, SimpleOutline};
 
 mod expansion;
 pub use expansion::{Coordinate, ExactPoint, ExpandedOutline, GlyphInstance};
+
+mod path;
+pub use path::{PathCommand, QuadraticPath};

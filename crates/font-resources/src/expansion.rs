@@ -31,7 +31,7 @@ impl Coordinate {
             shift,
         })
     }
-    fn integer(n: i32) -> Self {
+    pub fn from_integer(n: i32) -> Self {
         Self {
             numerator: n as i128,
             shift: 0,
@@ -216,8 +216,8 @@ fn expand<'a>(
             })
         };
         let mut offset = ExactPoint {
-            x: Coordinate::integer(x),
-            y: Coordinate::integer(y),
+            x: Coordinate::from_integer(x),
+            y: Coordinate::from_integer(y),
             on_curve: true,
         };
         if flags & 4 != 0 && (x != 0 || y != 0) {
@@ -332,11 +332,26 @@ mod tests {
         ];
         let out = run(&g, 2).unwrap();
         assert_eq!(out.points[0].x, Coordinate::new(19, 1).unwrap());
-        assert_eq!(out.points[0].y, Coordinate::integer(25));
+        assert_eq!(out.points[0].y, Coordinate::from_integer(25));
         assert_eq!(
             out.instances.iter().map(|i| i.glyph_id).collect::<Vec<_>>(),
             vec![2, 1, 0]
         );
+    }
+    #[test]
+    fn expansion_depth_and_node_budgets() {
+        let mut glyphs = vec![simple()];
+        for id in 0..34 {
+            glyphs.push(component(id, 3, 0, 0, &[]));
+        }
+        assert!(run(&glyphs, 34).is_err());
+        let mut glyphs = vec![simple()];
+        for id in 0..13 {
+            let mut d = component(id, 35, 0, 0, &[]);
+            d.extend(&component(id, 3, 0, 0, &[])[10..]);
+            glyphs.push(d);
+        }
+        assert!(run(&glyphs, 13).is_err());
     }
     #[test]
     fn cycles_and_attachment_explicit() {
@@ -352,7 +367,7 @@ mod tests {
             numerator: i128::MAX,
             shift: 0
         }
-        .add(Coordinate::integer(1))
+        .add(Coordinate::from_integer(1))
         .is_err());
         assert!(Coordinate {
             numerator: 1,

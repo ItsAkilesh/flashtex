@@ -95,3 +95,13 @@ component GID plus point range. Coordinates are normalized exact dyadic rational
 instances, 1000000 leaf points and 32 dependency edges. Point attachment,
 nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
 scaled/unscaled policy return unsupported. Instructions remain unexecuted.
+
+Composite smoke on the pinned LiberationSans font accepted 1679 glyphs and
+explicitly rejected 941 requesting nonzero grid-rounded offsets. These are
+unsupported pending a hinting policy, not substituted or counted as complete.
+`ExpandedOutline::quadratic_path()` yields deterministic MoveTo/LineTo/QuadTo/Close
+commands, inserts exact implied midpoints between consecutive off-curve points,
+and handles contours whose first/last points are off-curve. Original root/font
+identity remains on the owning ExpandedOutline. The iterator validates contour
+coverage and materializes a bounded command stream; it does not execute hints,
+choose fill/rasterization rules or assert output parity.
