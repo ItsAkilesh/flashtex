@@ -12,3 +12,15 @@ path = "src/lib.rs"
 [dependencies]
 
 [dev-dependencies]
+# Dev-only: the real, same-language, in-repo consumer of computed document
+# edits ("Durable document and reviewed-edit transactions for FlashTeX
+# native consumers", crates/edit-ledger/src/lib.rs). Used only by
+# tests/real_consumer_edit_ledger.rs to prove a SnippetPlan's offsets and
+# linked edits survive being applied through the actual production
+# Store::apply / Store::apply_group path, not a reimplementation of it.
+# This is a dev-dependency only: it does not appear in the published
+# library's dependency graph.
+flashtex-edit-ledger = { path = "../edit-ledger" }
+# Dev-only: to inspect PreparedEdit's own Serialize output (the exact bytes
+# that would cross the language boundary) without hand-rolling JSON.
+serde_json = "1"
