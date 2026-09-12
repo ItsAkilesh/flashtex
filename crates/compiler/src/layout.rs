@@ -49,6 +49,8 @@ struct ReferenceValue {
 pub struct LayoutConstraints {
     pub font_size_pt: f64,
     pub measure_pt: f64,
+    /// `\setlength{\parskip}{..}`; `None` keeps `PARAGRAPH_GAP_PT`.
+    pub parskip_pt: Option<f64>,
 }
 
 impl Default for LayoutConstraints {
@@ -56,6 +58,7 @@ impl Default for LayoutConstraints {
         Self {
             font_size_pt: BODY_SIZE_PT,
             measure_pt: PAGE_WIDTH_PT - 2.0 * MARGIN_PT,
+            parskip_pt: None,
         }
     }
 }
@@ -654,7 +657,7 @@ impl LayoutCursor {
             Block::Paragraph(_) => {
                 if !self.first_block {
                     self.newline(body_size);
-                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                    self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
             }
             Block::Heading { level, .. } => {
@@ -1188,6 +1191,7 @@ mod tests {
             LayoutConstraints {
                 font_size_pt: 11.0,
                 measure_pt: LayoutConstraints::default().measure_pt,
+                parskip_pt: None,
             },
         );
         let body = pages
