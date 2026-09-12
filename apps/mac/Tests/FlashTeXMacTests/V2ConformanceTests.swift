@@ -123,9 +123,11 @@ final class V2ConformanceTests: XCTestCase {
         XCTAssertTrue(unknown.contains("candidate names generation 1"), unknown)
         // The project is at generation 4 (an open/detach happened): a candidate compiled at generation 3 is stale.
         gate.membershipGeneration = 4
-        XCTAssertEqual(gate.rejection(of: try candidate(generation: 3)), "membership generation 3 is not the project's current generation 4")
-        XCTAssertEqual(gate.rejection(of: try candidate(generation: 5)), "membership generation 5 is not the project's current generation 4")
+        XCTAssertEqual(gate.rejection(of: try candidate(generation: 3)), "membership generation 3 is older than the project's learned generation 4")
         XCTAssertNil(gate.rejection(of: try candidate(generation: 4)))
+        // The helper's generation is the index generation and advances on every durable edit the shell makes after
+        // the learn (edit replies do not carry it): the learned value is a floor, a newer generation is not stale.
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 5)))
         // The generation check sits with the identity checks, before the applied-preview checks.
         gate.applied = nil
         XCTAssertTrue(gate.rejection(of: try candidate(generation: 3))!.hasPrefix("membership generation 3"))
@@ -182,7 +184,7 @@ final class V2ConformanceTests: XCTestCase {
         let refused = model.displayCandidates.refused, published = model.displayCandidates.published
         model.handleDisplayCandidate(stale)
         XCTAssertEqual(model.displayCandidates.refused, refused + 1)
-        XCTAssertEqual(model.displayCandidates.lastRefusal, "membership generation \(before) is not the project's current generation \(after)")
+        XCTAssertEqual(model.displayCandidates.lastRefusal, "membership generation \(before) is older than the project's learned generation \(after)")
         XCTAssertTrue(model.displayCandidates.status.contains("refused"), model.displayCandidates.status)
         XCTAssertEqual(model.displayCandidates.published, published)
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce, "the previously verified frame stays")

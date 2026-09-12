@@ -22,11 +22,16 @@ import FlashTeXProtocol
 ///    `source_versions` are exactly those of the v1 preview the shell has
 ///    APPLIED (the helper delivers v1 before the sibling; a candidate for
 ///    any other request is stale or foreign and is refused), and its
-///    `membership_generation` is the project's current generation as the
-///    shell learned it from the helper (`snapshot` on `ready`, then every
-///    open/detach/project_status); a candidate arriving BEFORE a generation
-///    has been learned is refused (`membership_unknown`), and an open/detach
-///    between the compile and the candidate makes the candidate stale (D2);
+///    `membership_generation` is not older than the generation the shell
+///    last learned from the helper (`snapshot` on `ready`, then every
+///    open/detach/project_status). The helper's generation is the project
+///    index generation, which advances on EVERY durable source update as
+///    well as on membership changes, and `edit`/`apply_group` replies do
+///    not carry it — so the learned value is a floor, not an equality: a
+///    candidate compiled before a membership change the shell has learned
+///    names an older generation and is refused (D2), a candidate arriving
+///    BEFORE any generation has been learned is refused as
+///    `membership_unknown`, and the shell never claims more than that;
 /// 3. the v2 envelope decodes, validates, resolves every font by content
 ///    hash (GH31 byte identity) and prepares every page OFF the UI thread
 ///    (`V2Loader.queue`), and its `project_id`/`revision` and every declared
@@ -143,15 +148,19 @@ struct DisplayCandidateGate: Equatable {
     var activePath: String
     /// Editor revision of the v2 frame currently on screen from this route.
     var displayedEditorRevision: Int?
-    /// The project's current membership generation as the shell last learned
-    /// it from the helper (`ProjectDocuments.membershipGeneration`: the
-    /// `snapshot` sent on `ready`, open_document, detach_document,
-    /// project_status), or nil while none has been learned in this helper
-    /// session. Draft contract L91: the candidate's `membership_generation`
-    /// must match fresh caller-owned state — a candidate compiled before an
-    /// open/detach names the older generation and is refused (D2), and a
-    /// candidate that arrives before the first generation is learned is
-    /// refused as `membership_unknown` rather than admitted unchecked.
+    /// The project's membership generation as the shell last learned it from
+    /// the helper (`ProjectDocuments.membershipGeneration`: the `snapshot`
+    /// sent on `ready`, open_document, detach_document, project_status), or
+    /// nil while none has been learned in this helper session. Draft contract
+    /// L91: the candidate's `membership_generation` must match fresh
+    /// caller-owned state. The helper's number is the project index
+    /// generation (crates/project-index `VersionSnapshot.generation`), which
+    /// advances on every durable source update too, and edit replies do not
+    /// carry it, so the learned value is the FLOOR the candidate must reach:
+    /// a candidate compiled before an open/detach the shell learned names an
+    /// older generation and is refused (D2); a candidate that arrives before
+    /// the first generation is learned is refused as `membership_unknown`
+    /// rather than admitted unchecked. Equality is not claimed.
     var membershipGeneration: Int? = nil
 
     /// Why `frame` may not be shown, or nil when it may (so far).
@@ -162,8 +171,8 @@ struct DisplayCandidateGate: Equatable {
         guard let generation = membershipGeneration else {
             return "\(DisplayCandidates.membershipUnknown): the project's membership generation has not been learned from the helper yet (candidate names generation \(frame.membershipGeneration))"
         }
-        if frame.membershipGeneration != generation {
-            return "membership generation \(frame.membershipGeneration) is not the project's current generation \(generation)"
+        if frame.membershipGeneration < generation {
+            return "membership generation \(frame.membershipGeneration) is older than the project's learned generation \(generation)"
         }
         guard let applied, appliedResultID == frame.requestID, applied.requestID == frame.requestID else {
             return "request \(frame.requestID) is not the applied v1 preview (\(appliedResultID ?? "none"))"

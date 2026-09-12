@@ -65,11 +65,17 @@ final class FirstGenerationGateTests: XCTestCase {
         gate.applied = nil
         XCTAssertTrue(try XCTUnwrap(gate.rejection(of: try candidate(generation: 1))).hasPrefix(DisplayCandidates.membershipUnknown))
         gate.applied = applied
-        // After the first snapshot: compared exactly.
+        // After the first snapshot: compared against the learned floor. The helper's number is the project index
+        // generation (advances on every durable edit too; edit replies do not carry it), so a candidate older than
+        // the learned value was compiled before a membership change the shell knows about and is refused, while a
+        // newer one (the shell's own later edits) is not stale.
         gate.membershipGeneration = 1
         XCTAssertNil(gate.rejection(of: try candidate(generation: 1)))
-        XCTAssertEqual(gate.rejection(of: try candidate(generation: 0)), "membership generation 0 is not the project's current generation 1")
-        XCTAssertEqual(gate.rejection(of: try candidate(generation: 2)), "membership generation 2 is not the project's current generation 1")
+        XCTAssertEqual(gate.rejection(of: try candidate(generation: 0)), "membership generation 0 is older than the project's learned generation 1")
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 2)))
+        gate.membershipGeneration = 7
+        XCTAssertEqual(gate.rejection(of: try candidate(generation: 6)), "membership generation 6 is older than the project's learned generation 7")
+        XCTAssertNil(gate.rejection(of: try candidate(generation: 7)))
         // Forgotten again (detach/exit): refused again, never compared against the old session's number.
         gate.membershipGeneration = nil
         XCTAssertTrue(try XCTUnwrap(gate.rejection(of: try candidate(generation: 1))).hasPrefix(DisplayCandidates.membershipUnknown))
@@ -145,16 +151,29 @@ final class FirstGenerationGateTests: XCTestCase {
         let frame = try candidate(generation: generation, session: session, request: applied.requestID, project: projectID,
                                   compileRevision: applied.compileRevision, versions: applied.sourceVersions)
         XCTAssertNil(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: frame))
-        let other = try candidate(generation: generation + 1, session: session, request: applied.requestID, project: projectID,
+        let older = try candidate(generation: generation - 1, session: session, request: applied.requestID, project: projectID,
                                   compileRevision: applied.compileRevision, versions: applied.sourceVersions)
-        XCTAssertEqual(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: other),
-                       "membership generation \(generation + 1) is not the project's current generation \(generation)")
+        XCTAssertEqual(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: older),
+                       "membership generation \(generation - 1) is older than the project's learned generation \(generation)")
+        // The shell's own edits advance the helper's generation without a new learn: the next candidate is not stale.
+        model.updateActiveText("\\begin{document}\nHello generations, edited.\n\\end{document}\n")
+        let edited = model.editorRevision
+        try await waitUntil("edited preview") { model.result?.revision == edited && model.inFlightRevision == nil }
+        XCTAssertEqual(model.project.membershipGeneration, generation, "no membership operation ran: the learned floor is unchanged")
+        let later = try XCTUnwrap(model.displayCandidates.applied)
+        let newer = try candidate(generation: generation + 1, session: session, request: later.requestID, project: projectID,
+                                  compileRevision: later.compileRevision, versions: later.sourceVersions)
+        XCTAssertNil(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: newer))
+        // …and a membership operation raises the floor: the pre-open candidate is refused (V2ConformanceTests covers the real open).
+        model.project.adoptSnapshot(["source_versions": ["main.tex": 2], "membership_generation": generation + 5])
+        XCTAssertEqual(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: newer),
+                       "membership generation \(generation + 1) is older than the project's learned generation \(generation + 5)")
 
         // The state before the first snapshot (a candidate racing the learn): refused, typed, v1 untouched.
         model.project.forgetMembership()
         let refused = model.displayCandidates.refused, received = model.displayCandidates.received
         let v1 = model.result?.revision
-        model.handleDisplayCandidate(frame)
+        model.handleDisplayCandidate(newer)
         XCTAssertEqual(model.displayCandidates.received, received + 1)
         XCTAssertEqual(model.displayCandidates.refused, refused + 1)
         let why = try XCTUnwrap(model.displayCandidates.lastRefusal)
@@ -164,10 +183,13 @@ final class FirstGenerationGateTests: XCTestCase {
         XCTAssertNil(model.displayCandidates.validating)
         XCTAssertNil(model.displayListV2)
         XCTAssertEqual(model.result?.revision, v1, "v1 kept")
-        // Learned again by the explicit snapshot request: the same candidate is compared (and admitted by the gate).
+        // Learned again by the explicit snapshot request (the helper is one edit further on): the same candidate is
+        // compared again — and is now older than the learned generation, i.e. refused by comparison, not skipped.
         let refreshed = await model.project.refreshSnapshot()
-        XCTAssertEqual(try XCTUnwrap(refreshed).generation, generation)
-        XCTAssertNil(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: frame))
+        XCTAssertEqual(try XCTUnwrap(refreshed).generation, generation + 1, "one durable edit advanced the helper's generation by one")
+        XCTAssertEqual(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: frame),
+                       "membership generation \(generation) is older than the project's learned generation \(generation + 1)")
+        XCTAssertNil(model.displayCandidates.gate(activePath: "main.tex", appliedResultID: model.resultID, membershipGeneration: model.project.membershipGeneration).rejection(of: newer))
         // Detach forgets it: the next session learns its own on ready.
         model.detachController()
         XCTAssertNil(model.project.membershipGeneration)
