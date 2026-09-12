@@ -151,6 +151,38 @@ a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
 The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, and `\int` map to Unicode.
+So do `\epsilon`, `\varepsilon`, `\zeta`, `\eta`, `\vartheta`, `\iota`, `\kappa`,
+`\nu`, `\xi`, `\varpi`, `\rho`, `\varsigma`, `\tau`, `\upsilon`, `\varphi`,
+`\chi`, `\psi`, `\Gamma`, `\Delta`, `\Theta`, `\Lambda`, `\Xi`, `\Pi`, `\Sigma`,
+`\Upsilon`, `\Phi`, `\Psi`, `\Omega`, `\le`, `\ge`, `\ne`, `\equiv`, `\sim`,
+`\cong`, `\propto`, `\perp`, `\partial`, `\nabla`, `\prod`, `\ast`, `\prime`,
+`\cup`, `\cap`, `\subset`, `\subseteq`, `\supset`, `\supseteq`, `\notin`, `\ni`,
+`\emptyset`, `\varnothing`, `\oplus`, `\otimes`, `\wedge`, `\land`, `\lor`,
+`\to`, `\rightarrow`, `\leftarrow`, `\gets`, `\uparrow`, `\downarrow`,
+`\leftrightarrow`, `\implies`, `\Leftarrow`, `\impliedby`, `\Leftrightarrow`,
+`\iff`, `\Uparrow`, `\Downarrow`, `\therefore`, `\angle`, `\aleph`, `\Re`, `\Im`,
+`\wp`, `\langle`, `\rangle`, `\lvert`, `\rvert`, `\lVert`, and `\rVert`.
+Symbol has no lunate epsilon, so `\epsilon` shares the open `\varepsilon`
+glyph; it has no double bar, so `\lVert`, `\rVert` and `\|` are two real
+vertical bars. `\iint` and `\iiint` repeat the integral glyph (Symbol has no
+U+222C/U+222D). `\oint`, `\mapsto`, `\mp`, `\ll`, `\gg`, `\lfloor`, `\lceil`,
+`\vdots`, `\ddots`, `\ell` and `\hbar` have no Symbol glyph and stay diagnostics.
+
+Operator names typeset as upright roman words: `\sin`, `\cos`, `\tan`, `\cot`,
+`\sec`, `\csc`, `\arcsin`, `\arccos`, `\arctan`, `\sinh`, `\cosh`, `\tanh`,
+`\coth`, `\log`, `\ln`, `\lg`, `\exp`, `\lim`, `\liminf`, `\limsup`, `\max`,
+`\min`, `\sup`, `\inf`, `\det`, `\gcd`, `\deg`, `\dim`, `\ker`, `\arg`, `\hom`,
+`\Pr`, `\sgn`, `\bmod`, `\mod`, and `\operatorname{name}` (starred form too).
+Their scripts attach beside the operator; display limits stacked under `\lim`
+are not implemented yet. `\dfrac`, `\tfrac` and `\cfrac` lay out as `\frac`.
+`\ldots`/`\dots` are three periods and `\cdots` three math dots. `\left`,
+`\right`, `\big`, `\Big`, `\bigg`, `\Bigg` and their `l`/`r`/`m` forms keep the
+requested delimiter at ordinary size (`.` is the invisible null delimiter).
+`\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
+their argument in the current math face (no distinct face yet). `\displaystyle`,
+`\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`split`, `aligned`, `alignedat` and `gathered` lay out as grids.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
 export mapping; ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered

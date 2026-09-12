@@ -69,6 +69,8 @@ const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
     ("Vmatrix", 'c', "‖", "‖"),
     ("cases", 'l', "{", ""),
     ("aligned", 'c', "", ""),
+    ("alignedat", 'c', "", ""),
+    ("split", 'c', "", ""),
     ("gathered", 'c', "", ""),
 ];
 
@@ -109,6 +111,7 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
         i: 0,
         depth: 0,
         diagnostics,
+        pending: Vec::new(),
     }
     .list(false)
 }
@@ -126,6 +129,9 @@ struct MathParser<'a> {
     i: usize,
     depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
+    /// Atoms produced by the last `atom()` call beyond the one it returned
+    /// (a flattened style group, a root index), in order after it.
+    pending: Vec<MathAtom>,
 }
 
 impl MathParser<'_> {
@@ -196,6 +202,7 @@ impl MathParser<'_> {
                 _ => {
                     if let Some(atom) = self.atom() {
                         atoms.push(atom);
+                        atoms.append(&mut self.pending);
                     }
                 }
             }
@@ -226,7 +233,9 @@ impl MathParser<'_> {
             return self.list(true);
         }
         if let Some(atom) = self.atom() {
-            MathList { atoms: vec![atom] }
+            let mut atoms = vec![atom];
+            atoms.append(&mut self.pending);
+            MathList { atoms }
         } else {
             self.diagnostics.push(Diagnostic::error(
                 "math script is missing its argument",
@@ -267,12 +276,17 @@ impl MathParser<'_> {
                 if token.span.end - token.span.start == 2 {
                     let mu = match ch {
                         ',' => 3.0,
-                        ':' => 4.0,
+                        ':' | '>' => 4.0,
                         ';' => 5.0,
+                        ' ' => 6.0,
+                        '!' => -3.0,
                         _ => 0.0,
                     };
-                    if mu > 0.0 {
+                    if mu != 0.0 {
                         return Some(space(mu / 18.0, token.span));
+                    }
+                    if ch == '|' {
+                        return Some(symbol("∣∣".into(), token.span));
                     }
                 }
                 Some(symbol(ch.to_string(), span))
@@ -298,7 +312,38 @@ impl MathParser<'_> {
     }
 
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
+        if let Some(operator) = OPERATOR_NAMES.iter().find(|op| **op == name) {
+            return text_atom(operator.to_string(), span);
+        }
         match name.as_str() {
+            "operatorname" => {
+                self.skip_star();
+                let (text, argument_span) = self.required_text_group("operatorname", span);
+                text_atom(text, span.merge(argument_span))
+            }
+            // Upright roman is already the math default in this subset, and
+            // the other style switches have no distinct face yet: keep the
+            // argument's content rather than dropping or garbling it.
+            "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathnormal" | "boldsymbol" | "bm"
+            | "mbox" | "hbox" | "textrm" | "textit" | "textnormal" => {
+                let body = self.required_group(&name, span);
+                self.group_atom(body, span)
+            }
+            "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "limits"
+            | "nolimits" | "nonumber" | "notag" | "middle" => space(0.0, span),
+            "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm"
+            | "Biggm" | "Bigl" | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
+                self.take_delimiter(&name, span)
+            }
+            "dots" | "ldots" | "dotsc" | "dotso" => text_atom("...".into(), span),
+            "cdots" | "dotsb" | "dotsm" | "dotsi" => symbol("⋅⋅⋅".into(), span),
+            // Symbol has no U+222C/U+222D: repeated real integral glyphs.
+            "iint" => symbol("∫∫".into(), span),
+            "lbrace" => symbol("{".into(), span),
+            "rbrace" => symbol("}".into(), span),
+            "iiint" => symbol("∫∫∫".into(), span),
+            "bmod" | "mod" => text_atom("mod".into(), span),
+            "dfrac" | "tfrac" | "cfrac" => self.command_atom("frac".into(), span),
             "frac" => {
                 let numerator = self.required_group("frac", span);
                 let denominator = self.required_group("frac", span);
@@ -348,6 +393,26 @@ impl MathParser<'_> {
         }
     }
 
+    /// Returns the first atom of `body` and queues the rest, so the group
+    /// flattens into the surrounding list exactly like a bare `{...}` group.
+    fn group_atom(&mut self, body: MathList, span: Span) -> MathAtom {
+        let mut atoms = body.atoms.into_iter();
+        match atoms.next() {
+            Some(first) => {
+                self.pending.extend(atoms);
+                first
+            }
+            None => space(0.0, span),
+        }
+    }
+
+    fn skip_star(&mut self) {
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*")
+        {
+            self.i += 1;
+        }
+    }
+
     fn take_delimiter(&mut self, command: &str, span: Span) -> MathAtom {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),
@@ -363,6 +428,19 @@ impl MathParser<'_> {
             ));
             return symbol(String::new(), span);
         };
+        if let TokenKind::Command(name) = &token.kind {
+            let glyph = match name.as_str() {
+                "lbrace" => Some("{"),
+                "rbrace" => Some("}"),
+                "vert" => Some("|"),
+                "Vert" => Some("∣∣"),
+                other => command_glyph(other).filter(|_| DELIMITER_COMMANDS.contains(&other)),
+            };
+            if let Some(glyph) = glyph {
+                self.i += 1;
+                return symbol(glyph.into(), span.merge(token.span));
+            }
+        }
         let TokenKind::Word(delimiter) = &token.kind else {
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{command} requires a following delimiter"),
@@ -371,7 +449,16 @@ impl MathParser<'_> {
             ));
             return symbol(String::new(), span);
         };
-        if delimiter.chars().count() != 1 || !"()[]{}|./".contains(delimiter.as_str()) {
+        if delimiter == "." {
+            // The null delimiter: an invisible fence (`\left.` / `\right.`).
+            self.i += 1;
+            return space(0.0, span.merge(token.span));
+        }
+        if delimiter == "|" && token.span.end - token.span.start == 2 {
+            self.i += 1;
+            return symbol("∣∣".into(), span.merge(token.span));
+        }
+        if delimiter.chars().count() != 1 || !"()[]{}|./<>".contains(delimiter.as_str()) {
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{command} does not support delimiter {delimiter:?}"),
                 Some(span.merge(token.span)),
@@ -562,7 +649,11 @@ impl MathParser<'_> {
                 }
             }
         }
-        if name == "aligned" {
+        if name == "alignedat" {
+            // The column-pair count argument; the grid sizes itself from cells.
+            let _ = self.required_text_group("alignedat", span);
+        }
+        if matches!(name.as_str(), "aligned" | "alignedat" | "split") {
             columns = "rl".repeat(8);
         }
         let mut rows: Vec<Vec<Vec<Token>>> = vec![vec![Vec::new()]];
@@ -640,6 +731,7 @@ impl MathParser<'_> {
                             i: 0,
                             depth: self.depth,
                             diagnostics: self.diagnostics,
+                            pending: Vec::new(),
                         }
                         .list(false)
                     })
@@ -723,6 +815,92 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("sigma", "σ"),
     ("phi", "φ"),
     ("omega", "ω"),
+    // Handwritten-homework coverage (Adobe Symbol encodes every glyph below).
+    // Symbol has only the open-form epsilon (0x65), no lunate U+03F5, so
+    // `\epsilon` shares `\varepsilon`'s glyph; the README states this.
+    ("epsilon", "ε"),
+    ("varepsilon", "ε"),
+    ("zeta", "ζ"),
+    ("eta", "η"),
+    ("vartheta", "ϑ"),
+    ("iota", "ι"),
+    ("kappa", "κ"),
+    ("nu", "ν"),
+    ("xi", "ξ"),
+    ("varpi", "ϖ"),
+    ("rho", "ρ"),
+    ("varsigma", "ς"),
+    ("tau", "τ"),
+    ("upsilon", "υ"),
+    ("varphi", "ϕ"),
+    ("chi", "χ"),
+    ("psi", "ψ"),
+    ("Gamma", "Γ"),
+    ("Delta", "Δ"),
+    ("Theta", "Θ"),
+    ("Lambda", "Λ"),
+    ("Xi", "Ξ"),
+    ("Pi", "Π"),
+    ("Sigma", "Σ"),
+    ("Upsilon", "Υ"),
+    ("Phi", "Φ"),
+    ("Psi", "Ψ"),
+    ("Omega", "Ω"),
+    ("le", "≤"),
+    ("ge", "≥"),
+    ("ne", "≠"),
+    ("equiv", "≡"),
+    ("sim", "∼"),
+    ("cong", "≅"),
+    ("propto", "∝"),
+    ("perp", "⊥"),
+    ("partial", "∂"),
+    ("nabla", "∇"),
+    ("prod", "∏"),
+    ("ast", "∗"),
+    ("prime", "′"),
+    ("cup", "∪"),
+    ("cap", "∩"),
+    ("subset", "⊂"),
+    ("subseteq", "⊆"),
+    ("supset", "⊃"),
+    ("supseteq", "⊇"),
+    ("notin", "∉"),
+    ("ni", "∋"),
+    ("emptyset", "∅"),
+    ("varnothing", "∅"),
+    ("oplus", "⊕"),
+    ("otimes", "⊗"),
+    ("wedge", "∧"),
+    ("land", "∧"),
+    ("lor", "∨"),
+    ("to", "→"),
+    ("rightarrow", "→"),
+    ("leftarrow", "←"),
+    ("gets", "←"),
+    ("uparrow", "↑"),
+    ("downarrow", "↓"),
+    ("leftrightarrow", "↔"),
+    ("implies", "⇒"),
+    ("Leftarrow", "⇐"),
+    ("impliedby", "⇐"),
+    ("Leftrightarrow", "⇔"),
+    ("iff", "⇔"),
+    ("Uparrow", "⇑"),
+    ("Downarrow", "⇓"),
+    ("therefore", "∴"),
+    ("angle", "∠"),
+    ("aleph", "ℵ"),
+    ("Re", "ℜ"),
+    ("Im", "ℑ"),
+    ("wp", "℘"),
+    ("langle", "〈"),
+    ("rangle", "〉"),
+    ("lvert", "∣"),
+    ("rvert", "∣"),
+    // Symbol has no double bar U+2016: two real verticalbar glyphs.
+    ("lVert", "∣∣"),
+    ("rVert", "∣∣"),
     ("times", "×"),
     ("div", "÷"),
     ("pm", "±"),
@@ -730,7 +908,7 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("geq", "≥"),
     ("neq", "≠"),
     ("approx", "≈"),
-    ("cdot", "·"),
+    ("cdot", "⋅"),
     ("infty", "∞"),
     ("sum", "∑"),
     ("int", "∫"),
@@ -747,6 +925,38 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // no size scaling).
     ("Longrightarrow", "⇒"),
 ];
+
+/// Named operators typeset as upright roman words (`\\sin x`, `\\lim_{x\\to 0}`).
+const OPERATOR_NAMES: &[&str] = &[
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+    "coth", "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det",
+    "gcd", "deg", "dim", "ker", "arg", "hom", "Pr", "sgn",
+];
+
+/// Named commands that `\\left`, `\\right` and `\\big...` accept as fences.
+const DELIMITER_COMMANDS: &[&str] = &[
+    "langle",
+    "rangle",
+    "lvert",
+    "rvert",
+    "lVert",
+    "rVert",
+    "lbrace",
+    "rbrace",
+    "uparrow",
+    "downarrow",
+    "Uparrow",
+    "Downarrow",
+];
+
+fn text_atom(text: String, span: Span) -> MathAtom {
+    MathAtom {
+        nucleus: Nucleus::Text(text),
+        span,
+        superscript: None,
+        subscript: None,
+    }
+}
 
 /// The rule character used to draw fraction bars.
 ///
@@ -1178,6 +1388,28 @@ mod parse_tests {
         assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
         let _ = layout(&list, 12.0, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn handwritten_homework_constructs_parse_and_shape_without_diagnostics() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(
+            r"\lim_{n\to\infty}\left(1+\frac{1}{n}\right)^n \sin\theta \operatorname*{rank}(A)
+              \mathrm{d}x \Gamma\Delta\partial\nabla\equiv\propto\cup\subseteq\notin\emptyset
+              \iff\langle u\rangle \big\{ \bigr\} \left. \right| \dfrac{1}{2} a\!b\cdots\dots",
+        );
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let _ = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(list
+            .atoms
+            .iter()
+            .any(|atom| atom.nucleus == Nucleus::Text("lim".into()) && atom.subscript.is_some()));
+        assert!(list
+            .atoms
+            .iter()
+            .any(|atom| atom.nucleus == Nucleus::Text("rank".into())));
     }
 
     #[test]
