@@ -1,25 +1,24 @@
 {
   "acceptance": [
-    "Consume already-published index APIs without duplicate parser or index implementation",
-    "Actual helper tests cover Unicode, comments/verbatim, multiple documents, stale version maps, bounded output and malformed requests",
-    "No automatic source edits or project-wide atomicity claim; existing approval and permanent-ID ledger guards remain authoritative"
+    "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+    "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+    "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
   ],
   "agent_id": "commander-preview-performance",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "objective": "Expose existing project-index literal replacement and citation rename plans through exact-version guarded bounded native helper commands; preserve separate explicit durable application",
+  "input_main_sha": "8a445525ec9d5b465ad08416a7047e461cd29fc3",
+  "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
   "owned_paths": [
     "crates/preview-controller",
-    "crates/document-runtime",
     "crates/edit-ledger"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:42:19.775391+00:00"
+  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
 }

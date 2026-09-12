@@ -15,8 +15,8 @@
   ],
   "revision": 17,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-024",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:39:42Z"
+  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
 }
