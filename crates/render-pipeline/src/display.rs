@@ -327,6 +327,13 @@ impl DisplayList {
 
     /// The `display_list` envelope of rendering-v2 as a JSON value.
     pub fn to_json(&self, id: &str) -> Value {
+        self.to_json_with(id, &self.required_features())
+    }
+
+    /// `to_json` with an explicit `required_features` list (the delta path
+    /// serialises a header whose pages are elsewhere, so the features
+    /// cannot be derived from `self.pages`).
+    pub fn to_json_with(&self, id: &str, features: &[&str]) -> Value {
         let mut payload = Value::obj();
         payload.set("render_format", json::str_("display-list-v2"));
         payload.set("coordinate_unit", json::str_("bp_2pow20"));
@@ -336,7 +343,7 @@ impl DisplayList {
         payload.set("revision", json::num(self.revision as f64));
         payload.set(
             "required_features",
-            Value::Arr(self.required_features().into_iter().map(json::str_).collect()),
+            Value::Arr(features.iter().map(|f| json::str_(*f)).collect()),
         );
         payload.set(
             "documents",
@@ -440,7 +447,7 @@ pub fn diagnostic_json(d: &Diagnostic) -> Value {
     o
 }
 
-fn page_json(p: &Page) -> Value {
+pub fn page_json(p: &Page) -> Value {
     let mut o = Value::obj();
     o.set("number", json::num(f64::from(p.number)));
     o.set("width", tick(p.width));

@@ -77,6 +77,9 @@ pub struct RenderCache {
     adapted: RefCell<HashMap<u64, Rc<AdaptedBlock>>>,
     hits: RefCell<u64>,
     misses: RefCell<u64>,
+    /// `display-list-v2-delta`: the producer's last emitted sibling
+    /// (proposal §6.2 "old"); `None` after any reply without a sibling.
+    delta: RefCell<Option<Rc<crate::delta::Snapshot>>>,
 }
 
 impl RenderCache {
@@ -140,6 +143,17 @@ impl RenderCache {
     /// `(hits, misses)` since creation.
     pub fn stats(&self) -> (u64, u64) {
         (*self.hits.borrow(), *self.misses.borrow())
+    }
+
+    /// The retained delta snapshot, if any.
+    pub fn delta_snapshot(&self) -> Option<Rc<crate::delta::Snapshot>> {
+        self.delta.borrow().clone()
+    }
+
+    /// Replaces (or, with `None`, clears) the retained delta snapshot; the
+    /// previous one is dropped here, so at most old + new exist during a reply.
+    pub fn set_delta_snapshot(&self, s: Option<crate::delta::Snapshot>) {
+        *self.delta.borrow_mut() = s.map(Rc::new);
     }
 }
 

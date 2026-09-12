@@ -230,29 +230,86 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: 
     // (over the line limit) changes the echoed capabilities and diagnostics
     // of the compile_result that precedes it.
     let mut extra_lines = Vec::new();
+    // display-list-v2-delta (isolated; proposal r5 §3): only when requested,
+    // acknowledged, and the acknowledgement names the retained snapshot.
+    let mut next_snapshot: Option<crate::delta::Snapshot> = None;
+    let delta_requested = requested.as_ref().is_some_and(|l| l.iter().any(|c| c == crate::delta::CAP_DELTA));
     if caps.display_list && v1.status != "failed" {
-        // Size first (an upper-bound estimate, then the exact line), so an
-        // oversized frame is declined without serialising 16+ MB in vain.
-        let estimate = rendered.v2.estimated_json_bytes();
-        let dl = if estimate > limit { None } else { Some(json::write(&rendered.v2.to_json(&id))) };
-        let too_big = dl.as_ref().map_or(estimate, String::len);
-        match dl {
-            Some(dl) if dl.len() <= limit => extra_lines.push(dl),
-            _ => {
-                v1.accepted = v1.accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect());
-                v1.diagnostics.push(crate::display::Diagnostic::warning(
-                    "display_list_declined",
-                    format!(
-                        "display-list-v2 declined: the display_list line would be about {too_big} bytes for {} pages, over the {limit}-byte line limit",
-                        rendered.v2.pages.len()
-                    ),
-                    Vec::new(),
-                ));
-                if v1.status == "ok" {
-                    v1.status = "recovered";
+        let mut emitted_delta = false;
+        if delta_requested {
+            if let (Some(cache), Some(ack)) = (cache, crate::delta::BaseAck::parse(payload)) {
+                if let Some(old) = cache.delta_snapshot() {
+                    if let Ok(d) = crate::delta::build(&old, &ack, &rendered.v2, &project) {
+                        let dl = json::write(&d.to_json(&id, &rendered.v2));
+                        let full_len = crate::delta::full_line_bytes(&rendered.v2, &id, &rendered.v2.required_features(), &d.page_bytes);
+                        let texts_ok = project.iter().all(|(_, t)| t.len() <= crate::delta::MAX_TEXT_BYTES)
+                            && project.iter().map(|(_, t)| t.len()).sum::<usize>() <= crate::delta::MAX_TOTAL_TEXT_BYTES;
+                        if let Some(full_len) = full_len {
+                            if dl.len() <= limit
+                                && dl.len() * crate::delta::POLICY_DEN <= full_len * crate::delta::POLICY_NUM
+                                && full_len <= crate::delta::MAX_SNAPSHOT_BYTES
+                                && d.page_count <= crate::delta::MAX_SNAPSHOT_PAGES
+                                && texts_ok
+                            {
+                                extra_lines.push(dl);
+                                // echo `-delta` in request order
+                                if let (Some(req), Some(acc)) = (&requested, &mut v1.accepted) {
+                                    let mut echo: Vec<String> = Vec::new();
+                                    for c in req {
+                                        if acc.contains(c) || c == crate::delta::CAP_DELTA {
+                                            echo.push(c.clone());
+                                        }
+                                    }
+                                    *acc = echo;
+                                }
+                                next_snapshot = Some(crate::delta::Snapshot {
+                                    request_id: id.clone(),
+                                    list: rendered.v2.clone(),
+                                    page_digests: d.page_digests,
+                                    list_digest: d.list_digest,
+                                    page_bytes: d.page_bytes,
+                                    texts: project.clone(),
+                                });
+                                emitted_delta = true;
+                            }
+                        }
+                    }
                 }
             }
         }
+        if !emitted_delta {
+            // Size first (an upper-bound estimate, then the exact line), so an
+            // oversized frame is declined without serialising 16+ MB in vain.
+            let estimate = rendered.v2.estimated_json_bytes();
+            let dl = if estimate > limit { None } else { Some(json::write(&rendered.v2.to_json(&id))) };
+            let too_big = dl.as_ref().map_or(estimate, String::len);
+            match dl {
+                Some(dl) if dl.len() <= limit => {
+                    extra_lines.push(dl);
+                    if cache.is_some() && delta_requested {
+                        next_snapshot = crate::delta::snapshot(&id, &rendered.v2, &project);
+                    }
+                }
+                _ => {
+                    v1.accepted = v1.accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect());
+                    v1.diagnostics.push(crate::display::Diagnostic::warning(
+                        "display_list_declined",
+                        format!(
+                            "display-list-v2 declined: the display_list line would be about {too_big} bytes for {} pages, over the {limit}-byte line limit",
+                            rendered.v2.pages.len()
+                        ),
+                        Vec::new(),
+                    ));
+                    if v1.status == "ok" {
+                        v1.status = "recovered";
+                    }
+                }
+            }
+        }
+    }
+    if let Some(cache) = cache {
+        // Replaced by every emitted sibling, cleared by any reply without one.
+        cache.set_delta_snapshot(next_snapshot);
     }
     let accepted = v1.accepted.clone();
     let line = v1.write_envelope(&id);
