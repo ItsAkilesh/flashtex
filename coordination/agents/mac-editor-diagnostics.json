@@ -2,34 +2,39 @@
   "agent_id": "mac-editor-diagnostics",
   "allocation_id": "claude-mac20x-editor-diagnostics",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-editor-diagnostics/exact-marks",
+  "branch": "agent/mac-editor-diagnostics/explanations",
   "capabilities": [
     "swift",
     "accessibility"
   ],
-  "code_revision": "7361570b88a93185c2a43345849beb838fde7680",
+  "code_revision": "f74d4650a5e2c89b32e1a4f18ae4ca1f1d60c0bc",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
-  "next_action": "Parent applies the ShellModel/ContentView/SourceEditorView diffs in coordination/mac-editor-diagnostics.md (pass resultID, expose editorMarkReport.staleNote, wire next/previous error commands); re-run swift test after merge.",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent applies ShellModel/ContentView diffs; crate owner adds src/bin/flashtex-explain.rs (exact source in handoff); packaging ships flashtex-explain; re-run swift test with FLASHTEX_EXPLAIN set.",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Based on mac-shell 6b43a3a: kept marks(for:path:compiledText:currentText:) source-compatible (resultID defaulted) so ShellModel.editorMarks and SourceEditorView.applyMarks compile unchanged; tooltip text now 'recovery: \u2026' to match the list row",
-      "reviewed_utc": "2026-09-12T08:35:08Z",
-      "sha": "169c2a80ad857c26bbf1e67d3168f5ca5fc03f23"
+      "adaptation": "Base 271a366 already contains my first lane and the parent diffs; the crate offers a Rust library only, so a 20-line JSON Lines front end over explain_all is the transport (built in scratch for tests, exact source handed to the crate owner); fixed-key Decodable mirror with index-matched attach and a fallback line for catalog_id null",
+      "reviewed_utc": "2026-09-12T10:08:01Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
+    },
+    "origin/agent/mac-diagnostic-explanations/explain": {
+      "adaptation": "Base 271a366 already contains my first lane and the parent diffs; the crate offers a Rust library only, so a 20-line JSON Lines front end over explain_all is the transport (built in scratch for tests, exact source handed to the crate owner); fixed-key Decodable mirror with index-matched attach and a fallback line for catalog_id null",
+      "reviewed_utc": "2026-09-12T10:08:01Z",
+      "sha": "2bf14cd9b829736168b9ebd807016ae7c11b28b1"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "EditorDiagnostics: exact mark identity (result id + index + original byte span), report(for:) with stale set/count/note, recovered results always show a recovery line, grapheme-cluster-safe NSRanges; bench 62 KB/200 diags after a keystroke best 0.83 ms median 0.83 ms (debug), asserted < 2 ms; FlashTeXAccessibility/EditorDiagnosticsAccessibility.swift keyboard error navigation (document order, wrap, 'n of m' announcements). swift test 195/195 with real worker binaries.",
+  "summary": "Refill: consume crates/diagnostic-explanations (library only, on origin/agent/mac-diagnostic-explanations/explain 2bf14cd, not on main) via a flashtex-explain JSON Lines child process; EditorDiagnostics.Explanation decoded/bounded (4 MiB, count==diagnostics, field caps), ExplanationCache per result id, attach by diagnostic index onto marks/tooltip/list/VoiceOver line; bench after first fetch 62 KB/200 diags best 1.07 ms median 1.10 ms (debug) < 2 ms; real-crate test (skips loudly without FLASHTEX_EXPLAIN) + fake malformed/oversized. swift test 387/387, 12 pre-existing skips.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:35:08Z",
+  "updated_utc": "2026-09-12T10:08:01Z",
   "usage": {
-    "evidence": "apps/mac: swift test 195 tests 0 failures; EditorDiagnosticsTests.testRebaseOfLargeDocumentIsFast prints the bench line",
+    "evidence": "apps/mac swift test at f74d465: 387 tests, 0 failures, 12 skipped (other helpers); EditorDiagnosticsExplanationsTests 6/6 with FLASHTEX_EXPLAIN",
     "status": "shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
