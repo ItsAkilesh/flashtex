@@ -11,7 +11,7 @@
     "raster-compare",
     "oracle-evidence"
   ],
-  "code_revision": "PENDING",
+  "code_revision": "72d700e1",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,

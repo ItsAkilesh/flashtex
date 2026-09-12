@@ -12,7 +12,7 @@ Owned paths: `tools/visual-oracle/**`, `tools/real-world-corpus/**` (untouched t
 ## Durable checkpoint (context-checkpoint policy)
 
 - Branch `agent/mac-visual-oracle-2/corpus-rank`; worktree
-  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a06da88731895435d`; pushed tip = the SHA
+  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a06da88731895435d`; pushed tip = 72d700e1 (product commit) + this coordination commit; see the SHA
   in `coordination/agents/mac-visual-oracle-2.json` `code_revision`. Tree clean after the commit.
 - Consumed main: c11c005 (via mac-shell cd58fc2e). Producer pins: `flashtex-render` from
   `git archive 9aaec57a crates/render-pipeline` (scratch build, sha256 `ed729b02befeb7d3…`, the same
