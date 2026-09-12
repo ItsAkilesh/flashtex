@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:05:06Z",
-      "adaptation": "Read exactr8. Bound proposal uses exact accepted pending request source count, existing128-byte identity cap and request-derived path length, not arbitraryglobal doc cap. Measure modest malformed metadata allocation before implementation; preserve default/legacy behavior and single permit.",
-      "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T12:15:42Z",
+      "adaptation": "Implement exact request-derived raw metadata capture bounds; preserve v1 overflow semantics and existing single-permit lifecycle. Full tests and strict lint pass.",
+      "main_sha": "ecb70205a806bbe6fc10c3697879ba9536cb3593",
+      "revision": 9
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "dcac0108f593653c505644b18b6a2171f49a177e",
+  "code_revision": "00490d569502bd0eb03749c08c95be7ed64d2224",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
-  "next_action": "Commander review request-derived capture design, then implement only authorized bounds with original request held through stale/cancelled sibling and full serde validation for nonretained entries. No extra queues/threads, globallegacycaps or provider calls.",
+  "next_action": "Commander integration and helper consumer review. Preserve default Value route, raw opt-in, raw4/decoded1, source/epoch gates. Current branch clean after report publication; no pending processes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r8 analysis/probe complete: malformed150145B/50k emptydocs peaks7528KB vs3748KB baseline;512KBidentity peaks4928KB. All reject/no candidate. Proposed actual-request source-count/path budgets and existing128byte IDs/SHA64, no arbitraryglobal documents cap. Explicit pre-v1/payload-first bounded-retention markers preserve v1 unknown-field policy; no code bounds implemented yet. Probe/example strictlint pass.",
+  "summary": "FT049 r9 product 00490d56: request-derived raw metadata bounds, unchanged v1 semantics, full tests 48 passed plus 4 explicitly ignored; strict Clippy passes. Same-frame 50000-empty-doc process peak 7528 to 3784 KiB; no native speed claim.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:07:35Z",
+  "updated_utc": "2026-09-12T12:16:50Z",
   "usage": {
     "status": "unknown"
   }
