@@ -195,50 +195,82 @@ final class PreviewControllerClient {
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 
+    /// Frames are read with FastJSON; the (large) `result` value of a preview
+    /// update is kept as a byte range and parsed by the typed compile_result
+    /// reader in place, so a 1.6 MB result is decoded once, not re-serialized.
     static func decode(_ line: Data, sessionID: String) -> Event {
-        guard let obj = (try? JSONSerialization.jsonObject(with: line)) as? JSONObject else {
-            return .protocolViolation("frame is not a JSON object")
+        let frame: FastJSON.Value
+        do { frame = try FastJSON.parse(line, rawKeys: ["result"]) }
+        catch { return .protocolViolation("frame is not valid JSON: \(error)") }
+        guard let obj = frame.object else { return .protocolViolation("frame is not a JSON object") }
+        guard obj["protocol_version"]?.int == 1 else {
+            return .protocolViolation("unsupported protocol_version \(obj["protocol_version"].map { "\($0)" } ?? "missing")")
         }
-        guard (obj["protocol_version"] as? Int) == 1 else {
-            return .protocolViolation("unsupported protocol_version \(obj["protocol_version"] ?? "missing")")
+        guard obj["session_id"]?.string == sessionID else {
+            return .protocolViolation("frame for session \(obj["session_id"]?.string ?? "missing"), expected \(sessionID)")
         }
-        guard (obj["session_id"] as? String) == sessionID else {
-            return .protocolViolation("frame for session \(obj["session_id"] ?? "missing"), expected \(sessionID)")
-        }
-        let type = obj["type"] as? String ?? ""
-        let id = obj["id"] as? String
-        let payload = obj["payload"] as? JSONObject ?? [:]
+        let type = obj["type"]?.string ?? ""
+        let id = obj["id"]?.string
+        let payload = obj["payload"]?.object ?? [:]
         switch type {
         case "ready":
-            return .ready(compilerError: payload["compiler_error"] as? String,
-                          compilerMaxFrameBytes: payload["compiler_max_frame_bytes"] as? Int ?? 0,
-                          helperMaxOutputBytes: payload["helper_max_output_bytes"] as? Int ?? 0)
+            return .ready(compilerError: payload["compiler_error"]?.string,
+                          compilerMaxFrameBytes: payload["compiler_max_frame_bytes"]?.int ?? 0,
+                          helperMaxOutputBytes: payload["helper_max_output_bytes"]?.int ?? 0)
         case "result":
             guard let id else { return .protocolViolation("result without id") }
-            return .result(id: id, payload: payload)
+            return .result(id: id, payload: Self.bridged(payload))
         case "error":
-            return .error(id: id, message: payload["message"] as? String ?? "unspecified helper error")
+            return .error(id: id, message: payload["message"]?.string ?? "unspecified helper error")
         case "update":
-            let kind = payload["kind"] as? String ?? ""
-            guard kind == "preview" else { return .update(kind: kind, payload: payload) }
+            let kind = payload["kind"]?.string ?? ""
+            guard kind == "preview" else { return .update(kind: kind, payload: Self.bridged(payload)) }
             do {
-                guard let resultObject = payload["result"] else { return .protocolViolation("preview update without result") }
-                let resultData = try JSONSerialization.data(withJSONObject: resultObject)
-                let env = try RuntimeV1.decodeCompileResult(resultData)
-                let versions = (payload["source_versions"] as? [String: Any] ?? [:]).compactMapValues { $0 as? Int }
+                let env: RuntimeV1.Envelope<RuntimeV1.CompileResult>
+                switch payload["result"] {
+                case .raw(let range)?:
+                    do { env = try FastJSON.compileResultEnvelope(line, range: range) }
+                    catch { env = try RuntimeV1.decodeCompileResultReference(line.subdata(in: range)) }
+                case nil:
+                    return .protocolViolation("preview update without result")
+                default:
+                    return .protocolViolation("preview update result is not an object")
+                }
+                guard env.protocolVersion == RuntimeV1.protocolVersion, env.type == "compile_result" else {
+                    return .protocolViolation("preview update carries \(env.type) v\(env.protocolVersion)")
+                }
+                let versions = (payload["source_versions"]?.object ?? [:]).compactMapValues(\.int)
                 return .preview(PreviewUpdate(
-                    requestID: payload["request_id"] as? String ?? "",
-                    compileRevision: payload["compile_revision"] as? Int ?? 0,
+                    requestID: payload["request_id"]?.string ?? "",
+                    compileRevision: payload["compile_revision"]?.int ?? 0,
                     sourceVersions: versions,
-                    missingLayoutCapabilities: payload["missing_layout_capabilities"] as? [String] ?? [],
-                    controllerTotalMs: payload["controller_total_ms"] as? Double,
-                    runtimeTotalMs: payload["runtime_total_ms"] as? Double,
+                    missingLayoutCapabilities: (payload["missing_layout_capabilities"]?.array ?? []).compactMap(\.string),
+                    controllerTotalMs: payload["controller_total_ms"]?.double,
+                    runtimeTotalMs: payload["runtime_total_ms"]?.double,
                     result: env))
             } catch {
                 return .protocolViolation("preview update: \(error)")
             }
         default:
             return .protocolViolation("unknown frame type \(type)")
+        }
+    }
+
+    /// Generic values as Foundation objects for the small `result`/`update`
+    /// payloads the model reads by key.
+    static func bridged(_ object: [String: FastJSON.Value]) -> JSONObject {
+        object.mapValues(bridge)
+    }
+
+    private static func bridge(_ v: FastJSON.Value) -> Any {
+        switch v {
+        case .null: return NSNull()
+        case .bool(let b): return b
+        case .number(let d, let isInt): return isInt && d >= Double(Int.min) && d <= Double(Int.max) ? Int(d) : d
+        case .string(let s): return s
+        case .array(let a): return a.map(bridge)
+        case .object(let o): return o.mapValues(bridge)
+        case .raw: return NSNull()
         }
     }
 }
