@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement read-only verified bundle resource manifest checker for GH36 under owned handoff tools",
-      "objective": "Implement read-only verified bundle resource manifest checker for GH36 under owned handoff tools",
+      "name": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
+      "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Validate isolated staged official assets and negative missing corrupted or misrooted metrics without native execution",
-      "objective": "Validate isolated staged official assets and negative missing corrupted or misrooted metrics without native execution",
+      "name": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
+      "objective": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish native owner command and coverage limits preserving original app resources and external TeX distinction",
-      "objective": "Publish native owner command and coverage limits preserving original app resources and external TeX distinction",
+      "name": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
+      "objective": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
       "owned_paths": [
         "crates/rendering-core"
       ],
