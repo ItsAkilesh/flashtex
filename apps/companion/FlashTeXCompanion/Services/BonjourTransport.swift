@@ -28,6 +28,7 @@ final class BonjourTransport {
     private var connection: NWConnection?
     private var receiveBuffer = Data()
     private let queue = DispatchQueue(label: "flashtex.bonjour", qos: .userInitiated)
+    private static let maxJSONLineBytes = 12 * 1024 * 1024
 
     // Service type advertised by the Mac shell
     static let serviceType = "_flashtex._tcp."
@@ -150,8 +151,22 @@ final class BonjourTransport {
         while let range = receiveBuffer.range(of: Data([0x0A])) { // newline
             let lineData = receiveBuffer[receiveBuffer.startIndex..<range.lowerBound]
             receiveBuffer.removeSubrange(receiveBuffer.startIndex...range.lowerBound)
+            guard lineData.count <= Self.maxJSONLineBytes else {
+                failOversizedLine()
+                return
+            }
             handleLine(lineData)
         }
+        if receiveBuffer.count > Self.maxJSONLineBytes {
+            failOversizedLine()
+        }
+    }
+
+    private func failOversizedLine() {
+        receiveBuffer.removeAll(keepingCapacity: false)
+        connection?.cancel()
+        connection = nil
+        state = .failed("Protocol line exceeds 12 MiB limit")
     }
 
     private func handleLine(_ data: Data) {
