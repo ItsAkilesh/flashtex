@@ -241,6 +241,9 @@ final class TypingBench {
     private var driver: TypingBenchDriver?
     var onPaint: ((Int) -> Void)?
 
+    /// Clears recorded events and render state (bench start, tests).
+    func reset() { recorder.reset(); renderingRevision = 0; expectedPages = 0; drawnPages = 0; paintHops = 0; drawEndNs = nil }
+
     /// Installs the in-process key monitor and, when configured, the bench driver.
     func install(model: ShellModel) {
         guard monitor == nil else { return }
@@ -324,8 +327,8 @@ final class TypingBenchDriver {
     /// Test hook: called instead of `exit` when set.
     var onFinish: ((TypingBenchSummary) -> Void)?
 
-    init(config: TypingBenchConfig, model: ShellModel, bench: TypingBench) {
-        self.config = config; self.model = model; self.bench = bench
+    init(config: TypingBenchConfig, model: ShellModel, bench: TypingBench, textView: NSTextView? = nil) {
+        self.config = config; self.model = model; self.bench = bench; self.textView = textView
     }
 
     func start() {
@@ -373,7 +376,7 @@ final class TypingBenchDriver {
         let offset = TypingBenchConfig.insertionOffset(in: tv.string, beforeEndDocument: config.insertBeforeEndDocument)
         tv.setSelectedRange(NSRange(location: offset, length: 0))
         bytesBefore = tv.string.utf8.count
-        bench.recorder.reset()
+        bench.reset()
         startNs = MonotonicClock.nowNs()
         startedAt = Date()
         FlashTeXLog.write("bench: typing \(keys.count) keystrokes at UTF-16 offset \(offset) every \(config.intervalMs) ms")
