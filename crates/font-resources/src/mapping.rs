@@ -185,6 +185,17 @@ mod tests {
         wrap(words.into_iter().flat_map(u16::to_be_bytes).collect())
     }
     #[test]
+    fn format4_indirect_glyph_array_applies_delta_except_zero() {
+        let mut c = cmap4();
+        c[14..16].copy_from_slice(&34u16.to_be_bytes());
+        c[36..38].copy_from_slice(&1u16.to_be_bytes());
+        c[40..42].copy_from_slice(&4u16.to_be_bytes());
+        c.extend(1u16.to_be_bytes());
+        assert_eq!(lookup(&c, 65, 4).unwrap(), Some(2));
+        c[44..46].copy_from_slice(&0u16.to_be_bytes());
+        assert_eq!(lookup(&c, 65, 4).unwrap(), None);
+    }
+    #[test]
     fn unicode12_original_gids() {
         let c = cmap12();
         assert_eq!(lookup(&c, 0x1f601, 3).unwrap(), Some(2));

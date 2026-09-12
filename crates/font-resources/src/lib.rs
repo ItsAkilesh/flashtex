@@ -455,6 +455,7 @@ fn parse(bytes: &[u8]) -> Result<Parsed> {
     {
         return Err(invalid("invalid horizontal metrics bounds"));
     }
+    composite::validate(head, loca, glyf, glyphs as usize)?;
     let names = parse_names(table(b"name")?)?;
     let embedding_flags = match tables.get(b"OS/2") {
         Some(r) => Some(u16_at(&bytes[r.clone()], 8)?),
@@ -519,3 +520,6 @@ fn parse_names(bytes: &[u8]) -> Result<Vec<String>> {
 
 mod mapping;
 pub use mapping::HorizontalMetrics;
+
+mod composite;
+pub use composite::MAX_COMPOSITE_DEPTH;
