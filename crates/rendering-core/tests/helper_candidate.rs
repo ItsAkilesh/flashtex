@@ -423,3 +423,144 @@ fn raw_helper_preserves_nested_duplicate_evidence_and_strict_source_map() {
         assert!(bind(invalid.as_bytes(), &result, &current, &caps(), &resources).is_err());
     }
 }
+
+// The metadata fixture supplies the independently recorded source/controller
+// snapshot. It is not used to reconstruct the raw candidate under test.
+fn check_raw_helper_replay(raw: &[u8], result: Vec<u8>, current: CurrentHelper) -> String {
+    let event: Value = serde_json::from_slice(raw).unwrap();
+    let resources = resources(&event["payload"]["display_list"]);
+    let bound = bind(raw, &result, &current, &caps(), &resources).unwrap();
+    let pdf = bound.export_searchable(&current, 8 * 1024 * 1024).unwrap();
+    let normalized = serde_json::to_vec(&event).unwrap();
+    let escaped = std::str::from_utf8(raw)
+        .unwrap()
+        .replace("main.tex", "main\\u002etex");
+    assert!(escaped.as_bytes() != raw, "escape mutation must match");
+    for equivalent in [normalized.as_slice(), escaped.as_bytes()] {
+        let other = bind(equivalent, &result, &current, &caps(), &resources)
+            .unwrap()
+            .export_searchable(&current, 8 * 1024 * 1024)
+            .unwrap();
+        assert_eq!(digest(&pdf.bytes), digest(&other.bytes));
+    }
+    let text = std::str::from_utf8(raw).unwrap();
+    let source_sha = digest(current.sources["main.tex"].text.as_bytes());
+    for altered in [
+        text.replacen("\"glyph_count\":", "\"glyph_count\":0,\"glyph_count\":", 1),
+        text.replacen(
+            "\"glyph_count\":",
+            "\"glyph_\\u0063ount\":0,\"glyph_count\":",
+            1,
+        ),
+        text.replacen(&source_sha, &"0".repeat(64), 1),
+        text.replacen(
+            "\"source_actions_enabled\":false",
+            "\"source_actions_enabled\":true",
+            1,
+        ),
+        text.replacen(
+            &format!("\"revision\":{}", current.compile_revision),
+            &format!("\"revision\":{}e0", current.compile_revision),
+            1,
+        ),
+    ] {
+        assert!(altered.as_bytes() != raw, "refusal mutation must match");
+        assert!(bind(altered.as_bytes(), &result, &current, &caps(), &resources).is_err());
+    }
+    let mut stale = current.clone();
+    stale.sources.get_mut("main.tex").unwrap().editor_revision += 1;
+    assert!(bind(raw, &result, &stale, &caps(), &resources).is_err());
+    assert!(bound.export_searchable(&stale, 8 * 1024 * 1024).is_err());
+    stale = current.clone();
+    stale.membership_generation += 1;
+    assert!(bound.export_searchable(&stale, 8 * 1024 * 1024).is_err());
+    digest(&pdf.bytes)
+}
+
+#[test]
+fn raw_replay_harness_control_uses_existing_valid_helper_fixture() {
+    // Control only: this serialized historical fixture is not proof of a newly
+    // published raw-prototype helper route. Actual raw captures use the same gate.
+    let metadata = include_bytes!("fixtures/runtime-candidates/step-1.json");
+    let (event, result, current, _) = fixture(metadata);
+    check_raw_helper_replay(&serde_json::to_vec(&event).unwrap(), result, current);
+}
+
+#[test]
+fn actual_raw_prototype_three_states_reach_strict_export_without_reencoding() {
+    #[derive(serde::Deserialize)]
+    struct Capture {
+        payload: CapturePayload,
+    }
+    #[derive(serde::Deserialize)]
+    struct CapturePayload {
+        display_list: Box<serde_json::value::RawValue>,
+    }
+    let manifest: Value =
+        serde_json::from_slice(include_bytes!("fixtures/helper-raw-f5524794/manifest.json"))
+            .unwrap();
+    for (index, (raw, metadata)) in [
+        (
+            include_bytes!("fixtures/helper-raw-f5524794/step-0.candidate.jsonl").as_slice(),
+            include_bytes!("fixtures/helper-raw-f5524794/step-0.metadata.json").as_slice(),
+        ),
+        (
+            include_bytes!("fixtures/helper-raw-f5524794/step-1.candidate.jsonl").as_slice(),
+            include_bytes!("fixtures/helper-raw-f5524794/step-1.metadata.json").as_slice(),
+        ),
+        (
+            include_bytes!("fixtures/helper-raw-f5524794/step-2.candidate.jsonl").as_slice(),
+            include_bytes!("fixtures/helper-raw-f5524794/step-2.metadata.json").as_slice(),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let case = &manifest["cases"][index];
+        assert_eq!(digest(raw), case["candidate_sha256"]);
+        assert_eq!(digest(metadata), case["metadata_sha256"]);
+        let original: Capture = serde_json::from_slice(raw).unwrap();
+        assert_eq!(
+            digest(original.payload.display_list.get().as_bytes()),
+            case["producer_sibling_sha256"]
+        );
+        let metadata: Value = serde_json::from_slice(metadata).unwrap();
+        let c = &metadata["current"];
+        let current = CurrentHelper {
+            session_id: c["session_id"].as_str().unwrap().into(),
+            project_id: c["project_id"].as_str().unwrap().into(),
+            request_id: c["request_id"].as_str().unwrap().into(),
+            compile_revision: c["compile_revision"].as_u64().unwrap(),
+            membership_generation: c["membership_generation"].as_u64().unwrap(),
+            sources: c["sources"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(p, s)| {
+                    (
+                        p.clone(),
+                        CurrentSource {
+                            editor_revision: s["editor_revision"].as_u64().unwrap(),
+                            text: s["text"].as_str().unwrap().into(),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        assert_eq!(
+            current.sources["main.tex"].editor_revision,
+            index as u64 + 1
+        );
+        assert_eq!(current.compile_revision, index as u64 + 2);
+        assert_eq!(
+            current.sources["main.tex"].text.len(),
+            case["source_bytes"].as_u64().unwrap() as usize
+        );
+        let pdf_sha = check_raw_helper_replay(
+            raw,
+            serde_json::to_vec(&metadata["result"]).unwrap(),
+            current,
+        );
+        assert_eq!(pdf_sha, case["strict_consumer_pdf_sha256"]);
+    }
+}

@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "b797b21ae74cb5d0e30afb3e5494e80975f7609a",
+  "code_revision": "8fa2c2b13cc1bdea2265a4c2090535c9e300eb7b",
   "eta_minutes": {
-    "likely": 3,
+    "likely": 2,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "fbf21a7b2691972abe0e99876a33d4e3c6ff238e",
-  "next_action": "Commander integration and GH32 verification; runtime owner preserves raw bytes end-to-end. Recheck native helper/GH31 only upon new published owner refs. No transport activation.",
+  "main_integrated_through": "8fa2c2b13cc1bdea2265a4c2090535c9e300eb7b",
+  "next_action": "Publish actual raw helper fixtures/handoff. Native acceptance and mode activation remain separate; ready for next bounded Commander consumer task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "FT023r12 GH32 correction b797b21a: duplicate known nested fields refuse before normalization; valid raw/escaped representation and five actual original PDFs unchanged.",
+  "summary": "FT023r12 followup: actual f5524794 raw helper100 three states reach strict original-byte binding and searchable export; exact raw/normalized/escaped PDFs equal.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:52:46Z",
+  "updated_utc": "2026-09-12T12:00:56Z",
   "usage": {
-    "evidence": "169 rendering tests pass, 2 ignored; strict all-target Clippy pass; final helper7/wire6 pass; Python6 pass. Pinned all-five replay exit3 preserves exact PDF/raster/text hashes and differences0/602/1244/979/337, with display-math ToUnicode limitation.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. All test/replay sessions terminal."
+    "evidence": "9 helper tests pass, strict all-target Clippy pass. Original candidate and producer-body hashes pinned; editor1/2/3 differs compile2/3/4. Nested/escaped duplicate, sourceSHA, exponent integer and source-action escalation refuse. Stale source/membership refuses export. Production/dependency tree unchanged from b797b21a.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. All focused jobs terminal."
   }
 }
