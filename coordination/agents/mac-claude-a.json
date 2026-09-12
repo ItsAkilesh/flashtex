@@ -16,27 +16,27 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "code_revision": "dbf3ca4f3f5af8590d518f76949482faba6ccd5c",
   "eta_minutes": {
-    "likely": 40,
-    "optimistic": 25,
-    "pessimistic": 60
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Create Package.swift and SwiftUI shell, build with xcodebuild",
+  "next_action": "Poll checkpoints; bounded experiment: JSON Lines subprocess transport stub",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed runtime-v1 contract and fixtures; no conflicts with apps/mac",
-      "reviewed_utc": "2026-09-12T04:02:08Z",
+      "adaptation": "Main unchanged; FT-002 ack on origin/agent/claude/compiler-foundation 25fe5c479e4177474ed06281bca7ce4dc992c533 has no code impact",
+      "reviewed_utc": "2026-09-12T04:07:53Z",
       "sha": "d6858792737c0980cccaec5db835075e94a1ebc9"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT-003 accepted; scaffolding apps/mac Swift package (editor + fixture preview + click-to-source)",
+  "state": "ready_for_integration",
+  "summary": "apps/mac Swift package: editor + fixture preview + click-to-source; swift build/test and xcodebuild pass (6 tests)",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:02:08Z",
+  "updated_utc": "2026-09-12T04:07:53Z",
   "usage": {
     "evidence": "Claude Max session per user override; no API spend",
     "status": "unknown"
