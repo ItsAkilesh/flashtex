@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "de161ca396f1501e7f917183f2b2652e3d999c5e",
+  "code_revision": "03cdc27c0256cd7d470555873c52d60d62597a53",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "60695a370517c9e93ad415ff47c14eeba0908ab1",
-  "next_action": "Commander integration; current TTC resolver remains gated pending published verified peer layout. Await next bounded product assignment.",
+  "next_action": "Existing pipeline consumer can replace duplicate reader using published adapter; await exact consumer feedback or next bounded assignment. No dirty peer files or running operations.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published de161ca: exact real LM replay (five ligatures, three signed kern pairs, unavailable slots), full resource/source provenance, actual matching-font replay and all-target clippy pass. Reviewed Daniel e61c176 and font tip7342245: unchanged parser2aca313, no verified complete TTC layout API. Existing boundary implementation73a030b/API handoff posted issue2 for render-pipeline; no peer writes.",
+  "summary": "Published03cdc27: additive Tfm::glyph_run with explicit leading boundary kern and checked attached sums; actual pipeline9bb7b27 compiled readonly and exact ec-lmr10 all metrics/fontdimens/ten-run outputs match shared adapter. Full crate tests and all-target clippy pass. Migration/API table and reproducible peer replay committed; issue2 handoff posted. ec-lmr12/rm-lmr assets absent, no guessed mapping. TTC resolver gate unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:32:55Z",
+  "updated_utc": "2026-09-12T09:37:03Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
