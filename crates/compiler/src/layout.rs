@@ -367,7 +367,7 @@ impl LayoutCursor {
         let base_y = self.y;
         let page = self.pages.last_mut().expect("at least one page");
         for item in b.items {
-            let font = math_font(&item.text);
+            let font = item.font.unwrap_or_else(|| math_font(&item.text));
             let rule = item.rule.map(|rule| RuleGeometry {
                 y_pt: round2(base_y + rule.y),
                 width_pt: round2(rule.width),
@@ -461,7 +461,7 @@ impl LayoutCursor {
                 number_span,
                 content,
             } => {
-                if self.emit_heading_numbers {
+                if self.emit_heading_numbers && !number.is_empty() {
                     self.place(
                         number.clone(),
                         heading_size(*level, body_size),
