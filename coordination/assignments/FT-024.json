@@ -9,14 +9,14 @@
   "deadline_utc": null,
   "dependencies": [],
   "input_main_sha": "cfdda8b312adcec7551bd5990b24975f041b22a7",
-  "objective": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
+  "objective": "Identity-preserving adapter to original font-engine metrics/shaping without duplicate parsers",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 6,
+  "revision": 7,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:54:08Z"
+  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
 }

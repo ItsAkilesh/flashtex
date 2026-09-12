@@ -5,30 +5,30 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Replay and serialize internal exact geometry without implicit rounding",
-      "objective": "Replay and serialize internal exact geometry without implicit rounding",
+      "name": "Consume latest font arithmetic/device context with exact cache identities",
+      "objective": "Consume latest font arithmetic/device context with exact cache identities",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     },
     {
-      "name": "Bound mixed-font batch/cache residency and test cancellation or stale-source invalidation",
-      "objective": "Bound mixed-font batch/cache residency and test cancellation or stale-source invalidation",
+      "name": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
+      "objective": "Export reproducible mismatch records for pinned reference comparison and closure tracking",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     }
   ]
 }

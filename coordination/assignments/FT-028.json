@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-028",
+  "agent_id": "orchestrator-jaysen-opus",
+  "branch": "agent/orchestrator-jaysen-opus/standby",
+  "revision": 1,
+  "state": "assigned",
+  "objective": "Prepare the explicitly requested Jaysen Opus standby. Implement/test local deterministic witness-branch monitor and one-shot guarded revival invocation; remain read-only for global authority/control until independently verified Astra termination and stopped publishers. Publish actual session/PID/auth route and end-to-end synthetic handoff evidence.",
+  "owned_paths": [
+    "tools/commander-standby",
+    "coordination/agents/orchestrator-jaysen-opus.json"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "No main/control/dispatch writes while Astra remains active",
+    "Current+stale/recycled process pins, pending journals, competing claims and lost pushes fail closed",
+    "Publish actual Mac monitor/session evidence; do not claim live-quota failover without terminal hook",
+    "Use existing Jaysen Max20x only, no overages/purchases; sole new standby exception"
+  ],
+  "allocation_id": "jaysen-max20x-commander-standby",
+  "timebox_minutes": 30,
+  "deadline_utc": null,
+  "input_main_sha": "d128b48b839263b723794384dc16741d9d8cebe8",
+  "updated_utc": "2026-09-12T07:12:41.734519+00:00"
+}
