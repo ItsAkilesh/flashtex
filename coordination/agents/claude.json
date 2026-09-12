@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T08:05:56Z",
-      "adaptation": "Accepted FT-002 rev 8: broader pinned corpus, repeated burst-edit and recovery performance gates, preserved source and capability identity, and byte/pixel parity published separately from compiler latency. Rev 7 just removed a parser quadratic that made a 500KB one-word edit 420ms; burst editing is the natural next risk because it is what real typing looks like and it is where reuse state could degrade across many consecutive edits rather than one. Note that open issue #21 remains unaddressed and is mine: a valid 500KB project emits 10.1MB in one reply and exceeds the 8 MiB runtime frame.",
-      "main_sha": "23c30247b5fb421c5da05b3c9f7a714099622b7e",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T09:17:09Z",
+      "adaptation": "Accepted FT-002 rev 9 at input main 25bd006: measure and reduce input-to-first-response-byte latency on a pinned 500KB fixture while preserving exact JSON bytes, diagnostics and incremental-clean equivalence. Branch was repaired at ee423c3 after I pushed a bad commit; it is green again at 15 suites. Starting by measuring where time to first byte actually goes, because rev 7 taught me that guessing the bottleneck costs more than measuring it: I fixed two wrong things before finding the parser quadratic.",
+      "main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+      "revision": 9
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "8fb8d650cefe739ba3224f58691e03357d822da7",
+  "code_revision": "ee423c332e54c23da3da306508ae72f4d4dd725c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Awaiting rev 9, the transport decision on issue #21, or a dispatch for issue #27.",
+  "next_action": "Available for rev 10 or the transport decision on issue #21.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Did not start the paragraph-layout adoption unprompted even though it is the highest-value remaining work, because it changes every line break in output that FT-003 renders and rev 8 is my current assignment. Filed it as issue #27 with the cost stated honestly, including that optimal breaking is more expensive than greedy and that per-paragraph incremental reuse may weaken.",
-      "reviewed_utc": "2026-09-12T08:40:22Z",
-      "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
+      "adaptation": "Caught a measurement error in my own benchmark before drawing conclusions from it: reusing one project_id across samples meant every iteration after the first hit the warm session cache, so the cold numbers were really warm ones. The tell was compile appearing slower than the whole reply, which is impossible.",
+      "reviewed_utc": "2026-09-12T09:21:34Z",
+      "sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Extended math symbol coverage from 23 to 54 commands, all exportable. 26 of 30 common symbols I sampled previously rendered but could not survive PDF export despite the Adobe Symbol font containing every one. Also filed issue #27 proposing adoption of crates/paragraph-layout to close the last two fidelity gaps rather than duplicating FT-019 work.",
+  "summary": "FT-002 rev 9 delivered: time to first response byte on a pinned 500KB fixture cut from 143.451 ms to 101.506 ms cold p50, and 61.826 ms to 20.048 ms warm p50, with byte-identical output proven by the pinned fixtures. 16 suites pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T08:40:22Z",
+  "updated_utc": "2026-09-12T09:21:34Z",
   "usage": {
-    "evidence": "Uppercase Greek, partial, nabla, in, prod, arrows, logic and set relations now render and export with zero diagnostics where 26 of 30 previously warned; 15 suites pass; clippy clean; fmt clean; harness 21/21; pinned fixtures unchanged since no existing fixture used these symbols",
-    "status": "Codex hit its usage limit again on the paragraph-layout task and did no work; symbol coverage written directly"
+    "evidence": "ttfb_bench prints sha256 of fixture, request and binary; cold p50 143.451 to 101.506 ms and p95 151.336 to 108.395; warm p50 61.826 to 20.048 and p95 64.758 to 20.954; pinned byte-exact fixtures pass unchanged, proving output identical; 16 suites pass; clippy clean; fmt clean",
+    "status": "Written directly; all Codex workers terminated after one ran away and rewrote files during cleanup"
   }
 }

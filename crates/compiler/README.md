@@ -284,6 +284,35 @@ included. Native paint equality and raw PDF byte equality remain separate gates
 and are not claimed here. The product target of under 200 ms from keystroke to
 visible output REMAINS UNPROVEN and can only be established in the real app.
 
+## Time to first response byte
+
+Run `cargo run --release --bin ttfb_bench`. It prints the SHA-256 of the fixture,
+the request and the binary, so a number can be tied to what produced it.
+
+Measured on a pinned 500 032-byte fixture producing an 8 318 125-byte reply:
+
+| | before | after |
+|---|---|---|
+| Cold, document never seen | p50 143.451 ms, p95 151.336 ms | **p50 101.506 ms, p95 108.395 ms** |
+| Warm, same document recompiled | p50 61.826 ms, p95 64.758 ms | **p50 20.048 ms, p95 20.954 ms** |
+
+Serialisation was 61 ms of a 143 ms cold reply. The reply was built as a `Value`
+tree and immediately thrown away: tens of thousands of items, each a map with
+owned String keys, allocated and dropped per compile. Pages now render straight
+to JSON text. Output is byte-identical, which the pinned fixtures prove.
+
+Writing the finished bytes to a writer is 0.12 ms, so it is not worth optimising.
+
+A correction worth recording: the first version of this benchmark reused one
+`project_id` across samples, so every iteration after the first hit the warm
+session cache and reported cold numbers that were really warm ones. It showed as
+compile appearing slower than the whole reply, which is impossible. Each cold
+sample now uses a distinct project id.
+
+These are COMPILER-ONLY measurements. UI paint, scheduling, IPC transport and PDF
+writing are outside this crate. Native paint parity and raw PDF byte equality are
+separate gates and are not claimed here.
+
 ## Recovery behaviour
 
 `status` is `ok` with no diagnostics, `recovered` when diagnostics were produced

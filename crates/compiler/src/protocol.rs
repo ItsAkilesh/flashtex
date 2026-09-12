@@ -325,58 +325,88 @@ fn valid_rule_geometry(x_pt: f64, rule: crate::layout::RuleGeometry) -> bool {
         && rule.height_pt > 0.0
 }
 
+/// Renders pages straight to JSON text.
+///
+/// Byte-for-byte identical to building a `Value` tree and serialising it: keys
+/// are emitted in the same sorted order a BTreeMap would produce, and numbers
+/// and strings go through the same formatting helpers. The pinned byte-exact
+/// fixtures are what prove that, and they fail loudly if this drifts.
+///
+/// Why bypass the tree: at 500 KB the reply holds tens of thousands of items,
+/// each of which was a map with owned String keys that was allocated, filled,
+/// serialised and dropped. Serialisation was 61 ms of a 143 ms cold
+/// time-to-first-byte.
 fn pages_json(pages: &[Page], paths: &[&str], capabilities: &AcceptedCapabilities) -> Value {
-    Value::Arr(
-        pages
-            .iter()
-            .map(|pg| {
-                let mut p = Value::obj();
-                p.set("number", Value::Num(pg.number as f64));
-                p.set("width_pt", Value::Num(pg.width_pt));
-                p.set("height_pt", Value::Num(pg.height_pt));
-                p.set(
-                    "items",
-                    Value::Arr(
-                        pg.items
-                            .iter()
-                            .map(|it| {
-                                let mut src = Value::obj();
-                                src.set(
-                                    "path",
-                                    str_(paths.get(it.span.document.0).copied().unwrap_or("")),
-                                );
-                                src.set("start_byte", Value::Num(it.span.start as f64));
-                                src.set("end_byte", Value::Num(it.span.end as f64));
-                                let mut i = Value::obj();
-                                let negotiated_rule =
-                                    if capabilities.rules_v1 { it.rule } else { None };
-                                if let Some(rule) = negotiated_rule {
-                                    debug_assert!(valid_rule_geometry(it.x_pt, rule));
-                                    i.set("kind", str_("rule"));
-                                    i.set("x_pt", Value::Num(it.x_pt));
-                                    i.set("y_pt", Value::Num(rule.y_pt));
-                                    i.set("width_pt", Value::Num(rule.width_pt));
-                                    i.set("height_pt", Value::Num(rule.height_pt));
-                                } else {
-                                    i.set("kind", str_("text"));
-                                    i.set("text", str_(it.text.clone()));
-                                    i.set("x_pt", Value::Num(it.x_pt));
-                                    i.set("baseline_y_pt", Value::Num(it.baseline_y_pt));
-                                    i.set("font_size_pt", Value::Num(it.font_size_pt));
-                                    if capabilities.font_hints_v1 {
-                                        i.set("font", font_json(it.font));
-                                    }
-                                }
-                                i.set("source", src);
-                                i
-                            })
-                            .collect(),
-                    ),
-                );
-                p
-            })
-            .collect(),
-    )
+    // Rough capacity guess: replies are large and reallocation is the cost.
+    let item_count: usize = pages.iter().map(|p| p.items.len()).sum();
+    let mut out = String::with_capacity(item_count * 160 + 256);
+    out.push('[');
+    for (page_index, pg) in pages.iter().enumerate() {
+        if page_index > 0 {
+            out.push(',');
+        }
+        // Sorted: height_pt, items, number, width_pt
+        out.push_str("{\"height_pt\":");
+        json::write_number_into(pg.height_pt, &mut out);
+        out.push_str(",\"items\":[");
+        for (item_index, it) in pg.items.iter().enumerate() {
+            if item_index > 0 {
+                out.push(',');
+            }
+            let negotiated_rule = if capabilities.rules_v1 { it.rule } else { None };
+            let path = paths.get(it.span.document.0).copied().unwrap_or("");
+            if let Some(rule) = negotiated_rule {
+                debug_assert!(valid_rule_geometry(it.x_pt, rule));
+                // Sorted: height_pt, kind, source, width_pt, x_pt, y_pt
+                out.push_str("{\"height_pt\":");
+                json::write_number_into(rule.height_pt, &mut out);
+                out.push_str(",\"kind\":\"rule\",\"source\":");
+                write_source_into(&mut out, path, it.span.start, it.span.end);
+                out.push_str(",\"width_pt\":");
+                json::write_number_into(rule.width_pt, &mut out);
+                out.push_str(",\"x_pt\":");
+                json::write_number_into(it.x_pt, &mut out);
+                out.push_str(",\"y_pt\":");
+                json::write_number_into(rule.y_pt, &mut out);
+                out.push('}');
+            } else {
+                // Sorted: baseline_y_pt, font?, font_size_pt, kind, source, text, x_pt
+                out.push_str("{\"baseline_y_pt\":");
+                json::write_number_into(it.baseline_y_pt, &mut out);
+                if capabilities.font_hints_v1 {
+                    out.push_str(",\"font\":");
+                    out.push_str(&json::write(&font_json(it.font)));
+                }
+                out.push_str(",\"font_size_pt\":");
+                json::write_number_into(it.font_size_pt, &mut out);
+                out.push_str(",\"kind\":\"text\",\"source\":");
+                write_source_into(&mut out, path, it.span.start, it.span.end);
+                out.push_str(",\"text\":");
+                json::write_string_into(&it.text, &mut out);
+                out.push_str(",\"x_pt\":");
+                json::write_number_into(it.x_pt, &mut out);
+                out.push('}');
+            }
+        }
+        out.push_str("],\"number\":");
+        json::write_number_into(pg.number as f64, &mut out);
+        out.push_str(",\"width_pt\":");
+        json::write_number_into(pg.width_pt, &mut out);
+        out.push('}');
+    }
+    out.push(']');
+    Value::Raw(out)
+}
+
+/// Sorted: end_byte, path, start_byte
+fn write_source_into(out: &mut String, path: &str, start: usize, end: usize) {
+    out.push_str("{\"end_byte\":");
+    json::write_number_into(end as f64, out);
+    out.push_str(",\"path\":");
+    json::write_string_into(path, out);
+    out.push_str(",\"start_byte\":");
+    json::write_number_into(start as f64, out);
+    out.push('}');
 }
 
 fn failed(
