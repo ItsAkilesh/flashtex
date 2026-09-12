@@ -45,3 +45,9 @@ No context telemetry/native compaction control exposed; durable checkpoint used 
 1699357c compact apply_group ACK and renderer02da0568/6c22fe80 allocation-free syntax preflight integrated after three metadata tests, full rendering suite and both strict lints passed (63797 terminal, /tmp/flashtex-group-syntax-integration.log). Existing five-fixture PDF/raster/text hashes unchanged in owner replay. Runtime shutdown ca7727c5/d8c21bdb is evidence-only pending integration. Current assignments from837db900: FT048r12 undo/redo compact ACK plus GH33 existing deadline resolver; FT049r13 accepted request capacity compaction; FT023r14 private paired-token duplicate parse removal. Same retained handles active.
 
 Root21813 broader helper run hit two deadlines during integration build (configured_large_result and full_size_optional_expansion); GH33 open, root assigned isolated reruns, no inferred cause or relaxed limits. Commander builds now terminal; runtime timing held for those reruns. Remote census refresh issue2comment5645891597 published, no new reply yet.
+
+## History and request capacity integration
+
+3a660762 compact undo/redo plus0333be37 accepted request reserve trimming andca7727c5 shutdown evidence integrated after40322 runtime suite, four metadata stdio recovery tests and both strict lints passed. Queue contents/source/wire unchanged; caller spare capacities trimmed after admission. Near-limit shutdown hooks test-only, parser runs to completion, no wall-time guarantee. GH33 original two deadline failures and unchanged reruns remain documented.
+
+Current rootFT048r13 source-free history status implementation, runtimeFT049r15 blocked-stdin cleanup acceptance, rendererFT023r14 private paired-token parse reuse. Runtime found decoder joined but existing writer/read/stderr detached; next test explicitly witnesses writer exit and child reap, not a claim every thread already joins. All Commander gates terminal at publication.
