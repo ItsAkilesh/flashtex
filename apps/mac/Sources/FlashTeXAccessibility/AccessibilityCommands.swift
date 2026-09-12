@@ -185,7 +185,7 @@ public enum FocusOrder {
 
     public static let panes: [Pane] = [
         Pane(name: "Editor",
-             contents: "Source text view, labelled “LaTeX source”; the document picker and the byte/UTF-16 counts sit above it. Caret moves announce line and column.",
+             contents: "Source text view, labelled “LaTeX source”; the document picker, the Project menu (open \\input/\\include targets, save or detach a member) and the byte/UTF-16 counts sit above it. Caret moves announce line and column.",
              rationale: "Editing is the primary task; the caret drives caret sync, diagnostics at caret, and every Navigate command.",
              container: "EditorPane", sourceMarker: "SourceEditorView("),
         Pane(name: "Capture bar",
