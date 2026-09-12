@@ -648,7 +648,11 @@ fn exact_review_groups_apply_retry_undo_and_reopen_through_real_ledger() {
             .replayed_command
     );
     assert!(review
-        .approve(true, review.review_id(), &[result.document.clone()])
+        .approve(
+            true,
+            review.review_id(),
+            std::slice::from_ref(&result.document)
+        )
         .is_err());
     drop(ledger);
     let mut ledger = Store::open(&path).unwrap();
@@ -726,4 +730,51 @@ fn review_refuses_multidocument_partial_application_and_changed_approval() {
         &docs
     )
     .is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn helper_review_requires_exact_approval_and_returns_ledger_request_without_apply() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{path::Path, time::Duration};
+    let docs = vec![source()];
+    let context = build(&docs);
+    let response = json!({"context_id":context.payload().context_id,"explanation":"Fix","edits":[{"location":{"path":"main.tex","start_byte":3,"end_byte":7},"removed_text":"\\bad","replacement":"good"}]});
+    let mut input = json!({"operation":"review","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain simply","response":response,"current_sources":docs,"explanation_request_id":"provider-session:1"});
+    let mut client = SessionClient::spawn(
+        Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context")),
+        "review_session",
+    )
+    .unwrap();
+    let review = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(review["result"]["type"], "proposal_review", "{review}");
+    input["operation"] = json!("approve");
+    input["approved_review_id"] = review["result"]["review_id"].clone();
+    let rejected = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert!(rejected["error"].is_string());
+    input["user_approved"] = json!(true);
+    let approved = client
+        .call(
+            json!({"operation":"review","input":input}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(approved["result"]["type"], "approved_group");
+    assert_eq!(approved["result"]["applied"], false);
+    assert_eq!(
+        approved["result"]["payload"]["group"]["edits"][0]["removed_text"],
+        "\\bad"
+    );
+    assert_eq!(approved["result"]["payload"]["path"], "main.tex");
+    assert_eq!(docs[0].text, "α \\bad");
 }

@@ -17,6 +17,9 @@ struct Command {
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Action {
+    Review {
+        input: Box<Input>,
+    },
     Submit {
         input: Box<Input>,
         timeout_ms: u64,
@@ -50,6 +53,12 @@ struct Host {
 fn execute(host: &mut Host, action: Action) -> Result<Value, String> {
     let registry = &mut host.registry;
     match action {
+        Action::Review { input } => {
+            if input.operation != "review" && input.operation != "approve" {
+                return Err("review action requires review or approve input".into());
+            }
+            super::process(*input)
+        }
         Action::Submit { input, timeout_ms } => {
             if input.operation != "prepare"
                 || input.response.is_some()

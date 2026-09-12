@@ -18,6 +18,9 @@ struct Input {
     destinations: Option<Vec<Location>>,
     response: Option<Value>,
     current_sources: Option<Vec<Document>>,
+    explanation_request_id: Option<String>,
+    approved_review_id: Option<String>,
+    user_approved: Option<bool>,
 }
 fn build_context(request: &Input) -> Result<Context, String> {
     let mut context = match &request.selected_diagnostics {
@@ -52,6 +55,9 @@ fn run() -> Result<Value, String> {
         return Err("input exceeds16MiB".into());
     }
     let request: Input = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    process(request)
+}
+fn process(request: Input) -> Result<Value, String> {
     let context = build_context(&request)?;
     match request.operation.as_str() {
         "prepare" => Ok(json!({"type":"prepared_context","payload":context.payload()})),
@@ -64,7 +70,40 @@ fn run() -> Result<Value, String> {
             )?;
             Ok(json!({"type":"validated_proposal","payload":proposal,"applied":false}))
         }
-        _ => Err("operation must be prepare or validate".into()),
+        "review" | "approve" => {
+            let response =
+                serde_json::to_vec(request.response.as_ref().ok_or("response required")?)
+                    .map_err(|e| e.to_string())?;
+            let current = request
+                .current_sources
+                .as_ref()
+                .ok_or("current_sources required")?;
+            let review = flashtex_assistant_context::ProposalReview::prepare(
+                request
+                    .explanation_request_id
+                    .as_deref()
+                    .ok_or("explanation_request_id required")?,
+                &context,
+                &response,
+                current,
+            )?;
+            if request.operation == "review" {
+                Ok(
+                    json!({"type":"proposal_review","review_id":review.review_id(),"payload":review.proposal(),"requires_user_approval":true,"applied":false}),
+                )
+            } else {
+                let approved = review.approve(
+                    request.user_approved == Some(true),
+                    request
+                        .approved_review_id
+                        .as_deref()
+                        .ok_or("approved_review_id required")?,
+                    current,
+                )?;
+                Ok(json!({"type":"approved_group","payload":approved,"applied":false}))
+            }
+        }
+        _ => Err("operation must be prepare, validate, review or approve".into()),
     }
 }
 #[cfg(feature = "grok")]

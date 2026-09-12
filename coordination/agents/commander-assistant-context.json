@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "2449372daf3bfff2f9f1ef0d264125e32167fd13",
+  "code_revision": "a577ed27a94d48c795914aae33547bb99a483b98",
   "eta_minutes": {
-    "likely": 20,
+    "likely": 25,
     "optimistic": 10,
-    "pessimistic": 35
+    "pessimistic": 45
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Expose review/approved-group handoff in JSON helper for Mac consumer.",
+  "next_action": "Mac native consumer integration; next commander assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Exact reviewed proposal\u2192single-document grouped ledger adapter ready. Real Store apply/retry/undo/reopen verified; changed approvals and multidoc partial handoff refused.",
+  "summary": "Review/approve helper wire exposes exact guarded grouped-edit handoff;27 tests including subprocess review and realledger durability pass; previous testclone lint fixed and strictlint nowpass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:26:00Z",
+  "updated_utc": "2026-09-12T08:28:30Z",
   "usage": {
-    "evidence": "2meaningful review tests pass incl durable Store operations; strictallfeaturelint",
-    "status": "Hosted OpenAI; no provider calls."
+    "evidence": "27allfeaturetests include-ignored; strictallfeaturelint pass",
+    "status": "Hosted OpenAI; no providercalls."
   }
 }

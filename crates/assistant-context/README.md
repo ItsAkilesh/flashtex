@@ -252,3 +252,15 @@ a fresh command ID. Tests use the real Store for apply/retry/undo/reopen and pro
 that retry after undo does not reapply the edit. The adapter never writes a ledger
 or applies provider output on its own. User interaction and correct ledger routing
 remain host responsibilities; an approval flag is not independent proof of consent.
+
+Both the single-request helper and persistent sessions now expose the review
+handoff. Use Input operation `review` with `response`, `current_sources` and
+`explanation_request_id` alongside the original context-building fields. It returns
+`proposal_review` with immutable proposal data and `review_id`. After review, send
+the same input as operation `approve`, adding `user_approved:true` and that exact
+`approved_review_id`; changed source/proposal/identity invalidates the approval.
+The result is `approved_group`, with `applied:false`, suitable for the ledger
+handoff described above. Persistent envelope:
+`{"id":"command-id","action":{"operation":"review","input":{...}}}`.
+The helper never opens a ledger or writes source; the native host chooses the
+matching project/path ledger and performs the explicitly approved operation.
