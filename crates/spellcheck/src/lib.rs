@@ -20,8 +20,10 @@
 //!   without this crate ever loading or persisting one itself.
 //! - Lets callers tag a check with a caller-defined [`Revision`] via
 //!   [`SpellChecker::check_revision`], so a previously computed
-//!   [`CheckResult`] can be detected as stale ([`CheckResult::is_stale`])
-//!   instead of being silently reused after the source moved on.
+//!   [`CheckResult`] can be detected as stale ([`CheckResult::is_stale`],
+//!   or [`CheckResult::is_stale_for`] when the current text is on hand too,
+//!   which also catches a missed revision bump) instead of being silently
+//!   reused after the source moved on.
 //! - Lets callers interrupt a long check via [`SpellChecker::check_cancellable`],
 //!   which polls a caller-supplied callback and returns
 //!   [`CheckOutcome::Cancelled`] promptly instead of running to completion.
@@ -32,7 +34,7 @@
 //! read `text` and report byte ranges and suggestion strings into/about it.
 //! There is no "apply correction" API and there never will be one.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 
 /// A caller-supplied source of known-correct words.
@@ -193,6 +195,7 @@ impl SpellChecker {
     ) -> CheckResult {
         CheckResult {
             revision,
+            text_fingerprint: fingerprint(text),
             misspellings: self.check(text, dictionary),
         }
     }
@@ -217,6 +220,7 @@ impl SpellChecker {
         match self.check_impl(text, dictionary, is_cancelled) {
             Some(misspellings) => CheckOutcome::Completed(CheckResult {
                 revision,
+                text_fingerprint: fingerprint(text),
                 misspellings,
             }),
             None => CheckOutcome::Cancelled { revision },
@@ -237,11 +241,34 @@ impl SpellChecker {
         }
         let excluded = excluded_ranges(text);
         let mut out = Vec::new();
+        // Both `excluded` (built by one forward scan in `excluded_ranges`)
+        // and the tokens from `tokenize_words` (also one forward scan) are
+        // produced in strictly increasing, non-overlapping order. That lets
+        // `excl_idx` advance monotonically across the whole loop instead of
+        // rescanning `excluded` from the start for every token: without
+        // this, adversarial input with many thousands of math/command
+        // toggles (e.g. deeply nested or repeated unbalanced delimiters)
+        // made this loop O(tokens * excluded) -- a genuine quadratic
+        // blowup on exactly that kind of input -- instead of the
+        // O(tokens + excluded) this two-pointer merge gives.
+        let mut excl_idx = 0usize;
+        // Suggestions are a pure function of (word, dictionary), and a
+        // large document can repeat the same misspelling many times (e.g.
+        // one typo throughout a megabyte-scale file). Caching by word
+        // avoids redoing the bounded-but-nontrivial edit-distance search
+        // once per occurrence -- once per *distinct* misspelled word
+        // instead.
+        let mut suggestion_cache: HashMap<&str, Vec<String>> = HashMap::new();
         for (range, word) in tokenize_words(text) {
             if is_cancelled() {
                 return None;
             }
-            if overlaps_any(&range, &excluded) {
+            while excl_idx < excluded.len() && excluded[excl_idx].end <= range.start {
+                excl_idx += 1;
+            }
+            let excluded_here =
+                excl_idx < excluded.len() && excluded[excl_idx].start < range.end;
+            if excluded_here {
                 continue;
             }
             if dictionary.contains(word) || dictionary.contains(&word.to_lowercase()) {
@@ -250,8 +277,12 @@ impl SpellChecker {
             let suggestions = if word.chars().count() > self.config.max_word_length_for_suggestions
             {
                 Vec::new()
+            } else if let Some(cached) = suggestion_cache.get(word) {
+                cached.clone()
             } else {
-                self.suggest(word, dictionary)
+                let computed = self.suggest(word, dictionary);
+                suggestion_cache.insert(word, computed.clone());
+                computed
             };
             out.push(Misspelling {
                 word: word.to_string(),
@@ -360,13 +391,6 @@ fn edits1(word: &str) -> HashSet<String> {
     }
 
     out
-}
-
-/// Returns true if `range` overlaps any range in `excluded`.
-fn overlaps_any(range: &Range<usize>, excluded: &[Range<usize>]) -> bool {
-    excluded
-        .iter()
-        .any(|e| range.start < e.end && e.start < range.end)
 }
 
 /// Splits `text` into word tokens: maximal runs of Unicode alphabetic
@@ -549,15 +573,50 @@ pub struct CheckResult {
     pub revision: Revision,
     /// The misspellings found in the text at that revision.
     pub misspellings: Vec<Misspelling>,
+    /// A fast, non-cryptographic fingerprint of the exact text this result
+    /// was computed against. This exists solely to catch a caller bug:
+    /// reusing the same [`Revision`] value after the text actually changed
+    /// (i.e. forgetting to bump the revision counter). It is never exposed
+    /// or compared on its own; see [`Self::is_stale_for`].
+    text_fingerprint: u64,
 }
 
 impl CheckResult {
     /// True if `current_revision` differs from the revision this result was
     /// computed against — i.e. the source has since changed and this result
     /// must not be reused (displayed, acted on, ...) without recomputing.
+    ///
+    /// This compares only the revision identifier. It trusts the caller's
+    /// revision bookkeeping: if the text changed but the caller passes back
+    /// the *same* revision value by mistake, this method alone cannot see
+    /// that. Use [`Self::is_stale_for`] when the current text is available
+    /// and that class of bug matters to detect.
     pub fn is_stale(&self, current_revision: Revision) -> bool {
         self.revision != current_revision
     }
+
+    /// True if this result must not be reused against `current_text` at
+    /// `current_revision`: either the revision moved on (same check as
+    /// [`Self::is_stale`]), or the revision is unchanged but the text is not
+    /// byte-for-byte what this result was computed against — a caller bug
+    /// (a missed revision bump) that plain revision comparison cannot catch
+    /// on its own. Identical revision *and* identical text is fresh.
+    pub fn is_stale_for(&self, current_revision: Revision, current_text: &str) -> bool {
+        self.is_stale(current_revision) || self.text_fingerprint != fingerprint(current_text)
+    }
+}
+
+/// Fast, non-cryptographic fingerprint of `text`, used only by
+/// [`CheckResult::is_stale_for`] to detect same-revision text drift. Not a
+/// security hash and not exposed to callers; collisions are irrelevant to
+/// its purpose (a diagnostic for a caller bookkeeping bug), not a source of
+/// unsoundness anywhere else in this crate.
+fn fingerprint(text: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Outcome of a cancellable check: either it ran to completion, or a
