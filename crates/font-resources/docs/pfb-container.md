@@ -211,3 +211,19 @@ sidebearing/advance, stems, sources and identity/digests. Synthetic thirds-based
 width/translation/cubic controls and overflow checks pass. This removes the
 numeric representation gap only: no FontMatrix/PaintType/conditional-header gate,
 OtherSubrs execution, hint application or renderer activation changes.
+
+### Exact-rational matrix adapter
+
+`transform_rational(raw, &context)` accepts the rational decoder output and the
+same verified immutable Context as the dyadic adapter. Both share checked matrix
+arithmetic. Advances are untranslated vectors; sidebearings and path controls are
+points. The complete raw outline, font/license identity, glyph name, charstring
+digest, stem policy and command source chains remain available in the result.
+Identity mismatch, inconsistent source counts, excessive retained output and
+arithmetic overflow fail explicitly.
+
+A synthetic PFB with a genuinely parsed declarative context tests exact thirds,
+translation, negative scaling and width-vector behavior. Exactly representable
+dyadic and rational paths produce identical transformed commands and metrics.
+The real conditional LM header remains refused; this adapter does not authorize
+PostScript execution, native rendering or unverified context substitution.

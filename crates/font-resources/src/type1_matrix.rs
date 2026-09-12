@@ -3,7 +3,7 @@ use crate::{
     cff::{CubicCommand, CubicPoint, DictNumber, MatrixCommand, Rational, RationalPoint},
     pfb::{Identity, Resource, SegmentKind},
     sha256,
-    type1_outline::Outline,
+    type1_outline::{Outline, RationalOutline},
     type1_records::{number, Parser},
 };
 use std::collections::BTreeSet;
@@ -212,9 +212,12 @@ pub struct Transformed {
 fn map(p: CubicPoint, m: [Rational; 6], vector: bool) -> Result<RationalPoint, Error> {
     let x = Rational::new(p.x.numerator(), 1i128 << p.x.shift()).map_err(|_| Error::Arithmetic)?;
     let y = Rational::new(p.y.numerator(), 1i128 << p.y.shift()).map_err(|_| Error::Arithmetic)?;
+    map_rational(RationalPoint { x, y }, m, vector)
+}
+fn map_rational(p: RationalPoint, m: [Rational; 6], vector: bool) -> Result<RationalPoint, Error> {
     let axis = |a: Rational, b: Rational, c: Rational| {
-        x.checked_mul(a)
-            .and_then(|x| y.checked_mul(b).and_then(|y| x.checked_add(y)))
+        p.x.checked_mul(a)
+            .and_then(|x| p.y.checked_mul(b).and_then(|y| x.checked_add(y)))
             .and_then(|v| if vector { Ok(v) } else { v.checked_add(c) })
             .map_err(|_| Error::Arithmetic)
     };
@@ -251,6 +254,57 @@ pub fn transform(raw: Outline, context: &Context) -> Result<Transformed, Error> 
     Ok(Transformed {
         advance: map(raw.advance, m, true)?,
         sidebearing: map(raw.sidebearing, m, false)?,
+        raw,
+        context: context.clone(),
+        commands,
+    })
+}
+pub struct RationalTransformed {
+    pub raw: RationalOutline,
+    pub context: Context,
+    pub advance: RationalPoint,
+    pub sidebearing: RationalPoint,
+    pub commands: Vec<MatrixCommand>,
+}
+/// Matrix binding only; the same verified Context and unsupported profile gates apply.
+pub fn transform_rational(
+    raw: RationalOutline,
+    context: &Context,
+) -> Result<RationalTransformed, Error> {
+    if raw.identity != context.identity {
+        return Err(Error::Identity);
+    }
+    if raw.commands.len() > 16384
+        || raw.commands.len() != raw.sources.len()
+        || raw.stems.len() > 4096
+        || raw.sources.iter().any(|s| s.subroutine_chain.len() > 16)
+    {
+        return Err(Error::Budget);
+    }
+    let m = context.matrix;
+    let commands = raw
+        .commands
+        .iter()
+        .map(|c| {
+            Ok(match *c {
+                MatrixCommand::MoveTo(p) => MatrixCommand::MoveTo(map_rational(p, m, false)?),
+                MatrixCommand::LineTo(p) => MatrixCommand::LineTo(map_rational(p, m, false)?),
+                MatrixCommand::CurveTo {
+                    control1,
+                    control2,
+                    end,
+                } => MatrixCommand::CurveTo {
+                    control1: map_rational(control1, m, false)?,
+                    control2: map_rational(control2, m, false)?,
+                    end: map_rational(end, m, false)?,
+                },
+                MatrixCommand::Close => MatrixCommand::Close,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok(RationalTransformed {
+        advance: map_rational(raw.advance, m, true)?,
+        sidebearing: map_rational(raw.sidebearing, m, false)?,
         raw,
         context: context.clone(),
         commands,
@@ -382,5 +436,104 @@ mod tests {
             assert!(validate_trailer(&tampered).is_err())
         }
         assert!(validate_trailer(b"cleartomark").is_err());
+    }
+    #[test]
+    fn rational_binding_thirds_and_dyadic_equivalence_use_verified_context() {
+        fn segment(kind: u8, bytes: &[u8], out: &mut Vec<u8>) {
+            out.extend([128, kind]);
+            out.extend((bytes.len() as u32).to_le_bytes());
+            out.extend(bytes)
+        }
+        let mut bytes = Vec::new();
+        segment(1, header("-2 0 0 0.5 10 -3", 0).as_bytes(), &mut bytes);
+        segment(2, b"abcd", &mut bytes);
+        let mut trailer = vec![b'0'; 512];
+        trailer.extend(b"\ncleartomark\n");
+        segment(1, &trailer, &mut bytes);
+        bytes.extend([128, 3]);
+        let identity = Identity {
+            resource_id: "synthetic-rational".into(),
+            sha256: sha256(&bytes),
+            byte_length: bytes.len() as u64,
+            license: crate::LicenseMetadata {
+                identifier: "LicenseRef-test".into(),
+                copyright: "test".into(),
+                source: "synthetic".into(),
+                text_path: "LICENSE".into(),
+                text_sha256: sha256(b"license"),
+                embedding_permission: crate::EmbeddingPermission::Unknown,
+            },
+        };
+        let resource = Resource::from_bytes(&identity, &bytes, b"license").unwrap();
+        let context = Context::from_resource(&resource).unwrap();
+        let raw = |p: RationalPoint| RationalOutline {
+            identity: identity.clone(),
+            glyph_name: "A".into(),
+            charstring_sha256: sha256(b"glyph"),
+            sidebearing: p,
+            advance: p,
+            commands: vec![
+                MatrixCommand::MoveTo(p),
+                MatrixCommand::CurveTo {
+                    control1: p,
+                    control2: p,
+                    end: p,
+                },
+                MatrixCommand::Close,
+            ],
+            sources: vec![
+                crate::type1_outline::CommandSource {
+                    subroutine_chain: vec![1],
+                    byte_offset: 2
+                };
+                3
+            ],
+            policy: crate::type1_outline::Policy::default(),
+            stems: vec![],
+        };
+        let thirds = RationalPoint {
+            x: Rational::new(1, 3).unwrap(),
+            y: Rational::new(-2, 3).unwrap(),
+        };
+        let transformed = transform_rational(raw(thirds), &context).unwrap();
+        assert_eq!(
+            transformed.advance,
+            RationalPoint {
+                x: Rational::new(-2, 3).unwrap(),
+                y: Rational::new(-1, 3).unwrap()
+            }
+        );
+        assert_eq!(
+            transformed.sidebearing,
+            RationalPoint {
+                x: Rational::new(28, 3).unwrap(),
+                y: Rational::new(-10, 3).unwrap()
+            }
+        );
+        assert_eq!(transformed.raw.identity, identity);
+        assert_eq!(transformed.raw.sources[0].subroutine_chain, vec![1]);
+        let dyadic = RationalPoint {
+            x: Rational::new(3, 2).unwrap(),
+            y: Rational::new(7, 4).unwrap(),
+        };
+        let old = transform(raw(dyadic).try_into_dyadic().unwrap(), &context).unwrap();
+        let new = transform_rational(raw(dyadic), &context).unwrap();
+        assert_eq!(old.commands, new.commands);
+        assert_eq!(old.advance, new.advance);
+        assert_eq!(old.sidebearing, new.sidebearing);
+        let huge = RationalPoint {
+            x: Rational::new(i128::MAX, 1).unwrap(),
+            y: Rational::new(0, 1).unwrap(),
+        };
+        assert!(matches!(
+            transform_rational(raw(huge), &context),
+            Err(Error::Arithmetic)
+        ));
+        let mut other = context;
+        other.identity.resource_id = "changed".into();
+        assert!(matches!(
+            transform_rational(raw(thirds), &other),
+            Err(Error::Identity)
+        ));
     }
 }
