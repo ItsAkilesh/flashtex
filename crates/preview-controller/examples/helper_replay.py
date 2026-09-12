@@ -47,6 +47,61 @@ class Client:
         self.proc.stdout.close()
 
 
+def snapshot_after_initial_preview(client):
+    assert client.read()[0]["type"] == "ready"
+    client.send("snapshot-document", "document", dict(path="main.tex"))
+    document = None
+    preview = False
+    while document is None or not preview:
+        event, _ = client.read()
+        if event.get("id") == "snapshot-document":
+            document = event["payload"]["document"]
+        if event.get("payload", {}).get("kind") == "preview":
+            preview = True
+    return document
+
+
+def lost_reply_recovery(helper, config):
+    client = Client(helper, config)
+    try:
+        before = snapshot_after_initial_preview(client)
+        edited = before["text"].replace("\\end{document}", "Lost reply recovery.\n\\end{document}")
+        assert edited != before["text"]
+        payload = dict(path="main.tex", expected_revision=before["revision"],
+                       expected_sha256=before["source_sha256"], text=edited)
+        assert not client.buffer
+        client.send("lost-edit", "edit", payload)
+        # Observe queued output without consuming the acknowledgement, then kill.
+        # Reopened state below proves whether this particular edit was durable.
+        if not select.select([client.proc.stdout], [], [], 15)[0]:
+            raise RuntimeError("lost-reply output deadline")
+    finally:
+        client.stop()
+    client = Client(helper, config)
+    try:
+        recovered = snapshot_after_initial_preview(client)
+        assert recovered["text"] == edited
+        assert recovered["revision"] == before["revision"] + 1
+        assert recovered["source_sha256"] == hashlib.sha256(edited.encode()).hexdigest()
+        client.send("lost-edit", "edit", payload)
+        while True:
+            event, _ = client.read()
+            if event.get("id") == "lost-edit":
+                assert event["type"] == "error", "stale full-source retry must not apply twice"
+                break
+        client.send("after-retry", "document", dict(path="main.tex"))
+        while True:
+            event, _ = client.read()
+            if event.get("id") == "after-retry":
+                assert event["payload"]["document"] == recovered
+                break
+    finally:
+        client.stop()
+    return dict(unread_ack_kill=True, exact_recovered_source=True,
+                revision_advanced_once=True, stale_retry_rejected=True,
+                retry_preserved_document=True)
+
+
 def run(args):
     helper = str(Path(args.helper).resolve())
     compiler = str(Path(args.compiler).resolve())
@@ -125,10 +180,12 @@ def run(args):
                     break
         finally:
             client.stop()
+        recovery = lost_reply_recovery(helper, config) if args.lost_reply else None
         print(json.dumps(dict(type="summary", edits=args.edits, exact_reopen=True,
             helper_sha256=hashlib.sha256(Path(helper).read_bytes()).hexdigest(),
             compiler_sha256=hashlib.sha256(Path(compiler).read_bytes()).hexdigest(),
-            native_paint_measured=False, lost_reply_retry_measured=False)))
+            native_paint_measured=False, lost_reply_retry_measured=args.lost_reply,
+            lost_reply_evidence=recovery)))
 
 
 if __name__ == "__main__":
@@ -137,6 +194,8 @@ if __name__ == "__main__":
     parser.add_argument("--compiler", required=True)
     parser.add_argument("--size", type=int, default=5000)
     parser.add_argument("--edits", type=int, default=5)
+    parser.add_argument("--lost-reply", action="store_true",
+                        help="kill before reading an edit acknowledgement and verify recovery/retry")
     args = parser.parse_args()
     if not 100 <= args.size <= 500000 or not 1 <= args.edits <= 20:
         parser.error("size must be100..500000 and edits1..20")

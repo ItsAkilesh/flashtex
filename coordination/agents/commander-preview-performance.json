@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
+  "code_revision": "893ce2a8bb33b39fe76c7fd75d1201813a2ca121",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Extend driver with lost-reply recovery scenario; await Mac same-input remeasurement.",
+  "next_action": "Continue bounded serialization residency review; await native helper benchmark feedback.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 real-helper evidence:30/30exact-clean,4exactkill/reopens;50KBmedianpreview141.457\u219294.910ms,5KB17.851\u219212.566ms.Identicaldeps/compiler; sequentialLinuxwire,no native/burst/lostreplyclaim.",
+  "summary": "FT048 real-helper lost-ack checks pass5/50KB: exactsource/hash after unreadreplykill,revision+1,staleretryrejected,no duplicate mutation. Prior30latencysamples and35controller tests remain separately recorded.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:05:39Z",
+  "updated_utc": "2026-09-12T09:07:34Z",
   "usage": {
     "status": "unknown"
   }
