@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
-  "objective": "Assess malformed raw metadata allocation and propose early bounded validation without arbitrary legacy restrictions",
+  "input_main_sha": "6c73664d7453deea3e44fe220754db43f35c0482",
+  "objective": "Implement justified opt-in metadata bounds or request-aware validation with exact refusal and queue lifecycle tests",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 8,
+  "revision": 9,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
+  "updated_utc": "2026-09-12T12:07:56Z"
 }
