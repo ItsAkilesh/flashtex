@@ -1,11 +1,15 @@
 {
   "base": "467538c77e84e4c3febc5308d49b53e1ca7f3d65",
   "focused_pass": 12,
-  "full_suite": "running process81665",
+  "full_suite": "41 library + 1 scaling pass; initial integration setup failure resolved; all49 integration pass,3 ignored",
   "files": {
     "candidate.patch": "ffcadd5168ac29b0e60e7cc608d8dfd449e6a4533812d4440adba5aec4afed8b",
-    "README.md": "8f8c9bf3445bc9968da2f7b932b3377b854e9b398733909f37c2c42b0bebac95",
+    "README.md": "e487480ae2acf44245ab313fae47081890cb99ba14174f57dd7f916a3fea135b",
     "red.log": "c589aadfccb13e874c23e0a0c0fe9f184936b8f1d2b8b17eb7c6aea0459b1be4",
-    "focused.log": "a84aeced90a61fcdf5e0a1009015cd3fd007c155c833398d9969ffa17a56879c"
-  }
+    "focused.log": "a84aeced90a61fcdf5e0a1009015cd3fd007c155c833398d9969ffa17a56879c",
+    "green.log": "78f2149f8604d434847902f80a4f185e1a07aab5fa956a17466b0063a3881f9b",
+    "integration.log": "6ac2f370a04f7f5831b64a059bff9413731f46a73bdeea416d5c58fcee7e1bb7",
+    "clippy.log": "ac6a8a94d20d1c4c0d0e4e4f87e267d18ef3a55a0d7a2b783bc3b18bf89516c1"
+  },
+  "clippy": "all-targets -D warnings pass"
 }
