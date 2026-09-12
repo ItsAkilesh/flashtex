@@ -39,8 +39,8 @@ final class CompletionTests: XCTestCase {
         let math = Completion.suggestions(in: "$\\al", caretUTF16: 4, result: nil)
         XCTAssertEqual(labels(math), ["\\alpha"])
         XCTAssertEqual(math.first?.detail, "math · symbol α")
-        XCTAssertEqual(Completion.Vocabulary.symbols.count, 22)
-        XCTAssertEqual(Completion.Vocabulary.entries.count, 22 + 22)
+        XCTAssertEqual(Completion.Vocabulary.symbols.count, 112)
+        XCTAssertGreaterThan(Completion.Vocabulary.entries.count, Completion.Vocabulary.symbols.count)
         let frac = Completion.suggestions(in: "\\fr", caretUTF16: 3, result: nil)
         XCTAssertEqual(labels(frac), ["\\frac{num}{den}"])
         XCTAssertEqual(frac.first?.insertText, "\\frac")
@@ -91,24 +91,25 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(env.first?.kind, .environment)
         let beginCtx = "\\begin{itemize}\\end{itemize}\\begin{d"
         let b = Completion.suggestions(in: beginCtx, caretUTF16: (beginCtx as NSString).length, result: nil)
-        XCTAssertEqual(labels(b), ["document"])
+        XCTAssertEqual(labels(b), ["document", "displaymath"])
         XCTAssertEqual(b.first?.detail, "supported by this compiler")
     }
 
     func testUnsupportedDocumentCommandsAreMarked() {
-        let text = "\\documentclass{article}\n\\usepackage{amsmath}\n\\newpage\n\\ne"
+        let text = "\\documentclass{article}\n\\usepackage{amsmath}\n\\newwidget\n\\ne"
         let diag = RuntimeV1.Diagnostic(severity: .error,
-                                        message: "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+                                        message: "\\newwidget is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                                         source: nil, recovery: nil)
         let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .recovered, pages: [], diagnostics: [diag], pdfPath: nil)
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: result)
-        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\neq", "\\newpage"])
-        XCTAssertEqual(s[1].detail, "math · symbol ≠")
-        XCTAssertEqual(s[2].detail, "not supported by the compiler — " + diag.message)
+        XCTAssertTrue(labels(s).contains("\\newcommand{\\name}[n]{body}"))
+        XCTAssertTrue(labels(s).contains("\\newpage"), "a real compiler command must not be marked unsupported")
+        XCTAssertEqual(s.first { $0.label == "\\neq" }?.detail, "math · symbol ≠")
+        XCTAssertEqual(s.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler — " + diag.message)
 
         // Without a diagnostic naming it the mark is still there, without a message.
         let s2 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
-        XCTAssertEqual(s2[2].detail, "not supported by the compiler")
+        XCTAssertEqual(s2.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler")
 
         // The command being typed is not offered as its own completion (only the
         // vocabulary entry it is a prefix of).
@@ -119,7 +120,7 @@ final class CompletionTests: XCTestCase {
         // A custom supported list replaces the default.
         let s4 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil, supported: ["newpage"])
         XCTAssertEqual(labels(s4), ["\\newpage"])
-        XCTAssertEqual(s4[0].detail, "supported by this compiler")
+        XCTAssertEqual(s4[0].detail, "force a page break")
     }
 
     func testReferencesSuggestLabels() {
@@ -346,16 +347,14 @@ final class CompletionTests: XCTestCase {
         let readmeCommands = documentedCommands(commands)
         let readmeMath = documentedCommands(math)
         let readmeEnvironments = matches("`([a-z]+)`", in: commands).map { $0[1] }
-        XCTAssertEqual(readmeCommands.count, 18, "\(readmeCommands)")
+        XCTAssertEqual(readmeCommands.count, 43, "\(readmeCommands)")
         XCTAssertTrue(readmeCommands.contains("\\"), "the README lists `\\\\` (line break)")
 
         let table = Completion.Vocabulary.entries
         XCTAssertEqual(table.filter { $0.source == .readmeCommands }.map(\.name).sorted(), readmeCommands.sorted(),
                        "README 'Supported commands' drifted from Completion.Vocabulary")
-        XCTAssertEqual(table.filter { $0.source == .readmeMath }.map(\.name).sorted(), readmeMath.sorted(),
-                       "README 'Supported math' drifted from Completion.Vocabulary")
-        XCTAssertEqual(Completion.Vocabulary.environments.sorted(), readmeEnvironments.sorted(),
-                       "README environment list drifted")
+        XCTAssertTrue(Set(readmeEnvironments).isSubset(of: Set(Completion.Vocabulary.environments)),
+                      "every environment advertised in the README must complete")
         XCTAssertEqual(Set(table.map(\.name)).count, table.count, "no duplicate names")
         for e in table {
             XCTAssertFalse(e.description.isEmpty, e.name)
@@ -365,13 +364,43 @@ final class CompletionTests: XCTestCase {
         // Symbols: the exact `COMMAND_GLYPHS` table, in order, with its glyphs.
         let mathRS = try String(contentsOf: compiler.appendingPathComponent("src/math.rs"), encoding: .utf8)
         let glyphBlock = try XCTUnwrap(mathRS.range(of: "COMMAND_GLYPHS: &[(&str, &str)] = &[")).upperBound
-        let glyphs = matches("\\(\"([a-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
+        let glyphs = matches("\\(\"([A-Za-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
         XCTAssertEqual(glyphs.map(\.0), Completion.Vocabulary.symbols.map(\.0), "src/math.rs COMMAND_GLYPHS names drifted")
         XCTAssertEqual(glyphs.map(\.1), Completion.Vocabulary.symbols.map(\.1), "src/math.rs COMMAND_GLYPHS glyphs drifted")
-        XCTAssertEqual(Set(readmeMath), Set(glyphs.map(\.0) + ["frac", "sqrt"]), "README symbols and COMMAND_GLYPHS disagree")
+        XCTAssertTrue(Set(glyphs.map(\.0)).isSubset(of: Set(readmeMath)), "every emitted symbol must be documented")
         for (name, glyph) in glyphs {
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.glyph, glyph)
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.mode, .math)
+        }
+
+        // Commands explicitly documented as unavailable remain diagnostics,
+        // never attractive but false completion promises.
+        let unavailable = ["oint", "mapsto", "mp", "ll", "gg", "lfloor", "lceil", "vdots", "ddots", "ell", "hbar"]
+        for name in unavailable {
+            XCTAssertTrue(readmeMath.contains(name), "README must retain the explicit limitation for \\(name)")
+            XCTAssertNil(Completion.Vocabulary.byName[name], "unsupported math command \\(name) must not complete")
+        }
+
+        // Named operators come from their Rust constant, in exact order.
+        let operatorStart = try XCTUnwrap(mathRS.range(of: "const OPERATOR_NAMES: &[&str] = &[")).upperBound
+        let operators = matches("\"([A-Za-z]+)\"", in: String(mathRS[operatorStart...].prefix { $0 != "]" })).map { $0[1] }
+        XCTAssertEqual(operators, Completion.Vocabulary.operatorNames, "src/math.rs OPERATOR_NAMES drifted")
+
+        // Every literal command arm before the fallback must have a completion.
+        // Conversely every mathParser entry must still be backed by an arm or
+        // OPERATOR_NAMES, so removed compiler support cannot leave a stale item.
+        let commandStart = try XCTUnwrap(mathRS.range(of: "        match name.as_str() {")).lowerBound
+        let commandTail = mathRS[commandStart...]
+        let commandEnd = try XCTUnwrap(commandTail.range(of: "            _ => match command_glyph(&name) {")).lowerBound
+        let mathArmGroups = matches("^\\s*((?:\"[A-Za-z]+\"\\s*\\|\\s*)*\"[A-Za-z]+\")\\s*=>",
+                                    in: String(commandTail[..<commandEnd]), options: [.anchorsMatchLines])
+        let mathArms = Set(mathArmGroups.flatMap { matches("\"([A-Za-z]+)\"", in: $0[1]).map { $0[1] } })
+        for name in mathArms.union(operators) {
+            XCTAssertNotNil(Completion.Vocabulary.byName[name], "supported math command \\(name) is missing")
+        }
+        let backedMath = mathArms.union(operators)
+        for entry in table where entry.source == .mathParser {
+            XCTAssertTrue(backedMath.contains(entry.name), "stale math completion \\(entry.name)")
         }
 
         // Parser arms: every text-mode dispatch arm is in the table (documented
@@ -394,7 +423,7 @@ final class CompletionTests: XCTestCase {
             XCTAssertNotNil(Completion.Vocabulary.byName[arm], "parser arm \\\(arm) is missing from Completion.Vocabulary")
         }
         let parserOnly = table.filter { $0.source == .parserArm }.map(\.name)
-        XCTAssertEqual(parserOnly, ["input", "include"])
+        XCTAssertEqual(parserOnly, ["setlist", "input", "include", "hfill", "hfil", "hspace", "vspace", "hrule", "newpage", "pagestyle"])
         XCTAssertTrue(parser.contains("\"input\" | \"include\" => self.include("), "the parser arm the parser-only entries cite")
         for name in parserOnly { XCTAssertFalse(readmeCommands.contains(name), "\(name) is not in the README paragraph; move its source if that changes") }
     }
@@ -418,19 +447,19 @@ final class CompletionTests: XCTestCase {
 
     func testMetadataFromCompileResultParsesDiagnosticsAndCaps() {
         let r = result(revision: 7, [
-            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
-            "\\newpage duplicate mention is ignored",
+            "\\newwidget is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+            "\\newwidget duplicate mention is ignored",
             "undefined reference 'eq:missing'",
-            "environment 'align' is not implemented; its body is typeset as plain text",
+            "environment 'mysteryenv' is not implemented; its body is typeset as plain text",
             "packages amsmath are recognised but not implemented",
             "\\", // no name
         ])
         let m = Completion.Metadata.from(r)
         XCTAssertEqual(m.origin, .compileResult(projectId: "p"))
         XCTAssertEqual(m.revision, 7)
-        XCTAssertEqual(m.diagnosticsByCommand, ["newpage": r.diagnostics[0].message])
+        XCTAssertEqual(m.diagnosticsByCommand, ["newwidget": r.diagnostics[0].message])
         XCTAssertEqual(m.unresolvedReferences, ["eq:missing"])
-        XCTAssertEqual(m.diagnosticsByEnvironment, ["align": r.diagnostics[3].message])
+        XCTAssertEqual(m.diagnosticsByEnvironment, ["mysteryenv": r.diagnostics[3].message])
         XCTAssertFalse(m.truncated)
         XCTAssertTrue(m.labels.isEmpty && m.citations.isEmpty && m.commands.isEmpty, "runtime-v1 carries no vocabulary")
 
@@ -521,13 +550,13 @@ final class CompletionTests: XCTestCase {
                                                                    category: .command, editorRevision: 5, expectedSourceVersions: versions)
         let compiled = Completion.Metadata.from(result(revision: 5, [
             "undefined reference 'fig:local'",
-            "environment 'align' is not implemented; its body is typeset as plain text",
-            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+            "environment 'mysteryenv' is not implemented; its body is typeset as plain text",
+            "\\newwidget is not supported by this compiler version; unrestricted TeX math mode is not implemented",
         ]))
         let m = try XCTUnwrap(labelMeta.merged(with: cites)?.merged(with: cmds)?.merged(with: compiled))
 
         // References: document labels first (with the compiler's verdict), then project-wide ones.
-        let ref = "\\label{fig:local}\\newpage \\begin{align} \\ref{fi"
+        let ref = "\\label{fig:local}\\newwidget \\begin{mysteryenv} \\ref{fi"
         let refs = Completion.suggestions(in: ref, caretUTF16: (ref as NSString).length, metadata: m)
         XCTAssertEqual(labels(refs), ["fig:local", "fig:river"])
         XCTAssertEqual(refs[0].detail, "\\label in this document — undefined when revision 5 compiled")
@@ -551,11 +580,12 @@ final class CompletionTests: XCTestCase {
 
         // Commands: declared project commands after the supported list, deduplicated
         // against it; unsupported document commands carry the bound diagnostic.
-        let cmd = ref + "g} \\ne"
+        let cmd = ref + "g} \\new"
         let s = Completion.suggestions(in: cmd, caretUTF16: (cmd as NSString).length, metadata: m)
-        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\neq", "\\newterm", "\\newpage"])
-        XCTAssertEqual(s[2].detail, "declared in main.tex · 4 uses · revision 5")
-        XCTAssertEqual(s[3].detail, "not supported by the compiler — " + compiled.diagnosticsByCommand["newpage"]!)
+        XCTAssertTrue(labels(s).contains("\\newcommand{\\name}[n]{body}"))
+        XCTAssertTrue(labels(s).contains("\\newpage"))
+        XCTAssertEqual(s.first { $0.label == "\\newterm" }?.detail, "declared in main.tex · 4 uses · revision 5")
+        XCTAssertEqual(s.first { $0.label == "\\newwidget" }?.detail, "not supported by the compiler — " + compiled.diagnosticsByCommand["newwidget"]!)
         // A project `\newcommand` with a builtin's name wins over the static entry:
         // listed once, without the builtin's argument shape, saying so.
         let sec = "x \\sec"
@@ -565,48 +595,47 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(declared[0].detail, "declared in main.tex · revision 5 · overrides the builtin")
         XCTAssertEqual(Completion.suggestions(in: sec, caretUTF16: 6, metadata: nil).map(\.label), ["\\section{...}"])
 
-        // Environments: the README's set says so; others seen in the document
-        // carry the compiler's diagnostic for that revision.
-        let env = ref + "g} \\begin{"
+        // Supported environments say so; others seen in the document carry
+        // the compiler's diagnostic for that revision.
+        let env = ref + "g} \\begin{myst"
         let e = Completion.suggestions(in: env, caretUTF16: (env as NSString).length, metadata: m)
-        XCTAssertEqual(labels(e), Completion.Vocabulary.environments + ["align"])
-        XCTAssertEqual(e[0].detail, "supported by this compiler")
-        XCTAssertEqual(e.last?.detail, "seen in this document — environment 'align' is not implemented; its body is typeset as plain text")
+        XCTAssertEqual(labels(e), ["mysteryenv"])
+        XCTAssertEqual(e[0].detail, "seen in this document — environment 'mysteryenv' is not implemented; its body is typeset as plain text")
     }
 
     @MainActor
     func testTextViewRefusesMetadataNotBoundToItsEditorRevision() throws {
         let scroll = CompletingTextView.scrollable()
         let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
-        let text = "\\newpage \\ne"
+        let text = "\\newwidget \\neww"
         tv.string = text
         tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
-        tv.compileResult = result(revision: 3, ["\\newpage is not supported by this compiler version"])
+        tv.compileResult = result(revision: 3, ["\\newwidget is not supported by this compiler version"])
         XCTAssertEqual(tv.resultMetadata?.revision, 3)
 
-        func newpageDetail() -> String? {
+        func newwidgetDetail() -> String? {
             Completion.suggestions(in: tv.string, caretUTF16: tv.selectedRange().location, metadata: tv.boundMetadata)
-                .first { $0.label == "\\newpage" }?.detail
+                .first { $0.label == "\\newwidget" }?.detail
         }
         // Unknown editor revision: nothing binds.
         XCTAssertNil(tv.editorRevision)
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler")
+        XCTAssertEqual(newwidgetDetail(), "not supported by the compiler")
         // Editor moved on since the result was compiled: refused.
         tv.editorRevision = 4
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler")
+        XCTAssertEqual(newwidgetDetail(), "not supported by the compiler")
         // Exact revision: bound and shown.
         tv.editorRevision = 3
         XCTAssertEqual(tv.boundMetadata?.revision, 3)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler — \\newpage is not supported by this compiler version")
+        XCTAssertEqual(newwidgetDetail(), "not supported by the compiler — \\newwidget is not supported by this compiler version")
         // The synchronous AppKit path binds the same way.
         var index = 0
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newwidget"])
 
         // Project-index metadata: older than the held one is refused; equal merges; newer replaces.
         let versions = ["main.tex": 1]
-        let at3 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newterm", 1, 0, false)]),
+        let at3 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newwork", 1, 0, false)]),
                                                                   category: .command, editorRevision: 3, expectedSourceVersions: versions)
         let at2 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("older", 1, 0, false)]),
                                                                   category: .command, editorRevision: 2, expectedSourceVersions: versions)
@@ -615,13 +644,13 @@ final class CompletionTests: XCTestCase {
         XCTAssertTrue(tv.accept(projectIndex: at3))
         XCTAssertFalse(tv.accept(projectIndex: at2))
         XCTAssertTrue(tv.accept(projectIndex: cites3))
-        XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newterm"])
+        XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newwork"])
         XCTAssertEqual(tv.projectIndexMetadata?.citations.map(\.name), ["k"])
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newterm", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newwork", "\\newwidget"])
         XCTAssertEqual(tv.boundMetadata?.diagnosticsByCommand.count, 1, "compile-result and index metadata merge at the bound revision")
         tv.editorRevision = 4
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newwidget"])
         let at5 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newer", 1, 0, false)]),
                                                                   category: .command, editorRevision: 5, expectedSourceVersions: versions)
         XCTAssertTrue(tv.accept(projectIndex: at5))

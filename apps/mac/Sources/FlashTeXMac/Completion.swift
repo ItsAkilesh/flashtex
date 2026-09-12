@@ -56,11 +56,14 @@ enum Completion {
         enum Source: Equatable {
             /// README "Supported commands".
             case readmeCommands
-            /// README "Supported math" (`frac`/`sqrt` and the symbol table,
-            /// which `src/math.rs` `COMMAND_GLYPHS` renders).
+            /// README "Supported math" entries emitted by the
+            /// `src/math.rs` `COMMAND_GLYPHS` table.
             case readmeMath
             /// `src/parser.rs` dispatch arm not listed in the README paragraph.
             case parserArm
+            /// A supported `command_atom` arm or `OPERATOR_NAMES` entry that
+            /// is not one of the simple `COMMAND_GLYPHS` symbols.
+            case mathParser
         }
 
         struct Entry: Equatable {
@@ -108,13 +111,40 @@ enum Completion {
             }
         }
 
+        private static func math(_ names: [String], arguments: String = "", description: String) -> [Entry] {
+            names.map { Entry(name: $0, arguments: arguments, description: description, mode: .math, source: .mathParser) }
+        }
+
         static let entries: [Entry] = [
             Entry(name: "section", arguments: "{...}", description: "numbered section heading", mode: .text, source: .readmeCommands),
             Entry(name: "subsection", arguments: "{...}", description: "numbered subsection heading; resets when a section advances", mode: .text, source: .readmeCommands),
             Entry(name: "textbf", arguments: "{...}", description: "bold text", mode: .text, source: .readmeCommands),
             Entry(name: "emph", arguments: "{...}", description: "emphasised (italic) text", mode: .text, source: .readmeCommands),
             Entry(name: "textit", arguments: "{...}", description: "italic text", mode: .text, source: .readmeCommands),
-            Entry(name: "begin", arguments: "{env}", description: "opens document, equation, figure, itemize or enumerate", mode: .text, source: .readmeCommands),
+            Entry(name: "textsl", arguments: "{...}", description: "slanted text", mode: .text, source: .readmeCommands),
+            Entry(name: "texttt", arguments: "{...}", description: "typewriter text", mode: .text, source: .readmeCommands),
+            Entry(name: "textrm", arguments: "{...}", description: "roman text", mode: .text, source: .readmeCommands),
+            Entry(name: "textsf", arguments: "{...}", description: "sans-serif text", mode: .text, source: .readmeCommands),
+            Entry(name: "textmd", arguments: "{...}", description: "medium-weight text", mode: .text, source: .readmeCommands),
+            Entry(name: "textup", arguments: "{...}", description: "upright text", mode: .text, source: .readmeCommands),
+            Entry(name: "textnormal", arguments: "{...}", description: "normal text", mode: .text, source: .readmeCommands),
+            Entry(name: "bfseries", arguments: "", description: "switch to bold text", mode: .text, source: .readmeCommands),
+            Entry(name: "mdseries", arguments: "", description: "switch to medium-weight text", mode: .text, source: .readmeCommands),
+            Entry(name: "itshape", arguments: "", description: "switch to italic text", mode: .text, source: .readmeCommands),
+            Entry(name: "slshape", arguments: "", description: "switch to slanted text", mode: .text, source: .readmeCommands),
+            Entry(name: "upshape", arguments: "", description: "switch to upright text", mode: .text, source: .readmeCommands),
+            Entry(name: "ttfamily", arguments: "", description: "switch to typewriter", mode: .text, source: .readmeCommands),
+            Entry(name: "rmfamily", arguments: "", description: "switch to roman", mode: .text, source: .readmeCommands),
+            Entry(name: "sffamily", arguments: "", description: "switch to sans-serif", mode: .text, source: .readmeCommands),
+            Entry(name: "normalfont", arguments: "", description: "reset the text face", mode: .text, source: .readmeCommands),
+            Entry(name: "em", arguments: "", description: "toggle emphasis", mode: .text, source: .readmeCommands),
+            Entry(name: "bf", arguments: "", description: "switch to bold roman", mode: .text, source: .readmeCommands),
+            Entry(name: "it", arguments: "", description: "switch to italic roman", mode: .text, source: .readmeCommands),
+            Entry(name: "sl", arguments: "", description: "switch to slanted roman", mode: .text, source: .readmeCommands),
+            Entry(name: "tt", arguments: "", description: "switch to upright typewriter", mode: .text, source: .readmeCommands),
+            Entry(name: "rm", arguments: "", description: "switch to upright roman", mode: .text, source: .readmeCommands),
+            Entry(name: "sf", arguments: "", description: "switch to upright sans-serif", mode: .text, source: .readmeCommands),
+            Entry(name: "begin", arguments: "{env}", description: "open a supported environment", mode: .text, source: .readmeCommands),
             Entry(name: "end", arguments: "{env}", description: "closes the innermost open environment", mode: .text, source: .readmeCommands),
             Entry(name: "item", arguments: "", description: "entry of an itemize or enumerate list", mode: .text, source: .readmeCommands),
             Entry(name: "label", arguments: "{key}", description: "names the current section, equation or figure for \\ref and \\pageref", mode: .text, source: .readmeCommands),
@@ -127,23 +157,80 @@ enum Completion {
             Entry(name: "renewcommand", arguments: "{\\name}[n]{body}", description: "redefines an existing macro", mode: .text, source: .readmeCommands),
             Entry(name: "documentclass", arguments: "[options]{class}", description: "records the class; only the document body is typeset", mode: .text, source: .readmeCommands),
             Entry(name: "usepackage", arguments: "[options]{a,b,c}", description: "records package names; packages are recognised but not implemented", mode: .text, source: .readmeCommands),
+            Entry(name: "listfiles", arguments: "", description: "accepted package-log no-op", mode: .text, source: .readmeCommands),
+            Entry(name: "noindent", arguments: "", description: "accepted no-op because paragraphs are never indented", mode: .text, source: .readmeCommands),
+
+            Entry(name: "setlist", arguments: "[list]{options}", description: "recognised list configuration; spacing remains at the compiler default", mode: .text, source: .parserArm),
             Entry(name: "input", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
             Entry(name: "include", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
-            Entry(name: "frac", arguments: "{num}{den}", description: "fraction; math mode only", mode: .math, source: .readmeMath),
-            Entry(name: "sqrt", arguments: "{x}", description: "square root; math mode only", mode: .math, source: .readmeMath),
-        ] + symbols.map { name, glyph in
+            Entry(name: "hfill", arguments: "", description: "stretchable horizontal glue", mode: .text, source: .parserArm),
+            Entry(name: "hfil", arguments: "", description: "stretchable horizontal glue", mode: .text, source: .parserArm),
+            Entry(name: "hspace", arguments: "{dimension}", description: "fixed horizontal space", mode: .text, source: .parserArm),
+            Entry(name: "vspace", arguments: "{dimension}", description: "fixed vertical space", mode: .text, source: .parserArm),
+            Entry(name: "hrule", arguments: "", description: "horizontal rule", mode: .text, source: .parserArm),
+            Entry(name: "newpage", arguments: "", description: "force a page break", mode: .text, source: .parserArm),
+            Entry(name: "pagestyle", arguments: "{style}", description: "accept a page style without rendering headers or footers", mode: .text, source: .parserArm),
+        ] + [
+            Entry(name: "frac", arguments: "{num}{den}", description: "fraction", mode: .math, source: .mathParser),
+            Entry(name: "sqrt", arguments: "[index]{x}", description: "square root with optional index", mode: .math, source: .mathParser),
+            Entry(name: "operatorname", arguments: "{name}", description: "upright named operator", mode: .math, source: .mathParser),
+            Entry(name: "mathbb", arguments: "{A-Z}", description: "Latin Modern Math double-struck capitals", mode: .math, source: .mathParser),
+            Entry(name: "tag", arguments: "{label}", description: "display tag", mode: .math, source: .mathParser),
+            Entry(name: "pmod", arguments: "{n}", description: "parenthesized modulus", mode: .math, source: .mathParser),
+        ] + math(operatorNames, description: "upright named operator")
+        + math(["bmod", "mod"], description: "upright modulus operator")
+        + math(["mathrm", "mathit", "mathsf", "mathtt", "mathnormal", "boldsymbol", "bm", "mbox", "hbox"], arguments: "{...}", description: "retain a grouped math argument")
+        + math(["displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "nonumber", "notag", "middle"], description: "accepted math control")
+        + math(["left", "right", "big", "Big", "bigg", "Bigg", "bigm", "Bigm", "biggm", "Biggm", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr", "bigl", "bigr"], description: "consume the following delimiter")
+        + math(["dots", "ldots", "dotsc", "dotso", "cdots", "dotsb", "dotsm", "dotsi"], description: "ellipsis")
+        + math(["iint", "iiint", "lbrace", "rbrace", "quad", "qquad"], description: "math glyph or spacing construct")
+        + math(["dfrac", "tfrac", "cfrac"], arguments: "{num}{den}", description: "fraction variant")
+        + math(["overset", "stackrel", "underset"], arguments: "{script}{base}", description: "stack a script over or under a base")
+        + math(["binom", "dbinom", "tbinom"], arguments: "{n}{k}", description: "binomial grid")
+        + math(["mathbf"], arguments: "{text}", description: "bold literal math text")
+        + math(["boxed", "overline", "underline"], arguments: "{...}", description: "draw a rule around, above, or below the body")
+        + math(["text"], arguments: "{text}", description: "literal text in math")
+        + math(["hat", "bar", "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde"], arguments: "{body}", description: "math accent; unavailable or non-stretching marks are diagnosed")
+        + symbols.map { name, glyph in
             Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
         }
 
         /// `src/math.rs` `COMMAND_GLYPHS`, in table order.
         static let symbols: [(String, String)] = [
             ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
-            ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
-            ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
+            ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"),
+            ("epsilon", "ε"), ("varepsilon", "ε"), ("zeta", "ζ"), ("eta", "η"), ("vartheta", "ϑ"), ("iota", "ι"), ("kappa", "κ"),
+            ("nu", "ν"), ("xi", "ξ"), ("varpi", "ϖ"), ("rho", "ρ"), ("varsigma", "ς"), ("tau", "τ"), ("upsilon", "υ"),
+            ("varphi", "ϕ"), ("chi", "χ"), ("psi", "ψ"), ("Gamma", "Γ"), ("Delta", "Δ"), ("Theta", "Θ"), ("Lambda", "Λ"),
+            ("Xi", "Ξ"), ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω"),
+            ("le", "≤"), ("ge", "≥"), ("ne", "≠"), ("equiv", "≡"), ("sim", "∼"), ("cong", "≅"), ("propto", "∝"),
+            ("perp", "⊥"), ("partial", "∂"), ("nabla", "∇"), ("prod", "∏"), ("ast", "∗"), ("prime", "′"),
+            ("cup", "∪"), ("cap", "∩"), ("subset", "⊂"), ("subseteq", "⊆"), ("supset", "⊃"), ("supseteq", "⊇"),
+            ("notin", "∉"), ("ni", "∋"), ("emptyset", "∅"), ("varnothing", "∅"), ("oplus", "⊕"), ("otimes", "⊗"),
+            ("wedge", "∧"), ("land", "∧"), ("lor", "∨"), ("to", "→"), ("rightarrow", "→"), ("leftarrow", "←"),
+            ("gets", "←"), ("uparrow", "↑"), ("downarrow", "↓"), ("leftrightarrow", "↔"), ("implies", "⇒"),
+            ("Leftarrow", "⇐"), ("impliedby", "⇐"), ("Leftrightarrow", "⇔"), ("iff", "⇔"), ("Uparrow", "⇑"),
+            ("Downarrow", "⇓"), ("therefore", "∴"), ("angle", "∠"), ("aleph", "ℵ"), ("Re", "ℜ"), ("Im", "ℑ"),
+            ("wp", "℘"), ("langle", "〈"), ("rangle", "〉"), ("lvert", "∣"), ("rvert", "∣"), ("lVert", "∣∣"), ("rVert", "∣∣"),
+            ("times", "×"), ("div", "÷"), ("pm", "±"), ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"),
+            ("cdot", "⋅"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"), ("in", "∈"), ("forall", "∀"), ("exists", "∃"),
+            ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"), ("setminus", "∖"), ("Longrightarrow", "⟹"),
         ]
 
-        /// Environments the README names for `\begin`/`\end`.
-        static let environments = ["document", "equation", "figure", "itemize", "enumerate"]
+        /// `src/math.rs` `OPERATOR_NAMES`, in table order.
+        static let operatorNames = [
+            "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth",
+            "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det", "gcd", "deg", "dim",
+            "ker", "arg", "hom", "Pr", "sgn",
+        ]
+
+        /// Text/display environments and the math grids accepted by the parser.
+        static let environments = [
+            "document", "equation", "equation*", "displaymath", "gather", "gather*", "align", "align*", "alignat", "alignat*",
+            "flalign", "flalign*", "multline", "multline*", "figure", "center", "flushright", "flushleft", "quote", "quotation",
+            "itemize", "enumerate", "array", "matrix", "smallmatrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix",
+            "cases", "aligned", "alignedat", "split", "gathered",
+        ]
 
         static let byName: [String: Entry] = Dictionary(entries.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
         static let names: [String] = entries.map(\.name)
