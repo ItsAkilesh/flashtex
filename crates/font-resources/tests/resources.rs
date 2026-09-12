@@ -1318,3 +1318,74 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
         ));
     }
 }
+
+#[test]
+fn tfm_boundary_run_maps_explicit_glyphs_and_input_intervals() {
+    use flashtex_font_resources::{encoding::*, tfm::*};
+    let mut data = [20u16, 2, 65, 66, 2, 1, 1, 1, 4, 1, 0, 0]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        0x01000101,
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+        0xfffa0000,
+        0x80fa8000,
+        0x80410042,
+        0xff000002,
+        (-131072i32) as u32,
+    ] {
+        data.extend(word.to_be_bytes());
+    }
+    let tfm = Tfm::parse(&data).unwrap();
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let manifest = encoding_manifest(&font, &tfm);
+    let bound = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let run = bound.map_run(b"A").unwrap();
+    assert!(matches!(
+        run.as_slice(),
+        [MappedItem::Glyph {
+            tfm_code: 66,
+            identity: GlyphIdentity::Notdef,
+            input_start: 0,
+            input_end: 1,
+            ..
+        }]
+    ));
+    let suppressed = bound
+        .map_run_with_boundaries(
+            b"A",
+            BoundaryOptions {
+                left: false,
+                right: true,
+            },
+        )
+        .unwrap();
+    assert!(matches!(
+        suppressed.as_slice(),
+        [
+            MappedItem::Glyph {
+                tfm_code: 65,
+                identity: GlyphIdentity::Original(2),
+                input_start: 0,
+                input_end: 1,
+                ..
+            },
+            MappedItem::Kern(FixWord(-131072))
+        ]
+    ));
+    let mut incomplete = manifest.clone();
+    incomplete.encoding.retain(|entry| entry.code != 66);
+    assert!(BoundTfmFont::new(&tfm, &font, &incomplete)
+        .unwrap()
+        .map_run(b"A")
+        .is_err());
+}

@@ -484,3 +484,31 @@ the bounded declared registry: exact case-sensitive prefix/style/weight filterin
 before enumeration. No filesystem discovery or implicit fallback occurs. Roundtrip
 and pagination tests cover both synthetic resources and the pinned mixed licensed
 STIX/Liberation registry; no native wire negotiation or visual parity is implied.
+
+TFM run interpretation now honors implicit left/right boundaries from the first
+and last lig/kern marker records. The authoritative format rules are in TeX's
+TFM specification, `tex.web` sections on the lig/kern array:
+https://raw.githubusercontent.com/TeX-Live/texlive-source/trunk/texk/web2c/tex.web
+The original interpreter uses distinct invisible boundary sentinels; these are
+never emitted as glyphs or cast to Unicode/GIDs. Left-boundary programs and
+right-boundary matching support exact ligature retention/advance and signed kerns.
+A real encoded glyph matching the boundary byte remains a real glyph. Replacement
+intervals cover participating real input; boundary sentinels contribute only
+zero-length start/end intervals. Missing input glyphs are rejected.
+
+`apply_ligatures_kerns_with_boundaries(input, BoundaryOptions { left, right })`
+allows explicit suppression; the existing method enables both. Both
+`BoundTfmFont` and `BoundCffTfmFont` expose `map_run_with_boundaries` and preserve
+explicit encoding mappings, missing-map errors, metrics and input intervals.
+Empty runs produce nothing.4096 input bytes,8192 working items (including
+sentinels), and65536 combined run/program steps bound malformed cycles and scans.
+Cache consumers must bind TFM hash, explicit encoding/font identity, boundary
+options, input bytes and implementation version. No TeX token scanning, automatic
+font-run segmentation, hyphenation/discretionary reconstruction, or scaled-point
+rounding is added.
+
+Boundary-specific fixtures are hand-checked synthetic programs for left/right
+kerns and ligatures, retention, suppression, cycles, invalid addresses and encoded
+mapping. The existing licensed peer `ec-lmr10.tfm` (SHA cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5)
+provides real fi->slot28 and AV kern(-116509 fix_word) regression evidence, but it
+has no boundary marker/program. No real-font boundary oracle is claimed.
