@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import FlashTeXProtocol
 @testable import FlashTeXMac
@@ -840,5 +841,40 @@ final class ProposalPreviewTests: XCTestCase {
         // Provenance the parent can compare against the fixture's recorded helper hash.
         let provenance = try XCTUnwrap(fixture["provenance"] as? [String: Any])
         XCTAssertNotNil((provenance["helper"] as? [String: Any])?["sha256"])
+    }
+
+    /// Opt-in visual evidence: renders the sheet's preview + assistant section
+    /// (the exact `ProposalPreviewView` ContentView embeds) in the `.ready`
+    /// (reviewed edit awaiting approval) and `.approved` states to PNGs under
+    /// `FLASHTEX_EVIDENCE_DIR`. The app's proposal sheet needs an NSOpenPanel
+    /// and a pinned anchor, which cannot be driven without Accessibility.
+    func testRendersAssistantSectionEvidenceWhenRequested() async throws {
+        guard let dir = ProcessInfo.processInfo.environment["FLASHTEX_EVIDENCE_DIR"] else {
+            throw XCTSkip("set FLASHTEX_EVIDENCE_DIR to write PNG evidence")
+        }
+        let preview = makePreview(explanation: fakeExplanation(provider: true))
+        preview.update(input: input("A\n%diag:1 tail\n", anchorByte: 2), latex: "%diag:0 new")
+        try await waitForReady(preview)
+        preview.explain()
+        try await waitForExplanationSettled(preview)
+        guard case .ready = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        func write(_ name: String) throws {
+            let view = ProposalPreviewView(preview: preview).frame(width: 488).padding(16).background(Color(nsColor: .windowBackgroundColor))
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.nsImage)
+            let tiff = try XCTUnwrap(image.tiffRepresentation)
+            let png = try XCTUnwrap(NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]))
+            let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
+            try png.write(to: url)
+            XCTAssertGreaterThan(image.size.height, 100, name)
+        }
+        try write("mac-ai-review-assistant-reviewed-2026-09-12.png")
+        preview.approveReviewedEdit()
+        try await waitForExplanationSettled(preview)
+        guard case .approved = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        try write("mac-ai-review-assistant-approved-2026-09-12.png")
+        preview.close()
+        try await waitUntil("worker terminated") { !preview.workerIsRunning }
     }
 }

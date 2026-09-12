@@ -796,7 +796,7 @@ extension ProposalPreview {
                 + (e.reviewId.map { "; review \($0.prefix(8)) awaits your approval" } ?? "")
         case .approving(let e): return "asking the helper to approve review \(e.reviewId?.prefix(8) ?? "?")…"
         case .approved(let a):
-            return "review \(a.reviewId.prefix(8)) approved: \(a.edits.count) edit\(a.edits.count == 1 ? "" : "s") applied to the proposal text only (\(a.commandId)); the document is unchanged until you approve the insertion"
+            return "review \(a.reviewId.prefix(8)) approved (\(a.commandId.prefix(18))…): \(a.edits.count) edit\(a.edits.count == 1 ? "" : "s") applied to the proposal text only; the document is unchanged until you approve the insertion"
         case .failed(let why): return "assistant failed: \(why)"
         case .cancelled(let why): return "explanation discarded: \(why)"
         }
