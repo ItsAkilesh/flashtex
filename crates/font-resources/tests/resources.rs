@@ -768,3 +768,474 @@ fn nested_vf_output_cap_is_global_across_packets() {
         .to_string()
         .contains("output budget"));
 }
+
+#[test]
+fn cff_encoding_binds_actual_names_and_resource_hashes() {
+    use flashtex_font_resources::cff::*;
+    // Header/name/top/string/global indexes plus a two-entry CharStrings INDEX;
+    // ISOAdobe SID1 is space, not a Unicode or TFM-code cast.
+    let mut bytes = b"OTTOxxxx".to_vec();
+    bytes.extend([
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 2, 1, 1, 2, 3, 14,
+        14,
+    ]);
+    let cache = CffOutlineCache::from_font_table(
+        &bytes,
+        0,
+        8..bytes.len(),
+        CacheLimits {
+            max_entries: 2,
+            max_bytes: 10000,
+        },
+    )
+    .unwrap();
+    let tfm = tfm_for_encoding();
+    let identity = cache.identity();
+    let manifest = CffEncodingManifest {
+        font_sha256: identity.font_sha256.clone(),
+        cff_sha256: identity.cff_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![flashtex_font_resources::encoding::EncodingEntry {
+            code: 65,
+            glyph_name: "space".into(),
+        }],
+    };
+    let bound = BoundCffTfmFont::new(&tfm, &cache, &manifest).unwrap();
+    assert_eq!(
+        bound.map_code(65).unwrap().0,
+        flashtex_font_resources::encoding::GlyphIdentity::Original(1)
+    );
+    assert!(bound.map_code(66).is_err());
+    assert!(bound.validate_cache(&cache).is_ok());
+    let mut bad = manifest.clone();
+    bad.encoding[0].glyph_name = "A".into();
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+    bad = manifest.clone();
+    bad.cff_sha256 = "0".repeat(64);
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+    bad = manifest.clone();
+    bad.encoding.push(bad.encoding[0].clone());
+    assert!(BoundCffTfmFont::new(&tfm, &cache, &bad).is_err());
+}
+
+#[test]
+fn cff_encoding_cache_identity_canonicalization_eviction_and_bounds() {
+    use flashtex_font_resources::{cff::*, encoding::EncodingEntry};
+    use std::sync::Arc;
+    let mut bytes = b"OTTOxxxx".to_vec();
+    bytes.extend([
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 2, 1, 1, 2, 3, 14,
+        14,
+    ]);
+    let outline = CffOutlineCache::from_font_table(
+        &bytes,
+        0,
+        8..bytes.len(),
+        CacheLimits {
+            max_entries: 0,
+            max_bytes: 0,
+        },
+    )
+    .unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = CffEncodingManifest {
+        font_sha256: outline.identity().font_sha256.clone(),
+        cff_sha256: outline.identity().cff_sha256.clone(),
+        face_index: 0,
+        tfm_sha256: tfm.source_sha256.clone(),
+        encoding: vec![
+            EncodingEntry {
+                code: 65,
+                glyph_name: "space".into(),
+            },
+            EncodingEntry {
+                code: 66,
+                glyph_name: ".notdef".into(),
+            },
+        ],
+    };
+    let mut cache = CffEncodingCache::new(
+        &outline,
+        CacheLimits {
+            max_entries: 2,
+            max_bytes: 10000,
+        },
+    )
+    .unwrap();
+    let first = cache.lookup(&tfm, &manifest).unwrap();
+    assert_eq!(first.status, CacheStatus::Stored);
+    let mut reordered = manifest.clone();
+    reordered.encoding.reverse();
+    let hit = cache.lookup(&tfm, &reordered).unwrap();
+    assert_eq!(hit.status, CacheStatus::Hit);
+    assert!(Arc::ptr_eq(&first.encoding, &hit.encoding));
+    BoundCffTfmFont::from_resolved(&tfm, hit.encoding)
+        .unwrap()
+        .validate_cache(&outline)
+        .unwrap();
+    for field in 0..4 {
+        let mut wrong = manifest.clone();
+        match field {
+            0 => wrong.font_sha256 = "0".repeat(64),
+            1 => wrong.cff_sha256 = "0".repeat(64),
+            2 => wrong.tfm_sha256 = "0".repeat(64),
+            _ => wrong.face_index = 1,
+        }
+        assert!(cache.lookup(&tfm, &wrong).is_err());
+    }
+    let mut bad = manifest.clone();
+    bad.encoding.push(bad.encoding[0].clone());
+    assert!(cache.lookup(&tfm, &bad).is_err());
+    bad = manifest.clone();
+    bad.encoding[0].glyph_name = "absent".into();
+    assert!(cache.lookup(&tfm, &bad).is_err());
+    assert_eq!(cache.len(), 1);
+    let mut second = manifest.clone();
+    second.encoding[0].glyph_name = ".notdef".into();
+    let other = cache.lookup(&tfm, &second).unwrap();
+    assert_ne!(
+        first.encoding.encoding_sha256(),
+        other.encoding.encoding_sha256()
+    );
+    assert_eq!(
+        other.encoding.resolve(65).unwrap(),
+        flashtex_font_resources::encoding::GlyphIdentity::Notdef
+    );
+    assert_eq!(
+        cache.lookup(&tfm, &manifest).unwrap().status,
+        CacheStatus::Hit
+    );
+    let mut third = manifest.clone();
+    third.encoding.pop();
+    cache.lookup(&tfm, &third).unwrap(); // second is least recently used
+    assert_eq!(
+        cache.lookup(&tfm, &manifest).unwrap().status,
+        CacheStatus::Hit
+    );
+    assert_eq!(
+        cache.lookup(&tfm, &second).unwrap().status,
+        CacheStatus::Stored
+    );
+    assert_eq!(cache.len(), 2);
+    assert!(cache.retained_bytes() <= 10000);
+    cache.clear();
+    assert!(cache.is_empty());
+    assert_eq!(cache.retained_bytes(), 0);
+    for limits in [
+        CacheLimits {
+            max_entries: 0,
+            max_bytes: 10000,
+        },
+        CacheLimits {
+            max_entries: 2,
+            max_bytes: 1,
+        },
+    ] {
+        let mut tiny = CffEncodingCache::new(&outline, limits).unwrap();
+        assert_eq!(
+            tiny.lookup(&tfm, &manifest).unwrap().status,
+            CacheStatus::BypassedOversize
+        );
+        assert!(tiny.is_empty());
+        assert_eq!(tiny.retained_bytes(), 0);
+    }
+    assert!(CffEncodingCache::new(
+        &outline,
+        CacheLimits {
+            max_entries: 129,
+            max_bytes: 1
+        }
+    )
+    .is_err());
+}
+
+#[test]
+fn original_engine_adapter_resource_identity_and_request_gates() {
+    use flashtex_font_engine::ShapeOptions;
+    use flashtex_font_resources::engine_adapter::*;
+    let bytes = fixture();
+    let resource = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let adapter = EngineFontAdapter::from_resource(&resource).unwrap();
+    assert_eq!(adapter.identity().font_sha256, sha256(&bytes));
+    let mut engine_bytes = bytes.clone();
+    engine_bytes.extend(0u32.to_be_bytes());
+    assert_eq!(
+        adapter.identity().engine_font_id.content_hex(),
+        sha256(&engine_bytes)
+    );
+    let source = "";
+    let hash = sha256(source.as_bytes());
+    let request = || ShapeRequest {
+        source,
+        source_sha256: &hash,
+        path: "main.tex",
+        revision: 1,
+        range: 0..0,
+        font_sha256: &resource.descriptor().sha256,
+        face_index: 0,
+        encoding: InputEncoding::Unicode,
+        variation_coordinates: &[],
+        options: ShapeOptions::PLAIN,
+    };
+    let empty = adapter.shape(request()).unwrap();
+    assert!(empty.shaped().clusters.is_empty());
+    let mut wrong = request();
+    wrong.face_index = 1;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.encoding = InputEncoding::TexEightBit;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    let variations = [(*b"wght", 400)];
+    wrong.variation_coordinates = &variations;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.range = 1..2;
+    assert!(adapter.shape(wrong).is_err());
+    let mut wrong = request();
+    wrong.source_sha256 = "bad";
+    assert!(adapter.shape(wrong).is_err());
+    let mut other = request();
+    other.revision = 2;
+    assert_ne!(adapter.shape(other).unwrap().cache_key(), empty.cache_key());
+}
+
+#[test]
+fn project_registry_snapshots_generation_and_budgets() {
+    use flashtex_font_resources::registry::*;
+    use flashtex_project_files::ProjectRoot;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let bytes = fixture();
+    let mut resource = entry(&bytes);
+    resource.path = "font.ttf".into();
+    resource.license.text_path = "LICENSE".into();
+    std::fs::write(dir.path().join("font.ttf"), &bytes).unwrap();
+    std::fs::write(dir.path().join("LICENSE"), b"test license").unwrap();
+    let binding = StyleBinding {
+        family: "Demo".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: binding.clone(),
+            resource,
+        }],
+    };
+    let write = |m: &RegistryManifest| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(m).unwrap(),
+        )
+        .unwrap()
+    };
+    write(&manifest);
+    let first = ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap();
+    let held = first.get(&binding).unwrap();
+    assert_eq!(held.bytes(), bytes);
+    assert_eq!(first.files_read(), 3);
+    assert!(std::sync::Arc::ptr_eq(&held, &first.get(&binding).unwrap()));
+    assert_eq!(first.discovery()[0].binding, binding);
+    let load = || ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default());
+    assert_eq!(load().unwrap().generation(), first.generation());
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(load().unwrap().generation(), first.generation());
+    let mut absent = binding.clone();
+    absent.weight = 700;
+    assert!(matches!(
+        first.get(&absent),
+        Err(RegistryError::MissingBinding(_))
+    ));
+    let mut alias = manifest.entries[0].clone();
+    alias.binding.weight = 600;
+    manifest.entries.push(alias);
+    write(&manifest);
+    let two = load().unwrap();
+    manifest.entries.reverse();
+    write(&manifest);
+    assert_eq!(load().unwrap().generation(), two.generation());
+    manifest.entries.retain(|e| e.binding.weight == 400);
+    manifest.entries[0].binding.weight = 500;
+    write(&manifest);
+    let next = load().unwrap();
+    assert_ne!(first.generation(), next.generation());
+    assert!(next.require_generation(first.generation()).is_err());
+    manifest.entries.push(manifest.entries[0].clone());
+    write(&manifest);
+    assert!(matches!(load(), Err(RegistryError::AmbiguousBinding(_))));
+    manifest.entries.pop();
+    write(&manifest);
+    for limits in [
+        RegistryLimits {
+            max_entries: 0,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_files: 2,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_total_bytes: 1,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_manifest_bytes: 1,
+            ..Default::default()
+        },
+    ] {
+        assert!(ProjectFontRegistry::load(&root, "fonts.json", limits).is_err());
+    }
+    std::fs::write(dir.path().join("font.ttf"), b"changed").unwrap();
+    assert!(matches!(
+        load(),
+        Err(RegistryError::ResourceMismatch { .. })
+    ));
+    assert_eq!(held.bytes(), bytes);
+    std::fs::remove_file(dir.path().join("font.ttf")).unwrap();
+    assert!(matches!(load(), Err(RegistryError::Missing { .. })));
+    assert!(ProjectFontRegistry::load(&root, "../fonts.json", RegistryLimits::default()).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn project_registry_refuses_rooted_symlinks_and_parent_paths() {
+    use flashtex_font_resources::registry::*;
+    use flashtex_project_files::ProjectRoot;
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let bytes = fixture();
+    std::fs::write(outside.path().join("font.ttf"), &bytes).unwrap();
+    std::fs::write(dir.path().join("LICENSE"), b"test license").unwrap();
+    let mut resource = entry(&bytes);
+    resource.path = "font.ttf".into();
+    resource.license.text_path = "LICENSE".into();
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: StyleBinding {
+                family: "Demo".into(),
+                weight: 400,
+                style: FontStyle::Upright,
+            },
+            resource,
+        }],
+    };
+    let write = |m: &RegistryManifest| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(m).unwrap(),
+        )
+        .unwrap()
+    };
+    symlink(outside.path().join("font.ttf"), dir.path().join("font.ttf")).unwrap();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::RootedRead { .. })
+    ));
+    symlink(outside.path(), dir.path().join("linked")).unwrap();
+    manifest.entries[0].resource.path = "linked/font.ttf".into();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::RootedRead { .. })
+    ));
+    manifest.entries[0].resource.path = "linked/../font.ttf".into();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::InvalidManifest(_))
+    ));
+}
+
+#[test]
+fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
+    use flashtex_font_resources::registry::*;
+    use flashtex_project_files::ProjectRoot;
+    let mut bytes = fixture();
+    bytes[..4].copy_from_slice(b"OTTO");
+    let record = table_record(&bytes, b"glyf");
+    let offset = bytes.len();
+    let cff = [
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0, 0, 3, 1, 1, 2, 3, 4,
+        14, 14, 14,
+    ];
+    bytes[record..record + 4].copy_from_slice(b"CFF ");
+    be32(&mut bytes, record + 8, offset as u32);
+    be32(&mut bytes, record + 12, cff.len() as u32);
+    bytes.extend(cff);
+    let mut resource = entry(&bytes);
+    resource.font.format = "static-cff".into();
+    let binding = StyleBinding {
+        family: "CFF fixture".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: binding.clone(),
+            resource: resource.clone(),
+        }],
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    std::fs::write(dir.path().join(&resource.path), &bytes).unwrap();
+    std::fs::write(
+        dir.path().join(&resource.license.text_path),
+        b"test license",
+    )
+    .unwrap();
+    let write = |m: &RegistryManifest| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(m).unwrap(),
+        )
+        .unwrap()
+    };
+    write(&manifest);
+    let load = || ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default());
+    let registry = load().unwrap();
+    let RegistryResource::Cff(font) = registry.resource(&binding).unwrap() else {
+        panic!("CFF resource")
+    };
+    assert_eq!(font.identity().font_sha256, sha256(&bytes));
+    assert_eq!(font.identity().cff_sha256, sha256(&cff));
+    assert_eq!(font.identity().table_range, offset..bytes.len());
+    assert_eq!(
+        font.outline_cache(cff::CacheLimits {
+            max_entries: 0,
+            max_bytes: 0
+        })
+        .unwrap()
+        .glyph_count(),
+        3
+    );
+    assert!(font.shape_adapter().is_ok());
+    assert!(registry.get(&binding).is_err());
+    for case in 0..5 {
+        manifest.entries[0].resource = resource.clone();
+        let item = &mut manifest.entries[0].resource;
+        match case {
+            0 => item.font.face_index = 1,
+            1 => item.font.glyph_count = 2,
+            2 => item.font.postscript_name = "wrong".into(),
+            3 => item.license.text_sha256 = "0".repeat(64),
+            _ => item.font.sha256 = "0".repeat(64),
+        }
+        write(&manifest);
+        assert!(matches!(
+            load(),
+            Err(RegistryError::ResourceMismatch { .. })
+        ));
+    }
+}

@@ -116,3 +116,23 @@ class FailoverTests(unittest.TestCase):
             self.assertEqual(f.publish_terminal_receipt(config, result, repo, journal), commit)
             worktree = json.loads(journal.read_text())['worktree']
             git('worktree', 'remove', worktree, cwd=repo)
+
+    def test_malformed_pin_cannot_stop_even_an_authorized_service(self):
+        config = dict(self.config, process={'pid': True, 'start_ticks': 100, 'boot_id': 'boot'},
+                      publisher_services=['flashtex-dispatch.service'],
+                      allow_dispatcher_stop_after_process_exit=True)
+        with self.assertRaises(ValueError):
+            f.quiesce_after_terminal(config, self.authority, None, lambda _: self.fail('must not stop'))
+
+    def test_service_list_is_validated_before_any_stop(self):
+        config = dict(self.config, publisher_services=['flashtex-dispatch.service', 'unrelated.service'],
+                      allow_dispatcher_stop_after_process_exit=True)
+        with self.assertRaises(ValueError):
+            f.quiesce_after_terminal(config, self.authority, None, lambda _: self.fail('must not stop'))
+
+    def test_shell_wrapped_future_publication_remains_a_blocker(self):
+        for args in [['bash', '-c', 'cargo test; git push origin HEAD:main'],
+                     ['python3', 'scripts/coord.py', 'publish'],
+                     ['/usr/bin/git', 'merge', 'origin/main']]:
+            self.assertTrue(f.looks_like_publisher(args))
+        self.assertFalse(f.looks_like_publisher(['python3', 'scripts/commander_failover.py', '--watch']))

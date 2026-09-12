@@ -294,6 +294,7 @@ impl TrueTypeFace {
                 Err(Error::Unsupported(d)) => {
                     unsupported.push(Unsupported {
                         table: "kern",
+                        feature: "kern",
                         detail: d,
                     });
                     KernTable::default()
@@ -321,6 +322,7 @@ impl TrueTypeFace {
         if outlines == Outlines::Cff {
             unsupported.push(Unsupported {
                 table: "CFF ",
+                feature: "outlines",
                 detail: "CFF outlines are exposed raw; glyph parsing, bbox derivation and \
                          subsetting are not implemented (embed the whole program)"
                     .into(),

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-footnotes",
+  "task_id": "FT-032",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "math-layout: exact reference-fixture mismatch repair with measured deltas",
+      "objective": "math-layout: exact reference-fixture mismatch repair with measured deltas",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    },
+    {
+      "name": "math-layout: bounded performance regression and native/compiler adapter evidence",
+      "objective": "math-layout: bounded performance regression and native/compiler adapter evidence",
+      "owned_paths": [
+        "crates/math-layout"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    }
+  ]
+}

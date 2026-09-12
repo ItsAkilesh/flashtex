@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-tables",
+  "task_id": "FT-030",
+  "revision": 2,
+  "branch": "agent/daniel-tables/table-layout",
+  "assignment_path": "coordination/assignments/FT-030.json",
+  "updated_utc": "2026-09-12T07:35:07.367827+00:00",
+  "instruction": "Continue released Jaysen paragraph-layout heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP bad0666 and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/paragraph-layout exclusively under this transfer; existing agent name is retained to keep Daniel16 slots."
+}
