@@ -110,3 +110,7 @@ Integrated d8db4e15/report513926ce and root69bffa06. Independently reran both pr
 
 ## Instrumentation and actual discovery integrated
 Integrated e8b5a6fa/acf2e82d and actualLinuxdiscovery512ddff3/2efd9af5. Independent16binarytests and actualunreadoptionalwatchdog testPASS2.06s; all16stdout/v2 hashes across8discoverycases verified. Root old8d66binary preserved and exacte8 release70572 terminal; one approvedhistoricalcapture now quietwindow. No Commander jobs. Renderer existing strictbinder/export compatibility probe held until rootcaptureterminal; no rebuild. Runtime analyzer review active, strictseq/lifecycle/fullordinal/droppedcount/clocklimits required. Linux7ca d002742d discovery success notsignedMacapp acceptance; rooted-before-flat12pt semantics demonstrated, no overrideparityguess.
+
+
+## Instrumented capture failed acceptance — preserve before continuation
+Approved capture68918 TERMINALFAIL at postmeasurement reopened snapshot compiler response timeout. /tmp/ft048-instrumented-historical retains transport-review.json, receiver-timings.json, diagnostics.json, events.jsonl, final-preview.json, sources and requests. Measured prefix exists but no complete-run provenance or reopenPASS; no rerun authorized. Root and runtime inspecting exact failure/correlation offline, checking GH21/GH33 before duplicateissue. Renderer quietwindow released for existing strictconsumer probes; no nativeclaim. Main diagnostics gates remain passed separately and cannot substitute capture acceptance. All original artifacts preserved; no cause inferred.
