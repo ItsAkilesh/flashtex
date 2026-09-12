@@ -5,6 +5,8 @@ use std::time::Instant;
 mod bibliography;
 mod bibliography_values;
 pub use bibliography_values::*;
+mod search;
+pub use search::*;
 
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GROUP_BYTES: usize = 64 * 1024;
@@ -139,6 +141,10 @@ pub enum IndexError {
         name: String,
     },
     InvalidRenamePlan,
+    InvalidSearchRequest,
+    IncompleteSearch,
+    InvalidSearchPlan,
+    ReplacementPlanTooLarge,
     DocumentTooLarge {
         bytes: usize,
         limit: usize,

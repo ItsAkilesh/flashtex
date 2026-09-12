@@ -1,5 +1,21 @@
 # Project source index
 
+`search_literal(snapshot, &SearchRequest, cancelled)` searches raw document text,
+including comments and verbatim, independently of lexical symbol/metadata parsing.
+Matching is case-sensitive, nonoverlapping, with no Unicode normalization or regex.
+Results use exact UTF8 byte spans in deterministic project-relative file/offset
+order. `documents: None` selects all documents; `Some(empty)` selects none; all
+selected paths must exist. Empty queries and queries over 64 KiB are rejected.
+
+Search uses an original KMP implementation. `max_work` counts byte comparisons in
+both preprocessing and matching. `max_matches` is capped at 100,000. Results state
+`Complete`, `MatchLimit`, `WorkLimit`, or `Cancelled`; an incomplete result never
+asserts absence of later matches. A reached match limit conservatively reports
+`MatchLimit` unless the final document ended at that match. Cancellation callbacks
+are checked initially and before every comparison and must not block. Callback
+runtime, snapshot/path validation, allocation, and document selection are outside
+the comparison budget; this is not a wall-clock deadline guarantee.
+
 `citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
 Records retain entry/key, field-name/expression, and atom UTF8 source spans.
 Braced and quoted literals preserve internal braces and TeX text; decimal atoms
