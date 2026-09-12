@@ -121,6 +121,7 @@ def run(args):
             measurement_wall_ms = (time.monotonic()-measurement_wall_started)*1000
             writer.join(timeout=5)
             assert not writer.is_alive() and not failures
+            helper_memory = client.memory_snapshot()
             phase_diagnostics = client.diagnostics()
             result = final["result"]
             request = dict(protocol_version=1, id=result["id"], type="compile", payload=dict(project_id="p",
@@ -141,7 +142,7 @@ def run(args):
         finally:
             client.stop()
         print(json.dumps(dict(source_bytes=len(sources[-1].encode()), edits=args.edits,
-            phase_diagnostics=phase_diagnostics, compiler_frame_mib=args.compiler_frame_mib, acknowledgement_samples=acknowledgement_samples,
+            helper_memory_after_burst=helper_memory, phase_diagnostics=phase_diagnostics, compiler_frame_mib=args.compiler_frame_mib, acknowledgement_samples=acknowledgement_samples,
             driver_cpu_during_burst_ms=measurement_cpu_ms, burst_wall_ms=measurement_wall_ms,
             historical_negotiated=args.historical, historical_samples=historical_samples, current_samples=current_samples,
             intended_interval_ms=args.interval_ms, acknowledged=len(acknowledged), updates=dict(counts),
