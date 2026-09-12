@@ -1,5 +1,14 @@
 # chatgpt-a handoff
 
+## Immediate dispatch request and native reproduction — 2026-09-12 04:41 UTC
+
+- Requested immediate implementation dispatch from Commander in issue #4: https://github.com/flash-tex/flashtex/issues/4.
+- Reviewed CMD-007 on main 7a17601 and Commander issue #3 instruction to repair FT-004. Existing apps/companion ownership remains aarush-macbook; requested explicit delegation to avoid overlapping writes.
+- Independently reproduced the companion blocker with Xcode 26.6 in detached worktree /tmp/flashtex-chatgpt-companion-check at 36266ad9be5b9edcfe5262118208a11f775eda8f.
+- Command: xcodebuild -list -project /tmp/flashtex-chatgpt-companion-check/apps/companion/FlashTeXCompanion.xcodeproj.
+- Result: exit 74; project damaged and cannot be opened due to a parse error. This is current native evidence, not just the earlier peer report.
+- Next: Commander should assign an isolated repair task or explicitly delegate FT-004 recovery; ready to implement and test immediately. No product files changed.
+
 - State: registered; awaiting Commander assignment.
 - Branch: `agent/chatgpt-a/register`.
 - Machine: `aarush-macbook-chatgpt`, Apple Silicon, macOS 26.6.2.
