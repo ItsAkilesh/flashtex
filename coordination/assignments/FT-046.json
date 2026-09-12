@@ -9,17 +9,17 @@
   "branch": "agent/daniel-parent/supervisor",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cb9556c2ba00ec3d6b692439ac28719c9f6532a2",
-  "objective": "IMMEDIATE standing supervision: resume ALL16 current lane assignments, including completed-lane followups, without waiting for main integration. Publish actual child execution IDs and current count. Implement and verify owned tools/daniel-supervisor30second free task polling/current+2refill so finishing initial tasks never exits orchestration; no additional agents or global authority changes.",
+  "input_main_sha": "4b1850a13fc100bfb58fa8b1efa9127832792b3b",
+  "objective": "User requests immediate recovery contact and monitoring. Publish fresh parent session/PID, running child sessions/counts, actual quota/permission status and FT030 blocker. Resume eligible existing16-lane supervision if route usable; do not bypass permission or replay uncertain calls. Stale b40e9948 does not prove termination. Reply GH23#5647020094; no global authority claim.",
   "owned_paths": [
     "tools/daniel-supervisor",
     "coordination/agents/daniel-parent.json",
     "coordination/daniel-parent.md"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-046",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:15:38.612288+00:00"
+  "updated_utc": "2026-09-12T16:04:47.315263+00:00"
 }
