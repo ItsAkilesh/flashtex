@@ -17,6 +17,7 @@ use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
 use crate::parser::{self, Block, Inline, MacroDependency, SourceDocument};
 use crate::Span;
+use std::collections::HashMap;
 use std::ops::Range;
 
 pub use crate::layout::LayoutConstraints;
@@ -27,6 +28,8 @@ pub struct ReuseStats {
     pub blocks_total: usize,
     pub blocks_reused: usize,
     pub blocks_recomputed: usize,
+    /// Full dependency-and-block equality checks after indexed lookup.
+    pub candidate_comparisons: usize,
     pub full_recompile: bool,
 }
 
@@ -140,6 +143,7 @@ impl Session {
                         blocks_total: total,
                         blocks_reused: total,
                         blocks_recomputed: 0,
+                        candidate_comparisons: 0,
                         full_recompile: false,
                     },
                 };
@@ -222,20 +226,34 @@ impl Session {
         // per edit. That made a one-word edit six times slower than a full cold
         // compile despite reusing 499 of 500 blocks, and pushed the measured
         // warm-edit p95 from 21 ms to 177 ms against a 200 ms target.
-        let shifted_cache: Vec<Option<Block>> = if can_reuse {
-            self.previous
-                .as_ref()
-                .map(|previous| {
-                    previous
-                        .blocks
-                        .iter()
-                        .map(|cached| shift_block(&cached.block, &changes, &deltas))
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        // Index the shifted candidates by a cheap signature so the lookup below is
+        // not a scan over every cached block.
+        //
+        // Measured before this change: a one-word edit was 0.801 ms p95 at 5 KB,
+        // 7.402 ms at 50 KB and 473.759 ms at 7 754 blocks (500 KB) — 64x the
+        // time for 10x the blocks, i.e. quadratic, and far past the 200 ms
+        // budget. The signature is the block's first and last source offsets,
+        // which are already computed; full structural equality still gates
+        // acceptance, so a signature collision can never cause a wrong reuse.
+        // Index WITHOUT shifting. A shifted block's signature is derivable from
+        // the cached block's spans and the byte delta, so the index costs a few
+        // integer operations per cached block instead of a deep clone.
+        //
+        // Eagerly shifting every cached block made per-keystroke work
+        // proportional to the whole document rather than to the edit: at 500 KB
+        // a one-word edit cost 405 ms against a 457 ms cold compile, so reusing
+        // 7 753 of 7 754 blocks saved almost nothing. Only the block that
+        // actually matches is shifted now.
+        let mut candidate_index: HashMap<BlockSignature, Vec<usize>> = HashMap::new();
+        if can_reuse {
+            if let Some(previous) = self.previous.as_ref() {
+                for (slot, cached) in previous.blocks.iter().enumerate() {
+                    if let Some(signature) = shifted_signature(&cached.block, &changes, &deltas) {
+                        candidate_index.entry(signature).or_default().push(slot);
+                    }
+                }
+            }
+        }
 
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
@@ -243,14 +261,21 @@ impl Session {
             let diagnostics_start = cursor.diagnostics_len();
             let candidate = if can_reuse {
                 self.previous.as_ref().and_then(|previous| {
-                    previous
-                        .blocks
-                        .iter()
-                        .zip(shifted_cache.iter())
-                        .find(|(cached, shifted)| {
-                            cached.dependencies == dependencies && shifted.as_ref() == Some(block)
+                    candidate_index
+                        .get(&block_signature(block))
+                        .into_iter()
+                        .flatten()
+                        .find(|slot| {
+                            stats.candidate_comparisons += 1;
+                            let cached = &previous.blocks[**slot];
+                            // Full equality still decides: the signature only
+                            // narrows the search, it never authorises a reuse.
+                            // The shift happens here, for this one candidate.
+                            cached.dependencies == dependencies
+                                && shift_block(&cached.block, &changes, &deltas).as_ref()
+                                    == Some(block)
                         })
-                        .map(|(cached, _)| cached)
+                        .map(|slot| &previous.blocks[*slot])
                 })
             } else {
                 None
@@ -504,6 +529,78 @@ fn shift_diagnostics(
             })
         })
         .collect()
+}
+
+/// A cheap, collision-tolerant signature used only to narrow candidate search.
+///
+/// It is NOT an identity: two different blocks may share a signature. Full
+/// structural equality still gates every reuse, so a collision costs one extra
+/// comparison and can never produce a wrong result.
+type BlockSignature = (usize, usize, usize, usize, usize);
+
+fn block_signature(block: &Block) -> BlockSignature {
+    let inlines: &[Inline] = match block {
+        Block::Paragraph(inlines) => inlines,
+        Block::Heading { content, .. } => content,
+        Block::FigureCaption { content } => content,
+    };
+    let span_of = |inline: &Inline| match inline {
+        Inline::Text { span, .. } => *span,
+        Inline::LineBreak { span } => *span,
+        Inline::Math { span, .. } => *span,
+        Inline::Label { span, .. } => *span,
+        Inline::Reference { span, .. } => *span,
+    };
+    let first = inlines.first().map(span_of);
+    let last = inlines.last().map(span_of);
+    (
+        first.map_or(usize::MAX, |s| s.document.0),
+        first.map_or(usize::MAX, |s| s.start),
+        last.map_or(usize::MAX, |s| s.document.0),
+        last.map_or(usize::MAX, |s| s.end),
+        inlines.len(),
+    )
+}
+
+/// Signature a cached block WOULD have after shifting, computed from its spans
+/// and the byte delta without cloning or shifting the block.
+///
+/// Returns `None` when the block overlaps the changed range, which is exactly
+/// when it cannot be reused anyway.
+fn shifted_signature(
+    block: &Block,
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<BlockSignature> {
+    let inlines: &[Inline] = match block {
+        Block::Paragraph(inlines) => inlines,
+        Block::Heading { content, .. } => content,
+        Block::FigureCaption { content } => content,
+    };
+    let span_of = |inline: &Inline| match inline {
+        Inline::Text { span, .. } => *span,
+        Inline::LineBreak { span } => *span,
+        Inline::Math { span, .. } => *span,
+        Inline::Label { span, .. } => *span,
+        Inline::Reference { span, .. } => *span,
+    };
+    let first = inlines.first().map(span_of);
+    let last = inlines.last().map(span_of);
+    let start = match first {
+        Some(span) => mapped_span(span, changes, deltas)?.start,
+        None => usize::MAX,
+    };
+    let end = match last {
+        Some(span) => mapped_span(span, changes, deltas)?.end,
+        None => usize::MAX,
+    };
+    Some((
+        first.map_or(usize::MAX, |s| s.document.0),
+        start,
+        last.map_or(usize::MAX, |s| s.document.0),
+        end,
+        inlines.len(),
+    ))
 }
 
 #[cfg(test)]

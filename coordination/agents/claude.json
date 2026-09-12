@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T06:53:17Z",
-      "adaptation": "Accepted FT-002 revision 6 at input main 38155b1 under allocation openai-kabir-plus-ft002-stage6. Revs 1-5 are delivered and issues #8 and #9 are closed. Rev 6 connects the compiler to the negotiated font/layout crates built in parallel by FT-018, FT-019 and FT-020, and requires pinned fixture evidence that reports every mismatch without normalisation, plus warm-edit timing that keeps the native paint gate explicit rather than folded into a compiler number.",
-      "main_sha": "70e4aabc579bb7783187cb397b81857200a4de53",
-      "revision": 6
+      "acknowledged_utc": "2026-09-12T07:40:44Z",
+      "adaptation": "Accepted FT-002 rev 7: standing compiler bottleneck repair at 5KB/50KB/500KB with p50/p95/p99, superlinear hot-path removal, and proof that incremental equals clean. Directly relevant precedent on this branch: rev 6 re-measurement already caught a quadratic reuse lookup that had pushed a one-word edit to 178 ms p95, so the superlinear risk is real and measured, not hypothetical. Open issue #21 reports a valid 500KB project exceeding the runtime output frame limit, which is the same scale boundary this revision targets; will read and address it as part of this work.",
+      "main_sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c",
+      "revision": 7
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "70e4aabc579bb7783187cb397b81857200a4de53",
+  "code_revision": "63f2988c94df178b297ad9a922a2e10a88edc0e2",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
-  "next_action": "Available for dispatch. Cluster-level ligature shaping remains outstanding.",
+  "next_action": "Available for dispatch. Remaining known bottleneck is that every keystroke still reparses the whole document; incremental parsing would be the next structural step.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Correcting my own earlier attribution: the font-engine adoption came from Codex partial interrupted run, not from the merge as I first reported. Two corpus pins moved ok to recovered because font-engine now reports missing CJK glyphs that the old hand-typed metrics table silently laid out with placeholder widths; that is new knowledge, not lost capability, and the text is still typeset.",
-      "reviewed_utc": "2026-09-12T07:04:12Z",
-      "sha": "70e4aabc579bb7783187cb397b81857200a4de53"
+      "adaptation": "I chased the wrong suspect twice before measuring properly. I first indexed the reuse candidate lookup and then made candidate shifting lazy, which together bought only 474->420 ms. Measuring the parse share showed parse was 402 of the 420 ms, so the reuse machinery was never the problem. The actual cause was that every macro invocation removed its token and then spliced the expansion into the gap, moving the token tail twice per invocation.",
+      "reviewed_utc": "2026-09-12T07:59:11Z",
+      "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 6 delivered: compiler now measures through crates/font-engine with real kerning, metrics.rs deleted, pinned byte-exact fixture evidence in both capability modes, and benchmark output that keeps the native paint gate explicit. 13 suites pass. Found and fixed a real export bug and a flaw in my own corpus gate.",
+  "summary": "FT-002 rev 7 delivered: scaling benchmark at 5KB/50KB/500KB with p50/p95/p99 and input+binary hashes, and a 14x speedup from removing a quadratic in the parser. A 500KB one-word edit went from 420.606 ms to 29.401 ms p95 and scaling is now approximately linear. Incremental equals clean full build at all three sizes.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T07:04:12Z",
+  "updated_utc": "2026-09-12T07:59:11Z",
   "usage": {
-    "evidence": "cargo test 13 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; 16 pinned fixtures byte-compared across legacy and negotiated modes; bench reports warm edit p95 28.197 ms with 171.803 ms of budget and states the product target is unproven",
-    "status": "Codex hit its usage limit twice mid-task; it completed the font-engine adoption before dying and I completed the rest directly"
+    "evidence": "scaling_bench prints sha256 of each input and the binary; one-word edit p95 5KB 0.801->0.551 ms, 50KB 7.402->2.541 ms, 500KB 420.606->29.401 ms; parse at 500KB 402.586->12.254 ms; 14 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; pinned byte-exact fixtures unchanged, proving output identical",
+    "status": "Codex hit its usage limit three times and did no work this revision; all of it written directly"
   }
 }
