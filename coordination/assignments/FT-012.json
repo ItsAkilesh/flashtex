@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Meaningful tests reject invalid revision ordering, invalid UTF-8 source spans and malformed compile_result payloads, while accepting valid fixtures",
+    "CLI can validate a real JSONLines subprocess transcript and reports actionable diagnostics without modifying product code"
+  ],
+  "agent_id": "commander-protocol",
+  "allocation_id": "openai-commander-protocol",
+  "branch": "agent/commander-protocol/runtime-validation",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "objective": "Hosted Commander subagent implements a runtime-v1 stream and response validation tool for compiler/native integration, working from the published contract and fixtures.",
+  "owned_paths": [
+    "scripts/check_runtime.py",
+    "tests/test_runtime_validation.py"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-012",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T04:18:57Z"
+}

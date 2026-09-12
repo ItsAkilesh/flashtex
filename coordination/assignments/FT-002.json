@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "cargo test passes including Unicode UTF-8 source spans, malformed-input diagnostics and recovery, and JSONLines request/result roundtrip. Show a minimal document producing positioned text and a second edited revision. Keep Cargo.toml and Cargo.lock within crates/compiler; do not create root workspace files. Read docs/contracts/runtime-v1.md and ack before editing; first evidence in 45 minutes. Cursor CLI executes commits."
+    "cargo test passes with Unicode source offsets and math fixtures",
+    "Positioned output reflects actual source edits; no existing TeX engine is invoked",
+    "Publish supported constructs and reproducible rendering evidence"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002",
+  "allocation_id": "openai-kabir-plus-ft002-stage2",
   "branch": "agent/claude/compiler-foundation",
-  "deadline_utc": "2026-09-12T14:00:00Z",
-  "dependencies": [
-    "FT-001"
-  ],
-  "input_main_sha": "6d096a32a3d0a18b619f52099433afadb3962154",
-  "objective": "Use the authenticated Codex account on mac-m5pro-kabir to implement an original Rust compiler foundation; retain agent ID claude only as registration identity. Implement runtime-v1 JSONLines compile requests and text layout/source diagnostics without invoking an existing TeX engine. Report unsupported commands honestly.",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T03:49:50Z"
+  "updated_utc": "2026-09-12T04:21:55Z"
 }

@@ -1,23 +1,24 @@
 {
   "acceptance": [
-    "Xcode build succeeds on the Mac; report exact command and result",
-    "Edit source and display protocol/fixtures/compile-result.json with fixture status; click text to navigate via UTF-8 source range",
-    "Preserve pre-existing Cargo and src files; keep ownership under apps/mac"
+    "Prove actual Rust output changes when source changes",
+    "Delayed older responses cannot replace newer output",
+    "Report measured edit-to-preview latency and native build command",
+    "After source edits, do not navigate with stale byte offsets unless a validated edit mapping rebases them; cover this in tests"
   ],
   "agent_id": "mac-claude-a",
-  "allocation_id": "openai-mac-plus-ft003",
+  "allocation_id": "claude-mac20x-shell-stage2",
   "branch": "agent/mac-claude-a/mac-shell",
-  "deadline_utc": "2026-09-12T14:00:00Z",
+  "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "276bb1c8586aa84fd548520c84423bc1812f9713",
-  "objective": "Build the native macOS source editor and fixture-backed preview shell using docs/contracts/runtime-v1.md; use the available Codex account, not protected Claude allowance.",
+  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "objective": "Connect the Mac app to the original Rust runtime over runtime-v1 JSONLines. Add debounced edits, revision ordering, cancellation/coalescing, and clear build status. Original compiler arrival may lag: implement and test the real subprocess transport now using a clearly labeled protocol test child; switch to crates/compiler when available. Preserve existing dark preview and Unicode navigation.",
   "owned_paths": [
     "apps/mac"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-003",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T03:42:26Z"
+  "updated_utc": "2026-09-12T04:21:55Z"
 }

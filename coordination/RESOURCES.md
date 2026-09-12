@@ -141,3 +141,65 @@ helper, tests, and instructions. `cursor-inventory-merge-007`: one bounded Curso
 merge session for reviewed Kabir capability inventory, after tooling validation.
 Both Cursor sessions use the existing user-authorized commit route; no purchases,
 overages, Claude calls, or invented monetary balances. Actual costs remain unknown.
+
+## Continuing autonomous authorization — current user override
+
+The user now explicitly authorizes ongoing work until they stop it or the entire
+project including extras is implemented and fully tested. Former 45-minute task
+limits are review/checkpoint intervals for the eligible OpenAI subscription routes,
+not requirements to ask the sleeping user for permission again. Published queue
+stage allocation IDs inherit their machine's existing authorized OpenAI pool.
+No monetary balance, API access, reset availability, or protected Claude permission
+is inferred. Provider quota remains authoritative; failures require recorded
+recovery/reallocation, not unapproved fallback or an interactive permission wait.
+
+Cursor commit and synchronization sessions remain authorized. All new commits
+must additionally coauthor the authenticated GitHub user on the executing computer.
+This Commander's identity resolved from `gh api user`: sixnat, GitHub user ID
+266300832; use its GitHub noreply address, not a private email.
+
+`cursor-integration-tools-006` completed 75648ea. `cursor-inventory-merge-007`
+completed d432341 and passed 22 combined tests; both costs unknown, no calls in flight.
+`worker_sync`, `worker_loop_tests`, and `dispatcher_loop` are bounded hosted Codex
+implementation/test subtasks under current Commander authorization, no descendants
+or external model calls. Their reports provide actual completion evidence.
+`cursor-autonomous-loop-008`: one bounded Cursor commit session for coauthor policy,
+continuous worker/dispatcher loop, and verification. Monetary cost unknown.
+
+`openai-commander-bridge`: direct Commander Rust bridge implementation and validation
+under the user's ongoing Commander authorization; no new API purchases. Grok calls
+remain conditional on actual product credentials/funding. One local Codex
+noninteractive preflight completed successfully in an isolated worktree, creating
+and verifying one probe file without permission prompts; usage/cost unknown.
+
+Machine-specific policy evidence: main d685879 and mac-claude-a's f13979c handoff
+report direct local-user authorization for that Mac's Claude Max session and
+jay3332 primary-author exception. Preserve that reported local instruction; it does
+not authorize consuming this Commander's protected Claude allowance or generalize
+to other accounts. No Claude inference was initiated by Commander.
+
+`cursor-continuous-dispatch`: user-authorized Cursor publication of coherent queued
+next-assignment batches, at most one call per prepared batch, no paid polling,
+no automatic retry of an unresolved call. Uses the same existing Cursor account;
+quota/cost unknown, no overages or purchases. Dispatcher advances explicit queues
+only; Commander remains responsible for replenishment, review and integration.
+
+## Explicit 20x Claude Max expansion — latest user instruction
+
+The user requested more work and subagents on the 20x Claude Max plan, reporting
+that it is barely using its allowance. This authorizes that plan's available
+allowance on mac-m1max-a for ongoing project work. No new credit purchases, overages,
+or use of other protected Claude accounts is authorized. Numeric quota is still
+unknown until the Mac reports it. Parent and children share one pool.
+
+Pool `claude-mac20x`: local Mac Max plan. Grants: parent mac-claude-a continues the
+native editor and transport (`claude-mac20x-shell-stage2/3`); child mac-pdf owns
+FT-009 (`claude-mac20x-pdf`); child mac-validation owns FT-010
+(`claude-mac20x-validation`). Start parent plus these two children in independent
+worktrees; each child has no descendants. Parent reports quota and child progress
+at checkpoints and changes concurrency if actual resource evidence warrants it.
+
+Hosted Commander grants `openai-commander-corpus` (FT-011) and
+`openai-commander-protocol` (FT-012): two independent 30-minute product-validation
+subtasks in isolated worktrees, no descendants or additional external model calls.
+These share the already-authorized Commander account; usage/cost unknown.

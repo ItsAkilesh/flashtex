@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Rust tests cover capture-ID deduplication, destination revision mismatch, explicit review, bounded context and provider errors",
+    "Test Mac/companion messages with actual native consumers before claiming end-to-end completion"
+  ],
+  "agent_id": "commander",
+  "allocation_id": "openai-commander-bridge",
+  "branch": "agent/commander/capture-bridge",
+  "deadline_utc": "2026-09-12T14:00:00Z",
+  "dependencies": [],
+  "input_main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "objective": "Commander implements Rust capture-transfer and Grok conversion bridge plus anchored, deduplicated reviewed insertion contract. Coordinate native consumers and preserve runtime-v1. Do not invoke Grok until credential and funding are verified; test provider boundaries with honest mock labeling.",
+  "owned_paths": [
+    "crates/bridge",
+    "docs/contracts/transfer-v1.md"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-007",
+  "timebox_minutes": 60,
+  "updated_utc": "2026-09-12T04:13:25Z"
+}
