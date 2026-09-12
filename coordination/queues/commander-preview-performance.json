@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
-      "objective": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
+      "name": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
+      "objective": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact UTF8 edits permanent receipts source reopen and final current preview equality while measuring request acknowledgement bytes and phases",
-      "objective": "Verify exact UTF8 edits permanent receipts source reopen and final current preview equality while measuring request acknowledgement bytes and phases",
+      "name": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
+      "objective": "Verify release helper final output source receipts and reopen against existing debug capture using pinned producer release",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded paired adoption evidence and native integration limits without new protocol or unsupported paint claims",
-      "objective": "Publish bounded paired adoption evidence and native integration limits without new protocol or unsupported paint claims",
+      "name": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
+      "objective": "Record one release phase-attributed sample with request ACK compiler and frame costs without native or universal latency claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

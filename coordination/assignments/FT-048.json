@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a45f7e28c0ed7c2bcc159bed7bfcf8e956ced749",
-  "objective": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
+  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
+  "objective": "Prepare current release helper for same50KBtyping GH21 phase attribution preserving debug evidence and exact source workload",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 19,
+  "revision": 20,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:01:24.312845+00:00"
+  "updated_utc": "2026-09-12T13:07:20.708949+00:00"
 }

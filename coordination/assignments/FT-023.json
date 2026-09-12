@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
-  "objective": "Assess existing hit-test index for exact current-source queries on actual bound helper candidates without native activation",
+  "input_main_sha": "0d0e2cce744b57cf4ebf1478dd12dc2f23b4f308",
+  "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 15,
+  "revision": 16,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:44:17.036310+00:00"
+  "updated_utc": "2026-09-12T13:07:20.713348+00:00"
 }

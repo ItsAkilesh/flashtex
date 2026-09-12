@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 2,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Independently verify correctedeca6ab25 actual helper capture hashes source identities and zero diagnostics for GH34",
-      "objective": "Independently verify correctedeca6ab25 actual helper capture hashes source identities and zero diagnostics for GH34",
+      "name": "Build untouched pinned65dbe7d producer release in isolated artifact target preserving debug binaries and source provenance",
+      "objective": "Build untouched pinned65dbe7d producer release in isolated artifact target preserving debug binaries and source provenance",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Run existing captured-byte runtime acceptance on corrected records and compare six producer requests with preserved recovered control",
-      "objective": "Run existing captured-byte runtime acceptance on corrected records and compare six producer requests with preserved recovered control",
+      "name": "Verify release versus debug exact response equality on helper owner supplied50KB request and unchanged licensed assets",
+      "objective": "Verify release versus debug exact response equality on helper owner supplied50KB request and unchanged licensed assets",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Publish exact metric asset repair verification without native packaging or pixel parity claims",
-      "objective": "Publish exact metric asset repair verification without native packaging or pixel parity claims",
+      "name": "Publish binary source archive and comparison evidence for root GH21 release replay without producer edits",
+      "objective": "Publish binary source archive and comparison evidence for root GH21 release replay without producer edits",
       "owned_paths": [
         "crates/document-runtime"
       ],
