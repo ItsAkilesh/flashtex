@@ -1,5 +1,6 @@
 import XCTest
 import CoreText
+import FlashTeXProtocol
 @testable import FlashTeXMac
 
 final class PreviewFontsTests: XCTestCase {
@@ -13,6 +14,28 @@ final class PreviewFontsTests: XCTestCase {
         XCTAssertEqual(name, "LMRoman10-Regular")
         XCTAssertEqual(PreviewFonts.postScriptName(size: 12), PreviewFonts.active == .latinModern ? "LMRoman12-Regular" : "Times-Roman")
         XCTAssertEqual(PreviewFonts.postScriptName(size: 17.28, bold: true), PreviewFonts.active == .latinModern ? "LMRoman12-Bold" : "Times-Bold")
+    }
+
+    /// The compiler's `Latin Modern Math` hint draws from the bundled
+    /// `lm.math` program itself, never from a roman master or a fallback.
+    func testLatinModernMathHintDrawsTheBundledMathFont() throws {
+        guard PreviewFonts.latinModernMathRegistered else {
+            throw XCTSkip("latinmodern-math.otf not found in any search path on this machine")
+        }
+        let hint = RuntimeV1.PageItem.FontHint(family: "Latin Modern Math")
+        let resolved = PreviewFonts.resolve(hint: hint, size: 12)
+        XCTAssertEqual(resolved.postScriptName, "LatinModernMath-Regular")
+        XCTAssertNil(resolved.substitution)
+        let font = CTFontCreateWithName(resolved.postScriptName as CFString, 12, nil)
+        XCTAssertEqual(CTFontCopyPostScriptName(font) as String, "LatinModernMath-Regular")
+        for scalar in ["ℤ", "ℝ", "ℚ", "ℕ", "∖", "⟹", "𝔸"] {
+            let units = Array(scalar.utf16)
+            var glyphs = [CGGlyph](repeating: 0, count: units.count)
+            XCTAssertTrue(CTFontGetGlyphsForCharacters(font, units, &glyphs, units.count), "\(scalar) has a glyph")
+            XCTAssertNotEqual(glyphs[0], 0, "\(scalar) is not .notdef")
+        }
+        // The roman prefix match must not capture the math family.
+        XCTAssertFalse(PreviewFonts.resolve(hint: .init(family: "Latin Modern Roman"), size: 12).postScriptName.hasPrefix("LatinModernMath"))
     }
 
     func testTimesFallbackNamesAreBase14() {

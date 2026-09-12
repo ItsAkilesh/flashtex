@@ -151,9 +151,14 @@ a braced math list, including `x^{a_b}` and `\frac{a^2}{b_1}`.
 The named symbols `\alpha`, `\beta`, `\gamma`, `\delta`, `\theta`, `\lambda`,
 `\mu`, `\pi`, `\sigma`, `\phi`, `\omega`, `\times`, `\div`, `\pm`, `\leq`,
 `\geq`, `\neq`, `\approx`, `\cdot`, `\infty`, `\sum`, `\int`, `\in`, `\forall`,
-`\exists`, `\vee`, `\Rightarrow`, `\mid`, and `\Longrightarrow` map to Unicode.
+`\exists`, `\vee`, `\Rightarrow`, `\mid`, `\setminus`, and `\Longrightarrow` map to
+Unicode. `\mathbb{A}` through `\mathbb{Z}` map to the double-struck capitals.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
-export mapping; ordinary math letters and digits use Times-Roman. Unknown math
+export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`: those
+are drawn from the pinned Latin Modern Math resource (`lm.math`, see
+`src/lm_math.rs`), whose widths differ from pdfLaTeX's msbm10/cmsy10, and the
+base-14 PDF export reports them. Ordinary math letters and digits use
+Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
 literally, never silently dropped.
 

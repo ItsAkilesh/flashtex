@@ -132,8 +132,13 @@ enum Completion {
             Entry(name: "hfill", arguments: "", description: "accepted; no stretchable glue, so nothing is inserted", mode: .text, source: .parserArm),
             Entry(name: "normalfont", arguments: "", description: "accepted; text already uses the normal font", mode: .text, source: .parserArm),
             Entry(name: "bfseries", arguments: "", description: "accepted; font switches are not applied", mode: .text, source: .parserArm),
+            Entry(name: "vspace", arguments: "{length}", description: "vertical space of a recognised dimension", mode: .text, source: .parserArm),
+            Entry(name: "hrule", arguments: "", description: "horizontal rule across the text width", mode: .text, source: .parserArm),
+            Entry(name: "newpage", arguments: "", description: "starts a new page", mode: .text, source: .parserArm),
+            Entry(name: "pagestyle", arguments: "{style}", description: "accepted; headers and footers are not rendered", mode: .text, source: .parserArm),
             Entry(name: "frac", arguments: "{num}{den}", description: "fraction; math mode only", mode: .math, source: .readmeMath),
             Entry(name: "sqrt", arguments: "{x}", description: "square root; math mode only", mode: .math, source: .readmeMath),
+            Entry(name: "mathbb", arguments: "{A-Z}", description: "blackboard-bold capital; math mode only", mode: .math, source: .readmeMath),
         ] + symbols.map { name, glyph in
             Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
         }
@@ -143,7 +148,7 @@ enum Completion {
             ("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("theta", "θ"), ("lambda", "λ"), ("mu", "μ"),
             ("pi", "π"), ("sigma", "σ"), ("phi", "φ"), ("omega", "ω"), ("times", "×"), ("div", "÷"), ("pm", "±"),
             ("leq", "≤"), ("geq", "≥"), ("neq", "≠"), ("approx", "≈"), ("cdot", "·"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"),
-            ("in", "∈"), ("forall", "∀"), ("exists", "∃"), ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"), ("Longrightarrow", "⇒"),
+            ("in", "∈"), ("forall", "∀"), ("exists", "∃"), ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"), ("setminus", "∖"), ("Longrightarrow", "⟹"),
         ]
 
         /// Environments the README names for `\begin`/`\end`.

@@ -19,7 +19,7 @@ final class CompletionTests: XCTestCase {
         let text = "Hello \\se"
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
         // The label shows the argument shape; the inserted text is the command alone.
-        XCTAssertEqual(labels(s), ["\\section{...}"])
+        XCTAssertEqual(labels(s), ["\\section{...}", "\\setminus"])
         XCTAssertEqual(s.first?.kind, .command)
         XCTAssertEqual(s.first?.insertText, "\\section")
         XCTAssertEqual(s.first?.detail, "numbered section heading")
@@ -39,8 +39,8 @@ final class CompletionTests: XCTestCase {
         let math = Completion.suggestions(in: "$\\al", caretUTF16: 4, result: nil)
         XCTAssertEqual(labels(math), ["\\alpha"])
         XCTAssertEqual(math.first?.detail, "math · symbol α")
-        XCTAssertEqual(Completion.Vocabulary.symbols.count, 29)
-        XCTAssertEqual(Completion.Vocabulary.entries.count, 25 + 29)
+        XCTAssertEqual(Completion.Vocabulary.symbols.count, 30)
+        XCTAssertEqual(Completion.Vocabulary.entries.count, 30 + 30)
         let frac = Completion.suggestions(in: "\\fr", caretUTF16: 3, result: nil)
         XCTAssertEqual(labels(frac), ["\\frac{num}{den}"])
         XCTAssertEqual(frac.first?.insertText, "\\frac")
@@ -96,19 +96,19 @@ final class CompletionTests: XCTestCase {
     }
 
     func testUnsupportedDocumentCommandsAreMarked() {
-        let text = "\\documentclass{article}\n\\usepackage{amsmath}\n\\newpage\n\\ne"
+        let text = "\\documentclass{article}\n\\usepackage{amsmath}\n\\newline\n\\ne"
         let diag = RuntimeV1.Diagnostic(severity: .error,
-                                        message: "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+                                        message: "\\newline is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                                         source: nil, recovery: nil)
         let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .recovered, pages: [], diagnostics: [diag], pdfPath: nil)
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: result)
-        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\neq", "\\newpage"])
-        XCTAssertEqual(s[1].detail, "math · symbol ≠")
-        XCTAssertEqual(s[2].detail, "not supported by the compiler — " + diag.message)
+        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\newpage", "\\neq", "\\newline"])
+        XCTAssertEqual(s[2].detail, "math · symbol ≠")
+        XCTAssertEqual(s[3].detail, "not supported by the compiler — " + diag.message)
 
         // Without a diagnostic naming it the mark is still there, without a message.
         let s2 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
-        XCTAssertEqual(s2[2].detail, "not supported by the compiler")
+        XCTAssertEqual(s2[3].detail, "not supported by the compiler")
 
         // The command being typed is not offered as its own completion (only the
         // vocabulary entry it is a prefix of).
@@ -117,8 +117,8 @@ final class CompletionTests: XCTestCase {
         XCTAssertTrue(Completion.suggestions(in: "\\zzq", caretUTF16: 4, result: nil).isEmpty)
 
         // A custom supported list replaces the default.
-        let s4 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil, supported: ["newpage"])
-        XCTAssertEqual(labels(s4), ["\\newpage"])
+        let s4 = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil, supported: ["newline"])
+        XCTAssertEqual(labels(s4), ["\\newline"])
         XCTAssertEqual(s4[0].detail, "supported by this compiler")
     }
 
@@ -178,7 +178,7 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.rangeForUserCompletion, NSRange(location: end - 3, length: 3))
         var index = -1
         let items = tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index)
-        XCTAssertEqual(items, ["\\section"])
+        XCTAssertEqual(items, ["\\section", "\\setminus"])
         XCTAssertEqual(index, 0)
         // `\e` offers the unclosed environment first.
         tv.string = "\\begin{document}\n\\e"
@@ -368,7 +368,7 @@ final class CompletionTests: XCTestCase {
         let glyphs = matches("\\(\"([A-Za-z]+)\", \"([^\"]+)\"\\)", in: String(mathRS[glyphBlock...].prefix { $0 != "]" })).map { ($0[1], $0[2]) }
         XCTAssertEqual(glyphs.map(\.0), Completion.Vocabulary.symbols.map(\.0), "src/math.rs COMMAND_GLYPHS names drifted")
         XCTAssertEqual(glyphs.map(\.1), Completion.Vocabulary.symbols.map(\.1), "src/math.rs COMMAND_GLYPHS glyphs drifted")
-        XCTAssertEqual(Set(readmeMath), Set(glyphs.map(\.0) + ["frac", "sqrt"]), "README symbols and COMMAND_GLYPHS disagree")
+        XCTAssertEqual(Set(readmeMath), Set(glyphs.map(\.0) + ["frac", "sqrt", "mathbb"]), "README symbols and COMMAND_GLYPHS disagree")
         for (name, glyph) in glyphs {
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.glyph, glyph)
             XCTAssertEqual(Completion.Vocabulary.byName[name]?.mode, .math)
@@ -394,7 +394,7 @@ final class CompletionTests: XCTestCase {
             XCTAssertNotNil(Completion.Vocabulary.byName[arm], "parser arm \\\(arm) is missing from Completion.Vocabulary")
         }
         let parserOnly = table.filter { $0.source == .parserArm }.map(\.name)
-        XCTAssertEqual(parserOnly, ["input", "include", "hfill", "normalfont", "bfseries"])
+        XCTAssertEqual(parserOnly, ["input", "include", "hfill", "normalfont", "bfseries", "vspace", "hrule", "newpage", "pagestyle"])
         XCTAssertTrue(parser.contains("\"input\" | \"include\" => self.include("), "the parser arm the parser-only entries cite")
         for name in parserOnly { XCTAssertFalse(readmeCommands.contains(name), "\(name) is not in the README paragraph; move its source if that changes") }
     }
@@ -418,8 +418,8 @@ final class CompletionTests: XCTestCase {
 
     func testMetadataFromCompileResultParsesDiagnosticsAndCaps() {
         let r = result(revision: 7, [
-            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
-            "\\newpage duplicate mention is ignored",
+            "\\newline is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+            "\\newline duplicate mention is ignored",
             "undefined reference 'eq:missing'",
             "environment 'align' is not implemented; its body is typeset as plain text",
             "packages amsmath are recognised but not implemented",
@@ -428,7 +428,7 @@ final class CompletionTests: XCTestCase {
         let m = Completion.Metadata.from(r)
         XCTAssertEqual(m.origin, .compileResult(projectId: "p"))
         XCTAssertEqual(m.revision, 7)
-        XCTAssertEqual(m.diagnosticsByCommand, ["newpage": r.diagnostics[0].message])
+        XCTAssertEqual(m.diagnosticsByCommand, ["newline": r.diagnostics[0].message])
         XCTAssertEqual(m.unresolvedReferences, ["eq:missing"])
         XCTAssertEqual(m.diagnosticsByEnvironment, ["align": r.diagnostics[3].message])
         XCTAssertFalse(m.truncated)
@@ -522,12 +522,12 @@ final class CompletionTests: XCTestCase {
         let compiled = Completion.Metadata.from(result(revision: 5, [
             "undefined reference 'fig:local'",
             "environment 'align' is not implemented; its body is typeset as plain text",
-            "\\newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented",
+            "\\newline is not supported by this compiler version; unrestricted TeX math mode is not implemented",
         ]))
         let m = try XCTUnwrap(labelMeta.merged(with: cites)?.merged(with: cmds)?.merged(with: compiled))
 
         // References: document labels first (with the compiler's verdict), then project-wide ones.
-        let ref = "\\label{fig:local}\\newpage \\begin{align} \\ref{fi"
+        let ref = "\\label{fig:local}\\newline \\begin{align} \\ref{fi"
         let refs = Completion.suggestions(in: ref, caretUTF16: (ref as NSString).length, metadata: m)
         XCTAssertEqual(labels(refs), ["fig:local", "fig:river"])
         XCTAssertEqual(refs[0].detail, "\\label in this document — undefined when revision 5 compiled")
@@ -553,9 +553,9 @@ final class CompletionTests: XCTestCase {
         // against it; unsupported document commands carry the bound diagnostic.
         let cmd = ref + "g} \\ne"
         let s = Completion.suggestions(in: cmd, caretUTF16: (cmd as NSString).length, metadata: m)
-        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\neq", "\\newterm", "\\newpage"])
-        XCTAssertEqual(s[2].detail, "declared in main.tex · 4 uses · revision 5")
-        XCTAssertEqual(s[3].detail, "not supported by the compiler — " + compiled.diagnosticsByCommand["newpage"]!)
+        XCTAssertEqual(labels(s), ["\\newcommand{\\name}[n]{body}", "\\newpage", "\\neq", "\\newterm", "\\newline"])
+        XCTAssertEqual(s[3].detail, "declared in main.tex · 4 uses · revision 5")
+        XCTAssertEqual(s[4].detail, "not supported by the compiler — " + compiled.diagnosticsByCommand["newline"]!)
         // A project `\newcommand` with a builtin's name wins over the static entry:
         // listed once, without the builtin's argument shape, saying so.
         let sec = "x \\sec"
@@ -578,31 +578,31 @@ final class CompletionTests: XCTestCase {
     func testTextViewRefusesMetadataNotBoundToItsEditorRevision() throws {
         let scroll = CompletingTextView.scrollable()
         let tv = try XCTUnwrap(scroll.documentView as? CompletingTextView)
-        let text = "\\newpage \\ne"
+        let text = "\\newline \\ne"
         tv.string = text
         tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
-        tv.compileResult = result(revision: 3, ["\\newpage is not supported by this compiler version"])
+        tv.compileResult = result(revision: 3, ["\\newline is not supported by this compiler version"])
         XCTAssertEqual(tv.resultMetadata?.revision, 3)
 
-        func newpageDetail() -> String? {
+        func newlineDetail() -> String? {
             Completion.suggestions(in: tv.string, caretUTF16: tv.selectedRange().location, metadata: tv.boundMetadata)
-                .first { $0.label == "\\newpage" }?.detail
+                .first { $0.label == "\\newline" }?.detail
         }
         // Unknown editor revision: nothing binds.
         XCTAssertNil(tv.editorRevision)
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler")
+        XCTAssertEqual(newlineDetail(), "not supported by the compiler")
         // Editor moved on since the result was compiled: refused.
         tv.editorRevision = 4
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler")
+        XCTAssertEqual(newlineDetail(), "not supported by the compiler")
         // Exact revision: bound and shown.
         tv.editorRevision = 3
         XCTAssertEqual(tv.boundMetadata?.revision, 3)
-        XCTAssertEqual(newpageDetail(), "not supported by the compiler — \\newpage is not supported by this compiler version")
+        XCTAssertEqual(newlineDetail(), "not supported by the compiler — \\newline is not supported by this compiler version")
         // The synchronous AppKit path binds the same way.
         var index = 0
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\newpage", "\\neq", "\\newline"])
 
         // Project-index metadata: older than the held one is refused; equal merges; newer replaces.
         let versions = ["main.tex": 1]
@@ -617,11 +617,11 @@ final class CompletionTests: XCTestCase {
         XCTAssertTrue(tv.accept(projectIndex: cites3))
         XCTAssertEqual(tv.projectIndexMetadata?.commands.map(\.name), ["newterm"])
         XCTAssertEqual(tv.projectIndexMetadata?.citations.map(\.name), ["k"])
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newterm", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\newpage", "\\neq", "\\newterm", "\\newline"])
         XCTAssertEqual(tv.boundMetadata?.diagnosticsByCommand.count, 1, "compile-result and index metadata merge at the bound revision")
         tv.editorRevision = 4
         XCTAssertNil(tv.boundMetadata)
-        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\neq", "\\newpage"])
+        XCTAssertEqual(tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index), ["\\newcommand", "\\newpage", "\\neq", "\\newline"])
         let at5 = try Completion.Metadata.decodeProjectIndexReply(indexReply(versions: versions, names: [("newer", 1, 0, false)]),
                                                                   category: .command, editorRevision: 5, expectedSourceVersions: versions)
         XCTAssertTrue(tv.accept(projectIndex: at5))
@@ -900,7 +900,7 @@ final class CompletionTests: XCTestCase {
         tv.requestCompletion()
         exec.runAll()
         spin("session") { tv.session != nil }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum"])
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum", "\\setminus"])
         XCTAssertEqual(tv.session?.range, NSRange(location: caret - 2, length: 2))
         XCTAssertNil(tv.session?.metadataRevision, "no metadata was bound")
         tv.setSelectedRange(NSRange(location: 0, length: 0))
@@ -980,7 +980,7 @@ final class CompletionTests: XCTestCase {
         key(tv, " ", code: 49, flags: .control)
         XCTAssertNil(tv.session, "the keystroke path enqueues; it does not scan")
         try await waitUntil("popup") { tv.session != nil }
-        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum"])
+        XCTAssertEqual(tv.session?.items.map(\.label), ["\\section{...}", "\\subsection{...}", "\\sqrt{x}", "\\sigma", "\\sum", "\\setminus"])
         XCTAssertEqual(tv.session?.selectedIndex, 0)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\s", "opening the list never edits the text")
 
@@ -993,7 +993,7 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0))
         // ↑ from the top wraps to the bottom.
         key(tv, "\u{F700}", code: 126); key(tv, "\u{F700}", code: 126)
-        XCTAssertEqual(tv.session?.selected?.label, "\\sum")
+        XCTAssertEqual(tv.session?.selected?.label, "\\setminus")
         key(tv, "\u{F701}", code: 125)
         XCTAssertEqual(tv.session?.selected?.label, "\\section{...}")
 
@@ -1008,7 +1008,7 @@ final class CompletionTests: XCTestCase {
         // Delete widens it again.
         key(tv, "\u{7F}", code: 51)
         XCTAssertEqual(tv.string, "\\begin{document}\nx \\s")
-        try await waitUntil("widened") { tv.session?.items.count == 5 }
+        try await waitUntil("widened") { tv.session?.items.count == 6 }
         XCTAssertEqual(tv.session?.selected?.label, "\\subsection{...}")
 
         // Return inserts the chosen item over the partial token (its argument
@@ -1072,7 +1072,7 @@ final class CompletionTests: XCTestCase {
         XCTAssertTrue(popup.isVisible)
         XCTAssertFalse(popup.canBecomeKey)
         XCTAssertTrue(popup.parent === window)
-        XCTAssertEqual(popup.items.count, 5)
+        XCTAssertEqual(popup.items.count, 6)
         popup.click(row: 2)
         XCTAssertEqual(tv.session?.selected?.label, "\\sqrt{x}")
         popup.click(row: 9) // out of range: ignored
@@ -1125,7 +1125,7 @@ final class CompletionTests: XCTestCase {
         try await waitUntil("popup") { tv.session != nil }
         let items = try XCTUnwrap(tv.session?.items)
         let labels = items.map(\.label)
-        XCTAssertEqual(labels.count, 5)
+        XCTAssertEqual(labels.count, 6)
         let popup = tv.completionPopup
         let table = popup.accessibilityTable
         XCTAssertEqual(table.accessibilityLabel(), CompletionAccessibility.listLabel)
@@ -1144,8 +1144,8 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(tv.session?.selectedIndex, 0)
         key(tv, "\t", code: 48, flags: .shift)
         key(tv, "\t", code: 48, flags: .shift)
-        XCTAssertEqual(tv.session?.selectedIndex, 3)
-        XCTAssertEqual(popup.selectedRow, 3)
+        XCTAssertEqual(tv.session?.selectedIndex, 4)
+        XCTAssertEqual(popup.selectedRow, 4)
         XCTAssertTrue(window.firstResponder === tv, "the list never takes the keyboard")
         XCTAssertFalse(popup.isKeyWindow)
         XCTAssertEqual(tv.selectedRange(), NSRange(location: end, length: 0), "choosing never moves the caret")
@@ -1167,14 +1167,14 @@ final class CompletionTests: XCTestCase {
         }
         let selectedRows = (legacy(table, .selectedRows) as? [AnyObject]) ?? []
         XCTAssertEqual(selectedRows.count, 1)
-        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, 3)
-        let announcement = CompletionAccessibility.selectionAnnouncement(index: 3, total: labels.count, label: items[3].label,
-                                                                          kind: items[3].kind.accessibilityKind, detail: items[3].detail)
-        XCTAssertTrue(announcement.hasPrefix("4 of 5: \(labels[3]), command, "), announcement)
+        XCTAssertEqual(selectedRows.first.flatMap { legacy($0, .index) as? Int }, 4)
+        let announcement = CompletionAccessibility.selectionAnnouncement(index: 4, total: labels.count, label: items[4].label,
+                                                                          kind: items[4].kind.accessibilityKind, detail: items[4].detail)
+        XCTAssertTrue(announcement.hasPrefix("5 of 6: \(labels[4]), command, "), announcement)
 
         // Return inserts the walked-to candidate over the token and closes.
         key(tv, "\r", code: 36)
-        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[3].insertText)
+        XCTAssertEqual(tv.string, "\\begin{document}\nx " + items[4].insertText)
         XCTAssertNil(tv.session)
         XCTAssertFalse(popup.isVisible)
         XCTAssertEqual(tv.lastCloseReason, .accepted)
