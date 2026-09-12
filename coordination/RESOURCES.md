@@ -214,15 +214,15 @@ subscription access only. It does not authorize API purchases or overlapping
 writes to FT-004's `apps/companion` ownership.
 
 The Linux Claude credential metadata reports subscription type Max and tier
-`default_claude_max_20x`, matching the user's authorization, but the CLI reports
-logged out with no access or refresh token and no eligible API environment key.
-Pool `claude-linux-max20x` is user-authorized for substantial project work after
-login; usable quota is unknown. API-credit fallback is authorized only when an
-actually funded existing API route is verified. New charges, purchases, and
-overages remain prohibited. Grant `claude-linux-max20x-ft015` and its queued stages
-reserve the existing plan route for FT-015 after successful login; they authorize
-no inference while authentication is absent. No inference has run. The worker must
-open/reconcile its auth recovery issue before reporting active execution.
+`default_claude_max_20x`, but the latest user instruction prohibits that local
+subscription/extra-usage route. The CLI reports logged out with no access or
+refresh token and no eligible API environment key. Pool `claude-linux-api` is the
+only eligible route and remains blocked until an existing funded API credential,
+actual available credits, a provider-side cap, and a bounded grant covering the
+whole call are verified. Grant `claude-linux-api-ft015` and its queued stages
+reserve no spend and authorize no inference while those checks are absent. New
+charges, purchases, auto-recharge, overages, and subscription fallback are
+prohibited. No inference has run; recovery issue #6 remains open.
 
 Grant `openai-commander-supervisor` covers one bounded hosted OpenAI engineering
 task, FT-016, to implement and test the deterministic Claude supervisor. It does
