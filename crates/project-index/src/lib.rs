@@ -2,6 +2,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+mod bibliography;
+
 pub const MAX_DOCUMENT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GROUP_BYTES: usize = 64 * 1024;
 const MAX_GROUP_DEPTH: usize = 128;
@@ -24,6 +26,12 @@ pub enum Category {
     Label,
     Citation,
     Command,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocumentKind {
+    Latex,
+    Bibliography,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -184,6 +192,7 @@ pub struct RenamePlan {
 }
 
 struct Document {
+    kind: DocumentKind,
     revision: u64,
     source: String,
     symbols: Vec<Symbol>,
@@ -264,6 +273,39 @@ impl ProjectIndex {
         revision: u64,
         source: &str,
     ) -> Result<UpdateSummary, IndexError> {
+        self.replace_source(file, revision, source, DocumentKind::Latex)
+    }
+
+    /// Explicitly declares a bibliography source; extensions never infer its kind.
+    pub fn replace_bibliography_document(
+        &mut self,
+        file: &str,
+        revision: u64,
+        source: &str,
+    ) -> Result<UpdateSummary, IndexError> {
+        self.replace_source(file, revision, source, DocumentKind::Bibliography)
+    }
+
+    pub fn document_kind(
+        &self,
+        snapshot: &VersionSnapshot,
+        file: &str,
+    ) -> Result<DocumentKind, IndexError> {
+        self.check(snapshot)?;
+        validate_path(file)?;
+        self.documents
+            .get(file)
+            .map(|document| document.kind)
+            .ok_or(IndexError::MissingDocument)
+    }
+
+    fn replace_source(
+        &mut self,
+        file: &str,
+        revision: u64,
+        source: &str,
+        kind: DocumentKind,
+    ) -> Result<UpdateSummary, IndexError> {
         let started = Instant::now();
         let generation = self.check_update(file, revision)?;
         if source.len() > MAX_DOCUMENT_BYTES {
@@ -273,7 +315,10 @@ impl ProjectIndex {
             });
         }
         let lexical_started = Instant::now();
-        let (symbols, diagnostics) = scan(file, revision, source);
+        let (symbols, diagnostics) = match kind {
+            DocumentKind::Latex => scan(file, revision, source),
+            DocumentKind::Bibliography => bibliography::scan(file, revision, source),
+        };
         let lexical_elapsed_nanos = lexical_started.elapsed().as_nanos();
         let symbol_count = symbols.len();
         let diagnostic_copy = diagnostics.clone();
@@ -281,6 +326,7 @@ impl ProjectIndex {
             .commit_document(
                 file,
                 Some(Document {
+                    kind,
                     revision,
                     source: source.to_owned(),
                     symbols,
