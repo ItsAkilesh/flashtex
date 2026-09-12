@@ -816,6 +816,8 @@ mod parse_tests {
             })
             .collect();
         assert_eq!(glyphs, ["∈", "∀", "∃", "∨", "⇒", "∣"]);
+        let _ = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[test]

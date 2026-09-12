@@ -84,7 +84,7 @@ fn live_grok_round_trip_produces_structurally_valid_proposal() {
         .expect("set XAI_API_KEY to run this live test (read only at runtime here, never logged)");
     let model = std::env::var("FLASHTEX_GROK_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
-    let capture = CaptureSubmit {
+    let mut capture = CaptureSubmit {
         capture_id: "live-test-capture".into(),
         destination_id: "live-test-destination".into(),
         base_revision: 1,
