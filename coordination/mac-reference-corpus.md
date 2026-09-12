@@ -2,6 +2,19 @@
 
 ## Current checkpoint: extended incremental acceptance
 
+Follow-up code `96f362dd` adds six clean edited HW1 one-page MacTeX PDFs, all
+warning-free and individually inspected. Original sources/PDFs remain unchanged.
+Every edit changes its full-page RGB oracle; title diff remains confined to its
+glyphs/centered width, so its purpose was corrected (following lines stay fixed).
+Fifteen development tests pass; updated edited source/PDF/provenance checks pass
+2/2 after that annotation correction. Evidence `docs/evidence/edited-hw1-oracles-20260912/`.
+The prior84-comparison evidence correctly retains its then-current edit-definition
+hash; this follow-up only changes title-purpose metadata, not edit bytes/offsets.
+Published prior tip `2f76f7ee` verified, PR53 and GH2#5648780160 updated. Pending
+now: this follow-up report commit/push and PR53/dispatch refresh. No uncertain
+paid calls. Opus has both exact retry and pair binding plus adversarial tests in
+WIP; no published runtime acceptance yet. Do not duplicate its active Xcode jobs.
+
 - User-direct reference-test role; no new Commander assignment/ACK invented.
   Active sole Commander in fetched authority is `claude` on mac-m5pro-kabir.
 - Branch `agent/mac-reference-corpus/hw1-probes`, worktree
