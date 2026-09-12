@@ -1,0 +1,35 @@
+{
+  "agent_id": "mac-editor-diagnostics",
+  "allocation_id": "claude-mac20x-editor-diagnostics",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-editor-diagnostics/exact-marks",
+  "capabilities": [
+    "swift",
+    "accessibility"
+  ],
+  "code_revision": "7361570b88a93185c2a43345849beb838fde7680",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Parent applies the ShellModel/ContentView/SourceEditorView diffs in coordination/mac-editor-diagnostics.md (pass resultID, expose editorMarkReport.staleNote, wire next/previous error commands); re-run swift test after merge.",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on mac-shell 6b43a3a: kept marks(for:path:compiledText:currentText:) source-compatible (resultID defaulted) so ShellModel.editorMarks and SourceEditorView.applyMarks compile unchanged; tooltip text now 'recovery: \u2026' to match the list row",
+      "reviewed_utc": "2026-09-12T08:35:08Z",
+      "sha": "169c2a80ad857c26bbf1e67d3168f5ca5fc03f23"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "EditorDiagnostics: exact mark identity (result id + index + original byte span), report(for:) with stale set/count/note, recovered results always show a recovery line, grapheme-cluster-safe NSRanges; bench 62 KB/200 diags after a keystroke best 0.83 ms median 0.83 ms (debug), asserted < 2 ms; FlashTeXAccessibility/EditorDiagnosticsAccessibility.swift keyboard error navigation (document order, wrap, 'n of m' announcements). swift test 195/195 with real worker binaries.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:35:08Z",
+  "usage": {
+    "evidence": "apps/mac: swift test 195 tests 0 failures; EditorDiagnosticsTests.testRebaseOfLargeDocumentIsFast prints the bench line",
+    "status": "shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
