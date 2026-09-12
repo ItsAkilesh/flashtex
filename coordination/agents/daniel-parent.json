@@ -3,8 +3,8 @@
   "allocation_id": "daniel-claude20x-shared",
   "assignment_acknowledgements": {
     "FT-046": {
-      "acknowledged_utc": "2026-09-12T09:28:40Z",
-      "adaptation": "Rev 3 accepted: verify all 16 session ACKs and rebalance only within approved exclusive lanes. VERIFICATION RESULT: 0 of 16 lanes had published a structured ack record after round 1. They wrote markdown handoffs only, which the tooling does not read, so sixteen completed lanes were invisible to the Commander for the same reason this supervisor's report was until its schema was repaired. Every round-2 lane brief now carries the exact required key list; 4 have published valid records so far (daniel-title, daniel-color, daniel-images, daniel-spelling). NO REBALANCING PERFORMED: lane ownership is unchanged, exclusive and one crate each. ATTRIBUTION DEFECT FOUND AND FIXED: daniel-images committed two Claude-Session trailers, which the machine owner's standing rule forbids anywhere in Git. All 17 branches were audited; only that one was affected. The trailers were stripped with byte-identical trees, author and Co-authored-by preserved, and the branch force-pushed while still unmerged with nothing depending on it. A second lane, daniel-spelling, caught the same slip itself before committing. The pressure is systemic: an environment reminder instructs agents to add that trailer and it conflicts with the owner's rule, so every lane brief now states the prohibition explicitly.",
+      "acknowledged_utc": "2026-09-12T09:31:53Z",
+      "adaptation": "Rev 3 accepted: verify all 16 session ACKs and rebalance only within approved exclusive lanes. VERIFICATION RESULT: 0 of 16 lanes had published a structured ack record after round 1. They wrote markdown handoffs only, which the tooling does not read, so sixteen completed lanes were invisible to the Commander for the same reason this supervisor's report was until its schema was repaired. Every round-2 lane brief now carries the exact required key list; 4 have published valid records so far (daniel-title, daniel-color, daniel-images, daniel-spelling). NO REBALANCING PERFORMED: lane ownership is unchanged, exclusive and one crate each. ATTRIBUTION DEFECT FOUND AND FIXED: daniel-images committed two Claude-Session trailers, which the machine owner's standing rule forbids anywhere in Git. All 17 branches were audited; only that one was affected. The trailers were stripped with byte-identical trees, author and Co-authored-by preserved, and the branch force-pushed while still unmerged with nothing depending on it. Two further lanes hit the same pressure: daniel-spelling caught and corrected it itself before committing, and daniel-contents deliberately emitted both trailers and said so openly rather than resolving the conflict silently, which was the right disclosure even though the wrong resolution. Three of sixteen lanes affected in total; all fixed before or immediately after publication, with byte-identical trees. The pressure is systemic: an environment reminder instructs agents to add that trailer and it conflicts with the owner's rule, so every lane brief now states the prohibition explicitly.",
       "main_sha": "a7168288b7baf836d3048199981fa7fb78bd1641",
       "revision": 3
     }
@@ -18,23 +18,23 @@
     "latex-oracle",
     "commit-execution"
   ],
-  "code_revision": "f47a447554a73ad63b73e4997a97a890459f1d11",
+  "code_revision": "a994d1394cf4ead84b797c8dff6e585a5cdd53fd",
   "eta_minutes": {
     "likely": 60,
     "optimistic": 20,
     "pessimistic": 150
   },
   "machine": "mac-m5pro-dq222",
-  "main_integrated_through": "a7168288b7baf836d3048199981fa7fb78bd1641",
-  "next_action": "Verify and publish the 4 running lanes, start the remaining 8 round-2 revisions, re-checkpoint each cycle.",
+  "main_integrated_through": "745f32736134583f72ac830453a46abd02994a73",
+  "next_action": "Verify and publish the 6 running lanes; start FT-030 r3, FT-031 r3, FT-032 r3.",
   "reviewed_peers": {
-    "origin/main": "a7168288b7baf836d3048199981fa7fb78bd1641"
+    "origin/main": "745f32736134583f72ac830453a46abd02994a73"
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Round 1 complete: all 16 lanes FT-030..FT-045, 547 tests passing. Round 2 under way on the Commander's new revisions: 4 complete and published (FT-033 r2, FT-035 r2, FT-036 r2, FT-039 r2), 4 running, 8 not yet started. Each round-2 lane now also publishes its own schema-valid ack record, which round 1 lacked entirely.",
+  "summary": "Round 1: all 16 lanes complete, 547 tests. Round 2 on the Commander's new revisions: 7 complete and published (FT-033,034,035,036,037,039,042), 6 running, 3 not started. Every round-2 lane also publishes its own schema-valid ack record, which round 1 lacked entirely.",
   "tool": "Claude Code on Claude Max 20x",
-  "updated_utc": "2026-09-12T09:28:40Z",
+  "updated_utc": "2026-09-12T09:31:53Z",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
     "status": "unknown"
