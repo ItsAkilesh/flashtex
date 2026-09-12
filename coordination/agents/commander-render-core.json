@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "7306fdb5a2c20d721450d45fb3e035a608723492",
+  "code_revision": "d819d5cf02926607e0392881b80c3bc39476c19e",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Publish nested consumer checkpoint; continue next assigned product increment.",
+  "next_action": "Consume published CFF cubic FontMatrix API with explicit unhinted policy in separate internal consumer.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Nested graph packet-to-run consumer implemented with exact rational geometry, original input intervals, source-chain sidecar and physical encoding identity checks. 78 Rust tests pass.",
+  "summary": "Stable primitive identities and source-chain-aware nested batches implemented; culling and consumer reordering preserve provenance. 79 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:36:25Z",
+  "updated_utc": "2026-09-12T06:39:14Z",
   "usage": {
-    "evidence": "78 Rust tests and strict all-target clippy pass. Flat versus two-level virtual equivalence uses synthetic licensed fixtures; no runtime activation/native or TeX oracle parity claim.",
+    "evidence": "79 Rust tests and strict all-target clippy pass. Adversarial initial-rule and fractional-clip culling plus retained primitive reordering tested.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

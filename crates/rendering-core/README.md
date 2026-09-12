@@ -180,8 +180,16 @@ precision exhaustion and integral-path equivalence.
 `tex_adapter::nested_run` consumes cached nested graph packets and verifies every
 physical placement against a supplied font/TFM/encoding binding. It produces the
 same exact `EncodedRun` API, retaining encoded input intervals and rational nested
-scale/offset/rule geometry. `NestedRun::source_chains` is indexed by the original
-run operation index; retain that sidecar when converting to batches (which may
-cull rules). Missing or conflicting bindings fail before any partial run is
+scale/offset/rule geometry. `NestedRun::source_chains()` is indexed by the original
+run operation index. Prefer `NestedRun::batch`, which attaches the correct chain
+to each retained primitive by stable item/glyph identity after culling. Missing or conflicting bindings fail before any partial run is
 returned. Synthetic tests compare flat and two-level virtual glyph/rule runs and
 verify that differing encoding declarations cannot be substituted at this boundary.
+
+`TracedBatch` keeps source chains attached to primitives, so vector reordering does
+not relabel provenance. Primitive identity is scoped by project, revision and page;
+`PrimitiveId` retains original item/glyph indices rather than output-vector indices.
+The nested run and chain storage are immutable behind accessors. An adversarial
+fixture culls an initial rule, keeps a glyph and later rule, reorders the retained
+primitives, then applies a fractional clip that removes the later rule. Every
+retained chain still points to its original virtual-font command.

@@ -607,11 +607,11 @@ fn nested_graph_run_matches_flat_fractional_positions_and_retains_source_chain()
     let scale = RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap();
     let nested = nested_run(&mut cache, &root, &t, &physical, b"AA", scale).unwrap();
     let flat = physical_run(&b, b"AA", scale).unwrap();
-    assert_eq!(nested.run.advance, flat.advance);
-    assert_eq!(nested.source_chains.len(), 2);
-    assert_eq!(nested.source_chains[0].len(), 3);
-    assert_eq!(nested.source_chains[0][0].command_index, Some(1));
-    for (a, b) in nested.run.operations.iter().zip(&flat.operations) {
+    assert_eq!(nested.run().advance, flat.advance);
+    assert_eq!(nested.source_chains().len(), 2);
+    assert_eq!(nested.source_chains()[0].len(), 3);
+    assert_eq!(nested.source_chains()[0][0].command_index, Some(1));
+    for (a, b) in nested.run().operations.iter().zip(&flat.operations) {
         let (Operation::Glyph(a), Operation::Glyph(b)) = (a, b) else {
             panic!()
         };
@@ -699,7 +699,7 @@ fn nested_graph_rules_preserve_fractional_geometry_and_input_interval() {
         height,
         input,
         ..
-    } = &result.run.operations[0]
+    } = &result.run().operations[0]
     else {
         panic!()
     };
@@ -707,5 +707,110 @@ fn nested_graph_rules_preserve_fractional_geometry_and_input_interval() {
     assert_eq!((width.numerator(), width.denominator()), (1, 4));
     assert_eq!((height.numerator(), height.denominator()), (1, 2));
     assert_eq!(input, &InputInterval { start: 0, end: 1 });
-    assert_eq!(result.source_chains[0].len(), 2);
+    assert_eq!(result.source_chains()[0].len(), 2);
+}
+#[test]
+fn traced_nested_batches_keep_source_identity_after_culling_and_reordering() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::{
+        batch::*, glyph_cache::GlyphPathCache, graph_cache::GraphCache, hit_test::Point,
+        outlines::OutlineCoordinate, HitRect, Paint,
+    };
+    let f = font(true);
+    let t = tfm();
+    let b = BoundTfmFont::new(&t, &f, &manifest(&f, &t)).unwrap();
+    let mut rule = vec![137];
+    rule.extend((1i32 << 19).to_be_bytes());
+    rule.extend((1i32 << 18).to_be_bytes());
+    let mut commands = rule.clone();
+    commands.push(65);
+    commands.extend(rule);
+    let virtual_ = vf(&commands);
+    let mut graph = ResourceGraph::new();
+    let pk = graph.insert(Resource::Physical(&b)).unwrap();
+    let root = graph
+        .insert(Resource::Virtual {
+            vf: &virtual_,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, pk.clone())]),
+        })
+        .unwrap();
+    let mut graph_cache = GraphCache::new(&graph, 4, 100000).unwrap();
+    let nested = nested_run(
+        &mut graph_cache,
+        &root,
+        &t,
+        &BTreeMap::from([(pk, &b)]),
+        b"A",
+        scale(),
+    )
+    .unwrap();
+    let mappings = [Provenance {
+        input: InputInterval { start: 0, end: 1 },
+        logical_start: 0,
+        logical_end: 1,
+        sources: vec![],
+        synthetic_reason: Some("explicit VF fixture".into()),
+    }];
+    let snapshots = BTreeMap::new();
+    let clip = HitRect {
+        x: Tick(300),
+        top: Tick(0),
+        width: Tick(700),
+        height: Tick(2000),
+    };
+    let ctx = BatchContext {
+        project_id: "test",
+        revision: 3,
+        page: 1,
+        page_width: Tick(2000),
+        page_height: Tick(2000),
+        origin: Point {
+            x: Tick(0),
+            y: Tick(1000),
+        },
+        clip: Some(&clip),
+        paint: Paint {
+            r: 0.,
+            g: 0.,
+            b: 0.,
+            a: 1.,
+        },
+        logical_text: "A",
+        provenance: &mappings,
+        documents: &[],
+        snapshots: &snapshots,
+    };
+    let mut cache = GlyphPathCache::new(4, 100000).unwrap();
+    let mut batch = nested
+        .batch(&ctx, None, BatchLimits::default(), &mut cache)
+        .unwrap();
+    assert_eq!(batch.primitives.len(), 2);
+    assert_eq!(batch.primitives[0].identity.item_index, 1);
+    assert_eq!(batch.primitives[1].identity.item_index, 2);
+    for primitive in &batch.primitives {
+        assert_eq!(primitive.identity, primitive.operation.primitive_id());
+        assert_eq!(
+            primitive.source_chain[0].command_index,
+            Some(primitive.identity.item_index)
+        );
+    }
+    batch.primitives.reverse();
+    assert_eq!(batch.primitives[0].identity.item_index, 2);
+    assert_eq!(batch.primitives[0].source_chain[0].command_index, Some(2));
+    assert_eq!(batch.primitives[1].source_chain[0].command_index, Some(1));
+    let c = |n, d| OutlineCoordinate::from_fraction(n, d).unwrap();
+    let exact = ExactClip {
+        left: c(601, 2),
+        top: c(0, 1),
+        right: c(799, 2),
+        bottom: c(2000, 1),
+    };
+    let batch = nested
+        .batch(&ctx, Some(exact), BatchLimits::default(), &mut cache)
+        .unwrap();
+    assert_eq!(batch.primitives.len(), 1);
+    assert_eq!(batch.primitives[0].identity.item_index, 1);
+    assert_eq!(batch.primitives[0].source_chain[0].command_index, Some(1));
+    assert_eq!(batch.visible_clip, Some(exact));
 }

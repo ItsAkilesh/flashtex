@@ -8,9 +8,16 @@ use crate::{
     *,
 };
 use flashtex_font_resources::FontCollection;
+/// Stable within a project/revision/page batch, independent of retained vector order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PrimitiveId {
+    pub item_index: usize,
+    pub glyph_index: Option<usize>,
+}
 #[derive(Debug, Clone)]
 pub enum DrawOperation {
     ExactRule {
+        primitive_id: PrimitiveId,
         geometry: ExactClip,
         paint: Paint,
         sources: Vec<SourceRange>,
@@ -21,6 +28,7 @@ pub enum DrawOperation {
         paint: Paint,
     },
     Rule {
+        primitive_id: PrimitiveId,
         geometry: HitRect,
         paint: Paint,
         sources: Vec<SourceRange>,
@@ -173,6 +181,10 @@ impl<'a> PreparedBatchSource<'a> {
                             "batch operation budget exceeded",
                         )?;
                         batch.operations.push(DrawOperation::Rule {
+                            primitive_id: PrimitiveId {
+                                item_index,
+                                glyph_index: None,
+                            },
                             geometry,
                             paint: rule.paint.clone(),
                             sources: rule.sources.clone().unwrap_or_default(),
@@ -257,4 +269,16 @@ impl ExactClip {
 pub struct ExactDrawBatch {
     pub batch: DrawBatch,
     pub visible_clip: Option<ExactClip>,
+}
+
+impl DrawOperation {
+    pub fn primitive_id(&self) -> PrimitiveId {
+        match self {
+            Self::Glyph { path, .. } => PrimitiveId {
+                item_index: path.item_index,
+                glyph_index: Some(path.glyph_index),
+            },
+            Self::Rule { primitive_id, .. } | Self::ExactRule { primitive_id, .. } => *primitive_id,
+        }
+    }
 }

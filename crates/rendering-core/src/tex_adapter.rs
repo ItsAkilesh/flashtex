@@ -532,6 +532,10 @@ impl EncodedRun<'_> {
                         crate::batch::ExactClip::from_rect(batch.visible_clip.as_ref().unwrap())?;
                     if geometry.intersect(clip)?.is_some() {
                         batch.operations.push(DrawOperation::ExactRule {
+                            primitive_id: crate::batch::PrimitiveId {
+                                item_index: index,
+                                glyph_index: None,
+                            },
                             geometry,
                             paint: context.paint.clone(),
                             sources: p.sources.clone(),
@@ -574,8 +578,8 @@ impl EncodedRun<'_> {
 /// `run.operations`; retain this sidecar alongside run-to-batch conversion.
 #[derive(Debug)]
 pub struct NestedRun<'a> {
-    pub run: EncodedRun<'a>,
-    pub source_chains: Vec<Vec<flashtex_font_resources::vf_graph::SourceStep>>,
+    run: EncodedRun<'a>,
+    source_chains: Vec<Vec<flashtex_font_resources::vf_graph::SourceStep>>,
 }
 /// Expand through one immutable graph cache, then bind every physical placement
 /// to an explicit font/TFM/encoding resource before exposing any partial run.
@@ -719,4 +723,104 @@ pub fn nested_run<'a>(
         },
         source_chains,
     })
+}
+
+/// Provenance travels with each retained primitive, including after consumer reordering.
+#[derive(Debug, Clone)]
+pub struct TracedPrimitive {
+    pub identity: crate::batch::PrimitiveId,
+    pub operation: crate::batch::DrawOperation,
+    pub source_chain: Vec<flashtex_font_resources::vf_graph::SourceStep>,
+}
+#[derive(Debug, Clone)]
+pub struct TracedBatch {
+    pub project_id: String,
+    pub revision: u64,
+    pub page: u32,
+    pub page_width: Tick,
+    pub page_height: Tick,
+    pub visible_clip: Option<crate::batch::ExactClip>,
+    pub primitives: Vec<TracedPrimitive>,
+    pub path_commands: usize,
+    pub color_space: &'static str,
+    pub compositing: &'static str,
+    pub hinting_applied: bool,
+}
+impl<'a> NestedRun<'a> {
+    pub fn run(&self) -> &EncodedRun<'a> {
+        &self.run
+    }
+    pub fn source_chains(&self) -> &[Vec<flashtex_font_resources::vf_graph::SourceStep>] {
+        &self.source_chains
+    }
+    pub fn batch(
+        &self,
+        context: &BatchContext<'_>,
+        exact_clip: Option<crate::batch::ExactClip>,
+        limits: crate::batch::BatchLimits,
+        cache: &mut crate::glyph_cache::GlyphPathCache,
+    ) -> Result<TracedBatch> {
+        use crate::batch::{DrawOperation, ExactClip};
+        let (batch, clip) = if let Some(clip) = exact_clip {
+            let exact = self
+                .run
+                .batch_with_exact_clip(context, clip, limits, cache)?;
+            (exact.batch, exact.visible_clip)
+        } else {
+            let batch = self.run.batch(context, limits, cache)?;
+            let clip = batch
+                .visible_clip
+                .as_ref()
+                .map(ExactClip::from_rect)
+                .transpose()?;
+            (batch, clip)
+        };
+        let mut primitives = Vec::new();
+        let mut path_commands = 0usize;
+        for operation in batch.operations {
+            if let Some(clip) = clip {
+                let geometry = match &operation {
+                    DrawOperation::Rule { geometry, .. } => Some(ExactClip::from_rect(geometry)?),
+                    DrawOperation::ExactRule { geometry, .. } => Some(*geometry),
+                    DrawOperation::Glyph { .. } => None,
+                };
+                if let Some(geometry) = geometry {
+                    if geometry.intersect(clip)?.is_none() {
+                        continue;
+                    }
+                }
+            } else {
+                continue;
+            }
+            let identity = operation.primitive_id();
+            let source_chain = self
+                .source_chains
+                .get(identity.item_index)
+                .ok_or_else(|| AdapterError::Resource("nested primitive identity absent".into()))?
+                .clone();
+            if let DrawOperation::Glyph { path, .. } = &operation {
+                path_commands = path_commands
+                    .checked_add(path.commands.len())
+                    .ok_or(AdapterError::Budget)?;
+            }
+            primitives.push(TracedPrimitive {
+                identity,
+                operation,
+                source_chain,
+            });
+        }
+        Ok(TracedBatch {
+            project_id: batch.project_id,
+            revision: batch.revision,
+            page: batch.page,
+            page_width: batch.page_width,
+            page_height: batch.page_height,
+            visible_clip: clip,
+            primitives,
+            path_commands,
+            color_space: batch.color_space,
+            compositing: batch.compositing,
+            hinting_applied: batch.hinting_applied,
+        })
+    }
 }
