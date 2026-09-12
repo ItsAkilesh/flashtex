@@ -396,3 +396,181 @@ mod tests {
         );
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Placement {
+    Glyph {
+        local_font: i32,
+        font_sha256: String,
+        tfm_sha256: String,
+        face_index: u32,
+        glyph_id: u16,
+        tfm_code: u8,
+        x: crate::Coordinate,
+        y: crate::Coordinate,
+        scale: FixWord,
+    },
+    Rule {
+        x: crate::Coordinate,
+        y: crate::Coordinate,
+        width: crate::Coordinate,
+        height: crate::Coordinate,
+    },
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpandedPacket {
+    pub vf_sha256: String,
+    pub tfm_sha256: String,
+    pub character: u8,
+    pub width: FixWord,
+    pub placements: Vec<Placement>,
+}
+impl VirtualFont {
+    /// Expands a single VF packet through explicitly bound physical fonts. Positions
+    /// are exact fractions of the virtual font's size; no device rounding occurs.
+    pub fn expand_packet(
+        &self,
+        code: u8,
+        metrics: &crate::tfm::Tfm,
+        resources: &BTreeMap<i32, crate::encoding::BoundTfmFont<'_>>,
+    ) -> Result<ExpandedPacket> {
+        use crate::{encoding::GlyphIdentity, Coordinate};
+        if self.design_size != metrics.design_size
+            || (self.checksum != 0 && metrics.checksum != 0 && self.checksum != metrics.checksum)
+        {
+            return Err(invalid("VF/TFM header identity mismatch"));
+        }
+        let packet = self
+            .packet(code as u32)
+            .ok_or_else(|| invalid("VF packet missing"))?;
+        if metrics
+            .char_metrics(code)
+            .ok_or_else(|| invalid("VF TFM character missing"))?
+            .width
+            != packet.width
+        {
+            return Err(invalid("VF packet/TFM width mismatch"));
+        }
+        for (id, definition) in &self.fonts {
+            let binding = resources
+                .get(id)
+                .ok_or_else(|| invalid("VF local font has no explicit resource binding"))?;
+            if binding.design_size() != definition.design_size
+                || (definition.checksum != 0
+                    && binding.tfm().checksum != 0
+                    && definition.checksum != binding.tfm().checksum)
+            {
+                return Err(invalid("VF local TFM header mismatch"));
+            }
+        }
+        #[derive(Clone, Copy)]
+        struct State {
+            h: Coordinate,
+            v: Coordinate,
+            registers: [i32; 4],
+        }
+        let mut state = State {
+            h: Coordinate::from_integer(0),
+            v: Coordinate::from_integer(0),
+            registers: [0; 4],
+        };
+        let mut stack = Vec::new();
+        let mut font = self.first_font;
+        let mut placements = Vec::new();
+        for command in &packet.commands {
+            match command {
+                Command::Nop => {}
+                Command::Push => stack.push(state),
+                Command::Pop => state = stack.pop().ok_or_else(|| invalid("VF stack underflow"))?,
+                Command::Font(id) => font = Some(*id),
+                Command::Right(amount) => {
+                    state.h = state.h.add(Coordinate::new(*amount as i128, 20)?)?
+                }
+                Command::Down(amount) => {
+                    state.v = state.v.add(Coordinate::new(*amount as i128, 20)?)?
+                }
+                Command::Register { register, value } => {
+                    let (index, horizontal) = match register {
+                        Register::W => (0, true),
+                        Register::X => (1, true),
+                        Register::Y => (2, false),
+                        Register::Z => (3, false),
+                    };
+                    if let Some(value) = value {
+                        state.registers[index] = *value;
+                    }
+                    let amount = Coordinate::new(state.registers[index] as i128, 20)?;
+                    if horizontal {
+                        state.h = state.h.add(amount)?;
+                    } else {
+                        state.v = state.v.add(amount)?;
+                    }
+                }
+                Command::Special(_) => {
+                    return Err(crate::Error::UnsupportedFont(
+                        "VF specials require an explicit handler; none installed".into(),
+                    ))
+                }
+                Command::Rule {
+                    height,
+                    width,
+                    advance,
+                } => {
+                    let w = Coordinate::new(*width as i128, 20)?;
+                    let h = Coordinate::new(*height as i128, 20)?;
+                    if *height > 0 && *width > 0 {
+                        placements.push(Placement::Rule {
+                            x: state.h,
+                            y: state.v,
+                            width: w,
+                            height: h,
+                        });
+                    }
+                    if *advance {
+                        state.h = state.h.add(w)?;
+                    }
+                }
+                Command::Glyph { code, advance } => {
+                    let code = u8::try_from(*code).map_err(|_| {
+                        crate::Error::UnsupportedFont(
+                            "VF physical character exceeds explicit 8-bit TFM encoding".into(),
+                        )
+                    })?;
+                    let id = font.ok_or_else(|| invalid("VF glyph has no font"))?;
+                    let binding = resources
+                        .get(&id)
+                        .ok_or_else(|| invalid("VF resource binding missing"))?;
+                    let (identity, metric) = binding.map_code(code)?;
+                    let GlyphIdentity::Original(glyph_id) = identity else {
+                        return Err(invalid("VF glyph resolves to explicit .notdef"));
+                    };
+                    let scale = self.fonts[&id].scale;
+                    placements.push(Placement::Glyph {
+                        local_font: id,
+                        font_sha256: binding.font().descriptor().sha256.clone(),
+                        tfm_sha256: binding.tfm().source_sha256.clone(),
+                        face_index: binding.font().descriptor().face_index,
+                        glyph_id,
+                        tfm_code: code,
+                        x: state.h,
+                        y: state.v,
+                        scale,
+                    });
+                    if *advance {
+                        state.h = state.h.add(Coordinate::new(
+                            metric.width.0 as i128 * scale.0 as i128,
+                            40,
+                        )?)?;
+                    }
+                }
+            }
+        }
+        Ok(ExpandedPacket {
+            vf_sha256: self.source_sha256.clone(),
+            tfm_sha256: metrics.source_sha256.clone(),
+            character: code,
+            width: packet.width,
+            placements,
+        })
+    }
+}

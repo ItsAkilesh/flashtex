@@ -12,7 +12,7 @@ impl Coordinate {
     pub fn shift(&self) -> u32 {
         self.shift
     }
-    fn new(mut n: i128, mut shift: u32) -> Result<Self> {
+    pub(crate) fn new(mut n: i128, mut shift: u32) -> Result<Self> {
         if shift > 96 {
             return Err(invalid("coordinate precision budget"));
         }
@@ -37,7 +37,7 @@ impl Coordinate {
             shift: 0,
         }
     }
-    fn add(self, rhs: Self) -> Result<Self> {
+    pub(crate) fn add(self, rhs: Self) -> Result<Self> {
         let shift = self.shift.max(rhs.shift);
         let a = self
             .numerator

@@ -466,3 +466,99 @@ fn typed_json_escaped_names_decode_exactly_without_postscript_guessing() {
     });
     assert!(EncodingMap::bind(&manifest, &font, &tfm).is_err());
 }
+
+fn virtual_font(commands: &[u8]) -> flashtex_font_resources::vf::VirtualFont {
+    let mut b = vec![247, 202, 0];
+    for n in [0u32, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([243, 0]);
+    for n in [0u32, 1 << 20, 10 << 20] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend([0, 1, b'f', 242]);
+    for n in [commands.len() as u32, 65, 1 << 19] {
+        b.extend(n.to_be_bytes());
+    }
+    b.extend(commands);
+    b.push(248);
+    flashtex_font_resources::vf::VirtualFont::parse(&b).unwrap()
+}
+#[test]
+fn virtual_packet_expands_exact_bound_glyphs_and_restores_position() {
+    use flashtex_font_resources::{encoding::*, vf::Placement};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let binding = BoundTfmFont::new(&tfm, &font, &manifest).unwrap();
+    let resources = BTreeMap::from([(0, binding)]);
+    let vf = virtual_font(&[65, 141, 146, 0, 8, 0, 0, 65, 142, 65]);
+    let out = vf.expand_packet(65, &tfm, &resources).unwrap();
+    let xs = out
+        .placements
+        .iter()
+        .map(|p| match p {
+            Placement::Glyph { x, glyph_id, .. } => {
+                assert_eq!(*glyph_id, 2);
+                (x.numerator(), x.shift())
+            }
+            _ => panic!("unexpected rule"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(xs, vec![(0, 0), (1, 0), (1, 1)]);
+}
+#[test]
+fn virtual_packet_missing_resources_specials_notdef_and_width_fail() {
+    use flashtex_font_resources::encoding::*;
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let resources = BTreeMap::from([(0, BoundTfmFont::new(&tfm, &font, &manifest).unwrap())]);
+    assert!(virtual_font(&[65])
+        .expand_packet(65, &tfm, &BTreeMap::new())
+        .is_err());
+    assert!(virtual_font(&[66])
+        .expand_packet(65, &tfm, &resources)
+        .is_err());
+    assert!(matches!(
+        virtual_font(&[239, 1, 0]).expand_packet(65, &tfm, &resources),
+        Err(Error::UnsupportedFont(_))
+    ));
+    let mut mismatch = tfm.clone();
+    mismatch.design_size = flashtex_font_resources::tfm::FixWord(11 << 20);
+    assert!(virtual_font(&[65])
+        .expand_packet(65, &mismatch, &resources)
+        .is_err());
+}
+
+#[test]
+fn virtual_packet_put_rule_and_reused_register_have_exact_units() {
+    use flashtex_font_resources::{encoding::*, vf::Placement};
+    let bytes = fixture();
+    let font = FontResource::from_bytes(&entry(&bytes), &bytes, b"test license").unwrap();
+    let tfm = tfm_for_encoding();
+    let manifest = encoding_manifest(&font, &tfm);
+    let resources = BTreeMap::from([(0, BoundTfmFont::new(&tfm, &font, &manifest).unwrap())]);
+    let out = virtual_font(&[
+        133, 65, 151, 0, 8, 0, 0, 65, 147, 132, 0, 4, 0, 0, 0, 8, 0, 0, 65,
+    ])
+    .expand_packet(65, &tfm, &resources)
+    .unwrap();
+    assert_eq!(out.placements.len(), 4);
+    match &out.placements[2] {
+        Placement::Rule {
+            x, width, height, ..
+        } => {
+            assert_eq!((x.numerator(), x.shift()), (3, 1));
+            assert_eq!((width.numerator(), width.shift()), (1, 1));
+            assert_eq!((height.numerator(), height.shift()), (1, 2));
+        }
+        _ => panic!("expected rule"),
+    }
+    match &out.placements[3] {
+        Placement::Glyph { x, .. } => assert_eq!((x.numerator(), x.shift()), (2, 0)),
+        _ => panic!("expected glyph"),
+    }
+}

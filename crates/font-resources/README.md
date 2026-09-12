@@ -172,3 +172,18 @@ IDs/codes, prohibited opcodes and unbalanced/deep stacks fail. Bounds: 16MiB fil
 and 64 stack entries. Specials remain explicit typed byte payloads; parsing does
 not execute or silently discard them. [VF format documentation](https://github.com/TeX-Live/texlive-source/blob/trunk/texk/web2c/vftovp.web)
 was consulted; no existing VF/DVI implementation is used in production.
+
+`VirtualFont::expand_packet(code, virtual_tfm, physical_bindings)` validates the
+virtual TFM checksum/design-size/packet width and each local TFM definition against
+explicit BoundTfmFont resources. It emits original GID/font+TFM hashes, local font
+ID and exact dyadic placement coordinates relative to the virtual font's size.
+Glyph scale is a 12.20 fraction of that size. DVI y is positive downward; rule
+position is its lower-left reference point and positive height extends upward.
+Set/put advances, w/x/y/z registers and push/pop positions are interpreted without
+float/device rounding. Font selection is not a pushed register. Specials, missing
+bindings, explicit Notdef and physical codes above the supported 8-bit encoding
+fail. No special-handler execution, nested VF resolver, font discovery, ligature
+reshaping inside packets or silent substitution occurs. Current packet limits
+bound execution and output; actual nested resource recursion is not implemented.
+Synthetic integration tests establish arithmetic/binding behavior only, not
+real-VF/font visual parity.
