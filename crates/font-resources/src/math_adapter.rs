@@ -203,6 +203,21 @@ pub struct BoundMathVariants {
     data: crate::math_variants::MathVariants,
 }
 impl BoundMathVariants {
+    pub fn fit(
+        &self,
+        direction: crate::math_variants::Direction,
+        glyph_id: u16,
+        target: Rational,
+        strategy: crate::math_fit::FitStrategy,
+        limits: crate::math_fit::FitLimits,
+    ) -> Result<BoundMathFit, crate::math_fit::FitError> {
+        Ok(BoundMathFit {
+            identity: self.identity.clone(),
+            fit: self
+                .data
+                .fit(direction, glyph_id, target, strategy, limits)?,
+        })
+    }
     pub fn identity(&self) -> &MathIdentity {
         &self.identity
     }
@@ -211,6 +226,18 @@ impl BoundMathVariants {
     }
 }
 
+pub struct BoundMathFit {
+    identity: MathIdentity,
+    fit: crate::math_fit::MathFit,
+}
+impl BoundMathFit {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn fit(&self) -> &crate::math_fit::MathFit {
+        &self.fit
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

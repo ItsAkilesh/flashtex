@@ -391,6 +391,105 @@ mod tests {
         assert!(p.assemble(Direction::Vertical, 2, 1, &[]).is_err());
     }
     #[test]
+    fn exact_target_fit_rational_overlap_and_refusals() {
+        use crate::{cff::Rational, math_fit::*};
+        let mut b = fixture();
+        put(&mut b, 60, 20);
+        let p = MathVariants::parse(&b, 10).unwrap();
+        let fit = |target, limits| {
+            p.fit(
+                Direction::Vertical,
+                2,
+                target,
+                FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+                limits,
+            )
+        };
+        assert!(
+            matches!(fit(Rational::new(190,1).unwrap(),FitLimits::default()).unwrap().shape,FittedShape::Variant(v) if v.advance==200)
+        );
+        for (target, overlap) in [
+            (
+                Rational::new(260, 1).unwrap(),
+                Rational::new(20, 1).unwrap(),
+            ),
+            (Rational::new(290, 1).unwrap(), Rational::new(5, 1).unwrap()),
+            (
+                Rational::new(551, 2).unwrap(),
+                Rational::new(49, 4).unwrap(),
+            ),
+        ] {
+            let FittedShape::Assembly(a) = fit(target, FitLimits::default()).unwrap().shape else {
+                panic!()
+            };
+            assert_eq!(a.advance, target);
+            assert_eq!(a.extender_repetitions, 2);
+            assert_eq!(a.overlaps, vec![overlap; 2]);
+            assert_eq!(a.parts[2].instance, 1);
+        }
+        assert!(matches!(
+            fit(
+                Rational::new(275, 1).unwrap(),
+                FitLimits {
+                    max_parts: 2,
+                    ..FitLimits::default()
+                }
+            ),
+            Err(FitError::Budget)
+        ));
+        assert!(fit(Rational::new(250, 1).unwrap(), FitLimits::default()).is_err());
+        assert!(matches!(
+            fit(Rational::new(0, 1).unwrap(), FitLimits::default()),
+            Err(FitError::InvalidTarget)
+        ));
+        assert!(matches!(
+            fit(Rational::new(1, i128::MAX).unwrap(), FitLimits::default()),
+            Err(FitError::Arithmetic(_))
+        ));
+        assert!(matches!(
+            fit(
+                Rational::new(250, 1).unwrap(),
+                FitLimits {
+                    max_parts: 4097,
+                    ..FitLimits::default()
+                }
+            ),
+            Err(FitError::InvalidLimits)
+        ));
+        let mut unequal = b.clone();
+        put(&mut unequal, 60, 10);
+        let unequal = MathVariants::parse(&unequal, 10).unwrap();
+        let FittedShape::Assembly(a) = unequal
+            .fit(
+                Direction::Vertical,
+                2,
+                Rational::new(280, 1).unwrap(),
+                FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+                FitLimits::default(),
+            )
+            .unwrap()
+            .shape
+        else {
+            panic!()
+        };
+        assert_eq!(
+            a.overlaps,
+            vec![Rational::new(25, 2).unwrap(), Rational::new(15, 2).unwrap()]
+        );
+        let mut impossible = b;
+        put(&mut impossible, 58, 0);
+        assert!(MathVariants::parse(&impossible, 10)
+            .unwrap()
+            .fit(
+                Direction::Vertical,
+                2,
+                Rational::new(275, 1).unwrap(),
+                FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+                FitLimits::default()
+            )
+            .is_err());
+    }
+    #[test]
     fn malformed_offsets_records_and_gids() {
         let b = fixture();
         for length in 0..b.len() {

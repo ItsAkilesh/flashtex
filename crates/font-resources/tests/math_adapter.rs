@@ -141,6 +141,53 @@ fn pinned_math_registry_equivalence() {
         assemblies,
         records
     );
+    use flashtex_font_resources::{cff::Rational, math_fit::*, math_variants::Direction};
+    let mut fitted = 0;
+    let mut refused = 0;
+    for (&(direction, gid), c) in constructions {
+        if c.assembly.is_none() {
+            continue;
+        }
+        let target = Rational::new(10001, 2).unwrap();
+        match variants.fit(
+            direction,
+            gid,
+            target,
+            FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+            FitLimits::default(),
+        ) {
+            Ok(result) => {
+                assert_eq!(result.identity(), bound.identity());
+                if let FittedShape::Assembly(a) = &result.fit().shape {
+                    assert_eq!(a.advance, target);
+                }
+                fitted += 1;
+            }
+            Err(error) => {
+                println!("fit refusal {direction:?} GID {gid}: {error}");
+                refused += 1;
+            }
+        }
+    }
+    for character in ['(', ')', '[', ']', '∫'] {
+        let gid = face.glyph_id(character).unwrap();
+        let fit = variants.fit(
+            Direction::Vertical,
+            gid.0,
+            Rational::new(5000, 1).unwrap(),
+            FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+            FitLimits::default(),
+        );
+        assert!(
+            fit.is_ok(),
+            "tall {character} GID {}: {:?}",
+            gid.0,
+            fit.err()
+        );
+        println!("tall {character} GID {} fitted true", gid.0);
+    }
+    println!("STIX 5000.5-unit assemblies fitted {fitted} refused {refused}");
+    assert_eq!((fitted, refused), (66, 3));
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);
