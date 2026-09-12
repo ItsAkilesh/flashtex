@@ -59,7 +59,8 @@ def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
     current = candidates[0]
     task = coord.identifier(current['task_id'])
     branch = current['branch']
-    if not coord.BRANCH.fullmatch(branch) or not branch.startswith(f'agent/{agent}/'):
+    if not coord.BRANCH.fullmatch(branch) or (not branch.startswith(f'agent/{agent}/')
+            and not coord.published_branch_assignment(root, agent, branch)):
         raise ValueError('assignment branch must match its owner')
     revision = current['revision']
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:

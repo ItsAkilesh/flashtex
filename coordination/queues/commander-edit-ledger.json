@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-edit-ledger",
-  "task_id": "FT-026",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Recovery import/export and acknowledged snapshot compaction",
-      "objective": "Recovery import/export and acknowledged snapshot compaction",
-      "owned_paths": [
-        "crates/edit-ledger"
-      ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "name": "Durable grouped undo and redo",
+      "objective": "Implement guarded durable grouped source history with restart-safe undo/redo while preserving capture IDs and receipt dedup; explicit bounded retention only.",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
     },
     {
-      "name": "Background serialized IPC and exact stale-session response guards",
-      "objective": "Background serialized IPC and exact stale-session response guards",
-      "owned_paths": [
-        "crates/edit-ledger"
-      ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
         "Publish truthful execution provenance and exact tested SHA",
         "No native integration or PDF parity claim without measured evidence"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "name": "Background service crash and concurrency gates",
+      "objective": "Exercise multi-session background service saturation and crash recovery with exact revision-tagged results and native adapter fixtures.",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-026"
 }
