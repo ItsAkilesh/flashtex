@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "97a15831b4b7010a880c9456cda1a01f4935c2fc",
+  "code_revision": "8d613c6247cfc5e9b15c8baf8aaea28dd3d980c3",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 40
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "e90b75a3e7646ae152fdfb36323b7f8cb8b0649a",
-  "next_action": "Commander/compiler owner integration; next assigned compatibility task after verified renderer mapping.",
+  "main_integrated_through": "0abadb9f8c27e0640b3e41ed5a54ea811fb96a35",
+  "next_action": "Commander review/adoption of combined candidate; agree explicit Text AST producer and legacy font contract before isolated implementation. Preserve compiler owner fence.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Threecandidate97a15831 gate95tests/strictlint and84HW1diagnostics; exactbasecombinedpatch now freshly applies and all7changedfiles match tested source bytes.",
+  "state": "ready_for_integration",
+  "summary": "Published combined HW1 four-candidate handoff 1cf2fae7: 97 tests, three existing ignored, strict Clippy, 77 diagnostics and 35 exact symbol spans; eight clean-applied source hashes match. Published read-only Text AST/consumer contract 3a1e3203 and actual ten-case lexer probe 8d613c62. No authoritative compiler edits or rendering-parity claim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T15:15:09Z",
+  "updated_utc": "2026-09-12T15:29:03Z",
   "usage": {
-    "evidence": "97a15831; hw1-quantifiers/combined-apply-check.json",
-    "status": "Retained hosted engineer; no paid calls; quota unknown; no active jobs."
+    "evidence": "crates/preview-controller/docs/handoffs/hw1-logical-candidate/combined-evidence.json; hw1-text-contract.md; hw1-text-token-probe/evidence.json",
+    "status": "Existing hosted engineer allocation; no provider CLI/API calls; remaining quota unknown."
   }
 }
