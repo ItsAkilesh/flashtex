@@ -14,6 +14,9 @@ public enum RuntimeV1 {
         enum CodingKeys: String, CodingKey {
             case protocolVersion = "protocol_version", id, type, payload
         }
+        public init(protocolVersion: Int, id: String, type: String, payload: Payload) {
+            self.protocolVersion = protocolVersion; self.id = id; self.type = type; self.payload = payload
+        }
     }
 
     // MARK: compile
@@ -32,6 +35,10 @@ public enum RuntimeV1 {
 
         enum CodingKeys: String, CodingKey {
             case projectId = "project_id", revision, entryPath = "entry_path", documents
+        }
+        public init(projectId: String, revision: Int, entryPath: String, documents: [Document]) {
+            self.projectId = projectId; self.revision = revision
+            self.entryPath = entryPath; self.documents = documents
         }
     }
 
@@ -125,6 +132,11 @@ public enum RuntimeV1 {
         enum CodingKeys: String, CodingKey {
             case projectId = "project_id", revision, status, pages, diagnostics
             case pdfPath = "pdf_path"
+        }
+        public init(projectId: String, revision: Int, status: Status, pages: [Page],
+                    diagnostics: [Diagnostic], pdfPath: String?) {
+            self.projectId = projectId; self.revision = revision; self.status = status
+            self.pages = pages; self.diagnostics = diagnostics; self.pdfPath = pdfPath
         }
     }
 

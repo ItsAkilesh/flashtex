@@ -34,17 +34,27 @@ seed the editor when present. `⌘R` reloads.
   reversed, or inside a multi-byte scalar are rejected with a footer message rather
   than applied. Unknown item `kind`s decode as `.unknown` and are skipped.
 - Dark preview toggle in the toolbar (page and text colors only).
+- Worker transport: `File > Attach Worker Executable…` (⌘K) launches a process
+  speaking runtime v1 JSON Lines on stdin/stdout; `Compile` (⌘B) sends the current
+  buffers as a `compile` envelope with the editor revision. The banner badge
+  switches from `FIXTURE` to `WORKER`; an older `compile_result` never replaces a
+  newer one. `error` envelopes, undecodable lines, unsupported versions, and worker
+  exit are reported in the banner. Oversized lines (>16 MiB) terminate the worker.
 
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests: fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
-  conversion with multi-byte scalars, and `ShellModel` load/navigate/stale behavior.
+- Tests (13): fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
+  conversion with multi-byte scalars, `ShellModel` load/navigate/stale behavior,
+  line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
+  (a Python test double, not a compiler) including error/garbage/exit paths and
+  the stale-revision guard.
 
 ## Not done
 
-- No Rust worker process is spawned; no JSON Lines transport yet (fixture only).
+- No real Rust worker exists yet (FT-002/FT-005); the transport is exercised only
+  against the Python test double.
 - No PDF export, no image/line items (not in v1), no reverse (source→preview) sync.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

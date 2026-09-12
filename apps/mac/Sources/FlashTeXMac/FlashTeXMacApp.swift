@@ -16,6 +16,14 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("o")
                 Button("Reload Fixture") { model.reloadFixture() }
                     .keyboardShortcut("r")
+                Divider()
+                Button("Attach Worker Executable…") { model.attachWorkerPanel() }
+                    .keyboardShortcut("k")
+                Button("Compile") { model.compile() }
+                    .keyboardShortcut("b")
+                    .disabled(!model.workerAttached)
+                Button("Detach Worker") { model.detachWorker() }
+                    .disabled(!model.workerAttached)
             }
         }
     }

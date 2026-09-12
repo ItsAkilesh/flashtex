@@ -22,12 +22,22 @@ final class ShellModel: ObservableObject {
     @Published var selection: Selection?
     @Published var navigationNote: String?
     @Published var darkPreview = false
+    @Published var previewSource: PreviewSource = .none
+    @Published var workerStatus: String = "no worker attached"
+    @Published var workerLog: [String] = []
+    private var worker: WorkerClient?
+    private var nextRequestID = 1
+    /// Revision of the compile request currently in flight (nil if idle).
+    @Published private(set) var inFlightRevision: Int?
     /// Revision the editor buffer corresponds to. Bumps on every edit so the
     /// UI can say when the preview's source ranges no longer match the buffer.
     @Published private(set) var editorRevision = 1
 
-    var isFixture: Bool { true }
+    enum PreviewSource: Equatable { case none, fixture, worker(String) }
+
+    var isFixture: Bool { previewSource == .fixture }
     var previewIsStale: Bool { (result?.revision ?? editorRevision) != editorRevision }
+    var workerAttached: Bool { worker?.isRunning == true }
 
     var activeText: String {
         get { documents.first { $0.path == activePath }?.text ?? "" }
@@ -53,6 +63,7 @@ final class ShellModel: ObservableObject {
             self.result = res.payload
             self.resultID = res.id
             self.fixtureURL = result
+            self.previewSource = .fixture
             if let request, let data = try? Data(contentsOf: request),
                let req = try? RuntimeV1.decodeCompileRequest(data) {
                 documents = req.payload.documents
@@ -114,6 +125,97 @@ final class ShellModel: ObservableObject {
         selection = .init(path: source.path, nsRange: ns, token: (selection?.token ?? 0) + 1)
         navigationNote = "Selected \(source.path) bytes \(source.startByte)..<\(source.endByte) → UTF-16 \(ns.location)..<\(ns.location + ns.length)"
             + (previewIsStale ? " (buffer edited since revision \(result?.revision ?? 0); mapping may be off)" : "")
+    }
+
+    // MARK: worker transport (runtime v1 JSON Lines)
+
+    func attachWorkerPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.message = "Choose the Rust worker executable (runtime v1 JSON Lines on stdin/stdout)"
+        if panel.runModal() == .OK, let url = panel.url { attachWorker(at: url) }
+    }
+
+    func attachWorker(at url: URL, arguments: [String] = []) {
+        detachWorker()
+        do {
+            worker = try WorkerClient(executable: url, arguments: arguments) { [weak self] event in
+                self?.handle(event)
+            }
+            workerStatus = "attached: \(url.lastPathComponent)"
+            log("launched \(url.path)")
+        } catch {
+            workerStatus = "launch failed: \(error.localizedDescription)"
+        }
+    }
+
+    func detachWorker() {
+        worker?.terminate()
+        worker = nil
+        inFlightRevision = nil
+        if previewSource != .fixture { workerStatus = "no worker attached" }
+    }
+
+    /// Sends the current buffers as a `compile` request. Never blocks the UI.
+    func compile() {
+        guard let worker, worker.isRunning else {
+            workerStatus = "no worker attached"
+            return
+        }
+        let id = "mac-\(nextRequestID)"
+        nextRequestID += 1
+        let request = RuntimeV1.CompileRequest(
+            projectId: result?.projectId ?? "demo",
+            revision: editorRevision,
+            entryPath: activePath,
+            documents: documents)
+        do {
+            try worker.send(request, id: id)
+            inFlightRevision = editorRevision
+            workerStatus = "compiling revision \(editorRevision) (\(id))…"
+        } catch {
+            workerStatus = "send failed: \(error.localizedDescription)"
+        }
+    }
+
+    func handleForTesting(_ event: WorkerClient.Event) { handle(event) }
+
+    private func handle(_ event: WorkerClient.Event) {
+        switch event {
+        case .result(let env):
+            let incoming = env.payload
+            // Contract: never replace a newer preview with an older revision.
+            if let current = result, previewSource != .fixture, incoming.revision < current.revision {
+                log("ignored stale compile_result revision \(incoming.revision) < \(current.revision)")
+                return
+            }
+            result = incoming
+            resultID = env.id
+            previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            if inFlightRevision == incoming.revision { inFlightRevision = nil }
+            workerStatus = "revision \(incoming.revision): \(incoming.status.rawValue), \(incoming.diagnostics.count) diagnostics"
+            selection = nil
+        case .error(let id, let message):
+            inFlightRevision = nil
+            workerStatus = "worker error for \(id): \(message)"
+            log("error \(id): \(message)")
+        case .protocolViolation(let message):
+            workerStatus = "protocol violation: \(message)"
+            log("protocol violation: \(message)")
+        case .stderr(let text):
+            log(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .exited(let code):
+            inFlightRevision = nil
+            workerStatus = "worker exited (\(code))"
+            log("worker exited with status \(code)")
+            worker = nil
+        }
+    }
+
+    private func log(_ line: String) {
+        workerLog.append(line)
+        if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }
     }
 
     // MARK: repo discovery

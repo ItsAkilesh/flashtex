@@ -18,6 +18,11 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem { Toggle("Dark preview", isOn: $model.darkPreview).toggleStyle(.switch) }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
+            ToolbarItem {
+                Button("Compile", systemImage: "hammer") { model.compile() }
+                    .disabled(!model.workerAttached)
+                    .help("Send the current buffers to the attached worker (⌘B)")
+            }
         }
     }
 
@@ -25,28 +30,51 @@ struct ContentView: View {
 
     private var statusBanner: some View {
         HStack(spacing: 12) {
-            Label("FIXTURE", systemImage: "doc.text.magnifyingglass")
-                .font(.caption.bold())
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Color.orange.opacity(0.25), in: Capsule())
+            sourceBadge
             if let r = model.result {
-                Text("\(model.fixtureURL?.lastPathComponent ?? "?") · id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision)")
+                Text("\(sourceName) · id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision)")
                 Text("status: \(r.status.rawValue)")
                     .foregroundStyle(statusColor(r.status)).bold()
                 Text("pdf: \(r.pdfPath ?? "none")").foregroundStyle(.secondary)
+                if model.inFlightRevision != nil {
+                    ProgressView().controlSize(.small)
+                }
                 if model.previewIsStale {
-                    Text("editor at revision \(model.editorRevision) — preview not recompiled (no compiler attached)")
+                    Text(model.workerAttached
+                         ? "editor at revision \(model.editorRevision) — press ⌘B to compile"
+                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
                         .foregroundStyle(.orange)
                 }
             } else if let err = model.loadError {
                 Text(err).foregroundStyle(.red)
             }
             Spacer()
-            Text("Not a real compile.").font(.caption).foregroundStyle(.secondary)
+            Text(model.isFixture ? "Not a real compile." : model.workerStatus)
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
         .font(.callout)
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private var sourceBadge: some View {
+        let (label, color): (String, Color) = switch model.previewSource {
+        case .none: ("NONE", .gray)
+        case .fixture: ("FIXTURE", .orange)
+        case .worker: ("WORKER", .green)
+        }
+        return Text(label)
+            .font(.caption.bold())
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.25), in: Capsule())
+    }
+
+    private var sourceName: String {
+        switch model.previewSource {
+        case .none: "—"
+        case .fixture: model.fixtureURL?.lastPathComponent ?? "fixture"
+        case .worker(let name): name
+        }
     }
 
     private var editorPane: some View {
