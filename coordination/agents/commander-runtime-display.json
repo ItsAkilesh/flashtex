@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:25:32Z",
-      "adaptation": "Test-only per-decoder/thread-local entered-serde gate proves joined shutdown waiting and owner cancellation. Three near8MiB probes passed; no production change justified. Frame cap is not an elapsed-time guarantee.",
-      "main_sha": "cf5097269c7fc8d8c79ff963a70099ebc3248ed0",
-      "revision": 11
+      "acknowledged_utc": "2026-09-12T12:43:47Z",
+      "adaptation": "30 sequential normal/stopped Value/raw sessions restore4FD/2thread/emptychild baseline after three I/O terminal witnesses and child reaping. No production change or accumulation demonstrated; complete per-cycle evidence preserved.",
+      "main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
+      "revision": 17
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "ca7727c5e16af289856f2f8679e21a16a4e7e83d",
+  "code_revision": "106bca6ec3f2855a85faa023a66c6f07085d7d61",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "e307eb42bbcd4e6179c5b76e5555b45a9b4b14a8",
-  "next_action": "Commander review/integration. All probe/build processes terminal, no pending paid tools. Evidence docs/raw-shutdown-gate.md and benchmarks/raw-shutdown-gate. Current production parser cancellation unchanged; next work needs dispatched scope.",
+  "main_integrated_through": "0333be37e546273b6bcbe30a1f0745ad8a5e93c5",
+  "next_action": "Commander integration review. All probe/build processes terminal. Clean checkpoint after report publication; docs/blocked-writer.md and benchmarks/session-cycles contain scope, exact PIDs and counters. No RSS/all-production-thread-join/worst-case-time claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r11 ca7727c5: test-only entered-serde gate; three separate near8MiB valid/malformed/cancel probes pass, joined shutdown remains synchronous. Release-to-join56/44ms observations; no worst-case guarantee or production change. Full48 tests pass,7 opt-in ignored,3 new probe executions pass; strict lint.",
+  "summary": "FT049 r17 product106bca6e:30 sequential normal/stopped-reader Value/raw cycles restore baseline4FD/2thread/emptychild after writer/stdout/stderr witnesses, decoder join and PID reaping. No accumulation demonstrated; production unchanged.49 ordinary tests pass/10 opt-in ignored;30-cycle gate and strict lint pass.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:25:49Z",
+  "updated_utc": "2026-09-12T12:44:10Z",
   "usage": {
     "status": "unknown"
   }

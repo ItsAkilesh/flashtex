@@ -127,6 +127,10 @@ struct Pending {
     sent: Option<Instant>,
 }
 struct Process {
+    #[cfg(all(test, target_os = "linux"))]
+    writer_finished: Option<mpsc::Receiver<()>>,
+    #[cfg(all(test, target_os = "linux"))]
+    io_finished: Option<[mpsc::Receiver<()>; 2]>,
     child: Child,
     writer: SyncSender<Vec<u8>>,
     reader: Decoder,
@@ -145,6 +149,12 @@ impl Process {
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(1);
         let (out_tx, out_rx) = mpsc::sync_channel(4);
         let failures = out_tx.clone();
+        #[cfg(all(test, target_os = "linux"))]
+        let (writer_done, writer_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stdout_done, stdout_finished) = mpsc::channel();
+        #[cfg(all(test, target_os = "linux"))]
+        let (stderr_done, stderr_finished) = mpsc::channel();
         thread::spawn(move || {
             while let Ok(bytes) = rx.recv() {
                 if stdin.write_all(&bytes).and_then(|_| stdin.flush()).is_err() {
@@ -152,6 +162,8 @@ impl Process {
                     break;
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = writer_done.send(());
         });
         thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
@@ -187,6 +199,8 @@ impl Process {
                     }
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stdout_done.send(());
         });
         // Drain continuously in a fixed buffer. Logs are not retained or exposed to UI.
         thread::spawn(move || {
@@ -196,8 +210,14 @@ impl Process {
                     break;
                 }
             }
+            #[cfg(all(test, target_os = "linux"))]
+            let _ = stderr_done.send(());
         });
         Ok(Self {
+            #[cfg(all(test, target_os = "linux"))]
+            io_finished: Some([stdout_finished, stderr_finished]),
+            #[cfg(all(test, target_os = "linux"))]
+            writer_finished: Some(writer_finished),
             child,
             writer: tx,
             reader: Decoder::spawn_mode(out_rx, raw_display),
@@ -1035,3 +1055,6 @@ s=json.dumps(v,separators=(',',':'));v['opaque'][0]='x'*(8388608-1-len(s));print
 
 #[cfg(test)]
 mod queue_accounting;
+
+#[cfg(all(test, target_os = "linux"))]
+mod blocked_writer;
