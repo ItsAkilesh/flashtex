@@ -65,6 +65,12 @@ final class V2FontStore {
     /// diagnostic-bearing error (`font_resource_unavailable` /
     /// `font_resource_mismatch`). The loaded font's glyph count, units per em
     /// and PostScript name must agree with the manifest.
+    ///
+    /// Identity is the raw bytes: `byHash` is only a lookup key (either hash
+    /// spelling of the same bytes); the bytes actually handed to CoreGraphics
+    /// are re-hashed at load time and must equal the discovered raw SHA-256
+    /// and length (GH31). A bytes+face0 match therefore never admits a file
+    /// whose raw bytes changed since discovery.
     func resolve(_ resource: RenderingV2.FontResource) throws -> ResolvedFont {
         let short = String(resource.sha256.prefix(12))
         guard resource.isPaintable else {
@@ -82,9 +88,25 @@ final class V2FontStore {
         }
         let cg: CGFont
         if let cached = cgFonts[file.bytesSha256] {
+            // Verified once from bytes whose raw SHA-256 was `bytesSha256`;
+            // CGFont is immutable, so frames prepared earlier keep exactly it.
             cg = cached
         } else {
-            guard let data = try? Data(contentsOf: file.url), let provider = CGDataProvider(data: data as CFData), let loaded = CGFont(provider) else {
+            // GH31: discovery hashed the file at init, but the path can change
+            // afterwards (an installer, a partial copy, a tampered directory).
+            // Read the file ONCE, authenticate exactly those bytes (length and
+            // raw SHA-256 against the immutable discovery record) and build
+            // the CGFont from those same bytes. A file that no longer matches
+            // is refused before any CGFont exists and nothing is cached, so a
+            // stale discovery record can never lend its hash to new bytes.
+            guard let data = try? Data(contentsOf: file.url) else {
+                throw RenderingV2.ValidationError(code: "font_resource_unavailable", message: "font resource \(short)…: \(file.url.lastPathComponent) could not be read")
+            }
+            guard Int64(data.count) == file.byteLength, Self.hex(SHA256.hash(data: data)) == file.bytesSha256 else {
+                throw RenderingV2.ValidationError(code: "font_resource_mismatch",
+                                                  message: "font resource \(short)…: \(file.url.lastPathComponent) on disk (\(data.count) bytes) no longer matches the bytes discovered at startup (\(file.byteLength) bytes, sha256 \(file.bytesSha256.prefix(12))…); refusing to load changed font bytes under the discovered hash")
+            }
+            guard let provider = CGDataProvider(data: data as CFData), let loaded = CGFont(provider) else {
                 throw RenderingV2.ValidationError(code: "font_resource_unavailable", message: "font resource \(short)…: \(file.url.lastPathComponent) could not be loaded by CoreGraphics")
             }
             cgFonts[file.bytesSha256] = loaded

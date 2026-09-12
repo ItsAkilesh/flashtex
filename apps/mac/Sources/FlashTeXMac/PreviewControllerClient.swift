@@ -25,6 +25,9 @@ final class PreviewControllerClient {
         /// `kind: completed_snapshot` (HistoricalPreview.swift): a validated
         /// compile result for an OLDER source than the helper's current one.
         case completedSnapshot(HistoricalFrame)
+        /// `kind: display_candidate` (ShellModel+DisplayCandidates.swift): the
+        /// producer's untrusted rendering-v2 sibling for a current request.
+        case displayCandidate(DisplayCandidateFrame)
         case update(kind: String, payload: JSONObject)
         case protocolViolation(String)
         case stderr(String)
@@ -181,6 +184,17 @@ final class PreviewControllerClient {
         try send("configure_layout", ["layout_capabilities": capabilities, "renderer_support_confirmed": true])
     }
 
+    /// `configure_display_candidates` (crates/preview-controller/docs/display-forwarding.md):
+    /// opts this session into (or out of) the producer's `display_list`
+    /// sibling forwarded as `update {kind: display_candidate}`. Enabling
+    /// carries the explicit renderer confirmation the helper requires; the
+    /// reply is `result {capability, enabled, preview_error}`.
+    func configureDisplayCandidates(enabled: Bool) throws -> String {
+        var payload: JSONObject = ["capability": DisplayCandidates.capability, "enabled": enabled]
+        if enabled { payload["renderer_support_confirmed"] = true }
+        return try send(DisplayCandidates.operation, payload)
+    }
+
     func close() {
         _ = try? send("close", [:])
         try? stdin.fileHandleForWriting.close()
@@ -230,7 +244,7 @@ final class PreviewControllerClient {
     /// reader in place, so a 1.6 MB result is decoded once, not re-serialized.
     static func decode(_ line: Data, sessionID: String) -> Event {
         let frame: FastJSON.Value
-        do { frame = try FastJSON.parse(line, rawKeys: ["result"]) }
+        do { frame = try FastJSON.parse(line, rawKeys: ["result", "display_list"]) }
         catch { return .protocolViolation("frame is not valid JSON: \(error)") }
         guard let obj = frame.object else { return .protocolViolation("frame is not a JSON object") }
         guard obj["protocol_version"]?.int == 1 else {
@@ -255,6 +269,7 @@ final class PreviewControllerClient {
         case "update":
             let kind = payload["kind"]?.string ?? ""
             if kind == CompletedSnapshots.updateKind { return HistoricalFrame.decode(line, payload: payload, frameSessionID: sessionID) }
+            if kind == DisplayCandidates.updateKind { return DisplayCandidateFrame.decode(line, payload: payload, frameSessionID: sessionID) }
             guard kind == "preview" else { return .update(kind: kind, payload: Self.bridged(payload)) }
             do {
                 let env: RuntimeV1.Envelope<RuntimeV1.CompileResult>
