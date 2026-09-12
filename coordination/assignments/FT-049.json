@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6c73664d7453deea3e44fe220754db43f35c0482",
-  "objective": "Implement justified opt-in metadata bounds or request-aware validation with exact refusal and queue lifecycle tests",
+  "input_main_sha": "e3f47acba76c9626a8cbc7c5b02037a33957bfd2",
+  "objective": "Measure bounded metadata residency and preserve source identity, duplicate and finite-number policies",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:07:56Z"
+  "updated_utc": "2026-09-12T12:17:09Z"
 }
