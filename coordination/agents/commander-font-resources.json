@@ -13,21 +13,21 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "d26d412c89d2b69cf9920eba61718e37d61870b4",
+  "code_revision": "de161ca396f1501e7f917183f2b2652e3d999c5e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
-  "next_action": "Assets /tmp/flashtex-lm-official-27_umgtf; official URL/archive/font/license hashes in fixtures/rooted-lm-download.json. No install/repo font copies. Optional declarations field on schema2 CFF asset node, default strict. Consumer handoff next; no providers/descendants/peer writes or pending jobs.",
+  "main_integrated_through": "60695a370517c9e93ad415ff47c14eeba0908ab1",
+  "next_action": "Commander integration; current TTC resolver remains gated pending published verified peer layout. Await next bounded product assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Matching LM gate closed: official GUST exactfont1aa18cf... retrieved temp; strict initial missing-name failure retained. Explicit SHA-bound5aliases/3unavailable slots added; real rooted fi GID125 interval0..2 and AVkern-116509 pass, unavailable slots fail.120 ordinary tests/clippy+real test pass.",
+  "summary": "Published de161ca: exact real LM replay (five ligatures, three signed kern pairs, unavailable slots), full resource/source provenance, actual matching-font replay and all-target clippy pass. Reviewed Daniel e61c176 and font tip7342245: unchanged parser2aca313, no verified complete TTC layout API. Existing boundary implementation73a030b/API handoff posted issue2 for render-pipeline; no peer writes.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:26:09Z",
+  "updated_utc": "2026-09-12T09:32:55Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
