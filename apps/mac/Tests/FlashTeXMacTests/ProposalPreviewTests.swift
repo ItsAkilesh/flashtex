@@ -29,11 +29,12 @@ final class ProposalPreviewTests: XCTestCase {
                         explanation: explanation)
     }
 
-    /// Fake helper (python) plus optionally the fake provider, short timeouts.
+    /// Fake helper (python) plus optionally the fake provider (launched as the
+    /// user's command would be: by path, via its shebang), short timeouts.
     private func fakeExplanation(provider: Bool = false, helperTimeout: TimeInterval = 5,
                                  providerTimeout: TimeInterval = 5) -> ProposalPreview.ExplanationConfiguration {
         var c = ProposalPreview.ExplanationConfiguration(helper: WorkerClientTests.python, helperArguments: [Self.fakeHelper.path])
-        if provider { c.provider = WorkerClientTests.python; c.providerArguments = [Self.fakeProvider.path] }
+        if provider { c.provider = Self.fakeProvider }
         c.helperTimeout = helperTimeout
         c.providerTimeout = providerTimeout
         return c
@@ -875,6 +876,170 @@ final class ProposalPreviewTests: XCTestCase {
         try await waitForExplanationSettled(preview)
         guard case .approved = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
         try write("mac-ai-review-assistant-approved-2026-09-12.png")
+        preview.close()
+        try await waitUntil("worker terminated") { !preview.workerIsRunning }
+    }
+
+    // MARK: packaged discovery, provider identity, offline helper
+
+    func testLocateHelperFindsTheBundledBinaryInTheMacOSDirectory() throws {
+        let macOSDir = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-bundle-\(UUID().uuidString)/Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOSDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: macOSDir) }
+        let name = ProposalPreview.ExplanationConfiguration.bundledHelperName
+        XCTAssertEqual(name, "flashtex-assistant-context")
+        // Nothing bundled yet: falls through to the environment/scratch/crate search.
+        let before = ProposalPreview.ExplanationConfiguration.locateHelper([:], bundleExecutableDirectory: macOSDir)
+        XCTAssertNotEqual(before, macOSDir.appendingPathComponent(name))
+        // A non-executable file is ignored; an executable one is found.
+        let bundled = macOSDir.appendingPathComponent(name)
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: bundled)
+        XCTAssertNotEqual(ProposalPreview.ExplanationConfiguration.locateHelper([:], bundleExecutableDirectory: macOSDir), bundled)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bundled.path)
+        XCTAssertEqual(ProposalPreview.ExplanationConfiguration.locateHelper([:], bundleExecutableDirectory: macOSDir), bundled)
+        // The environment override still wins over the bundle.
+        XCTAssertEqual(ProposalPreview.ExplanationConfiguration.locateHelper(["FLASHTEX_ASSISTANT_CONTEXT": WorkerClientTests.python.path],
+                                                                            bundleExecutableDirectory: macOSDir), WorkerClientTests.python)
+        // fromEnvironment goes through the same lookup and reports the bundled name.
+        let c = ProposalPreview.ExplanationConfiguration.fromEnvironment([:], bundleExecutableDirectory: macOSDir)
+        XCTAssertEqual(c.helper, bundled)
+        XCTAssertNil(c.provider)
+        XCTAssertEqual(c.providerIdentityText, "provider disabled (set FLASHTEX_ASSISTANT_PROVIDER to a local command)")
+    }
+
+    func testHelperChildEnvironmentIsOfflineAndCredentialFree() {
+        let env = ["PATH": "/usr/bin", "HOME": "/Users/x", "LANG": "en_US.UTF-8", "TMPDIR": "/tmp/x",
+                   "FLASHTEX_GROK_API_KEY": "k", "OPENAI_API_KEY": "k", "XAI_TOKEN": "k", "AWS_SECRET_ACCESS_KEY": "k",
+                   "HTTPS_PROXY": "http://proxy", "http_proxy": "http://proxy", "MY_PASSWORD": "k", "SOME_CREDENTIAL": "k",
+                   "FLASHTEX_COMPILER": "/x", "PWD": "/y"]
+        let helper = ProposalPreview.ExplanationConfiguration.childEnvironment(for: .helper, from: env)
+        XCTAssertEqual(helper, ["PATH": "/usr/bin", "HOME": "/Users/x", "LANG": "en_US.UTF-8", "TMPDIR": "/tmp/x"])
+        for key in env.keys where ProposalPreview.ExplanationConfiguration.isSensitiveVariable(key) { XCTAssertNil(helper[key], key) }
+        XCTAssertTrue(ProposalPreview.ExplanationConfiguration.isSensitiveVariable("FLASHTEX_GROK_API_KEY"))
+        XCTAssertFalse(ProposalPreview.ExplanationConfiguration.isSensitiveVariable("PATH"))
+        // The provider is the user's own command and gets the user's environment as is.
+        XCTAssertEqual(ProposalPreview.ExplanationConfiguration.childEnvironment(for: .provider, from: env), env)
+    }
+
+    /// The helper is always launched with an empty argv (never `--session` /
+    /// `--provider-session`) and a credential-free environment, whatever the
+    /// app's own environment holds; the pinned binary carries no provider
+    /// endpoint. The provider is launched by name from
+    /// `FLASHTEX_ASSISTANT_PROVIDER` with the payload on stdin only.
+    func testHelperIsLaunchedOfflineWithEmptyArgvAndSanitizedEnvironment() async throws {
+        let preview = makePreview(explanation: fakeExplanation(provider: true))
+        preview.update(input: input("A\n%diag:1 tail\n", anchorByte: 2), latex: "%diag:0 new")
+        try await waitForReady(preview)
+        preview.explain()
+        try await waitForExplanationSettled(preview)
+        guard case .ready = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        preview.approveReviewedEdit()
+        try await waitForExplanationSettled(preview)
+        guard case .approved = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        XCTAssertEqual(preview.childLaunches.map(\.stage), [.probe, .prepare, .provider, .review, .approve])
+        for launch in preview.childLaunches {
+            // The python helper double takes the script as its only argument
+            // (the real helper takes none); the provider is launched by path.
+            XCTAssertEqual(launch.arguments, launch.role == .helper ? [Self.fakeHelper.path] : [])
+            XCTAssertFalse(launch.arguments.contains { $0.hasPrefix("--") }, "\(launch.arguments)")
+            if launch.role == .helper {
+                XCTAssertTrue(Set(launch.environmentKeys).isSubset(of: ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "USER", "SHELL", "RUST_BACKTRACE"]), "\(launch.environmentKeys)")
+                XCTAssertFalse(launch.environmentKeys.contains { ProposalPreview.ExplanationConfiguration.isSensitiveVariable($0) })
+                XCTAssertFalse(launch.environmentKeys.contains { $0.hasPrefix("FLASHTEX_") })
+            }
+        }
+        if let helper = ProposalPreview.ExplanationConfiguration.locateHelper() {
+            // The default (non-`grok`) build has no HTTP client and no endpoint string.
+            let binary = try Data(contentsOf: helper)
+            XCTAssertNil(binary.range(of: Data("api.x.ai".utf8)), "pinned helper contains the provider endpoint")
+            XCTAssertNil(binary.range(of: Data("--provider-session".utf8)), "pinned helper was built with the grok feature")
+        }
+        preview.close()
+        try await waitUntil("worker terminated") { !preview.workerIsRunning }
+    }
+
+    /// End to end from the environment, as the packaged app would run it: the
+    /// pinned helper plus a LOCAL provider command from
+    /// `FLASHTEX_ASSISTANT_PROVIDER` (the fake, launched by its own shebang).
+    /// explanation → helper validate/review → explicit approve → amended draft;
+    /// cancellation mid-provider; an oversized provider reply refused.
+    func testProviderPathEndToEndFromEnvironmentWithLocalCommand() async throws {
+        guard let helper = ProposalPreview.ExplanationConfiguration.locateHelper() else {
+            throw XCTSkip("build crates/assistant-context or set FLASHTEX_ASSISTANT_CONTEXT")
+        }
+        var env = ["FLASHTEX_ASSISTANT_CONTEXT": helper.path, "FLASHTEX_ASSISTANT_PROVIDER": Self.fakeProvider.path,
+                   "FLASHTEX_ASSISTANT_TIMEOUT_S": "5", "FLASHTEX_GROK_API_KEY": "must-not-reach-the-helper"]
+        env["PATH"] = ProcessInfo.processInfo.environment["PATH"] // the shebang needs python3
+        let config = ProposalPreview.ExplanationConfiguration.fromEnvironment(env)
+        XCTAssertEqual(config.helper, helper)
+        XCTAssertEqual(config.provider, Self.fakeProvider)
+        XCTAssertEqual(config.providerArguments, [])
+        XCTAssertEqual(config.providerTimeout, 5)
+        XCTAssertEqual(config.providerIdentityText, "provider: fake_assistant_provider.py")
+        let preview = makePreview(explanation: config)
+        XCTAssertTrue(preview.explanationStatusText.hasSuffix("provider: fake_assistant_provider.py"), preview.explanationStatusText)
+
+        preview.update(input: input("A\n%diag:1 tail %envprovider\n", anchorByte: 2), latex: "%diag:0 new")
+        try await waitForReady(preview)
+        preview.explain()
+        try await waitForExplanationSettled(preview)
+        guard case .ready(let e) = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        XCTAssertTrue(e.text.hasPrefix("Fake explanation of 2 diagnostic(s)"), e.text)
+        XCTAssertEqual(e.context.providerIntent, "grok", "the real helper's payload intent; transport is still the user's local command")
+        let reviewId = try XCTUnwrap(e.reviewId)
+        XCTAssertEqual(e.edits.count, 1)
+        // The provider ran as the user's command with the app's own environment
+        // (it lists the FLASHTEX_* names it saw, exactly this process's set,
+        // possibly none); the helper launches got none of it.
+        let visible = ProcessInfo.processInfo.environment.keys.filter { $0.hasPrefix("FLASHTEX_") }.sorted().joined(separator: ",")
+        XCTAssertTrue(e.text.hasSuffix(" env: " + visible), "\(e.text) vs \(visible)")
+        let helperLaunches = preview.childLaunches.filter { $0.role == .helper }
+        XCTAssertEqual(helperLaunches.map(\.stage), [.probe, .prepare, .review])
+        for l in helperLaunches {
+            XCTAssertEqual(l.executable, helper)
+            XCTAssertEqual(l.arguments, [])
+            XCTAssertFalse(l.environmentKeys.contains("FLASHTEX_GROK_API_KEY"))
+            XCTAssertFalse(l.environmentKeys.contains { $0.hasPrefix("FLASHTEX_") })
+        }
+        let providerLaunch = try XCTUnwrap(preview.childLaunches.first { $0.role == .provider })
+        XCTAssertEqual(providerLaunch.executable, Self.fakeProvider)
+        XCTAssertEqual(providerLaunch.arguments, [])
+
+        preview.approveReviewedEdit()
+        try await waitForExplanationSettled(preview)
+        guard case .approved(let a) = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        XCTAssertEqual(a.reviewId, reviewId)
+        XCTAssertEqual(a.amendedLatex, "% reviewed: %diag:0 new")
+        XCTAssertEqual(preview.amendedProposalLatex, "% reviewed: %diag:0 new")
+        XCTAssertEqual(a.expectedSha256, SourceDigest.sha256Hex("A\n%diag:0 new\n%diag:1 tail %envprovider\n"))
+        XCTAssertFalse(a.applied)
+        XCTAssertEqual(preview.shadow?.shadowText, "A\n%diag:0 new\n%diag:1 tail %envprovider\n")
+
+        // Cancellation while the local provider is running (it sleeps 600 ms).
+        preview.update(input: input("A\n%diag:1 tail %slowprovider\n", anchorByte: 2), latex: "%diag:0 new")
+        XCTAssertEqual(preview.explanationState, .cancelled("proposal or document changed"))
+        try await waitUntil("recompiled") { preview.shadowCompileCount == 2 && !preview.isInFlight }
+        preview.explain()
+        try await waitUntil("provider running") { if case .awaitingProvider = preview.explanationState { return true }; return false }
+        XCTAssertTrue(preview.explanationStatusText.contains("handed to fake_assistant_provider.py"), preview.explanationStatusText)
+        let stale = preview.staleExplanationReplies
+        preview.update(input: input("A\n%diag:1 tail %slowprovider\n", anchorByte: 2), latex: "%diag:0 edited")
+        XCTAssertEqual(preview.explanationState, .cancelled("proposal or document changed"))
+        try await waitUntil("provider reply discarded") { preview.staleExplanationReplies == stale + 1 }
+        XCTAssertEqual(preview.explanationState, .cancelled("proposal or document changed"))
+        try await waitUntil("recompiled") { preview.shadowCompileCount == 3 && !preview.isInFlight }
+
+        // An oversized provider reply (above the helper's 64 KiB response limit) is refused
+        // before it reaches the helper; the review stays usable.
+        preview.update(input: input("A\n%diag:1 tail %hugeprovider\n", anchorByte: 2), latex: "%diag:0 new")
+        try await waitUntil("recompiled") { preview.shadowCompileCount == 4 && !preview.isInFlight }
+        preview.explain()
+        try await waitForExplanationSettled(preview)
+        guard case .failed(let why) = preview.explanationState else { return XCTFail("\(preview.explanationState)") }
+        XCTAssertTrue(why.hasPrefix("provider reply of ") && why.hasSuffix("bytes exceeds the limit"), why)
+        XCTAssertEqual(preview.childLaunches.last?.stage, .provider, "no validate/review launch followed the refused reply")
+        guard case .ready = preview.state else { return XCTFail("\(preview.state)") }
+        XCTAssertTrue(preview.canExplain)
         preview.close()
         try await waitUntil("worker terminated") { !preview.workerIsRunning }
     }

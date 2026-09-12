@@ -845,6 +845,248 @@ final class SourceEditorViewTests: XCTestCase {
         XCTAssertEqual(model.activeText.clusterAlignedNSRange(utf8Start: 0, utf8End: 1), NSRange(location: 0, length: 2))
     }
 
+    // MARK: delimiter pairs
+
+    private func m(_ text: String, _ caret: Int) -> (Int, Int, Int, Int)? {
+        SourceEditorView.BraceMatcher.match(in: text, caretUTF16: caret).map {
+            ($0.open.location, $0.open.length, $0.close.location, $0.close.length)
+        }
+    }
+
+    func testBraceMatcherIsExactAndSkipsEscapesCommentsAndVerb() {
+        typealias BM = SourceEditorView.BraceMatcher
+        let t = "a{b[c]d}e"
+        XCTAssertTrue(m(t, 8)! == (1, 1, 7, 1), "after the closing brace")
+        XCTAssertTrue(m(t, 1)! == (1, 1, 7, 1), "before the opening brace")
+        XCTAssertTrue(m(t, 2)! == (1, 1, 7, 1), "after the opening brace")
+        XCTAssertTrue(m(t, 5)! == (3, 1, 5, 1), "before the closing bracket")
+        XCTAssertTrue(m(t, 4)! == (3, 1, 5, 1), "after the opening bracket")
+        XCTAssertNil(m(t, 0)); XCTAssertNil(m(t, 9)) // no delimiter next to the caret
+        XCTAssertTrue(m(t, 3)! == (3, 1, 5, 1), "the bracket after the caret counts")
+        XCTAssertTrue(m("{{}}", 4)! == (0, 1, 3, 1), "depth counting")
+        XCTAssertTrue(m("{{}}", 3)! == (1, 1, 2, 1))
+        XCTAssertNil(m("{a", 1), "no closer")
+        XCTAssertNil(m("a}", 2), "no opener")
+        XCTAssertNil(m("[a}", 1), "kinds do not mix")
+        // Escapes: \{ and \} are literal; \\{ is an escaped backslash then a real brace.
+        XCTAssertNil(m("\\{x}", 4))
+        XCTAssertNil(m("{x\\}", 4))
+        XCTAssertTrue(m("\\\\{x}", 5)! == (2, 1, 4, 1))
+        // Comments hide the rest of the line; the caret in a comment matches nothing.
+        XCTAssertTrue(m("{a % }\n}", 8)! == (0, 1, 7, 1))
+        XCTAssertNil(m("{a % }", 6))
+        XCTAssertTrue(m("\\% {x}", 6)! == (3, 1, 5, 1), "an escaped percent is not a comment")
+        // \verb arguments are not code.
+        XCTAssertTrue(m("{\\verb|}|}", 10)! == (0, 1, 9, 1))
+        XCTAssertTrue(m("{\\verb*|}|}", 11)! == (0, 1, 10, 1))
+        XCTAssertNil(m("{\\verb|}|", 8), "inside the verb argument")
+        // $…$ and $$…$$ by parity within the paragraph.
+        XCTAssertTrue(m("a $x$ b", 3)! == (2, 1, 4, 1), "after the opening dollar")
+        XCTAssertTrue(m("a $x$ b", 5)! == (2, 1, 4, 1), "after the closing dollar")
+        XCTAssertTrue(m("a $x$ b", 4)! == (2, 1, 4, 1), "before the closing dollar")
+        XCTAssertTrue(m("$$x$$", 2)! == (0, 2, 3, 2))
+        XCTAssertTrue(m("$$x$$", 5)! == (0, 2, 3, 2))
+        XCTAssertTrue(m("\\$a$b$", 6)! == (3, 1, 5, 1), "an escaped dollar does not count")
+        XCTAssertTrue(m("$a\nb$", 5)! == (0, 1, 4, 1), "inline math continues over a line break")
+        XCTAssertNil(m("$a\n\nb$", 1), "but never over a blank line")
+        XCTAssertNil(m("$a\n\nb$", 6))
+        XCTAssertTrue(m("$a$ $b$", 7)! == (4, 1, 6, 1), "the second span pairs with itself")
+        // Multi-byte text before the pair keeps UTF-16 offsets exact.
+        XCTAssertTrue(m("é{ü}", 4)! == (1, 1, 3, 1))
+        XCTAssertTrue(m("👩‍💻{ü}", 8)! == (5, 1, 7, 1))
+        XCTAssertNil(m("é{ü}", 2 + 1 + 100), "out of range")
+        // Budget: an opener whose closer is beyond the byte budget is left unmatched, quickly.
+        let far = "{" + String(repeating: "x\n", count: BM.budgetBytes) + "}"
+        let t0 = Self.timed { XCTAssertNil(self.m(far, 1)) }
+        XCTAssertLessThan(t0.cpu, 20, "bounded scan took \(t0.cpu) ms CPU")
+
+        // Auto-close gate (the opener was just typed before the caret): code only,
+        // not escaped, followed by nothing/space/closer.
+        XCTAssertTrue(BM.autoCloseAllowed(in: "{", caretUTF16: 1))
+        XCTAssertTrue(BM.autoCloseAllowed(in: "{ ", caretUTF16: 1))
+        XCTAssertTrue(BM.autoCloseAllowed(in: "{}", caretUTF16: 1))
+        XCTAssertFalse(BM.autoCloseAllowed(in: "{b", caretUTF16: 1), "not before a letter")
+        XCTAssertFalse(BM.autoCloseAllowed(in: "\\{", caretUTF16: 2), "escaped")
+        XCTAssertTrue(BM.autoCloseAllowed(in: "\\\\{", caretUTF16: 3), "after an escaped backslash")
+        XCTAssertFalse(BM.autoCloseAllowed(in: "% {", caretUTF16: 3), "in a comment")
+        XCTAssertFalse(BM.autoCloseAllowed(in: "\\verb|{|", caretUTF16: 7), "in a verb argument")
+        XCTAssertTrue(BM.autoCloseAllowed(in: "é{", caretUTF16: 2))
+        XCTAssertFalse(BM.autoCloseAllowed(in: "", caretUTF16: 0))
+    }
+
+    func testAutoCloseTypeOverAndBackspaceAreOrdinaryUndoSteps() async throws {
+        let model = ShellModel()
+        model.replaceProject(entryText: "")
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+        let undo = try XCTUnwrap(tv.undoManager)
+        var spoken: [String] = []
+        co.announce = { spoken.append($0) }
+        XCTAssertEqual(co.parent.autoClosePairs, ["{"], "default: braces only")
+
+        // `{` becomes `{|}` in one text change, one revision; the caret byte is exact.
+        let rev = model.editorRevision
+        tv.insertText("{", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(tv.string, "{}")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 1, length: 0))
+        XCTAssertEqual(model.activeText, "{}")
+        XCTAssertEqual(model.editorRevision, rev + 1, "opener and closer reach the model as one change")
+        XCTAssertEqual(model.caretUTF16, 1); XCTAssertEqual(model.caretByte, 1)
+        XCTAssertEqual(co.pendingClosers, [1])
+        XCTAssertEqual(co.braceHighlight, .init(open: NSRange(location: 0, length: 1), close: NSRange(location: 1, length: 1)))
+        try await turn()
+        // ⌘Z after `{}` leaves nothing: the closer coalesced with the typed opener.
+        undo.undo()
+        XCTAssertEqual(tv.string, "")
+        XCTAssertEqual(model.activeText, "")
+        XCTAssertEqual(co.pendingClosers, [])
+        undo.redo()
+        XCTAssertEqual(tv.string, "{}")
+        XCTAssertEqual(model.activeText, "{}")
+        try await turn()
+
+        /// Fresh buffer and undo stack (a programmatic range deletion would be
+        /// folded into AppKit's typing coalescing and pollute the next phase).
+        func reset() async throws {
+            model.replaceProject(entryText: ""); try await waitUntil("reset") { tv.string == "" }; undo.removeAllActions()
+            try await turn()
+            XCTAssertEqual(model.activeText, "")
+        }
+
+        // Typing inside, then the closer types over the auto-inserted one: no text change, no revision.
+        try await reset()
+        tv.insertText("{", replacementRange: NSRange(location: 0, length: 0))
+        tv.insertText("é", replacementRange: NSRange(location: 1, length: 0))
+        XCTAssertEqual(tv.string, "{é}")
+        XCTAssertEqual(co.pendingClosers, [2], "the closer shifted with the typing before it")
+        let revBefore = model.editorRevision
+        spoken = []
+        tv.insertText("}", replacementRange: NSRange(location: 2, length: 0))
+        XCTAssertEqual(tv.string, "{é}", "typed over, not duplicated")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 3, length: 0))
+        XCTAssertEqual(model.editorRevision, revBefore, "a type-over changes no text")
+        XCTAssertEqual(model.caretUTF16, 3); XCTAssertEqual(model.caretByte, 4)
+        XCTAssertEqual(co.pendingClosers, [])
+        XCTAssertEqual(spoken, ["matches line 1 column 1"], "a closer announces its opener")
+        // A second `}` is a real character now.
+        tv.insertText("}", replacementRange: NSRange(location: 3, length: 0))
+        XCTAssertEqual(tv.string, "{é}}")
+        XCTAssertEqual(model.editorRevision, revBefore + 1)
+        try await turn()
+
+        // Backspace inside an empty auto-closed pair removes both; ⌘Z brings the pair back.
+        try await reset()
+        tv.insertText("é", replacementRange: NSRange(location: 0, length: 0))
+        try await turn()
+        tv.insertText("{", replacementRange: NSRange(location: 1, length: 0))
+        XCTAssertEqual(tv.string, "é{}")
+        XCTAssertEqual(model.caretByte, 3)
+        let revPair = model.editorRevision
+        try await turn()
+        tv.doCommand(by: #selector(NSResponder.deleteBackward(_:))) // the Delete key's path (interpretKeyEvents)
+        XCTAssertEqual(tv.string, "é")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 1, length: 0))
+        XCTAssertEqual(model.activeText, "é")
+        XCTAssertEqual(model.editorRevision, revPair + 1, "the pair removal is one text change")
+        XCTAssertEqual(co.pendingClosers, [])
+        try await turn()
+        undo.undo()
+        XCTAssertEqual(tv.string, "é{}", "undo restores the pair as its own step")
+        XCTAssertEqual(model.activeText, "é{}")
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 1, length: 2))
+        undo.undo()
+        XCTAssertEqual(tv.string, "", "then the typing (AppKit coalesces é{} typed in a row across events)")
+        XCTAssertEqual(model.activeText, "")
+        try await turn()
+
+        // Not auto-closed: a disabled opener, an escaped brace, a comment, a selection, before a letter.
+        try await reset()
+        tv.insertText("[", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(tv.string, "[", "`[` is not in the default set")
+        tv.insertText("\\", replacementRange: NSRange(location: 1, length: 0))
+        tv.insertText("{", replacementRange: NSRange(location: 2, length: 0))
+        XCTAssertEqual(tv.string, "[\\{", "escaped")
+        tv.insertText(" % ", replacementRange: NSRange(location: 3, length: 0))
+        tv.insertText("{", replacementRange: NSRange(location: 6, length: 0))
+        XCTAssertEqual(tv.string, "[\\{ % {", "in a comment")
+        tv.setSelectedRange(NSRange(location: 0, length: 1))
+        tv.insertText("{", replacementRange: NSRange(location: 0, length: 1))
+        XCTAssertEqual(tv.string, "{\\{ % {", "typing over a selection replaces it only")
+        tv.setSelectedRange(NSRange(location: 1, length: 0))
+        tv.insertText("{", replacementRange: NSRange(location: 1, length: 0))
+        XCTAssertEqual(tv.string, "{{\\{ % {", "not before a non-space character")
+        XCTAssertEqual(model.activeText, tv.string)
+
+        // Never while marked text exists: an input-method commit of `{` is left alone.
+        try await reset()
+        compose(tv, "{")
+        XCTAssertTrue(tv.hasMarkedText())
+        tv.insertText("{", replacementRange: Self.noReplacement)
+        XCTAssertEqual(tv.string, "{", "the composed brace gets no closer")
+        XCTAssertEqual(model.activeText, "{")
+        XCTAssertEqual(co.pendingClosers, [])
+    }
+
+    func testCaretMovesHighlightAndAnnounceTheMatchingDelimiter() async throws {
+        let model = ShellModel()
+        model.replaceProject(entryText: "a{b}\n$x$")
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+        let lm = try XCTUnwrap(tv.layoutManager)
+        var spoken: [String] = []
+        co.announce = { spoken.append($0) }
+        func highlighted(_ i: Int) -> Bool {
+            lm.temporaryAttribute(SourceEditorView.Coordinator.highlightKey, atCharacterIndex: i, effectiveRange: nil) != nil
+        }
+
+        tv.setSelectedRange(NSRange(location: 4, length: 0)) // after `}`
+        try await turn()
+        XCTAssertEqual(spoken.last, "Line 1, column 5, matches line 1 column 2")
+        XCTAssertTrue(highlighted(1)); XCTAssertTrue(highlighted(3)); XCTAssertFalse(highlighted(2))
+        XCTAssertEqual(co.braceHighlight, .init(open: NSRange(location: 1, length: 1), close: NSRange(location: 3, length: 1)))
+
+        tv.setSelectedRange(NSRange(location: 0, length: 0)) // no delimiter here
+        try await turn()
+        XCTAssertEqual(spoken.last, "Line 1, column 1")
+        XCTAssertFalse(highlighted(1)); XCTAssertFalse(highlighted(3))
+        XCTAssertNil(co.braceHighlight)
+
+        tv.setSelectedRange(NSRange(location: 8, length: 0)) // after the closing `$`
+        try await turn()
+        XCTAssertEqual(spoken.last, "Line 2, column 4, matches line 2 column 1")
+        XCTAssertTrue(highlighted(5)); XCTAssertTrue(highlighted(7))
+
+        // A selection (length > 0) highlights nothing; a navigation announces the match too.
+        tv.setSelectedRange(NSRange(location: 5, length: 3))
+        try await turn()
+        XCTAssertNil(co.braceHighlight)
+        XCTAssertFalse(highlighted(5))
+        model.selection = .init(path: "main.tex", nsRange: NSRange(location: 2, length: 0), token: 1)
+        try await waitUntil("navigation") { tv.selectedRange() == NSRange(location: 2, length: 0) }
+        XCTAssertEqual(spoken.last, "Line 1, column 3, matches line 1 column 4")
+        XCTAssertTrue(highlighted(1)); XCTAssertTrue(highlighted(3))
+
+        // Typing a closer announces its opener even though typing itself is silent.
+        tv.setSelectedRange(NSRange(location: 4, length: 0))
+        try await turn()
+        spoken = []
+        tv.insertText("[", replacementRange: NSRange(location: 4, length: 0))
+        tv.insertText("]", replacementRange: NSRange(location: 5, length: 0))
+        try await turn()
+        XCTAssertEqual(spoken, ["matches line 1 column 5"])
+        XCTAssertEqual(model.activeText, "a{b}[]\n$x$")
+        XCTAssertTrue(highlighted(4)); XCTAssertTrue(highlighted(5))
+
+        // A model text reset drops and recomputes the highlight.
+        model.replaceProject(entryText: "{}")
+        try await waitUntil("reset") { tv.string == "{}" }
+        XCTAssertEqual(co.pendingClosers, [])
+    }
+
     // MARK: large document keystrokes
 
     func testLargeDocumentKeystrokeRoundTripAndCaretBytesStayCorrect() async throws {
