@@ -104,6 +104,7 @@ extension ShellModel {
         controller.terminate()
         self.controller = nil
         controllerState = ControllerState()
+        historicalInvalidate(reason: "close")
         inFlightRevision = nil
         controllerStatus = "no preview controller attached"
         if previewSource != .fixture { workerStatus = "no worker attached" }
@@ -125,7 +126,8 @@ extension ShellModel {
         do {
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             let id = try controller.edit(path: activePath, expectedRevision: durable.revision,
-                                         expectedSHA256: durable.sha256, text: text)
+                                         expectedSHA256: durable.sha256, text: text,
+                                         sourceBindingToken: historicalToken(forEditorRevision: editorRevision))
             controllerState.inFlight = (id, activePath, editorRevision, Date(), text, nil)
             controllerState.queued = false
             inFlightRevision = editorRevision
@@ -143,7 +145,7 @@ extension ShellModel {
             controllerSubmitEdit()
             return
         }
-        _ = try? controller.compile()
+        _ = try? controller.compile(sourceBindingToken: historicalToken(forEditorRevision: editorRevision))
     }
 
     // MARK: events
@@ -157,14 +159,18 @@ extension ShellModel {
             controllerStatus = "ready: compiler frames ≤ \(maxFrame / 1024 / 1024) MiB, helper output ≤ \(maxOut / 1024 / 1024) MiB"
                 + (compilerError.map { "; compiler unavailable: \($0)" } ?? "")
             log("controller " + controllerStatus)
-            // Opt into the negotiated primitives the preview draws, then learn
-            // the durable document so edits can name the revision they expect.
+            // Negotiate the historical side channel first (its reply precedes
+            // the document's, so the first edit already carries a token), opt
+            // into the negotiated primitives the preview draws, then learn the
+            // durable document so edits can name the revision they expect.
+            historicalNegotiate()
             if !requestedLayoutCapabilities.isEmpty {
                 _ = try? controller.configureLayout(capabilities: requestedLayoutCapabilities)
             }
             _ = try? controller.document(path: activePath)
         case .result(let id, let payload):
             if let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.success(payload)); return }
+            if historicalHandle(resultID: id, payload: payload) { return }
             switch completionFetcher.handle(resultID: id, payload: payload) {
             case .notMine: break
             case .pending: return
@@ -180,6 +186,7 @@ extension ShellModel {
             }
         case .error(let id, let message):
             if let id, let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.failure(.init(message: message))); return }
+            if historicalHandle(errorID: id, message: message) { return }
             if case .refused(let why) = completionFetcher.handle(errorID: id, message: message) {
                 log("completion metadata refused: \(why)")
                 break
@@ -200,6 +207,8 @@ extension ShellModel {
             }
         case .preview(let update):
             applyControllerPreview(update)
+        case .completedSnapshot(let frame):
+            historicalReceive(frame)
         case .update(let kind, let payload):
             // stale / discarded previews name the request they replaced; nothing
             // to paint. If it was the preview our in-flight edit waits for, the
@@ -227,6 +236,7 @@ extension ShellModel {
             self.controller = nil
             controllerState = ControllerState()
             inFlightRevision = nil
+            historicalInvalidate(reason: "helper exited")
         }
     }
 
@@ -253,6 +263,11 @@ extension ShellModel {
             } else {
                 controllerState.inFlight?.durableRevision = revision
                 if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
+                // Negotiated historical mode (HistoricalPreview.swift): every
+                // keystroke is its own durable edit and completed older compiles
+                // arrive as labelled historical frames, so the pipeline does not
+                // hold the next edit for this one's preview.
+                if historicalNegotiated { controllerState.inFlight = nil }
             }
         } else {
             // Initial `document` (or a re-read after a conflict): the ledger is
@@ -313,6 +328,7 @@ extension ShellModel {
         result = incoming
         resultID = update.result.id
         previewSource = .worker("flashtex-preview-controller")
+        historicalNoteCurrentPreview(compileRevision: update.compileRevision)
         bindLayout(of: incoming, requested: requested)
         if !update.missingLayoutCapabilities.isEmpty {
             log("controller: compiler declined layout capabilities \(update.missingLayoutCapabilities)")

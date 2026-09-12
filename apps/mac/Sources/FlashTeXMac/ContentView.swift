@@ -83,7 +83,10 @@ private struct StatusBanner: View {
                     Text(String(format: "latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if model.previewIsStale {
+                if let historical = model.historicalPreview {
+                    Text(historical.label).foregroundStyle(.purple).bold()
+                        .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
+                } else if model.previewIsStale {
                     Text(model.workerAttached
                          ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
                          : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
@@ -105,7 +108,7 @@ private struct StatusBanner: View {
         let (label, color): (String, Color) = switch model.previewSource {
         case .none: ("NONE", .gray)
         case .fixture: ("FIXTURE", .orange)
-        case .worker: ("WORKER", .green)
+        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
         }
         return Text(label)
             .font(.caption.bold())

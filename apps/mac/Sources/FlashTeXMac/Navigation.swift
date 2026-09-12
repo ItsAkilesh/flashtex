@@ -212,6 +212,7 @@ extension ShellModel {
     /// - the selection covers whole composed character sequences;
     /// - the active document switches when the span lives in another open one.
     func navigateExactly(to source: RuntimeV1.SourceRange?, expectedText: String? = nil) {
+        if let why = historicalRefusal(of: "navigation") { navigationNote = why; return }
         guard let source else {
             navigationNote = "This item has no source mapping."
             return
@@ -306,6 +307,7 @@ extension ShellModel {
     /// open document with marks (project order, wrapping), switching to it.
     /// Diagnostics under edited text are skipped and counted in the note.
     func goToDiagnostic(forward: Bool) {
+        if let why = historicalRefusal(of: "diagnostic navigation") { navigationNote = why; return }
         guard let result else {
             navigationNote = "No compile result loaded; nothing to navigate to."
             return

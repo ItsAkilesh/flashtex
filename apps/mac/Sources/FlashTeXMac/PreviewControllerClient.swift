@@ -22,6 +22,9 @@ final class PreviewControllerClient {
         case result(id: String, payload: JSONObject)
         case error(id: String?, message: String)
         case preview(PreviewUpdate)
+        /// `kind: completed_snapshot` (HistoricalPreview.swift): a validated
+        /// compile result for an OLDER source than the helper's current one.
+        case completedSnapshot(HistoricalFrame)
         case update(kind: String, payload: JSONObject)
         case protocolViolation(String)
         case stderr(String)
@@ -139,11 +142,17 @@ final class PreviewControllerClient {
 
     func document(path: String) throws -> String { try send("document", ["path": path]) }
 
-    func edit(path: String, expectedRevision: Int, expectedSHA256: String, text: String) throws -> String {
-        try send("edit", ["path": path, "expected_revision": expectedRevision, "expected_sha256": expectedSHA256, "text": text])
+    /// `sourceBindingToken` (≤ 128 bytes, opaque to the helper) is echoed on a
+    /// `completed_snapshot` for this submission; nil sends the unchanged wire.
+    func edit(path: String, expectedRevision: Int, expectedSHA256: String, text: String, sourceBindingToken: String? = nil) throws -> String {
+        var payload: JSONObject = ["path": path, "expected_revision": expectedRevision, "expected_sha256": expectedSHA256, "text": text]
+        if let sourceBindingToken { payload["source_binding_token"] = sourceBindingToken }
+        return try send("edit", payload)
     }
 
-    func compile() throws -> String { try send("compile", [:]) }
+    func compile(sourceBindingToken: String? = nil) throws -> String {
+        try send("compile", sourceBindingToken.map { ["source_binding_token": $0] } ?? [:])
+    }
 
     /// `export`: writes exactly the durable source at (`expectedRevision`,
     /// `expectedSHA256`) through the rooted project-files lock. The disk
@@ -235,6 +244,7 @@ final class PreviewControllerClient {
             return .error(id: id, message: payload["message"]?.string ?? "unspecified helper error")
         case "update":
             let kind = payload["kind"]?.string ?? ""
+            if kind == CompletedSnapshots.updateKind { return HistoricalFrame.decode(line, payload: payload, frameSessionID: sessionID) }
             guard kind == "preview" else { return .update(kind: kind, payload: Self.bridged(payload)) }
             do {
                 let env: RuntimeV1.Envelope<RuntimeV1.CompileResult>
