@@ -51,9 +51,25 @@ Searched `origin/agent/mac-claude-a/mac-shell` (`apps/mac/Tests/FlashTeXMacTests
 - Conclusion: the gap (a reviewable schema + acceptance plan) is uncovered;
   proceed with the document only.
 
+## Follow-up (Commander 5646477457, same lane/branch)
+
+- `crates/render-pipeline/docs/proposals/contract-draft-review-ad922ea.md`: line-by-line
+  review of main ad922ea1 `docs/contracts/runtime-v1-display-list-v2.md` against
+  producer 9aaec57a and the Mac consumer at `origin/agent/mac-helper-display/route`
+  3db719cf (incl. GH31 a9b55af7): 9 discrepancies (D1 direct-route paint admission
+  does not bind document sha256 — medium; D2 helper gate ignores
+  `membership_generation` — medium; D6 no client-side 1 MiB outgoing helper bound —
+  medium; D3/D4/D5/D7/D8/D9 low) + 19 confirmed matches, all with file:line.
+- `display-list-v2-delta.md` bumped to r2: installed-base acknowledgement via the
+  additive request field `display_list_base` (§2, §3, §6.1), complete
+  reconstruction table (§5.5), old+new residency with caps and eviction order
+  (§6.2), honest full-resync refusal table (§8); acceptance plan P1/P3/C3 and the
+  worked request example updated. Delta wire shape unchanged; Appendix A vectors
+  re-run for r2: identical (reconstruction == fresh: True).
+
 ## Status
 
-Proposal committed as c797c5cf and pushed to
+r1 committed as c797c5cf; r2 + review committed after (see the log) and pushed to
 `origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
 in the lane's completion message; the 10-line summary is section 0 of the
 proposal. Lane complete; no further steps owned here. Limitations: no code, no

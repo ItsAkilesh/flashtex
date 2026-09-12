@@ -1,5 +1,12 @@
 # Proposal: `display-list-v2-delta` — a bounded, opt-in delta sibling for `display-list-v2`
 
+Revision: **r2, 2026-09-12** — amended for the Commander's four requirements
+(issue #2 comment 5646477457): installed-base acknowledgement (§2, §3, §6.1),
+complete reconstruction with nothing inherited implicitly (§5.5), bounded
+old-plus-new residency with caps and eviction order (§6.2), and an honest full
+resync refusal (§8). r1 was c797c5cf. The wire shape of the delta line is
+unchanged from r1, so the Appendix A vectors are unchanged (re-run for r2).
+
 Status: **PROPOSAL ONLY (producer side, mac-render-pipeline lane; written by the
 mac-display-delta-proposal lane on `agent/mac-render-pipeline/delta-proposal`
 from `agent/mac-render-pipeline/unified` @ 9aaec57a). Not on the wire. No
@@ -18,12 +25,13 @@ line and its decline fallback), `crates/preview-controller/docs/display-forwardi
 
 1. New sibling opt-in layout capability `display-list-v2-delta`; only meaningful next to `display-list-v2`; unknown to old producers, never sent by old consumers; declined → today's full `display_list` line or today's `display_list_declined` fallback, byte-for-byte unchanged.
 2. When accepted, the ONE sibling line after `compile_result` is `type: "display_list_delta"` (protocol_version 2) instead of `display_list`; the echoed capability list says which of the two the consumer must expect — a mismatch is a protocol violation.
-3. A delta names its base exactly: the producer's last emitted sibling on this stream (`request_id`, `project_id`, `revision`, `page_count`, `list_digest`); both sides retain exactly one snapshot; any reply without a sibling (not requested, declined, `failed`), a restart or a session change clears both.
+3. A delta names an INSTALLED base exactly (`request_id`, `project_id`, `revision`, `page_count`, `list_digest`): the snapshot the consumer acknowledged as installed in the request's `display_list_base` field (installed = validated + digested + paint decision taken + retained; a producer write is never installation), which must also be the producer's last emitted sibling; each side holds at most old + new (§6.2); any reply without a sibling, a restart or a session change clears both.
 4. A delta carries the complete header (`documents`, `fonts` = the full resource closure, `diagnostics`, `required_features`), the full ordered `page_count`, a digest for EVERY page of the new list, the changed pages in full (exact page objects of the full reply), the explicit `removed_pages`, and per-document source relocations (`edit_start`, `edit_end`, `delta`) so unchanged pages' source spans are moved exactly as the producer's own block cache moves them.
 5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the 60-line Python reference in Appendix A, with test vectors.
-6. Reconstruction = changed pages as sent + relocated base pages, then the normal full validation. Invariant: `to_json(reconstructed)` is byte-identical to a fresh full compile's `display_list` line (same id), including unchanged pages, resources, source spans and diagnostics — proven with the existing `tests/incremental.rs` gate shape (200 edits × 27 pages; 30 × 107).
+6. Reconstruction yields COMPLETE new semantics — documents, fonts/resource closure, diagnostics, required_features and every page's full model are produced by the reconstruction (changed pages as sent, unchanged pages relocated), nothing inherited implicitly — then the normal full validation. Invariant: `to_json(reconstructed)` is byte-identical to a fresh full compile's `display_list` line (same id), including unchanged pages, resources, source spans and diagnostics — proven with the existing `tests/incremental.rs` gate shape (200 edits × 27 pages; 30 × 107).
 7. Refusals are typed: the producer never emits a delta without a snapshot of its own (no snapshot → the unchanged full line, `status` stays `ok`, no diagnostic); the consumer verifies the delta's `base` against the snapshot it holds and refuses `delta_base_mismatch`, `delta_page_count`, `delta_relocation_invalid`, `delta_digest_mismatch`, `delta_list_digest_mismatch`, `delta_oversize`, `delta_unsolicited` and resyncs by requesting without `-delta` (→ full).
-8. Bounded state: one retained snapshot per side, capped (`MAX_SNAPSHOT_PAGES` 1 024, retained model of a line that fit the line limit, previous document texts ≤ 8 MiB each); over the cap → no snapshot → full replies only.
+8. Bounded state: at most old + new snapshots per side, capped (`MAX_SNAPSHOT_PAGES` 1 024 per snapshot, `MAX_SNAPSHOT_BYTES` 16 MiB serialised-equivalent per snapshot, retained texts ≤ 8 MiB each / 32 MiB total), with a defined eviction order (§6.2); over a cap → no snapshot → full replies only.
+8b. The full resync path never truncates: when the full reply itself exceeds a limit, the reply is the existing typed refusal naming that limit (`display_list_declined` / `failed` / the runtime's `serialization_refused`), the consumer keeps its last installed frame marked stale and drops its base, and no page is ever omitted to fit (§8).
 9. Visibility page filtering is NOT this proposal: a filtered view is an incomplete view, never a complete compile, and never authorizes source actions outside its validated coverage; a reconstructed delta result IS a complete compile because it is verified equal to one.
 10. Acceptance is three separate gates — producer (cargo, byte identity + digests + refusals), consumer (Swift, reconstruction equality + typed refusals + V2Parity 0 px), transport (size/latency measured on the direct route and, after an FT-049 runtime change to accept the new sibling type, the helper route) — nothing about size or latency is claimed from this schema.
 
@@ -52,7 +60,7 @@ visibility (§9) is a different feature and is not proposed.
 | document/source | `documents[]` = `{path, revision, sha256, byte_length}` of EVERY request document (complete set, as in the full line) | raw UTF-8 SHA-256 and length of the request text this compile ran on; `revision` is the compile revision (runtime-v1), not an editor document version |
 | compile | envelope `id` = the compile request id; `project_id`, `revision` = the `compile_result`'s | the same rule 1 as the full sibling |
 | session | not on the wire (the full line has none and stays unchanged); bound by the consumer to the transport it owns: the worker process it spawned (direct route) or the helper `session_id` (helper route) | a restarted producer has no snapshot and answers full; a consumer drops its base on any restart/reattach/session change |
-| base snapshot | `base = {request_id, project_id, revision, page_count, list_digest}` | exactly the producer's last emitted sibling on this stream (full `display_list` or the full list a previous delta reconstructed); verified field-by-field by the consumer against the snapshot it holds |
+| installed base | request `payload.display_list_base = {request_id, project_id, revision, page_count, list_digest}` (§3); delta `base` = the same five fields | the consumer's installed-base acknowledgement: the one snapshot it has decoded/reconstructed, validated with the full validator, digested, taken its paint decision on, and retained as its sole installed base. The producer emits a delta only against a base that is BOTH acknowledged installed by the request AND its own last emitted sibling on this stream; the consumer verifies the delta's `base` field-by-field against the snapshot it acknowledged |
 | new snapshot | `page_count`, `page_digests[1..N]`, `list_digest` | what the reconstructed list must hash to; becomes the next base on both sides |
 
 `list_digest` binds the header (including `project_id`/`revision`, documents,
@@ -61,36 +69,64 @@ with the same pages but different diagnostics or revision are different bases.
 
 ## 3. Negotiation
 
-- Request: `payload.layout_capabilities` gains the string `display-list-v2-delta`.
-  No new request field. Old producers ignore it (unknown names are never
-  accepted). A request listing `-delta` without `display-list-v2` is legal but
-  `-delta` is never accepted for it.
-- Consumer rule: request `-delta` only while (a) the v2 pane is consumable,
-  (b) the consumer holds a base, and (c) it has applied every sibling the
-  producer emitted since that base (§6). Otherwise request `display-list-v2` alone.
-- Producer decision per request, in order: capability requested and
-  `display-list-v2` accepted and result non-`failed` → has a snapshot →
-  document set (paths) identical → relocation computable (§5.3) → delta
-  serialised and ≤ line limit → delta smaller than the full line would be
-  (policy; the crate constant, proposed 3/4) → **accept**: echo both
-  `display-list-v2` and `display-list-v2-delta`, emit ONE `display_list_delta`
-  line. Any step fails → **do not accept**: echo omits `-delta`, and the reply
-  is exactly today's: the full `display_list` line, or the existing
-  `display_list_declined` warning + `recovered` when that would be oversize.
+- Request: `payload.layout_capabilities` gains the string `display-list-v2-delta`,
+  and — only when that string is present — the request carries ONE additive
+  optional field, the **installed-base acknowledgement**
+  `payload.display_list_base = {"request_id", "project_id", "revision",
+  "page_count", "list_digest"}`. Old producers ignore both (unknown capability
+  names are never accepted, `v1.rs:55`; unknown payload keys are read with
+  `payload.get`, `protocol.rs:117-119`, and the compiler's negotiation ignores
+  unknown names, `crates/compiler/src/protocol.rs:275`). A request listing
+  `-delta` without `display-list-v2`, or without `display_list_base`, is legal
+  but `-delta` is never accepted for it.
+- What the acknowledgement asserts (consumer obligation): the named snapshot is
+  INSTALLED — the consumer decoded (or reconstructed) it, ran the unchanged full
+  validator on it, computed its `dl2-canon-1` digests, took its paint decision
+  (published it, or deliberately kept the previous frame — either is a decision),
+  and retains it as its sole installed base. Receipt, admission, a helper's
+  write, or a queued-but-unvalidated frame is NOT installation and must not be
+  acknowledged.
+- What the producer may assume from it: only that the consumer can reconstruct
+  against exactly that snapshot. Not that the frame was painted, not pixel
+  parity, not that any later sibling arrived. The producer never assumes
+  installation from its own write: an emitted sibling is "emitted", never
+  "installed", until a later request acknowledges it.
+- Consumer rule: send `-delta` + `display_list_base` only while (a) the v2 pane
+  is consumable and (b) it holds an installed base; the acknowledged base is
+  always the installed one, never a candidate still validating. Otherwise
+  request `display-list-v2` alone.
+- Producer decision per request, in order: `display-list-v2` accepted and
+  result non-`failed` → `-delta` requested with a well-formed
+  `display_list_base` → the producer holds a last-emitted snapshot and ALL five
+  acknowledged fields equal it (an acknowledgement of an older or unknown
+  snapshot, or of one the producer evicted, means no delta) → document set
+  (paths) identical → relocation computable (§5.3) → delta serialised and ≤
+  line limit → delta smaller than the full line would be (policy; the crate
+  constant, proposed 3/4) → **accept**: echo both `display-list-v2` and
+  `display-list-v2-delta`, emit ONE `display_list_delta` line. Any step fails →
+  **do not accept**: echo omits `-delta`, and the reply is exactly today's: the
+  full `display_list` line, or the existing `display_list_declined` warning +
+  `recovered` when that would be oversize (§8).
+- Pipelining consequence (stated, not hidden): with one request in flight the
+  consumer can only acknowledge N−1 while the producer's last emitted sibling is
+  N, so the producer answers N+1 in full. Deltas are therefore a steady-state
+  feature of one-request-at-a-time use (the Mac shell's typing loop); they are
+  never wrong under pipelining, only absent.
 - Acceptance is bound to the applied result (layout-capabilities contract);
   a stale reply never changes the consumer's mode.
 - Ordering on the stream is unchanged: `compile_result(id)` then the sibling
   `(id)`, contiguous, before any reply to a later request. Exactly one sibling
   per accepted non-failed result, of the type the echo announced.
 
-The producer emits no diagnostic when it simply has no matching snapshot
-(first request, after a restart, after a cleared snapshot) — that is the
-normal path and the full line is the complete answer, so `status` stays `ok`.
-The one anomalous case, a consumer that requested `-delta` while the
-producer's snapshot exists for a different `request_id` chain than the consumer
-can hold (only possible if a sibling was dropped in transit and the consumer
-violated §6), cannot be detected by the producer (it never sees the consumer's
-base); it is detected by the consumer as `delta_base_mismatch` (§7).
+The producer's wrong-base refusal is the silent full reply: an acknowledgement
+that does not equal its last emitted snapshot (first request, after a restart,
+after eviction, after a dropped or unvalidated sibling, under pipelining) is
+the normal path, the full line is the complete answer, and `status` stays `ok`
+with no diagnostic. The consumer-side typed refusal `delta_base_mismatch` (§7)
+remains for the residual case where a delta arrives naming a base the consumer
+no longer holds (a consumer that changed its installed base between sending
+the acknowledgement and receiving the reply — forbidden by §6.1 — or a
+duplicated/replayed request); it is evidence of a bug, not a normal path.
 
 ## 4. Wire shape of `display_list_delta`
 
@@ -227,48 +263,129 @@ Only then does `list` replace the base; painting uses the existing v2 pipeline
 before paint) exactly as for a full frame. Nothing is rendered partially: any
 failure keeps the previous verified frame and the base is dropped (§7).
 
-## 6. Retained state, lifecycle, bounds
+### 5.5 Complete reconstruction — nothing inherited implicitly
 
-**Producer (one snapshot per stream):** the last emitted sibling's `DisplayList`
-model, its `page_digests`/`list_digest`, its `request_id`, and the request
-document texts it was compiled from (needed for the relocation diff).
-Replaced by every emitted sibling (full or delta). Cleared by: a reply with no
-sibling (capability not requested, `display-list-v2` declined, `failed`),
-`project_id` change, process exit. Caps: retained only if `page_count ≤
-MAX_SNAPSHOT_PAGES` (proposed 1 024), the emitted line fit the line limit
-(always true when emitted), and total retained document text ≤ 32 MiB (each
-≤ 8 MiB, the rendering-core document bound); beyond a cap → no snapshot →
-full replies only. The block caches in `incremental.rs` are unrelated and
-keep their own bound (`MAX_BLOCKS`). Memory of the snapshot is the model of a
-line that fit in 16 MiB; the actual RSS delta is a measurement item (§10.3),
-not a claim.
+The reconstructed list is a complete new `display_list` payload whose every
+part is produced by the reconstruction step, never carried over from the base
+by default:
 
-**Consumer (one base per transport):** the verified list (it already retains
-the applied v2 frame), its digests, `request_id`, and the transport identity
-(worker launch generation / helper `session_id`). Replaced by every verified
-sibling. Dropped by: a `compile_result` whose accepted capabilities lack
-`display-list-v2` (declined, not requested, `failed`), any refusal in §7, v2
-pane hidden (the consumer then stops requesting both capabilities), worker
-restart/relaunch, helper restart/reattach/session change, project change. The
-same `MAX_SNAPSHOT_PAGES` cap applies.
+| part of the full payload | reconstructed from | inherited from the base? |
+|---|---|---|
+| `render_format`, `coordinate_unit`, `color_space`, `text_extraction`, `project_id`, `revision`, `required_features` | the delta's own header fields (complete) | no |
+| `documents[]` (every path, compile revision, raw sha256, byte_length) | the delta's complete `documents` | no — the base's documents describe the OLD text and are discarded |
+| `fonts[]` (the resource closure) | the delta's complete `fonts` | no — the base's font list is discarded even when equal; the consumer re-resolves every font by content hash for the new list |
+| `diagnostics[]` (with relocated source spans) | the delta's complete `diagnostics` | no |
+| changed pages | the delta's `changed_pages` objects, complete | no |
+| unchanged pages | `relocate(base.pages[n])`: a NEW page model whose geometry, glyphs, clusters, hit rects, carets and paint are copied and whose source spans are moved by the relocation rule | the base page is INPUT to a function that produces a new page; it is never referenced after reconstruction (the base snapshot is evicted per §6.2) |
+| page order and count | `page_count` and `1..N` | no |
+| per-page and list digests | recomputed by the consumer over the reconstructed models and compared with the delta's | no |
 
-**Ordering under pipelining:** the stream is FIFO. A consumer with one request
-in flight sends N+1 holding base N−1; the producer answers N+1 against N (its
-snapshot after emitting N's sibling); the consumer receives sibling N first,
-applies it (base N), then applies N+1. So one snapshot per side suffices,
-provided the consumer applies EVERY sibling in order, including ones it will
-not paint because a newer result is already applied ("stale" siblings are
-applied to the chain off-main but never published — this splits the existing
-"stale sibling is dropped" rule into "not painted" vs "not applied").
+Consequences the gates check: a font that only unchanged pages reference must
+still be in the delta's `fonts` (a delta whose `fonts` omit it fails the full
+validator: `font resource … is not declared in fonts`); a diagnostic that
+belonged to an unchanged page must still be in the delta's `diagnostics` with
+its relocated span (the list digest covers diagnostics, so omission is a
+`delta_list_digest_mismatch`); a document whose text did not change is still
+listed in `documents` with the same sha256 (the consumer checks it against
+its own text as for a full frame). There is no "same as base" marker anywhere
+in the delta by design.
 
-**Reset/cancel/restart:** runtime-v1 has no cancel; superseded requests are
-still answered in order and are part of the chain. A consumer that cannot
-apply a sibling (helper dropped it as oversize/busy — allowed by
-`display-forwarding.md`; validation failure; decode failure) drops its base and
-sends its next request without `-delta` (full resync, §8). A restarted
-producer has no snapshot and answers full; a restarted helper session requires
-the existing fresh opt-in (`configure_display_candidates`), which also drops
-the base.
+## 6. Installation, retained state, residency bounds
+
+### 6.1 Installation (the acknowledgement's meaning)
+
+A snapshot is **installed** on the consumer when, and only when, all of:
+
+1. its envelope was decoded (full line) or reconstructed (delta, §5.4);
+2. the unchanged full validator accepted it (`RenderingV2.validate` /
+   rendering-core `validate_display`), its fonts resolved by content hash;
+3. its `dl2-canon-1` page digests and `list_digest` were computed (and, for a
+   delta, matched the wire values);
+4. the consumer took its paint decision — published it in the v2 pane, or
+   deliberately kept the previous frame (a stale-by-ticket result, a hidden
+   pane) — a decision, not necessarily a paint;
+5. it replaced the previously installed snapshot as the consumer's sole
+   installed base.
+
+Receipt of a line, helper admission, a helper's successful write, a queued
+frame, or a frame still validating off-main is not installation. The consumer
+acknowledges (request `display_list_base`) only an installed snapshot and, after
+sending an acknowledgement, must keep that snapshot installed until the reply to
+that request has been processed (a newer sibling arriving meanwhile is
+validated as a candidate but the acknowledged base is not evicted before the
+outstanding reply is handled — with one request in flight this is always
+satisfiable within the residency bound below, because the outstanding reply IS
+the candidate).
+
+On the producer, "installed" is a fact about the consumer that the producer
+learns only from the next request's acknowledgement. The producer's own record
+is "last emitted"; a delta requires acknowledged == last emitted.
+
+### 6.2 Residency: at most old + new on each side
+
+**Producer** (per stream):
+
+| slot | content | when it exists |
+|---|---|---|
+| `old` | last emitted snapshot: `DisplayList` model, page digests, `list_digest`, `request_id`, the request texts it was compiled from | from emitting a sibling until the next sibling is emitted or a clearing event |
+| `new` | the list being produced for the current request (already needed to write the reply) | during one reply only |
+
+Eviction order per request: (1) a clearing event (reply without a sibling —
+not requested / declined / `failed`; `project_id` change; process exit) evicts
+`old` before anything is retained; (2) `new` is built; (3) if a sibling is
+emitted, `new` becomes `old` and the previous `old` is dropped at that moment
+(the diff/classification that needed both is complete before the line is
+written); (4) if no sibling is emitted, `new` is dropped after the reply and
+`old` was already cleared by (1). At no time are three snapshots live. The
+existing block caches (`incremental.rs`, `MAX_BLOCKS`) are not snapshots and
+are unaffected.
+
+**Consumer** (per transport):
+
+| slot | content | when it exists |
+|---|---|---|
+| `installed` | the acknowledged base: validated model, digests, identity, transport binding | from installation until replaced or cleared |
+| `candidate` | the sibling being validated/reconstructed off-main (a delta reconstructs by reading `installed`, writing `candidate`) | from receipt until installation or refusal |
+
+Eviction order: (1) a clearing event (a `compile_result` without accepted
+`display-list-v2`; any §7 refusal; pane hidden; worker/helper restart,
+reattach or session change; project change) drops `candidate` first, then
+`installed`; (2) on successful validation + paint decision, `candidate`
+becomes `installed` and the old `installed` is dropped in the same main-thread
+step; (3) a newer sibling arriving while one is validating replaces the
+queued candidate (existing coalescing, `PreviewV2View.swift` `startDisplayListV2`)
+— at most one candidate is ever retained. The previous *painted* frame that the
+v2 pane keeps on screen while validating is the `installed` snapshot's frame,
+not a third snapshot.
+
+**Caps (per snapshot, both sides; over any cap → the snapshot is not retained
+→ full replies only, no delta):**
+
+| cap | value | why |
+|---|---|---|
+| `MAX_SNAPSHOT_PAGES` | 1 024 pages | rendering-core allows 10 000; 1 024 keeps digest recomputation and page relocation bounded at ~40× the measured 27-page document |
+| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size (`estimated_json_bytes()` on the producer; the received line length on the consumer) | a snapshot never exceeds what one full line may carry; residency is therefore ≤ 2 × 16 MiB of JSON-equivalent per side plus the in-memory model overhead, which is a §10.3 measurement, not a claim |
+| retained request texts (producer only) | ≤ 8 MiB per document (rendering-core document bound), ≤ 32 MiB total | needed for the relocation diff; over the cap → no snapshot |
+| documents / fonts per snapshot | 4 096 / 256 (the existing validator bounds) | unchanged |
+
+### 6.3 Lifecycle events
+
+- **Ordering under pipelining:** FIFO stream; see §3 — an acknowledgement can
+  only name the last installed snapshot, so with a request in flight the
+  producer answers in full. Nothing breaks; deltas simply do not occur.
+- **Stale siblings:** a sibling whose `compile_result` is no longer the applied
+  one is still validated as a candidate (cheap) and may be installed without
+  being painted (decision: keep the newer frame) — this is what lets the next
+  acknowledgement name it. This splits the existing "stale sibling is dropped"
+  rule (`PreviewV2View.swift:216-221`) into "not painted" vs "not installed".
+- **Reset/cancel:** runtime-v1 has no cancel; superseded requests are answered
+  in order. A consumer that cannot validate a sibling (helper dropped it as
+  oversize/busy per `display-forwarding.md`; decode or validation failure)
+  clears per 6.2 and sends its next request without `-delta` (§8).
+- **Restart:** a restarted producer has no `old`; every acknowledgement
+  mismatches; it answers in full. A restarted helper session requires the
+  existing fresh opt-in (`configure_display_candidates`), and the consumer
+  clears both slots on the session change.
 
 ## 7. Typed refusals (consumer) and the wrong-base rule
 
@@ -289,13 +406,30 @@ today), publish nothing, log the code, drop the base. "Resync" = the next
 compile request omits `display-list-v2-delta`; its reply is the unchanged full
 sibling (or the unchanged decline), which re-establishes the base.
 
-## 8. Full resync path
+## 8. Full resync path — and its honest refusal
 
 Always available and always the unchanged contract: request `display-list-v2`
-without `-delta` → full `display_list` line (or `display_list_declined`).
-Used on: no base, any refusal, any dropped sibling, any restart. A document
-whose full line is declined (oversize) never obtains a base and therefore never
-gets a delta — the delta does not raise or bypass the full-reply bound.
+without `-delta` (and without `display_list_base`) → the full `display_list`
+line. Used on: no installed base, any §7 refusal, any dropped or unvalidated
+sibling, any restart or session change, and after every pipelined request.
+
+When the full reply itself does not fit, the resync is **refused, typed, and
+names the limit** — it is never satisfied by omitting pages, dropping
+resources, or shortening diagnostics:
+
+| layer | refusal today (unchanged) | what it names | consumer behaviour |
+|---|---|---|---|
+| producer v2 line over `max_reply_bytes()` | `display_list_declined` warning, `display-list-v2` removed from the echo, `status` `recovered`, no sibling (`protocol.rs:241-252`) | "the display_list line would be about N bytes for P pages, over the L-byte line limit" | keeps the last installed frame on screen marked stale, drops `installed` and `candidate` (clearing event, §6.2), shows the diagnostic; requests full again only when the document changes |
+| producer v1 line over the limit | explicit `failed` result, no sibling (`protocol.rs:254-270`) | "compile_result would be N bytes for P pages, over the L-byte reply limit" | same; the v1 preview also keeps its last result (existing behaviour) |
+| runtime/helper frame over its bound | runtime frame refusal / helper `serialization_refused` (`display-forwarding.md`, `producer-size-contract.md`) | the framed byte count and bound in the helper's diagnostics | candidate never arrives; the consumer's sibling timeout/deferred bound elapses; clears per §6.2; the v1 fallback stays |
+| consumer line reader | protocol violation at 16 MiB (`WorkerClient.swift:90-91`, `PreviewControllerClient.swift:206-211`) | the line size and its limit | nothing partial is decoded; clears per §6.2 |
+
+A document whose full line is refused therefore never obtains an installed
+base and never gets a delta: the delta does not raise, bypass, or hide any
+full-reply bound, and the 18.2 MiB / 25.1 MB cases in the runtime's size
+review stay refused exactly as today. A delta line that would itself exceed
+the producer limit falls back to the full line, which is then subject to the
+same refusal. There is no third outcome.
 
 ## 9. Not a page filter, not a partial compile
 
@@ -316,9 +450,12 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
 ### 10.1 Producer gate (`crates/render-pipeline`, cargo tests, no wire activation until reviewed)
 
 - P1 negotiation: not requested → never emitted; `-delta` without
-  `display-list-v2` → never accepted; first request of a process → full line,
-  echo without `-delta`; second request → delta, echo with both; after a
-  `failed` / declined / not-requested reply → snapshot cleared → full again.
+  `display-list-v2` or without `display_list_base` → never accepted; first
+  request of a process → full line, echo without `-delta`; second request
+  acknowledging that full → delta, echo with both; an acknowledgement of any
+  other snapshot (older, unknown, evicted, or the last emitted one under
+  pipelining) → full, no diagnostic, `status` `ok`; after a `failed` /
+  declined / not-requested reply → `old` cleared → full again.
   Golden-byte check: for requests that do not list `-delta`, `compile_result`
   and `display_list` bytes are unchanged (existing `golden_v1.rs` fixtures +
   `v2_and_math.rs`).
@@ -331,8 +468,11 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   page, `list_digest` matches, and `compile_result` bytes equal the non-delta
   run's. Record per edit: pages, changed-page count, delta bytes vs full bytes
   (evidence, not a claim).
-- P3 refusal/wrong base: reference consumer holds base N−1 while the producer
-  emits against N → `delta_base_mismatch`; a tampered page digest → mismatch;
+- P3 refusal/wrong base: request acknowledges N−1 while the producer's last
+  emitted is N → full (producer-side refusal); a delta replayed to a reference
+  consumer whose installed base differs → `delta_base_mismatch`; a tampered
+  page digest → mismatch; residency: the producer never holds more than `old`
+  + `new` (assert in the test harness at every step of the 200-edit script);
   removed pages after the paragraph-deletion edits → exact `removed_pages`;
   a document-set change → full; a paste spanning pages → changed pages or full
   by policy.
@@ -350,8 +490,14 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   digest, bad relocation, removed-page mismatch, unknown scheme); previous
   frame stays; base dropped; next request omits `-delta`; the following full
   re-establishes the base.
-- C3 chain under pipelining: sibling N applied but not painted, N+1 applied and
-  painted; base cleared on decline/failed/restart/session change/pane hidden.
+- C3 installation and residency: a sibling is acknowledged only after
+  validation + paint decision (a frame still validating is never named in a
+  request); a stale-by-ticket sibling is installed but not painted; with one
+  request in flight the acknowledged base stays installed until that reply is
+  handled; at most `installed` + `candidate` exist at any time (assert in the
+  fake-worker test); both cleared on decline/failed/restart/session change/pane
+  hidden; the full-reply refusal (`display_list_declined`) leaves the last
+  installed frame on screen marked stale and clears both slots.
 - C4 real producer: `flashtex-render` in delta mode over an edit script; every
   reconstructed frame passes the unchanged validator, resolves fonts by content
   hash and reaches `V2Parity` with 0 differing pixels at 1 and 2 px/pt (the
@@ -379,8 +525,9 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
 ## 11. What this proposal does not do
 
 No change to `compile_result`; no change to the full `display_list` bytes; no
-change to the decline fallback; no new request field; no change to the
-runtime-v1 stream framing; no helper/runtime changes (C5 names the owner); no
+change to the decline fallback; exactly one additive optional request field
+(`display_list_base`, present only with `-delta`, ignored by producers that do
+not know it); no change to the runtime-v1 stream framing; no helper/runtime changes (C5 names the owner); no
 size or latency claims. Adoption order after co-signature: producer behind a
 build flag with P1–P5 green → Commander records the contract → runtime/helper
 change → consumer gate → transport measurements → then, and only then, a
@@ -642,9 +789,20 @@ Base snapshot (both sides): `page_digests = [154625d5…aa77, 1748b1d3…a061]`,
 
 ### B.2 The edit and the request
 
-`Hi` → `Hio`; request `mac-43`, revision 8, `layout_capabilities:
-["rules-v1","font-hints-v1","display-list-v2","display-list-v2-delta"]`.
-The producer's snapshot is `mac-42`; the document set is the same; the diff
+`Hi` → `Hio`. The consumer installed `mac-42` (validated, digested, painted)
+and acknowledges it in the request:
+
+```json
+{"protocol_version":1,"id":"mac-43","type":"compile","payload":{
+  "project_id":"demo","revision":8,"entry_path":"main.tex",
+  "documents":[{"path":"main.tex","text":"\\begin{document}\nHio\n\\newpage\nBye\n\\end{document}\n"}],
+  "layout_capabilities":["rules-v1","font-hints-v1","display-list-v2","display-list-v2-delta"],
+  "display_list_base":{"request_id":"mac-42","project_id":"demo","revision":7,"page_count":2,
+                       "list_digest":"68db4fe3ae528414058efecd7d5870c689d598f415a4c6045a86173d7514eec1"}}}
+```
+
+The producer's last emitted snapshot is `mac-42` with that `list_digest`, so
+the acknowledgement matches; the document set is the same; the diff
 gives `a = 19, b = 19, d = +1`. Page 1 retypesets (changed); page 2's only
 block is a cache hit relocated by +1 and `relocate(base page 2) == new page 2`
 (unchanged). The `compile_result` for `mac-43` echoes both capabilities.
