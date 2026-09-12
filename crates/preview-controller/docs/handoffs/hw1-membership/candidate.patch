@@ -20,7 +20,7 @@
      ('\u{222B}', 0xF2), // integral
 --- /dev/null
 +++ b/crates/compiler/tests/membership.rs
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,23 @@
 +use flashtex_compiler::{export::{map_char, Glyph, ExportFont}, incremental::{compile_full, Session, LayoutConstraints}};
 +#[test]
 +fn membership_symbol_and_export_are_explicit() {
@@ -37,6 +37,9 @@
 +    for source in [r"$a\in B$", r"$a\in C_i$", r"$b\in C_i$", r"$b\unknownrelation C$"] {
 +        let incremental=session.compile(source, LayoutConstraints::default());
 +        let clean=compile_full(source, LayoutConstraints::default());
++        if source.contains("unknownrelation") {
++            assert!(clean.diagnostics.iter().any(|d| d.message.contains("unknownrelation") && d.message.contains("not supported")));
++        }
 +        assert_eq!(incremental.output.pages,clean.pages);
 +        assert_eq!(incremental.output.diagnostics,clean.diagnostics);
 +    }
