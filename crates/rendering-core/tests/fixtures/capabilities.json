@@ -1,0 +1,17 @@
+{
+  "protocol_version": 2,
+  "id": "hello",
+  "type": "render_capabilities",
+  "payload": {
+    "render_formats": [
+      "display-list-v2"
+    ],
+    "features": [
+      "glyph_run",
+      "rule",
+      "static-truetype",
+      "rgba-srgb",
+      "cluster-actualtext"
+    ]
+  }
+}

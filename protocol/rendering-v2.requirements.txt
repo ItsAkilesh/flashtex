@@ -1,0 +1,2 @@
+# Experimental rendering validator and development tests only.
+jsonschema==4.23.0
