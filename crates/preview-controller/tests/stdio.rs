@@ -271,20 +271,32 @@ fn review_token_requires_explicit_approval_and_kill_preserves_receipt() {
 #[ignore = "requires explicitly configured original compiler"]
 fn helper_streams_original_compiler_result_for_latest_durable_edit() {
     let binary = std::env::var_os("FLASHTEX_TEST_COMPILER").expect("original compiler required");
-    let dir = tempfile::tempdir().unwrap();
-    let mut client = Client::with_compiler(dir.path(), Some(std::path::Path::new(&binary)));
-    client.send("get", "document", json!({"path":"main.tex"}));
-    let doc = client.reply("get")["payload"]["document"].clone();
-    client.send("edit","edit",json!({"path":"main.tex","expected_revision":1,"expected_sha256":doc["source_sha256"],"text":"Actual streamed compiler preview"}));
-    assert!(client.reply("edit")["payload"]["preview_error"].is_null());
-    loop {
-        let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-        if event["type"] == "update"
-            && event["payload"]["kind"] == "preview"
-            && event["payload"]["source_versions"]["main.tex"] == 2
-        {
-            assert_eq!(event["payload"]["result"]["payload"]["status"], "ok");
-            break;
+    for metadata_only in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = Client::with_compiler(dir.path(), Some(std::path::Path::new(&binary)));
+        client.send("get", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("get")["payload"]["document"].clone();
+        let source = "Actual streamed compiler preview";
+        let mut request = json!({"path":"main.tex","expected_revision":1,
+            "expected_sha256":doc["source_sha256"],"text":source});
+        if metadata_only { request["response_mode"] = json!("metadata"); }
+        client.send("edit", "edit", request);
+        let ack = client.reply("edit");
+        assert!(ack["payload"]["preview_error"].is_null());
+        assert_eq!(ack["payload"]["document"]["revision"], 2);
+        assert_eq!(ack["payload"]["document"]["source_sha256"], flashtex_project_files::sha256_hex(source.as_bytes()));
+        if metadata_only {
+            assert_eq!(ack["payload"]["response_mode"], "metadata");
+            assert!(ack["payload"]["document"].get("text").is_none());
+            assert_eq!(ack["payload"]["document"]["byte_length"], source.len());
+        } else { assert_eq!(ack["payload"]["document"]["text"], source); }
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            if event["type"] == "update" && event["payload"]["kind"] == "preview"
+                && event["payload"]["source_versions"]["main.tex"] == 2 {
+                assert_eq!(event["payload"]["result"]["payload"]["status"], "ok");
+                break;
+            }
         }
     }
 }
