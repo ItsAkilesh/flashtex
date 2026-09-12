@@ -1,6 +1,6 @@
 # Completed snapshots during continuous typing — integration proposal
 
-Status: proposed, not implemented or enabled. Existing strict current-preview behavior remains the default. Evidence: `benchmarks/helper-burst/50k.json` has20 durable edits at30ms intervals but only1 preview,11 stale completions and8 superseded requests. The final exact preview arrived91ms after the final send. Publishing already-completed older snapshots could show progress during this burst; it cannot establish instantaneous current-document output or solve compiler throughput.
+Status: runtime-only opt-in prototype implemented; controller/native integration remains proposed and disabled. Existing strict current-preview behavior remains the default. Evidence: `benchmarks/helper-burst/50k.json` has20 durable edits at30ms intervals but only1 preview,11 stale completions and8 superseded requests. The final exact preview arrived91ms after the final send. Publishing already-completed older snapshots could show progress during this burst; it cannot establish instantaneous current-document output or solve compiler throughput.
 
 ## Why this needs a runtime change
 
@@ -61,3 +61,12 @@ Keep at most one historical pending frame at each integration boundary. Bounded 
 |Native acceptance| Mac owner runs real rendering/interaction tests and marks older snapshots visibly. Linux helper events alone cannot prove native safety or perceived responsiveness. |
 
 Runtime owner must approve and implement the additive origin-token/retained-snapshot API; controller owner implements bounded metadata and helper negotiation; Mac parent owns visible labeling, UI ordering and source-action gating. Publish interface agreement before parallel edits. Do not enable production behavior until all three owners complete the gates. In parallel, continue compiler dependency/incremental/layout work: this feature complements exact low-latency compilation and does not replace it.
+
+
+## Runtime prototype checkpoint
+
+`Session::set_completed_snapshots_enabled(bool)` toggles a separate one-result historical slot and invalidates in-flight origin tokens across policy toggles. `submit_with_snapshot_origin(request, capabilities, token)` accepts an explicit nonempty/control-free token up to1024bytes only when enabled. The existing submit APIs never enroll a request, even if retention is enabled. Token contents remain caller metadata: runtime captures and returns them with the exact original request/project/revision; the controller must bind them to immutable source versions and a fresh session incarnation before use. They are not authentication credentials.
+
+`take_completed_snapshot()` moves out the single retained fully validated stale result. Regular `Event::Stale` still occurs; `Event::Preview` retains its strict current semantics. No result copy, new compiler protocol field, native helper message or new thread was introduced. Fresh current output for that project, project close, runtime failure and disabling clear the retained result. At most one result is retained across all projects; source text is not duplicated into this slot. Existing configured frame bounds still apply to its input; parsed Value allocation is not represented as a tight raw-byte memory bound.
+
+Five new subprocess tests cover opt-in origin binding/take-once, default and ordinary-submit behavior, policy epoch invalidation, fresh/close clearing and malformed response rejection. The fake compiler gates later responses on an explicit release file so correctness does not depend on winning a timing race. Controller token/version bookkeeping, native negotiation/painting/source actions, queue priority, cross-session UI rejection and extended burst measurements remain required before activation.

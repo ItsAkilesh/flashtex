@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e8a69be742e48cac95ec206be881370d97662df0",
+  "code_revision": "684282d75fde77e3105a4eb7444adef6c828de4a",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Add bounded original-identity completed-snapshot side channel and runtime lifecycle/default compatibility tests.",
+  "next_action": "Implement bounded controller origin/version binding and lifecycle gates after runtime checkpoint review; coordinate native negotiation separately.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r3 accepted; main merged. Runtime stale-result prototype begins after concrete proposalc9e36bc and validated burst evidence.",
+  "summary": "FT048r3 runtime-only historical completion prototype:26runtime+38controller tests and strictlint pass. One retained validated result, originalboundedtoken, epoch invalidation, defaultEvent semantics unchanged. No nativeactivation.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:18:15Z",
+  "updated_utc": "2026-09-12T09:22:23Z",
   "usage": {
     "status": "unknown"
   }
