@@ -9,15 +9,15 @@
   "branch": "agent/daniel-contents/toc-layout",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
-  "objective": "Contents stabilization: adversarial bounds and exact identity regressions",
+  "input_main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+  "objective": "Contents stabilization: existing consumer integration fixture and measured unsupported gaps",
   "owned_paths": [
     "crates/toc-layout"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-034",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:36:00Z"
+  "updated_utc": "2026-09-12T16:32:53Z"
 }
