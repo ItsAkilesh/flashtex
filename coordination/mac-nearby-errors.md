@@ -29,9 +29,52 @@ conditions), keeps the anchor with `valid = false` (ContentView already renders 
 `destination_query`/`hello_ack` before sending, and a client that skips that check gets the bridge's
 `destination_reselection_required`, now classified `needsNewCapture`.
 
+## Implementation (10:05–10:20 local, resumed after a user-side stop at ~14:03Z)
+
+Files (all inside the lane; no parent-retained file touched):
+- `apps/mac/Sources/FlashTeXMac/NearbyDestination.swift` (new): `DestinationTracking.follow` — the bridge's `edit` anchor rule
+  copied condition for condition (insertion inside/at either end, overlap, deletion across a zero-width pin → `valid=false`;
+  entirely before → shifted; after → untouched; `current_revision` follows; already-invalid anchors untouched, as the bridge
+  filters on `valid`); `ShellModel.announcedNearbyDestination` — with a bridge attached only its valid pin is announced, else `nil`.
+- `BridgeSession.swift`: `edited` calls `followDestination` (notes the drop, fires `onDestinationDropped`, keeps the row listed
+  as invalid); `restoreDestination` drops an already-invalid pin on relaunch instead of re-pinning it; `prepare` maps
+  `proposal_missing → .received`, `capture_rejected → .rejected`, `already_applied → .applied/.confirmed`,
+  `destination_reselection_required → .needsReselection`, others `.proposed`.
+- `ShellModel+Bridge.swift`: `onDestinationDropped` → `captureNote` ("…dropped by an edit…; pin again"); `submitCapture(image:)`
+  and `submitSampleCapturePanel` refuse a dropped pin with that note instead of sending.
+- `ShellModel+Nearby.swift`: `nearbyDestination` delegates to `announcedNearbyDestination`.
+- nearby-client: `NearbyWire.captureInputErrorCodes` += `destination_reselection_required`, `revision_conflict`,
+  `instructions_too_large`, `invalid_id`; new `destinationErrorCodes`; `NearbyError.needsNewDestination`;
+  `.destinationChanged` now `needsNewCapture` (same conclusion as the bridge's refusal); CLI hints for the two destination codes.
+- `apps/mac/docs/nearby-v1-proposal.md` §4: bridge pass-through code list and the announce-never-re-pin rule.
+
+Tests:
+- `Tests/FlashTeXMacTests/NearbyErrorsTests.swift` (new, 5): anchor-rule truth table; announcement table; fake-bridge end-to-end
+  (before/after/overlap edits, user note, local submit refused, companion submit refused by the fake bridge with
+  `destination_reselection_required`, fresh pin restores); `prepare` row state after `proposal_missing`/`capture_rejected`;
+  real-bridge agreement (`FLASHTEX_BRIDGE`, skips otherwise).
+- `CaptureAcceptanceTests.testCaptureAgainstAChangedAnchorIsRefusedByTheRealBridgeAndNeverInserted` rewritten to the announced
+  behaviour: `nearbyDestination == nil`, `destination_query == nil`, reference client stops with `destinationChanged`
+  (nothing reaches the listener/bridge), `requireCurrentDestination: false` reaches the real bridge → refused, classified
+  `needsNewCapture && needsNewDestination`; mirror follows `current_revision`/bytes after the re-pin and a later edit.
+- nearby-client `NearbyReceiveCapTests.testCodeClassification` extended for the bridge codes and `.destinationChanged`.
+
+Measured (this Mac, 1-min load 14–65 during the runs — other agents active; no timing assertions of mine):
+- `swift build --build-tests` clean (apps/mac).
+- `swift test --filter "CaptureAcceptanceTests|NearbyErrorsTests|RealBridgeTests|ShellModelBridgeTests|BridgeRecoveryTests|NearbyReferenceClientTests|NearbyListenerTests|BridgeClientTests"`
+  with real `FLASHTEX_BRIDGE`+`FLASHTEX_EDIT_LEDGER`: first run 58 executed, 2 skipped (preview-controller env, external
+  client), 1 failure = the old finding assertion I then replaced; rerun of `CaptureAcceptanceTests|NearbyErrorsTests`: 9/9
+  (1 env skip), 0 failures. Printed: `stale-anchor refusal code=destination_reselection_required needsNewCapture=true needsNewDestination=true`.
+- nearby-client package `swift test`: first run 35 executed, 1 failure at 1-min load ≈33 (failure text not captured — the run
+  was grep-filtered); three reruns 35/35, 35/35, 35/35 (last log: scratchpad `nearby-client-run3.log`). Not claimed flake-free.
+- Full `swift test` NOT run: 1-min load stayed above the brief's 15 threshold.
+
+Limitations: the mirror is a copy of the bridge's rule, not a query (transfer-v1 has no anchor-state op); if the bridge's rule
+changes, `NearbyErrorsTests.testRealBridgeAgrees…` is the tripwire. Relaunch with an invalid pin is covered only by the
+`restoreDestination` guard (no dedicated relaunch test). No parent-retained file diffs are needed.
+
 ## Durable checkpoint
 - Task: brief `prompt-mac-nearby-errors.md`; branch `agent/mac-nearby-errors/nearby-errors`; worktree `.claude/worktrees/agent-af683ff540c120dbf`.
-- Consumed: mac-shell 1630fdbc (main ffe199d).
-- Dirty files: this handoff (audit commit pending).
-- Next: implement (1) NearbyWire + client tests + doc note, (2) `NearbyDestination.swift` + `BridgeSession.edited` hook + `ShellModel+Nearby.nearbyDestination`, (3) `prepare` state; `NearbyErrorsTests.swift`; update `CaptureAcceptanceTests` stale-anchor test to the announced behaviour.
-- Helpers: building `crates/{bridge,edit-ledger}/target/release` in-worktree (cargo release, zero deps).
+- Consumed: mac-shell 1630fdbc (main ffe199d). Audit commit 317c2092 pushed.
+- Dirty files: none after the product + coord commits below (see `git log`).
+- Next: parent reviews/merges; optional follow-up: a BridgeRecoveryTests case for relaunch with an invalid pin.
