@@ -10,7 +10,8 @@ import os
 ///
 /// Sources, in rank order:
 /// 1. `\end{X}` for every `\begin{X}` before the caret that is still open.
-/// 2. Commands the compiler supports (`supported`; default list below).
+/// 2. Commands the compiler supports (`supported`; default list below), the
+///    one spelled exactly as typed first, then in table order.
 /// 3. Commands typed elsewhere in the document that are not in `supported`,
 ///    marked "not supported by this compiler version".
 /// 4. Environment names (after `\begin{`/`\end{`), labels (after `\ref{`) and
@@ -48,13 +49,15 @@ enum Completion {
     static let maxSuggestions = 12
 
     /// The compiler's documented command set (`crates/compiler/README.md`,
-    /// "Supported commands" and "Supported math", plus the `\input`/`\include`
-    /// parser arm). `CompletionTests.testStaticVocabularyMatchesTheCompilerDocs`
-    /// parses those repository files and fails when this table drifts.
+    /// "Supported commands" and "Supported math"), plus the `src/parser.rs`
+    /// dispatch arms the README's leading list paragraph does not name
+    /// (`\input`/`\include`, `\vspace`, the font-size declarations, …).
+    /// `CompletionTests.testStaticVocabularyMatchesTheCompilerDocs` parses
+    /// those repository files and fails when this table drifts.
     enum Vocabulary {
         enum Mode: Equatable { case text, math }
         enum Source: Equatable {
-            /// README "Supported commands".
+            /// README "Supported commands", leading list paragraph.
             case readmeCommands
             /// README "Supported math" entries emitted by the
             /// `src/math.rs` `COMMAND_GLYPHS` table.
@@ -115,7 +118,11 @@ enum Completion {
             names.map { Entry(name: $0, arguments: arguments, description: description, mode: .math, source: .mathParser) }
         }
 
-        static let entries: [Entry] = [
+        static let entries: [Entry] = buildEntries()
+
+        /// Built in steps: one long `+` chain of array literals no longer type-checks in reasonable time.
+        private static func buildEntries() -> [Entry] {
+            var out: [Entry] = [
             Entry(name: "section", arguments: "{...}", description: "numbered section heading", mode: .text, source: .readmeCommands),
             Entry(name: "subsection", arguments: "{...}", description: "numbered subsection heading; resets when a section advances", mode: .text, source: .readmeCommands),
             Entry(name: "textbf", arguments: "{...}", description: "bold text", mode: .text, source: .readmeCommands),
@@ -159,40 +166,52 @@ enum Completion {
             Entry(name: "usepackage", arguments: "[options]{a,b,c}", description: "records package names; packages are recognised but not implemented", mode: .text, source: .readmeCommands),
             Entry(name: "listfiles", arguments: "", description: "accepted package-log no-op", mode: .text, source: .readmeCommands),
             Entry(name: "noindent", arguments: "", description: "accepted no-op because paragraphs are never indented", mode: .text, source: .readmeCommands),
+            Entry(name: "hfill", arguments: "", description: "infinite-stretch horizontal glue; pushes the rest of the line right", mode: .text, source: .readmeCommands),
+            Entry(name: "hfil", arguments: "", description: "infinite-stretch horizontal glue (same order as \\hfill here)", mode: .text, source: .readmeCommands),
+            Entry(name: "hspace", arguments: "{dimension}", description: "fixed horizontal space (pt, em, ex, in, cm, mm or bp)", mode: .text, source: .readmeCommands),
+            Entry(name: "quad", arguments: "", description: "1em of horizontal space, in text or math", mode: .text, source: .readmeCommands),
+            Entry(name: "qquad", arguments: "", description: "2em of horizontal space, in text or math", mode: .text, source: .readmeCommands),
+            Entry(name: "bigskip", arguments: "", description: "ends the paragraph and adds 12pt of vertical space", mode: .text, source: .readmeCommands),
+            Entry(name: "medskip", arguments: "", description: "ends the paragraph and adds 6pt of vertical space", mode: .text, source: .readmeCommands),
+            Entry(name: "smallskip", arguments: "", description: "ends the paragraph and adds 3pt of vertical space", mode: .text, source: .readmeCommands),
 
             Entry(name: "setlist", arguments: "[list]{options}", description: "recognised list configuration; spacing remains at the compiler default", mode: .text, source: .parserArm),
             Entry(name: "input", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
             Entry(name: "include", arguments: "{path}", description: "expands a project-relative document in place", mode: .text, source: .parserArm),
-            Entry(name: "hfill", arguments: "", description: "stretchable horizontal glue", mode: .text, source: .parserArm),
-            Entry(name: "hfil", arguments: "", description: "stretchable horizontal glue", mode: .text, source: .parserArm),
-            Entry(name: "hspace", arguments: "{dimension}", description: "fixed horizontal space", mode: .text, source: .parserArm),
             Entry(name: "vspace", arguments: "{dimension}", description: "fixed vertical space", mode: .text, source: .parserArm),
             Entry(name: "hrule", arguments: "", description: "horizontal rule", mode: .text, source: .parserArm),
             Entry(name: "newpage", arguments: "", description: "force a page break", mode: .text, source: .parserArm),
             Entry(name: "pagestyle", arguments: "{style}", description: "accept a page style without rendering headers or footers", mode: .text, source: .parserArm),
-        ] + [
+        ]
+            out += fontSizes.map {
+                Entry(name: $0, arguments: "", description: "accepted size declaration; a no-op because body text has one fixed size", mode: .text, source: .parserArm)
+            }
+            out += [
             Entry(name: "frac", arguments: "{num}{den}", description: "fraction", mode: .math, source: .mathParser),
             Entry(name: "sqrt", arguments: "[index]{x}", description: "square root with optional index", mode: .math, source: .mathParser),
             Entry(name: "operatorname", arguments: "{name}", description: "upright named operator", mode: .math, source: .mathParser),
             Entry(name: "mathbb", arguments: "{A-Z}", description: "Latin Modern Math double-struck capitals", mode: .math, source: .mathParser),
             Entry(name: "tag", arguments: "{label}", description: "display tag", mode: .math, source: .mathParser),
             Entry(name: "pmod", arguments: "{n}", description: "parenthesized modulus", mode: .math, source: .mathParser),
-        ] + math(operatorNames, description: "upright named operator")
-        + math(["bmod", "mod"], description: "upright modulus operator")
-        + math(["mathrm", "mathit", "mathsf", "mathtt", "mathnormal", "boldsymbol", "bm", "mbox", "hbox"], arguments: "{...}", description: "retain a grouped math argument")
-        + math(["displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "nonumber", "notag", "middle"], description: "accepted math control")
-        + math(["left", "right", "big", "Big", "bigg", "Bigg", "bigm", "Bigm", "biggm", "Biggm", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr", "bigl", "bigr"], description: "consume the following delimiter")
-        + math(["dots", "ldots", "dotsc", "dotso", "cdots", "dotsb", "dotsm", "dotsi"], description: "ellipsis")
-        + math(["iint", "iiint", "lbrace", "rbrace", "quad", "qquad"], description: "math glyph or spacing construct")
-        + math(["dfrac", "tfrac", "cfrac"], arguments: "{num}{den}", description: "fraction variant")
-        + math(["overset", "stackrel", "underset"], arguments: "{script}{base}", description: "stack a script over or under a base")
-        + math(["binom", "dbinom", "tbinom"], arguments: "{n}{k}", description: "binomial grid")
-        + math(["mathbf"], arguments: "{text}", description: "bold literal math text")
-        + math(["boxed", "overline", "underline"], arguments: "{...}", description: "draw a rule around, above, or below the body")
-        + math(["text"], arguments: "{text}", description: "literal text in math")
-        + math(["hat", "bar", "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde"], arguments: "{body}", description: "math accent; unavailable or non-stretching marks are diagnosed")
-        + symbols.map { name, glyph in
-            Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
+        ]
+            out += math(operatorNames, description: "upright named operator")
+            out += math(["bmod", "mod"], description: "upright modulus operator")
+            out += math(["mathrm", "mathit", "mathsf", "mathtt", "mathnormal", "boldsymbol", "bm", "mbox", "hbox"], arguments: "{...}", description: "retain a grouped math argument")
+            out += math(["displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "nonumber", "notag", "middle"], description: "accepted math control")
+            out += math(["left", "right", "big", "Big", "bigg", "Bigg", "bigm", "Bigm", "biggm", "Biggm", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr", "bigl", "bigr"], description: "consume the following delimiter")
+            out += math(["dots", "ldots", "dotsc", "dotso", "cdots", "dotsb", "dotsm", "dotsi"], description: "ellipsis")
+            out += math(["iint", "iiint", "lbrace", "rbrace"], description: "math glyph or spacing construct")
+            out += math(["dfrac", "tfrac", "cfrac"], arguments: "{num}{den}", description: "fraction variant")
+            out += math(["overset", "stackrel", "underset"], arguments: "{script}{base}", description: "stack a script over or under a base")
+            out += math(["binom", "dbinom", "tbinom"], arguments: "{n}{k}", description: "binomial grid")
+            out += math(["mathbf"], arguments: "{text}", description: "bold literal math text")
+            out += math(["boxed", "overline", "underline"], arguments: "{...}", description: "draw a rule around, above, or below the body")
+            out += math(["text"], arguments: "{text}", description: "literal text in math")
+            out += math(["hat", "bar", "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde"], arguments: "{body}", description: "math accent; unavailable or non-stretching marks are diagnosed")
+            out += symbols.map { name, glyph in
+                Entry(name: name, arguments: "", description: "symbol \(glyph)", mode: .math, source: .readmeMath, glyph: glyph)
+            }
+            return out
         }
 
         /// `src/math.rs` `COMMAND_GLYPHS`, in table order.
@@ -216,6 +235,9 @@ enum Completion {
             ("cdot", "⋅"), ("infty", "∞"), ("sum", "∑"), ("int", "∫"), ("in", "∈"), ("forall", "∀"), ("exists", "∃"),
             ("vee", "∨"), ("Rightarrow", "⇒"), ("mid", "∣"), ("setminus", "∖"), ("Longrightarrow", "⟹"),
         ]
+
+        /// `src/parser.rs` font-size declaration arm (`\tiny` … `\Huge`), in arm order.
+        static let fontSizes = ["tiny", "scriptsize", "footnotesize", "small", "normalsize", "large", "Large", "LARGE", "huge", "Huge"]
 
         /// `src/math.rs` `OPERATOR_NAMES`, in table order.
         static let operatorNames = [
@@ -383,11 +405,14 @@ enum Completion {
         // 2. The compiler's documented vocabulary, then commands the project
         //    index saw declared at this exact revision. A project declaration
         //    wins over a static entry of the same name (the compiler expands
-        //    the user's macro, not a builtin).
+        //    the user's macro, not a builtin). Within the vocabulary the
+        //    command spelled exactly as typed comes first (`\sec` before
+        //    `\section`); the rest keep table order.
         var offered = Set<String>()
         let declared: [String: Metadata.Item] = Dictionary((metadata?.commands ?? []).filter { $0.definitions > 0 }.map { ($0.name, $0) },
                                                            uniquingKeysWith: { a, _ in a })
-        for name in supported where name.hasPrefix(prefix) && offered.insert(name).inserted {
+        let exact = supported.contains(prefix) ? [prefix] : []
+        for name in exact + supported where name.hasPrefix(prefix) && offered.insert(name).inserted {
             if let item = declared[name], let metadata {
                 out.append(Suggestion(label: "\\" + name, insertText: "\\" + name, kind: .command,
                                       detail: item.detail(noun: "declared", revision: metadata.revision) + " · overrides the builtin"))

@@ -77,6 +77,7 @@ enum CommandPaletteModel {
         case .submitSampleCapture: model.submitSampleCapturePanel()
         case .convertCapture: model.convertLatestCapture()
         case .nearbyCompanion: openWindow(id: "nearby")
+        case .askGrok: model.askGrok()
         case .restoreDiscardedBuffer: _ = model.restoreDiscardedBuffer()
         case .undo: NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
         case .completion, .completionList, .selectPreviewItemSource, .nextSearchMatch: return false

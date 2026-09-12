@@ -33,9 +33,25 @@ enum GrokCredential {
     /// The bridge's variable (`--enable-grok` reads only this one).
     static let bridgeVariable = "XAI_API_KEY"
     static let modelVariable = "FLASHTEX_GROK_MODEL"
-    /// The bridge's default (crates/bridge `DEFAULT_MODEL`); one model serves
-    /// both helpers so the evidence names a single model id.
-    static let defaultModel = "grok-4.6"
+    /// Default explanation/review model. Live evidence 2026-09-12: `grok-4.6`
+    /// (reasoning) takes 55–70 s per explanation (grok-live-20260912T191209Z)
+    /// but its edits pass the helper's source-bound gate; the fast
+    /// non-reasoning model answers in ~4–5 s yet its proposed edits failed
+    /// that gate 2/2 ("removed source differs": wrong byte offsets/removed
+    /// text, grok-live-20260912T210600Z), so it is not the explanation
+    /// default until the helper's prompt makes the fast model comply. Both are
+    /// selectable in Preferences (`selectableModels`) and by `FLASHTEX_GROK_MODEL`.
+    static let defaultModel = reasoningModel
+    static let reasoningModel = "grok-4.6"
+    /// The fast non-reasoning model: the capture default (`defaultCaptureModel`).
+    static let fastModel = "grok-4.20-0309-non-reasoning"
+    /// Ids the Preferences picker offers (any valid id can still be typed).
+    static let selectableModels = [reasoningModel, fastModel]
+    /// Provider-call bound for the review sheet: reasoning models were
+    /// measured at 53–70 s and the helper's HTTP client gives up at 90 s, so
+    /// the flight must outlive it; non-reasoning models answer in seconds.
+    static func providerTimeout(for model: String) -> TimeInterval { isReasoningModel(model) ? 100 : 30 }
+    static func isReasoningModel(_ model: String) -> Bool { !model.lowercased().contains("non-reasoning") }
     /// The helper's own limit (`GrokClient::new`).
     static let maxKeyBytes = 8192
 
@@ -113,7 +129,7 @@ enum GrokCredential {
     /// Live evidence 2026-09-12 (docs/evidence/grok-live-20260912T191209Z):
     /// this id converted a 900×260 handwriting PNG in 2.8 s and the result
     /// compiled with zero diagnostics; `grok-4.6` hit the bridge's 90 s timeout.
-    static let defaultCaptureModel = "grok-4.20-0309-non-reasoning"
+    static let defaultCaptureModel = fastModel
     static func captureModel(environment: [String: String] = ProcessInfo.processInfo.environment,
                              preferences: GrokPreferences = .shared) -> String {
         for candidate in [environment[captureModelVariable], environment[modelVariable], preferences.model] {
@@ -326,17 +342,54 @@ final class MemoryKeychain: GrokKeychainStore {
 /// environment take precedence over these at configuration time.
 final class GrokPreferences {
     static let shared = GrokPreferences(defaults: .standard)
+    /// Pre-mode boolean (read for migration while no mode is stored: an
+    /// explicit `true` is `.on`, an explicit `false` stays `.off` — a user who
+    /// opted out is never switched to live xAI by a key appearing).
     static let providerKey = "FlashTeX.Grok.v1.providerEnabled"
+    static let providerModeKey = "FlashTeX.Grok.v1.providerMode"
     static let modelKey = "FlashTeX.Grok.v1.model"
+    /// Posted (main queue) after any setter so the status bar re-reads.
+    static let didChange = Notification.Name("FlashTeX.Grok.preferencesDidChange")
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults) { self.defaults = defaults }
 
-    /// "Use Grok (xAI) for editor assistance". Off by default: the no-key,
-    /// no-preference path is the deterministic local provider as before.
+    /// "Use Grok (xAI) for editor assistance": `auto` (default) selects Grok
+    /// whenever a key resolves and falls back to the local provider (or none)
+    /// otherwise; `on` selects Grok even without a key (the sheet then says so
+    /// and sends nothing); `off` never selects it.
+    enum ProviderMode: String, CaseIterable, Equatable {
+        case auto, on, off
+        var label: String {
+            switch self {
+            case .auto: return "Automatic (when a key is present)"
+            case .on: return "Always"
+            case .off: return "Never"
+            }
+        }
+    }
+
+    var providerMode: ProviderMode {
+        get {
+            if let raw = defaults.string(forKey: Self.providerModeKey), let mode = ProviderMode(rawValue: raw) { return mode }
+            if defaults.object(forKey: Self.providerKey) != nil { return defaults.bool(forKey: Self.providerKey) ? .on : .off }
+            return .auto
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Self.providerModeKey)
+            defaults.removeObject(forKey: Self.providerKey)
+            notify()
+        }
+    }
+
+    /// Compatibility view of `providerMode`: true only for `.on`.
     var providerEnabled: Bool {
-        get { defaults.bool(forKey: Self.providerKey) }
-        set { defaults.set(newValue, forKey: Self.providerKey) }
+        get { providerMode == .on }
+        set { providerMode = newValue ? .on : .off }
+    }
+
+    private func notify() {
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     /// nil means "use the default model".
@@ -348,6 +401,7 @@ final class GrokPreferences {
             } else {
                 defaults.removeObject(forKey: Self.modelKey)
             }
+            notify()
         }
     }
 }

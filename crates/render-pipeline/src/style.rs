@@ -82,6 +82,12 @@ pub struct Stylesheet {
     pub adjdemerits: f64,
     /// `\raggedbottom` (article one-column default).
     pub raggedbottom: bool,
+    /// `\topsep`, `\partopsep` and `\leftmargini` of a level-1 list
+    /// (`\` of size1x.clo): the glue around and the margins of
+    /// `center`/`quote`-style environments.
+    pub topsep: Skip,
+    pub partopsep: Skip,
+    pub leftmargini_pt: f64,
     headings: [HeadingStyle; 3],
 }
 
@@ -137,6 +143,7 @@ impl Stylesheet {
             }
         };
         let parskip = ds.parskip();
+        let list = flashtex_document_style::list_level(base, 1);
         Stylesheet {
             family,
             base,
@@ -165,6 +172,9 @@ impl Stylesheet {
             linepenalty: 10.0,
             adjdemerits: 10000.0,
             raggedbottom: true,
+            topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
+            partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
+            leftmargini_pt: list.leftmargin.0,
             headings: [heading(1), heading(2), heading(3)],
         }
     }

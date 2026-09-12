@@ -58,7 +58,12 @@ Implemented and tested:
   class, and `\usepackage[options]{a,b,c}` records the package names and emits
   one warning listing exactly those unimplemented packages. When a document
   environment exists, only its body is typeset; bare fragments retain the
-  previous typeset-everything behavior.
+  previous typeset-everything behavior. A `10pt`, `11pt` or `12pt` class
+  option sets the body size (no option keeps the 12pt default), and preamble
+  `\setlength{\parskip}{..}` replaces the gap between paragraphs, with `em`
+  and `ex` relative to that body size. `\setlength{\parindent}{0pt}` is exact
+  because paragraphs are never indented; any other `\parindent`, any other
+  length, or `\setlength` in the body is reported as not implemented.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
 - Project-relative `\input` expansion across supplied documents, with included

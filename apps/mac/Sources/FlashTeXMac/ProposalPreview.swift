@@ -145,6 +145,9 @@ final class ProposalPreview: ObservableObject {
     private var grokSession: GrokProviderSession?
     /// The Grok session's launch record while (or after) it ran, for tests/evidence.
     private(set) var lastGrokLaunch: GrokProviderSession.Launch?
+    /// When the live provider stage started (the sheet shows elapsed seconds
+    /// against `explanationConfiguration.providerTimeout`); nil when none runs.
+    @Published private(set) var providerStartedAt: Date?
     private var explanationJob: ExplanationJob?
     private var explained: (input: Input, latex: String)?
     private var nextExplanationID = 1
@@ -648,33 +651,67 @@ extension ProposalPreview {
 
         /// `FLASHTEX_ASSISTANT_PROVIDER`: `grok` selects the live xAI path; an
         /// executable path selects that local command; otherwise the
-        /// Preferences toggle (`GrokPreferences.providerEnabled`) may select
-        /// Grok. Unset and untoggled: disabled, exactly as before. `keychain`
-        /// and `preferences` are injectable so tests never touch the user's.
+        /// Preferences mode (`GrokPreferences.providerMode`) decides: `auto`
+        /// (the default) selects Grok exactly when a key resolves, `on` always,
+        /// `off` never. No key and nothing selected: disabled, exactly as
+        /// before. `keychain` and `preferences` are injectable so tests never
+        /// touch the user's.
         @MainActor static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment,
                                                bundleExecutableDirectory: URL? = Bundle.main.executableURL?.deletingLastPathComponent(),
                                                preferences: GrokPreferences = .shared,
                                                keychain: any GrokKeychainStore = SecItemKeychain.shared) -> ExplanationConfiguration {
             var c = ExplanationConfiguration(helper: locateHelper(env, bundleExecutableDirectory: bundleExecutableDirectory))
             let selection = env["FLASHTEX_ASSISTANT_PROVIDER"]
-            if selection?.lowercased() == GrokProviderConfiguration.selector || (selection == nil && preferences.providerEnabled) {
+            var credential: GrokCredential.Resolution??
+            func resolved() -> GrokCredential.Resolution? {
+                if let credential { return credential }
+                let r = GrokCredential.resolve(environment: env, keychain: keychain)
+                credential = .some(r)
+                return r
+            }
+            let selectGrok: Bool
+            if let selection {
+                selectGrok = selection.lowercased() == GrokProviderConfiguration.selector
+            } else {
+                switch preferences.providerMode {
+                case .on: selectGrok = true
+                case .off: selectGrok = false
+                case .auto: selectGrok = resolved() != nil
+                }
+            }
+            if selectGrok {
                 let dedicated = env["FLASHTEX_ASSISTANT_CONTEXT_GROK"].flatMap {
                     FileManager.default.isExecutableFile(atPath: $0) ? URL(fileURLWithPath: $0) : nil
                 }
                 c.grok = GrokProviderConfiguration(model: GrokCredential.model(environment: env, preferences: preferences),
-                                                   credential: GrokCredential.resolve(environment: env, keychain: keychain),
-                                                   helper: dedicated ?? c.helper)
+                                                   credential: resolved(), helper: dedicated ?? c.helper)
             } else if let p = selection, FileManager.default.isExecutableFile(atPath: p) {
                 c.provider = URL(fileURLWithPath: p)
             }
             if let s = env["FLASHTEX_ASSISTANT_TIMEOUT_S"], let t = TimeInterval(s), t > 0 {
                 c.providerTimeout = min(t, 120)
-            } else if c.grok != nil {
-                // Live grok-4.6 explanations measured 53–70 s (docs/evidence/grok-live-*);
-                // the helper's HTTP client gives up at 90 s, so the flight must outlive it.
-                c.providerTimeout = 100
+            } else if let grok = c.grok {
+                c.providerTimeout = GrokCredential.providerTimeout(for: grok.model)
             }
             return c
+        }
+
+        /// The status-bar pill: "Grok: on (model)" when the next explanation
+        /// would be a live xAI call, "Grok: off" otherwise (with the reason in
+        /// `grokStatusHelp`). Never a key.
+        var grokStatusText: String {
+            if let grok, grok.credential != nil { return "Grok: on (\(grok.model))" }
+            return "Grok: off"
+        }
+        var grokStatusHelp: String {
+            if let grok {
+                if let credential = grok.credential {
+                    return "Editor assistance is sent to Grok (xAI) \(grok.model) through the assistant helper; \(credential.description). Preferences (⌘,) → Grok (xAI) changes the model or turns this off."
+                }
+                return "Grok (xAI) is selected but no API key is present: nothing is sent. Preferences (⌘,) → Grok (xAI) → xAI API key."
+            }
+            return provider.map { "Grok is off; the local provider command \($0.lastPathComponent) is enabled (FLASHTEX_ASSISTANT_PROVIDER)." }
+                ?? "Grok is off: no xAI API key is present (Preferences ⌘, → Grok (xAI)), or the mode is Never."
         }
 
         /// The helper's file name inside a packaged app (`FlashTeX.app/Contents/
@@ -924,7 +961,7 @@ extension ProposalPreview {
                 + (c.omittedDiagnostics > 0 ? " (\(c.omittedDiagnostics) omitted)" : "") + ", \(c.payloadBytes) bytes; edits: \(c.editBoundaryText). No provider is enabled — nothing was sent."
         case .awaitingProvider(let c):
             if let grok = explanationConfiguration.grok {
-                return "context \(c.contextId.prefix(8)) admitted to Grok (xAI) \(grok.model) through the helper's provider session; waiting for the live reply…"
+                return "Asking Grok (\(grok.model))… context \(c.contextId.prefix(8)) admitted through the helper's provider session; up to \(Int(explanationConfiguration.providerTimeout)) s, Cancel stops the helper"
             }
             return "context \(c.contextId.prefix(8)) handed to \(explanationConfiguration.provider?.lastPathComponent ?? "your provider command") on stdin; waiting…"
         case .validating(let c): return "validating the provider's reply against context \(c.contextId.prefix(8))…"
@@ -1042,6 +1079,7 @@ extension ProposalPreview {
         explanationProcess = nil
         grokSession?.cancel()
         grokSession = nil
+        providerStartedAt = nil
     }
 
     /// The provider stage over the live Grok path: the helper's
@@ -1066,10 +1104,12 @@ extension ProposalPreview {
             let session = try GrokProviderSession(helper: helper, model: grok.model, sessionId: String(sessionId),
                                                   credential: credential, environment: environment) { [weak self] result in
                 self?.grokSession = nil
+                self?.providerStartedAt = nil
                 self?.handleExplanationReply(id: job.id, stage: .provider, result: result)
             }
             grokSession = session
             lastGrokLaunch = session.launch
+            providerStartedAt = Date()
             childLaunches.append(ChildLaunch(role: .grok, executable: helper, arguments: session.launch.arguments,
                                              environmentKeys: session.launch.environmentKeys, stage: .provider))
             if childLaunches.count > 64 { childLaunches.removeFirst(childLaunches.count - 64) }
@@ -1460,7 +1500,18 @@ struct ProposalExplanationView: View {
                 Spacer()
                 if preview.explanationInFlight {
                     ProgressView().controlSize(.mini)
+                    if let started = preview.providerStartedAt, let grok = preview.explanationConfiguration.grok {
+                        // Live wait: elapsed seconds against the bound, ticking once a second.
+                        TimelineView(.periodic(from: started, by: 1)) { context in
+                            let elapsed = max(0, Int(context.date.timeIntervalSince(started)))
+                            Text("Asking Grok (\(grok.model))… \(elapsed) s")
+                                .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                                .accessibilityLabel("Asking Grok, \(elapsed) seconds elapsed of at most \(Int(preview.explanationConfiguration.providerTimeout))")
+                        }
+                    }
                     Button("Cancel") { preview.cancelExplanationByReviewer() }.controlSize(.mini)
+                        .help("Stops waiting and terminates the helper's provider session; nothing is applied")
+                        .accessibilityIdentifier("assistant.cancel")
                 } else if preview.explanationAvailable {
                     Button(explainTitle) { preview.explain() }.controlSize(.mini).disabled(!preview.canExplain)
                 }

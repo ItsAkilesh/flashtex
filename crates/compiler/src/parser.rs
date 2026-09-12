@@ -254,6 +254,10 @@ pub struct Parsed {
     pub diagnostics: Vec<Diagnostic>,
     /// The argument of the first valid `\documentclass`, if present.
     pub document_class: Option<String>,
+    /// Body size from a `10pt`/`11pt`/`12pt` `\documentclass` option.
+    pub class_size_pt: Option<f64>,
+    /// `\setlength{\parskip}{..}` from the preamble, in points.
+    pub parskip_pt: Option<f64>,
     /// Package names mentioned by valid `\usepackage` commands.
     pub packages: Vec<String>,
     /// One dependency list per block, in `blocks` order.
@@ -264,6 +268,20 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+}
+
+impl Parsed {
+    /// Layout constraints with the preamble's body size and `\parskip` applied.
+    pub fn preamble_constraints(
+        &self,
+        constraints: crate::layout::LayoutConstraints,
+    ) -> crate::layout::LayoutConstraints {
+        crate::layout::LayoutConstraints {
+            font_size_pt: self.class_size_pt.unwrap_or(constraints.font_size_pt),
+            parskip_pt: self.parskip_pt.or(constraints.parskip_pt),
+            ..constraints
+        }
+    }
 }
 
 const BUILT_INS: &[&str] = &[
@@ -283,6 +301,7 @@ const BUILT_INS: &[&str] = &[
     "end",
     "par",
     "documentclass",
+    "setlength",
     "usepackage",
     "setlist",
     "newcommand",
@@ -346,6 +365,11 @@ const BUILT_INS: &[&str] = &[
 /// `layout.rs`), unlike `in`/`cm`/`mm` below, which follow TeX's own
 /// 72.27-per-inch point.
 pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
+    parse_dimen_pt_at(text, crate::layout::BODY_SIZE_PT)
+}
+
+/// `parse_dimen_pt` with `em`/`ex` relative to `body_pt`.
+pub(crate) fn parse_dimen_pt_at(text: &str, body_pt: f64) -> Option<f64> {
     let text = text.trim();
     let unit_len = text
         .chars()
@@ -363,8 +387,8 @@ pub(crate) fn parse_dimen_pt(text: &str) -> Option<f64> {
         "in" => 72.27,
         "cm" => 72.27 / 2.54,
         "mm" => 72.27 / 25.4,
-        "em" => crate::layout::BODY_SIZE_PT,
-        "ex" => crate::layout::BODY_SIZE_PT * 0.5,
+        "em" => body_pt,
+        "ex" => body_pt * 0.5,
         _ => return None,
     };
     Some(value * per_pt)
@@ -453,6 +477,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         in_body: !has_document,
         document_ended: false,
         document_class: None,
+        class_size_pt: None,
+        parskip_pt: None,
         packages: Vec::new(),
         block_dependencies: Vec::new(),
         current_dependencies: BTreeMap::new(),
@@ -499,6 +525,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         blocks,
         diagnostics: p.diags,
         document_class: p.document_class,
+        class_size_pt: p.class_size_pt,
+        parskip_pt: p.parskip_pt,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
         preamble_source: preamble_source(entry_document.text, has_document),
@@ -519,6 +547,8 @@ struct P<'a> {
     in_body: bool,
     document_ended: bool,
     document_class: Option<String>,
+    class_size_pt: Option<f64>,
+    parskip_pt: Option<f64>,
     packages: Vec<String>,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
@@ -678,6 +708,7 @@ impl P<'_> {
 
         match name {
             "documentclass" => self.document_class(span),
+            "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
@@ -1038,7 +1069,17 @@ impl P<'_> {
     }
 
     fn document_class(&mut self, span: Span) {
-        let _options = self.optional_bracket_argument();
+        let options = self.optional_bracket_argument();
+        if self.class_size_pt.is_none() {
+            self.class_size_pt = options.and_then(|(options, _)| {
+                options.split(',').find_map(|option| match option.trim() {
+                    "10pt" => Some(10.0),
+                    "11pt" => Some(11.0),
+                    "12pt" => Some(12.0),
+                    _ => None,
+                })
+            });
+        }
         let (tokens, _) = self.required_group("documentclass", span);
         let class = token_text(&tokens).trim().to_string();
         if class.is_empty() {
@@ -1049,6 +1090,50 @@ impl P<'_> {
             ));
         } else if self.document_class.is_none() {
             self.document_class = Some(class);
+        }
+    }
+
+    /// `\setlength{\parskip}{..}` and `\setlength{\parindent}{..}` in the
+    /// preamble. `em`/`ex` resolve against the class body size. This engine
+    /// never indents paragraphs, so only a zero `\parindent` is exact.
+    fn set_length(&mut self, span: Span) {
+        let (target_tokens, _) = self.required_group("setlength", span);
+        let (value_tokens, value_span) = self.required_group("setlength", span);
+        let span = span.merge(value_span);
+        let target = token_text(&target_tokens)
+            .trim()
+            .trim_start_matches('\\')
+            .to_string();
+        let raw = token_text(&value_tokens);
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let Some(pt) = parse_dimen_pt_at(&raw, body) else {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "\\setlength requires a recognised dimension, got '{}'",
+                    raw.trim()
+                ),
+                Some(span),
+                Some("ignored the length assignment".into()),
+            ));
+            return;
+        };
+        let in_preamble = self.has_document && !self.in_body;
+        match target.as_str() {
+            "parskip" if in_preamble => self.parskip_pt = Some(pt),
+            "parindent" if in_preamble && pt == 0.0 => {}
+            "parindent" if in_preamble => self.diags.push(Diagnostic::warning(
+                "\\parindent is recognised but paragraph indentation is not implemented",
+                Some(span),
+                Some("paragraphs are not indented".into()),
+            )),
+            _ => self.diags.push(Diagnostic::warning(
+                format!(
+                    "\\setlength{{\\{}}} is recognised but not implemented here",
+                    target
+                ),
+                Some(span),
+                Some("ignored the length assignment".into()),
+            )),
         }
     }
 
@@ -3189,7 +3274,8 @@ mod tests {
         for (text, font) in [
             ("a", Font::TimesRoman),
             ("b", Font::TimesBold),
-            ("x", Font::TimesRoman),
+            // Math variables are math italic even inside \textbf.
+            ("x", Font::TimesItalic),
             ("c", Font::TimesBold),
             ("d", Font::TimesItalic),
             ("e", Font::TimesBoldItalic),

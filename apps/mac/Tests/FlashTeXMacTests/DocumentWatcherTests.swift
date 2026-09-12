@@ -59,13 +59,17 @@ final class DocumentWatcherTests: XCTestCase {
         XCTAssertEqual(model.files.lastDiskState, .modified)
         XCTAssertGreaterThanOrEqual(model.documentWatcher.deliveries, 1)
 
-        // Atomic replace (rename over the path: a new inode) is followed.
+        // Atomic replace (rename over the path: a new inode) is followed. A
+        // delivery only *starts* the (async) status refresh, so wait for the
+        // state it produces — the replacement's digest — not for the counter.
         let d0 = model.documentWatcher.deliveries
+        let v3 = SourceDigest.sha256Hex("v3 replaced atomically\n")
         try "v3 replaced atomically\n".write(to: url, atomically: true, encoding: .utf8)
-        let replaced = await settles { model.documentWatcher.deliveries > d0 }
-        XCTAssertTrue(replaced, "the rename was not delivered")
+        let replaced = await settles { model.documentWatcher.deliveries > d0 && model.files.conflict?.theirs == v3 }
+        XCTAssertTrue(replaced, "the rename was not delivered or its status never settled: deliveries \(model.documentWatcher.deliveries) (was \(d0)), " +
+                      "theirs \(model.files.conflict?.theirs ?? "nil"); \(model.documentWatcher.status)")
         XCTAssertTrue(model.documentWatcher.isWatching, "re-armed on the replacement inode: \(model.documentWatcher.status)")
-        XCTAssertEqual(model.files.conflict?.theirs, SourceDigest.sha256Hex("v3 replaced atomically\n"))
+        XCTAssertEqual(model.files.conflict?.theirs, v3)
         // The replacement's own later edit is still seen (proves the re-arm).
         let d1 = model.documentWatcher.deliveries
         try "v4 after replace\n".write(to: url, atomically: true, encoding: .utf8)

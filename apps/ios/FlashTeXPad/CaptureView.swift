@@ -190,7 +190,29 @@ struct CapturesList: View {
                                 if let d = c.destinationId, let rev = c.baseRevision {
                                     Text("sent for destination \(d) base_revision \(rev)").font(.caption2.monospaced()).foregroundStyle(.secondary)
                                 }
-                                Text("Returned LaTeX/TikZ: not carried by transfer-v1 — review it on the Mac.").font(.caption2).foregroundStyle(.orange)
+                                if let label = c.outcomeLabel {
+                                    Text("Mac: \(label)").font(.footnote).foregroundStyle(c.outcomeIsFinal ? .primary : .secondary)
+                                        .accessibilityIdentifier("capture.outcome.\(c.id)")
+                                    if let o = c.outcome {
+                                        Text(verbatim: "capture_status_ack state=\(o.state) durable=\(o.durable)" + (o.note.map { " note=“\($0)”" } ?? ""))
+                                            .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                    }
+                                } else {
+                                    Text("Mac: waiting for the first capture_status reply…").font(.footnote).foregroundStyle(.secondary)
+                                        .accessibilityIdentifier("capture.outcome.\(c.id)")
+                                }
+                                if let latex = c.outcome?.latex {
+                                    Text("Returned LaTeX/TikZ (read-only; approve or reject on the Mac):").font(.caption2).foregroundStyle(.secondary)
+                                    Text(latex).font(.caption.monospaced()).padding(6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color.gray.opacity(0.12)).cornerRadius(4)
+                                        .accessibilityIdentifier("capture.latex.\(c.id)")
+                                        .accessibilityLabel("returned latex \(latex)")
+                                }
+                                if !c.outcomeIsFinal {
+                                    Button("Refresh status") { Task { await model.refreshOutcome(c.id) } }.buttonStyle(.bordered).font(.caption)
+                                        .disabled(!model.link.isConnected).accessibilityIdentifier("capture.refresh.\(c.id)")
+                                }
                             }
                             if case .refused(_, let msg) = c.status { Text(msg).font(.caption2).foregroundStyle(.red) }
                             if case .disconnected = c.status {
@@ -209,7 +231,7 @@ struct CapturesList: View {
                 }
             }
             Section {
-                Text("Status is what nearby-v1 returns to a companion: the capture_received receipt (durable / has_proposal / applied at receipt time) or an error code. Conversion and insertion happen on the Mac; their outcome is not carried back (proposal §6). Retry after a disconnect re-sends the same capture_id; the Mac de-duplicates.")
+                Text("Status is what nearby-v1 returns to a companion: the capture_received receipt (durable / has_proposal / applied at receipt time) or an error code, then the Mac-side outcome from capture_status (journaled → converting → proposal ready → inserted / rejected / failed) polled every 2 s until final. The LaTeX/TikZ is shown read-only: approval and insertion stay on the Mac. Retry after a disconnect re-sends the same capture_id; the Mac de-duplicates. Drafts, receipts and outcomes are kept on this iPad across relaunches.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

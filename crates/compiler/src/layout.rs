@@ -49,6 +49,8 @@ struct ReferenceValue {
 pub struct LayoutConstraints {
     pub font_size_pt: f64,
     pub measure_pt: f64,
+    /// `\setlength{\parskip}{..}`; `None` keeps `PARAGRAPH_GAP_PT`.
+    pub parskip_pt: Option<f64>,
 }
 
 impl Default for LayoutConstraints {
@@ -56,6 +58,7 @@ impl Default for LayoutConstraints {
         Self {
             font_size_pt: BODY_SIZE_PT,
             measure_pt: PAGE_WIDTH_PT - 2.0 * MARGIN_PT,
+            parskip_pt: None,
         }
     }
 }
@@ -94,7 +97,15 @@ fn shape_text(font: Font, text: &str) -> Result<Shaped, flashtex_font_engine::Er
 }
 
 /// Select the same Core 14 face that the export mapping assigns to a math glyph.
+/// A single Latin letter is a math variable and uses the italic face, as TeX's
+/// math italic does; digits, operators and multi-letter names stay upright.
 pub(crate) fn math_font(text: &str) -> Font {
+    let mut chars = text.chars();
+    if let (Some(ch), None) = (chars.next(), chars.next()) {
+        if ch.is_ascii_alphabetic() {
+            return Font::TimesItalic;
+        }
+    }
     if !text.is_empty()
         && text.chars().all(|ch| {
             matches!(
@@ -654,7 +665,7 @@ impl LayoutCursor {
             Block::Paragraph(_) => {
                 if !self.first_block {
                     self.newline(body_size);
-                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                    self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
                 }
             }
             Block::ListItem {
@@ -680,7 +691,10 @@ impl LayoutCursor {
                 }
             }
             Block::VSpace { pt } => {
-                if !self.first_block {
+                // Only end a line that has content: after a rule or another
+                // vertical block there is no text line to finish, and TeX adds
+                // no interline glue there either.
+                if !self.first_block && self.state().trailing_line_items > 0 {
                     self.newline(body_size);
                 }
                 self.vertical_gap(*pt);
@@ -785,7 +799,8 @@ impl LayoutCursor {
                     .expect("at least one page")
                     .items
                     .push(item);
-                self.newline(body_size);
+                // A rule has no depth: end its line without adding a text line.
+                self.newline(0.0);
             }
         }
         // A block is the incremental cache unit. Resolve its final line before
@@ -1078,7 +1093,7 @@ mod tests {
         assert_eq!(x.font_size_pt, BODY_SIZE_PT);
         assert_eq!(x.baseline_y_pt, item_at(&pages, 0).baseline_y_pt);
         assert!(
-            (y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT, Font::TimesRoman)) / 2.0)
+            (y.x_pt - (PAGE_WIDTH_PT - glyph_width("y", BODY_SIZE_PT, Font::TimesItalic)) / 2.0)
                 .abs()
                 < 0.02
         );
@@ -1208,6 +1223,7 @@ mod tests {
             LayoutConstraints {
                 font_size_pt: 11.0,
                 measure_pt: LayoutConstraints::default().measure_pt,
+                parskip_pt: None,
             },
         );
         let body = pages

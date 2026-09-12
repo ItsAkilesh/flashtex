@@ -463,6 +463,89 @@ final class NearbyListenerTests: XCTestCase {
         let ack: RuntimeV1.Envelope<NearbyV1.CaptureReceived> = try decode(out[4])
         XCTAssertEqual(ack.payload.captureId, "ok-1")
     }
+
+    /// Additive `capture_status`: refused for an id the pairing never
+    /// submitted, answered by the sink for an acknowledged one (same session
+    /// or a later one sharing the pairing's memory), `unavailable` from a sink
+    /// that predates the message.
+    func testSessionAnswersCaptureStatusOnlyForAcknowledgedCaptures() throws {
+        final class StatusSink: CaptureSink {
+            let inner = RecordingSink()
+            var ack: NearbyV1.CaptureStatusAck?
+            func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: @escaping (Data) -> Void) { inner.submit(envelope, reply: reply) }
+            func captureStatus(_ envelope: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>, reply: @escaping (Data) -> Void) {
+                guard let ack, ack.captureId == envelope.payload.captureId else {
+                    reply(NearbyV1.errorLine(id: envelope.id, code: "unknown_capture", message: "not on this Mac")); return
+                }
+                reply(NearbyV1.line(id: envelope.id, type: "capture_status_ack", ack))
+            }
+        }
+        let sink = StatusSink()
+        let key = NearbyListener.PSKEntry(identity: "p", key: NearbyListenerTests.pskA, isBootstrap: false)
+        let memory = NearbyAckMemory(maxPerPair: 8)
+        let session = NearbySession(keys: [key], macName: "M", sink: sink, destinations: nil, pairing: nil, memory: memory) { _ in }
+        var out: [Data] = []
+        let emit: (Data) -> Void = { out.append($0) }
+        let hello = NearbyV1.line(id: "h", type: "hello", NearbyV1.Hello(pairId: "p", companionName: "c", nonce: "n",
+                                                                         proof: Pairing.helloProof(psk: key.key, nonce: "n")))
+        _ = session.handle(line: hello.dropLast(), emit: emit)
+        // Never submitted → unknown_capture (nothing leaks about other captures).
+        _ = session.handle(line: NearbyV1.line(id: "s0", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast(), emit: emit)
+        let e0: RuntimeV1.Envelope<NearbyV1.ErrorPayload> = try decode(out[1])
+        XCTAssertEqual(e0.id, "s0"); XCTAssertEqual(e0.payload.code, "unknown_capture")
+        _ = session.handle(line: NearbyV1.line(id: "s1", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "bad id!")).dropLast(), emit: emit)
+        let e1: RuntimeV1.Envelope<NearbyV1.ErrorPayload> = try decode(out[2])
+        XCTAssertEqual(e1.payload.code, "bad_request")
+        // Submit, then ask: the sink answers with the proposal text.
+        let env = try RuntimeV1.decodeCaptureSubmit(Data(contentsOf: Self.fixtureURL))
+        XCTAssertEqual(session.handle(line: try RuntimeV1.encodeLine(env).dropLast(), emit: emit), .keepOpen)
+        let received: RuntimeV1.Envelope<NearbyV1.CaptureReceived> = try decode(out[3])
+        XCTAssertEqual(received.payload.captureId, "fixture-capture-1")
+        sink.ack = .init(captureId: "fixture-capture-1", state: .proposalReady, durable: true, latex: "\\begin{tikzpicture}\\end{tikzpicture}", note: "awaiting review")
+        _ = session.handle(line: NearbyV1.line(id: "s2", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast(), emit: emit)
+        let a2: RuntimeV1.Envelope<NearbyV1.CaptureStatusAck> = try decode(out[4])
+        XCTAssertEqual(a2.id, "s2"); XCTAssertEqual(a2.type, "capture_status_ack")
+        XCTAssertEqual(a2.payload.state, "proposal_ready")
+        XCTAssertEqual(a2.payload.latex, "\\begin{tikzpicture}\\end{tikzpicture}")
+        XCTAssertEqual(sink.inner.count, 1, "a status probe is not a delivery")
+        // A later session of the same pairing shares the memory: still answered.
+        let later = NearbySession(keys: [key], macName: "M", sink: sink, destinations: nil, pairing: nil, memory: memory) { _ in }
+        var out2: [Data] = []
+        _ = later.handle(line: NearbyV1.line(id: "h2", type: "hello", NearbyV1.Hello(pairId: "p", companionName: "c", nonce: "n2",
+                                                                                     proof: Pairing.helloProof(psk: key.key, nonce: "n2"))).dropLast()) { out2.append($0) }
+        sink.ack = .init(captureId: "fixture-capture-1", state: .inserted, durable: true, latex: "x", newRevision: 9)
+        _ = later.handle(line: NearbyV1.line(id: "s3", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast()) { out2.append($0) }
+        let a3: RuntimeV1.Envelope<NearbyV1.CaptureStatusAck> = try decode(out2[1])
+        XCTAssertEqual(a3.payload.state, "inserted"); XCTAssertEqual(a3.payload.newRevision, 9)
+        // A sink without the method (older adapters) answers `unavailable`, not a guess.
+        let plain = RecordingSink()
+        let s3 = NearbySession(keys: [key], macName: "M", sink: plain, destinations: nil, pairing: nil, memory: memory) { _ in }
+        var out3: [Data] = []
+        _ = s3.handle(line: NearbyV1.line(id: "h3", type: "hello", NearbyV1.Hello(pairId: "p", companionName: "c", nonce: "n3",
+                                                                                  proof: Pairing.helloProof(psk: key.key, nonce: "n3"))).dropLast()) { out3.append($0) }
+        _ = s3.handle(line: NearbyV1.line(id: "s4", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast()) { out3.append($0) }
+        let e4: RuntimeV1.Envelope<NearbyV1.ErrorPayload> = try decode(out3[1])
+        XCTAssertEqual(e4.payload.code, "unavailable")
+
+        // Fresh memory (the entry was evicted, or pairs.json lost it) while the
+        // bridge journal still knows the capture: the gate refuses first; the
+        // companion re-delivers its saved envelope (idempotent on the Mac —
+        // acknowledged again, delivered to the sink once more only because this
+        // memory never saw it), and the probe is then answered from the journal.
+        let fresh = NearbySession(keys: [key], macName: "M", sink: sink, destinations: nil, pairing: nil, memory: NearbyAckMemory(maxPerPair: 8)) { _ in }
+        var out4: [Data] = []
+        _ = fresh.handle(line: NearbyV1.line(id: "h4", type: "hello", NearbyV1.Hello(pairId: "p", companionName: "c", nonce: "n4",
+                                                                                     proof: Pairing.helloProof(psk: key.key, nonce: "n4"))).dropLast()) { out4.append($0) }
+        _ = fresh.handle(line: NearbyV1.line(id: "s5", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast()) { out4.append($0) }
+        let e5: RuntimeV1.Envelope<NearbyV1.ErrorPayload> = try decode(out4[1])
+        XCTAssertEqual(e5.payload.code, "unknown_capture")
+        XCTAssertEqual(fresh.handle(line: try RuntimeV1.encodeLine(env).dropLast()) { out4.append($0) }, .keepOpen)
+        let again: RuntimeV1.Envelope<NearbyV1.CaptureReceived> = try decode(out4[2])
+        XCTAssertEqual(again.payload.captureId, "fixture-capture-1")
+        _ = fresh.handle(line: NearbyV1.line(id: "s6", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1")).dropLast()) { out4.append($0) }
+        let a6: RuntimeV1.Envelope<NearbyV1.CaptureStatusAck> = try decode(out4[3])
+        XCTAssertEqual(a6.payload.state, "inserted")
+    }
 }
 
 // MARK: - pairing and store
@@ -548,6 +631,49 @@ final class ShellModelNearbyTests: XCTestCase {
         let decoded = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: reply)
         XCTAssertEqual(decoded.id, env.id)
         XCTAssertFalse(decoded.payload.durable)
+    }
+
+    /// `capture_status` without a bridge: inbox captures are `received`,
+    /// anything else `unknown_capture`; the mapping from a bridge row plus the
+    /// live session state is pure and covers every phase the iPad shows.
+    func testCaptureStatusFromInboxAndBridgeRowMapping() async throws {
+        let model = ShellModel()
+        let env = try RuntimeV1.decodeCaptureSubmit(Data(contentsOf: NearbyListenerTests.fixtureURL))
+        guard case .failure(let unknown) = await model.nearbyCaptureStatus(captureId: "never-sent") else { return XCTFail() }
+        XCTAssertEqual(unknown.code, "unknown_capture")
+        _ = model.receiveNearbyCapture(env.payload)
+        guard case .success(let inbox) = await model.nearbyCaptureStatus(captureId: "fixture-capture-1") else { return XCTFail() }
+        XCTAssertEqual(inbox.state, "received"); XCTAssertFalse(inbox.durable); XCTAssertNil(inbox.latex)
+        let exp = expectation(description: "reply")
+        var reply = Data()
+        model.captureStatus(NearbyV1.envelope(id: "q1", type: "capture_status", NearbyV1.CaptureStatusRequest(captureId: "fixture-capture-1"))) { reply = $0; exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2)
+        let line = try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureStatusAck>.self, from: reply)
+        XCTAssertEqual(line.id, "q1"); XCTAssertEqual(line.type, "capture_status_ack"); XCTAssertEqual(line.payload.state, "received")
+
+        typealias Cap = BridgeSession.Capture
+        func row(proposal: String? = nil, applied: Int? = nil, rejected: Bool = false) throws -> TransferV1.CaptureStatus {
+            var j: [String: Any] = ["capture_id": "c", "rejected": rejected]
+            if let proposal { j["proposal"] = ["latex": proposal, "ambiguities": [], "required_dependencies": ["tikz"]] }
+            if let applied { j["applied"] = ["edit_id": "e1", "new_revision": applied] }
+            return try JSONDecoder().decode(TransferV1.CaptureStatus.self, from: JSONSerialization.data(withJSONObject: j))
+        }
+        let m = ShellModel.captureStatusAck
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .received, note: "r"), try row()).state, "journaled")
+        XCTAssertEqual(m("c", nil, try row()).state, "journaled")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .converting, note: "converting…"), try row()).state, "converting")
+        let ready = m("c", Cap(captureId: "c", destinationId: "d", state: .proposed, note: "p"), try row(proposal: "\\alpha"))
+        XCTAssertEqual(ready.state, "proposal_ready"); XCTAssertEqual(ready.latex, "\\alpha")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .prepared, note: "p"), try row(proposal: "\\alpha")).state, "proposal_ready")
+        XCTAssertEqual(m("c", nil, try row(proposal: "\\alpha")).state, "proposal_ready", "bridge row alone after a Mac restart")
+        let ins = m("c", Cap(captureId: "c", destinationId: "d", state: .confirmed, note: "ok"), try row(proposal: "\\alpha", applied: 12))
+        XCTAssertEqual(ins.state, "inserted"); XCTAssertEqual(ins.newRevision, 12); XCTAssertEqual(ins.latex, "\\alpha")
+        XCTAssertEqual(m("c", nil, try row(proposal: "\\alpha", rejected: true)).state, "rejected")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .failed, note: "provider_disabled"), try row()).note, "provider_disabled")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .failed, note: "x"), try row()).state, "failed")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .needsReselection, note: "x"), try row()).state, "failed")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .uncertain, note: "x"), nil).state, "uncertain")
+        XCTAssertEqual(m("c", Cap(captureId: "c", destinationId: "d", state: .rejected, note: "x"), nil).state, "rejected")
     }
 
     func testDestinationFollowsPinnedAnchor() {

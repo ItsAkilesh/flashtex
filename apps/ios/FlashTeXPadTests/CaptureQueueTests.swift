@@ -82,6 +82,7 @@ final class CaptureQueueTests: XCTestCase {
         // then retry: same capture_id.
         let pairId = try XCTUnwrap(model.pairedMac?.pairId)
         mac = try FakeMac.restart(mac, keys: [.init(identity: pairId, psk: mac.longTermPSK, bootstrap: false)])
+        XCTAssertNotEqual(mac.port, 0, "restarted FakeMac is listening on a fresh port")
         await model.reconnect(host: "127.0.0.1", port: String(mac.port))
         XCTAssertNil(model.linkError)
         await model.send(r.id)

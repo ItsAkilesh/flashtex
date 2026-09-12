@@ -43,7 +43,9 @@ final class CaptureFlowUITests: XCTestCase {
 
     private func launchPaired() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-flashtexpad-test-mac", "127.0.0.1:\(mac.port):\(NearbyCrypto.hex(salt)):\(NearbyCrypto.fingerprint(salt: salt)):\(code)"]
+        // `-flashtexpad-fresh`: wipe the Keychain pairing and the on-disk
+        // captures of a previous run so the list starts empty.
+        app.launchArguments = ["-flashtexpad-fresh", "-flashtexpad-test-mac", "127.0.0.1:\(mac.port):\(NearbyCrypto.hex(salt)):\(NearbyCrypto.fingerprint(salt: salt)):\(code)"]
         app.launch()
         XCTAssertTrue(text(app, startingWith: "Connected to Runner Mac").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(mac.hellos.count, 1)
@@ -60,7 +62,11 @@ final class CaptureFlowUITests: XCTestCase {
             let b = canvas.coordinate(withNormalizedOffset: CGVector(dx: pts[i + 1].0, dy: pts[i + 1].1))
             a.press(forDuration: 0.05, thenDragTo: b)
         }
-        XCTAssertTrue(text(app, startingWith: "3 strokes").waitForExistence(timeout: 5), app.debugDescription)
+        // The first simulator launch can take several seconds to publish the
+        // PencilKit stroke-count accessibility value; the drawing itself is
+        // already complete, so wait for the eventual UI state instead of
+        // making the acceptance test load-sensitive.
+        XCTAssertTrue(text(app, startingWith: "3 strokes").waitForExistence(timeout: 15), app.debugDescription)
     }
 
     func testDrawSendReceipt() throws {
@@ -91,6 +97,54 @@ final class CaptureFlowUITests: XCTestCase {
         XCTAssertGreaterThan(png.count, 1000, "a drawn triangle is more than a blank PNG")
         XCTAssertTrue(NearbyWire.isValidID(cap.captureId))
         XCTAssertTrue(text(app, startingWith: "capture_received capture_id=\(cap.captureId) durable=false").exists)
+
+        // Outcome (additive capture_status, polled every 2 s): inbox first, then
+        // the runner's Mac reports a proposal — its LaTeX shows read-only — then
+        // an insertion, after which the row is final.
+        XCTAssertTrue(text(app, startingWith: "Mac: on the Mac (inbox").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(mac.statusRequests.contains(cap.captureId))
+        mac.setStatus(cap.captureId, state: "proposal_ready", latex: "\\begin{tikzpicture}\\draw (0,0) -- (2,0) -- (1,1.5) -- cycle;\\end{tikzpicture}", note: "awaiting review")
+        XCTAssertTrue(text(app, startingWith: "Mac: proposal ready").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "tikzpicture")).firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        attach(app, "16-proposal-ready-latex")
+        mac.setStatus(cap.captureId, state: "inserted", latex: "\\begin{tikzpicture}\\end{tikzpicture}", newRevision: 4)
+        XCTAssertTrue(text(app, startingWith: "Mac: inserted on the Mac (revision 4)").waitForExistence(timeout: 10), app.debugDescription)
+        attach(app, "17-inserted")
+        XCTAssertEqual(mac.captures.count, 1, "status polling never re-delivers")
+    }
+
+    /// Persistence across a relaunch: the received capture, its receipt and
+    /// outcome come back from disk; the Keychain pairing is restored and the
+    /// app reconnects with the stored key (no code needed).
+    func testRelaunchRestoresCapturesAndPairing() throws {
+        var app = launchPaired()
+        el(app, "capture.sample").tap()
+        XCTAssertTrue(el(app, "capture.pickedImage").waitForExistence(timeout: 5))
+        el(app, "capture.prepare").tap()
+        XCTAssertTrue(el(app, "capture.send").waitForExistence(timeout: 5))
+        el(app, "capture.send").tap()
+        XCTAssertTrue(text(app, startingWith: "received — Mac inbox").waitForExistence(timeout: 15), app.debugDescription)
+        let cap = try XCTUnwrap(mac.captures.first)
+        mac.setStatus(cap.captureId, state: "inserted", latex: "\\alpha", newRevision: 7)
+        XCTAssertTrue(text(app, startingWith: "Mac: inserted on the Mac (revision 7)").waitForExistence(timeout: 10), app.debugDescription)
+        app.terminate()
+
+        // Relaunch without -flashtexpad-fresh and without the pairing argument.
+        app = XCUIApplication()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(el(app, "capture.row.\(cap.captureId)").waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(text(app, startingWith: "received — Mac inbox").exists)
+        XCTAssertTrue(text(app, startingWith: "Mac: inserted on the Mac (revision 7)").exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "alpha")).firstMatch.exists, "the returned LaTeX came back from disk")
+        XCTAssertTrue(text(app, startingWith: "Not connected — stored pairing: Runner Mac").exists, app.debugDescription)
+        attach(app, "18-relaunch-restored")
+        // The Mac link panel shows the Keychain-restored pairing (reconnecting
+        // with the stored key against a restarted Mac is proven in
+        // FinishTests.testPairingSurvivesInTheKeychainAndCapturesOnDisk).
+        app.staticTexts.matching(NSPredicate(format: "label == %@", "Mac link")).firstMatch.tap()
+        XCTAssertTrue(text(app, startingWith: "Stored in the Keychain (this iPad only): Runner Mac").waitForExistence(timeout: 5), app.debugDescription)
+        attach(app, "19-stored-pairing")
     }
 
     func testDiscardBeforeSendSendsNothing() throws {
