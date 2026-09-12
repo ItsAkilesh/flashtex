@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
-  "objective": "Validate actual runtime display candidates through existing immutable rendering/export contracts, without metadata repair or native activation",
+  "input_main_sha": "0aac2b7f97578c7c04cd24599e4b75bea9a140c2",
+  "objective": "Consume unchanged published PDF subsetter and verify existing actual fixtures preserve original glyphs, extraction and raster evidence with measured output sizes",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:11:13.169122+00:00"
+  "updated_utc": "2026-09-12T11:18:51.563812+00:00"
 }
