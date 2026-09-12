@@ -41,6 +41,9 @@ def main():
     bundle = load(os.path.join(rd, "bundle.json"), {})
     launch = load(os.path.join(rd, "launch-check.json"))
     cycle = load(os.path.join(rd, "capture-cycle.json"))
+    extras = load(os.path.join(rd, "extras.json"), {})
+    render_attach = load(os.path.join(rd, "render-attach.json"))
+    exact_export = load(os.path.join(rd, "exact-export.json"))
     steps = []
     try:
         steps = [json.loads(l) for l in open(os.path.join(rd, "steps.jsonl")) if l.strip()]
@@ -90,37 +93,60 @@ def main():
                 bad.append("%s=%s" % (key, (comp.get(key) or {}).get("git_sha")))
         if (comp.get("app") or {}).get("git_sha") != branch_short:
             bad.append("app=%s" % (comp.get("app") or {}).get("git_sha"))
-        gate(sec, "bundle components.json git SHAs: helpers == %s (main), app == %s (branch)" % (main_short, branch_short), not bad, "; ".join(bad) or "all match")
+        for key, name in (("render", "render"), ("pdf_exact", "pdf-exact")):
+            e = extras.get(name) or {}
+            if e.get("built_ok") and (comp.get(key) or {}).get("git_sha") != (e.get("sha") or "")[:7]:
+                bad.append("%s=%s (expected %s)" % (key, (comp.get(key) or {}).get("git_sha"), (e.get("sha") or "")[:7]))
+        gate(sec, "bundle components.json git SHAs: helpers == %s (main), app == %s (branch), render/pdf_exact == their branch SHAs" % (main_short, branch_short), not bad, "; ".join(bad) or "all match")
+    for name, label in (("render", "flashtex-render"), ("pdf-exact", "flashtex-pdf-exact")):
+        e = extras.get(name)
+        if e is not None:
+            gate(sec, "%s built from %s" % (label, e.get("ref")), e.get("built_ok") and e.get("scratch_head") == e.get("sha"), "%s @ %s%s" % (label, (e.get("sha") or "?")[:12], (" cargo rewrote: " + ", ".join(e.get("scratch_dirty_status", []))) if e.get("scratch_dirty_status") else ""))
+            if e.get("built_ok") and bbins.get(label):
+                gate(sec, "bundled %s carries the freshly built object code (signature-masked content sha256 equal)" % label,
+                     bbins[label].get("sha256_content") == e.get("sha256_content"), "%s vs %s" % ((e.get("sha256_content") or "?")[:12], (bbins[label].get("sha256_content") or "?")[:12]))
 
     # ---------------------------------------------------------- typing bench
     tb = th.get("typing_bench", {})
     tg = tb.get("gates", {})
-    producers = [("compiler", "typing-bench"), ("controller", "typing-bench-controller")]
+    # (producer, pass directory, file prefix typing-bench/run.sh gives that producer)
+    producers = [("compiler", "typing-bench", "compiler"), ("render", "typing-bench", "render"), ("controller", "typing-bench-controller", "compiler")]
     runs = {}  # producer -> cell -> summary (first attempt wins; a retry pass fills cells the first attempt lost)
     retried = {}  # producer -> [cells taken from the retry pass]
-    for prod, sub in producers:
+    load_before = {}  # pass directory -> {"load_average": "{ 1 5 15 }", ...}
+    for prod, sub, prefix in producers:
         runs[prod] = {}
         retried[prod] = []
-        for attempt, pattern in (("first", os.path.join(rd, sub, "typing-bench-*", "*.json")), ("retry", os.path.join(rd, sub, "retry", "typing-bench-*", "*.json"))):
+        load_before[sub] = load(os.path.join(rd, sub, "load-before.json"), {})
+        for attempt, pattern in (("first", os.path.join(rd, sub, "typing-bench-*", prefix + "-*.json")), ("retry", os.path.join(rd, sub, "retry", "typing-bench-*", prefix + "-*.json"))):
             for f in sorted(glob.glob(pattern)):
                 d = load(f)
                 if not d:
                     continue
-                base = os.path.basename(f)[:-5]  # compiler-demo-30ms (run.sh names the file by its producer flag)
-                parts = base.split("-", 1)
-                cell = parts[1] if len(parts) > 1 else base
+                cell = os.path.basename(f)[len(prefix) + 1:-5]  # compiler-demo-30ms -> demo-30ms
                 if cell in runs[prod]:
                     continue
                 d["_attempt"] = attempt
                 runs[prod][cell] = d
                 if attempt == "retry":
                     retried[prod].append(cell)
-    controller_present = bool(runs["controller"]) or os.path.isdir(os.path.join(rd, "typing-bench-controller"))
-    for prod, sub in producers:
+
+    def load1(sub):
+        try:
+            return float(load_before[sub].get("load_average", "").strip("{} ").split()[0])
+        except Exception:
+            return None
+    max_load = tg.get("latency_gate_max_load_average_1min")
+    present = {"compiler": True, "render": bool(runs["render"]), "controller": bool(runs["controller"]) or os.path.isdir(os.path.join(rd, "typing-bench-controller"))}
+    for prod, sub, prefix in producers:
         sec = "typing-bench/" + prod
         pg = tg.get("producers", {}).get(prod, {})
-        if prod == "controller" and not controller_present:
+        if not present[prod]:
             continue
+        l1 = load1(sub)
+        latency_gated = not (max_load is not None and l1 is not None and l1 > max_load)
+        if pg.get("per_seed_p50_ms_max") and not latency_gated:
+            gate(sec, "latency gates for this pass: NOT applied (1-minute load average %s > %s before the pass; p50 reported only)" % (l1, max_load), True, load_before[sub].get("uptime", ""))
         for cell in tg.get("required_cells", []):
             d = runs[prod].get(cell)
             if d is None:
@@ -140,8 +166,8 @@ def main():
                 gate(sec, "%s: producer reported by the app == %s" % (cell, expected_producer), d.get("producer") == expected_producer, d.get("producer"))
             seed = cell.rsplit("-", 1)[0]
             lim = pg.get("per_seed_p50_ms_max", {}).get(seed)
-            if lim is not None:
-                gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; load average at start %s" % (ms(k.get("p50_ms")), env.get("machine", {}).get("load_average_at_start")))
+            if lim is not None and latency_gated:
+                gate(sec, "%s: keystroke->paint p50 <= %s ms" % (cell, lim), k.get("p50_ms") is not None and k["p50_ms"] <= lim, "p50=%s ms; 1-minute load average before the pass %s" % (ms(k.get("p50_ms")), l1))
     targets = tb.get("targets", {})
 
     # ---------------------------------------------------------- launch check
@@ -178,6 +204,27 @@ def main():
         gate(sec, "pdf page objects == compiled pages and >= %d" % cg.get("compiled_pages_min", 1),
              pdf.get("page_objects") == comp.get("pages") and (comp.get("pages") or 0) >= cg.get("compiled_pages_min", 1), "pdf=%s compiled=%s" % (pdf.get("page_objects"), comp.get("pages")))
 
+    # ------------------------------------------- bundled render + exact export
+    ra = th.get("render_attach", {}).get("gates", {})
+    sec = "render-attach"
+    if extras.get("render", {}).get("built_ok"):
+        if render_attach is None:
+            gate(sec, "render attach check ran", False, "no render-attach.json")
+        elif render_attach.get("refused"):
+            gate(sec, "render attach check ran", False, render_attach.get("reason"))
+        else:
+            for c in render_attach.get("checks", []):
+                gate(sec, c["name"], c["ok"], c.get("detail", ""))
+            if ra.get("no_activate_env_required"):
+                gate(sec, "launched with FLASHTEX_NO_ACTIVATE=1", (render_attach.get("env") or {}).get("FLASHTEX_NO_ACTIVATE") == "1", json.dumps(render_attach.get("env")))
+    sec = "exact-export"
+    if extras.get("pdf-exact", {}).get("built_ok"):
+        if exact_export is None:
+            gate(sec, "exact export check ran", False, "no exact-export.json")
+        else:
+            for c in exact_export.get("checks", []):
+                gate(sec, c["name"], c["ok"], c.get("detail", ""))
+
     failed = [g for g in gates if not g[2]]
     verdict = "PASS" if not failed else "FAIL"
 
@@ -210,6 +257,7 @@ def main():
     L.append("| toolchain | %s; %s; %s; %s; python %s |" % (mach.get("xcode"), mach.get("swift"), mach.get("cargo"), mach.get("rustc"), mach.get("python3")))
     end = load(os.path.join(rd, "end.json"), {})
     L.append("| load average at start / end | %s / %s (1, 5, 15 min; other agents build and test on this machine concurrently) |" % (mach.get("load_average_at_start"), end.get("load_average_at_end", "—")))
+    L.append("| `uptime` at start / end | `%s` / `%s` |" % (mach.get("uptime", "—"), end.get("uptime_at_end", "—")))
     L.append("| run finished (UTC) | %s |" % end.get("utc_end", "—"))
     L.append("| other FlashTeX/FlashTeXMac processes at start | %s |" % (mach.get("other_flashtex_processes_at_start") or "none"))
     L.append("")
@@ -220,6 +268,8 @@ def main():
     for n, b in sorted(helpers.get("binaries", {}).items()):
         L.append("| `%s` (scratch build) | `%s` | `%s` | `%s` | `%s` | %s | %s |" % (n, b.get("crate"), b.get("git_sha"), b.get("sha256"), b.get("sha256_content"), b.get("bytes"), b.get("signature")))
     L.append("| `FlashTeXMac` (swift build -c release) | `apps/mac` | `%s` | `%s` | `%s` | %s | %s |" % (app.get("sha"), app.get("sha256"), app.get("sha256_content"), app.get("bytes"), app.get("signature")))
+    for name, e in sorted(extras.items()):
+        L.append("| `%s` (scratch build) | `%s` @ `%s` (%s) | `%s` | `%s` | `%s` | %s | %s |" % (os.path.basename(e.get("path") or name), e.get("ref"), e.get("crate"), (e.get("subject") or "")[:60].replace("|", "/"), e.get("sha"), e.get("sha256"), e.get("sha256_content"), e.get("bytes"), e.get("signature")))
     for n, b in sorted(bbins.items()):
         L.append("| `FlashTeX.app/Contents/MacOS/%s` | bundle | — | `%s` | `%s` | %s | %s |" % (n, b.get("sha256"), b.get("sha256_content"), b.get("bytes"), b.get("signature")))
     L.append("")
@@ -243,14 +293,21 @@ def main():
 
     L.append("## Typing bench: keystroke -> paint")
     L.append("")
-    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer `compiler` = the app's direct worker route with the scratch-built `flashtex-compiler`; producer `controller` = the durable helper route (`FLASHTEX_PREVIEW_CONTROLLER`, scratch-built `flashtex-preview-controller`, which owns the ledger and launches the same compiler). Definitions and limitations: `reports/%s/typing-bench*/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
+    L.append("Seeds `fixture` / `demo` / `body60k`, 200 typed characters each, at 30 ms (fast typist) and 0 ms (one keystroke per run-loop turn). Producer `flashtex-compiler` = the app's direct worker route with the scratch-built compiler from main; `flashtex-render` = the same direct route with the render-pipeline producer (Latin Modern metrics) from its branch; `flashtex-preview-controller` = the durable helper route (`FLASHTEX_PREVIEW_CONTROLLER`, built from main, owns the ledger and launches the main compiler). Definitions and limitations: `reports/%s/typing-bench*/typing-bench.md` (written by `tools/typing-bench/run.sh`)." % os.path.basename(rd))
+    L.append("")
+    for sub in sorted(set(x[1] for x in producers)):
+        lb = load_before.get(sub) or {}
+        if lb:
+            L.append("- `%s` pass: producers `%s`; `uptime` right before: `%s`%s" % (sub, lb.get("producers"), lb.get("uptime", "").strip(), (" — latency gates NOT applied (1-minute load %s > %s)" % (load1(sub), max_load)) if (max_load is not None and load1(sub) is not None and load1(sub) > max_load) else ""))
     L.append("")
     L.append("| producer | cell | bytes | typed | paints | coalesced | unpainted | k->p p50 | p95 | p99 | max | compile p50 | compile p95 | render p50 | render p95 | gate p50 <= | project target p50 <= %s / p95 <= %s |" % (targets.get("project_typing_to_visible_p50_ms"), targets.get("project_typing_to_visible_p95_ms")))
     L.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
-    for prod, sub in producers:
-        if prod == "controller" and not controller_present:
+    for prod, sub, prefix in producers:
+        if not present[prod]:
             continue
         pg = tg.get("producers", {}).get(prod, {})
+        l1 = load1(sub)
+        gated_pass = not (max_load is not None and l1 is not None and l1 > max_load)
         for cell in tg.get("required_cells", []):
             d = runs[prod].get(cell)
             if not d:
@@ -264,9 +321,9 @@ def main():
             L.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
                 d.get("producer", prod), cell + (" (retry)" if d.get("_attempt") == "retry" else ""), d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
                 ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")), ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")),
-                lim if lim is not None else "— (not gated)", "met" if tmet else "not met"))
+                (lim if gated_pass else "%s (not applied: load %s)" % (lim, l1)) if lim is not None else "— (not gated)", "met" if tmet else "not met"))
     L.append("")
-    for prod, sub in producers:
+    for prod, sub, prefix in producers:
         if runs[prod]:
             L.append("Elapsed per cell, %s (ms): %s." % (prod, ", ".join("%s=%s" % (cell, ms(runs[prod][cell].get("elapsed_ms"))) for cell in tg.get("required_cells", []) if cell in runs[prod])))
         if retried[prod]:
@@ -324,6 +381,40 @@ def main():
         L.append("Not run.")
     L.append("")
 
+    L.append("## Packaged render pipeline: File > Attach Render Pipeline, headless")
+    L.append("")
+    if render_attach and not render_attach.get("refused"):
+        L.append("`lib/app_features.py render-attach` executed `FlashTeX.app/Contents/MacOS/FlashTeX` directly with `FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_COMPILER=<bundled flashtex-render>` (what the menu item resolves to) and read `FLASHTEX_LOG`; pid %s, app exit %s after SIGTERM, %s s." % (render_attach.get("pid"), render_attach.get("app_exit"), render_attach.get("elapsed_s")))
+        L.append("")
+        L.append("| check | result | detail |")
+        L.append("|---|---|---|")
+        for c in render_attach.get("checks", []):
+            L.append("| %s | %s | %s |" % (c["name"].replace("|", "\\|"), "PASS" if c["ok"] else "FAIL", str(c.get("detail", "")).replace("|", "\\|")[:200]))
+        L.append("")
+        L.append("Log excerpt: `%s`" % " / ".join(render_attach.get("log_excerpt", []))[:900].replace("`", "'"))
+    elif render_attach:
+        L.append("Refused: %s" % render_attach.get("reason"))
+    else:
+        L.append("Not run (no bundled flashtex-render).")
+    L.append("")
+    L.append("## Packaged exact export: flashtex-pdf-exact from-v2 on the checked-in v2 fixture")
+    L.append("")
+    if exact_export:
+        L.append("Command: `%s`; exit %s in %s ms. Fixture `%s` (sha256 `%s`), fonts from `%s`." % (" ".join(os.path.basename(x) if i == 0 else x for i, x in enumerate(exact_export.get("argv", []))), exact_export.get("exit"), ms(exact_export.get("ms")), os.path.basename((exact_export.get("fixture") or {}).get("path") or ""), (exact_export.get("fixture") or {}).get("sha256"), exact_export.get("font_dir")))
+        L.append("")
+        L.append("| check | result | detail |")
+        L.append("|---|---|---|")
+        for c in exact_export.get("checks", []):
+            L.append("| %s | %s | %s |" % (c["name"].replace("|", "\\|"), "PASS" if c["ok"] else "FAIL", str(c.get("detail", "")).replace("|", "\\|")[:200]))
+        L.append("")
+        pk = exact_export.get("pdfkit") or {}
+        pdf = exact_export.get("pdf") or {}
+        L.append("- PDF: %s bytes, sha256 `%s`; PDFKit: %s page(s), page size %s pt; extracted text: `%s`." % (pdf.get("bytes"), pdf.get("sha256"), pk.get("pages"), pk.get("page_size_pt"), (exact_export.get("pdfkit_text") or "").replace("`", "'")[:300]))
+        if exact_export.get("stderr_tail"):
+            L.append("- Tool stderr: `%s`" % exact_export["stderr_tail"].strip().replace("\n", " / ").replace("`", "'")[:400])
+    else:
+        L.append("Not run (no bundled flashtex-pdf-exact).")
+    L.append("")
     L.append("## Steps and exact commands")
     L.append("")
     L.append("| step | exit | seconds | log |")

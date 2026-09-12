@@ -22,10 +22,19 @@ reads them from git and executes the shipped scripts.
 3. **Typing bench.** The unmodified `tools/typing-bench/run.sh` from that branch
    runs `fixture`, `demo`, `body60k` at 30 ms and 0 ms with the step-1 compiler,
    recording keystroke -> paint p50/p95/p99/max, paints, coalesced and unpainted
-   keystrokes, compile and render-pass times — once on the direct worker route
-   (producer `compiler`) and once on the durable helper route (producer
+   keystrokes, compile and render-pass times — on the direct worker route
+   (producer `compiler`), with `flashtex-render` as a second direct producer
+   (the bench's own `render` producer, `FLASHTEX_RENDER` pointing at the
+   scratch build below), and on the durable helper route (producer
    `controller`: `FLASHTEX_PREVIEW_CONTROLLER=<flashtex-preview-controller>`
-   exported, private `FLASHTEX_CONTROLLER_LEDGER_ROOT`).
+   exported, private `FLASHTEX_CONTROLLER_LEDGER_ROOT`). `uptime` is sampled
+   right before every pass; when the 1-minute load average is above 10 the
+   latency gates for that pass are reported only, never applied.
+3b. **Optional bundled routes.** `flashtex-render` from
+   `origin/agent/mac-render-pipeline/unified` (`--render-ref`) and
+   `flashtex-pdf-exact` from `origin/agent/mac-pdf/v2-adapter`
+   (`--pdf-exact-ref`), each built in its own pinned shared clone, are handed
+   to `make-app.sh --render … --pdf-exact …`. `--skip-extras` leaves them out.
 4. **Package + launch check.** `apps/mac/scripts/make-app.sh` with the four
    step-1 helpers, then the unmodified `apps/mac/scripts/launch-check.sh`
    (compiler and bridge children attached, each killed in turn, app survives,
@@ -48,6 +57,16 @@ reads them from git and executes the shipped scripts.
    `apply`, identical retry, `status`, SIGKILL + restart), then `compile` of the
    post-insertion document with `flashtex-compiler` and export via
    `flashtex-pdf --out … --verify`.
+5b. **Packaged render pipeline + exact export.** `lib/app_features.py
+   render-attach` executes the bundle's `FlashTeX` directly with
+   `FLASHTEX_AUTOATTACH=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_COMPILER=<bundled
+   flashtex-render>` (what File > Attach Render Pipeline resolves to) and asserts
+   `launched … (preview face: latin-modern)`, `status: attached:` and
+   `revision 1: ok` in `FLASHTEX_LOG` plus a `flashtex-render` child under the
+   app pid; `exact-export` runs the bundled `flashtex-pdf-exact from-v2` on
+   `apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json` with
+   `--font-dir apps/mac/Fonts` and reads the PDF back through PDFKit
+   (`lib/pdfkit_probe.swift`, compiled on the fly): page count and text.
 6. **Report.** `lib/report.py` writes `reports/<UTC>.md` with every number,
    binary hash, source SHA, machine/OS/Xcode/Swift/cargo version, the driving
    agent session and the exact commands (`reports/<UTC>/commands.log`), and
@@ -78,7 +97,12 @@ Gates fail the run; targets are reported only.
 |---|---|
 | build | helpers built from main (pinned clone, clean); app built; bundle has `FlashTeX`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-bridge`, `flashtex-edit-ledger`; bundled helpers and app carry the freshly built object code (signature-masked Mach-O content sha256 equal; make-app.sh re-signs the bundle ad hoc); `components.json` SHAs equal the main/branch SHAs |
 | typing-bench/compiler | all six cells present; per cell: `unpainted == 0`, typing budget not exhausted, `typed == keystrokes == script_keystrokes` (200), `paints >= 1`, producer reported as `flashtex-compiler`; keystroke -> paint p50 <= 40 ms (`fixture`), <= 60 ms (`demo`), <= 400 ms (`body60k`) |
+| typing-bench/render | same correctness gates, producer reported as `flashtex-render`; latency reported (not gated) |
 | typing-bench/controller | same correctness gates, producer reported as `flashtex-preview-controller`; latency is reported (not gated) against the project target |
+| typing-bench (all) | p50 gates are applied only when the 1-minute load average before the pass is <= 10; above that the gate row says "NOT applied" and the numbers are reported only |
+| render-attach | bundled `flashtex-render` present; `preview face: latin-modern`, `status: attached:`, `revision 1: ok` in `FLASHTEX_LOG`; `flashtex-render` child under the app pid; app alive after the wait; launched with `FLASHTEX_NO_ACTIVATE=1` |
+| exact-export | `flashtex-pdf-exact from-v2` exit 0; PDF written; PDFKit page count == fixture pages; PDFKit text contains "Office fixtures", "office", "bold", "caf" |
+| build (extras) | `flashtex-render` / `flashtex-pdf-exact` built from their refs (pinned clone HEAD == SHA); bundled copies carry the built object code; `components.json` `render` / `pdf_exact` SHAs == their branch SHAs |
 | typing-bench target (not a gate) | project target typing-to-visible p50 and p95 <= 200 ms, reported per cell as met / not met |
 | launch-check | zero `FAIL:` lines; compiler attached, `attached:` and `revision 1: ok` logged, app survives compiler kill, `worker exited (` logged; bridge attached, `bridge: attached:` logged, app survives bridge kill, `bridge exited (` logged; clean quit; launched with `FLASHTEX_NO_ACTIVATE=1` |
 | launch-check informational | on-screen window confirmed (CGWindowList); child re-attached after kill (the shell has no auto-relaunch) |
@@ -88,7 +112,9 @@ Gates fail the run; targets are reported only.
 
 - `run.sh` — orchestrator; `lib/report.py` — report + gates; `lib/launch_summary.py`
   — parses launch-check evidence; `lib/capture_cycle.py` — packaged capture
-  cycle; `lib/hashes.py` — as-shipped and signature-removed sha256;
+  cycle; `lib/app_features.py` — headless render-pipeline attach and exact
+  export checks; `lib/pdfkit_probe.swift` — PDFKit page count/text probe;
+  `lib/hashes.py` — as-shipped, signature-removed and signature-masked sha256;
   `lib/open-shim/open` — adds `--env` values to `open`.
 - `fixtures/capture-proposal.json` — offline `capture_proposal` fixture.
 - `reports/<UTC>.md` + `reports/<UTC>/` — committed evidence: `env.json`,
@@ -117,5 +143,8 @@ Gates fail the run; targets are reported only.
   too but is not stable across re-signs. `components.json` SHAs come from the
   pinned clones and are gated against the main/branch SHAs.
 - Latency numbers depend on machine load: other agents build and test on this
-  Mac concurrently. The load average at start and end is recorded; a latency
-  gate failure under high load is reported as such, never hidden.
+  Mac concurrently. `uptime` is recorded at start, before every bench pass and
+  at the end; latency gates are not applied when the 1-minute load average
+  before a pass exceeds 10 (the report says so), and are never hidden otherwise.
+- The render-attach check proves the menu item's resolution path and the
+  producer face switch through the app's own log, not the menu click itself.
