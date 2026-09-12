@@ -72,6 +72,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             NSApp.windows.first?.orderBack(nil)
         }
+        // Automation: place the main window at an explicit screen frame
+        // ("x,y,w,h" in screen points) so evidence captures by window id are
+        // not cropped by a restored off-screen frame.
+        if let spec = ProcessInfo.processInfo.environment["FLASHTEX_WINDOW_FRAME"] {
+            let p = spec.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+            if p.count == 4, let window = NSApp.windows.first {
+                window.setFrame(NSRect(x: p[0], y: p[1], width: p[2], height: p[3]), display: true)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
