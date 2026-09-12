@@ -21,7 +21,7 @@ pub mod root;
 
 use std::fmt;
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use image::{GenericImageView, ImageFormat, ImageReader, Limits};
 use sha2::{Digest, Sha256};
@@ -223,20 +223,17 @@ impl AssetLoader {
     /// [`AssetError::UnsupportedFormat`] for oversized, malformed, or
     /// non-PNG/JPEG content — this call never panics on untrusted input.
     pub fn load(&self, relative: impl AsRef<Path>) -> Result<ImageAsset, AssetError> {
-        let resolved = self.root.resolve(relative)?;
-        self.load_resolved(&resolved)
-    }
-
-    fn load_resolved(&self, resolved: &PathBuf) -> Result<ImageAsset, AssetError> {
-        let metadata = std::fs::metadata(resolved).map_err(AssetError::Io)?;
-        let len = metadata.len();
-        if len > self.max_file_bytes {
-            return Err(AssetError::TooLarge {
-                limit: self.max_file_bytes as usize,
-                actual: len,
-            });
-        }
-        let bytes = std::fs::read(resolved).map_err(AssetError::Io)?;
+        let relative = relative.as_ref();
+        let bytes = self
+            .root
+            .read_bounded(relative, self.max_file_bytes)
+            .map_err(|e| match e {
+                RootError::TooLarge { limit, size } => AssetError::TooLarge {
+                    limit: limit as usize,
+                    actual: size,
+                },
+                other => AssetError::Root(other),
+            })?;
         if bytes.is_empty() {
             return Err(AssetError::Empty);
         }
@@ -355,5 +352,80 @@ mod tests {
         let id = AssetId::of(&one_pixel_png());
         assert_eq!(id.to_hex().len(), 64);
         assert_eq!(format!("{id}"), id.to_hex());
+    }
+
+    fn png_of(width: u32, height: u32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        image::DynamicImage::new_rgb8(width, height)
+            .write_to(&mut Cursor::new(&mut buf), ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    /// Rev-2 requirement: replacing the same logical asset (same relative
+    /// path) with different bytes must yield a different content identity —
+    /// identity tracks bytes, not path, and a loader must never keep serving
+    /// a stale identity for a path whose file changed underneath it.
+    #[test]
+    fn replacing_the_file_at_the_same_path_changes_the_content_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("logical.png");
+
+        let first = png_of(4, 4);
+        std::fs::write(&path, &first).unwrap();
+        let root = AssetRoot::new(dir.path()).unwrap();
+        let loader = AssetLoader::new(root);
+        let before = loader.load("logical.png").unwrap();
+
+        // Replace the same logical asset with genuinely different bytes (a
+        // different image, not a byte-identical re-save).
+        let second = png_of(9, 2);
+        assert_ne!(first, second, "test fixture must actually differ");
+        std::fs::write(&path, &second).unwrap();
+        let after = loader.load("logical.png").unwrap();
+
+        assert_ne!(
+            before.id(),
+            after.id(),
+            "replacing the file's bytes must change its content identity"
+        );
+        assert_eq!(after.bytes(), second.as_slice());
+        assert_eq!(
+            after.dimensions(),
+            Dimensions {
+                width: 9,
+                height: 2
+            }
+        );
+    }
+
+    /// Rev-2 requirement: an image whose decoded dimensions exceed the
+    /// configured bound is rejected with a typed error, not decoded. The
+    /// fixture keeps total pixel count tiny (one axis over the limit, the
+    /// other axis 1px) so the test stays fast; the `image` crate's `Limits`
+    /// check rejects it from the header before any large allocation happens.
+    #[test]
+    fn decode_bounded_rejects_dimensions_over_the_configured_axis_limit() {
+        let over = AssetLoader::DEFAULT_MAX_PIXELS_PER_AXIS + 1;
+        let buf = png_of(over, 1);
+        let err = decode_bounded(&buf).unwrap_err();
+        assert!(
+            matches!(err, AssetError::Decode(_)),
+            "expected a typed decode-limit rejection, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn asset_loader_rejects_oversized_images_without_decoding_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let over = AssetLoader::DEFAULT_MAX_PIXELS_PER_AXIS + 1;
+        std::fs::write(dir.path().join("huge.png"), png_of(over, 1)).unwrap();
+        let root = AssetRoot::new(dir.path()).unwrap();
+        let loader = AssetLoader::new(root);
+        let err = loader.load("huge.png").unwrap_err();
+        assert!(
+            matches!(err, AssetError::Decode(_)),
+            "expected a typed decode-limit rejection, got {err:?}"
+        );
     }
 }

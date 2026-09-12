@@ -9,6 +9,7 @@ description = "Rooted, bounded PNG/JPEG document asset loader with content-deriv
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 sha2 = "0.10"
+flashtex-project-files = { path = "../project-files" }
 
 [dev-dependencies]
 tempfile = "3"

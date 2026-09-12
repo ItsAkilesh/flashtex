@@ -114,10 +114,15 @@ dependencies = [
 name = "flashtex-image-assets"
 version = "0.1.0"
 dependencies = [
+ "flashtex-project-files",
  "image",
  "sha2",
  "tempfile",
 ]
+
+[[package]]
+name = "flashtex-project-files"
+version = "0.1.0"
 
 [[package]]
 name = "flate2"
