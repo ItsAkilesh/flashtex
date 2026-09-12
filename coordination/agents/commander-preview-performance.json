@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "397bff7",
+  "code_revision": "2f2605d",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
-  "next_action": "Commander integrate then Mac/root measure real save/ACK/nativepath underfullhistory withunchangedsource. Cache adds boundedmemory; fullstatefilewrite remains.",
+  "next_action": "Inspect bounded reader-thread JSON decoding to keep owner available for durable edits; preserve validation/provenance and explicit parsed-memoryqueue bounds. Commander routeexistingMacremeasure.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "Bounded immutablehistory JSONcache preservesexactlegacybytes.18/18alternatingserializerpairs equal/faster;20entrymedian41vs94ms componentonly.67ledger tests/lint and53serialhelpergates pass; defaultformat/historyunchanged,cachecoldonload.",
+  "summary": "Actualcachedhelper521792Boff/on pair40ACKs/twoexactcleanfinals/reopens. Final867/754ms,lastACK356/263ms,requesthandling393/439ms. Both1current0historical; stillabove200ms/no nativeclaim. No activejobs.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:22:28Z",
+  "updated_utc": "2026-09-12T10:25:33Z",
   "usage": {
     "status": "unknown"
   }
