@@ -1,0 +1,42 @@
+{
+  "agent_id": "commander-edit-ledger",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-026": {
+      "acknowledged_utc": "2026-09-12T05:58:59Z",
+      "adaptation": "Accepted exact published branch assignment; durable source, recovery, retention and background service implemented only in crates/edit-ledger. Native integration remains with Mac owner.",
+      "main_sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-contract-review/edit-ledger",
+  "capabilities": [
+    "rust",
+    "linux-tests"
+  ],
+  "code_revision": "afb15839f8080f9e86efd6a187e46dfe014ce559",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "be1ef439775daaaea42618e16b94e32d621e000f",
+  "next_action": "Integrate exact branch; Mac owner adopts durable source transaction and background native adapter, then performs native crash and UI tests.",
+  "reviewed_peers": {
+    "origin/agent/commander/capture-bridge": {
+      "adaptation": "Matched PreparedEdit fields; all service/recovery/retention fields are ledger-local and do not alter bridge wire messages.",
+      "reviewed_utc": "2026-09-12T05:59:00Z",
+      "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-026 rev 1 complete at afb15839f8080f9e86efd6a187e46dfe014ce559: durable source and receipt IDs; guarded recovery exchange; acknowledged payload compaction preserving permanent IDs; bounded background service with session/sequence/revision replies. 35 Linux tests, strict clippy and release build pass.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T05:59:00Z",
+  "usage": {
+    "evidence": "Offline local Rust tests: 32 library plus 3 subprocess including killed helper; cargo clippy --all-targets -- -D warnings; release build. No provider calls or Xcode claims.",
+    "status": "unknown"
+  }
+}

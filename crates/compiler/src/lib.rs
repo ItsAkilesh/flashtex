@@ -10,11 +10,19 @@
 //! revision, per `docs/contracts/runtime-v1.md`.
 
 pub mod diagnostics;
+pub mod incremental;
 pub mod json;
 pub mod layout;
 pub mod lexer;
+pub mod math;
+pub mod metrics;
 pub mod parser;
+pub mod pdf;
 pub mod protocol;
+
+/// Stable identity of one document in a compile request.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DocumentId(pub usize);
 
 /// A zero-based, end-exclusive UTF-8 byte range into a source document.
 ///
@@ -22,14 +30,23 @@ pub mod protocol;
 /// document they refer to, so `&text[start..end]` never panics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
+    pub document: DocumentId,
     pub start: usize,
     pub end: usize,
 }
 
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
+        Self::in_document(DocumentId::default(), start, end)
+    }
+
+    pub fn in_document(document: DocumentId, start: usize, end: usize) -> Self {
         debug_assert!(start <= end, "span start must not exceed end");
-        Span { start, end }
+        Span {
+            document,
+            start,
+            end,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -38,6 +55,14 @@ impl Span {
 
     /// Smallest span covering both inputs.
     pub fn merge(self, other: Span) -> Span {
-        Span::new(self.start.min(other.start), self.end.max(other.end))
+        debug_assert_eq!(
+            self.document, other.document,
+            "cannot merge spans from different documents"
+        );
+        Span::in_document(
+            self.document,
+            self.start.min(other.start),
+            self.end.max(other.end),
+        )
     }
 }

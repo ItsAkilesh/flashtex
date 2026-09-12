@@ -360,3 +360,140 @@ fn exact_anchor_rehydration_allows_review_after_restart() {
     assert_eq!(edit.project_id, "project");
     assert_eq!(edit.start_byte, 5);
 }
+
+fn open_preamble(b: &mut Bridge, revision: u64, value: &str) {
+    b.open_document(Document {
+        project_id: "project".into(),
+        path: "root.tex".into(),
+        revision,
+        text: format!("\\newcommand{{\\notation}}{{{value}}}\\input{{main}}"),
+    })
+    .unwrap();
+}
+#[test]
+fn dependency_change_requires_explicit_reconversion_and_new_review() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    open_preamble(&mut b, 1, "old");
+    b.receive(capture()).unwrap();
+    let f = fake();
+    let first = b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(first.context.unwrap().dependencies.len(), 2);
+    b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(f.calls.get(), 1);
+    open_preamble(&mut b, 2, "new");
+    let error = b.prepare_insert("capture-1", 1, true).unwrap_err();
+    assert_eq!(error.code, "proposal_context_stale");
+    assert!(error.message.contains("convert"));
+    assert!(b.store.require("capture-1").unwrap().prepared.is_none());
+    let refreshed = b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(f.calls.get(), 2);
+    assert!(refreshed
+        .context
+        .unwrap()
+        .definitions
+        .iter()
+        .any(|s| s.contains("{new}")));
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, false).unwrap_err().code,
+        "review_required"
+    );
+    b.prepare_insert("capture-1", 1, true).unwrap();
+}
+#[test]
+fn unrelated_document_does_not_invalidate_review() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    b.receive(capture()).unwrap();
+    let f = fake();
+    b.convert("capture-1", vec![], &f).unwrap();
+    b.open_document(Document {
+        project_id: "project".into(),
+        path: "unrelated.tex".into(),
+        revision: 1,
+        text: "\\def\\secret{unrelated}".into(),
+    })
+    .unwrap();
+    b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(f.calls.get(), 1);
+    b.prepare_insert("capture-1", 1, true).unwrap();
+}
+#[test]
+fn restart_checks_dependency_hash_even_if_revision_is_reused() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut b = setup(dir.path());
+        open_preamble(&mut b, 1, "old");
+        b.receive(capture()).unwrap();
+        b.convert("capture-1", vec![], &fake()).unwrap();
+    }
+    let mut b = setup(dir.path());
+    open_preamble(&mut b, 1, "different content same revision");
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "proposal_context_stale"
+    );
+    b.convert("capture-1", vec![], &fake()).unwrap();
+    b.prepare_insert("capture-1", 1, true).unwrap();
+}
+#[test]
+fn restart_missing_dependency_is_stale_and_issued_edit_is_not_reconverted() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut b = setup(dir.path());
+        open_preamble(&mut b, 1, "old");
+        b.receive(capture()).unwrap();
+        b.convert("capture-1", vec![], &fake()).unwrap();
+        b.prepare_insert("capture-1", 1, true).unwrap();
+    }
+    let mut b = setup(dir.path());
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "proposal_context_stale"
+    );
+    let f = fake();
+    let saved = b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(f.calls.get(), 0);
+    assert!(saved.prepared.is_some());
+    open_preamble(&mut b, 1, "old");
+    b.prepare_insert("capture-1", 1, true).unwrap();
+}
+#[test]
+fn legacy_context_without_fingerprints_requires_reconversion() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    b.receive(capture()).unwrap();
+    let mut record = b.convert("capture-1", vec![], &fake()).unwrap();
+    record.context.as_mut().unwrap().dependencies.clear();
+    b.store.save(&record).unwrap();
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "proposal_context_stale"
+    );
+    let f = fake();
+    b.convert("capture-1", vec![], &f).unwrap();
+    assert_eq!(f.calls.get(), 1);
+    b.prepare_insert("capture-1", 1, true).unwrap();
+}
+#[test]
+fn failed_refresh_keeps_stale_proposal_unpreparable() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut b = setup(dir.path());
+    open_preamble(&mut b, 1, "old");
+    b.receive(capture()).unwrap();
+    let old = b.convert("capture-1", vec![], &fake()).unwrap();
+    open_preamble(&mut b, 2, "new");
+    let failing = Fake {
+        calls: Cell::new(0),
+        fail: true,
+    };
+    assert_eq!(
+        b.convert("capture-1", vec![], &failing).unwrap_err().code,
+        "provider_timeout"
+    );
+    assert_eq!(b.store.require("capture-1").unwrap().context, old.context);
+    assert_eq!(
+        b.prepare_insert("capture-1", 1, true).unwrap_err().code,
+        "proposal_context_stale"
+    );
+}

@@ -1,0 +1,42 @@
+{
+  "agent_id": "mac-pdf",
+  "allocation_id": "claude-mac20x-pdf",
+  "assignment_acknowledgements": {
+    "FT-009": {
+      "acknowledged_utc": "2026-09-12T04:31:13Z",
+      "adaptation": "Accepted FT-009 rev 1 as child of mac-claude-a; implemented crates/pdf zero-dep PDF 1.4 writer from runtime-v1 compile_result; base-14 Times/WinAnsi placeholder, non-WinAnsi chars become ? with warnings; parent re-verified cargo test 20/20, CLI --verify, sips opens output.",
+      "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-pdf/pdf-output",
+  "capabilities": [
+    "rust",
+    "pdf"
+  ],
+  "code_revision": "436b2ec096ccd1b3c045b9dd4ece25c24cd7c5f6",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Await Commander integration; optional: worker sets pdf_path via render_envelope",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "No contract change needed; pdf_path wiring is a follow-up",
+      "reviewed_utc": "2026-09-12T04:31:13Z",
+      "sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "crates/pdf: hand-written PDF 1.4 from runtime-v1 pages; 20/20 tests; xref self-check; sips opens fixture PDF 612x792; white page independent of dark preview",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T04:31:13Z",
+  "usage": {
+    "evidence": "Shared Claude Max quota with parent mac-claude-a; no purchases",
+    "status": "unknown"
+  }
+}

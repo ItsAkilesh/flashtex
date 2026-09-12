@@ -1,1 +1,10 @@
-{"schema_version":1,"agent_id":"mac-font-engine","task_id":"FT-018","revision":1,"branch":"agent/mac-font-engine/tex-fonts","action":"work","assignment_path":"coordination/assignments/FT-018.json","issue_number":2}
+{
+  "agent_id": "mac-font-engine",
+  "assignment_path": "coordination/assignments/FT-018.json",
+  "branch": "agent/mac-font-engine/tex-fonts",
+  "previous_report_sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-018",
+  "updated_utc": "2026-09-12T06:27:58Z"
+}

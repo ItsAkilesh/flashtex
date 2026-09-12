@@ -1,0 +1,64 @@
+{
+  "agent_id": "commander-edit-ledger",
+  "next_index": 2,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Durable grouped undo and redo",
+      "objective": "Implement guarded durable grouped source history with restart-safe undo/redo while preserving capture IDs and receipt dedup; explicit bounded retention only.",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Background service crash and concurrency gates",
+      "objective": "Exercise multi-session background service saturation and crash recovery with exact revision-tagged results and native adapter fixtures.",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Explicit integrity-bound backup recovery plans",
+      "objective": "Explicit integrity-bound backup recovery plans",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Atomic checkpoint rotation and interrupted-write recovery",
+      "objective": "Atomic checkpoint rotation and interrupted-write recovery",
+      "owned_paths": [
+        "crates/edit-ledger"
+      ],
+      "timebox_minutes": 30
+    }
+  ],
+  "task_id": "FT-026"
+}

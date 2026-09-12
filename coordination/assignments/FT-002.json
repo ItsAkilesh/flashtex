@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Compare incremental results with clean builds after edits and macro changes",
-    "Measure cold/warm/edit latency on documented fixtures; report actual sub-200ms result or gap",
-    "Malformed-input examples retain partial output and explicit source diagnostics"
+    "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
+    "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
+    "Every remaining unsupported corpus feature is explicit with a reproducible case"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage3",
+  "allocation_id": "openai-kabir-plus-ft002-stage5",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
-  "objective": "Add dependency-aware invalidation and cached reusable compiler work to the original Rust implementation. Preserve state semantics; recover malformed input with marked diagnostics.",
+  "input_main_sha": "ac170976d00cb5e8549c17542522608ad35c98ac",
+  "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 3,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:49:19Z"
+  "updated_utc": "2026-09-12T06:22:39Z"
 }
