@@ -1,0 +1,42 @@
+{
+  "agent_id": "mac-paragraph-layout-2",
+  "allocation_id": "claude-mac20x-paragraph-layout-handoff",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-claude-a/paragraph-layout-handoff",
+  "capabilities": [
+    "rust",
+    "tex-linebreaking",
+    "knuth-plass",
+    "oracle-comparison"
+  ],
+  "code_revision": "pending-first-commit",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+  "next_action": "Parent reviews docs/handoffs/paragraph-layout-forced-break/; crate owner applies tests.patch + fix.patch on main with git am; render-pipeline owner re-pins the vendored copy (patches apply with patch -p3)",
+  "reviewed_peers": {
+    "origin/agent/claude/compiler-foundation": {
+      "adaptation": "ee423c3 reverted the compiler's unauthorised adoption whose fuzz tests panicked in the same area; the migration note in the handoff README addresses that adoption's public-API surface and the behavioural change (extra empty line for a trailing \\\\).",
+      "reviewed_utc": "2026-09-12T16:40:38Z",
+      "sha": "ee423c332e54c23da3da306508ae72f4d4dd725c"
+    },
+    "origin/agent/mac-paragraph-layout/linebreak": {
+      "adaptation": "Lane tip 0a1ba87d is ahead of main's crate (+4751 lines: Liang hyphenation, document/style/runtime-v1, incremental, page-metric goldens, two-page oracle); its linebreak.rs is byte-identical to render-pipeline's vendored copy (PIN 70209e2c). Both patches apply to it with offsets only and its 46-test suite passes with them.",
+      "reviewed_utc": "2026-09-12T16:40:38Z",
+      "sha": "0a1ba87d"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Handoff-only lane (no crate commits per Commander correction 5647125681): docs/handoffs/paragraph-layout-forced-break/{tests.patch, fix.patch, README.md, evidence.json} against main's crates/paragraph-layout (tree d20d55ce). Root cause: line_start skips every discardable after a forced break and runs past the final forced penalty (start = len, brk = len-1) -> set_line slices items[N..N-1]; total-fit also mis-measured such candidates. Fix clamps start to brk in measure/set_line and makes first-fit honour a forced penalty inside the discarded run (TeX sets an empty underfull line). 6 new tests incl. a 48,000-layout LCG fuzz; 33/33 on main's crate, 46/46 on the vendored copy, clippy/fmt clean; 576 oracle-sample layouts byte-identical; oracle table and compiler-owner migration note in the README.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:40:38Z",
+  "usage": {
+    "evidence": "cargo test --release 33/33 (main crate + patches) and 46/46 (vendored copy + patches); clippy -D warnings clean; fmt clean; dump comparison 48,576 cases (20,969 pre-fix panics -> 0; 0 oracle cases changed); 1-min load 26-61, no timing tests",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; no pdflatex run in this lane"
+  }
+}
