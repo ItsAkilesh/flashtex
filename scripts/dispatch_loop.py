@@ -19,6 +19,22 @@ from types import SimpleNamespace
 import coord
 
 
+def fetch_origin(root):
+    """Retry only a read-only fetch ref-CAS race with another linked worktree.
+
+    Never retry publication, auth failures, arbitrary locks, or pending paid calls.
+    """
+    for attempt in range(3):
+        try:
+            return coord.git(root, 'fetch', 'origin', '--prune')
+        except RuntimeError as exc:
+            message = str(exc)
+            if (attempt == 2 or "cannot lock ref 'refs/remotes/origin/" not in message
+                    or ' but expected ' not in message or ' is at ' not in message):
+                raise
+            time.sleep(0.1 * (attempt + 1))
+
+
 @contextmanager
 def dispatcher_lock(root):
     folder = coord.local_state(root)
@@ -163,7 +179,7 @@ def scan_once(root, args):
         coord.branch(root, 'commander')
         if coord.git(root, 'status', '--porcelain'):
             raise RuntimeError('Commander worktree is dirty; preserving work and stopping')
-        coord.git(root, 'fetch', 'origin', '--prune')
+        fetch_origin(root)
         baseline = coord.git(root, 'rev-parse', 'origin/main')
         require_authority(root, args, baseline)
         if coord.git(root, 'rev-parse', 'HEAD') != baseline:
@@ -226,7 +242,7 @@ def scan_once(root, args):
         coord.publish(root, SimpleNamespace(allocation=args.allocation, implementation='Codex Astra dispatcher',
                       direct_agent_commit=getattr(args, 'direct_agent_commit', False),
                       message='coord: dispatch next queued worker assignments', timeout=args.timeout))
-        coord.git(root, 'fetch', 'origin', '--prune')
+        fetch_origin(root)
         if coord.git(root, 'rev-parse', 'origin/main') != baseline:
             raise RuntimeError('main changed during publication; task branch preserved, integration required')
         if coord.run(['git', 'merge-base', '--is-ancestor', baseline, 'HEAD'], cwd=root, check=False).returncode:
