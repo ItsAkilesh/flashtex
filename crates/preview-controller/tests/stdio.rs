@@ -374,3 +374,47 @@ fn literal_search_exposes_utf8_matches_work_limits_and_stale_version_errors() {
     client.send("stale", "search_literal", stale);
     assert_eq!(client.reply("stale")["type"], "error");
 }
+
+#[test]
+fn helper_exports_exact_source_and_refuses_conflicting_or_ambiguous_expectations() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "initial").unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path()});
+    let mut client = Client::configured(config_dir.path(), config.clone());
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let old = client.reply("get")["payload"]["document"].clone();
+    client.send("edit", "edit", json!({"path":"main.tex","expected_revision":1,"expected_sha256":old["source_sha256"],"text":"saved β"}));
+    let new = client.reply("edit")["payload"]["document"].clone();
+    let request = json!({"path":"main.tex","expected_revision":2,"expected_sha256":new["source_sha256"],"expected_disk_sha256":old["source_sha256"]});
+    let mut missing = request.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("expected_disk_sha256");
+    client.send("missing", "export", missing);
+    assert_eq!(client.reply("missing")["type"], "error");
+    client.send("save", "export", request.clone());
+    let saved = client.reply("save");
+    assert_eq!(saved["type"], "result");
+    assert_eq!(saved["payload"]["sha256"], new["source_sha256"]);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("main.tex")).unwrap(),
+        "saved β"
+    );
+    std::fs::write(root.path().join("main.tex"), "external").unwrap();
+    client.send("conflict", "export", request);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("main.tex")).unwrap(),
+        "external"
+    );
+    drop(client);
+    let mut reopened = Client::configured(config_dir.path(), config);
+    reopened.send("get", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        reopened.reply("get")["payload"]["document"]["text"],
+        "saved β"
+    );
+}

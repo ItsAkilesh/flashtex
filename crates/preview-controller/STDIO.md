@@ -89,9 +89,16 @@ ledger edits on restart, even when disk source has changed or disappeared.
 `file_status:{path}` rereads disk and returns `matches_source`,
 `differs_from_source`, `missing` or `unavailable`, plus discovery diagnostics.
 It never implicitly reloads an external edit into the authoritative source.
-`export` currently returns an explicit error: shared rooted-save guarantees are
-being fixed under GH18. The response's `export_available:false` is intentional;
-clients must not offer a successful save action until that gate is implemented.
+`export:{path,expected_revision,expected_sha256,expected_disk_sha256}` writes
+that exact durable source through the rooted project-files lock/save primitive.
+The disk expectation is mandatory: a SHA-256 string for an existing file, or
+explicit `null` for a new file. Stale source, conflicting disk content and symlink
+components are refused. Success returns path, hash and byte count;
+`export_available:true` advertises the operation, not a guarantee a save will pass.
+An error can follow rename (including uncertain directory durability); inspect
+disk before retrying. Cooperative writers serialize through the project lock.
+Arbitrary external writers still have a recheck-to-rename race window; this is
+not a universal filesystem compare-and-swap guarantee.
 
 `configure_layout:{layout_capabilities:[...], renderer_support_confirmed:true}`
 explicitly opts this client into negotiated runtime-v1 rules/font hints and submits

@@ -90,23 +90,128 @@ and then +1 per content change or `remove`; the same sequence of observations
 always yields the same numbers. `observe_graph(&graph)` records every text
 file of a discovery. Use `project_revision()` as the runtime-v1 `revision`.
 
-### Atomic save (`save.rs`)
+### Rooted read and save (`save.rs`, `sys.rs`) — issue #18
 
 ```rust
-let receipt = save_atomic(root, &path, text, Expected::Hash(last_known), force)?;
-// SaveReceipt { path, bytes, sha256, mtime }
+pub struct ProjectRoot;                     // open directory handle
+impl ProjectRoot {
+    pub fn open(path: &Path) -> Result<ProjectRoot, SaveError>;
+    pub fn path(&self) -> &Path;
+    pub fn read(&self, path: &ProjectPath, limit: u64) -> Result<Option<RootedRead>, SaveError>;
+    pub fn read_text(&self, path: &ProjectPath, limit: u64) -> Result<Option<(String, RootedRead)>, SaveError>;
+    pub fn lock(&self) -> Result<ProjectLock<'_>, SaveError>;   // non-blocking flock(LOCK_EX)
+    pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>; // lock + save
+    pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;                                                    // lock + remove
+}
+pub struct ProjectLock<'a>;                 // released on drop
+impl ProjectLock<'_> {
+    pub fn root(&self) -> &ProjectRoot;
+    pub fn save(&self, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+    pub fn remove(&self, path: &ProjectPath) -> Result<bool, SaveError>;
+}
+pub fn save_atomic(root: &Path, path: &ProjectPath, text: &str, expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>; // open + lock + save
+pub fn save_atomic_bytes(root: &Path, path: &ProjectPath, bytes: &[u8], expected: Expected, force: bool) -> Result<SaveReceipt, SaveError>;
+
+pub enum Expected { NewFile, Hash(Digest), Any }
+pub struct SaveReceipt { path, bytes: u64, sha256: Digest, mtime: SystemTime, identity: FileIdentity }
+pub struct RootedRead  { path, bytes: Vec<u8>, sha256, mtime, identity: FileIdentity, mode: u32 }
+pub struct FileIdentity { dev: u64, ino: u64 }
+pub enum SaveError { Conflict(Box<SaveConflict>), Refused(Refused), Io(io::Error), DirectorySync(io::Error) }
+pub enum Refused { SymlinkComponent{component}, NotADirectory{component}, NotARegularFile{component},
+                   EscapesRoot{component}, TooLarge{limit,size}, LockUnavailable{lock_path}, Unsupported }
+pub struct SaveConflict { path, kind: SaveConflictKind, ours: Option<Digest>, theirs: Option<Digest>, mtime, size }
+pub enum SaveConflictKind { ModifiedExternally, DeletedExternally, AlreadyExists, ModifiedDuringSave }
+pub const LOCK_FILE: &str = ".flashtex/project.lock";
+pub const DEFAULT_READ_LIMIT: u64 = 64 MiB;
 ```
 
-Write to `.<name>.flashtex-tmp-<pid>-<n>` in the same directory, `fsync`,
-copy existing permissions, `rename` over the target, then `fsync` the
-directory (best effort). Parent directories are created. `Expected::NewFile`
-means "nothing should be there"; `Expected::Any` skips the check.
+**Path binding.** `ProjectRoot::open` opens the root directory itself with
+`O_DIRECTORY|O_NOFOLLOW` (a symlinked root is refused; components *above*
+the root are the caller's choice and not inspected). Every read, save and
+remove then walks the normalized `ProjectPath` one component at a time with
+`openat(dirfd, component, O_DIRECTORY|O_NOFOLLOW)` from that handle, and
+opens the final file with `openat(dirfd, name, O_NOFOLLOW)`. Any symlink —
+parent directory or the file — is `Refused::SymlinkComponent`, with `force`
+or without. Each walked directory's `..` is opened and its device/inode
+compared with the handle it was reached from (`Refused::EscapesRoot` on
+mismatch). Because `std` has no `openat` family, `sys.rs` declares
+`openat`/`renameat`/`unlinkat`/`mkdirat`/`flock` directly against the C
+library `std` already links (no external crate). Flag values are known for
+macOS and Linux x86_64/aarch64; other targets get `Refused::Unsupported`
+before anything is attempted. On macOS a symlink-to-directory opened this way
+reports `ENOTDIR`; `sys::open_dir_at_nofollow` probes once more without
+`O_DIRECTORY` so the refusal is classified as a symlink on both platforms.
 
-Without `force`, the on-disk state must match `expected` or the save is
-refused with `SaveError::Conflict(Box<SaveConflict>)`: `kind`
-(`ModifiedExternally`, `DeletedExternally`, `AlreadyExists`), `ours`
-(expected hash), `theirs` (hash on disk, `None` if deleted), `mtime`, `size`.
-Nothing is written on refusal. With `force` the check is skipped.
+**Reads** are bounded: `read(path, limit)` refuses files larger than `limit`
+(`Refused::TooLarge`) and non-regular files, and returns the bytes, hash,
+mtime, identity and mode from the same open descriptor.
+
+**Save sequence** (`ProjectLock::save`), all under the project lock:
+
+1. Walk to the parent directory (missing directories are created with
+   `mkdirat`, mode 0o755), refusing symlinks.
+2. Observe the target with `O_NOFOLLOW`: identity, size, mtime, hash, mode.
+   Unless `force`, compare with `expected` → `ModifiedExternally`,
+   `DeletedExternally` or `AlreadyExists`, nothing written.
+3. `openat(O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW)` a temp file
+   `.<name>.flashtex-tmp-<pid>-<n>` in the same directory, write, `fsync`,
+   `fchmod` to the existing mode.
+4. Re-observe the target. If it is now a symlink → `Refused` (temp removed).
+   If, unless `force`, anything changed since step 2 (a file appeared,
+   disappeared, or its identity/size/mtime/hash moved) →
+   `Conflict{ModifiedDuringSave, ours: hash we wrote, theirs: observed}`,
+   temp removed, target untouched. This is where `Expected::NewFile` refuses
+   to clobber a target created meanwhile.
+5. `renameat` temp over target, then `fsync` the directory. A directory
+   fsync failure is `SaveError::DirectorySync` — a hard error; the rename has
+   already happened and durability is unknown, so re-read before trusting.
+6. Re-open the target with `O_NOFOLLOW`; its device/inode must equal the temp
+   file's and its bytes must hash to what was written, else
+   `Conflict{ModifiedDuringSave}`. The receipt carries the verified identity,
+   size, hash and mtime.
+
+**Lock.** `ProjectRoot::lock` takes a non-blocking advisory `flock(LOCK_EX)`
+on `<root>/.flashtex/project.lock` (created if missing) and returns
+`Refused::LockUnavailable{lock_path}` if any other open file description —
+another process, or another handle in this one — holds it. The lock is held
+for the whole sequence above and released on drop. `ProjectRoot::save` and
+`save_atomic` lock per call; an editor that wants to serialize many
+operations (saves, journal writes, removals) holds one `ProjectLock` and
+passes it around.
+
+### Concurrency and durability contract
+
+- **Supported serialization is the project lock.** Two FlashTeX writers
+  (threads or processes) that both use this crate never interleave inside a
+  save: the second gets `LockUnavailable` and must retry or report. Within
+  the contract, a save is a compare-and-replace: the hash check, temp write,
+  rename and directory fsync happen with no other in-contract writer able to
+  act.
+- **Writers that do not take the lock are out of contract.** Neither a
+  path-only check nor a double hash check can *prevent* such a writer from
+  landing between step 4 and step 5 (a few microseconds) or immediately
+  after step 5. The crate does not claim otherwise. What it does: it
+  *detects* interference at step 4 (pre-rename re-verification of identity,
+  size, mtime and content hash) and at step 6 (post-rename identity and hash
+  verification), and reports `Conflict{ModifiedDuringSave}` whenever it is
+  observed. A writer that lands exactly inside the step-4→step-5 window with
+  identical size and an mtime inside the filesystem's timestamp resolution
+  is not detected until the next `Snapshot::diff`. The racing test in
+  `tests/rooted.rs` exercises this with a thread swapping the target between
+  a file and a symlink: every save ends `Ok`, `Refused` or `Conflict`, and
+  the outside file is never touched.
+- **Durability.** Bytes are `fsync`ed before the rename and the directory is
+  `fsync`ed after it; both failures are hard errors (`Io` before rename, with
+  the temp removed; `DirectorySync` after rename, with the file in place but
+  durability unknown). Rename atomicity is the filesystem's: within one
+  directory on APFS, HFS+, ext4 and XFS a `rename(2)` is atomic for other
+  readers. Network and FAT volumes may not honor this. No power-loss test has
+  been run; a receipt means the syscalls reported success, not that the media
+  has been verified.
+- **No claim of unconditional protection.** Out-of-contract writers, bind
+  mounts inside the root, `chroot`-escaping hard links, and privileged
+  processes are outside what this API can defend; it confines *its own*
+  reads and writes to the selected root and reports what it can observe.
 
 ### External-change detection (`watch.rs`)
 
@@ -134,23 +239,26 @@ semantics.
 ### Crash recovery (`recovery.rs`)
 
 ```rust
-let journal = RecoveryJournal::new(root);
-let entry = journal.record(&path, unsaved_text, Some(base_hash))?;  // atomic
-let listing = journal.list()?;            // entries sorted by path + malformed files
-let check = journal.check(&entry)?;       // CurrentState::{Missing, MatchesBase, MatchesJournal, Diverged(hash)}, safe
-journal.restore_to_disk(&entry, force)?;  // same conflict rules as save_atomic; discards on success
-journal.discard(&path)?;
+let root = ProjectRoot::open(root_path)?;
+let journal = RecoveryJournal::new(&root);
+let lock = root.lock()?;
+let entry = journal.record(&lock, &path, unsaved_text, Some(base_hash))?;  // rooted, atomic
+let listing = journal.list()?;                 // entries sorted by path + malformed files
+let check = journal.check(&entry)?;            // CurrentState::{Missing, MatchesBase, MatchesJournal, Diverged(hash)}, safe
+journal.restore_to_disk(&lock, &entry, force)?; // same conflict rules as ProjectLock::save; discards on success
+journal.discard(&lock, &path)?;
 ```
 
 Files live at `<root>/.flashtex/recovery/<sha256_hex(path)>.json`:
 `{schema_version:1, path, text, text_sha256, base_sha256|null,
-saved_at_unix_ms}`. Entries are written with the same temp+fsync+rename path
-as saves. On read, `text_sha256` is verified, so a torn or truncated entry is
-reported as malformed rather than restored. Malformed files are listed, never
-deleted. `restore_to_disk` refuses (returns the `SaveConflict`) when the disk
-has diverged from `base_sha256`, or when a never-saved file now exists, unless
-`force`. A file that already equals the journal text is treated as restored
-without a write.
+saved_at_unix_ms}`. Entries are written through `ProjectLock::save` (same
+walk, lock, fsync and verification) and read through `ProjectRoot::read`
+(symlinks refused, 64 MiB bound). On read, `text_sha256` is verified, so a
+torn or truncated entry is reported as malformed rather than restored.
+Malformed files are listed, never deleted. `restore_to_disk` refuses (returns
+the `SaveConflict`) when the disk has diverged from `base_sha256`, or when a
+never-saved file now exists, unless `force`. A file that already equals the
+journal text is treated as restored without a write.
 
 Recommended editor policy: record every N seconds while dirty and on focus
 loss; discard on successful save; on launch, `list()` and present each entry
@@ -159,17 +267,20 @@ with its `check()` result.
 ## Guarantees
 
 - Paths in the graph, documents, receipts and journal are normalized
-  `ProjectPath`s; nothing this crate reads or writes resolves outside `root`
-  (including via symlink, which is diagnosed rather than followed).
+  `ProjectPath`s. Every write and rooted read is confined to the opened root
+  directory handle: no symlink at any component is followed, and a
+  refusal happens before any byte is written.
 - Discovery output (file order, edges, diagnostics, documents, compile
   envelope) is a pure function of the file tree plus overlay.
 - All byte spans are UTF-8 byte offsets into the exact text the graph holds
   (overlay text when supplied, disk bytes otherwise).
 - SHA-256 output matches the FIPS vectors; `text_sha256`/`SaveReceipt.sha256`
-  are hashes of the exact bytes written.
+  are hashes of the exact bytes written, re-read from disk after the rename.
 - A save either fully replaces the target with the new bytes or leaves the
-  previous file intact; a refused save writes nothing. Temp files are removed on
-  failure. Permissions of an existing target are preserved.
+  previous file intact; a refused or conflicted save writes nothing to the
+  target and removes its temp file. Permissions of an existing target are
+  preserved.
+- Saves by in-contract writers are serialized by the project lock.
 - Snapshot/diff never misses a content change whose mtime or size changed;
   a change that leaves both identical is caught on the next hash (see below).
 - The recovery journal never restores over diverged content without `force`
@@ -177,20 +288,17 @@ with its `check()` result.
 
 ## Non-guarantees
 
-- **No cross-process locking.** Two processes saving the same file interleave
-  at rename granularity; the hash check is a compare-before-write, not a
-  compare-and-swap. A writer that lands between `check_expected` and `rename`
-  is overwritten. Native integration should serialize saves per path on one
-  queue and treat the receipt's hash as the new baseline.
-- **Rename atomicity is the filesystem's.** On APFS (and HFS+, ext4, XFS)
-  `rename(2)` within one directory is atomic with respect to other readers;
-  the directory `fsync` is best effort and ignored if the filesystem refuses.
-  Network and FAT volumes may not honor this. Cross-directory moves are not
-  attempted.
+- **Out-of-contract writers are detected, not prevented** (see the contract
+  above). `ModifiedDuringSave` is a report, not a rollback.
+- **Rename atomicity and fsync semantics are the filesystem's.** Network and
+  FAT volumes may not honor them; no power-loss testing has been done.
 - **mtime granularity.** A same-size rewrite within the filesystem's mtime
-  resolution (1 ns on APFS in practice, but coarser elsewhere) is not
-  rehashed by `diff`. Callers can force a rehash by taking a fresh
-  `Snapshot::take`.
+  resolution (nanoseconds on APFS, coarser elsewhere) is not rehashed by
+  `Snapshot::diff`. Callers can force a rehash with a fresh `Snapshot::take`.
+- **Graph discovery and `Snapshot` read through OS paths.** They are
+  read-only and diagnose symlink escapes via canonicalization, but they are
+  not the rooted reader; use `ProjectRoot::read` when the bytes will be
+  trusted for a save decision.
 - **Not the compiler.** The scanner does no macro expansion, no catcode
   changes, no `\import`/`\subfile`/`\InputIfFileExists`, and does not follow
   references inside `\newcommand` bodies or conditionals. Arguments containing
@@ -199,9 +307,11 @@ with its `check()` result.
 - Graphics are hashed for identity but never parsed or validated.
 - The poller is blocking and single-threaded by design; scheduling is the
   caller's.
-- The journal directory is inside the project root and is not hidden from
-  other tools; `.flashtex/` should be added to the user's VCS ignore rules by
-  the native app if desired.
+- `.flashtex/` (lock file and journal) lives inside the project root and is
+  not hidden from other tools; the native app should add it to VCS ignore
+  rules if desired.
+- Targets other than macOS and Linux x86_64/aarch64 have no rooted file
+  operations (`Refused::Unsupported`); the crate itself is Unix-only.
 
 ## Relationship to sibling crates (main at c89ca86)
 
