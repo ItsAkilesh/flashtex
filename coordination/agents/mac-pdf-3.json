@@ -1,0 +1,42 @@
+{
+  "agent_id": "mac-pdf-3",
+  "allocation_id": "claude-mac20x-pdf-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-pdf-3/searchable-text",
+  "capabilities": [
+    "rust",
+    "pdf",
+    "swift",
+    "pdfkit"
+  ],
+  "code_revision": "94a67130",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "abbe88a5",
+  "next_action": "Commander integrates the crates/pdf commit (also cherry-picked onto origin/main as agent/mac-pdf/searchable-text) and decides on the optional producer `space` cluster request in docs/proposals/pdf-searchable-text.md; parent merges the Mac test + fixtures",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Built on mac-shell 9ba9851c whose crates/pdf equals main plus mac-pdf-2's /W fix (4893f3e7); the gap census uses the written /W widths so it reflects that fix",
+      "reviewed_utc": "2026-09-12T18:30:00Z",
+      "sha": "9ba9851c"
+    },
+    "origin/agent/commander-render-core/rendering-core": {
+      "adaptation": "Read 647c50c5's searchable-acceptance evidence (Poppler default/-layout `ab`, -raw `a b`, same for the space-glyph f261 output); its `space/display.json` is checked in as the GH48 fixture; no rendering-core file changed",
+      "reviewed_utc": "2026-09-12T18:35:00Z",
+      "sha": "647c50c5"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "GH48 searchable-text policy (docs/proposals/pdf-searchable-text.md): word boundaries are the producer's gaps replayed exactly (>= 150/1000 em promised for PDFKit/Spotlight/Poppler -raw; [30,150) ambiguous; no Tw/ActualText/space glyph); crates/pdf from-v2 reports word_gaps/ambiguous_gaps and names ambiguous ones; new crate test on the published `\\text{a b}` list + a kern/ligature/math line; Mac SearchableTextTests (3, exact PDFKit strings); PDF bytes unchanged on 7 fixtures; Poppler default/-layout `ab` on one-glyph lines documented as not fixable geometry-preservingly",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T18:52:00Z",
+  "usage": {
+    "evidence": "crates/pdf cargo test 88/88 (42 unit, 12 exact, 25 render, 3 type1, 6 v2), clippy/fmt clean; apps/mac swift test --filter SearchableTextTests 3/3 with FLASHTEX_PDF_EXACT (load 60-120, full swift test not run); PDFKit/mdimport/gs extraction + gap sweep in scratchpad pdf3/",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
