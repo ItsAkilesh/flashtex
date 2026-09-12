@@ -14,21 +14,27 @@
     "rust",
     "fonts"
   ],
-  "code_revision": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
+  "code_revision": "16c6d35860861162910020782cef3af73c5aef62",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 10,
-    "pessimistic": 25
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "984fa28f2537feadb9f848eb90f69de0327d1fa5",
-  "next_action": "CoreText comparison example, README (provenance, ABI, unsupported), clippy",
-  "reviewed_peers": {},
+  "next_action": "Await Commander ABI review; follow-ups: CFF subsetting, MathVariants",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "rendering-v2-proposal.md font identity/original gids/clusters/missing-font rules match the crate design; no change needed",
+      "reviewed_utc": "2026-09-12T06:03:32Z",
+      "sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521"
+    }
+  },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "font-engine crate: TrueType parsing, Core14 tables, shaping with clusters/missing, subsetting, ToUnicode; 30 tests pass",
+  "state": "ready_for_integration",
+  "summary": "font-engine crate complete for FT-018 rev 1: TrueType+OTTO parsing, Core14 tables, GPOS/kern/GSUB shaping with source clusters, subsetting, ToUnicode, MATH; 45 tests; CoreText-exact",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:39:59Z",
+  "updated_utc": "2026-09-12T06:03:32Z",
   "usage": {
     "evidence": "Shared Max quota not observable from subagent",
     "status": "unknown"

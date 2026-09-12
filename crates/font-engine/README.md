@@ -9,9 +9,15 @@ Task: FT-018 rev 1. Owner: `mac-font-engine` (Claude Code subagent, parent
 `mac-claude-a`, machine `mac-m1max-a`). Nothing under `crates/compiler` is
 touched; the compiler may adopt this crate later through its own owner.
 
+Default face policy (Commander, 2026-09-12): LaTeX's default is Computer
+Modern, so the pipeline's default font is **Latin Modern** (GUST Font License,
+OpenType CFF, shipped with BasicTeX); the Adobe Core 14 tables keep Times /
+Helvetica / Courier / Symbol available for `\usepackage{times}` and the
+standard PDF fonts.
+
 ```sh
 cd crates/font-engine
-cargo test            # 36 tests; TrueType tests skip with a message if a system font is absent
+cargo test            # 45 tests; font-file tests skip with a message if a file is absent
 cargo clippy --all-targets
 swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engine comparison")
 ```
@@ -20,15 +26,16 @@ swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engi
 
 | Area | Implemented | Not implemented (declared, never silent) |
 | --- | --- | --- |
-| Font programs | TrueType / OpenType with `glyf` outlines; `.ttc` collections by face index (`head`, `hhea`, `hmtx`, `maxp`, `loca`, `glyf`, `cmap` formats 4 and 12, `OS/2`, `post`, `name`) | `CFF `/`OTTO` outlines (`Error::Unsupported`), variable fonts (`fvar`/`gvar` rejected), bitmap-only fonts, cmap formats other than 4/12, Type 1 / AFM files other than the built-in Core 14 tables |
+| Font programs | TrueType / OpenType with `glyf` outlines and OpenType `CFF ` (`OTTO`, e.g. Latin Modern); `.ttc` collections by face index (`head`, `hhea`, `hmtx`, `maxp`, `loca`/`glyf` or `CFF `, `cmap` formats 4 and 12, `OS/2`, `post`, `name`, `MATH`) | CFF charstring parsing (outlines are exposed as the raw `CFF ` table only; no glyph bbox derivation for CFF), variable fonts (`fvar`/`gvar` rejected), bitmap-only fonts, cmap formats other than 4/12, Type 1 (`.pfb`/`.pfa`) programs, AFM files other than the built-in Core 14 tables |
 | Base-14 metrics | Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic, Helvetica, Courier, Symbol: Adobe AFM widths for every AFM glyph with an Adobe Glyph List code point (322 code points per text face, 194 for Symbol), AFM `KPX` kerning pairs, header metrics (bbox, cap/x height, ascender/descender, italic angle, StdVW, underline) | Helvetica-Bold/Oblique variants, Courier variants, ZapfDingbats (the seven faces the task named are included; adding the rest is a one-line change in `tools/gen_tables.py`) |
-| Kerning | `GPOS` `kern` feature: PairPos format 1 and 2 (lookup type 2), including type 9 Extension wrappers; legacy `kern` table format 0 (Microsoft and Apple headers); AFM `KPX` | GPOS lookup types other than 2 under `kern` (contextual 7/8, single 1) — recorded in `Face::unsupported()`; `kern` formats 1–3, vertical and cross-stream subtables; second-glyph value records and placement (only `xAdvance` of the first glyph is applied); script/language-system selection (all `kern` FeatureRecords contribute) |
-| Ligatures | `GSUB` `liga` feature: LigatureSubst (lookup type 4), including type 7 Extension wrappers; cmap fallback for `ff fi fl ffi ffl` → U+FB00..U+FB04 (used by the Core 14 faces, and by fonts such as Times New Roman whose `liga` is Arabic-only); never applied to fixed-pitch faces | Every other GSUB feature (`dlig`, `clig`, `calt`, `smcp`, `locl`, …) and lookup type (single, multiple, alternate, contextual, chained, reverse); lookup flags (mark filtering, ignore-marks) |
+| Kerning | `GPOS` `kern` feature: PairPos format 1 and 2 (lookup type 2), including type 9 Extension wrappers; legacy `kern` table format 0 (Microsoft and Apple headers); AFM `KPX`. Features are selected through ScriptList: `DFLT` script (else `latn`, else the first script), default LangSys (else the first) | GPOS lookup types other than 2 under `kern` (contextual 7/8, single 1) — recorded in `Face::unsupported()`; `kern` formats 1–3, vertical and cross-stream subtables; second-glyph value records and placement (only `xAdvance` of the first glyph is applied); per-run language tags (only the default language system is used, so Latin Modern's Turkish/Polish `liga`/`kern` variants are never applied) |
+| Ligatures | `GSUB` `liga` feature: LigatureSubst (lookup type 4), including type 7 Extension wrappers, applied as one pass per lookup in LookupList order (so Latin Modern's `f`+`f`→`ff`, then `ff`+`i`→`ffi` works); cmap fallback for `ff fi fl ffi ffl` → U+FB00..U+FB04 as a final pass over single-character clusters (used by the Core 14 faces, and by fonts such as Times New Roman whose `liga` is Arabic-only); never applied to fixed-pitch faces | Every other GSUB feature (`dlig`, `clig`, `calt`, `smcp`, `locl`, …) and lookup type (single, multiple, alternate, contextual, chained, reverse); lookup flags (mark filtering, ignore-marks) |
 | Marks | Base + combining mark composed through canonical pairwise compositions (870 primary composites, Unicode 15.0.0 via Python `unicodedata`) when the face has the precomposed glyph; otherwise the mark glyph joins the base cluster with zero advance (centred for spacing marks); otherwise a missing glyph inside that cluster | GPOS mark attachment (`mark`/`mkmk`), so unattached marks are only approximately placed |
 | Scripts | Latin, Greek, Cyrillic and other left-to-right scripts without reordering; CJK ideographs (1 em advances verified with Arial Unicode) | Hebrew, Arabic, Syriac, Thaana, NKo, Indic, Thai, Lao, Tibetan, Myanmar, Khmer, Mongolian and bidi control characters: `shape` returns `Error::UnsupportedScript { ch, byte_offset, reason }` and produces nothing (fail closed) |
 | Direction | Horizontal left-to-right | Vertical layout, right-to-left |
-| Subsetting | Deterministic glyf subset: `.notdef` + requested glyphs + transitive composite components, renumbered in ascending original order; `head`/`hhea`/`maxp`/`hmtx`/`loca`(long)/`glyf` rewritten, `cvt `/`fpgm`/`prep` copied; table checksums and `head.checkSumAdjustment`; `verify_checksums` re-checks a program | Subsetting of `cmap`/`name`/`OS/2`/`post`/`GPOS`/`GSUB` (deliberately dropped: the embedded program is glyph-addressed and already shaped); CFF subsetting |
-| Embedding data | `PdfFontProgram`: subset tag + `/BaseFont`, `/FontFile2` bytes, `/W` array, `CIDToGIDMap /Identity`, descriptor (flags, bbox, ascent, descent, cap height, x height, italic angle, placeholder StemV), `ToUnicode` CMap with multi-character `bfchar` destinations, OS/2 `fsType` | Writing PDF objects (a PDF crate does that); Type 1 / CFF embedding; `/Widths` arrays for standard-14 fonts beyond `embed::standard_font_widths` |
+| Subsetting | Deterministic glyf subset: `.notdef` + requested glyphs + transitive composite components, renumbered in ascending original order; `head`/`hhea`/`maxp`/`hmtx`/`loca`(long)/`glyf` rewritten, `cvt `/`fpgm`/`prep` copied; table checksums and `head.checkSumAdjustment`; `verify_checksums` re-checks a program | Subsetting of `cmap`/`name`/`OS/2`/`post`/`GPOS`/`GSUB` (deliberately dropped: the embedded program is glyph-addressed and already shaped); **CFF subsetting** (`subset` returns `Error::Unsupported` for CFF faces; whole-program embedding is used instead — a later follow-up) |
+| Embedding data | `PdfFontProgram`: `/BaseFont` (subset tag + name, or bare name for whole programs), `font_file` = `FontFile::TrueTypeSubset` (`/FontFile2`, `CIDFontType2`) or `FontFile::OpenTypeProgram` (`/FontFile3` `/Subtype /OpenType`, `CIDFontType0`, CIDs = original glyph ids), `/W` array as CID runs, `CIDToGIDMap /Identity`, `glyph_map` (original → CID), descriptor (flags, bbox, ascent, descent, cap height, x height, italic angle, placeholder StemV), `ToUnicode` CMap with multi-character `bfchar` destinations, OS/2 `fsType` | Writing PDF objects (a PDF crate does that); bare `/Subtype /Type1C` CFF streams (the whole OpenType wrapper is embedded instead); Type 1 embedding; `/Widths` arrays for standard-14 fonts beyond `embed::standard_font_widths` |
+| Math | `MATH` table: all 56 `MathConstants`, per-glyph italics correction and top-accent attachment (`TrueTypeFace::math()`, `math::MathTable`) | `MathVariants` (stretchy delimiter construction), `MathKernInfo`, extended-shape coverage, device tables |
 | Resolution | `FontSearch`: explicit directory list, `dir/<file name>` probes only, macOS system directories offered as a constant | Directory scanning, fontconfig, name matching, `FLASHTEX_*` environment lookups |
 
 Everything in the right-hand column is either an error, an empty result, or an
@@ -85,9 +92,21 @@ Key types (all in `src/lib.rs` unless noted):
   `cluster_at_x(units)`.
 * `ShapeOptions { ligatures, kerning, compose_marks, cmap_ligature_fallback }`;
   `ShapeOptions::PLAIN` is mapping only.
-* `subset::subset(&TrueTypeFace, &[GlyphId]) -> Subset`; `subset::verify_checksums`.
-* `embed::EmbedPlan` → `PdfFontProgram`; `embed::to_unicode_cmap` / `parse_to_unicode`.
+* `subset::subset(&TrueTypeFace, &[GlyphId]) -> Subset` (glyf only); `subset::verify_checksums`.
+* `embed::EmbedPlan` → `PdfFontProgram { base_font, cid_font_subtype, font_file, cid_widths, glyph_map, descriptor, to_unicode, to_unicode_cmap, fs_type, subset }`; `embed::to_unicode_cmap` / `parse_to_unicode`.
+* `TrueTypeFace::outlines()` (`Outlines::Glyf | Cff`), `cff_table()`, `math()`.
+* `math::MathConstants` (font units; percent fields in percent), `MathTable::italics_correction(gid)`, `top_accent_attachment(gid)`.
 * `resolve::FontSearch`.
+
+Latin Modern in practice:
+
+```rust
+let lm = load_from_path("/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm/lmroman10-regular.otf".as_ref())?;
+assert_eq!(lm.outlines(), Outlines::Cff);
+let s = shape(&lm, "Hello", &ShapeOptions::PLAIN)?;      // 2250 units = 22.5 pt at 10 pt
+let math = load_from_path(".../lm-math/latinmodern-math.otf".as_ref())?;
+let c = &math.math().unwrap().constants;                // c.axis_height == 250
+```
 
 Units: `Face` and `Shaped` values are font units (`units_per_em` = 1000 for Core
 14, typically 2048 for TrueType). Preview converts with `to_points`; PDF uses
@@ -161,6 +180,20 @@ The compiler's `crates/compiler/src/metrics.rs` on `de1020c` embeds the same
 Times/Helvetica/Courier ASCII and Latin-1 widths; `core14::tests` asserts
 equality on the values it quotes (`M` 889, space 250, "Mac" 21.324 pt).
 
+Latin Modern (GUST Font License — free to use, copy, modify and redistribute,
+with the usual renaming clause for modified versions; the licence text ships in
+TeX Live as `doc/fonts/lm/` and on gust.org.pl). Read from the local BasicTeX
+installation; nothing is committed:
+
+| File | SHA-256 |
+| --- | --- |
+| `/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm/lmroman10-regular.otf` | `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852` |
+| `/usr/local/texlive/2026basic/texmf-dist/fonts/opentype/public/lm-math/latinmodern-math.otf` | `6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f` |
+
+The other Latin Modern faces the tests open (`lmroman10-bold/italic/bolditalic`,
+`lmroman12-regular`, `lmsans10-regular`, `lmmono10-regular`) come from the same
+directory; they are parsed and shaped but no numbers are asserted for them.
+
 Reference fonts used only by tests and the comparison script (Apple-supplied,
 licensed for use on the device; redistribution, including inside a PDF, is the
 user's decision and this crate exposes `fsType` so a writer can warn):
@@ -205,6 +238,32 @@ Known AFM quirk: Adobe's 1997 AFMs list `Euro` with `WX 500` and an empty
 bounding box in every text face (a placeholder); the tables carry it as-is, so
 U+20AC measures 500 units while Apple's Times draws a 744-unit Euro.
 
+## Latin Modern versus CoreText (same file, 10 pt)
+
+| text | mode | coretext | engine | delta |
+| --- | --- | --- | --- | --- |
+| "Hello" | plain | 22.5000 | 22.5000 | 0.0000 |
+| "AV fi fl ffi ffl" | plain | 57.8000 | 57.8000 | 0.0000 |
+| "The quick brown fox … fluffy waffle." | plain | 337.2200 | 337.2200 | 0.0000 |
+| "Café naïve façade — “quoted” … 100% €5 ™" | plain | 197.2200 | 197.2200 | 0.0000 |
+| "AV" | shaped | 13.8900 | 13.8900 | 0.0000 |
+| "ffi" | shaped | 8.3300 | 8.3300 | 0.0000 (was +0.2800 before per-lookup passes) |
+| "AV fi fl ffi ffl" | shaped | 54.9900 | 54.9900 | 0.0000 |
+| "The quick brown fox … fluffy waffle." | shaped | 329.9500 | 329.9500 | 0.0000 |
+
+The two shaped mismatches the first run showed (+0.28 pt wherever `ffi`
+occurred) were engine bugs and are fixed: language-specific `liga` records were
+being unioned in, and ligature lookups were applied in one combined pass instead
+of sequentially. `tests/latin_modern.rs` pins these CoreText numbers.
+
+`latinmodern-math.otf` MathConstants (font units): axisHeight 250,
+fractionRuleThickness 40, fractionNumeratorShiftUp 394 (display 677),
+fractionDenominatorShiftDown 345 (display 686), superscriptShiftUp 363,
+subscriptShiftDown 247, radicalRuleThickness 40, radicalVerticalGap 50 (display
+148), radicalKernBeforeDegree 278, radicalKernAfterDegree −556,
+scriptPercentScaleDown 70, scriptScriptPercentScaleDown 50 — all verified
+against an independent parse of the file, not from memory.
+
 ## Engine comparison (CoreText)
 
 `examples/compare_coretext.swift` measures each case twice per side: `plain`
@@ -243,7 +302,7 @@ output: run the script; the table above is the 2026-09-12 run.
 
 ## Tests
 
-`cargo test` — 36 tests:
+`cargo test` — 45 tests:
 
 * unit (5): SHA-256 vectors; Core 14 values equal to compiler `metrics.rs`;
   synthetic gid round trip for all seven faces; AFM kerning; stable identity.
@@ -255,6 +314,17 @@ output: run the script; the table above is the 2026-09-12 run.
   AV kerning −135 and optional; Hebrew/Arabic/bidi controls/Devanagari fail
   closed; default ignorables keep bytes; cluster hit testing; AFM header
   metrics; Courier never ligates.
+* `tests/latin_modern.rs` (9, skip if BasicTeX's Latin Modern is absent): OTTO
+  parse (`Outlines::Cff`, PostScript name, declared cap/x height, explicit
+  unsupported note); "Hello" 10 pt = 22.5000 pt and the 74-glyph line = 337.22 pt
+  within 0.01 pt of CoreText on the same file; AV via GPOS and 13.89 pt CTLine
+  match; `fi` and two-step `ffi` (833 units) via GSUB with the cmap fallback off,
+  and the full line at 54.99 pt; é/— in cmap with byte-accurate clusters and
+  composition; raw `CFF ` bytes equal to the directory entry, glyf-only
+  operations refused; whole-program embedding with identity CIDs, unkerned /W
+  widths and "ffi" in ToUnicode; MathConstants and italics corrections equal to
+  the file; every listed LM text face parses and shapes, monospaced ones never
+  ligate.
 * `tests/truetype.rs` (17, each skips with a message when its font is absent):
   metrics and content identity; "Hello" within 0.05 pt of Core 14; AV kerning
   negative via kern table; `fi` one glyph vs two with the same source bytes;
@@ -267,7 +337,9 @@ output: run the script; the table above is the 2026-09-12 run.
   and OTTO inputs are errors; GPOS PairPos in Arial equal to its legacy table;
   GPOS in Times New Roman Italic; GPOS Extension in Iowan Old Style; TNR's
   Latin ligatures come from cmap, not its Arabic-only `liga`; a real Latin GSUB
-  `liga` (Iowan, fi → gid 192) with the cmap fallback disabled.
+  `liga` (Iowan, fi → gid 192) with the cmap fallback disabled. (TNR's
+  Arabic-only `liga` is no longer selected at all now that features go through
+  the default language system.)
 
 ## Relationship to sibling crates
 
