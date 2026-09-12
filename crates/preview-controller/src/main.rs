@@ -43,6 +43,31 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
     }
     Ok(limits)
 }
+// The producer counts JSON bytes; runtime framing also counts the newline.
+// Invalid inherited settings have the producer's default semantics. A stricter
+// positive setting remains authoritative even if too small for a useful reply.
+fn producer_command(path: &str, limits: &Limits) -> Command {
+    producer_command_with_limit(
+        path,
+        limits,
+        std::env::var_os("FLASHTEX_MAX_REPLY_BYTES").as_deref(),
+    )
+}
+fn producer_command_with_limit(
+    path: &str,
+    limits: &Limits,
+    inherited: Option<&std::ffi::OsStr>,
+) -> Command {
+    let ceiling = limits.max_frame.saturating_sub(1);
+    let cap = inherited
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .map_or(ceiling, |value| value.min(ceiling));
+    let mut command = Command::new(path);
+    command.env("FLASHTEX_MAX_REPLY_BYTES", cap.to_string());
+    command
+}
 fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
     v[name].as_str().ok_or(format!("missing string {name}"))
 }
@@ -140,16 +165,18 @@ fn run(config: Value) -> Result<(), String> {
     if raw_display {
         controller.select_raw_display_prototype()?;
     }
-    let compiler_error = compiler
-        .as_ref()
-        .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
+    let compiler_error = compiler.as_ref().and_then(|path| {
+        controller
+            .restart(producer_command(path, &limits), limits.clone())
+            .err()
+    });
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
-    let (output_tx, output_rx) = output_delivery::channel(8);
+    let (output_tx, output_rx) = output_delivery::channel_with_diagnostics(8, diagnostic_timings);
     let stopped = Arc::new(AtomicBool::new(false));
     let output_stopped = stopped.clone();
     let output_done = Arc::new(AtomicBool::new(false));
     let writer_done = output_done.clone();
-    let writing_since = Arc::new(Mutex::new(None::<std::time::Instant>));
+    let writing_since = Arc::new(Mutex::new(None::<(std::time::Instant, Option<u64>)>));
     let writer_clock = writing_since.clone();
     thread::spawn(move || {
         let mut stdout = io::stdout().lock();
@@ -159,15 +186,18 @@ fn run(config: Value) -> Result<(), String> {
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             };
-            *writer_clock.lock().unwrap() = Some(std::time::Instant::now());
+            *writer_clock.lock().unwrap() = Some((std::time::Instant::now(), frame.sequence()));
+            frame.trace("write_started");
             if stdout
                 .write_all(&frame.bytes)
                 .and_then(|_| stdout.flush())
                 .is_err()
             {
+                frame.trace("write_failed");
                 output_stopped.store(true, Ordering::SeqCst);
                 break;
             }
+            frame.trace("write_finished");
             output_rx.written(&frame);
             *writer_clock.lock().unwrap() = None;
         }
@@ -228,17 +258,31 @@ fn run(config: Value) -> Result<(), String> {
     let mut bindings = SubmissionBindings::default();
     let mut last_display_profile_key = None;
     let mut output_epoch = output_tx.reset_optional();
+    let mut request_sequence = Some(0u64);
     while !stopped.load(Ordering::SeqCst) {
-        if writing_since
+        let stalled = writing_since
             .lock()
             .unwrap()
-            .is_some_and(|start| start.elapsed() >= Duration::from_secs(2))
-        {
+            .as_ref()
+            .and_then(|(start, sequence)| {
+                (start.elapsed() >= Duration::from_secs(2)).then_some(*sequence)
+            });
+        if let Some(sequence) = stalled {
+            if diagnostic_timings {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"output_watchdog","sequence":sequence,"outcome":"timeout"})
+                );
+            }
             stopped.store(true, Ordering::SeqCst);
             break;
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
             Ok(mut request) => {
+                request_sequence = request_sequence.and_then(|sequence| sequence.checked_add(1));
+                let diagnostic_started_ms = diagnostic_timings
+                    .then(|| output_tx.diagnostic_ms())
+                    .flatten();
                 let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
@@ -326,7 +370,7 @@ fn run(config: Value) -> Result<(), String> {
                 if diagnostic_timings {
                     eprintln!(
                         "{}",
-                        json!({"phase":"request","handling_ms":handling_ms,
+                        json!({"phase":"request","sequence":request_sequence,"started_ms":diagnostic_started_ms,"handling_ms":handling_ms,
                         "response_serialization_ms":serialization_started.elapsed().as_secs_f64()*1000.0})
                     );
                 }
@@ -362,9 +406,15 @@ fn run(config: Value) -> Result<(), String> {
             );
         }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {
-            bindings
-                .take(bindings.epoch(), snapshot.compile_revision())
-                .map(|token| (snapshot, token))
+            let token = bindings.take(bindings.epoch(), snapshot.compile_revision());
+            if diagnostic_timings && token.is_none() {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"historical_eligibility",
+                    "compile_revision":snapshot.compile_revision(),"outcome":"binding_unavailable"})
+                );
+            }
+            token.map(|token| (snapshot, token))
         });
         for update in updates {
             // A negotiated historical frame replaces its legacy stale notification.
@@ -403,7 +453,18 @@ fn run(config: Value) -> Result<(), String> {
             );
         }
         if let Some((snapshot, token)) = historical {
-            if output_tx.can_offer(output_epoch) && controller.claim_historical_display(&snapshot) {
+            let eligible = output_tx.can_offer(output_epoch);
+            let claimed = eligible && controller.claim_historical_display(&snapshot);
+            if diagnostic_timings && !claimed {
+                eprintln!(
+                    "{}",
+                    json!({"phase":"historical_eligibility",
+                    "compile_revision":snapshot.compile_revision(),
+                    "outcome":if eligible {"claim_refused"} else {"queue_ineligible"}})
+                );
+            }
+            if claimed {
+                let generation = snapshot.compile_revision();
                 let mut payload = json!({"kind":"completed_snapshot",
                         "project_id":snapshot.source_versions().project_id,
                         "session_id":session,"source_versions":snapshot.source_versions().documents,
@@ -413,12 +474,17 @@ fn run(config: Value) -> Result<(), String> {
                 payload["result"] = snapshot.into_result();
                 let value = wire::envelope(&session, Value::Null, "update", payload);
                 let started = std::time::Instant::now();
-                let outcome =
-                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                let outcome = optional_output::offer_with_generation(
+                    &output_tx,
+                    output_epoch,
+                    &value,
+                    MAX_OUTPUT_BYTES,
+                    Some(generation),
+                );
                 if diagnostic_timings {
                     eprintln!(
                         "{}",
-                        json!({"phase":"optional_output","kind":"completed_snapshot",
+                        json!({"phase":"optional_output","kind":"completed_snapshot","compile_revision":generation,
                         "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
                     );
                 }
@@ -803,7 +869,7 @@ fn handle(
         }
         "restart" => {
             controller.restart(
-                Command::new(compiler.ok_or("compiler not configured")?),
+                producer_command(compiler.ok_or("compiler not configured")?, limits),
                 limits.clone(),
             )?;
             Ok(json!({"submitted":true}))
@@ -1045,6 +1111,61 @@ mod configuration_tests {
         assert!(!stopped.load(Ordering::SeqCst));
     }
 
+    #[test]
+    fn producer_launch_bounds_reply_and_preserves_stricter_settings() {
+        let limits = compiler_limits(&json!({"compiler_max_frame_bytes":4096})).unwrap();
+        for (inherited, expected) in [
+            (None, "4095"),
+            (Some("8192"), "4095"),
+            (Some("2048"), "2048"),
+            (Some("1"), "1"),
+            (Some("0"), "4095"),
+            (Some("invalid"), "4095"),
+            (Some(" 7"), "4095"),
+            (Some("7 "), "4095"),
+            (Some("-1"), "4095"),
+            (Some("+7"), "7"),
+            (Some("0007"), "7"),
+            (Some("99999999999999999999999999999999999"), "4095"),
+        ] {
+            let mut command = producer_command_with_limit(
+                "/bin/sh",
+                &limits,
+                inherited.map(std::ffi::OsStr::new),
+            );
+            // Exercise the actual child environment without changing the test
+            // process environment or racing other test threads.
+            let output = command
+                .args(["-c", "printf '%s' \"$FLASHTEX_MAX_REPLY_BYTES\""])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+        }
+    }
+    #[test]
+    fn producer_budget_boundary_and_non_utf8_settings() {
+        use std::os::unix::ffi::OsStrExt;
+        for frame in [128, 8 * 1024 * 1024, MAX_COMPILER_FRAME] {
+            let limits = compiler_limits(&json!({"compiler_max_frame_bytes":frame})).unwrap();
+            let equal = (frame - 1).to_string();
+            for inherited in [
+                None,
+                Some(std::ffi::OsStr::new("")),
+                Some(std::ffi::OsStr::from_bytes(&[0xff])),
+                Some(std::ffi::OsStr::new(&equal)),
+            ] {
+                let command = producer_command_with_limit("unused", &limits, inherited);
+                let budget = command
+                    .get_envs()
+                    .find(|(key, _)| *key == "FLASHTEX_MAX_REPLY_BYTES")
+                    .unwrap()
+                    .1
+                    .unwrap();
+                assert_eq!(budget, std::ffi::OsStr::new(&equal));
+            }
+        }
+    }
     #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(

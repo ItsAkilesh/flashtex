@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ff5e0cd7ddad4e8ca82977fb0bfee35309a48f58",
-  "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+  "input_main_sha": "b741484d6bcda6e0dfa2623f77e62d834ddaf77c",
+  "objective": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 22,
+  "revision": 36,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:24:35.346350+00:00"
+  "updated_utc": "2026-09-12T14:53:23.065609+00:00"
 }

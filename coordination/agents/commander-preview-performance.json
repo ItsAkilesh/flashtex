@@ -3,28 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:07:58Z",
-      "adaptation": "Releasehelper built from58d27314 Rusttree, olddebug/release preserved. Same50KBfixture and pinneddebugproducer; optional transparent capture supplies actualstdin for independentproducer releaseverification. Preserve diagnosticphase vs native/captureoverhead distinction.",
-      "main_sha": "ef1a964ecf851c10ffb44f16d212de21e0e1675e",
-      "revision": 20
+      "acknowledged_utc": "2026-09-12T14:15:29Z",
+      "adaptation": "Pausedtelemetrycandidate preserved outsideworktree; helperpage/delta reviewonly with exactinstalledbase, fullresync and boundedcost constraints.",
+      "main_sha": "c364f838c8dc783064ae489e2bcf2c69172a1871",
+      "revision": 32
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "53c0c71d1fc35e8bafe0473c60f4eaf277833482",
-  "eta_minutes": null,
+  "code_revision": "f8bb23892aa01bee3b7c436493feb824ae491cbe",
+  "eta_minutes": {
+    "likely": 30,
+    "optimistic": 15,
+    "pessimistic": 60
+  },
   "machine": "linux-primary",
-  "main_integrated_through": "58d27314c83cbc62fa20e81dd1f5532a82849fef",
-  "next_action": "Commander integrate with runtimeproducerreleaseverification; nativepackaging and widerlatencyacceptance remain separate.",
+  "main_integrated_through": "71049ffa90db021375617a59bdf7440fcaf4a369",
+  "next_action": "Commander review correlation design; implement only agreed additive submission identity semantics.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r20 releasehelper+independentlyverifiedreleaseproducer50KBpair delivers currentframes77.53/80.33ms with exactprioroutputs/source.",
+  "summary": "Publishedf8bb2389 actual producer accept-decline-accept and complete fallback/reopen proof. Added reviewed launch-boundary tests and read-only edit compile-correlation design.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:12:54Z",
+  "updated_utc": "2026-09-12T14:51:38Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "f8bb2389; docs/proposals/edit-compile-correlation.md",
+    "status": "Hosted retained engineer, no paid calls, quota unknown; no running commands."
   }
 }

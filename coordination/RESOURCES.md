@@ -1,3 +1,17 @@
+## Latest resource and remote checkpoint 2026-09-12T14:05:54.621332+00:00
+
+Local userquota -s confirms secondtmpfs6282M used/6284Mlimit whiledfpreviously1.6GBfree; do notequatefilesystemfreewithquota. Useowned/home scratch, no pinnedartifactcleanup. Dispatcher1099831/witness1405586 active. Jaysen13:55:16Z comment5646314777 reports parent+3children (pipeline/helperdisplay/packaging);590tests/7skips/0fail, workloadnotlatencybenchmark. Userrelayed5husage18% recordedwithout derivingremainingbalance. Existingtarget15refill requested5646362851 for realuncoveredgaps, no newbilling/duplicates. Otherleadcounts remainstale. Page/delta proposal authorizedonlyasreviewableexistingownerhandoff; fullreply/default/decline and exactfullreconstruction guards retained.
+
+## Census timestamp correction
+
+Jaysen comment5646213168 corrects future labels: actual census interval13:25:11–13:30:18Z; host date reading13:34:55Z. Twelve children plus parent remains lead-reported, with later search lane completed/integrated, so it is not a current process census. No fresh Daniel/Kabir/Aarush confirmation. Native reported load121 caused four real-helper timeouts; passes80–94 and deferred full suite remain distinct. Heavy-build coordination requested5646221443. GH36 discovery.patch on main is only a handoff, not authoritative producer adoption.
+
+## Current observed resource and census checkpoint
+
+Observed 2026-09-12T13:33:32.337444+00:00. Local retained handles: Commander and three existing engineers, no expansion. Dispatcher1099831 and witness service active; latest witness13:32:34 pins Commander268514 live, empty journal blockers and claim_authorized=false. No restart justified. Load1.07/1.16/1.56; /home187GiB and /tmp1.7GiB available, not account balances.
+
+Jaysen issue2comment5646190139 reports twelve children plus parent, target15, quota429 cleared13:20 and sessions resumed13:27. GH31 ae7ddcfb739815fac and GH36 ac12dd0004019340d acknowledged. Report created13:30:18 but self-dated13:40 and handoff13:45: timestamps inconsistent, correction requested5646203389; count is lead-reported, not independently verified processes. Daniel b40e9948, Kabir previous ce5bf48e and Aarush c5c0bb67 remain stale; no current all-machine confirmation or numeric remaining balance. Existing billing restrictions remain.
+
 ## Verified Commander resource checkpoint
 
 Observed 2026-09-12T12:38:21.553671+00:00. Exactly four local running handles: sole Commander /root/runtime_validator and retained /root, /root/compiler_corpus (runtime), /root/supervisor_api_review. Three drained handles remain completed; Sol quiesced. This current census supersedes all historical seven-worker statements below.

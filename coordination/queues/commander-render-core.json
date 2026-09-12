@@ -4,42 +4,42 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
-      "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
+      "name": "Review actual pinned producer delta proposal against installed base and complete reconstruction authority",
+      "objective": "Review actual pinned producer delta proposal against installed base and complete reconstruction authority",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "timebox_minutes": 40
     },
     {
-      "name": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
-      "objective": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
+      "name": "Identify bounded old plus new resource retention and oversized full resync blockers",
+      "objective": "Identify bounded old plus new resource retention and oversized full resync blockers",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "timebox_minutes": 40
     },
     {
-      "name": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
-      "objective": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
+      "name": "Publish exact proposal discrepancy handoff without implementation or native activation",
+      "objective": "Publish exact proposal discrepancy handoff without implementation or native activation",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "timebox_minutes": 40
     }
   ],

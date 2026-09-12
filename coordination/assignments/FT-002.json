@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "1d25ed009e7007b65258d4b684421cb9aadc59c2",
-  "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
+  "input_main_sha": "89eee175dc6aec657bb3d6cbdb4bd11c47ac0d3c",
+  "objective": "Review exact-base isolated HW1 starred-section handoff 846ff03d and GH38 diagnostic preservation; only existing compiler owner may adopt after relevant gates",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 13,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:54:41Z"
+  "updated_utc": "2026-09-12T14:44:47.424074+00:00"
 }

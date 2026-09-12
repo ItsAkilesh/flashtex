@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6472a5d293887a2612d861da8a6c36fb6ff83555",
-  "objective": "Verify current-preview attribution and exact final source producer result after supersession without replaying throughput benchmark",
+  "input_main_sha": "6b69149c2922b043aafd0e11c2cd1320506b0c74",
+  "objective": "Audit published actual producer decline and following current preview source durability evidence",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 26,
+  "revision": 45,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:29:00Z"
+  "updated_utc": "2026-09-12T14:52:06Z"
 }

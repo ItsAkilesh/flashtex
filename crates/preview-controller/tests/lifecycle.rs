@@ -757,3 +757,55 @@ fn optional_historical_metadata_eviction_never_rejects_a_durable_edit() {
         "durable edit 79"
     );
 }
+
+#[test]
+fn preview_currentness_checks_compile_generation_even_with_matching_id_and_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.compile_current().unwrap();
+    let mut preview = wait(&mut controller, |events| {
+        events.iter().any(|e| matches!(e, Update::Preview(_)))
+    })
+    .into_iter()
+    .find_map(|event| match event {
+        Update::Preview(p) => Some(p),
+        _ => None,
+    })
+    .unwrap();
+    assert!(controller.is_current_preview(&preview));
+    let generation = preview.compile_revision;
+    // Keep the real request ID and complete source snapshot unchanged.
+    preview.compile_revision = generation.checked_add(1).unwrap();
+    assert!(!controller.is_current_preview(&preview));
+    preview.compile_revision = generation.saturating_sub(1);
+    assert!(!controller.is_current_preview(&preview));
+    preview.compile_revision = generation;
+    assert!(controller.is_current_preview(&preview));
+    controller
+        .restart(command(dir.path(), ECHO), Limits::default())
+        .unwrap();
+    assert!(!controller.is_current_preview(&preview));
+    let current = wait(&mut controller, |events| {
+        events.iter().any(|e| matches!(e, Update::Preview(_)))
+    })
+    .into_iter()
+    .find_map(|event| match event {
+        Update::Preview(p) => Some(p),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(
+        current.source_versions.documents,
+        preview.source_versions.documents
+    );
+    assert_ne!(current.compile_revision, generation);
+    assert!(controller.is_current_preview(&current));
+    assert!(!controller.is_current_preview(&preview));
+}
