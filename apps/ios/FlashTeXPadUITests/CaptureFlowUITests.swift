@@ -60,7 +60,11 @@ final class CaptureFlowUITests: XCTestCase {
             let b = canvas.coordinate(withNormalizedOffset: CGVector(dx: pts[i + 1].0, dy: pts[i + 1].1))
             a.press(forDuration: 0.05, thenDragTo: b)
         }
-        XCTAssertTrue(text(app, startingWith: "3 strokes").waitForExistence(timeout: 5), app.debugDescription)
+        // The first simulator launch can take several seconds to publish the
+        // PencilKit stroke-count accessibility value; the drawing itself is
+        // already complete, so wait for the eventual UI state instead of
+        // making the acceptance test load-sensitive.
+        XCTAssertTrue(text(app, startingWith: "3 strokes").waitForExistence(timeout: 15), app.debugDescription)
     }
 
     func testDrawSendReceipt() throws {
