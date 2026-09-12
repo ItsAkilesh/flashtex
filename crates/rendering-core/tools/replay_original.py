@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinned plain-fixture acceptance; uses existing producer, exporter and Poppler.
+"""Pinned established-fixture acceptance; uses existing producer, exporter and Poppler.
 Exit 0=fixture acceptance, 2=refused input/configuration, 3=observed mismatch,
 4=unknown (missing tool/version/timeout), 1=execution error. Always writes report.
 No downloads, installs, source repair, new font parser or rasterizer.
@@ -16,7 +16,8 @@ import tarfile
 import tempfile
 
 PRODUCER = "65dbe7da7a182e99322070e2c9763cc3b69a342b"
-CONSUMER = "c158f4e"
+CONSUMER = "83d4a0e"
+FIXTURE_MANIFEST_SHA256 = "4cb8dec58408efa560288adfe848f3d7fedf6bb0967a6b2160f633f89df4a412"
 ASSETS = {
     "fonts/tfm/public/lm/ec-lmr12.tfm": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",
     "fonts/tfm/public/lm/rm-lmr12.tfm": "9d4e3d8e39a41b93d91f79c1c47d2297efb7b1af220b94860693c08361f227aa",
@@ -56,7 +57,7 @@ def command(args, cwd, env, input_bytes=None, accepted=(0,), timeout=180):
 
 def run(args, report):
     root = Path(__file__).resolve().parents[3]
-    fixture = root / "crates/rendering-core/tests/fixtures/original-reference"
+    crate = root / "crates/rendering-core"
     env = dict(os.environ)
     # No network access by Cargo; all dependencies must already be available.
     env["CARGO_NET_OFFLINE"] = "true"
@@ -74,23 +75,35 @@ def run(args, report):
         if actual != expected:
             raise Outcome(4, "unknown", f"unpinned {tool} version: {actual}")
         tools[tool] = binary
+        report.setdefault("tool_sha256", {})[tool] = sha(Path(binary).read_bytes())
     try:
         import PIL
-        from PIL import Image, ImageChops
     except ImportError as error:
         raise Outcome(4, "unknown", "Pillow12.1.0 unavailable") from error
     report["versions"]["Pillow"] = PIL.__version__
     if PIL.__version__ != "12.1.0":
         raise Outcome(4, "unknown", "Pillow version mismatch")
     # Reject changed consumer implementation rather than reuse stale acceptance.
-    unchanged = command(["git", "diff", "--exit-code", CONSUMER, "--", "crates/rendering-core/src", "crates/rendering-core/examples/pipeline_cff_probe.rs", "crates/rendering-core/examples/pdf_compare.rs", "crates/rendering-core/Cargo.toml", "crates/font-resources", "crates/font-engine", "crates/pdf", "crates/project-files", "crates/paragraph-layout", "crates/math-layout"], root, env, accepted=(0,1))
+    unchanged = command(["git", "diff", "--exit-code", CONSUMER, "--", "crates/rendering-core/src", "crates/rendering-core/examples/pipeline_cff_probe.rs", "crates/rendering-core/examples/pipeline_fonts_probe.rs", "crates/rendering-core/tests/math_reference.rs", "crates/rendering-core/examples/pdf_compare.rs", "crates/rendering-core/Cargo.toml", "crates/font-resources", "crates/font-engine", "crates/pdf", "crates/project-files", "crates/paragraph-layout", "crates/math-layout"], root, env, accepted=(0,1))
     if unchanged.returncode:
         raise Outcome(4,"unknown","consumer/dependency source differs from pinned acceptance baseline")
-    manifest = json.loads(command(["git", "show", CONSUMER+":crates/rendering-core/tests/fixtures/original-reference/manifest.json"],root,env).stdout)
-    required = ["request.jsonl", "reference.pdf", "reference-engine.json", "source.tex", "lmroman12-regular.otf", "GUST-FONT-LICENSE.txt"]
-    assets = {name: pinned(fixture/name, manifest["files"][name]) for name in required}
+    manifest = json.loads(pinned(Path(__file__).with_name("replay-fixtures.json"), FIXTURE_MANIFEST_SHA256))
+    selected = list(manifest["fixtures"]) if args.fixture == "all" else [args.fixture]
+    prepared = {}
+    for name in selected:
+        spec = manifest["fixtures"][name]
+        assets = {key: pinned(crate / value["path"], value["sha256"]) for key, value in spec["files"].items()}
+        engine = json.loads(assets["reference-engine.json"])
+        if engine["pdf_sha256"] != sha(assets["reference.pdf"]):
+            raise Outcome(2, "refused", "reference engine/PDF digest mismatch")
+        prepared[name] = (spec, assets)
     metric_bytes = {name: pinned(args.metrics_root/name, digest) for name, digest in ASSETS.items()}
-    report.update(producer_commit=PRODUCER, consumer_baseline=CONSUMER, pdf_backend_commit="654f626658ddf5d1c2ca4c2db63c3b4c87172e51", assets={**{name:sha(data) for name,data in assets.items()}, **ASSETS}, source_transformation="request strips fixture preamble; reference uses recorded LM preamble")
+    report.update(producer_commit=PRODUCER, consumer_baseline=CONSUMER,
+                  fixture_manifest_sha256=FIXTURE_MANIFEST_SHA256,
+                  runner_sha256=sha(Path(__file__).read_bytes()),
+                  pdf_backend_commit="654f626658ddf5d1c2ca4c2db63c3b4c87172e51",
+                  metric_assets=ASSETS, fixtures={},
+                  source_transformation="requests strip fixture preambles; references use recorded LM preambles")
     build_area=root/"crates/rendering-core/target/replays"
     build_area.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="original-",dir=build_area) as directory:
@@ -102,61 +115,97 @@ def run(args, report):
             target = stage/"metrics"/name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
-        fonts = stage/"fonts"
-        fonts.mkdir()
-        (fonts/"lmroman12-regular.otf").write_bytes(assets["lmroman12-regular.otf"])
-        (stage/"LICENSE").write_bytes(assets["GUST-FONT-LICENSE.txt"])
-        request = stage/"request.jsonl"
-        request.write_bytes(assets["request.jsonl"])
-        reference = stage/"reference.pdf"
-        reference.write_bytes(assets["reference.pdf"])
-        env["FLASHTEX_FONT_DIRS"] = str(fonts)
-        env["FLASHTEX_LM_DIR"] = str(fonts)
         env["FLASHTEX_TFM_DIRS"] = str(stage/"metrics/fonts/tfm/public/lm")
         env.pop("FLASHTEX_MAX_REPLY_BYTES", None)
         producer_manifest = stage/"crates/render-pipeline/Cargo.toml"
         command([tools["cargo"], "build", "--offline", "--quiet", "--manifest-path", str(producer_manifest), "--bin", "flashtex-render"], root, env, timeout=300)
         producer = stage/"crates/render-pipeline/target/debug/flashtex-render"
-        display = stage/"display.json"
-        reply = command([str(producer), "--font-dir", str(fonts), "--secnumdepth", "0", "--v2", str(display)], root, env, assets["request.jsonl"])
-        response = json.loads(reply.stdout)
-        wire = json.loads(display.read_bytes())
-        if response["payload"]["status"] != "ok" or response["payload"]["diagnostics"] or wire["payload"]["diagnostics"]:
-            raise Outcome(2, "refused", "producer diagnostics/status prevent reference acceptance")
-        if len(wire["payload"]["pages"]) != 1:
-            raise Outcome(3,"mismatch","plain fixture must have exactly one page")
         report["producer_binary_sha256"] = sha(producer.read_bytes())
-        report["display_sha256"] = sha(display.read_bytes())
-        consumer_manifest = root/"crates/rendering-core/Cargo.toml"
-        prefix = stage/"original"
-        command([tools["cargo"], "run", "--offline", "--quiet", "--manifest-path", str(consumer_manifest), "--example", "pipeline_cff_probe", "--", str(display), str(request), str(fonts/"lmroman12-regular.otf"), str(stage/"LICENSE"), str(prefix), "--searchable"], root, env)
-        pdf = stage/"original.pdf"
-        comparison = stage/"comparison.json"
-        command([tools["cargo"], "run", "--offline", "--quiet", "--manifest-path", str(consumer_manifest), "--example", "pdf_compare", "--", str(pdf), str(reference), str(comparison)], root, env, accepted=(0,3,4))
-        result = json.loads(comparison.read_bytes())
-        report["pdf_comparison"] = result
-        if result["truncated"] or result["parsed_operators_equal"] is None:
-            raise Outcome(4, "unknown", "PDF comparison unsupported or truncated")
-        for label, source in [("original",pdf),("reference",reference)]:
-            command([tools["pdftotext"],"-enc","UTF-8",str(source),str(stage/(label+".txt"))],root,env)
-            command([tools["pdftoppm"],"-r","144","-singlefile","-png",str(source),str(stage/label)],root,env)
-        a = Image.open(stage/"original.png").convert("RGB")
-        b = Image.open(stage/"reference.png").convert("RGB")
-        if a.size != (1224,1584) or b.size != a.size:
-            raise Outcome(3,"mismatch","unexpected fixture page geometry")
-        different = sum(value != (0,0,0) for value in ImageChops.difference(a,b).get_flattened_data())
-        equal_text = (stage/"original.txt").read_bytes() == (stage/"reference.txt").read_bytes()
-        report.update(pdf_sha256=sha(pdf.read_bytes()),text_equal=equal_text,raster={"dpi":144,"width":a.width,"height":a.height,"different_pixels":different,"original_rgb_sha256":sha(a.tobytes()),"reference_rgb_sha256":sha(b.tobytes())}, scope="one pinned plain-paragraph fixture; no global compatibility claim")
-        if different or not equal_text:
-            raise Outcome(3,"mismatch","observed raster/text differs")
-        report.update(status="accepted",reason="zero diagnostics; exact fixture raster and extracted text equality")
+        codes = []
+        for name, (spec, assets) in prepared.items():
+            result = {"status": "unknown", "assets": {key:sha(data) for key,data in assets.items()},
+                      "text_comparison_validity": spec["text_comparison_validity"]}
+            report["fixtures"][name] = result
+            try:
+                measure_fixture(stage/name, root, env.copy(), tools, producer, spec, assets, result)
+                codes.append(0)
+            except Outcome as error:
+                result.update(status=error.status,reason=error.reason)
+                codes.append(error.code)
+            except Exception as error:
+                result.update(status="error",reason=f"{type(error).__name__}: {error}")
+                codes.append(1)
+        # An execution/unknown/refused outcome cannot be hidden by another mismatch.
+        for code, status in [(1,"error"),(4,"unknown"),(2,"refused"),(3,"mismatch")]:
+            if code in codes:
+                raise Outcome(code,status,"selected fixtures include " + status + "; inspect each independent result")
+        report.update(status="accepted",reason="all selected fixtures passed their limited acceptance scopes")
+
+def measure_fixture(stage, root, env, tools, producer, spec, assets, report):
+    from PIL import Image, ImageChops
+    stage.mkdir()
+    fonts = stage/"fonts"
+    fonts.mkdir()
+    for name in spec["font_files"]:
+        (fonts/name).write_bytes(assets[name])
+    (stage/"LICENSE").write_bytes(assets["GUST-FONT-LICENSE.TXT"])
+    request = stage/"request.jsonl"
+    request.write_bytes(assets["request.jsonl"])
+    reference = stage/"reference.pdf"
+    reference.write_bytes(assets["reference.pdf"])
+    env["FLASHTEX_FONT_DIRS"] = str(fonts)
+    env["FLASHTEX_LM_DIR"] = str(fonts)
+    display = stage/"display.json"
+    reply = command([str(producer), "--font-dir", str(fonts), "--secnumdepth", "0", "--v2", str(display)], root, env, assets["request.jsonl"])
+    response = json.loads(reply.stdout)
+    wire = json.loads(display.read_bytes())
+    if response["payload"]["status"] != "ok" or response["payload"]["diagnostics"] or wire["payload"]["diagnostics"]:
+        raise Outcome(2, "refused", "producer diagnostics/status prevent reference acceptance")
+    if len(wire["payload"]["pages"]) != 1:
+        raise Outcome(3,"mismatch","pinned fixture must have exactly one page")
+    report["display_sha256"] = sha(display.read_bytes())
+    consumer_manifest = root/"crates/rendering-core/Cargo.toml"
+    prefix = stage/"original"
+    command([tools["cargo"], "run", "--offline", "--quiet", "--manifest-path", str(consumer_manifest), "--example", "pipeline_fonts_probe", "--", str(display), str(request), str(fonts), str(stage/"LICENSE"), str(prefix), "--searchable"], root, env)
+    pdf = stage/"original.pdf"
+    comparison = stage/"comparison.json"
+    command([tools["cargo"], "run", "--offline", "--quiet", "--manifest-path", str(consumer_manifest), "--example", "pdf_compare", "--", str(pdf), str(reference), str(comparison)], root, env, accepted=(0,3,4))
+    result = json.loads(comparison.read_bytes())
+    report["pdf_comparison"] = result
+    if result["truncated"] or result["parsed_operators_equal"] is None:
+        raise Outcome(4, "unknown", "PDF comparison unsupported or truncated")
+    for label, source in [("original",pdf),("reference",reference)]:
+        command([tools["pdftotext"],"-enc","UTF-8",str(source),str(stage/(label+".txt"))],root,env)
+        command([tools["pdftoppm"],"-r","144","-singlefile","-png",str(source),str(stage/label)],root,env)
+    a = Image.open(stage/"original.png").convert("RGB")
+    b = Image.open(stage/"reference.png").convert("RGB")
+    if a.size != (1224,1584) or b.size != a.size:
+        raise Outcome(3,"mismatch","unexpected fixture page geometry")
+    different = sum(value != (0,0,0) for value in ImageChops.difference(a,b).get_flattened_data())
+    equal_text = (stage/"original.txt").read_bytes() == (stage/"reference.txt").read_bytes()
+    report.update(pdf_sha256=sha(pdf.read_bytes()),text_equal=equal_text,raster={"dpi":144,"width":a.width,"height":a.height,"different_pixels":different,"original_rgb_sha256":sha(a.tobytes()),"reference_rgb_sha256":sha(b.tobytes())}, scope="one selected pinned fixture; no global compatibility claim")
+    report["raster"]["equal"] = different == 0
+    report["extracted_text"] = {"equal": equal_text,
+        "original_sha256": sha((stage/"original.txt").read_bytes()),
+        "reference_sha256": sha((stage/"reference.txt").read_bytes())}
+    decide_measurement(different, equal_text, report["text_comparison_validity"]["status"])
+    report.update(status="accepted",reason="zero diagnostics; exact fixture raster and limited linear text equality")
+
+def decide_measurement(different, equal_text, text_validity):
+    if different:
+        raise Outcome(3,"mismatch","observed raster differs; text validity is separate")
+    if text_validity != "limited_linear_text":
+        raise Outcome(4,"unknown","raster matches but reference text oracle is incomplete or unverified")
+    if not equal_text:
+        raise Outcome(3,"mismatch","observed extracted text differs within limited comparison scope")
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--metrics-root",type=Path,required=True)
     parser.add_argument("--report",type=Path,required=True)
+    parser.add_argument("--fixture", choices=("plain","inline-math","display-math","wrapping","ligatures","all"), default="plain")
     args=parser.parse_args()
-    report={"format":"flashtex-original-reference-replay-v1","status":"unknown"}
+    report={"format":"flashtex-original-reference-replay-v2","status":"unknown"}
     code=0
     try:
         run(args,report)

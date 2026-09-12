@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T10:39:37Z",
-      "adaptation": "Read actual published602pixel classification objective. Use existing owner dumps and pinned raster/font data; no speculative geometry patch or invented reference GIDs.",
-      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T11:12:18Z",
+      "adaptation": "Read84c052b FT023r9. Consume exact b9240b0 runtime and8876279 helper artifacts; explicit compile versus document revision and membership/session source gates, existing immutable CFF export only.",
+      "main_sha": "84c052b49edd6e045618839369dec35051f32880",
+      "revision": 9
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8b06436cd5bc74d2b5a2a3c9e2e7a45522c47a42",
+  "code_revision": "c3a5836b761cc81f49a2bd69bb96a192049216bf",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 8,
+    "optimistic": 3,
+    "pessimistic": 15
   },
   "machine": "linux-primary",
-  "main_integrated_through": "a45e71b0ec92ba99dd089988ee6f87ac3c58aada",
-  "next_action": "Send precise font-binding handoff to existing producer/font owners, then classify a second existing math fixture as queued; no speculative coordinate patch.",
+  "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
+  "next_action": "Publish adapter/actual fixtures then explicitly rebaseline and replay existing five pinned acceptance cases after additive source change.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r8 classified602pixel math mismatch read-only:582math-associated,20colon; exact checked origins/rules differ under0.001bp, observed math resource/optical-family distinction; no verified consumergeometry bug.",
+  "summary": "FT023r9 actual FT049 runtime/helper candidates reach immutable searchable export without metadata repair; stale/editor-generation/resource negatives refused.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:41:05Z",
+  "updated_utc": "2026-09-12T11:15:01Z",
   "usage": {
-    "evidence": "Existing owner dump binary and rawtraces/bboxes pinned; directRGB602 count reconciles disjoint windows. Fractionrule and radicalrule interior0diff. CandidateoriginalGIDs/origins retained; referenceType1codes not GIDs. No builds during root timing; window nowreleased. No pending calls.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "Full164Rust tests pass, including3actual runtime/helper acceptance tests. Helper editor1/2/3 versus compile2/3/4 preserved. Exact candidate/direct export equality; no native/visual claim.",
+    "status": "Hosted OpenAI only; no providers/descendants/native activation; quota telemetry unavailable."
   }
 }
