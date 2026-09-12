@@ -1,9 +1,14 @@
 mod common;
 
+use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+
 use common::{TempDir, pp};
 use flashtex_project_files::{
     DiagnosticKind, DiscoverError, FileKind, FileSource, Overlay, PathError, ProjectGraph,
-    ProjectPath, ReferenceKind, Severity, json::Json,
+    ProjectPath, ReferenceKind, Severity, json::Json, sha256,
 };
 
 fn paths(g: &ProjectGraph) -> Vec<&str> {
@@ -270,6 +275,91 @@ fn symlink_escaping_root_is_rejected() {
     assert_eq!(paths(&g), ["main.tex"]);
     assert!(
         matches!(&g.diagnostics()[0].kind, DiagnosticKind::EscapesRootViaSymlink { target } if target == &pp("link.tex"))
+    );
+}
+
+/// Issue #45 finding 1: `escapes_via_symlink` (canonicalize) and `load`
+/// (`fs::read`) used to be two independent syscall sequences against the
+/// same path string, with no file descriptor pinned between them. A thread
+/// that keeps swapping `secret.tex` between an in-root regular file and a
+/// symlink to an outside file must never get its outside content read into
+/// the graph: every `discover` outcome must be either the safe in-root
+/// content or a refusal (`EscapesRootViaSymlink`/`MissingFile`), never a
+/// leak. This must hold for every interleaving, not just probabilistically,
+/// so the assertion is unconditional rather than "usually passes".
+#[cfg(unix)]
+#[test]
+fn toctou_symlink_race_never_leaks_outside_content_into_graph() {
+    let outside = TempDir::new("toctou-outside");
+    let victim = outside.write("secret-data.txt", "OUTSIDE-SECRET-CONTENT");
+    let t = TempDir::new("toctou-root");
+    t.write("main.tex", "\\input{secret}");
+    let target = t.root().join("secret.tex");
+    fs::write(&target, "safe-inroot-content").unwrap();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let racer = {
+        let stop = stop.clone();
+        let target = target.clone();
+        let victim = victim.clone();
+        thread::spawn(move || {
+            let mut flips = 0u32;
+            while !stop.load(Ordering::Relaxed) {
+                let _ = fs::remove_file(&target);
+                if flips.is_multiple_of(2) {
+                    let _ = std::os::unix::fs::symlink(&victim, &target);
+                } else {
+                    let _ = fs::write(&target, "safe-inroot-content");
+                }
+                flips += 1;
+            }
+            flips
+        })
+    };
+
+    let safe_hash = sha256(b"safe-inroot-content");
+    let mut leaked = false;
+    let mut safe_content_seen = 0u32;
+    let mut flagged_escape_seen = 0u32;
+    let mut missing_seen = 0u32;
+    for _ in 0..600 {
+        let g = ProjectGraph::discover(t.root(), &pp("main.tex")).unwrap();
+        match g.file(&pp("secret.tex")) {
+            Some(f) => {
+                if f.sha256 != safe_hash {
+                    leaked = true;
+                }
+                safe_content_seen += 1;
+            }
+            None => {
+                let escapes = g.diagnostics().iter().any(|d| {
+                    matches!(&d.kind, DiagnosticKind::EscapesRootViaSymlink { target } if target == &pp("secret.tex"))
+                });
+                let missing = g.diagnostics().iter().any(|d| {
+                    matches!(&d.kind, DiagnosticKind::MissingFile { target, .. } if target == "secret")
+                });
+                assert!(
+                    escapes || missing,
+                    "secret.tex absent from the graph but no escape/missing diagnostic explains it: {:?}",
+                    g.diagnostics()
+                );
+                if escapes {
+                    flagged_escape_seen += 1;
+                } else {
+                    missing_seen += 1;
+                }
+            }
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    let flips = racer.join().unwrap();
+    assert!(flips > 0);
+    eprintln!(
+        "toctou outcomes: safe={safe_content_seen} escaped={flagged_escape_seen} missing={missing_seen}, racer flips={flips}"
+    );
+    assert!(
+        !leaked,
+        "TOCTOU RACE WON: outside file content was read into the project graph as secret.tex"
     );
 }
 
