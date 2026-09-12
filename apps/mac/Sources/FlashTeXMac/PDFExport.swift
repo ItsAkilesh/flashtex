@@ -41,6 +41,11 @@ enum PDFExport {
         ctx.textMatrix = .identity
         for item in page.items {
             guard case .text(let t) = item else { continue }
+            if let r = RuleConvention.rect(for: t) {
+                ctx.setFillColor(foreground)
+                ctx.fill(CGRect(x: r.x, y: page.heightPt - r.y - r.height, width: r.width, height: r.height))
+                continue
+            }
             let font = CTFontCreateWithName(fontName as CFString, t.fontSizePt, nil)
             let attributed = NSAttributedString(string: t.text, attributes: [
                 .font: font,

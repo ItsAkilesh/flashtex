@@ -139,10 +139,18 @@ FLASHTEX_REPO=$(git rev-parse --show-toplevel) FLASHTEX_AUTOATTACH=1 \
 
 Screenshot of that run against crates/compiler 29221d8:
 `docs/evidence/mac-shell-real-compiler-2026-09-12.png` — WORKER badge, status
-`recovered`, three diagnostics with recovery notes, inline underlines. Visible
-limitation: words crowd/overlap in the preview because the compiler positions
-words with placeholder glyph widths (0.5 × size) while the shell draws real Times
-glyphs; real font metrics are the compiler's FT-005 work, not a shell bug.
+`recovered`, three diagnostics with recovery notes, inline underlines. Words
+crowded in that capture for two reasons, both since fixed: the compiler used
+placeholder glyph widths (real Core-14 metrics arrived in de1020c) and the
+preview drew with the system serif (New York) instead of Times-Roman. With
+compiler de1020c the preview now matches: `docs/evidence/mac-shell-math-times-2026-09-12.png`
+(inline fractions with rules, Greek, radicals, sum limits).
+
+Rules: text items consisting only of U+2500 are the compiler's fraction bars and
+are drawn as filled rectangles (`RuleConvention`: 0.5 em per character, 0.0857 em
+thick, hugging the baseline) in the preview and both PDF paths, so bars never
+depend on font glyph coverage. Heading weight (Times-Bold in the compiler) is not
+reproducible until runtime-v1 carries a font field; the preview draws Times-Roman.
 
 ## Keyboard shortcuts
 

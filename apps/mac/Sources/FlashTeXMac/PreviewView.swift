@@ -79,7 +79,15 @@ private struct HitTestCanvas: View {
             var rects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String)] = []
             for (index, item) in page.items.enumerated() {
                 guard case .text(let t) = item else { continue }
-                let font = Font.system(size: t.fontSizePt * scale, design: .serif)
+                if let r = RuleConvention.rect(for: t) {
+                    let rect = CGRect(x: r.x * scale, y: r.y * scale, width: r.width * scale, height: max(0.5, r.height * scale))
+                    context.fill(Path(rect), with: .color(dark ? .white : .black))
+                    rects.append((index, rect, t.source, t.text))
+                    continue
+                }
+                // Times-Roman: the face the compiler measured with. `.serif` design
+                // would be New York, which is wider and made words run together.
+                let font = Font.custom("Times-Roman", size: t.fontSizePt * scale)
                 var text = Text(t.text).font(font)
                 text = text.foregroundColor(dark ? .white : .black)
                 let resolved = context.resolve(text)

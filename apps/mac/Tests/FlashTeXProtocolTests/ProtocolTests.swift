@@ -60,3 +60,25 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(back.start, 3); XCTAssertEqual(back.end, 8)
     }
 }
+
+final class RuleConventionTests: XCTestCase {
+    private func item(_ text: String, size: Double = 8.4) -> RuntimeV1.PageItem.TextItem {
+        let json = #"{"kind":"text","text":"\#(text)","x_pt":72,"baseline_y_pt":131.52,"font_size_pt":\#(size),"source":null}"#
+        guard case .text(let t) = try! JSONDecoder().decode(RuntimeV1.PageItem.self, from: json.data(using: .utf8)!) else { fatalError() }
+        return t
+    }
+
+    func testPureRuleRunsBecomeRectangles() throws {
+        let r = try XCTUnwrap(RuleConvention.rect(for: item("──")))
+        XCTAssertEqual(r.x, 72)
+        XCTAssertEqual(r.width, 8.4, accuracy: 1e-9)          // 2 × 0.5 em × 8.4
+        XCTAssertEqual(r.height, 0.0857 * 8.4, accuracy: 1e-9)
+        XCTAssertEqual(r.y + r.height, 131.52, accuracy: 1e-9) // hugs the baseline from above
+    }
+
+    func testTextContainingOtherCharactersIsNotARule() {
+        XCTAssertNil(RuleConvention.rect(for: item("─a")))
+        XCTAssertNil(RuleConvention.rect(for: item("")))
+        XCTAssertNil(RuleConvention.rect(for: item("-")))
+    }
+}
