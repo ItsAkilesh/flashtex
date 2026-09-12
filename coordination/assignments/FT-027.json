@@ -19,8 +19,8 @@
   ],
   "revision": 7,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "awaiting_integration",
   "task_id": "FT-027",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
+  "updated_utc": "2026-09-12T07:26:21.086531+00:00"
 }
