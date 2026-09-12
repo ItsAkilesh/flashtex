@@ -52,3 +52,21 @@ and result correlation; compare baseline/new diagnostics and surface unsupported
 constructs, never equate recovered output with successful validation. Current
 compiler main API is protocol::handle_line over runtime-v1 JSON; no external TeX
 engine needed. Implementation ownership must be allocated before cross-module work.
+
+## Follow-up: persisted dependency freshness
+
+Root assigned dependency fingerprints and stale preparation protection. Context
+has additive serde-default dependencies entries (path/revision/full source hash),
+computed for exactly the uploaded literal include-connected component. Proposal
+journal persists them; preparation verifies the current set. Legacy fingerprints,
+missing dependency snapshots and changed content/revisions return explicit
+proposal_context_stale. Explicit conversion refreshes an unprepared stale proposal;
+unchanged retries use cache, unrelated files do not invalidate. Issued edits never
+trigger a replacement provider call; reconcile receipt before a new capture.
+
+Tests cover root-only macro edit/reconversion/new review, unchanged retry, unrelated
+source, restart with missing dependency, reused revision but altered source hash,
+legacy context and prepared-edit reconciliation. No live provider request made.
+Final acceptance for fingerprint increment: 31 tests pass (19 bridge, 3 CLI,
+9 context), clippy --all-targets -- -D warnings passes, fmt --check passes.
+Failed refresh is explicitly tested to retain old stale context and block prepare.

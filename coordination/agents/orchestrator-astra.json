@@ -7,17 +7,17 @@
     "orchestration",
     "git-integration"
   ],
-  "code_revision": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+  "code_revision": "4746e5b0b248f5df5db9c68807b6a23ce58dfc99",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
-  "next_action": "Await and acknowledge assignment",
+  "main_integrated_through": "4746e5b0b248f5df5db9c68807b6a23ce58dfc99",
+  "next_action": "Test and promote combined original Rust product components; replenish task queues and inspect remote ACKs.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "in_progress",
+  "summary": "Active sole orchestrator. Dispatcher active PID350962; six hosted product engineers active; Jaysen parent ACK reports14 then15 engineering workers.",
   "tool": "Codex Astra orchestrator",
-  "updated_utc": "2026-09-12T05:29:30Z",
+  "updated_utc": "2026-09-12T05:51:18.201476+00:00",
   "usage": {
     "status": "unknown"
   }

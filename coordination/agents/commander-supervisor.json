@@ -1,0 +1,39 @@
+{
+  "agent_id": "commander-supervisor",
+  "allocation_id": "openai-commander-supervisor",
+  "assignment_acknowledgements": {
+    "FT-016": {
+      "acknowledged_utc": "2026-09-12T04:55:30Z",
+      "adaptation": "Implementing dedicated Opus supervisor with bounded calls, usage reporting and verified-route-only API support; no live Claude inference before auth.",
+      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-supervisor/claude-supervisor",
+  "capabilities": [
+    "python",
+    "orchestration"
+  ],
+  "code_revision": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
+  "next_action": "Integrate through Astra orchestrator; actual worker launch requires verified API credential and available bounded credits. Root transfers to product implementation.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "API-only Opus supervisor implemented; 23 synthetic tests and independent fake CLI preflight verified. Durable credit reservations, credential-bound grants, Cursor checkpoints and retryable blocker notifications.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T05:26:41Z",
+  "usage": {
+    "evidence": "Independent review: 23 tests pass; fake CLI checks Opus bare/safe-mode/no-prompts and budget. Live provider authentication remains unverified.",
+    "status": "Hosted Astra engineering; no Claude or API inference calls. Actual Cursor publication authorized."
+  },
+  "deliverable_docs": [
+    "docs/claude-worker.md"
+  ]
+}

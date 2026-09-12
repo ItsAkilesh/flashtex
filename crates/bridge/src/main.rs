@@ -53,6 +53,12 @@ struct Confirm {
 struct CaptureId {
     capture_id: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ValidateCapture {
+    capture_id: String,
+    expected_revision: u64,
+}
 fn decode<T: serde::de::DeserializeOwned>(payload: Value) -> Result<T> {
     Ok(serde_json::from_value(payload)?)
 }
@@ -60,6 +66,7 @@ fn dispatch(
     bridge: &mut Bridge,
     message: Envelope,
     enable_grok: bool,
+    compiler: Option<&(validation::CompilerValidator, String)>,
 ) -> Result<(&'static str, Value)> {
     if message.protocol_version != 1 {
         return Err(BridgeError::new(
@@ -68,6 +75,26 @@ fn dispatch(
         ));
     }
     match message.kind.as_str() {
+        "capture_validate" => {
+            let request: ValidateCapture = decode(message.payload)?;
+            let (compiler, entry) = compiler.ok_or_else(|| {
+                BridgeError::new(
+                    "compiler_not_configured",
+                    "Configure the original FlashTeX compiler and project entry before validation",
+                )
+            })?;
+            let evidence = bridge.validate_capture(
+                &message.id,
+                &request.capture_id,
+                request.expected_revision,
+                entry,
+                compiler,
+            )?;
+            Ok((
+                "capture_validation",
+                json!({"capture_id":request.capture_id,"context_revision":request.expected_revision,"validation":evidence}),
+            ))
+        }
         "document_open" => {
             let doc: Document = decode(message.payload)?;
             bridge.open_document(doc)?;
@@ -175,12 +202,16 @@ fn run() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mut store = None;
     let mut enable_grok = false;
+    let mut compiler_path = None;
+    let mut compiler_entry = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--store" => store = args.next(),
             "--enable-grok" => enable_grok = true,
+            "--compiler" => compiler_path = args.next(),
+            "--compiler-entry" => compiler_entry = args.next(),
             "--help" => {
-                println!("flashtex-bridge --store PRIVATE_APP_DATA_DIRECTORY [--enable-grok]\nReads runtime-v1 JSONLines from stdin; logs to stderr. No network calls without capture_convert and --enable-grok.");
+                println!("flashtex-bridge --store PRIVATE_APP_DATA_DIRECTORY [--enable-grok] [--compiler ORIGINAL_FLASHTEX_BINARY --compiler-entry main.tex]\nReads runtime-v1 JSONLines from stdin; logs to stderr. No network calls without capture_convert and --enable-grok.");
                 return Ok(());
             }
             _ => {
@@ -191,6 +222,25 @@ fn run() -> Result<()> {
             }
         }
     }
+    let compiler = match (compiler_path, compiler_entry) {
+        (None, None) => None,
+        (Some(path), Some(entry)) => {
+            relative_path(&entry)?;
+            Some((
+                validation::CompilerValidator {
+                    executable: path.into(),
+                    timeout: std::time::Duration::from_secs(5),
+                },
+                entry,
+            ))
+        }
+        _ => {
+            return Err(BridgeError::new(
+                "invalid_arguments",
+                "Provide both --compiler and --compiler-entry",
+            ))
+        }
+    };
     let mut bridge = Bridge::new(Store::open(store.ok_or_else(|| {
         BridgeError::new(
             "invalid_arguments",
@@ -251,7 +301,7 @@ fn run() -> Result<()> {
                     } else {
                         decode(value).and_then(|message: Envelope| {
                             let _ = &message.id;
-                            dispatch(&mut bridge, message, enable_grok)
+                            dispatch(&mut bridge, message, enable_grok, compiler.as_ref())
                         })
                     }
                 }

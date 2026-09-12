@@ -139,6 +139,15 @@ def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
             'pointer_path': f'coordination/next/{agent}.json', 'pointer': pointer}, None
 
 
+def require_authority(root, args, ref='origin/main'):
+    expected = getattr(args, 'commander_id', None)
+    if not expected:
+        raise ValueError('explicit --commander-id required; never infer authority from a process name')
+    authority = coord.peer_json(root, ref, 'coordination/authority.json')
+    if authority.get('authority_state') != 'active' or authority.get('commander_id') != expected:
+        raise ValueError('Commander authority changed; dispatcher must stop without mutation')
+
+
 def scan_once(root, args):
     """Prepare all eligible next revisions, optionally publish once. No retries."""
     root = Path(root)
@@ -151,6 +160,7 @@ def scan_once(root, args):
             raise RuntimeError('Commander worktree is dirty; preserving work and stopping')
         coord.git(root, 'fetch', 'origin', '--prune')
         baseline = coord.git(root, 'rev-parse', 'origin/main')
+        require_authority(root, args, baseline)
         if coord.git(root, 'rev-parse', 'HEAD') != baseline:
             if coord.run(['git', 'merge-base', '--is-ancestor', 'HEAD', baseline], cwd=root, check=False).returncode:
                 raise RuntimeError('Commander HEAD must exactly match current origin/main or be a clean ancestor before dispatch')
@@ -158,7 +168,7 @@ def scan_once(root, args):
         control_path = 'coordination/control.json'
         if not coord.run(['git', 'cat-file', '-e', baseline + ':' + control_path], cwd=root, check=False).returncode:
             control = coord.peer_json(root, baseline, control_path)
-            if control.get('state') in ['user_stopped', 'verified_complete']:
+            if control.get('state') == 'user_stopped':
                 return {'prepared': [], 'skipped': [], 'published': False, 'paths': [],
                         'baseline_main': baseline, 'stopped': True, 'reason': control['state']}
         assignments = main_records(root, 'coordination/assignments')
@@ -197,13 +207,16 @@ def scan_once(root, args):
         # Persist BEFORE paid invocation. A crash or ambiguous failure cannot trigger paid retry.
         coord.write_json(journal_path, dict(state='pending', baseline_main=baseline,
                                            paths=paths, started_utc=coord.stamp()))
-        coord.publish(root, SimpleNamespace(allocation=args.allocation, implementation='Commander dispatcher',
+        require_authority(root, args, baseline)
+        coord.publish(root, SimpleNamespace(allocation=args.allocation, implementation='Codex Astra dispatcher',
+                      direct_agent_commit=getattr(args, 'direct_agent_commit', False),
                       message='coord: dispatch next queued worker assignments', timeout=args.timeout))
         coord.git(root, 'fetch', 'origin', '--prune')
         if coord.git(root, 'rev-parse', 'origin/main') != baseline:
             raise RuntimeError('main changed during publication; task branch preserved, integration required')
         if coord.run(['git', 'merge-base', '--is-ancestor', baseline, 'HEAD'], cwd=root, check=False).returncode:
             raise RuntimeError('published revision is not a descendant of baseline main')
+        require_authority(root, args)
         coord.git(root, 'push', 'origin', 'HEAD:refs/heads/main')
         after = coord.git(root, 'rev-parse', 'HEAD')
         coord.write_json(journal_path, dict(state='published', baseline_main=baseline,
@@ -220,6 +233,8 @@ def parser():
     p.add_argument('--interval', type=int, default=30)
     p.add_argument('--stale-seconds', type=int, default=600)
     p.add_argument('--publish', action='store_true', help='actual Cursor commit, then guarded main push')
+    p.add_argument('--commander-id', required=True, help='exact active authority owner; stale owner fails closed')
+    p.add_argument('--direct-agent-commit', action='store_true', help='authorized Cursor-limit fallback; no Cursor call')
     p.add_argument('--allocation', help='authorized Cursor publication allocation, never an invented balance')
     p.add_argument('--timeout', type=int, default=180)
     return p
