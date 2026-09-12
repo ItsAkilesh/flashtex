@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ecb70205a806bbe6fc10c3697879ba9536cb3593",
-  "objective": "Implement opt-in metadata-only apply_group acknowledgement using existing bounded UTF8 grouped edits and exact permanent-ID retry semantics",
+  "input_main_sha": "cdcfc63f8dbda433d94c4c49337ae4350ca86464",
+  "objective": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:16:19.204204+00:00"
+  "updated_utc": "2026-09-12T12:28:06.743631+00:00"
 }

@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
-      "objective": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
+      "name": "Inspect measured repeated pairing and resource parsing for one immutable helper candidate",
+      "objective": "Inspect measured repeated pairing and resource parsing for one immutable helper candidate",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Replace avoidable preflight allocation only with existing serde validation preserving duplicate, finite, depth and source rules",
-      "objective": "Replace avoidable preflight allocation only with existing serde validation preserving duplicate, finite, depth and source rules",
+      "name": "Implement smallest immutable reuse justified by duplicate work while rechecking live source and registry authority",
+      "objective": "Implement smallest immutable reuse justified by duplicate work while rechecking live source and registry authority",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify actual raw candidate exports and all malformed-policy fixtures unchanged; no native activation",
-      "objective": "Verify actual raw candidate exports and all malformed-policy fixtures unchanged; no native activation",
+      "name": "Verify paired existing-capture exact PDF and refusal equality with bounded residency and stale-source rejection",
+      "objective": "Verify paired existing-capture exact PDF and refusal equality with bounded residency and stale-source rejection",
       "owned_paths": [
         "crates/rendering-core"
       ],

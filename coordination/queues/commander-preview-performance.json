@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement opt-in metadata-only apply_group acknowledgement using existing bounded UTF8 grouped edits and exact permanent-ID retry semantics",
-      "objective": "Implement opt-in metadata-only apply_group acknowledgement using existing bounded UTF8 grouped edits and exact permanent-ID retry semantics",
+      "name": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
+      "objective": "Extend opt-in metadata acknowledgements to existing undo and redo commands preserving default full responses",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify Unicode grouped edit, lost acknowledgement reopen, exact retry, ID conflict and undo equivalence in both response modes",
-      "objective": "Verify Unicode grouped edit, lost acknowledgement reopen, exact retry, ID conflict and undo equivalence in both response modes",
+      "name": "Verify undo redo retries after later edits conflict and unread acknowledgement reopen with distinct command and current identities",
+      "objective": "Verify undo redo retries after later edits conflict and unread acknowledgement reopen with distinct command and current identities",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Measure same500KB grouped request and acknowledgement size and retained response copies; publish native opt-in reconciliation contract without default activation",
-      "objective": "Measure same500KB grouped request and acknowledgement size and retained response copies; publish native opt-in reconciliation contract without default activation",
+      "name": "Measure bounded compact history response and document native reconciliation contract without ledger format or default changes",
+      "objective": "Measure bounded compact history response and document native reconciliation contract without ledger format or default changes",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
