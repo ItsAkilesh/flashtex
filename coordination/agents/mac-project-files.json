@@ -7,29 +7,29 @@
     "rust",
     "cargo"
   ],
-  "code_revision": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+  "code_revision": "6da9f2ffbeea5b005309d8e2f8e8e6c33741f0d6",
   "eta_minutes": {
-    "likely": 90,
-    "optimistic": 60,
-    "pessimistic": 150
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
-  "next_action": "Write crate skeleton, scanner, graph, sha256, save, watch, recovery with tests",
+  "next_action": "Await parent (mac-claude-a) decision on process-vs-FFI adapter; then add JSON Lines adapter + binary under crates/project-files",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Base main 1dd26c5; no crates/project-files exists on any branch; compiler path rule (no absolute, no drive prefix, no ..) mirrored in ProjectPath normalization",
-      "reviewed_utc": "2026-09-12T05:40:41Z",
-      "sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863"
+      "adaptation": "254193c: c89ca86 added project-index, edit-ledger, document-runtime and other crates plus FT-021..026 (none for this worker); 056170d/254193c add the API-only Claude supervisor scripts only. No path overlap. README documents how documents()/revisions feed project-index, how save/diff complement edit-ledger, and that RecoveryJournal is redundant for ledger-backed documents.",
+      "reviewed_utc": "2026-09-12T05:55:40Z",
+      "sha": "254193c175534e78bfd9e5206b4850b86123cbe6"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Starting crates/project-files: project graph, SHA-256, atomic saves, external-change detection; no assignment file exists for this dispatch (issue #2 comment), so no ack is possible",
+  "state": "ready_for_integration",
+  "summary": "crates/project-files complete: ProjectPath normalization, span-carrying reference scanner, ProjectGraph discovery with cycle/missing/escape diagnostics and runtime-v1 documents export, hand-written SHA-256, RevisionTracker, atomic hash-checked saves, snapshot/diff external-change conflicts, recovery journal; README with guarantees, sibling-crate relationship and native integration proposal. 35 tests, clippy -D warnings, fmt, rustdoc clean. No assignment file exists for this dispatch, so no ack.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:40:41Z",
+  "updated_utc": "2026-09-12T05:55:40Z",
   "usage": {
-    "evidence": "Claude Max20x subagent; per-call quota not exposed",
+    "evidence": "cargo test 35 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; RUSTDOCFLAGS=-D warnings cargo doc clean; temp dirs only",
     "status": "unknown"
   }
 }

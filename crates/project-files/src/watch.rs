@@ -117,8 +117,9 @@ impl Snapshot {
         self.entries.remove(path);
     }
 
-    /// Records that we ourselves just wrote `path` (from a [`SaveReceipt`]
-    /// (crate::save::SaveReceipt)), so the write is not reported as external.
+    /// Records that we ourselves just wrote `path` (from a
+    /// [`SaveReceipt`](crate::save::SaveReceipt)), so the write is not
+    /// reported as external.
     pub fn record_own_write(
         &mut self,
         path: &ProjectPath,

@@ -7,7 +7,7 @@
 //! - [`scan`]: the light reference scanner used by the graph.
 //! - [`path`]: [`ProjectPath`] normalization (relative, forward slashes,
 //!   never escaping the root).
-//! - [`sha256`]: hand-written SHA-256 for content identity.
+//! - [`sha256`](mod@sha256): hand-written SHA-256 for content identity.
 //! - [`revision`]: per-file revision counters and a derived project revision.
 //! - [`save`]: atomic saves with hash-checked conflict refusal.
 //! - [`watch`]: snapshot/diff external-change detection and a polling helper.
