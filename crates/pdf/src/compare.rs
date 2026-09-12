@@ -180,7 +180,48 @@ fn descriptor(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<FontDescriptor, 
             Some(Obj::String(s)) => Some(String::from_utf8_lossy(s).into_owned()),
             _ => None,
         },
+        extra: {
+            let mut extra = Vec::new();
+            for (k, v) in d {
+                let covered = matches!(
+                    k.as_str(),
+                    "Type"
+                        | "FontName"
+                        | "Flags"
+                        | "FontBBox"
+                        | "ItalicAngle"
+                        | "Ascent"
+                        | "Descent"
+                        | "CapHeight"
+                        | "StemV"
+                        | "XHeight"
+                        | "CharSet"
+                        | "FontFile"
+                        | "FontFile2"
+                        | "FontFile3"
+                        | "CIDSet"
+                );
+                if covered {
+                    continue;
+                }
+                let value = f.resolve(v);
+                if matches!(value, Obj::Stream { .. }) || contains_ref(value) {
+                    return Err(format!("FontDescriptor /{k} refers to indirect objects"));
+                }
+                extra.push((k.clone(), render(value)));
+            }
+            extra
+        },
     })
+}
+
+fn contains_ref(o: &Obj) -> bool {
+    match o {
+        Obj::Ref(..) => true,
+        Obj::Array(a) => a.iter().any(contains_ref),
+        Obj::Dict(d) => d.values().any(contains_ref),
+        _ => false,
+    }
 }
 
 fn encoding(f: &PdfFile, o: &Obj) -> Result<Encoding, String> {
@@ -336,20 +377,28 @@ pub fn font_from_dict(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<ExactFon
                 Some(o) => dec(o, "DW")?,
                 None => Decimal::from_i64(1000),
             };
-            let mut to_unicode = BTreeMap::new();
-            if let Some(tu) = f.get(d, "ToUnicode") {
-                let cmap = f.decode_stream(tu)?;
-                for (gid, c) in crate::embed::parse_to_unicode(&cmap).unwrap_or_default() {
-                    to_unicode.insert(gid, c.to_string());
-                }
-            }
+            let to_unicode_verbatim = match f.get(d, "ToUnicode") {
+                Some(tu) => Some(f.decode_stream(tu)?),
+                None => None,
+            };
+            let cid_set = match f.get(dd, "CIDSet") {
+                Some(cs) => Some(f.decode_stream(cs)?),
+                None => None,
+            };
+            let descendant_name = f
+                .get(cid, "BaseFont")
+                .and_then(Obj::as_name)
+                .map(String::from);
             let font = CidFont {
+                descendant_base_font: descendant_name.filter(|n| *n != base_font),
                 base_font,
                 program,
                 widths,
                 default_width,
                 descriptor: descriptor(f, dd)?,
-                to_unicode,
+                to_unicode: BTreeMap::new(),
+                to_unicode_verbatim,
+                cid_set,
                 glyphs: BTreeSet::new(),
             };
             match cid_subtype {
@@ -386,7 +435,9 @@ pub fn reemit(f: &PdfFile) -> Result<ExactDocument, String> {
             ));
         }
         let content = f.page_content(page)?;
+        let mut names = Vec::new();
         for (name, fd) in f.page_fonts(page) {
+            names.push(name.clone());
             if doc.fonts.contains_key(&name) {
                 continue;
             }
@@ -398,6 +449,7 @@ pub fn reemit(f: &PdfFile) -> Result<ExactDocument, String> {
             width: x1,
             height: y1,
             content: Content::Verbatim(content),
+            fonts: Some(names),
         });
     }
     Ok(doc)
@@ -476,6 +528,15 @@ fn font_facts(f: &PdfFile, d: &BTreeMap<String, Obj>) -> FontFacts {
             let mut copy = dd.clone();
             for k in ["FontFile", "FontFile2", "FontFile3"] {
                 copy.remove(k);
+            }
+            // CIDSet is compared by content, not by object number.
+            if let Some(cs) = copy.remove("CIDSet") {
+                copy.insert(
+                    "CIDSet".into(),
+                    Obj::String(
+                        sha256::hex(&f.decode_stream(&cs).unwrap_or_default()).into_bytes(),
+                    ),
+                );
             }
             render(&Obj::Dict(copy))
         })
@@ -696,7 +757,17 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                         }
                     }
                     let norm = |s: &str| s.replace(' ', "");
-                    if norm(&x.widths) != norm(&y.widths) {
+                    let widths_equal = match (font_from_dict(a, da), font_from_dict(b, db)) {
+                        (
+                            Ok(ExactFont::CidCff(p) | ExactFont::CidTrueType(p)),
+                            Ok(ExactFont::CidCff(q) | ExactFont::CidTrueType(q)),
+                        ) => p.widths == q.widths && p.default_width == q.default_width,
+                        (Ok(ExactFont::Simple(p)), Ok(ExactFont::Simple(q))) => {
+                            p.first_char == q.first_char && p.widths == q.widths
+                        }
+                        _ => norm(&x.widths) == norm(&y.widths),
+                    };
+                    if !widths_equal {
                         r.note(Category::FontMetadata, format!("{key} widths differ"));
                     }
                     if norm(&x.encoding) != norm(&y.encoding) {
