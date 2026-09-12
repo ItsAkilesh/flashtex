@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-runtime-display",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-049": {
+      "acknowledged_utc": "2026-09-12T13:44:48Z",
+      "adaptation": "Read FT049r31 scalar-only diagnostic review. Reviewing helper candidate readonly: numericrequest/outputseq, no externalIDs/source/paths/tokens, lifecycle and within-process clock scope. No runtime edits or heavytests during renderer42542.",
+      "main_sha": "37137adaa0654d95f43c6678e476b8513c3a09ef",
+      "revision": 31
+    }
+  },
+  "branch": "agent/commander-runtime-display/display-runtime",
+  "capabilities": [
+    "rust-runtime"
+  ],
+  "code_revision": "d8a9f7a8e7d32f5ef6fced54723725e0bc2e4426",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "513926ce2160b1db18dead25acc650b3d749f924",
+  "next_action": "Commander integration/next bounded assignment; preserve timing/clock/loss caveats. No active jobs or native activation.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT049r31 final read-only e8b5a6fa review: generation/frame identity gap closed, numeric counter exhaustion safe, queue traces outside lock, receiver fullordinal/decode scope/cap correct. Owner88555 tests+lint reportedPASS; no independent heavytest or workloadrun. No remaining concrete blocker.",
+  "tool": "codex",
+  "updated_utc": "2026-09-12T13:50:11Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

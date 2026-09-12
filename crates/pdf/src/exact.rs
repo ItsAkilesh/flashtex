@@ -33,6 +33,7 @@
 use crate::cff::{CffError, CffFont};
 use crate::sha256;
 use crate::truetype::{Outlines, TrueTypeFont};
+use crate::type1::Type1Font;
 use crate::writer::Document;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -986,6 +987,99 @@ pub fn subset_tag(gids: &BTreeSet<u16>, program_sha256: &str) -> String {
         .collect()
 }
 
+impl ExactFont {
+    /// A simple Type 1 font over a subset of `font` (`crate::type1`): one
+    /// byte per code, `/Differences` from `encoding` (code → glyph name),
+    /// `/Widths` from `width(name)` in thousandths of text space (the
+    /// caller chooses the source: TFM values as pdfTeX does, or
+    /// [`Type1Font::advance_width`] rounded as it sees fit), descriptor
+    /// from the font's clear text (`FontBBox`, `ItalicAngle`, `StdVW`) with
+    /// `/CharSet` listing the retained glyphs. Only the charstrings the
+    /// encoding names (plus `.notdef` and `seac` components) are embedded;
+    /// retained charstrings are byte-identical to the source.
+    pub fn type1_subset(
+        font: &Type1Font,
+        encoding: &[(u8, String)],
+        width: &dyn Fn(&str) -> Option<Decimal>,
+    ) -> Result<(ExactFont, crate::type1::Type1Subset), ExactError> {
+        let resource = font.font_name().unwrap_or("Type1").to_string();
+        let err = |m: String| ExactError::Font {
+            resource: resource.clone(),
+            message: m,
+        };
+        if encoding.is_empty() {
+            return Err(err("no codes to embed".into()));
+        }
+        let names: BTreeSet<String> = encoding.iter().map(|(_, n)| n.clone()).collect();
+        let subset = font.subset(&names).map_err(|e| err(e.to_string()))?;
+        let first = encoding.iter().map(|(c, _)| *c).min().unwrap_or(0);
+        let last = encoding.iter().map(|(c, _)| *c).max().unwrap_or(0);
+        let mut widths = Vec::with_capacity((last - first) as usize + 1);
+        for code in first..=last {
+            let w = match encoding.iter().find(|(c, _)| *c == code) {
+                Some((_, name)) => {
+                    width(name).ok_or_else(|| err(format!("no width for /{name} (code {code})")))?
+                }
+                None => Decimal::from_i64(0),
+            };
+            widths.push(w);
+        }
+        let mut differences: Vec<(u8, String)> = encoding.to_vec();
+        differences.sort_by_key(|(c, _)| *c);
+        let bbox = font
+            .font_bbox()
+            .ok_or_else(|| err("clear text has no /FontBBox".into()))?;
+        let tag = subset_tag(
+            &subset
+                .glyphs
+                .iter()
+                .enumerate()
+                .map(|(i, _)| i as u16)
+                .collect(),
+            &sha256::hex(subset.program.bytes()),
+        );
+        let base_font = format!("{tag}+{}", font.font_name().unwrap_or("Type1"));
+        let mut char_set = String::new();
+        for g in &subset.glyphs {
+            char_set.push('/');
+            char_set.push_str(g);
+        }
+        let simple = SimpleFont {
+            subtype: "Type1".into(),
+            base_font: base_font.clone(),
+            program: Some(subset.program.clone()),
+            first_char: first,
+            widths,
+            encoding: Some(Encoding::Differences {
+                base: None,
+                differences,
+            }),
+            descriptor: Some(FontDescriptor {
+                flags: 4,
+                bbox: [
+                    Decimal::from_i64(bbox[0] as i64),
+                    Decimal::from_i64(bbox[1] as i64),
+                    Decimal::from_i64(bbox[2] as i64),
+                    Decimal::from_i64(bbox[3] as i64),
+                ],
+                italic_angle: font
+                    .italic_angle()
+                    .and_then(|a| Decimal::new(a).ok())
+                    .unwrap_or_else(|| Decimal::from_i64(0)),
+                ascent: Decimal::from_i64(bbox[3] as i64),
+                descent: Decimal::from_i64(bbox[1] as i64),
+                cap_height: Decimal::from_i64(bbox[3] as i64),
+                stem_v: Decimal::from_i64(font.std_vw().unwrap_or(80) as i64),
+                x_height: None,
+                char_set: Some(char_set),
+                extra: Vec::new(),
+            }),
+            to_unicode: None,
+        };
+        Ok((ExactFont::Simple(simple), subset))
+    }
+}
+
 /// What [`ExactFont::cid_from_opentype`] did to the program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubsetOutcome {
@@ -1166,9 +1260,13 @@ pub struct ExactDocument {
 pub struct PlacedGlyph {
     /// Two-byte code = original glyph id for CID fonts.
     pub gid: u16,
-    /// Absolute origin in PDF user space; `None` continues at the previous
-    /// glyph's natural advance (same string).
+    /// Absolute origin in PDF user space; `None` continues after the
+    /// previous glyph (its natural advance, or `adjust`).
     pub origin: Option<(Decimal, Decimal)>,
+    /// A `TJ` adjustment in thousandths of text space applied before this
+    /// glyph (positive moves it left, as in PDF), exact and verbatim. Only
+    /// meaningful with `origin: None`.
+    pub adjust: Option<Decimal>,
 }
 
 /// A typed glyph run: font resource, size, and glyphs by original id.
@@ -1182,21 +1280,40 @@ pub struct GlyphRun {
 impl GlyphRun {
     /// Expands to `BT … ET`: each glyph with an explicit origin starts a new
     /// `1 0 0 1 x y Tm` + string; glyphs without one join the current
-    /// string. The first glyph must carry an origin.
+    /// string, and a glyph with an `adjust` turns the segment into a `TJ`
+    /// array with that exact number before its code (the pdfTeX shape).
+    /// The first glyph must carry an origin.
     pub fn to_ops(&self) -> Result<Vec<Op>, ExactError> {
         let mut ops = vec![
             Op::BeginText,
             Op::Font(self.font.clone(), self.size.clone()),
         ];
-        let mut current: Vec<u8> = Vec::new();
         let one = Decimal::from_i64(1);
         let zero = Decimal::from_i64(0);
+        // The current Tm segment: strings interleaved with adjustments.
+        let mut segment: Vec<TjElement> = Vec::new();
+        let flush = |segment: &mut Vec<TjElement>, ops: &mut Vec<Op>| {
+            if segment.is_empty() {
+                return;
+            }
+            let elements = std::mem::take(segment);
+            if elements.len() == 1
+                && let TjElement::Text(t) = &elements[0]
+            {
+                ops.push(Op::ShowText(t.clone()));
+            } else {
+                ops.push(Op::ShowTextArray(elements));
+            }
+        };
         for (i, g) in self.glyphs.iter().enumerate() {
             match &g.origin {
                 Some((x, y)) => {
-                    if !current.is_empty() {
-                        ops.push(Op::ShowText(std::mem::take(&mut current)));
+                    if g.adjust.is_some() {
+                        return Err(ExactError::Invalid(format!(
+                            "glyph {i}: an origin and an adjustment cannot both be given"
+                        )));
                     }
+                    flush(&mut segment, &mut ops);
                     ops.push(Op::TextMatrix([
                         one.clone(),
                         zero.clone(),
@@ -1213,11 +1330,15 @@ impl GlyphRun {
                 }
                 None => {}
             }
-            current.extend_from_slice(&g.gid.to_be_bytes());
+            if let Some(a) = &g.adjust {
+                segment.push(TjElement::Adjust(a.clone()));
+            }
+            match segment.last_mut() {
+                Some(TjElement::Text(t)) => t.extend_from_slice(&g.gid.to_be_bytes()),
+                _ => segment.push(TjElement::Text(g.gid.to_be_bytes().to_vec())),
+            }
         }
-        if !current.is_empty() {
-            ops.push(Op::ShowText(current));
-        }
+        flush(&mut segment, &mut ops);
         ops.push(Op::EndText);
         Ok(ops)
     }
@@ -1900,9 +2021,247 @@ pub fn to_unicode_cmap(map: &BTreeMap<u16, String>) -> Vec<u8> {
     s.into_bytes()
 }
 
+// ---------------------------------------------------------------------------
+// Exact replay of text positions, for round-trip checks.
+
+/// A rational number with an `i128` numerator and a positive denominator,
+/// always reduced. Enough for replaying text positioning exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ratio {
+    pub num: i128,
+    pub den: i128,
+}
+
+fn gcd(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.abs(), b.abs());
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a.max(1)
+}
+
+impl Ratio {
+    pub fn new(num: i128, den: i128) -> Ratio {
+        assert!(den != 0, "zero denominator");
+        let g = gcd(num, den);
+        let sign = if den < 0 { -1 } else { 1 };
+        Ratio {
+            num: sign * num / g,
+            den: sign * den / g,
+        }
+    }
+
+    pub fn int(v: i128) -> Ratio {
+        Ratio { num: v, den: 1 }
+    }
+
+    /// The exact value of a [`Decimal`].
+    pub fn from_decimal(d: &Decimal) -> Ratio {
+        let s = d.as_str();
+        let (neg, body) = match s.strip_prefix('-') {
+            Some(b) => (true, b),
+            None => (false, s.strip_prefix('+').unwrap_or(s)),
+        };
+        let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+        let mut num: i128 = 0;
+        for c in int.bytes().chain(frac.bytes()) {
+            num = num * 10 + (c - b'0') as i128;
+        }
+        let den = 10i128.pow(frac.len() as u32);
+        Ratio::new(if neg { -num } else { num }, den)
+    }
+}
+
+impl std::ops::Add for Ratio {
+    type Output = Ratio;
+    fn add(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den + o.num * self.den, self.den * o.den)
+    }
+}
+
+impl std::ops::Sub for Ratio {
+    type Output = Ratio;
+    fn sub(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den - o.num * self.den, self.den * o.den)
+    }
+}
+
+impl std::ops::Mul for Ratio {
+    type Output = Ratio;
+    fn mul(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.num, self.den * o.den)
+    }
+}
+
+impl std::ops::Div for Ratio {
+    type Output = Ratio;
+    fn div(self, o: Ratio) -> Ratio {
+        Ratio::new(self.num * o.den, self.den * o.num)
+    }
+}
+
+/// One shown glyph with its exact origin in user space.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlyphPosition {
+    pub font: String,
+    pub code: u16,
+    pub x: Ratio,
+    pub y: Ratio,
+}
+
+/// Replays the text operators of a page exactly and returns every shown
+/// glyph's origin. Supported: `Tf`, `Tm` of the form `1 0 0 1 x y`, `Td`,
+/// `Tj`, `TJ` (adjustments in thousandths of text space, `Tc`/`Tw`/`Tz`
+/// at their defaults). `two_byte(font)` says whether codes are two bytes;
+/// `width(font, code)` gives the glyph width in thousandths of text space.
+pub fn glyph_positions(
+    ops: &[Op],
+    two_byte: &dyn Fn(&str) -> bool,
+    width: &dyn Fn(&str, u16) -> Option<Ratio>,
+) -> Result<Vec<GlyphPosition>, String> {
+    let mut out = Vec::new();
+    let mut font: Option<(String, Ratio)> = None;
+    let (mut line_x, mut line_y) = (Ratio::int(0), Ratio::int(0));
+    let (mut x, mut y) = (Ratio::int(0), Ratio::int(0));
+    let show = |bytes: &[u8],
+                font: &Option<(String, Ratio)>,
+                x: &mut Ratio,
+                y: &Ratio,
+                out: &mut Vec<GlyphPosition>|
+     -> Result<(), String> {
+        let (name, size) = font.as_ref().ok_or("text shown before Tf")?;
+        let wide = two_byte(name);
+        let codes: Vec<u16> = if wide {
+            if !bytes.len().is_multiple_of(2) {
+                return Err("odd byte count for a two-byte font".into());
+            }
+            bytes
+                .chunks(2)
+                .map(|p| u16::from_be_bytes([p[0], p[1]]))
+                .collect()
+        } else {
+            bytes.iter().map(|&b| b as u16).collect()
+        };
+        for code in codes {
+            out.push(GlyphPosition {
+                font: name.clone(),
+                code,
+                x: *x,
+                y: *y,
+            });
+            let w = width(name, code).ok_or_else(|| format!("no width for /{name} code {code}"))?;
+            *x = *x + w / Ratio::int(1000) * *size;
+        }
+        Ok(())
+    };
+    for (i, op) in ops.iter().enumerate() {
+        match op {
+            Op::Font(name, size) => font = Some((name.clone(), Ratio::from_decimal(size))),
+            Op::TextMatrix(m) => {
+                let ident = [&m[0], &m[1], &m[2], &m[3]]
+                    .iter()
+                    .map(|d| Ratio::from_decimal(d))
+                    .collect::<Vec<_>>();
+                if ident != [Ratio::int(1), Ratio::int(0), Ratio::int(0), Ratio::int(1)] {
+                    return Err(format!(
+                        "op {i}: only translation text matrices are replayed"
+                    ));
+                }
+                line_x = Ratio::from_decimal(&m[4]);
+                line_y = Ratio::from_decimal(&m[5]);
+                x = line_x;
+                y = line_y;
+            }
+            Op::TextMove(dx, dy) => {
+                line_x = line_x + Ratio::from_decimal(dx);
+                line_y = line_y + Ratio::from_decimal(dy);
+                x = line_x;
+                y = line_y;
+            }
+            Op::BeginText => {
+                line_x = Ratio::int(0);
+                line_y = Ratio::int(0);
+                x = line_x;
+                y = line_y;
+            }
+            Op::ShowText(bytes) => show(bytes, &font, &mut x, &y, &mut out)?,
+            Op::ShowTextArray(elements) => {
+                for e in elements {
+                    match e {
+                        TjElement::Text(bytes) => show(bytes, &font, &mut x, &y, &mut out)?,
+                        TjElement::Adjust(n) => {
+                            let (_, size) = font.as_ref().ok_or("TJ before Tf")?;
+                            x = x - Ratio::from_decimal(n) / Ratio::int(1000) * *size;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ratio_arithmetic_and_decimal_values() {
+        assert_eq!(
+            Ratio::from_decimal(&Decimal::new("-0.125").unwrap()),
+            Ratio::new(-1, 8)
+        );
+        assert_eq!(
+            Ratio::from_decimal(&Decimal::new("12.000").unwrap()),
+            Ratio::int(12)
+        );
+        assert_eq!(Ratio::new(2, 4) + Ratio::new(1, 4), Ratio::new(3, 4));
+        assert_eq!(Ratio::new(1, 3) * Ratio::int(3), Ratio::int(1));
+    }
+
+    #[test]
+    fn tj_adjustments_replay_to_exact_positions() {
+        let run = GlyphRun {
+            font: "F1".into(),
+            size: Decimal::new("10").unwrap(),
+            glyphs: vec![
+                PlacedGlyph {
+                    gid: 1,
+                    origin: Some((Decimal::new("72").unwrap(), Decimal::new("700").unwrap())),
+                    adjust: None,
+                },
+                PlacedGlyph {
+                    gid: 2,
+                    origin: None,
+                    adjust: Some(Decimal::new("-25.5").unwrap()),
+                },
+                PlacedGlyph {
+                    gid: 3,
+                    origin: None,
+                    adjust: None,
+                },
+            ],
+        };
+        let ops = run.to_ops().unwrap();
+        assert!(matches!(&ops[3], Op::ShowTextArray(e) if e.len() == 3));
+        let s = String::from_utf8(serialize(&ops)).unwrap();
+        assert!(
+            s.contains("[(\\000\\001)-25.5(\\000\\002\\000\\003)] TJ\n"),
+            "{s}"
+        );
+        let pos = glyph_positions(&ops, &|_| true, &|_, code| {
+            Some(Ratio::int(500 + code as i128))
+        })
+        .unwrap();
+        // glyph 1 at 72; glyph 2 at 72 + 501/1000*10 + 25.5/1000*10 = 77.265; glyph 3 at 77.265 + 5.02
+        assert_eq!(pos[0].x, Ratio::int(72));
+        assert_eq!(pos[1].x, Ratio::new(77265, 1000));
+        assert_eq!(pos[2].x, Ratio::new(82285, 1000));
+        assert_eq!(pos[2].y, Ratio::int(700));
+    }
 
     #[test]
     fn decimal_syntax() {
@@ -1997,10 +2356,12 @@ mod tests {
                 PlacedGlyph {
                     gid: 47,
                     origin: Some((Decimal::new("72").unwrap(), Decimal::new("700.5").unwrap())),
+                    adjust: None,
                 },
                 PlacedGlyph {
                     gid: 72,
                     origin: None,
+                    adjust: None,
                 },
                 PlacedGlyph {
                     gid: 1,
@@ -2008,6 +2369,7 @@ mod tests {
                         Decimal::new("100.25").unwrap(),
                         Decimal::new("700.5").unwrap(),
                     )),
+                    adjust: None,
                 },
             ],
         };

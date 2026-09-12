@@ -1,139 +1,112 @@
-# Current override checkpoint — 2026-09-12 09:50Z
+# Commander recovery checkpoint
 
-This section supersedes older pending/status wording below. Main52344d3 integrated
-full-output serializer e75741e; root c07f7ba/0154d27 evidence and internal historical
-prototype integrated6c89f26. All301pages byte-identical20/20; actual50KB30ms helper
-burst1→12current previews,20durableACKs both, exactreopen. Median500KB278→153ms;
-tail remains>200, no native guarantee. Main d8d96a4 integrates font03cdc27 real LM
-aliases/sharedTFM and PDFcompare9d09582, tests/lint+actualLM gate pass. Main18827dc
-integrates Daniel title2869f1a, TOCf8870c8, color1c75fce tested/linted.
+Updated 2026-09-12T12:18:54.421102+00:00. This replaces stale pending lists; historical detail remains in Git and product evidence.
 
-Dispatcher race e1b372b reconciled ONCE via8e7546d. Permanent shared Git-common
-publication_lock installedad4d89c,28tests pass. Service activePID1099831; witness
-correctly blocks takeover on livehostingprocess/newpublisherPID, no journalblockers.
-ALL Commander mainwrites now hold dispatch_loop.publication_lock across fresh
-fetch/authority check/reconcile/nonforcepush. No active Commander build/merge now.
+## Authority, processes and publication
 
-Root ff5fb39 internal optionalqueue complete; NEGOTIATED helper implementation now
-explicitly authorized after verified nativeACK issue2comment5644981151(09:21:01).
-Required project/session/source_versions/compile_revision/current_compile_revision,
-is_current:false,source_actions_enabled:false,echoed source_binding_token<=128;
-configACK first/resetonrestart,requiredACK/current priority,max1historical slot.
-No defaultnativeactivation. Earlier claim noMacACK was incomplete and corrected.
+Sole Commander is orchestrator-astra, handle /root/runtime_validator. Root is a product engineer/user-facing relay, not a second global writer. Continuous user goal remains active. Control worktree /home/natkarri/flashtex-orchestrator; integration /home/natkarri/flashtex-drained-integration. Hold dispatch_loop.publication_lock, fetch/reread active authority, merge current main and nonforce push for every global publication. Reconcile uncertain handles/pushes before repeating.
 
-Font activeFT024r14 main277a091: matching12TFM evidence cb4ff5f/578ac0c ready;
-now reviewing DanielTTCf2fdb08/4422cff. Descriptor lacks header/version overlap and
-hard workcaps; no unsafe resolver activation, concreteprobes underway. Renderer
-8131778 exactCFFv2adapter ready; actual pipeline9bb7b27 emits engineSHA as rawSHA,
-strict DigestMismatch retained. Latestpipeline4888a67/1a8e748 fixesmissingTFMdiag;
-renderer rechecksoriginal/reference andrawSHA, no rewrittenfixtureasproof.
+Dispatcher PID1099831 and witness PID1405586 independently active at this checkpoint. Never restart live services or infer termination from silence/quota/network errors. Old witness752107 died from OSError122 at11:19:46Z; restored once after exact terminal evidence and scoped cache cleanup. Write-error resilience14e15d05 is committed but restored interpreter predates it. No remote quota-terminal takeover proven. Exact Commander host268514/start30612338/bootf1d9f6a2-ccc1-4c85-bfcb-e629905e9820 was live at recovery; recheck before any succession. No uncertain paid calls or active Commander benchmark jobs.
 
-Danielparent5cae50809:31 remains7round2done/6runningreported/3notstarted, noIDs/r4ACK;
-laterownbranchescollaboration/mathaccess/fontadvanceprove ownwork, not16active.
-JaysenJSON09:25 names3activechildren, not15. Freshcensusrequested2/23comments
-5645125440/5645125550. KabirFT002r12 main58d83a5 prioritizes measuredleft/right+nu
-parsergaps; issue1comment5645129701 requestsACK/session, preservesinflightwork.
-Aarush/companions remainstale/unverified. Local3engineers+Commander intact; drained3
-staystopped. No newstaffing/purchases. Older historical details follow.
+## Retained staffing and active work
 
-# Commander checkpoint — 2026-09-12 09:30Z
+Exactly Commander plus three retained engineers; no new workers. Root /root owns preview-controller/edit-ledger, FT048 r11 grouped metadata ACK. /root/compiler_corpus is runtime-display owner of document-runtime, FT049 r11 cancellation/shutdown acceptance; former font ID is paused, handle is active. /root/supervisor_api_review owns rendering-core, FT023 r13 measured finite/depth preflight visitor. Read exact assignment revision again because dispatcher advances on completion.
 
-Read fresh origin/main authority/control before writing. Sole Commander is
-orchestrator-astra, /root/runtime_validator. Continue improvements until explicit
-user stop. This host has THREE engineers (root, compiler_corpus,
-supervisor_api_review) plus Commander. Bridge/index/ledger completed and remain
-paused; no revival, followups, replacements or compensating remote expansion.
-Their final products are integrated1457db4. Current roster independently verified.
+Three drained handles bridge_context, orchestrator_sol/corpus_continuation and orchestrator_sol/mac_integration_review stay completed with no followups. Sol remains quiesced. No funded API grants, purchases, overages or local subscription use; remote existing authorization unchanged.
 
-## Published and pending integration
+## Current integration and next gates
 
-Main85a0b58 integrates initial Daniel math801c649, paragraph e69165a and font8080c90
-with combined tests/lint. Main27437b9 integrates exact PDF4ee877f and math resource
-cache/device ancestry: rendering tests/lint, both pinned registry tests and PDF
-tests passed. No native/reference parity claim. Main745f327 assigns FT023r7 actual
-original/reference evidence and bounded followups. Renderer9d09582 PDF comparison
-is queued; upstream classifier defect GH28 assigned existing Mac PDF lane.
+Main10ddbacc integrates dd2ff70f metadata-only edit ACK, default full unchanged, premutation policy validation and no response text clone. Two focused stdio recovery gates and strict helper lint passed. Main ecb70205 integrated6874316e bounded8KiB required serialization and3040a0ce actual raw helper strict export acceptance;11 helper binary tests,9 renderer tests and helper lint passed. Experimental raw transport remains explicit startup opt-in, not native activation.
 
-Current integration worktree /home/natkarri/flashtex-drained-integration is clean
-at local e75741e, NOT YET MAIN. It ports ONLY direct-page serializer a6d4979 onto
-current compiler. Upstream d5c6118 trailing-page dropping policy is EXCLUDED, as
-are its historical timing claims. Full compiler tests and strict lint pass.
-Release /tmp/flashtex-direct-json-target/release/flashtex-compiler SHA256
-fa24052a693540adf716f4c3e8c8f3e03c1727ca7c9e5d1503337158b89b0ee6.
-Root is independently comparing same301-page500KB full-output fixture to pinned
-4425 compiler before publication. No heavy concurrent builds during benchmark.
-Original /tmp/flashtex-compiler4425-target/release/flashtex-compiler SHA256
-554c9e054f9159c01f8ec184d85dec86b83bcd5da7d69ea99a7bdb6416108322.
-Preserve old flashtex-astra-integration unstaged rendering Cargo.lock.
+This integration includes fc262c46 real-compiler full/metadata acknowledgement acceptance; explicit actual compiler test passed in /tmp/flashtex-metadata-original-integration.log. No pending handle.
 
-## Active engineers
+Runtime00490d56 plus actual producer9db02332/reporte307eb42 integrated at this checkpoint. Reviewed immutable dispatch budget/permit/cancellation semantics; combined runtime suite, strict lint, helper display tests and actual6e producer cancellation-to-changed-source acceptance pass (/tmp/flashtex-bounded-runtime-integration.log and /tmp/flashtex-bounded-runtime-actual.log). Owner has same-frame allocation evidence (50k empty documents7528 to3784KiB peak) with full validation maintained; no arbitrary4096 cap or native speed claim. Owner asked to run actual requested/declined source transitions using pinned binaries without rebuild.
 
-Root FT048 owns preview-controller +document-runtime. Latest bb4fa48 atop f72c44c
-and150f9f0 adds INTERNAL opt-in immutable historical snapshot origin/lifecycle,
-not native/stdIO activation. 50KB30ms burst internal off2current, on14historical+
-2current; both durable/final/reopen exact. Mac negotiation still required for UI.
-Root currently prepares/runs compiler candidate replay in existing owned harness.
+Renderer0d7db229 attribution complete: Value preflight allocates3.69/7.53/11.85MB on three actual captures; typed wrapper10 allocations. Pairing plus resource binding also material. Equivalent existing-serde visitor candidate underway, preserve ignored-extension finite/depth and all duplicate/source checks. No measurement window currently reserved by Commander.
 
-Fonts latest d26d412/report3bdb502: rooted LM encoding aliases/unavailable slots,
-120 tests/lint plus exact official LM resource test passes. Font asset
-/tmp/flashtex-lm-official-27_umgtf/lmroman10-regular.otf exact SHA
-1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852.
-Next real metric replay and published TTC dependency review; send existing boundary
-TFM API73a030b to render-pipeline to remove its duplicate reader. No peer edits.
-Renderer current FT023r7 actual original/reference comparison, reuse existing Mac
-pipeline evidence instead of inventing compiler font/GID binding.
+GH32 nested duplicate bug fixed by b797b21a/8fa2c2b1, independently integrated a8212d37 and closed. GH31 native first-resolve font bytes/hash mismatch remains OPEN, assigned existing Mac helper-display owner; Linux cannot claim CGFont mutation test. Five existing original/reference results remain plain0, inline602, display1244, wrapping979, ligatures337 pixels at144DPI. Display reference ToUnicode gap is not a target for rewriting correct original text. Unchanged PDF20e5277 subsetter integrated; exact glyph positions/text/raster retained with smaller files.
 
-## Remote evidence, not targets-as-running
+## Remote evidence and unresolved work
 
-Daniel parent remains b216a4b09:08:50 ready/waiting, initial16complete547tests.
-Schema/time repaired but no live execution census. FT046r4 and all16 followups
-already assigned; integration is not dependency. Later spelling97e1831 and title/
-color dispatcher advancement show work pickup, not proof of16 simultaneous workers.
-Parent tools/daniel-supervisor still unverified. Actual machine mac-m5pro-dq222,
-M5Pro18cores48GB, authorized16 engineers plusparent; reported Sonnet, unknown quota.
-Search ALL remote refs then filter Daniel; prefix glob previously hid existing refs.
+Fresh paginated issue2 still latest Jaysen11:20:53Z census five children plus parent, target15; parent1fd5ba0b unchanged. This is stale last-reported evidence, not current running confirmation. Existing helper-display ae7ddcfb739815fac, search and history were active then; no published helper route verified. Daniel b40e9948 at09:55:54Z says15 completed/one locally blocked, no fresh live census or FT046r4 ACK. Kabir ce5bf48 and Aarush c5c0bb67/e7ce5b94 stale. Do not claim all computers at targets or bypass local permissions. Existing requests issue23/31 await owner action.
 
-Jaysen parent1f9e65309:25:37 reports369native tests/sevenhelpers,13/15lanes integrated.
-No current15-active census. Quiet direct60KB30ms p50/p95/p99=163/241/273ms: tail
-exceeds200ms despite parent wording. Preview/export22pages equal at1/2pxpt is
-self-route equivalence, not LaTeX parity. Mac render9bb7b2709:27:50 real MacTeX
-reference mosttext/simplemath max0.01pt,mixed0.06; rich/densemath/lists blocked.
-Compiler missing left/right and nu routed issue1 comment5645033248. Kabir a6d4979
-reported ownfirstbyte improvement but stale code_revision ee423c3 and intervening
-page-dropping policy prevent importing its timing as full-output evidence.
+Compiler delimiter isolated worktree /home/natkarri/flashtex-compiler-delimiters remains held: unknown delimiter silently dropped, failure /tmp/flashtex-delimiter-unknown.log, owner issue1comment5645309209. Never merge page-dropping compiler ancestry. Safe complete-output e757 serializer is already integrated.
 
-## Operations and recovery
+## Pinned execution evidence
 
-Dispatcher and commander-witness services both independently active this checkpoint.
-Never replay pending publisher journal blindly; inspect process/session and exact
-main, fetch/reconcile nonforce. No automatic shadow commander. Revival prompt is
-AGENTS.md -> docs/commander-failover.md: exact terminal/quiesced handoff plus stopped
-publishers required; silence, stale heartbeat, quota error or timeout is insufficient.
-This host preferred while usable; successor ranked only fresh comparable verified
-remaining authorized capacity. Actual hosted quota-to-terminal hook unverified.
-No purchases, overages, unverified API billing or provider calls. Direct current-agent
-Git allowed after observed Cursor limit, truthful implementation/executor provenance
-and sixnat coauthor; preserve peer author history. Context policy: actual>80%, or
-60–80% mostly irrelevant, compact at natural checkpoint after durable state. No
-telemetry/compact tool exposed here; never invent percentage or restart workers.
-Historical checkpoint details remain in Git, not repeated here.
+Original compiler /tmp/flashtex-direct-json-target/release/flashtex-compiler (fa24052a693540adf716f4c3e8c8f3e03c1727ca7c9e5d1503337158b89b0ee6). Explicit ignored tests require FLASHTEX_TEST_COMPILER and --ignored.
+
+Untouched producer65dbe7d /tmp/flashtex-pipeline-65dbe7d/crates/render-pipeline/target/debug/flashtex-render (4341bc53e6c16d3930266bc1c59c1fb93d7739f29390a3bf5879381e6ae30780). Runtime owner retains compact6e69661 binary/provenance. Preserve binaries/assets and peer caches. Actual26page v1 complete; exact optional v2 artifact25,120,854bytes exceeds unchanged caps, so decline is valid. No cap lift, page truncation or universal200ms/native paint claim.
+
+No context telemetry/native compaction control exposed; durable checkpoint used without invented percentage or forced restart.
+
+## Latest integration superseding stage status above
+
+1699357c compact apply_group ACK and renderer02da0568/6c22fe80 allocation-free syntax preflight integrated after three metadata tests, full rendering suite and both strict lints passed (63797 terminal, /tmp/flashtex-group-syntax-integration.log). Existing five-fixture PDF/raster/text hashes unchanged in owner replay. Runtime shutdown ca7727c5/d8c21bdb is evidence-only pending integration. Current assignments from837db900: FT048r12 undo/redo compact ACK plus GH33 existing deadline resolver; FT049r13 accepted request capacity compaction; FT023r14 private paired-token duplicate parse removal. Same retained handles active.
+
+Root21813 broader helper run hit two deadlines during integration build (configured_large_result and full_size_optional_expansion); GH33 open, root assigned isolated reruns, no inferred cause or relaxed limits. Commander builds now terminal; runtime timing held for those reruns. Remote census refresh issue2comment5645891597 published, no new reply yet.
+
+## History and request capacity integration
+
+3a660762 compact undo/redo plus0333be37 accepted request reserve trimming andca7727c5 shutdown evidence integrated after40322 runtime suite, four metadata stdio recovery tests and both strict lints passed. Queue contents/source/wire unchanged; caller spare capacities trimmed after admission. Near-limit shutdown hooks test-only, parser runs to completion, no wall-time guarantee. GH33 original two deadline failures and unchanged reruns remain documented.
+
+Current rootFT048r13 source-free history status implementation, runtimeFT049r15 blocked-stdin cleanup acceptance, rendererFT023r14 private paired-token parse reuse. Runtime found decoder joined but existing writer/read/stderr detached; next test explicitly witnesses writer exit and child reap, not a claim every thread already joins. All Commander gates terminal at publication.
+
+## Source-free history integration
+
+Productd53c5073 integrated after full ledger suite, four metadata helper tests and both strict lints passed (75754 terminal, /tmp/flashtex-history-status-integration.log). Existing full APIs wrap shared status mutation and clone only when full result requested; metadata helper borrows authoritative document. Exact durable bytes and retries unchanged in paired owner acceptance. RootFT048r14 now GH33 diagnostic/readiness and bounded test reader cleanup; preserve deadlines and unresolved original cause. Renderer21ce1756 duplicate-parse reuse candidate measured, actual five-fixture replay pending. Runtime stopped-reader test candidate awaiting final publication.
+
+## Paired display and GH33 integration
+
+21ce1756/b7dedddf private immutable paired envelope reuse integrated with894b393f GH33 bounded test-reader cleanup/progress. Corrected integration21373 passed actual large-result, optional expansion, ten helper candidate tests and both lints; first98940 invocation omitted required compiler environment and failed setup, not product. Logs /tmp/flashtex-paired-gh33-corrected.log and original setup log preserved. Owner173 rendering tests and exact five-fixture hashes unchanged. GH33 original cause remains unproven; no deadline relaxation.
+
+Pending9f28baeb owned edit text move,106bca6e repeated lifecycle evidence. Next root/runtime coordinated actual multi-document explicit bibliography helper capture (distinct editor/compile revisions); avoid modeled capture claims. RendererFT023r15 exact current-guarded hit lookup reuses validated PipelineCff and existing geometry, no source_actions/native activation.
+
+## Owned input and actual multi-document acceptance
+
+9f28baeb/e09e1f40 owned edit/history JSON transfer integrated with e680d2ef actual multi-document capture, independentc4178a54 consumer and106bca6e30-cycle lifecycle evidence. Two owned-input tests, fourmetadata tests, runtime suite and helper lint passed67245; explicit captured-byte replay passed /tmp/flashtex-helper-capture-integration.log. Replay re-emits recorded producer bytes, not a new compiler run; original capture records actual pinned compiler traffic. Captured statuses remain recovered/missingec-lmr10, no fidelity claim.
+
+GH34 assigned existing renderer; verified official10pt asset found, rootFT048r18 separately corrected capture in progress. Preserve old asset stage and warning-bearing evidence. Rendererfce554f1 hit-query/81247ff1 baseline ready but not integrated yet. Source actions and native modes remain disabled. All Commander commands terminal at this publication.
+
+## Corrected metric and exact hit integration
+
+Mergedeca6ab25 corrected10pt capture, fce554f1/9d8931d5 current-guarded hit query and actualchapter acceptance, fd379ad9 independent runtime audit. Thirteen helper-candidate tests and strict renderer lint passed84243. Commander independently checked six byte-identical control/verified requests, six recovered/onewarning versus sixok/zerodiag, official archive97a725ea and metric membercd13479f hashes. Same helper binaries applies to control/verified pair; earlier e680 used a different helper binary. No native packaging/pixel claim. GH34 fixture-asset issue ready closed with scope stated; GH35 debug latency observation duplicate ofGH21, preserve evidence there.
+
+Root50KBfull/group pair completed; major verified benefit is request/ACK bytes, debug preview remains above200ms single uncontrolled observation, not calibrated/native result. Runtime independent review distinguishes actual helper frames from uncaptured producer stdin. No further timing justified absent new change. All Commander gates terminal.
+
+## Typing archive and release checkpoint
+
+58d27314 debug50KBtyping evidence integrated after independent13compressed/uncompressed artifact hash checks, UTF8 edit application and exact final preview/source comparison; harness syntax checked. Full request50231bytes versus grouped381; no calibrated timing/native claim. Prior initial audit used wrong manifest section and was corrected to compressed_artifacts before reporting verification.
+
+Runtime release build17481 active in owned /home/natkarri/flashtex-producer-release-artifacts/65dbe7d/target, offline locked release,355sourcefilesverified; debugbinary4341bc preserved. Root releasehelper8d661be7 and actual proxy capture ready, final rootpublication pending. Do not duplicate build/replay. RendererFT023r16 found native make-app script packages noTFM/rootedmetriclayout, separate native packaging issue/handoff forthcoming; closedGH34 remains fixture-only. No Commander heavy jobs.
 
 
-## Integration checkpoint after main70a5f30
-
-Main4248b49 integrates renderer c158f4e with combined all-target tests and strict Clippy. One actual untouched65dbe7d zero-diagnostic rooted-TFM fixture matches reference text and144DPI RGB exactly; prior211pixel fallback/error evidence is retained and corrected. No universal/math parity claim. Main70a5f30 integrates root397bff7 including GH29 explicit15MiB compiler ceiling (default8MiB unchanged), independent16MiB wire guard and exact-schema shared immutable history. Combined ledger/helper suites, serial explicit original-compiler gates including full large-result delivery, and strict helper lint pass. Prior producer/helper timeout logs remain evidence, not erased by later passes.
-
-No pending publication at this checkpoint. Dispatcher1099831 and witness752107 independently active. All main writes used dispatch_loop.publication_lock over the common Git directory. Existing revival prompt verified; quota-to-terminal hook remains unverified. Never claim offline from silence or quota error.
-
-Root is running bounded cached-history-serialization paired benchmark88252; avoid overlapping heavy comparisons. Font retained slot resumed from7fc273c for bounded passive Type1 outline opcodes, explicit unsupported hints/flex/OtherSubrs/seac and no PS execution. Renderer retained slot resumed for reproducible actual-reference runner then exact existing LM Math asset b898cfc (SHA6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f). Drained bridge/index/ledger remain completed; no new agents.
-
-Fresh native historical report12faf78 at10:19:37 requires feature remain OFF: actual ab945e6 per-keystroke current p95 starvation1.6s demo/5.6s60KB, historical lag93/119/146ms demo and316/414/441ms60KB. After b898cfc merge four tests assume math font absent; owner reports parent-preexisting. Parent must reconcile5c35587 and test expectations. This report is not proof all15 remote workers running. Superseded census summary: see the correction below; Daniel full live census remains unverified.
+## Release evidence and native packaging handoff checkpoint
+Integrated de574ec7/53c0c71d, runtime31f62559, renderer aef15f20 including verifier8e6d2787 and reviewable f576ac11 patches. Independently verified 50 compressed/raw helper artifacts, runtime artifact hashes and four debug/release stdout pairs. Nine verifier tests and exact-base patch checks, shell syntax, isolated nine-asset staging and missing10pt refusal pass. No native build/activation or calibrated latency claim. GH36 routed to existing owners at comment5646166120; pickup unconfirmed. Dispatcher active PID1099831. Latest external census remains Jaysen11:20:53Z, five children plus parent; no fresh all-machine confirmation. FT048r22 dda0b624 authorizes one explicit historical burst; root06b2f7a8 current-only burst audit remains runtime task. Do not repeat throughput or restart services.
 
 
-## Census correction and next integration gates
+## Sustained typing and refreshed census checkpoint
+Integrated root06b2f7a8/d6b3df2b/8d913d2a and runtime974756a3. Independently reran runtime published-current-capture audit:20 guarded ACKs,11 completed results mapped to stale,8 superseded,onlycurrent21; exact final request/clean result and receipt guards pass. Fourteen historical compressed/raw artifact hashes and harness AST checked; runtime deeper historical audit still active. Seven historical results (six during typing), final98.92ms but sender lateness23.91ms versus default0.23ms means unmatched cadence, no comparative/native claim. FT048r23 sender-process lifecycle work proceeds without new throughput run. Native review has GH31 a9b55af7 candidate fix, pending owner evidence/integration; GH36 owner branch still absent. Validation230PASS historical currentpaint2.9s and older app/helper pins must not be called current raw-route acceptance. Remote census fresh lead-reported12children+parent with inconsistentfuture timestamps, correctionrequested5646203389. Services active, no restart.
 
-Freshly reread issue2comment5645147878 (09:51:39) names16 running Jaysen child sessions plus parent; the previous four-child count was stale. This is a point-in-time machine report, not proof all16 remain running now. Child branches published through10:20. Daniel b40e99409:55:54 reports15 round2 lanes complete, FT030r3 blocked by local tool permission, others waiting for integration; FT046r4 standing supervision/pickup is still not ACKed. Do not bypass the permission block. Followup/current census request5645300305 sent through authorized issue2.
 
-Root2f2605d bounded encoded history cache published67ledger/53serialhelper checks,18/18 exact-byte paired encoding comparisons; native remeasure requested5645310209. Root release actual-helper pair16550 owns current benchmark window; Commander has no heavy builds running.
+## Independent historical audit integration
+Integrated18335688/report7943d17e. Commander reran --historical audit without workload execution: all20 guarded edits/ACKs,7 unique original producer request/result/source/token matches,12 superseded,current21 and exact clean/reopen/retry identities pass. Historical flags remain false current/source-actions; sender lateness23.908608ms precludes matched-cadence comparison. Root sender lifecycle candidate5tests initially pass; runtime review requests early child-error propagation and nested helper cleanup if stop raises before publication. GH31 route a9b55af7 published but native parent adoption/test evidence review remains renderer task; GH36 owner ref absent at latest check. No new runtime production changes or workers.
 
-Compiler ce5bf48 isolated port in /home/natkarri/flashtex-compiler-delimiters, branch agent/orchestrator-astra/compiler-delimiters, remains UNCOMMITTED and blocked. Code delta applied without page-dropping ancestry, six supplied tests pass; added unknown-delimiter regression fails: left+unknown command silently disappears with statusok/diagnostics empty. Exact reproduction and owner correction request issue1comment5645309209; logs /tmp/flashtex-delimiter-unknown.log. Do not merge or erase this pending evidence until owner correction. Font da0ab4a published passive Type1 subset and resumed explicit unhinted/div followup; renderer active on reproducible reference runner/math asset.
+
+## Sender and native review integration
+Integrated dfa69e19, runtime1027d3ae and renderer a177cc3c. Independent five sender lifecycle tests pass. Child error surfaces after existing blocked Client.read deadline (up to15s), not immediate interrupt; helper reap failure does not prove all handles cleaned. Root adding fragmented large-transfer gate before one authorized quiet-window pair; no other heavy job. Native census correction and patch-only scope clarification recorded in RESOURCES. GH31 source matches fix but Mac adoption/evidence pending; GH36 remains no app-only acceptance.
+
+
+Sender fragmented-transfer f240daec integrated; all six independent Python lifecycle tests pass. Root one approved processsender pair terminal28584/90464, exact guards pass; artifacts publishing, no repeat authorized. Reported send lateness0.105/0.092ms, final80.34/141.40ms current/history onepair notcausal/native. Renderer discovered actual producer0b09be57 discovery at7ca34cec; oldhandoff not proof but this separateownercommit is source evidence. Packagingref stillabsent, override ordering and actualsealedapp acceptance pending. Runtime FT049r29 awaits publishedpair independentaudit.
+
+
+## Process pair archive and discovery update
+Integrated c5518be3 and native docs68f94f64/290b7c66. Independently verified34 compressed/raw archive hashes, same initial/final source and clean parsed producer output across modes. Runtime fullpair audit ongoing: historical completedrevision15 lacks historical/stale delivery, so sixdelivered+onecompletedundelivered, no cause asserted. Root FT048r25 inspecting existing diagnostics, no new benchmark. Renderer FT023r20 exact7ca unchanged offline release-j2 build42542 active under owned/home target, no nativeappclaim; preserve quiet build window until terminal. Formalqueues04840a86 current. Native actual0b09be57 discovery separate fromhand-off; packagingapp-onlyacceptance pending.
+
+
+## Pair attribution integration and diagnostic scope
+Integrated d8db4e15/report513926ce and root69bffa06. Independently reran both process-mode audits and offline attribution script, all pass with unchanged tracked evidence. Current8stale/11superseded; historical6delivered/12superseded/onecompleted15undelivered, current21both. Optional sixframes9,892,397B,29.19ms total serialize/offer; no writer/receiver durations, no cause assigned. Root now scalar diagnostic instrumentation, runtime independent review; arbitrary requestID/token/path strings excluded from source-free logs in favor of numeric sequences. Renderer42542 exact7ca build window continues; no workload rerun. Dispatcher/witness active1099831/1405586. One broadfetch ref race saw remote ref alreadyadvanced; subsequent publication uses narrowmainfetch under lock, no restart or forced ref update.
+
+
+## Instrumentation and actual discovery integrated
+Integrated e8b5a6fa/acf2e82d and actualLinuxdiscovery512ddff3/2efd9af5. Independent16binarytests and actualunreadoptionalwatchdog testPASS2.06s; all16stdout/v2 hashes across8discoverycases verified. Root old8d66binary preserved and exacte8 release70572 terminal; one approvedhistoricalcapture now quietwindow. No Commander jobs. Renderer existing strictbinder/export compatibility probe held until rootcaptureterminal; no rebuild. Runtime analyzer review active, strictseq/lifecycle/fullordinal/droppedcount/clocklimits required. Linux7ca d002742d discovery success notsignedMacapp acceptance; rooted-before-flat12pt semantics demonstrated, no overrideparityguess.

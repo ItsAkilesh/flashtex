@@ -1,0 +1,56 @@
+{
+  "agent_id": "commander-runtime-display",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Independently review transport analyzer lifecycle ordering identity fields and incomplete or dropped telemetry handling",
+      "objective": "Independently review transport analyzer lifecycle ordering identity fields and incomplete or dropped telemetry handling",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Audit one published instrumented capture against actual source result identities and successful write order",
+      "objective": "Audit one published instrumented capture against actual source result identities and successful write order",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    },
+    {
+      "acceptance": [
+        "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+        "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+        "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+        "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+        "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Publish exact artifact review with explicit within-clock attribution and no repeated workload",
+      "objective": "Publish exact artifact review with explicit within-clock attribution and no repeated workload",
+      "owned_paths": [
+        "crates/document-runtime"
+      ],
+      "timebox_minutes": 40
+    }
+  ],
+  "task_id": "FT-049"
+}

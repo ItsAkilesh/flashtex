@@ -12,11 +12,18 @@ import time
 
 
 class Client:
-    def __init__(self, binary, config, capture_diagnostics=False):
+    def __init__(self, binary, config, capture_diagnostics=False, capture_wire=False):
         self.diagnostic_file = tempfile.TemporaryFile() if capture_diagnostics else None
         self.proc = subprocess.Popen([binary, str(config)], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=self.diagnostic_file or subprocess.DEVNULL)
         self.buffer = bytearray()
+        self.capture_wire = capture_wire
+        self.capture_diagnostics = capture_diagnostics
+        self.last_wire = None
+        self.last_read_timing = None
+        self.receive_ordinal = 0
+        self.receiver_timings = []
+        self.receiver_timings_dropped = 0
 
     def send(self, identity, kind, payload):
         value = dict(protocol_version=1, session_id="benchmark", id=identity,
@@ -25,7 +32,8 @@ class Client:
         self.proc.stdin.flush()
 
     def read(self):
-        deadline = time.monotonic() + 15
+        read_started = time.monotonic()
+        deadline = read_started + 15
         while b"\n" not in self.buffer:
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not select.select([self.proc.stdout], [], [], remaining)[0]:
@@ -39,7 +47,30 @@ class Client:
         line, _, tail = self.buffer.partition(b"\n")
         self.buffer = bytearray(tail)
         received = time.monotonic()
-        return json.loads(line), received
+        if self.capture_wire:
+            self.last_wire = bytes(line) + b"\n"
+        decode_started = time.monotonic()
+        decoded = json.loads(line)
+        self.receive_ordinal += 1
+        decode_finished = time.monotonic()
+        if self.capture_diagnostics:
+            self.last_read_timing = dict(sequence=self.receive_ordinal, read_started=read_started, frame_received=received,
+                decode_started=decode_started,
+                decode_finished=decode_finished, read_ms=(received-read_started)*1000,
+                decode_ms=(decode_finished-decode_started)*1000, bytes=len(line)+1)
+            if len(self.receiver_timings) < 4096:
+                self.receiver_timings.append(self.last_read_timing)
+            else:
+                self.receiver_timings_dropped += 1
+        return decoded, received
+
+    def memory_snapshot(self):
+        status = Path(f"/proc/{self.proc.pid}/status")
+        if not status.exists():
+            return None
+        wanted = {"VmRSS", "VmHWM", "Threads"}
+        return {name: value.strip() for line in status.read_text().splitlines()
+                if ":" in line for name, value in [line.split(":", 1)] if name in wanted}
 
     def diagnostics(self):
         if self.diagnostic_file is None:

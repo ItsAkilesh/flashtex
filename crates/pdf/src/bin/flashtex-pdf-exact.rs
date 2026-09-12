@@ -117,11 +117,12 @@ fn from_v2(args: &[&str]) -> Result<u8, String> {
         eprintln!("diagnostic (from the display list): {d}");
     }
     eprintln!(
-        "note: {} page(s), {} glyph run(s), {} glyph(s) ({} continued by hmtx advance), {} rule(s), {} bytes -> {out}",
+        "note: {} page(s), {} glyph run(s), {} glyph(s) ({} continued at the natural advance, {} with an exact TJ kern), {} rule(s), {} bytes -> {out}",
         report.pages,
         report.runs,
         report.glyphs,
         report.joined_glyphs,
+        report.kerned_glyphs,
         report.rules,
         rendered.bytes.len()
     );

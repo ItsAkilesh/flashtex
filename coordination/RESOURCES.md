@@ -1,3 +1,23 @@
+## Census timestamp correction
+
+Jaysen comment5646213168 corrects future labels: actual census interval13:25:11–13:30:18Z; host date reading13:34:55Z. Twelve children plus parent remains lead-reported, with later search lane completed/integrated, so it is not a current process census. No fresh Daniel/Kabir/Aarush confirmation. Native reported load121 caused four real-helper timeouts; passes80–94 and deferred full suite remain distinct. Heavy-build coordination requested5646221443. GH36 discovery.patch on main is only a handoff, not authoritative producer adoption.
+
+## Current observed resource and census checkpoint
+
+Observed 2026-09-12T13:33:32.337444+00:00. Local retained handles: Commander and three existing engineers, no expansion. Dispatcher1099831 and witness service active; latest witness13:32:34 pins Commander268514 live, empty journal blockers and claim_authorized=false. No restart justified. Load1.07/1.16/1.56; /home187GiB and /tmp1.7GiB available, not account balances.
+
+Jaysen issue2comment5646190139 reports twelve children plus parent, target15, quota429 cleared13:20 and sessions resumed13:27. GH31 ae7ddcfb739815fac and GH36 ac12dd0004019340d acknowledged. Report created13:30:18 but self-dated13:40 and handoff13:45: timestamps inconsistent, correction requested5646203389; count is lead-reported, not independently verified processes. Daniel b40e9948, Kabir previous ce5bf48e and Aarush c5c0bb67 remain stale; no current all-machine confirmation or numeric remaining balance. Existing billing restrictions remain.
+
+## Verified Commander resource checkpoint
+
+Observed 2026-09-12T12:38:21.553671+00:00. Exactly four local running handles: sole Commander /root/runtime_validator and retained /root, /root/compiler_corpus (runtime), /root/supervisor_api_review. Three drained handles remain completed; Sol quiesced. This current census supersedes all historical seven-worker statements below.
+
+Dispatcher1099831 and witness1405586 active; witness12:35:58Z pins Commander268514 live, no journal blockers, claim_authorized=false. No restart or succession justified. Latest remote reply still Jaysen11:20:53Z five children plus parent (target15), not current confirmation; Daniel09:55:54Z completed/blocked report and Aarush older reports remain stale. Renewed census request issue2comment5645891597 awaits reply. Numeric remaining quota is unknown; no new billing authorization.
+
+Observed local load4.95/4.49/3.95, /home187GiB available and /tmp1.9GiB available. These are instantaneous filesystem/load readings, not account balances or quota guarantees. Renderer75642 currently reserves paired sample window; other heavy jobs held.
+
+## Historical resource records
+
 > LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
 > performance, font-resources, rendering-core) plus the sole Commander. Bridge,
 > project-index and edit-ledger may finish their current task, then STOP. Their
@@ -327,3 +347,8 @@ Jaysen07:31UTC report: five workers terminated by HTTP429 monthly spend limit,
 reported reset4:20am America/New_York; parent/render-pipeline/visual-oracle remain
 reported active, standby setup completed on its branch. Treat reset as reported,
 not permission to purchase or proof quota has renewed. Dirty WIP stays preserved.
+
+
+### Retained-slot ownership transfer 2026-09-12T10:53:39.658079+00:00
+
+The existing `/root/compiler_corpus` handle moves from completed font checkpoint5c89501/report55bfd48 to FT049 `commander-runtime-display`; no new process slot or provider allocation is authorized. FT024 is cancelled only to suspend its remaining flex queue, preserving all published work. The old agent ID is paused; the handle is not paused. Root explicitly confirmed no runtime mutations afterecbaf7c and retains FT048 preview-controller/edit-ledger ownership. Four local active slots remain the cap; the three user-drained handles remain stopped. Registration/ACK of FT049 is still required before claiming task pickup.

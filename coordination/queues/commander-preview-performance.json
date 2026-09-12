@@ -1,41 +1,52 @@
 {
   "agent_id": "commander-preview-performance",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
-      "objective": "Verify measured ledger optimization through actual helper with exact ACK/restart/undo/receipt and full-output gates",
+      "name": "Preserve previous release and capture one instrumented historical typing workload with exact existing source guards",
+      "objective": "Preserve previous release and capture one instrumented historical typing workload with exact existing source guards",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime",
         "crates/edit-ledger"
       ],
       "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "timebox_minutes": 40
     },
     {
-      "name": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
-      "objective": "Provide native negotiated-history and large-project acceptance evidence; repair only measured integration regressions",
+      "name": "Analyze numeric output lifecycle and full receiver ordinals within explicit clock domains and retained-record bounds",
+      "objective": "Analyze numeric output lifecycle and full receiver ordinals within explicit clock domains and retained-record bounds",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime",
         "crates/edit-ledger"
       ],
       "acceptance": [
-        "Measure request/ledger/serialization/compiler phases on unchanged500KB workload before selecting optimization",
-        "Preserve source/history/receipt/dedup/undo/reopen and I/O uncertainty semantics; no dropped pages or hidden fallback",
-        "Full relevant tests and strict lint, exact persistent snapshot compatibility; retain default8MiB unless separately justified",
-        "Root retained engineer only; drained ledger worker stays stopped, no new worker or native default switch"
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 45
+      "timebox_minutes": 40
+    },
+    {
+      "name": "Publish exact trace artifacts incomplete outcomes and a justified next product target without repeated benchmark or native claims",
+      "objective": "Publish exact trace artifacts incomplete outcomes and a justified next product target without repeated benchmark or native claims",
+      "owned_paths": [
+        "crates/preview-controller",
+        "crates/edit-ledger"
+      ],
+      "acceptance": [
+        "Preserve exact source revision/hash, durable approval and permanent-ID guarantees; history metadata is source-free and does not change retention",
+        "Do not edit crates/document-runtime after published ecbaf7c handoff; consume FT049 reviewed API only",
+        "Helper v2 forwarding remains default OFF, preserves required-output priority and complete frame limits, and never claims native rendering validation"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 40
     }
   ],
   "task_id": "FT-048"

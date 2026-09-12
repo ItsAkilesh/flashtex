@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T09:36:11Z",
-      "adaptation": "Use unchanged pipeline9bb7b27 and committed established-LaTeX PDF; preserve source transformations and ABI limitations.",
-      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
-      "revision": 7
+      "revision": 20,
+      "main_sha": "04840a863290843dff3ef7be6154266a860f9888",
+      "acknowledged_utc": "2026-09-12T13:46:49.486523+00:00",
+      "adaptation": "ReadFT023r20, authorized offline-j2 build window andeight bounded actualLinux siblinglayout cases; no nativeclaim/authoritativeedit/download."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
+  "code_revision": "2efd9af50a75b96eb5563f33ec7995867e157773",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
-  "next_action": "Use exact b898cfc LMmath asset/license for one bounded actual math producer/reference investigation; no substitute font or parity assumptions.",
+  "main_integrated_through": "68f94f647f864212ca4b4f587d75fa75833e1984",
+  "next_action": "Commander route actual rooted-before-flat behavior to Mac owners; native sealed/direct/helper nohostTeX acceptance still required. Existing producer build under target/gh36-producer-7ca34cec reusable exactSHA.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Single pinned fail-closed original/reference runner implemented and executed: accepted full rooted-assets pipeline replay, refused missingassets, unknown unpinnedtool.",
+  "state": "accepted",
+  "summary": "FT023r20 actual unchanged7ca producer offlinebuild +eight Linux siblinglayout probes pass; exact10/12bundledsuccess and typed missing/corrupt/override outcomes retained.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:24:52Z",
+  "updated_utc": "2026-09-12T13:46:49Z",
   "usage": {
-    "evidence": "Final runner accepted zero-diagnostic untouched65dbe7d\u2192registry\u2192ownerPDF\u2192reference; exacttext and144DPIpixels. Negative statuses2/4 verified. Sources/tools/assets pinned; twojob offline disposable build. First /tmp build failure recovered using repositorytarget scratch; no calls pending.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "Binaryd002742d/375sourcefilesunchanged; archive2bba68a7.9resourceverifierpass; all12defaulthostpathsabsent andcleanenv.8actualcases pass;10override selected beforebundle, required12roots beforeflat. Originalrawoutputs+hashes under linux-7ca34cec.",
+    "status": "Hosted OpenAI only; no providers/descendants. Build42542 andall8probes terminal; no nativecalls/timingclaims. Context telemetry/native compaction unavailable; buildreceipt+rawoutputs durable."
   }
 }

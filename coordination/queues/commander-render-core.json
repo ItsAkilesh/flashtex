@@ -1,36 +1,47 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-render-core",
-  "task_id": "FT-023",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
-      "objective": "Classify and reproduce the largest measured reference mismatch or missing consumer identity contract without guessing mapping",
+      "name": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
+      "objective": "Consume exact new producer valid10pt and12pt outputs through existing strict renderer and searchable exporter",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Pin source/compiler/font/reference hashes and preserve original provenance",
-        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
-        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 40
     },
     {
-      "name": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
-      "objective": "Re-run the pinned original/reference comparison after the owner fix and publish exact closure evidence or remaining blocker",
+      "name": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
+      "objective": "Compare matching source font and semantic identities with established fixtures while retaining geometry differences",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Pin source/compiler/font/reference hashes and preserve original provenance",
-        "Separate raw bytes, parsed geometry and visual evidence; unknown correspondence is explicit",
-        "No duplicate parser, compiler edits, provider calls or native activation; meaningful tests and strict lint"
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "timebox_minutes": 30
+      "timebox_minutes": 40
+    },
+    {
+      "name": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
+      "objective": "Publish bounded compatibility evidence without signed-app native or broad parity claims",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
+      "acceptance": [
+        "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+        "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 40
     }
-  ]
+  ],
+  "task_id": "FT-023"
 }

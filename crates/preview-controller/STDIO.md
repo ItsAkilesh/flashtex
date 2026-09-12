@@ -67,7 +67,13 @@ completion vocabulary yet.
 
 Durable editor history uses the shared ledger implementation:
 
-- `history_status`: `{path}` returns undo/redo labels and retention usage.
+- `history_status`: `{path}` returns undo/redo labels and retention usage in
+  `history`, with a same-owner-turn `document:{project_id,path,revision,source_sha256}`
+  (no source text) and `limits:{history_bytes,history_entries,permanent_command_ids}`.
+  Use the returned revision/hash for guarded undo/redo; a later source edit can
+  still cause refusal. Limits are actual ledger constants, not a promise that a
+  proposed edit fits: history byte cost depends on before/after source. Permanent
+  command IDs have their own limit and are not released by clearing undo history.
 - `undo` / `redo`: `{path, command:{command_id, expected_revision,
   expected_sha256}}`. Command IDs must be unique for a new action and reused
   unchanged when retrying that same action after uncertain delivery.
@@ -178,3 +184,12 @@ or tokens. It does not alter protocol stdout. Consumers enabling this option mus
 drain stderr; normal callers should leave it off. The replay driver's `--phases`
 option captures these records in a temporary file and bounds the parsed capture
 at1MiB. Timing records are attribution data, not latency guarantees.
+
+### Reviewed source plans
+
+`plan_literal_replacement`, `plan_citation_rename`, and
+`plan_citation_rename_at` export bounded read-only plans from the shared index.
+They require the complete `source_versions` and `membership_generation` snapshot.
+See [source-plans.md](docs/source-plans.md) for request fields, exact integer
+conversion, explicit bibliography declarations, and the review/application/retry
+contract. Native application is separate; multi-document application is not atomic.
