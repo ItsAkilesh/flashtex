@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "cd58fc2e790f29bff50a5af7b4127027e841078a",
+  "code_revision": "9c1fa3ccc2882ba8c9677937b8231e909bbd86c0",
   "eta_minutes": {
     "likely": 60,
     "optimistic": 30,
     "pessimistic": 120
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "D2 first-generation gate; consume grouped admission 3ffd57f; refill from Commander rulings",
+  "main_integrated_through": "738714a917eae1c7bfa241f35c640b0aecc5b74d",
+  "next_action": "integrate hw1-math-5; ask Commander to merge daniel e00edb25 (parskip/parindent/Large) or pin producer to it; device build once iPad Developer Mode is on",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,16 +47,16 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "Merged main c11c005 (typed/grouped admissions, helper 71049ffa reply cap); helpers rebuilt; native release keyed on compile_request_id",
-      "reviewed_utc": "2026-09-12T15:35:45Z",
-      "sha": "e67fe2a5e4346632056a5308268a41bb39e4ec7b"
+      "adaptation": "merged main 738714a9 at 8a2a180c: took main's bounded zoom over lane 4480d002; Completion entries builder split; main's f803a711 vocabulary/test drift fixed in completion-sync",
+      "reviewed_utc": "2026-09-12T21:37:20Z",
+      "sha": "ce330d426393d3edb053e7679ff91ffd9e1a84b5"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "53 lanes integrated today; tip f01b56f full suite 660/660 with every helper; helper display route + GH31, GH36 packaging, GH39, HW1 corpus harness, v2 conformance, admission correlation, page/delta proposal r5 delivered",
+  "state": "ready_for_integration",
+  "summary": "mac-shell 9c1fa3cc: main 738714a9 merged; grok-polish f87cf5b4, completion-sync 6de0549e (27/27), ios-app-2 88696d8a (capture_status outcome, QR, Keychain persistence; sim 20/20 + 5/5) integrated; merged filters 163/6 skips/0 fail. render-pipeline otf-fallback 3c524d9e (mathbb/setminus/Longrightarrow painted, U+2212 minus). HW1 27 diagnostics; hw1-math-5 lane in flight.",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T16:05:42Z",
+  "updated_utc": "2026-09-12T21:37:20Z",
   "usage": {
     "evidence": "unknown",
     "status": "Claude Max 20x; user-reported 41% of 5h window at 14:47Z; Fable used to 14:59Z within the 60% authorization; no overage"
