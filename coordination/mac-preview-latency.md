@@ -23,7 +23,7 @@
 
 ## Durable checkpoint
 
-- Updated: 2026-09-12T18:34Z (resumed after the 17:25Z quota cut). Worktree
+- Updated: 2026-09-12T18:50Z (resumed after the 17:25Z quota cut). Worktree
   `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2`,
   branch `agent/mac-preview-latency/profile`, pushed through 68d4ded4.
 - Commits: f7b86584 registration; 1c07cf93 instrumentation + before table;
@@ -31,12 +31,11 @@
   247e1cdb layer-backed page blit + equatable/lazy diagnostics list + evidence
   rounds (raw/, raw-after2/, raw-hw1/); 68d4ded4 merge of
   origin/agent/mac-claude-a/mac-shell 9ba9851c (clean).
-- Dirty (uncommitted): PreviewV2View.swift — `PreviewV2Pane.shownFrame`, the
-  pages/diagnostics at ONE structural position for loaded and stale frames
-  (each loaded<->stale toggle rebuilt the scroll view, page views and bitmap
-  layers: 374 blits of an unchanged page over 187 revisions on p3, 346 on HW1);
-  its test `testPaneShowsTheLoadedFrameAndThePreviousFrameStaleFromOnePosition`
-  in PreviewLatencyTests.swift; this handoff + agents JSON.
+- 4d1b4767: `PreviewV2Pane.shownFrame`, pages/diagnostics at ONE structural
+  position (publish->pass 19.6 -> 2.2 ms; re-blits of unchanged pages 374 -> 0).
+  Filtered v2 suite 67 tests / 0 failures / 1 env skip. raw-after4/ round is
+  load-affected (5-min load 55-110) and its bench p50 is not comparable (the
+  bench edits an offscreen page; see summary.md). Full suite not run (load > 15).
 - HW1 attribution (raw-hw1/after3-direct-v2-hw1-30ms.log, revision 60): the
   three main-thread hops recv->val 15.9, deliver 14.8, publish->pass 19.6 ms
   dominate (main busy with the v1 apply of 130 diagnostics + a full-window
@@ -51,10 +50,11 @@
   `<scratchpad>/latency/copytest.log` (control cell: after3 binary copied out
   of .build on HW1 — tests whether the after1/after2 HW1 no-paint cells were a
   copied-binary artifact). Load 20-80 (other agents building).
-- Next: release build 5 with the dirty fix; bench direct-v2 hw1/p3 + helper-v2
-  p3 at 30 ms (before-app 1c07cf93 vs build 5), summary.md, commit, full/filtered
-  swift test with helpers (`source <scratchpad>/helpers.env`, FLASHTEX_RENDER
-  = <scratchpad>/render-9aaec57a/.../flashtex-render, FLASHTEX_REVIEW_HISTORY_DIR=off),
-  final report to the parent.
+- Next (for whoever resumes): bench seed that edits a visible page (parent-
+  retained TypingBench/seeds), then a quiet-window (1-min load < 15) rerun of
+  before/after3/after4 for direct hw1/p3 and helper p3; full `swift test` with
+  helpers (`source <scratchpad>/helpers.env`, FLASHTEX_RENDER = <scratchpad>/
+  render-9aaec57a/.../flashtex-render, FLASHTEX_REVIEW_HISTORY_DIR=off);
+  narrow the pane's observation set (3-4 passes per revision).
 - Staffing/billing: shared Claude Max 20x quota with the parent; ~90-minute
   heavier-model window from 18:20Z; bounded to ~60 minutes of work.

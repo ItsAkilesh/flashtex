@@ -137,3 +137,61 @@ size: `blit page 3` never appears. The recorded paint of after1..3 is the
 re-install of the visible pages 1-2 caused by the structural toggle fixed in
 after4; before after4 those pages re-blitted twice per keystroke (374 blits
 of an unchanged page over 187 p3 revisions, 346 on HW1).
+
+## Round raw-after4/ (pages at one structural position, 4d1b4767, merged tree 68d4ded4)
+
+Load during this round: 1-min 12-36, 5-min 55-110 (other agents building);
+every cell is load-affected in practice even where the 1-min average dipped
+under 15. `uptime` at start: 14:41 local, load 35.79 109.29 81.22; at end
+14:46, 33.18 53.46 62.80. The helper-v2 p3 after4 cell painted nothing under
+a load spike to 33 (no data). `before` = 1c07cf93.
+
+| raw | build | route | seed | interval | keystrokes | painted | coalesced | no-redraw paints | p50 | p95 | p99 | max | load before→after |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| raw-after4 | after4 | direct-v2 | hw1 | 30 ms | 200 | 200 | 165 | 35 | 224 | 578 | 695 | 753 | 14.0→11.8 |
+| raw-after4 | after4 | direct-v2 | p3 | 30 ms | 200 | 200 | 173 | 27 | 272 | 609 | 778 | 904 | 14.3→13.2 |
+| raw-after4 | after4 | helper-v2 | p3 | 30 ms | 200 | 0 | 0 | 0 | — | — | — | — | 11.9→33.2 (load-affected) |
+| raw-after4 | before | direct-v2 | hw1 | 30 ms | 200 | 200 | 0 | 200 | 523 | 711 | 753 | 909 | 35.8→21.0 (load-affected) |
+| raw-after4 | before | direct-v2 | p3 | 30 ms | 200 | 200 | 72 | 35 | 189 | 416 | 473 | 491 | 11.8→16.4 (load-affected) |
+| raw-after4 | before | helper-v2 | p3 | 30 ms | 200 | 200 | 147 | 14 | 236 | 320 | 362 | 383 | 13.2→11.9 |
+
+Per-stage p50 (ms) over painted v2 revisions (timeline.py):
+
+| raw | build | route | seed | interval | painted revs | pages (reused) | key->send | send->v1 | v1->recv | recv->val | validate | preraster | deliver | pub->paint | key->paint | helper parse / serialize |
+|---|---|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| raw-after4 | after4 | direct-v2 | hw1 | 30 ms | 35 | 3 (3) | 0.7 | 23.1 | -1.9 | 12.0 | 4.0 | 0.0 | 19.4 | 16.6 | 76.2 | — |
+| raw-after4 | after4 | direct-v2 | p3 | 30 ms | 27 | 4 (4) | 15.0 | 46.6 | 4.3 | 8.4 | 10.0 | 0.0 | 3.4 | 11.9 | 99.0 | — |
+| raw-after4 | after4 | helper-v2 | p3 | 30 ms | 0 | — | — | — | — | — | — | — | — | — | — | — |
+| raw-after4 | before | direct-v2 | hw1 | 30 ms | 200 | 3 | 0.8 | 26.9 | -5.4 | 12.6 | 8.7 | 1.8 | 85.4 | 350.0 | 523.6 | — |
+| raw-after4 | before | direct-v2 | p3 | 30 ms | 128 | 4 | 9.7 | 61.7 | 6.5 | 6.4 | 24.0 | 3.9 | 5.3 | 27.7 | 160.0 | — |
+| raw-after4 | before | helper-v2 | p3 | 30 ms | 53 | 4 | 22.8 | 61.8 | 50.7 | 0.2 | 23.5 | 3.9 | 1.1 | 27.5 | 192.1 | 17.6 / 6.4 |
+
+What after4 changes, from the logs (not from the bench p50):
+
+- publish -> pane pass: 19.6 ms (after3, HW1 rev 60) -> 2.2 ms (after4 rev 60,
+  `published ... at 643.35`, `pass ... at 645.51`): the pane no longer rebuilds
+  the scroll view / page views on a loaded<->stale toggle.
+- Re-blits of unchanged visible pages: 374+374 (p3) / 346+173 (HW1) per cell
+  in before..after3 -> 0 in after4 (`blit page` never appears while typing:
+  pages 1-2 keep their layer contents; page 3/4 is offscreen).
+- Bench p50 is NOT comparable across after3 -> after4: the bench's keystroke
+  edits the last page, which the LazyVStack never materializes at the bench
+  window size, so no page is painted for the revision and the paint stamp only
+  arrives through the bench's extra-turn fallback (35 "paints without redraw",
+  165 coalesced). In after1..3 the recorded "paint" was the re-install of the
+  unchanged pages 1-2 forced by the structural toggle. The v2 bench seed must
+  type on a visible page (or the pane must materialize the edited page) before
+  keystroke->paint p50 means "the edited page is on screen"; handed to the
+  parent (TypingBench / seeds are parent-retained).
+- The pane body still evaluates 3-4 times per revision in the loaded state
+  (`pass revision 60 loaded` x3 before the stale pass): observation of shell
+  fields (caret, status) re-runs the pane; each pass is now cheap (no rebuild)
+  but a narrower observation set is the next chip.
+
+## Copied-binary control cell (scratchpad latency/copytest, not evidence)
+
+The after3 binary copied out of `.build/release` painted HW1 (200/200, p50 288
+ms at load 322 — load-affected). So `raw-hw1/after1` and `after2` (0 painted)
+were not a copied-binary artifact; they remain unexplained (95a75546 and the
+layer blit alone, HW1 first frame, 60 s). The committed builds after3/after4
+paint HW1 at first load in every cell.
