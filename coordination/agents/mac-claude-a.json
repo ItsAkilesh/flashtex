@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "a3367540a75aa6af1af220751f60410ea124a5fa",
+  "code_revision": "44e7fb07da3853102a14515b41f32dda39c4dfdd",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 35
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-  "next_action": "Merge editor-diagnostics subagent; shortcuts table; report ready. Codex driver on demo.tex sample.",
+  "next_action": "Collect mac-validation (FT-010) and demo-sample; await next dispatch; merge main as it advances",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -32,9 +32,9 @@
       "sha": "eb1c2fcb75b8f51cfe99d8facbec91c7c9857546"
     },
     "origin/agent/claude/compiler-foundation": {
-      "adaptation": "Attached shell to the real compiler; protocol compatible without changes; added binary auto-discovery",
-      "reviewed_utc": "2026-09-12T04:20:14Z",
-      "sha": "29221d8b15d412f4feb877879d5bfc02f6086a98"
+      "adaptation": "Compiler 9f1033b: rustfmt + 8 MiB request bound, no interface change; documented limit in README",
+      "reviewed_utc": "2026-09-12T04:36:12Z",
+      "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
     },
     "origin/agent/commander/coordination-tools": {
       "adaptation": "Acknowledged FT-009/FT-010 as parent and spawned both; will not build FT-007 bridge (Commander-owned); following queue step 0 acceptance",
@@ -48,12 +48,12 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT-003 rev 3 in progress at a336754: white-only export, Rust PDF writer wiring, diagnostics panel; 36/36 tests with real compiler+pdf binaries; editor underline diagnostics pending",
+  "state": "ready_for_integration",
+  "summary": "FT-003 rev 3 complete at 44e7fb0: white-only export (+Rust writer path), diagnostics panel + inline editor underlines with recovery, Unicode click-to-source tested with real compiler; 41/41 tests; xcodebuild OK. mac-pdf FT-009 ready at a0855dd.",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T04:34:05Z",
+  "updated_utc": "2026-09-12T04:36:12Z",
   "usage": {
-    "evidence": "Claude Max 20x (user+CMD-006); Codex Plus light use newly user-authorized; no purchases",
+    "evidence": "Claude Max 20x per user + CMD-006; 6 subagents so far; one Codex exec (Plus) authorized by user; no purchases",
     "status": "unknown"
   }
 }
