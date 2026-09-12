@@ -7,18 +7,25 @@
     "swift-packaging",
     "mactex"
   ],
-  "code_revision": "7a2f63f4265404900ed54883896ef22b2f9f1aa0",
+  "code_revision": "56f9da95fe31fe4da0fa5aed8bf19fa8e042aa41",
   "eta_minutes": null,
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "next_action": "Parent/Commander review stacked branch; broad Swift hang recovery remains parent scope. Temporary continuation ends after publication.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Read current authority and relevant Fonts.swift/resource staging differences. Keep stacked mac-shell baseline 7a2f63f4; main lacks parent packaging/cache changes. Older optical producer uses explicit bundled metrics environment.",
+      "reviewed_utc": "2026-09-12T18:12:39Z",
+      "sha": "abbe88a5275b89d99357815846de3cbe76a91810"
+    }
+  },
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "ready_for_integration",
+  "summary": "Temporary Opus font lane complete: packaging32/32, optical native5/5, app exports7/7 each on two profiles, explicit metric gate7/7. Full Swift regression stalled; stopped and not claimed as pass.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T18:02:06Z",
+  "updated_utc": "2026-09-12T18:13:22Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "docs/evidence/opus-fonts-takeover-20260912T1800Z/README.md",
+    "status": "Current Codex session only; no paid inference/purchases/children; monetary balance unknown."
   }
 }

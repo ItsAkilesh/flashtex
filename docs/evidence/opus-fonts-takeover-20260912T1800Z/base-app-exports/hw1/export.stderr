@@ -1,0 +1,136 @@
+note: /F1 LMRoman10-Bold from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-bold.otf: 32 glyph(s), CffSubset, program 4277 bytes
+note: /F2 LMRoman10-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-regular.otf: 73 glyph(s), CffSubset, program 9149 bytes
+note: /F3 LatinModernMath-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/latinmodern-math.otf: 38 glyph(s), CffSubset, program 6334 bytes
+note: /F4 LMRoman10-Italic from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-italic.otf: 4 glyph(s), CffSubset, program 1119 bytes
+note: /F5 LMRoman8-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman8-regular.otf: 3 glyph(s), CffSubset, program 855 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages amsmath, amssymb, amsthm are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages enumitem are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages microtype are recognised but not implemented
+diagnostic (from the display list): error: compiler: \setlength is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \parindent is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \setlength is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \parskip is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \setlist is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \pagestyle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: compiler: environment 'center' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \Large is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \bfseries is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \LARGE is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \bfseries is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \hrule is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \vspace is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \mid is not supported in math mode
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \begin is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \end is not supported in math mode
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \Rightarrow is not supported in math mode
+diagnostic (from the display list): error: compiler: \vee is not supported in math mode
+diagnostic (from the display list): error: compiler: \Rightarrow is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \text is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \Rightarrow is not supported in math mode
+diagnostic (from the display list): error: compiler: \vee is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \vee is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported in math mode
+diagnostic (from the display list): error: compiler: \Longrightarrow is not supported in math mode
+diagnostic (from the display list): error: compiler: \quad is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \vee is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \forall is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \exists is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigl is not supported in math mode
+diagnostic (from the display list): error: compiler: \bigr is not supported in math mode
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \setminus is not supported in math mode
+diagnostic (from the display list): error: compiler: \in is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \setminus is not supported in math mode
+diagnostic (from the display list): error: compiler: \mathbb is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \qquad is not supported in math mode
+diagnostic (from the display list): error: compiler: \newpage is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \subsection requires a braced argument
+diagnostic (from the display list): error: compiler: \hfill is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \normalfont is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: compiler: environment 'quote' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 4.76pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 14.68pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_limitation: no math glyph for '&'; empty box used
+diagnostic (from the display list): warning: overfull_display: display is 454.63pt wider than the text width
+diagnostic (from the display list): warning: overfull_display: display is 189.55pt wider than the text width
+diagnostic (from the display list): warning: overfull_display: display is 19.04pt wider than the text width
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 3.80pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 26.36pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_resource_profile: lmmi10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi10 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi8: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi8 design
+diagnostic (from the display list): warning: math_resource_profile: lmsy10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmsy10 design
+note: 3 page(s), 714 glyph run(s), 3232 glyph(s) (2 continued at the natural advance, 0 with an exact TJ kern), 2 rule(s), 280510 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/base-app-exports/hw1/export.pdf

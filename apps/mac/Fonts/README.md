@@ -58,3 +58,10 @@ verified source directory; no download or host TeX lookup occurs during packagin
 Preview Roman master selection follows the pinned producer's style-dependent
 boundaries, including Roman6 and Roman10 as the sole bold-italic master. The
 registered source directory's missing-face list remains visible to consumers.
+
+Acceptance evidence and app-only export reproduction commands are in
+[the temporary continuation report](../../../docs/evidence/opus-fonts-takeover-20260912T1800Z/README.md).
+`apps/mac/scripts/faces-acceptance.py` drives the actual app producer and exact
+exporter with host TeX and repository font reads denied. Use `--require-optical`
+with an optical-capable producer to require Roman8/Roman6 and refusal after
+Roman8 removal. A producer lacking these emitted faces is not optical coverage.

@@ -162,6 +162,7 @@ final class BundledFacesTests: XCTestCase {
 
     private struct ProducerRun {
         var results = 0
+        var faces = Set<String>()
         var missing: [(id: String, code: String, message: String)] = []
     }
 
@@ -196,12 +197,23 @@ final class BundledFacesTests: XCTestCase {
         var run = ProducerRun()
         for line in output.split(separator: UInt8(ascii: "\n")) {
             guard let obj = try JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                  obj["type"] as? String == "compile_result" else { continue }
+                  let kind = obj["type"] as? String else { continue }
+            if kind == "display_list" {
+                for font in (obj["payload"] as? [String: Any])?["fonts"] as? [[String: Any]] ?? [] {
+                    if let name = font["postscript_name"] as? String { run.faces.insert(name) }
+                }
+                continue
+            }
+            guard kind == "compile_result" else { continue }
             run.results += 1
             let id = obj["id"] as? String ?? "?"
             for d in (obj["payload"] as? [String: Any])?["diagnostics"] as? [[String: Any]] ?? [] {
                 let code = d["code"] as? String ?? ""
-                if Self.missingCodes.contains(code) { run.missing.append((id, code, d["message"] as? String ?? "")) }
+                let message = d["message"] as? String ?? ""
+                // f762f82a reports optical Roman fallback as a profile warning.
+                // Italic/symbol profile limitations are separate from bundling.
+                let romanFallback = code == "math_resource_profile" && message.hasPrefix("lmr")
+                if Self.missingCodes.contains(code) || romanFallback { run.missing.append((id, code, message)) }
             }
         }
         return run
@@ -215,11 +227,10 @@ final class BundledFacesTests: XCTestCase {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Small-master fixtures (footnotesize/scriptsize/tiny regular, bold and
-    /// italic: the 5–9 pt files) plus the real HW1 (its footnote-size text
-    /// needs `lmroman8-regular.otf`) through the real producer with host TeX
-    /// denied: zero substitution with the vendored directory; the 8 pt face
-    /// removed from a copy → an explicit `font_unavailable` naming the file.
+    /// Exercises nested 12 pt math scripts and HW1 with an optical-capable
+    /// producer. Requires actual emitted Roman8/Roman6 faces before testing
+    /// removal; profiles lacking optical support are explicitly skipped.
+    /// Removing Roman8 must produce a missing-face or lmr8 profile warning.
     func testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded() throws {
         guard let render = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"],
               FileManager.default.isExecutableFile(atPath: render) else {
@@ -232,7 +243,7 @@ final class BundledFacesTests: XCTestCase {
 
         var requests = [
             try Self.request(id: "small-10pt", revision: 1, tex: "\\documentclass{article}\n\\begin{document}\nBody. {\\footnotesize footnote \\textbf{bold} \\textit{italic}} {\\scriptsize script \\textbf{bold} \\textit{italic}} {\\tiny tiny \\textbf{bold}} {\\small small \\textit{italic}}\n\\end{document}\n"),
-            try Self.request(id: "small-12pt", revision: 2, tex: "\\documentclass[12pt]{article}\n\\begin{document}\nBody. {\\footnotesize footnote \\textbf{bold} \\textit{italic}} {\\scriptsize script \\textbf{bold}} {\\tiny tiny} {\\large large \\textbf{\\textit{bold italic}}}\n\\end{document}\n"),
+            try Self.request(id: "small-12pt", revision: 2, tex: "\\documentclass[12pt]{article}\n\\begin{document}\nBody $x_{1_{2}} + \\frac{1}{2}$.\n\\end{document}\n"),
             try Self.request(id: "small-11pt", revision: 3, tex: "\\documentclass[11pt]{article}\n\\begin{document}\nBody. {\\footnotesize footnote \\textbf{bold} \\textit{italic}} {\\scriptsize script} {\\tiny tiny \\textbf{bold}}\n\\end{document}\n"),
         ]
         let hw1 = Self.repoRoot.appendingPathComponent("fixtures/real-world/hw1/HW1.tex")
@@ -243,6 +254,9 @@ final class BundledFacesTests: XCTestCase {
         let vendored = try runProducer(render, fontDir: Self.fontsDir.path, home: home, requests: requests)
         XCTAssertEqual(vendored.results, requests.count)
         XCTAssertTrue(vendored.missing.isEmpty, "vendored faces must leave no missing-font/metric diagnostics: \(vendored.missing)")
+        guard vendored.faces.contains("LMRoman8-Regular"), vendored.faces.contains("LMRoman6-Regular") else {
+            throw XCTSkip("Configured producer does not emit both Roman8/Roman6 faces; optical gate requires f762f82a support. Emitted: \(vendored.faces.sorted())")
+        }
 
         // The same requests against a copy without the 8 pt regular face: the
         // fixtures really exercise it, and the producer says so explicitly.
@@ -253,11 +267,11 @@ final class BundledFacesTests: XCTestCase {
         }
         let removed = try runProducer(render, fontDir: copy.path, home: home, requests: requests)
         XCTAssertEqual(removed.results, requests.count)
-        XCTAssertTrue(removed.missing.contains { $0.id == "small-10pt" && $0.code == "font_unavailable" && $0.message.contains("lmroman8-regular.otf") },
-                      "10 pt footnotesize must name the missing lmroman8-regular.otf: \(removed.missing)")
+        XCTAssertTrue(removed.missing.contains { $0.id == "small-12pt" && ($0.message.contains("lmroman8-regular.otf") || $0.message.hasPrefix("lmr8:")) },
+                      "12 pt optical script must report missing Roman8: \(removed.missing)")
         if requests.count == 4 {
-            XCTAssertTrue(removed.missing.contains { $0.id == "hw1" && $0.message.contains("lmroman8-regular.otf") },
-                          "HW1 must name the missing lmroman8-regular.otf (the pdf-2 finding): \(removed.missing)")
+            XCTAssertTrue(removed.missing.contains { $0.id == "hw1" && ($0.message.contains("lmroman8-regular.otf") || $0.message.hasPrefix("lmr8:")) },
+                          "HW1 must report missing Roman8 (the pdf-2 finding): \(removed.missing)")
         }
     }
 }
