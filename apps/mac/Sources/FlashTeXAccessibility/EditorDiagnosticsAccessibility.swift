@@ -17,9 +17,13 @@ public enum EditorDiagnosticNavigation {
         public var message: String
         /// "recovery: …" / "no provisional rendering", or nil.
         public var recoveryLine: String?
+        /// One line from the offline explanation catalogue, or nil.
+        public var explanation: String?
 
-        public init(id: String, nsRange: NSRange, severity: RuntimeV1.Severity, message: String, recoveryLine: String?) {
-            self.id = id; self.nsRange = nsRange; self.severity = severity; self.message = message; self.recoveryLine = recoveryLine
+        public init(id: String, nsRange: NSRange, severity: RuntimeV1.Severity, message: String, recoveryLine: String?,
+                    explanation: String? = nil) {
+            self.id = id; self.nsRange = nsRange; self.severity = severity; self.message = message
+            self.recoveryLine = recoveryLine; self.explanation = explanation
         }
     }
 
@@ -34,12 +38,13 @@ public enum EditorDiagnosticNavigation {
         /// 1-based line of the item's start when the caller could resolve it.
         public var line: Int?
 
-        /// "Error 2 of 5, line 12: message — recovery: … (wrapped to start)".
+        /// "Error 2 of 5, line 12: message — recovery: … — explanation (wrapped to start)".
         public var announcement: String {
             var s = (item.severity == .error ? "Error" : "Warning") + " \(ordinal) of \(total)"
             if let line { s += ", line \(line)" }
             s += ": " + item.message
             if let r = item.recoveryLine { s += " — " + r }
+            if let e = item.explanation { s += " — " + e }
             if wrapped { s += ordinal == 1 ? " (wrapped to start)" : " (wrapped to end)" }
             return s
         }
