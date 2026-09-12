@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use flashtex_project_files::{Digest, Expected, ProjectLock};
 
-use crate::bundle::Bundle;
+use crate::bundle::{Bundle, BundleFile};
 use crate::error::BundleError;
 use crate::preview::{FileOutcome, ImportPreview};
 use crate::root::{map_write_error, ProjectRoot};
@@ -67,6 +67,14 @@ pub struct ImportOutcome {
 /// - [`FileOutcome::Unchanged`] — never written; the target already holds
 ///   these exact bytes, decision or not.
 ///
+/// Every previewed path is checked against `bundle` up front, before the
+/// project lock is taken and before any file is written, so a rejection
+/// leaves the target byte-for-byte as it was. The two arguments are
+/// independent values and nothing structurally ties them together, so a
+/// caller can pass a preview computed from a different (e.g. since
+/// rebuilt) bundle; that is [`BundleError::PreviewBundleMismatch`], not a
+/// panic partway through the batch.
+///
 /// All writes for one call share a single project lock (from the target's
 /// underlying `flashtex_project_files::ProjectRoot`), so no other in-contract
 /// writer can interleave partway through this batch.
@@ -123,6 +131,26 @@ pub fn apply_import(
     target: &ProjectRoot,
     decisions: &HashMap<String, ImportDecision>,
 ) -> Result<Vec<ImportOutcome>, BundleError> {
+    // Index the bundle once. `Bundle::file` is a linear scan, so looking a
+    // path up per previewed file would be quadratic in the batch size (and
+    // `DEFAULT_MAX_ENTRIES` is 100_000); first occurrence wins, matching
+    // `Bundle::file`'s own `find`.
+    let mut by_path: HashMap<&str, &BundleFile> = HashMap::with_capacity(bundle.files.len());
+    for file in &bundle.files {
+        by_path.entry(file.path.as_str()).or_insert(file);
+    }
+
+    // Resolve the whole batch before taking the lock and before writing
+    // anything, so a rejection here leaves the target exactly as it was
+    // rather than surfacing once earlier files are already committed.
+    let mut resolved: Vec<&BundleFile> = Vec::with_capacity(preview.files.len());
+    for fp in &preview.files {
+        match by_path.get(fp.path.as_str()) {
+            Some(file) => resolved.push(file),
+            None => return Err(BundleError::PreviewBundleMismatch(fp.path.clone())),
+        }
+    }
+
     let lock = target
         .files_root()
         .lock()
@@ -133,9 +161,9 @@ pub fn apply_import(
     let mut undo_log: Vec<(String, Undo)> = Vec::new();
     let mut outcomes = Vec::with_capacity(preview.files.len());
 
-    for fp in &preview.files {
+    for (fp, file) in preview.files.iter().zip(resolved) {
         let decision = decisions.get(&fp.path).copied();
-        match apply_one(bundle, target, &lock, fp, decision) {
+        match apply_one(&file.contents, target, &lock, fp, decision) {
             Ok((action, undo)) => {
                 if let Some(undo) = undo {
                     undo_log.push((fp.path.clone(), undo));
@@ -180,7 +208,7 @@ enum Undo {
 /// Apply the decision for one previewed file, returning what happened plus
 /// (if this call wrote anything) how to undo it.
 fn apply_one(
-    bundle: &Bundle,
+    contents: &[u8],
     target: &ProjectRoot,
     lock: &ProjectLock<'_>,
     fp: &crate::preview::FilePreview,
@@ -190,10 +218,6 @@ fn apply_one(
         FileOutcome::Unchanged { .. } => Ok((ImportAction::Skipped, None)),
         FileOutcome::Conflict { theirs, .. } => match decision {
             Some(ImportDecision::Write) => {
-                let contents = &bundle
-                    .file(&fp.path)
-                    .expect("preview built from this bundle")
-                    .contents;
                 let path = ProjectRoot::normalize(&fp.path)?;
                 // Snapshot exactly what is about to be overwritten so a
                 // later failure elsewhere in this batch can restore it.
@@ -228,10 +252,6 @@ fn apply_one(
             if decision == Some(ImportDecision::Skip) {
                 Ok((ImportAction::Skipped, None))
             } else {
-                let contents = &bundle
-                    .file(&fp.path)
-                    .expect("preview built from this bundle")
-                    .contents;
                 let path = ProjectRoot::normalize(&fp.path)?;
                 let receipt = lock
                     .save(&path, contents, Expected::NewFile, false)

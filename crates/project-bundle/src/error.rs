@@ -38,6 +38,17 @@ pub enum BundleError {
     /// would in fact overwrite each other, or that both happen to read the
     /// same bytes without the caller ever being told why.
     AmbiguousPath { first: String, second: String },
+    /// [`crate::apply_import`] was given an [`crate::ImportPreview`] that
+    /// names a path the supplied [`crate::Bundle`] does not contain — the
+    /// two arguments do not describe the same import (most simply: the
+    /// bundle was rebuilt, or a different one was passed, after the preview
+    /// was computed).
+    ///
+    /// Checked up front, before any write in the batch, and returned as a
+    /// typed error. Previously this was an `expect` that panicked partway
+    /// through the batch, unwinding straight past the rollback and leaving
+    /// every file written so far standing on disk.
+    PreviewBundleMismatch(String),
     /// A parent directory or the file itself is a symbolic link. The
     /// underlying rooted reader (`flashtex-project-files`) refuses *every*
     /// symlink component outright — whether or not it would resolve inside
@@ -111,6 +122,10 @@ impl fmt::Display for BundleError {
             BundleError::AmbiguousPath { first, second } => write!(
                 f,
                 "{first:?} and {second:?} are different declared paths but resolve to the same file on disk"
+            ),
+            BundleError::PreviewBundleMismatch(p) => write!(
+                f,
+                "the import preview names {p:?}, which the supplied bundle does not contain; preview and bundle do not describe the same import"
             ),
             BundleError::SymlinkRefused(p) => {
                 write!(f, "symlink component refused: {p:?}")
