@@ -1,23 +1,22 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-023",
+  "acceptance": [
+    "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+    "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
+  ],
   "agent_id": "commander-render-core",
+  "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-render-core/rendering-core",
-  "revision": 6,
-  "state": "assigned",
-  "objective": "Consume published mac-pdf exact-export d25a647 through rendering-core adapter with exact paths/font identity/clip/paint and explicit unsupported values; no duplicate PDF writer.",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "60c40c12f3c8db2050694c9f76817db909853338",
+  "objective": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "acceptance": [
-    "Meaningful tests and strict lint pass",
-    "Publish truthful execution provenance and exact tested SHA",
-    "No native integration or PDF parity claim without measured evidence"
-  ],
-  "dependencies": [],
-  "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
-  "deadline_utc": null,
-  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "revision": 8,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-023",
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T10:37:24.803475+00:00"
 }

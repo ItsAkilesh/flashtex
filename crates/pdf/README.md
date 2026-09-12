@@ -2,6 +2,8 @@
 > font tests do not establish exact LaTeX byte or pixel identity. Runtime-v1 lacks
 > authoritative font IDs/original GIDs/typed rules, so fallback fonts and rule
 > conventions remain fidelity blockers; rendering-v2 negotiation is separate.
+> The separate exact route (`flashtex_pdf::exact`, below) takes glyph ids,
+> verbatim decimals and typed operators from a producer that has them.
 
 # flashtex-pdf
 
@@ -102,6 +104,126 @@ open out.pdf
 - Structural self-check (`flashtex_pdf::verify`) that parses the header, `startxref`,
   every xref entry, and confirms each offset lands on `N 0 obj`, plus a
   content-stream reader that recovers `Tf`/`Td`/`Tj` runs and `re f` rules for tests.
+
+## Exact export route (`flashtex_pdf::exact`, issue #25)
+
+The runtime-v1 route above selects fonts by character and formats numbers
+to three decimals. The exact route is the additive API GitHub issue #25
+asks for and does neither. It is a second entry point into the same
+container writer, not a second PDF implementation:
+
+- **Numbers are verbatim.** Every operand is a `Decimal`: a validated PDF
+  numeric token (`-?digits(.digits)?`, no exponent, at most 64 characters)
+  carried as text. `11.9552`, `708.045`, `0.398`, `216.00000000001` are
+  written exactly as given; nothing goes through `f64`.
+- **Text is shown by code, not character.** `ExactFont::CidCff` and
+  `ExactFont::CidTrueType` are `Type0`/`Identity-H` fonts whose two-byte
+  codes *are* the source font's glyph ids: the CFF program is rewritten by
+  `crate::cff` as a CID-keyed CFF whose charset maps CID = original GID
+  (charstrings, global and local subroutines copied byte for byte; one FD
+  with the original Private DICT), and the TrueType program keeps its glyph
+  order (`TrueTypeFont::subset_keep_gids`, `/CIDToGIDMap /Identity`).
+  `ExactFont::Simple` is a one-byte-code font with an explicit
+  `/Differences` encoding and a Type 1 (`FontFile` with `Length1/2/3`),
+  `Type1C`, or TrueType program, or a standard-14 name, the form pdfTeX
+  writes. `GlyphRun { font, size, glyphs: [PlacedGlyph { gid, origin }] }`
+  expands to `BT /F size Tf 1 0 0 1 x y Tm (codes) Tj … ET`; a glyph without
+  an origin continues the previous string at the font's advance.
+- **Typed operators.** `Op` is the bounded set `q Q cm w J j d g G rg RG m l
+  c h re S f f* n W W* BT ET Tf Td Tm Tj TJ`; `Op::rule(x, y, w, h)` is
+  `re f`. A page's `Content::Ops` is serialised one operator per line;
+  `Content::Verbatim(bytes)` is parsed into the same set for validation and
+  then inserted unchanged. Anything else (`gs`, `sc`, shading, images,
+  inline images, exponents, nested arrays) is an error naming the page and
+  operator index; nothing is dropped or rounded.
+- **Validation before writing.** Balanced `q`/`Q` and `BT`/`ET`, text
+  operators only inside a text object, path segments only after a current
+  point, painting only with a path, every `Tf` naming a declared font that
+  the page's `/Resources` lists, every one-byte code inside
+  `FirstChar..=LastChar`, every two-byte code inside the declared glyph set
+  (`CidFont::glyphs`; empty means unconstrained for programs carried over
+  from another producer), even byte counts for two-byte fonts, positive
+  page sizes, bounded sizes (content 64 MiB, 4 M operators per page, font
+  programs 64 MiB).
+- **Deterministic.** No `/ID`, no dates, fixed object order (catalog, pages,
+  info, page/content pairs, fonts by resource name). The same
+  `ExactDocument` gives the same bytes twice (tested), and re-emitting the
+  writer's own output through the reader is a fixed point.
+- **White pages.** No background is painted; PDF user space is bottom-left,
+  y up, and the caller does any flip (rendering-core's adapter already
+  does), so no arithmetic happens in this crate.
+
+```rust
+use flashtex_pdf::exact::*;
+let font = TrueTypeFont::load(Path::new("lmroman10-regular.otf"))?;
+let (f1, outcome, note) = ExactFont::cid_from_opentype(&font, &gids, to_unicode)?;
+// outcome: CffSubset (GIDs kept as CIDs) | CffWhole (seac/CID-keyed source, reported) | TrueTypeIdentity
+let run = GlyphRun { font: "F1".into(), size: Decimal::new("12")?, glyphs };
+let mut ops = run.to_ops()?;
+ops.extend(Op::rule(Decimal::new("72")?, Decimal::new("690.25")?, Decimal::new("28.5")?, Decimal::new("0.398")?));
+let page = ExactPage { width: Decimal::new("612")?, height: Decimal::new("792")?, content: Content::Ops(ops), fonts: None };
+let doc = ExactDocument { pages: vec![page], fonts: BTreeMap::from([("F1".to_string(), f1)]) };
+let pdf = render_exact(&doc)?;   // PdfOutput { bytes, warnings: [] }
+```
+
+**Bounded subset identity.** `CffFont::subset` refuses, with an explicit
+error rather than a guess, CID-keyed sources, Type 1 charstrings, and any
+retained glyph that composes an accent through `endchar` (`seac`), because
+a CID-keyed program would resolve the components by CID instead of name;
+`cid_from_opentype` then embeds the whole `CFF ` table (glyph ids are still
+the font's own) and says so in its note. Latin Modern's 821 glyphs contain
+no `seac`; a nine-glyph subset is 22,557 bytes against the 61,140-byte whole
+table. The subset tag in `/BaseFont` is derived from the glyph set and the
+source program's SHA-256, so the same request always names the same font.
+
+**Reading references and classifying differences.** `crate::reader` reads
+a finished PDF (this crate's or pdfTeX's: xref streams, object streams,
+`FlateDecode` via the in-tree `crate::inflate`) into an object model with
+verbatim numbers; `crate::compare::reemit` rebuilds it as an
+`ExactDocument` and `crate::compare::classify` tags every difference
+between two files as `PageGeometry`, `ContentFormatting`,
+`ContentOperands`, `ContentOperators`, `ContentUnsupported`,
+`FontProgram`, `FontMetadata`, `FontResources`, `ObjectLayout`,
+`Compression`, or `DocumentIdentity`. The `flashtex-pdf-exact` binary
+exposes `reemit`, `classify` (exit 0 only when content operators and font
+programs are identical on every page) and `dump`. Against MacTeX 2026
+pdflatex and xelatex output for all 18 visual-corpus fixtures under the
+harness's four preambles, the re-emitted files have byte-identical content
+streams and font programs and pixel-identical CoreGraphics rasters; the
+remaining differences are exactly object layout, stream compression and
+document identity (`/ID`, dates, producer). Details, the reference profile
+and the per-fixture table: `docs/exact-export-classification.md`. This
+establishes what the container preserves, not what FlashTeX's compiler
+emits.
+
+**Feeding it from rendering-v2.** `flashtex-pdf-exact from-v2 LIST.json --out
+OUT.pdf [--font-dir DIR]` (`crate::v2`) consumes the `display_list` envelope
+of `flashtex-render --v2`: ticks (`bp_2pow20`) become exact decimals after an
+integer y flip, every glyph is placed by original GID at its absolute origin
+(its own `Tm`, joining the previous string only when the origin equals the
+previous origin plus the `hmtx` advance exactly), rules become `re f`, fonts
+are resolved by content hash from `--font-dir`/`FLASHTEX_FONT_DIRS`/
+`FLASHTEX_LM_DIR`/the TeX Live Latin Modern directories and embedded as
+GID-preserving subsets, cluster text becomes ToUnicode. `opentype-cff` and
+`static-truetype` are accepted; `core14-afm`, alpha, image items, non-integer
+ticks and non-terminating colours are errors. Both SHA-256(bytes) and
+font-engine's SHA-256(bytes ‖ face index) are accepted as `sha256` (the
+latter is reported as a deviation). The measured gap between
+`flashtex-render --v2 → from-v2` and pdflatex-lmodern on the 18 corpus
+fixtures is in `docs/v2-adapter-gap.md`: text-only fixtures differ at the
+anti-aliasing level only (0 ink-only pixels on 01/04/05/17), math and lists
+differ where the pipeline's own diagnostics say they do. This glyph-run route
+(embedded fonts, searchable text) is complementary to rendering-core's
+outline route (`pdf_export.rs`, paths only).
+
+Tests: `tests/exact.rs` (deterministic serialisation, verbatim decimals and
+codes, CFF subset identity, bounded glyph sets, validation errors, Type 1
+round trip through the reader, PFB parsing, classifier categories, and,
+skipped when the tool is absent, Latin Modern rendering in CoreGraphics and
+the pdflatex/xelatex oracle round trips); `tests/v2.rs` (the checked-in
+`flashtex-render` envelope for fixture 01 resolved against the installed
+Latin Modern, a hand-built envelope with hmtx joining, rules and colour, and
+the refusals).
 
 ## Font embedding
 

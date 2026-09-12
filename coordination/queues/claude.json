@@ -1,34 +1,34 @@
 {
   "agent_id": "claude",
-  "next_index": 0,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
-      "name": "Isolate layout/page construction versus JSON serialization using exact pinned fixture",
-      "objective": "Isolate layout/page construction versus JSON serialization using exact pinned fixture",
+      "acceptance": [
+        "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+        "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+        "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
+      "name": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
+      "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
       "owned_paths": [
         "crates/compiler"
       ],
-      "acceptance": [
-        "Pinned input/binary hashes and p50/p95/p99 measurements",
-        "Exact incremental-clean equality and no lost corpus checks",
-        "Native paint and raw PDF byte equality remain separate gates"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage6",
       "timebox_minutes": 45
     },
     {
-      "name": "Implement one measured compiler output allocation or reuse improvement with exact clean equivalence",
-      "objective": "Implement one measured compiler output allocation or reuse improvement with exact clean equivalence",
+      "acceptance": [
+        "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+        "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+        "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
+      "name": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
+      "objective": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
       "owned_paths": [
         "crates/compiler"
       ],
-      "acceptance": [
-        "Pinned input/binary hashes and p50/p95/p99 measurements",
-        "Exact incremental-clean equality and no lost corpus checks",
-        "Native paint and raw PDF byte equality remain separate gates"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage6",
       "timebox_minutes": 45
     }
   ],
