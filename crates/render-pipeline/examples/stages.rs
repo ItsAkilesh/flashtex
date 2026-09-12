@@ -4,7 +4,6 @@
 
 use std::time::Instant;
 
-use flashtex_compiler::json;
 use flashtex_compiler::parser::SourceDocument;
 use flashtex_render_pipeline::v1::Capabilities;
 use flashtex_render_pipeline::{adapter, typeset, v1, FontSet, RenderOptions};
@@ -32,9 +31,9 @@ fn main() {
         let diagnostics = ctx.take_diagnostics();
         let v2 = typeset::assemble("p", 1, &docs, &doc.style, &fonts, laid, diagnostics);
         let t4 = Instant::now();
-        let payload = v1::fallback(&v2, Capabilities { rules: true, font_hints: true, display_list: false }, Some(vec![])).to_json();
+        let payload = v1::fallback(&v2, Capabilities { rules: true, font_hints: true, display_list: false }, Some(vec![]));
         let t5 = Instant::now();
-        let line = json::write(&payload);
+        let line = payload.write_envelope("stages");
         let t6 = Instant::now();
         let ms = |a: Instant, b: Instant| (b - a).as_secs_f64() * 1000.0;
         println!(

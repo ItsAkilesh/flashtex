@@ -352,6 +352,195 @@ impl V1Payload {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Direct JSON Lines writer: the same bytes `json::write(&self.to_json())`
+// produces (BTreeMap key order, the compiler's number and string rules)
+// without building a `Value` tree, which was a third of a large request's
+// time. `writer_matches_value_tree` pins the equivalence.
+
+use std::fmt::Write as _;
+
+fn js(out: &mut String, s: &str) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+fn jn(out: &mut String, n: f64) {
+    if n.is_finite() && n == n.trunc() && n.abs() < 1e15 {
+        let _ = write!(out, "{}", n as i64);
+    } else if n.is_finite() {
+        let _ = write!(out, "{}", n);
+    } else {
+        out.push_str("null");
+    }
+}
+
+fn jpt(out: &mut String, v: f64) {
+    jn(out, (v * 1000.0).round() / 1000.0);
+}
+
+fn jsource(out: &mut String, s: &SourceRange) {
+    out.push_str("{\"end_byte\":");
+    jn(out, s.end_byte as f64);
+    out.push_str(",\"path\":");
+    js(out, &s.path);
+    out.push_str(",\"start_byte\":");
+    jn(out, s.start_byte as f64);
+    out.push('}');
+}
+
+fn jdiag(out: &mut String, d: &display::Diagnostic) {
+    out.push_str("{\"code\":");
+    js(out, &d.code);
+    out.push_str(",\"message\":");
+    js(out, &d.message);
+    out.push_str(",\"recovery\":");
+    match &d.recovery {
+        Some(r) => js(out, r),
+        None => out.push_str("null"),
+    }
+    out.push_str(",\"severity\":");
+    js(
+        out,
+        match d.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        },
+    );
+    out.push_str(",\"source\":");
+    match d.sources.first() {
+        Some(s) => jsource(out, s),
+        None => out.push_str("null"),
+    }
+    out.push('}');
+}
+
+impl V1Payload {
+    /// The complete `compile_result` envelope line for request `id`
+    /// (protocol version 1), byte-identical to
+    /// `json::write(&result_envelope(id, self.to_json()))`.
+    pub fn write_envelope(&self, id: &str) -> String {
+        let mut out = String::with_capacity(64 + 96 * self.pages.iter().map(|p| p.items.len()).sum::<usize>());
+        out.push_str("{\"id\":");
+        js(&mut out, id);
+        out.push_str(",\"payload\":");
+        self.write_payload(&mut out);
+        out.push_str(",\"protocol_version\":1,\"type\":\"compile_result\"}");
+        out
+    }
+
+    fn write_payload(&self, out: &mut String) {
+        out.push_str("{\"diagnostics\":[");
+        for (i, d) in self.diagnostics.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            jdiag(out, d);
+        }
+        out.push(']');
+        if let Some(acc) = &self.accepted {
+            out.push_str(",\"layout_capabilities\":[");
+            for (i, c) in acc.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                js(out, c);
+            }
+            out.push(']');
+        }
+        out.push_str(",\"pages\":[");
+        for (pi, pg) in self.pages.iter().enumerate() {
+            if pi > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"height_pt\":");
+            jpt(out, pg.height_pt);
+            out.push_str(",\"items\":[");
+            for (ii, it) in pg.items.iter().enumerate() {
+                if ii > 0 {
+                    out.push(',');
+                }
+                match it {
+                    V1Item::Text {
+                        text,
+                        x_pt,
+                        baseline_y_pt,
+                        font_size_pt,
+                        source,
+                        font,
+                    } => {
+                        out.push_str("{\"baseline_y_pt\":");
+                        jpt(out, *baseline_y_pt);
+                        if let Some(f) = font {
+                            out.push_str(",\"font\":{\"family\":");
+                            js(out, &f.family);
+                            out.push_str(",\"style\":");
+                            js(out, f.style);
+                            out.push_str(",\"weight\":");
+                            js(out, f.weight);
+                            out.push('}');
+                        }
+                        out.push_str(",\"font_size_pt\":");
+                        jpt(out, *font_size_pt);
+                        out.push_str(",\"kind\":\"text\",\"source\":");
+                        jsource(out, source);
+                        out.push_str(",\"text\":");
+                        js(out, text);
+                        out.push_str(",\"x_pt\":");
+                        jpt(out, *x_pt);
+                        out.push('}');
+                    }
+                    V1Item::Rule {
+                        x_pt,
+                        y_pt,
+                        width_pt,
+                        height_pt,
+                        source,
+                    } => {
+                        out.push_str("{\"height_pt\":");
+                        jpt(out, *height_pt);
+                        out.push_str(",\"kind\":\"rule\",\"source\":");
+                        jsource(out, source);
+                        out.push_str(",\"width_pt\":");
+                        jpt(out, *width_pt);
+                        out.push_str(",\"x_pt\":");
+                        jpt(out, *x_pt);
+                        out.push_str(",\"y_pt\":");
+                        jpt(out, *y_pt);
+                        out.push('}');
+                    }
+                }
+            }
+            out.push_str("],\"number\":");
+            jn(out, f64::from(pg.number));
+            out.push_str(",\"width_pt\":");
+            jpt(out, pg.width_pt);
+            out.push('}');
+        }
+        out.push_str("],\"pdf_path\":null,\"project_id\":");
+        js(out, &self.project_id);
+        out.push_str(",\"revision\":");
+        jn(out, self.revision as f64);
+        out.push_str(",\"status\":");
+        js(out, self.status);
+        out.push('}');
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +559,69 @@ mod tests {
         let (c, acc) = Capabilities::negotiate(&["unknown".into()]);
         assert_eq!(c, Capabilities::default());
         assert!(acc.is_empty());
+    }
+
+    #[test]
+    fn writer_matches_value_tree() {
+        let src = |path: &str, a: usize, b: usize| SourceRange {
+            path: path.into(),
+            start_byte: a,
+            end_byte: b,
+        };
+        let payload = V1Payload {
+            project_id: "p\"q".into(),
+            revision: 7,
+            status: "recovered",
+            pages: vec![V1Page {
+                number: 1,
+                width_pt: 612.0,
+                height_pt: 792.0,
+                items: vec![
+                    V1Item::Text {
+                        text: "wörld\t\"x\"".into(),
+                        x_pt: 72.0004,
+                        baseline_y_pt: 83.955,
+                        font_size_pt: 11.955,
+                        source: src("a/b.tex", 3, 10),
+                        font: Some(FontHint {
+                            family: "Latin Modern Roman".into(),
+                            weight: "bold",
+                            style: "italic",
+                        }),
+                    },
+                    V1Item::Text {
+                        text: "x".into(),
+                        x_pt: 1.0,
+                        baseline_y_pt: 2.0,
+                        font_size_pt: 3.0,
+                        source: src("main.tex", 0, 1),
+                        font: None,
+                    },
+                    V1Item::Rule {
+                        x_pt: 302.386,
+                        y_pt: 101.4675,
+                        width_pt: 43.351,
+                        height_pt: 0.3985,
+                        source: src("main.tex", 37, 78),
+                    },
+                ],
+            }],
+            diagnostics: vec![
+                display::Diagnostic::warning("w", "m\n", vec![src("main.tex", 1, 2)]),
+                display::Diagnostic::error("e", "boom", Vec::new()),
+            ],
+            accepted: Some(vec!["rules-v1".into(), "font-hints-v1".into()]),
+        };
+        let mut env = Value::obj();
+        env.set("protocol_version", json::num(1.0));
+        env.set("id", json::str_("r-1"));
+        env.set("type", json::str_("compile_result"));
+        env.set("payload", payload.to_json());
+        assert_eq!(payload.write_envelope("r-1"), json::write(&env));
+        let mut none = payload.clone();
+        none.accepted = None;
+        none.diagnostics.clear();
+        env.set("payload", none.to_json());
+        assert_eq!(none.write_envelope("r-1"), json::write(&env));
     }
 }

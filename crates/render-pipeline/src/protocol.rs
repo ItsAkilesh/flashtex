@@ -251,7 +251,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
         }
     }
     let accepted = v1.accepted.clone();
-    let line = json::write(&result_envelope(&id, v1.to_json()));
+    let line = v1.write_envelope(&id);
     if line.len() > limit {
         let pages = rendered.v2.pages.len();
         return Reply {
