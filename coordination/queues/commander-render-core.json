@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
-      "objective": "Prepare minimal GH36 packaging and discovery patch against exact published owner sources in owned handoff only",
+      "name": "Review newly published native validation evidence for exact helper route asset assumptions and historical current-paint limits",
+      "objective": "Review newly published native validation evidence for exact helper route asset assumptions and historical current-paint limits",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
-      "objective": "Verify patch applies to pinned source and reuses manifest verifier without overwriting explicit user resource overrides",
+      "name": "Review GH31 and GH36 owner publications when available against existing immutable-resource and packaging contracts",
+      "objective": "Review GH31 and GH36 owner publications when available against existing immutable-resource and packaging contracts",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
-      "objective": "Publish native owner nohostTeX app-bundle acceptance command and limitations without authoritative native edits",
+      "name": "Publish bounded native evidence handoff without claiming unexecuted native verification or editing peer sources",
+      "objective": "Publish bounded native evidence handoff without claiming unexecuted native verification or editing peer sources",
       "owned_paths": [
         "crates/rendering-core"
       ],

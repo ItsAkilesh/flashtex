@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
-      "objective": "Trace completed intermediate compiler generations to stale notifications in the existing sustained typing capture",
+      "name": "Implement separate-process burst sender with explicit schedule and byte-preserving request ownership",
+      "objective": "Implement separate-process burst sender with explicit schedule and byte-preserving request ownership",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
-      "objective": "Measure one explicit completed-snapshots opt-in burst with exact origin tokens and separate historical and current counts",
+      "name": "Test sender lifecycle cancellation partial writes and error propagation without altering helper production policy",
+      "objective": "Test sender lifecycle cancellation partial writes and error propagation without altering helper production policy",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
-      "objective": "Verify source authority final clean preview durable reopen and receipt retry while preserving default OFF and report limitations",
+      "name": "Publish bounded harness correction and retain prior observational cadence limitations without automatic benchmark repetition",
+      "objective": "Publish bounded harness correction and retain prior observational cadence limitations without automatic benchmark repetition",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
