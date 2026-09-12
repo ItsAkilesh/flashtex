@@ -1144,6 +1144,29 @@ mod configuration_tests {
         }
     }
     #[test]
+    fn producer_budget_boundary_and_non_utf8_settings() {
+        use std::os::unix::ffi::OsStrExt;
+        for frame in [128, 8 * 1024 * 1024, MAX_COMPILER_FRAME] {
+            let limits = compiler_limits(&json!({"compiler_max_frame_bytes":frame})).unwrap();
+            let equal = (frame - 1).to_string();
+            for inherited in [
+                None,
+                Some(std::ffi::OsStr::new("")),
+                Some(std::ffi::OsStr::from_bytes(&[0xff])),
+                Some(std::ffi::OsStr::new(&equal)),
+            ] {
+                let command = producer_command_with_limit("unused", &limits, inherited);
+                let budget = command
+                    .get_envs()
+                    .find(|(key, _)| *key == "FLASHTEX_MAX_REPLY_BYTES")
+                    .unwrap()
+                    .1
+                    .unwrap();
+                assert_eq!(budget, std::ffi::OsStr::new(&equal));
+            }
+        }
+    }
+    #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(
             compiler_limits(&json!({})).unwrap().max_frame,
