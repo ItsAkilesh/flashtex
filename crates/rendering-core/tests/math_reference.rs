@@ -25,7 +25,10 @@ fn published_math_source_clusters_and_real_pdf_remain_exact() {
         ..span["end_byte"].as_u64().unwrap() as usize];
     assert!(tex.contains("\\alpha") && tex.contains("\\beta"));
     let pdf = export_math(DISPLAY, &request);
-    assert_eq!(pdf, include_bytes!("fixtures/math-reference/original.pdf"));
+    assert_eq!(
+        pdf,
+        include_bytes!("fixtures/pdf-subset-20e5277/inline-math.pdf")
+    );
     let reference = include_bytes!("fixtures/math-reference/reference.pdf");
     let engine: Value = serde_json::from_slice(include_bytes!(
         "fixtures/math-reference/reference-engine.json"
@@ -124,7 +127,7 @@ fn actual_display_math_preserves_sum_and_reference_mapping_difference() {
     let pdf = export_math(display, &request);
     assert_eq!(
         pdf,
-        include_bytes!("fixtures/display-math-reference/original.pdf")
+        include_bytes!("fixtures/pdf-subset-20e5277/display-math.pdf")
     );
     let original_text = include_str!("fixtures/display-math-reference/original.txt");
     let reference_text = include_str!("fixtures/display-math-reference/reference.txt");

@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T11:12:18Z",
-      "adaptation": "Read84c052b FT023r9. Consume exact b9240b0 runtime and8876279 helper artifacts; explicit compile versus document revision and membership/session source gates, existing immutable CFF export only.",
-      "main_sha": "84c052b49edd6e045618839369dec35051f32880",
-      "revision": 9
+      "acknowledged_utc": "2026-09-12T11:19:24Z",
+      "adaptation": "Read exact b1c83a7 FT023r10. Import unchanged PDF20e5277857b2cd37f102fb07acdd164f82bb49db tree; all-target consumer check passes, compare existing five original outputs via owner parser/expanded charstrings and exact glyph position replay, no native activation.",
+      "main_sha": "b1c83a796d8aa46ff5cab4894bc2476b17f2510f",
+      "revision": 10
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "cdd5e979e87327ba4313b9a7bd8f1479bfb0ec5d",
+  "code_revision": "4ca51d941a2ab871696ca35cbf57adc01097016a",
   "eta_minutes": {
-    "likely": 3,
-    "optimistic": 1,
-    "pessimistic": 5
+    "likely": 8,
+    "optimistic": 3,
+    "pessimistic": 15
   },
   "machine": "linux-primary",
-  "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
-  "next_action": "Publish reviewed baseline re-run preserving all five exact PDF hashes and raster/text outcomes; next bounded queue needed.",
+  "main_integrated_through": "4ca51d941a2ab871696ca35cbf57adc01097016a",
+  "next_action": "Publish tested peer import and consumer comparisons; then deliberately rebaseline existing five-fixture runner to new PDF hashes while retaining historical artifacts.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r9 actual runtime/helper candidate adapter published cdd5e979; all164Rust tests/lint pass, no metadata repair or native activation.",
+  "summary": "FT023r10 unchanged PDF20e5277 subtree passes uptake: exact original glyph positions/Unicode/expanded programs and raster/text preserved, measured substantial subset reduction.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T11:17:14Z",
+  "updated_utc": "2026-09-12T11:25:26Z",
   "usage": {
-    "evidence": "Fresh five-fixture runner on cdd5e979 matches every prior PDF hash and0/602/1244/979/337pixel counts; aggregate remains mismatch.6Python gates pass.",
-    "status": "Hosted OpenAI only; no providers/descendants; no quota telemetry."
+    "evidence": "165rendering tests +82upstream PDF tests pass; rendering strict Clippy pass. Six existing export pairs have identical raster/text; inline math PDF140238\u219211694bytes, embeddedmath109797\u21921753bytes. Unchanged upstream tree proof recorded.",
+    "status": "Hosted OpenAI only, no providers/descendants/native switch; quota telemetry unavailable."
   }
 }
