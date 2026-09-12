@@ -668,6 +668,10 @@ struct PreviewV2View: View {
         GeometryReader { geo in
             let widest = frame.list.pages.map(\.widthPt).max() ?? 612
             let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
+            // Scroll anchoring (PreviewAnchor.swift): the (page, fraction) under the
+            // viewport's top edge survives a frame with another page count and a
+            // pane resize; a frame with the same page geometry never moves the scroll.
+            let layout = PreviewPageLayout(pages: frame.prepared.map { PreviewPageLayout.Page(number: $0.number, widthPt: $0.widthPt, heightPt: $0.heightPt) }, scale: scale)
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(spacing: 24) {
                     ForEach(frame.prepared, id: \.number) { prepared in
@@ -682,6 +686,7 @@ struct PreviewV2View: View {
                     }
                 }
                 .padding(24)
+                .background(PreviewAnchorKeeper(layout: layout))
             }
         }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))

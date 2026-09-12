@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-preview-anchoring",
+  "allocation_id": "claude-mac20x-preview-anchoring",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preview-anchoring/anchoring",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "fabdfb83",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "37137adaa0654d95f43c6678e476b8513c3a09ef",
+  "next_action": "Parent applies the PreviewView.swift diff in coordination/mac-preview-anchoring.md (layout next to the fit scale + .background(PreviewAnchorKeeper(layout:)) on the VStack) and merges the lane branch; the -applied branch is measurement only",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 5bc3fc0f (includes main dda0b62 preview-controller with compact edit acknowledgements); PreviewView/PreviewV2View structure (GeometryReader fit scale, ScrollView, VStack/LazyVStack with 24 pt spacing/padding) mirrored exactly by PreviewPageLayout; ShellModel's stale-revision drop (ShellModel+Controller.swift:405, ShellModelTests stale envelope) reused for case (b)",
+      "reviewed_utc": "2026-09-12T13:48:18Z",
+      "sha": "5bc3fc0f"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Gap 5 preview scroll anchoring: pure PreviewAnchor/PreviewPageLayout model + PreviewAnchorKeeper NSScrollView probe (150 ms settle window because SwiftUI re-imposes its stored offset once after a content-size change); PreviewV2View hook committed; PreviewView hook delivered as a diff and measured on the -applied branch; PreviewAnchoringTests 9 tests; resize 500->350 pt drift 252.4 pt -> 0.0 pt, appended pages / stale results 0.0 pt, vanished page clamps to document end",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:48:18Z",
+  "usage": {
+    "evidence": "swift test --filter PreviewAnchoringTests: 8 pass + 1 skip without FLASHTEX_COMPILER; 9/9 with the real compiler on both the lane tree (fabdfb83, v1 hook absent: drift reported) and the applied tree (5d1503e7); swift build --build-tests clean; full swift test not run (parent heavy-build window); 1-min load 8-25 during runs",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
