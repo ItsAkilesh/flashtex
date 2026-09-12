@@ -3,6 +3,8 @@
 //! establish font outline safety, shaping correctness, visual parity or permission
 //! to paint. The caller must negotiate/integrate actual consumers separately.
 
+pub mod hit_test;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};

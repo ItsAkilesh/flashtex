@@ -42,3 +42,10 @@ Tests use declared synthetic glyph IDs and a deliberately fake font-validation
 callback to exercise mapping and resource substitution; these are not real fonts
 or visual correctness evidence. Fixtures retain the experimental schema provenance
 from commit `41cacfc`; no image, network provider, or external TeX engine is run.
+
+`hit_test::PageIndex` builds a per-page spatial index from declared hit rectangles
+and rules. Queries require the matching project/revision, use exact half-open
+fixed-point rectangles clipped to page bounds, and resolve overlaps in paint order.
+Caret selection uses only supplied caret positions; absent carets return a whole
+logical cluster. TeX source ranges and synthetic provenance remain unchanged. Shared
+cluster metadata avoids copying caret/source arrays for every rectangle.
