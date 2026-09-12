@@ -1,0 +1,34 @@
+{
+  "agent_id": "mac-vector-graphics",
+  "allocation_id": "claude-mac20x-vector-graphics",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-vector-graphics/primitives",
+  "capabilities": [
+    "rust"
+  ],
+  "code_revision": "e78c6115ce52e660726d6a86f9ef1df253569bb4",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "254193c175534e78bfd9e5206b4850b86123cbe6",
+  "next_action": "Await Commander review of issue #2 branch; adjust v2 mapping once ABI decided",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Merged main 254193c (rendering-v2 proposal contract, schema, crates/rendering-core). Rewrote fallback section: unselected feature = explicit render failure with error diagnostics, no approximation; corrected tick rounding note (TeX sp via rendering-core from_tex_sp, crate is PDF points); referenced hit_test::PageIndex as the index to extend.",
+      "reviewed_utc": "2026-09-12T05:56:23Z",
+      "sha": "254193c175534e78bfd9e5206b4850b86123cbe6"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "crates/vector-graphics complete (geometry, paths, clips, colour, primitives, display list flatten/bounds/hit, PDF fragment + JSON serializers, diagram helpers; 40 tests, clippy/fmt clean) plus docs/rendering-v2-integration.md aligned with the v2 proposal now on main. No assignment file / FT number exists, so no ack.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T05:56:23Z",
+  "usage": {
+    "evidence": "cargo test 14 unit + 26 integration pass after merging main 254193c; clippy 0 warnings; fmt clean; quota not visible to subagent",
+    "status": "unknown"
+  }
+}
