@@ -266,3 +266,63 @@ fn rejection_is_durable_and_prevents_conversion_and_insertion() {
     let bridge = Bridge::new(Store::open(dir.path()).unwrap());
     assert!(bridge.store.require(&capture.capture_id).unwrap().rejected);
 }
+
+#[test]
+fn restart_cannot_redirect_capture_by_reusing_anchor_id() {
+    for changed in ["project", "path", "range", "source"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut bridge = setup(dir.path());
+        bridge.receive(capture()).unwrap();
+        bridge.convert("capture-1", vec![], &fake()).unwrap();
+        drop(bridge);
+        let mut restored = Bridge::new(Store::open(dir.path()).unwrap());
+        let project = if changed == "project" {
+            "other"
+        } else {
+            "project"
+        };
+        let path = if changed == "path" {
+            "other.tex"
+        } else {
+            "main.tex"
+        };
+        let text = if changed == "source" {
+            "αβ other"
+        } else {
+            "αβ world"
+        };
+        let start = if changed == "range" { 0 } else { 5 };
+        restored
+            .open_document(Document {
+                project_id: project.into(),
+                path: path.into(),
+                revision: 1,
+                text: text.into(),
+            })
+            .unwrap();
+        restored
+            .pin("anchor-1", project, path, 1, start, start)
+            .unwrap();
+        assert_eq!(
+            restored
+                .prepare_insert("capture-1", 1, true)
+                .unwrap_err()
+                .code,
+            "destination_reselection_required",
+            "{changed}"
+        );
+    }
+}
+
+#[test]
+fn exact_anchor_rehydration_allows_review_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut bridge = setup(dir.path());
+    bridge.receive(capture()).unwrap();
+    bridge.convert("capture-1", vec![], &fake()).unwrap();
+    drop(bridge);
+    let mut restored = setup(dir.path());
+    let edit = restored.prepare_insert("capture-1", 1, true).unwrap();
+    assert_eq!(edit.project_id, "project");
+    assert_eq!(edit.start_byte, 5);
+}

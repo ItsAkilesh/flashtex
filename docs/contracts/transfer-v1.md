@@ -28,7 +28,11 @@ parent segments, backslashes, colons and NUL. Revisions are increasing integers.
 | `destination_pin` | `destination_id,project_id,path,revision,start_byte,end_byte` | `destination_pinned` / anchor below |
 
 An anchor contains `destination_id,project_id,path,pinned_revision,current_revision,
-start_byte,end_byte,valid`. Capture `base_revision` means the original pinned
+start_byte,end_byte,valid,binding`. The immutable `binding` contains original
+`project_id,path,revision,start_byte,end_byte,source_sha256` and is durably bound
+to each capture. Restoring a reused ID against another project, path, range or
+source hash is rejected. Rehydrate the original snapshot/anchor, then replay known
+edits to rebase; journal records without this binding require reselection. Capture `base_revision` means the original pinned
 revision, not a guess from the phone. A document edit before the target rebases
 its offsets. An intersecting edit, or insertion exactly at an empty target,
 invalidates the target rather than guessing affinity. Unknown full-snapshot
@@ -46,7 +50,7 @@ one image per capture. Invalid images receive an error, not an acknowledgement.
 `capture_received` contains `capture_id,durable:true,has_proposal,applied`. The
 journal has been atomically replaced and fsynced before acknowledgement. Identical
 capture-ID retries return the existing record; a different payload using that ID
-returns `capture_conflict`. Durable receipt does not mean conversion or insertion.
+returns `capture_id_conflict`. Durable receipt does not mean conversion or insertion.
 
 `capture_convert` payload is `{capture_id,supported_features:[]}`. The feature list
 comes from actual compiler capabilities, at most 64 entries of 128 bytes each.

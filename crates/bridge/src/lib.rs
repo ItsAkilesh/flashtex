@@ -216,6 +216,16 @@ pub struct Anchor {
     pub start_byte: usize,
     pub end_byte: usize,
     pub valid: bool,
+    pub binding: AnchorBinding,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AnchorBinding {
+    pub project_id: String,
+    pub path: String,
+    pub revision: u64,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub source_sha256: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PreparedEdit {
@@ -246,6 +256,8 @@ pub struct CaptureRecord {
     pub applied: Option<AppliedEdit>,
     #[serde(default)]
     pub rejected: bool,
+    #[serde(default)]
+    pub destination_binding: Option<AnchorBinding>,
 }
 
 pub struct Bridge {
@@ -329,6 +341,14 @@ impl Bridge {
             start_byte: start,
             end_byte: end,
             valid: true,
+            binding: AnchorBinding {
+                project_id: project.into(),
+                path: path.into(),
+                revision,
+                start_byte: start,
+                end_byte: end,
+                source_sha256: digest(doc.text.as_bytes()),
+            },
         };
         if let Some(old) = self.anchors.get(destination) {
             if old != &anchor {
@@ -406,6 +426,11 @@ impl Bridge {
                 "Capture does not refer to the pinned destination revision",
             ));
         }
+        if let Some(record) = self.store.get(&capture.capture_id)? {
+            if record.destination_binding.as_ref() != Some(&a.binding) {
+                return Err(BridgeError::new("destination_reselection_required", "Restored destination does not match this capture's durably bound source and range"));
+            }
+        }
         Ok(a)
     }
     pub fn receive(&mut self, capture: CaptureSubmit) -> Result<CaptureRecord> {
@@ -419,7 +444,7 @@ impl Bridge {
             }
             return Ok(old);
         }
-        self.capture_anchor(&capture)?;
+        let destination_binding = Some(self.capture_anchor(&capture)?.binding.clone());
         let record = CaptureRecord {
             schema_version: 1,
             request_sha256: digest(&serde_json::to_vec(&capture)?),
@@ -429,6 +454,7 @@ impl Bridge {
             prepared: None,
             applied: None,
             rejected: false,
+            destination_binding,
         };
         self.store.save(&record)?;
         Ok(record)

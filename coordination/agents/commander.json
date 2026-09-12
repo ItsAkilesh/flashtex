@@ -16,7 +16,11 @@
     "rust",
     "linux"
   ],
-  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "code_revision": "ba89c9abcecd2471373a0c12243df74112bb4fa5",
+  "deliverable_docs": [
+    "docs/contracts/transfer-v1.md",
+    "crates/bridge/README.md"
+  ],
   "eta_minutes": {
     "likely": 60,
     "optimistic": 30,
@@ -24,7 +28,7 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "next_action": "Publish checkpoint for native integration; resolve independent review findings; implement authenticated nearby transport and compiler-context validation.",
+  "next_action": "Publish verified regression fix, hand to Sol integration; implement local Claude supervisor while native consumers integrate bridge.",
   "reviewed_peers": {
     "origin/main": {
       "adaptation": "All three assignments now authoritative; preserve their separate owned paths and integrate independently",
@@ -34,15 +38,11 @@
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-007 original Rust bridge first checkpoint: 14 tests pass; durable capture journal, UTF-8 anchors, bounded Grok structured conversion, reviewed two-phase insertion and rejection. Additive transfer-v1 contract and repaired PNG fixture included.",
+  "summary": "FT-007 checkpoint plus GH7 restart anchor binding fix: captures persist original project/path/revision/range/source hash; reused IDs cannot redirect insertion.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:46:23Z",
+  "updated_utc": "2026-09-12T04:49:18Z",
   "usage": {
-    "evidence": "cargo test --manifest-path crates/bridge/Cargo.toml: 11 library integration plus 3 real CLI tests pass on Rust 1.98.1 Linux. Native pairing and handwriting quality unverified.",
-    "status": "Hosted OpenAI account authorization; exact remaining quota unknown; zero Claude or Grok inference calls. Cursor publication under user grant."
-  },
-  "deliverable_docs": [
-    "docs/contracts/transfer-v1.md",
-    "crates/bridge/README.md"
-  ]
+    "evidence": "cargo test:16 passed (13 library integration,3 CLI), including restart rebinding of project/path/range/source and safe exact restoration.",
+    "status": "Hosted OpenAI authorized; exact quota unknown. No Claude or Grok inference; actual Cursor first bridge commit ba89c9."
+  }
 }
