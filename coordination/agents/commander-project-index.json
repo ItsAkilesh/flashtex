@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-project-index",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-025": {
+      "acknowledged_utc": "2026-09-12T05:59:03Z",
+      "adaptation": "Accepted exact FT-025 revision 1 on the published source-navigation branch. Extend lexical exclusions and explicitly declared bibliography documents in crates/project-index only; preserve source revision and rename guards, no native/compiler semantics or provider calls.",
+      "main_sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-project-index/source-navigation",
+  "capabilities": [
+    "rust",
+    "source-navigation"
+  ],
+  "code_revision": "15d2e56387bd424e25e2a5b1aa4a462ebd6954c8",
+  "eta_minutes": {
+    "likely": 25,
+    "optimistic": 15,
+    "pessimistic": 35
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "972e065ff17a90d22ab299f3b9be45e3029d445c",
+  "next_action": "Implement bounded literal environment exclusion, verify rename omissions, then source-only bibliography keys and cite navigation.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-025 accepted. Prior 32-test index and measured dependency reuse published at15d2e56; extending literal exclusion and declared bibliography indexing.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T05:59:03Z",
+  "usage": {
+    "evidence": "Hosted authorized OpenAI work; no provider, Cursor, or billing calls. Cargo tests are local and offline.",
+    "status": "unknown"
+  }
+}
