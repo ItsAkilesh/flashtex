@@ -43,4 +43,15 @@ README row + `AccessibilityCommand.askGrok`; swapping is a two-line change in
 
 ## Full-suite result
 
-(pending at the time of writing; see the lane report)
+`swift test` with the real compiler/pdf/bridge/edit-ledger/preview-controller/
+project-files/assistant-context helpers (main-checkout builds), load 2–6, at
+7898941c: **877 tests, 30 skipped, 48 failing assertions in exactly two test
+methods**: `CompletionLatencyTests.testPickupNarrowArrowAndReturnLatencyBestOfN`
+(46 assertions: completion popup narrowing timed out — a hosted-window
+keyboard/latency test under `FLASHTEX_NO_ACTIVATE=1`) and
+`PanelAccessibilityTests.testGrokPreferencesSectionControlsTakeKeyboardFocus`
+(2: Preferences keyboard walk). Neither test nor the files they exercise
+(Completion.swift, GrokPreferencesView.swift, EditorPreferences.swift) were
+touched by this lane; not re-verified on the base tip. Every other suite,
+including all 11 `GrokAssistantTests` and the fixture-sharing
+GrokLive/ProposalPreview/AssistantRecovery/ReviewRecovery suites, passed.
