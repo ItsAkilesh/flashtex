@@ -380,6 +380,15 @@ fn shift_span(span: Span, delta: isize) -> Span {
 fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
     Some(match block {
         Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
+        Block::ListItem {
+            content,
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+        } => Block::ListItem {
+            content: shift_inlines(content, changes, deltas)?,
+            extra_gap_before_pt: *extra_gap_before_pt,
+            extra_gap_after_pt: *extra_gap_after_pt,
+        },
         Block::Heading {
             level,
             number,
@@ -622,6 +631,7 @@ type BlockSignature = (usize, usize, usize, usize, usize);
 fn block_signature(block: &Block) -> BlockSignature {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
@@ -661,6 +671,7 @@ fn shifted_signature(
 ) -> Option<BlockSignature> {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,

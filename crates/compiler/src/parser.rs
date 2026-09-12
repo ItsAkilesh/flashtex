@@ -98,6 +98,18 @@ pub struct MathRow {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     Paragraph(Vec<Inline>),
+    /// One `\item` inside `itemize`/`enumerate` whose list has a `\setlist`
+    /// itemsep/topsep override. Lists without `\setlist` keep using
+    /// `Paragraph` for their items, so default output is unaffected.
+    ListItem {
+        content: Vec<Inline>,
+        /// Extra gap before this item, beyond the ordinary paragraph gap:
+        /// `topsep` before the list's first item, `itemsep` before the rest.
+        extra_gap_before_pt: f64,
+        /// Extra gap after this item: `topsep`, set only on the list's last
+        /// item.
+        extra_gap_after_pt: f64,
+    },
     Heading {
         level: u8,
         number: String,
@@ -489,6 +501,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style: TextStyle::default(),
         style_stack: Vec::new(),
         env_styles: Vec::new(),
+        list_spacing: HashMap::new(),
     };
     let blocks = p.document();
 
@@ -548,8 +561,9 @@ struct P<'a> {
     figure_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
-    /// Environment name, item count, and an enumitem label template if given.
-    list_stack: Vec<(String, u32, Option<String>)>,
+    /// Environment name, item count, an enumitem label template if given,
+    /// and the `\setlist` spacing resolved when this list's `\begin` ran.
+    list_stack: Vec<(String, u32, Option<String>, ListSpacing)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Current text style; saved on `{` and environment entry, restored on
@@ -557,6 +571,20 @@ struct P<'a> {
     style: TextStyle,
     style_stack: Vec<TextStyle>,
     env_styles: Vec<TextStyle>,
+    /// `\setlist` overrides, keyed by environment name ("itemize" /
+    /// "enumerate"). A list resolves its spacing from here when `\begin`
+    /// runs, so a later `\setlist` does not retroactively change an
+    /// already-open list.
+    list_spacing: HashMap<String, ListSpacing>,
+}
+
+/// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
+/// the compiler's ordinary paragraph gap. Both default to zero, matching
+/// today's spacing exactly when `\setlist` is never called.
+#[derive(Debug, Clone, Copy, Default)]
+struct ListSpacing {
+    itemsep_pt: f64,
+    topsep_pt: f64,
 }
 
 impl P<'_> {
@@ -786,9 +814,20 @@ impl P<'_> {
                 }
             }
             "item" => {
-                self.flush_paragraph(blocks, para);
+                let gap_before = self
+                    .list_stack
+                    .last()
+                    .map(|(_, count, _, spacing)| {
+                        if *count <= 1 {
+                            spacing.topsep_pt
+                        } else {
+                            spacing.itemsep_pt
+                        }
+                    })
+                    .unwrap_or(0.0);
+                self.flush_list_item(blocks, para, gap_before, 0.0);
                 match self.list_stack.last_mut() {
-                    Some((kind, count, template)) => {
+                    Some((kind, count, template, _)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
                             match template {
@@ -1098,14 +1137,77 @@ impl P<'_> {
         }
     }
 
+    /// `\setlist[<env list>]{key=value,...}`: enumitem's list-spacing
+    /// override. The optional argument names which environments the given
+    /// keys apply to (a comma list; omitted means every list). Only
+    /// `itemsep` and `topsep` change layout today; every other recognised
+    /// enumitem key (`leftmargin`, `label`, `parsep`, `partopsep`, ...) has
+    /// no equivalent in this layout engine and is reported once, by name.
     fn set_list(&mut self, span: Span) {
-        let _ = self.optional_bracket_argument();
-        let (_, argument_span) = self.required_group("setlist", span);
-        self.diags.push(Diagnostic::warning(
-            "\\setlist list spacing is recognised but not implemented",
-            Some(span.merge(argument_span)),
-            Some("lists use the compiler's default spacing".into()),
-        ));
+        let environments = self
+            .optional_bracket_argument()
+            .map(|(options, _)| options)
+            .unwrap_or_default();
+        let (tokens, argument_span) = self.required_group("setlist", span);
+        let full_span = span.merge(argument_span);
+        let envs: Vec<String> = if environments.trim().is_empty() {
+            vec!["itemize".to_string(), "enumerate".to_string()]
+        } else {
+            environments
+                .split(',')
+                .map(str::trim)
+                .filter(|env| !env.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+
+        let mut itemsep_pt = None;
+        let mut topsep_pt = None;
+        let mut ignored_keys: Vec<String> = Vec::new();
+        for pair in token_text(&tokens).split(',') {
+            let pair = pair.trim();
+            if pair.is_empty() {
+                continue;
+            }
+            let (key, value) = match pair.split_once('=') {
+                Some((key, value)) => (key.trim(), Some(value.trim())),
+                None => (pair, None),
+            };
+            match key {
+                "itemsep" if value.and_then(parse_dimen_pt).is_some() => {
+                    itemsep_pt = value.and_then(parse_dimen_pt);
+                }
+                "topsep" if value.and_then(parse_dimen_pt).is_some() => {
+                    topsep_pt = value.and_then(parse_dimen_pt);
+                }
+                _ if !ignored_keys.iter().any(|seen| seen == key) => {
+                    ignored_keys.push(key.to_string());
+                }
+                _ => {}
+            }
+        }
+
+        for env in &envs {
+            let spacing = self.list_spacing.entry(env.clone()).or_default();
+            if let Some(pt) = itemsep_pt {
+                spacing.itemsep_pt = pt;
+            }
+            if let Some(pt) = topsep_pt {
+                spacing.topsep_pt = pt;
+            }
+        }
+
+        if !ignored_keys.is_empty() {
+            ignored_keys.sort();
+            self.diags.push(Diagnostic::warning(
+                format!(
+                    "\\setlist keys {} are recognised but not implemented",
+                    ignored_keys.join(", ")
+                ),
+                Some(full_span),
+                Some("lists use the compiler's default spacing for these keys".into()),
+            ));
+        }
     }
 
     fn use_package(&mut self, span: Span) {
@@ -1390,7 +1492,13 @@ impl P<'_> {
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
                 let template = self.optional_bracket_argument().map(|(options, _)| options);
-                self.list_stack.push((environment.clone(), 0, template));
+                let spacing = self
+                    .list_spacing
+                    .get(&environment)
+                    .copied()
+                    .unwrap_or_default();
+                self.list_stack
+                    .push((environment.clone(), 0, template, spacing));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1433,7 +1541,18 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.paragraph_styles.pop();
         } else if matches!(environment.as_str(), "itemize" | "enumerate") {
-            self.flush_paragraph(blocks, para);
+            let (gap_before, gap_after) = match self.list_stack.last() {
+                Some((_, count, _, spacing)) => (
+                    if *count <= 1 {
+                        spacing.topsep_pt
+                    } else {
+                        spacing.itemsep_pt
+                    },
+                    spacing.topsep_pt,
+                ),
+                None => (0.0, 0.0),
+            };
+            self.flush_list_item(blocks, para, gap_before, gap_after);
             self.list_stack.pop();
         } else if environment == "figure" {
             self.flush_paragraph(blocks, para);
@@ -2117,6 +2236,34 @@ impl P<'_> {
             let content = std::mem::take(paragraph);
             blocks.push(match self.paragraph_styles.last() {
                 Some(&style) => Block::Styled { style, content },
+                None => Block::Paragraph(content),
+            });
+            self.finish_block_dependencies();
+        }
+    }
+
+    /// Like `flush_paragraph`, but for the content of one list `\item`:
+    /// attaches any `\setlist` itemsep/topsep gap due before or after it.
+    /// Falls back to an ordinary `Block::Paragraph` when neither applies, so
+    /// default output (no `\setlist`) stays byte-identical.
+    fn flush_list_item(
+        &mut self,
+        blocks: &mut Vec<Block>,
+        paragraph: &mut Vec<Inline>,
+        extra_gap_before_pt: f64,
+        extra_gap_after_pt: f64,
+    ) {
+        if !paragraph.is_empty() {
+            let content = std::mem::take(paragraph);
+            blocks.push(match self.paragraph_styles.last() {
+                Some(&style) => Block::Styled { style, content },
+                None if extra_gap_before_pt != 0.0 || extra_gap_after_pt != 0.0 => {
+                    Block::ListItem {
+                        content,
+                        extra_gap_before_pt,
+                        extra_gap_after_pt,
+                    }
+                }
                 None => Block::Paragraph(content),
             });
             self.finish_block_dependencies();
