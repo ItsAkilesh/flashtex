@@ -1,0 +1,7 @@
+# HW1 membership candidate
+
+Isolated exact-base candidate1c02a2bc50874770d15a4decbaa5c3a376ee3ae9; authoritative compiler unchanged. Extends existing math command table with in→U+2208 and existing Symbol export map with U+2208→0xCE. Verified against https://www.unicode.org/Public/MAPPINGS/VENDORS/ADOBE/symbol.txt row2208 CE and local StandardSymbolsPS.afm element C206/WX713. This PDF encoding byte is not CM metric slot0x32 or an OpenType GID. Renderer handoff2f2814b7 pins downstream existing Rel classification, metric slot and actual cmap lookup.
+
+41 library tests plus2 new membership tests pass: inline/display/script/macro recognition, explicit export mapping, incremental-clean equality and retained unknown-command diagnostics. Actual immutable HW1 source now yields107 diagnostics and12 membership items, with no unsupported in diagnostics. Source remains the original f725e238… fixture. Existing119-diagnostic baseline was independently captured in the starred-heading handoff; this candidate does not contain starred-heading changes. Combined-candidate validation remains pending.
+
+No native/PDF raster parity claim. Preserve existing whole-math expression source spans at rendering boundaries; no new token-level navigation guarantee. Remaining quantifier, mathbb, heading, spacing and environment gaps remain explicit. Owner must apply/review and producer must repin before product adoption.

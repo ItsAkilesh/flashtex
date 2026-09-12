@@ -1,0 +1,9 @@
+{
+  "base": "1c02a2bc50874770d15a4decbaa5c3a376ee3ae9",
+  "files": {
+    "candidate.patch": "155f306cff8c74fb044ea4570688a4970bb2766a2ceadb28cf5c154cd0d6ea32",
+    "tests.log": "0dfa7229a03e33921b7126b90fce585ad4046886965ade2c5928fe35f3de46ca",
+    "hw1.jsonl": "d01fdc2d11c738c825129e10677edfedd6075d504d1f4f1174752dd0859dc01d",
+    "README.md": "0d0c799b106ce9b50540a0bf7c337c894654c71e9ddd7b92720248eb77b9cb61"
+  }
+}
