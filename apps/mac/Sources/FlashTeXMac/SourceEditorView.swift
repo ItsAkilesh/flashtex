@@ -57,7 +57,8 @@ struct SourceEditorView: NSViewRepresentable {
         // large document the first time a diagnostic arrives.
         _ = tv.layoutManager
         tv.delegate = context.coordinator
-        tv.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        // Font, tab interval, wrapping and appearance follow EditorPreferences (applied now and on every change).
+        context.coordinator.preferencesToken = EditorPreferences.shared.observeApplying(to: tv)
         tv.isRichText = false
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
@@ -360,6 +361,8 @@ struct SourceEditorView: NSViewRepresentable {
         var parent: SourceEditorView
         var appliedToken: Int
         var appliedEditToken = 0
+        /// Keeps EditorPreferences applied to the text view (EditorPreferences.swift).
+        var preferencesToken: EditorPreferences.ObservationToken?
         let marks = MarkPainter()
         /// The String instance last set on, or read from, the text view.
         var lastKnownText: String
