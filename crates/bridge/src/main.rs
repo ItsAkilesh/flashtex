@@ -29,17 +29,6 @@ struct Pin {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Edit {
-    project_id: String,
-    path: String,
-    base_revision: u64,
-    revision: u64,
-    start_byte: usize,
-    end_byte: usize,
-    replacement: String,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Convert {
     capture_id: String,
     #[serde(default)]
@@ -85,16 +74,8 @@ fn dispatch(
             Ok(("document_opened", json!({})))
         }
         "document_edit" => {
-            let edit: Edit = decode(message.payload)?;
-            bridge.edit(
-                &edit.project_id,
-                &edit.path,
-                edit.base_revision,
-                edit.revision,
-                edit.start_byte,
-                edit.end_byte,
-                &edit.replacement,
-            )?;
+            let edit: EditRequest = decode(message.payload)?;
+            bridge.edit(&edit)?;
             Ok(("document_updated", json!({"revision":edit.revision})))
         }
         "destination_pin" => {

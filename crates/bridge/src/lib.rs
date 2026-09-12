@@ -207,6 +207,18 @@ pub struct Document {
     pub revision: u64,
     pub text: String,
 }
+/// One revision-checked UTF-8 source edit; shares the document_edit wire schema.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EditRequest {
+    pub project_id: String,
+    pub path: String,
+    pub base_revision: u64,
+    pub revision: u64,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub replacement: String,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Anchor {
     pub destination_id: String,
@@ -362,16 +374,14 @@ impl Bridge {
         self.anchors.insert(destination.into(), anchor.clone());
         Ok(anchor)
     }
-    pub fn edit(
-        &mut self,
-        project: &str,
-        path: &str,
-        base: u64,
-        revision: u64,
-        start: usize,
-        end: usize,
-        replacement: &str,
-    ) -> Result<()> {
+    pub fn edit(&mut self, request: &EditRequest) -> Result<()> {
+        let project = request.project_id.as_str();
+        let path = request.path.as_str();
+        let base = request.base_revision;
+        let revision = request.revision;
+        let start = request.start_byte;
+        let end = request.end_byte;
+        let replacement = request.replacement.as_str();
         let doc = self.document(project, path)?;
         if doc.revision != base || revision <= base {
             return Err(BridgeError::new(
@@ -625,15 +635,15 @@ impl Bridge {
         };
         record.applied = Some(applied.clone());
         self.store.save(&record)?;
-        self.edit(
-            &edit.project_id,
-            &edit.path,
-            edit.expected_revision,
-            new_revision,
-            edit.start_byte,
-            edit.end_byte,
-            &edit.replacement,
-        )?;
+        self.edit(&EditRequest {
+            project_id: edit.project_id.clone(),
+            path: edit.path.clone(),
+            base_revision: edit.expected_revision,
+            revision: new_revision,
+            start_byte: edit.start_byte,
+            end_byte: edit.end_byte,
+            replacement: edit.replacement.clone(),
+        })?;
         Ok(applied)
     }
 }

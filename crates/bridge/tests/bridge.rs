@@ -92,7 +92,16 @@ fn utf8_rebase_and_reviewed_idempotent_edit() {
     let dir = tempfile::tempdir().unwrap();
     let mut b = setup(dir.path());
     b.receive(capture()).unwrap();
-    b.edit("project", "main.tex", 1, 2, 0, 0, "Z").unwrap();
+    b.edit(&EditRequest {
+        project_id: "project".into(),
+        path: "main.tex".into(),
+        base_revision: 1,
+        revision: 2,
+        start_byte: 0,
+        end_byte: 0,
+        replacement: "Z".into(),
+    })
+    .unwrap();
     let f = fake();
     let record = b.convert("capture-1", vec![], &f).unwrap();
     assert_eq!(record.context.unwrap().revision, 2);
@@ -124,8 +133,16 @@ fn overlapping_edit_invalidates_pinned_destination() {
     let dir = tempfile::tempdir().unwrap();
     let mut b = setup(dir.path());
     b.receive(capture()).unwrap();
-    b.edit("project", "main.tex", 1, 2, 4, 7, "changed")
-        .unwrap();
+    b.edit(&EditRequest {
+        project_id: "project".into(),
+        path: "main.tex".into(),
+        base_revision: 1,
+        revision: 2,
+        start_byte: 4,
+        end_byte: 7,
+        replacement: "changed".into(),
+    })
+    .unwrap();
     assert_eq!(
         b.convert("capture-1", vec![], &fake()).unwrap_err().code,
         "destination_reselection_required"
@@ -142,9 +159,17 @@ fn scalar_split_and_stale_revision_are_rejected() {
         "invalid_source_range"
     );
     assert_eq!(
-        b.edit("project", "main.tex", 0, 2, 0, 0, "X")
-            .unwrap_err()
-            .code,
+        b.edit(&EditRequest {
+            project_id: "project".into(),
+            path: "main.tex".into(),
+            base_revision: 0,
+            revision: 2,
+            start_byte: 0,
+            end_byte: 0,
+            replacement: "X".into()
+        })
+        .unwrap_err()
+        .code,
         "revision_conflict"
     );
     let mut cap = capture();
@@ -158,7 +183,16 @@ fn prepared_edit_does_not_survive_unreviewed_source_change() {
     b.receive(capture()).unwrap();
     b.convert("capture-1", vec![], &fake()).unwrap();
     let edit = b.prepare_insert("capture-1", 1, true).unwrap();
-    b.edit("project", "main.tex", 1, 2, 0, 0, "Z").unwrap();
+    b.edit(&EditRequest {
+        project_id: "project".into(),
+        path: "main.tex".into(),
+        base_revision: 1,
+        revision: 2,
+        start_byte: 0,
+        end_byte: 0,
+        replacement: "Z".into(),
+    })
+    .unwrap();
     assert_eq!(
         b.prepare_insert("capture-1", 1, true).unwrap_err().code,
         "revision_conflict"

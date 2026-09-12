@@ -35,3 +35,20 @@ update from this note; corpus-owned fixtures exercise public context::build API.
 ETA for local next acceptance: 5–15 minutes, depending independent fixture findings.
 Resume: inspect git status and origin candidate; run cargo test with absolute
 /home/natkarri/.cargo/bin/cargo; coordinate Sol before changing shared lib.rs.
+
+## Follow-up: revision-checked edit request
+
+Root assigned Bridge::edit clippy repair after context publication 7d4e0af.
+Replaced seven scalar arguments with public serializable EditRequest; JSON Lines
+wire schema unchanged. CLI decodes that same struct, internal receipt confirmation
+and Rust tests use it. No mutation/revision/anchor behavior changed.
+Acceptance: cargo test (25 pass), cargo clippy --all-targets -- -D warnings (pass),
+cargo fmt --check (pass). Corpus separately verified 9 real-candidate context
+checks at 7d4e0af, linked in GitHub issue #12 comment5643704321.
+
+Next investigation: proposal compiler validation requires compiling a temporary
+whole-project snapshot containing the proposed anchored edit, with exact revision
+and result correlation; compare baseline/new diagnostics and surface unsupported
+constructs, never equate recovered output with successful validation. Current
+compiler main API is protocol::handle_line over runtime-v1 JSON; no external TeX
+engine needed. Implementation ownership must be allocated before cross-module work.
