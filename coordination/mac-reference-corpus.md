@@ -2,6 +2,20 @@
 
 ## Current checkpoint: extended incremental acceptance
 
+Latest code `a41d843d` pins the twelve original/edited HW1 source smoke run against
+both existing producers: 24 zero-exit, single correlated replies, all recovered.
+No PDF route invoked; both artifact source revisions unknown and hashes unchanged.
+Evidence `docs/evidence/hw1-producer-smoke-20260912/`; raw replies/display lists
+archived. Existing real-world runner was read-only, scratch redirected outside
+owner paths, per-worker timeout reduced in memory to20 seconds. This cannot
+establish current-main or bundle freshness. Prior edited-reference/report tip
+`9ad5fce11ad12a5d48df48d47d01c82f490fb010` verified pushed, PR53 refreshed and
+GH2#5648803723 delivered. No uncertain publication/model calls from that cycle.
+Pending now: latest report commit/push and dispatch of baseline plus read-only
+iPad persistence-failure adversarial test. CaptureQueue.persist currently catches
+store.save errors; send may still transmit before its frozen envelope is saved.
+Do not claim runtime confirmation until owner runs the proposed injected failure.
+
 Follow-up code `96f362dd` adds six clean edited HW1 one-page MacTeX PDFs, all
 warning-free and individually inspected. Original sources/PDFs remain unchanged.
 Every edit changes its full-page RGB oracle; title diff remains confined to its

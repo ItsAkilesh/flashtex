@@ -7,7 +7,7 @@
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "96f362dd320eb851a0f49d5caceb1d02b71b76a3",
+  "code_revision": "a41d843d058b055995a95c90396e2205f258f042",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -15,7 +15,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Commander review stacked PR53. Continue independent corpus acceptance and validate published iPad retry/pair-binding fixes when owner tests complete; no owner/main edits.",
+  "next_action": "Commander review PR53; parent rerun using fresh verified renderer for release acceptance. Continue reference work and read-only iPad pre-send persistence failure review; no overlapping edits.",
   "reviewed_peers": {
     "origin/agent/mac-grok-polish/fast-default": {
       "adaptation": "Read preference migration, provider selection and corresponding final tests; merged code preserves explicit legacy false and new mode precedence. Targeted injected-credential acceptance passes 2/2, no user Keychain/defaults or live call.",
@@ -25,11 +25,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "96f362dd adds six inspected warning-free clean edited HW1 PDFs with exact edit/original/edited/engine/PDF provenance and full-page RGB effect evidence; 15 development tests pass. Prior 63d92837 gate passed 84 byte-exact warm/clean comparisons on pinned artifact, source revision unknown.",
+  "summary": "a41d843d pins original+edited HW1 smoke evidence: 24/24 zero-exit correlated compiler/render replies, all recovered. Artifact hashes unchanged, build-source revisions unknown. PR53 includes six edited oracles, 15 tests and earlier84 raw consistency comparisons.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T21:27:24Z",
+  "updated_utc": "2026-09-12T21:31:03Z",
   "usage": {
-    "evidence": "docs/evidence/edited-hw1-oracles-20260912/README.md; docs/evidence/extended-incremental-20260912/README.md; GH2#5648747048 iPad adversarial test handoff.",
-    "status": "Current authorized Codex only; no paid/Claude calls, new children, purchases or allocation changes; balance unknown."
+    "evidence": "docs/evidence/hw1-producer-smoke-20260912/README.md; docs/evidence/edited-hw1-oracles-20260912/README.md; docs/evidence/extended-incremental-20260912/README.md.",
+    "status": "Current authorized Codex only; no paid/Claude calls, purchases, children or allocations changed; balance unknown."
   }
 }
