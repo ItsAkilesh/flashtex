@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-runtime-display",
+  "archived_utc": "2026-09-12T13:48:46Z",
+  "assignment": {
+    "acceptance": [
+      "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
+      "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
+      "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
+      "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
+      "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    ],
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "581a12e406f8614a8731d9812e5e80d64137d5ba",
+    "objective": "Review helper diagnostic sequence identity through required and optional admission replacement dequeue and write failure",
+    "owned_paths": [
+      "crates/document-runtime"
+    ],
+    "revision": 31,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-049",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T13:44:21.060827+00:00"
+  },
+  "report": {
+    "agent_id": "commander-runtime-display",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-049": {
+        "acknowledged_utc": "2026-09-12T13:44:48Z",
+        "adaptation": "Read FT049r31 scalar-only diagnostic review. Reviewing helper candidate readonly: numericrequest/outputseq, no externalIDs/source/paths/tokens, lifecycle and within-process clock scope. No runtime edits or heavytests during renderer42542.",
+        "main_sha": "37137adaa0654d95f43c6678e476b8513c3a09ef",
+        "revision": 31
+      }
+    },
+    "branch": "agent/commander-runtime-display/display-runtime",
+    "capabilities": [
+      "rust-runtime"
+    ],
+    "code_revision": "92b288245243b63e753e94ee19c2612471313d1f",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "513926ce2160b1db18dead25acc650b3d749f924",
+    "next_action": "Final read-only owner publication review once root addresses generation binding or explicitly limits attribution; preserve no cross-process clock/no loss-cause claims. No active jobs.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT049r31 review checkpoint: source-free numeric IDs, queue mutex logging and receiver attribution fixes reviewed read-only. Remaining optional evicted-frame generation binding gap and request-counter saturation sent owner. No heavytests/runtime edits.",
+    "tool": "codex",
+    "updated_utc": "2026-09-12T13:48:19Z",
+    "usage": {
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 27,
+  "report_path": "coordination/agents/commander-runtime-display.json",
+  "review_required": true,
+  "revision": 31,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-049",
+  "worker_branch": "agent/commander-runtime-display/display-runtime",
+  "worker_report_sha": "6488e1e012299feea141fe31f167d902feccc6a3"
+}
