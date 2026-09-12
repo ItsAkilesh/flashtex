@@ -159,29 +159,44 @@ error, never a silent drop):
 | listener-wide accepted-but-unacknowledged bytes ("inbox") | 64 MiB | `inbox_full`, session stays open |
 | sessions per `pair_id` | 4 | `too_many_sessions` at `hello`, connection closed |
 | accepted TCP connections | 16 | closed before the handshake (no bytes to an unauthenticated peer); Mac logs `too many connections` |
+| TLS handshake deadline | 10 s | closed (no bytes to an unauthenticated peer); Mac logs `handshake timed out` |
+| `hello` deadline after the handshake | 10 s | `hello_timeout`, `id: null`, connection closed |
+| one frame, first byte to newline | 60 s (≥ 200 KiB/s for a full frame) | `frame_timeout`, `id: null`, connection closed |
+| TCP keepalive (half-open peer) | idle 15 s, 5 s × 4 probes | connection fails, session slot and in-flight bytes released |
 
-Duplicate handling in the session, keyed by `(session, capture_id)` with the
-accepted `base_revision` and a digest of the rest of the payload (last 256
-per session): an identical retry is acknowledged again with the *new*
-request id and **not re-delivered** (a retry that arrives while the first
-delivery is pending is coalesced onto it); the same `capture_id` with another
-`base_revision` is refused with `revision_mismatch`; the same id and revision
-with another payload is `capture_id_conflict`. A capture the sink refused is
-forgotten, so a retry is delivered again. The Mac window surfaces refusals
-(`code`, `capture_id`, `pair_id`, message) and the duplicate count
+The frame cap is enforced before the bytes are buffered: a chunk that cannot
+end its line inside the limit is refused without being appended, so the
+receive buffer never holds more than one frame limit. The deadlines are
+absolute per stage (they are not extended by trickled bytes), so a
+slow-loris peer is bounded the same way as a silent one; a session idle
+between complete frames has no deadline.
+
+Duplicate handling, keyed by `(pair_id, capture_id)` with the accepted
+`base_revision` and a digest of the rest of the payload (last 256 per
+pairing, shared by every session of that pairing on the listener and carried
+across a key-table restart): an identical retry is acknowledged again with
+the *new* request id and **not re-delivered** (a retry that arrives while the
+first delivery is pending — on the same or a later session — waits for that
+one answer); the same `capture_id` with another `base_revision` is refused
+with `revision_mismatch`; the same id and revision with another payload is
+`capture_id_conflict`. A capture the sink refused is forgotten, so a retry is
+delivered again. A companion that drops mid-delivery and re-sends on its next
+connection therefore never causes a second delivery to the inbox or the
+bridge; forgetting the pairing drops its memory. The Mac window surfaces
+refusals (`code`, `capture_id`, `pair_id`, message) and the duplicate count
 (`NearbyState.lastReceiveError` / `receiveErrors` / `duplicateCaptureCount`).
-Retries on a *new* connection after a disconnect are not deduplicated here;
-they reach the inbox (identical → acknowledged) or the bridge (its journal
-rules), as before.
 
 Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
 `pairing_expired`, `pairing_cancelled` (`id: null`; the Mac withdrew the code
 — cancelled, expired, replaced or consumed by another session — while this
 bootstrap session had not yet said hello; a close follows), `unsupported_version`, `unsupported_image`,
 `image_too_large`, `invalid_image`, `unknown_type`, `line_too_long`,
+`frame_timeout`, `hello_timeout`,
 `too_many_in_flight`, `inbox_full`, `too_many_sessions`, `revision_mismatch`,
 `capture_id_conflict`, `unavailable`. Codes are additive to the ones listed
 before; the nearby `protocol_version` stays 1 (no existing message changed).
+`frame_timeout`/`hello_timeout` are followed by a close; a companion treats
+them like any other close (reconnect with backoff, re-send the same capture).
 
 Bridge codes passed through verbatim (with a bridge attached; crates/bridge
 `validate`/`capture_anchor`/`receive`), all terminal for the capture as sent:
