@@ -108,6 +108,6 @@ of more than one document; a ranked unsupported list with crate owner.
   (git-archived into ignored `tools/real-world-corpus/target/render-pipeline-9aaec57a/`).
 - Oracle: MacTeX 2026 `/usr/local/texlive/2026/bin/universal-darwin/pdflatex`, `SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1`. Oracle only.
 - Rasterizer: `pdftoppm` absent on this Mac; `/usr/bin/sips` present (the harness reports which it used).
-- Dirty files: none after the commit below (scratch under ignored `tools/real-world-corpus/target/`).
+- Committed: `cb5f03ca` (harness, fixtures, evidence, registration); this registration refresh follows as a second commit. Dirty files: none (scratch under ignored `tools/real-world-corpus/target/`).
 - Next commands: none pending for this lane; rerun = `tools/real-world-corpus/run.sh`; tests = `python3 -m unittest discover -s tools/real-world-corpus -p 'test_*.py'`.
 - Staffing/billing: shared Claude Max quota with parent; no purchases.

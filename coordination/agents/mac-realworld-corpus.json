@@ -11,7 +11,7 @@
     "mactex-oracle",
     "ghostscript-raster"
   ],
-  "code_revision": "TBD-at-commit",
+  "code_revision": "cb5f03cac57185a0fec6b4d33e59eaeedf6bbe35",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
