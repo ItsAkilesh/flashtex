@@ -230,8 +230,28 @@ def main(argv: list[str] | None = None) -> int:
                 repaired_export / "source", args.xcodebuild, not args.skip_build
             )
             patch = repair_patch(repo, args.bad_ref, args.repair_ref)
-            (output / "companion-project-repair.patch").write_bytes(patch)
+            patch_path = output / "companion-project-repair.patch"
+            patch_path.write_bytes(patch)
             report["repair_patch_bytes"] = len(patch)
+            patched_export = temporary_path / "patched"
+            patched_export.mkdir()
+            export_revision(repo, args.bad_ref, patched_export)
+            patched_source = patched_export / "source"
+            initialize = run(["git", "init", "-q"], cwd=patched_source)
+            apply = run(["git", "apply", "--binary", str(patch_path)], cwd=patched_source)
+            patch_validation: dict[str, Any] = {
+                "commands": [initialize, apply],
+                "project_matches_repair": False,
+            }
+            if initialize["exit_code"] == 0 and apply["exit_code"] == 0:
+                patch_validation["validation"] = validate_tree(
+                    patched_source, args.xcodebuild, not args.skip_build
+                )
+                patch_validation["project_matches_repair"] = (
+                    (patched_source / PROJECT).read_bytes()
+                    == (repaired_export / "source" / PROJECT).read_bytes()
+                )
+            report["patch_validation"] = patch_validation
     (output / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
