@@ -15,7 +15,10 @@ proposal (one edit inside the first destination, or none). Directives anywhere
 in the bound source text: `%grokfail` -> state `failed`; `%grokslow` -> running
 for three polls; `%grokhang` -> running forever; `%grokexpired` -> `expired`;
 `%groksnapshot` -> the explanation lists the FLASHTEX_* names visible plus
-whether the key variable was present.
+whether the key variable was present; `%grokmisplaced` -> the edit's offsets
+are shifted by 2 and handed back unvalidated (what a non-reasoning model does;
+`fake_assistant_context.py` then refuses the review with "removed source
+differs", as the pre-relocation real helper did); `%groknoedit` -> no edits.
 """
 import hashlib
 import json
@@ -61,7 +64,7 @@ def admit(command):
     if selected is None:
         selected = list(range(min(16, len(diags))))
     dest = inp.get("destinations")
-    context_id = sha256(json.dumps([binding, selected, dest, inp["user_instruction"]], sort_keys=True))
+    context_id = sha256(json.dumps([binding, selected, dest, inp["user_instruction"], inp.get("related_paths") or []], sort_keys=True))
     text = "".join(d["text"] for d in inp["sources"])
     counter += 1
     rid = "%s:%d" % (session, counter)
@@ -72,11 +75,14 @@ def admit(command):
 
 def proposal(job):
     edits = []
-    if job["dest"]:
+    if job["dest"] and "%groknoedit" not in job["text"]:
         r = job["dest"][0]
         doc = next(d for d in job["sources"] if d["path"] == r["path"])
         data = doc["text"].encode("utf-8")
-        edits.append({"location": r, "removed_text": data[r["start_byte"]:r["end_byte"]].decode("utf-8"),
+        loc = dict(r)
+        if "%grokmisplaced" in job["text"]:
+            loc = {"path": r["path"], "start_byte": r["start_byte"] + 2, "end_byte": r["end_byte"] + 2}
+        edits.append({"location": loc, "removed_text": data[r["start_byte"]:r["end_byte"]].decode("utf-8"),
                       "replacement": "% grok-reviewed: " + data[r["start_byte"]:r["end_byte"]].decode("utf-8")})
     explanation = "Fake Grok (%s) explanation of %d diagnostic(s)" % (model, job["diagnostics"])
     if "%groksnapshot" in job["text"]:

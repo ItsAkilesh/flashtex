@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-grok-assistant",
+  "allocation_id": "claude-mac20x-grok-assistant",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-grok-assistant/ask",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rust"
+  ],
+  "code_revision": "7898941c",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 15
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ce330d42",
+  "next_action": "Parent reviews the three parent-retained hunks (ShellModel.swift +grokAssistant, ContentView.swift .grokAssistantSheet()+toolbar button, FlashTeXMacApp.swift Edit menu item ⌘⌥G) and merges agent/mac-grok-assistant/ask; crate owner reviews agent/mac-assistant-context/relocate-edits (base origin/main ce330d42) and rebuilds the packaged grok helper from it",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Built on 66e9842e: reused ProposalPreview's ExplanationConfiguration/decoders/OneShotProcess/GrokProviderSession and EditorDiagnostics.QuickFix for the grouped edit; no change to the review sheet's flow",
+      "reviewed_utc": "2026-09-12T22:13:40Z",
+      "sha": "66e9842ebf1ea39b16aa7a5c3b0106886061ddb9"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Ask Grok on the live document: Edit > Ask Grok… (⌘⌥G; ⌘⇧G is Convert Capture), toolbar button, palette entry, Fix with Grok on Problems rows; sheet with instruction/context/diagnostics/pill/Ask+Cancel+elapsed, explanation, before/after diff, Apply (helper approve → one undoable pendingEdit via QuickFix) and Copy; binds the last real compile; selection outside the helper's snippets is said, not truncated. Helper branch agent/mac-assistant-context/relocate-edits (d1795267) relocates misplaced edits by removed_text and drops unlocatable ones with notes. Live 3/3 with the fast model (5.9 s / 3.0 s / 2.9 s), edits relocated and applicable; fast model is the Ask default.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T22:13:40Z",
+  "usage": {
+    "evidence": "GrokAssistantTests 11/11; GrokLive/ProposalPreview/AssistantRecovery/ReviewRecovery/CommandTable/WorkspaceShell/DiagnosticsPanel/ExplanationMemo green; crate 18 (20 with grok) tests; 3 live xAI calls recorded in docs/evidence/grok-assistant-20260912T22*; full swift test with real helpers running at the time of this report (see coordination/mac-grok-assistant.md)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; 3 live xAI calls on the user's key; no purchases"
+  }
+}
