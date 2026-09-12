@@ -138,6 +138,34 @@ pub struct SpellChecker {
 /// caller configures.
 const MAX_RAW_CANDIDATES: usize = 50_000;
 
+/// Hard ceiling on the total `edits1`-generation work (measured in the same
+/// raw-candidate-count currency as `MAX_RAW_CANDIDATES`) a single
+/// `check`/`check_revision`/`check_cancellable` call may spend across ALL
+/// distinct misspelled words combined, not just one. `MAX_RAW_CANDIDATES`
+/// and `max_word_length_for_suggestions` already bound the cost of any one
+/// word's suggestion search, but neither bounds the *aggregate* cost of a
+/// document containing many distinct words that never match the dictionary
+/// (e.g. prose checked against an empty or mismatched-language dictionary,
+/// or plain identifiers/jargon) -- exactly the fully-untrusted-input case
+/// this crate must stay bounded against, since suggestion cost is paid once
+/// per *distinct* word (`suggestion_cache` in `check_impl`) and distinct
+/// word count is otherwise unbounded. Once this budget is spent, later
+/// distinct words in the same call are still correctly flagged as
+/// misspelled; they simply stop receiving generated suggestions, which is
+/// already documented, caller-visible behavior (see
+/// [`Misspelling::suggestions`]).
+const MAX_TOTAL_SUGGESTION_WORK_PER_CHECK: usize = 300_000;
+
+/// Upper bound on the number of raw candidates `edits1` produces for a word
+/// of `n` chars: deletions(n) + transpositions(n-1) + substitutions(n *
+/// alphabet) + insertions((n+1) * alphabet). Used to charge
+/// `MAX_TOTAL_SUGGESTION_WORK_PER_CHECK` *before* paying the cost of
+/// actually generating those candidates.
+fn edits1_cost_upper_bound(n: usize) -> usize {
+    let alphabet = EDIT_ALPHABET.len();
+    n + n.saturating_sub(1) + n * alphabet + (n + 1) * alphabet
+}
+
 /// Alphabet used for insertion/substitution edits. Bounded to ASCII
 /// lowercase letters: this is a deliberate, documented limitation, not an
 /// oversight. Growing it to full Unicode would make candidate generation
@@ -157,11 +185,27 @@ impl SpellChecker {
     /// unbounded for realistic word lengths.
     pub const MAX_ALLOWED_EDIT_DISTANCE: usize = 2;
 
+    /// Hard ceiling on `max_word_length_for_suggestions` regardless of
+    /// configuration. `edits1` generates `O(alphabet_len * word_len)` raw
+    /// candidates and each is itself `O(word_len)` to build, so a single
+    /// suggestion search costs `O(alphabet_len * word_len^2)`: quadratic in
+    /// word length. Without this ceiling, a caller configuring
+    /// `max_word_length_for_suggestions` to a large value (or `usize::MAX`)
+    /// combined with one long misspelled word in the input text turns that
+    /// quadratic cost loose -- symmetric with `MAX_ALLOWED_EDIT_DISTANCE`
+    /// above, which bounds the other input to the same cost model.
+    pub const MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS: usize = 64;
+
     /// Creates a checker with the given bounds. `config.max_edit_distance`
-    /// is silently clamped to [`Self::MAX_ALLOWED_EDIT_DISTANCE`].
+    /// is silently clamped to [`Self::MAX_ALLOWED_EDIT_DISTANCE`] and
+    /// `config.max_word_length_for_suggestions` is silently clamped to
+    /// [`Self::MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS`].
     pub fn new(mut config: SpellCheckerConfig) -> Self {
         if config.max_edit_distance > Self::MAX_ALLOWED_EDIT_DISTANCE {
             config.max_edit_distance = Self::MAX_ALLOWED_EDIT_DISTANCE;
+        }
+        if config.max_word_length_for_suggestions > Self::MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS {
+            config.max_word_length_for_suggestions = Self::MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS;
         }
         Self { config }
     }
@@ -260,6 +304,11 @@ impl SpellChecker {
         // once per occurrence -- once per *distinct* misspelled word
         // instead.
         let mut suggestion_cache: HashMap<&str, Vec<String>> = HashMap::new();
+        // Shared across every distinct word processed by this call (see
+        // `MAX_TOTAL_SUGGESTION_WORK_PER_CHECK`): bounds aggregate
+        // suggestion-generation cost for the whole document, not just per
+        // word.
+        let mut suggestion_budget = MAX_TOTAL_SUGGESTION_WORK_PER_CHECK;
         for (range, word) in tokenize_words(text) {
             if is_cancelled() {
                 return None;
@@ -280,7 +329,7 @@ impl SpellChecker {
             } else if let Some(cached) = suggestion_cache.get(word) {
                 cached.clone()
             } else {
-                let computed = self.suggest(word, dictionary);
+                let computed = self.suggest(word, dictionary, &mut suggestion_budget);
                 suggestion_cache.insert(word, computed.clone());
                 computed
             };
@@ -293,12 +342,24 @@ impl SpellChecker {
         Some(out)
     }
 
-    fn suggest(&self, word: &str, dictionary: &dyn Dictionary) -> Vec<String> {
+    fn suggest(&self, word: &str, dictionary: &dyn Dictionary, budget: &mut usize) -> Vec<String> {
         let lower = word.to_lowercase();
         let max_distance = self.config.max_edit_distance;
 
         let mut ranked: Vec<(u8, String)> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
+
+        // Charge the whole-document budget for the first-pass `edits1`
+        // call *before* paying for it: once the aggregate budget for this
+        // call is spent, later distinct words simply stop getting
+        // suggestions (still correctly flagged as misspelled) rather than
+        // letting cost grow without bound in the number of distinct words.
+        let first_pass_cost = edits1_cost_upper_bound(lower.chars().count());
+        if first_pass_cost > *budget {
+            *budget = 0;
+            return Vec::new();
+        }
+        *budget -= first_pass_cost;
 
         let edit1 = edits1(&lower);
         for cand in &edit1 {
@@ -314,6 +375,11 @@ impl SpellChecker {
         if max_distance >= 2 && ranked.is_empty() {
             let mut generated: usize = 0;
             'outer: for e1 in &edit1 {
+                let per_candidate_cost = edits1_cost_upper_bound(e1.chars().count());
+                if per_candidate_cost > *budget {
+                    break;
+                }
+                *budget -= per_candidate_cost;
                 for cand in edits1(e1) {
                     generated += 1;
                     if generated > MAX_RAW_CANDIDATES {
@@ -1125,6 +1191,19 @@ mod tests {
         assert_eq!(
             checker.config().max_edit_distance,
             SpellChecker::MAX_ALLOWED_EDIT_DISTANCE
+        );
+    }
+
+    #[test]
+    fn word_length_for_suggestions_is_clamped_to_hard_ceiling() {
+        let cfg = SpellCheckerConfig {
+            max_word_length_for_suggestions: usize::MAX,
+            ..SpellCheckerConfig::default()
+        };
+        let checker = SpellChecker::new(cfg);
+        assert_eq!(
+            checker.config().max_word_length_for_suggestions,
+            SpellChecker::MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS
         );
     }
 

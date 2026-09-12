@@ -436,6 +436,106 @@ fn always_true_cancellation_callback_never_yields_a_completed_outcome() {
 // escape the hard suggestion-generation ceiling either.
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// 11. A permissive max_word_length_for_suggestions combined with one long
+//     misspelled word: edits1's O(alphabet_len * word_len^2) cost, with no
+//     hard ceiling on word_len prior to the fix (unlike max_edit_distance's
+//     MAX_ALLOWED_EDIT_DISTANCE).
+// ---------------------------------------------------------------------
+
+#[test]
+fn permissive_max_word_length_for_suggestions_is_still_bounded_for_a_long_word() {
+    // Before the fix, `max_word_length_for_suggestions` had no hard
+    // ceiling, so a caller configuring it to `usize::MAX` combined with one
+    // long misspelled word in the text let `edits1`'s
+    // O(alphabet_len * word_len^2) cost run unchecked: a 3,000-character
+    // word with this exact config took well over a second pre-fix (and a
+    // 10,000-character word took far longer). It must now complete in well
+    // under a second, since `SpellChecker::new` clamps
+    // `max_word_length_for_suggestions` to
+    // `SpellChecker::MAX_ALLOWED_WORD_LENGTH_FOR_SUGGESTIONS`.
+    let d = dict(&["hello"]);
+    let cfg = SpellCheckerConfig {
+        max_edit_distance: 2,
+        max_suggestions: 5,
+        max_word_length_for_suggestions: usize::MAX,
+    };
+    let checker = SpellChecker::new(cfg);
+    let long_word = "q".repeat(3_000);
+    let text = format!("hello {long_word}");
+
+    let start = Instant::now();
+    let out = checker.check(&text, &d);
+    let elapsed = start.elapsed();
+
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].word, long_word);
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "a long word with a permissive max_word_length_for_suggestions took {elapsed:?}; \
+         max_word_length_for_suggestions must be clamped to a hard ceiling"
+    );
+}
+
+// ---------------------------------------------------------------------
+// 12. Many DISTINCT words that never match the dictionary: MAX_RAW_CANDIDATES
+//     bounds any one word's suggestion search, but (prior to the fix)
+//     nothing bounded the aggregate cost across many distinct words in one
+//     document, since suggestion cost is paid once per distinct word.
+// ---------------------------------------------------------------------
+
+/// Deterministic, purely-alphabetic, distinct token for index `i`: a fixed
+/// prefix (so it can never coincidentally match the empty dictionary below)
+/// plus a base-26 encoding of `i`. Not randomized -- the same 300 words are
+/// produced on every run.
+fn distinct_never_matching_word(i: usize) -> String {
+    let mut n = i;
+    let mut suffix = String::new();
+    loop {
+        let digit = (n % 26) as u8;
+        suffix.push((b'a' + digit) as char);
+        n /= 26;
+        if n == 0 {
+            break;
+        }
+    }
+    format!("zzzznever{suffix}")
+}
+
+#[test]
+fn many_distinct_never_matching_words_do_not_blow_up_aggregate_suggestion_cost() {
+    // Before the fix, each of these 300 distinct words independently paid
+    // up to MAX_RAW_CANDIDATES worth of distance-2 candidate generation
+    // (distance-1 finds nothing against an empty dictionary, and none of
+    // them repeat, so the per-word suggestion_cache never helps): total
+    // cost scaled linearly in the number of *distinct* misspelled words in
+    // the document, with no aggregate ceiling, and took several seconds for
+    // just this many. It must now stay fast because suggestion-generation
+    // work is budgeted once per `check()` call
+    // (MAX_TOTAL_SUGGESTION_WORK_PER_CHECK), not once per word.
+    let d: HashSet<String> = HashSet::new();
+    let text = (0..300)
+        .map(distinct_never_matching_word)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let checker = SpellChecker::default();
+
+    let start = Instant::now();
+    let out = checker.check(&text, &d);
+    let elapsed = start.elapsed();
+
+    assert_eq!(
+        out.len(),
+        300,
+        "every distinct word must still be reported as a misspelling"
+    );
+    assert!(
+        elapsed < Duration::from_millis(500),
+        "300 distinct never-matching words took {elapsed:?}; aggregate suggestion-generation \
+         work must be budgeted per check() call, not per word"
+    );
+}
+
 #[test]
 fn max_suggestions_and_edit_distance_extremes_stay_bounded_together() {
     // Every letter except 'x' gets a dictionary word of the form "c_t", so
