@@ -79,3 +79,79 @@ Five new subprocess tests cover opt-in origin binding/take-once, default and ord
 `take_completed_snapshot()` yields a separate `HistoricalPreview` with private provenance and read-only result/version accessors. `claim_historical_display(&snapshot)` rechecks incarnation, epoch, project and monotonic display generation and marks a successful claim once. Existing current Preview delivery advances the display floor so an older queued callback cannot repaint over it. Membership/layout/policy changes, restart, close and runtime failure invalidate historical eligibility. This claim is strictly for historical display and does not grant navigation, edit or export authority.
 
 41 controller tests pass with strict all-target Clippy, including original compiler/stdout/backpressure recovery cases and three new lifecycle tests: original-version binding/current-output ordering; policy/layout/restart/close/other-controller invalidation;80 durable edits through the64-record metadata cap and exact reopen. Runtime's26-test checkpoint remains separately verified. Native consumer agreement, historical message scheduling/priority and real burst display measurements remain pending. Neither Rust API is enabled automatically for existing callers.
+
+## Internal delivery scheduler checkpoint
+
+`experimental_delivery::DeliveryQueue` is an isolated prototype, not connected to
+stdio. It reserves bounded required-frame slots and payload allocation capacity,
+keeps durable/current frames in FIFO order, and retains at most one replace-latest
+historical frame outside that budget. Rejected required admissions return the
+original frame to the caller. Successful current admission evicts older history;
+cancellation invalidates queued display work and late old-epoch arrivals while
+preserving durable acknowledgements for draining. Close prevents new admission.
+Frame payload and identity/origin allocation capacities are checked before retention.
+Allocator bookkeeping and other process allocations are not included in this bound.
+
+Five deterministic tests cover optional flooding, required slot/byte backpressure,
+exact returned ownership, generation supersession, lifecycle invalidation, wrong
+incarnation and oversized allocation rejection. Existing 41 controller tests also
+passed with the prototype present, including real compiler and stalled-reader gates;
+all-target strict Clippy passes after the allocation checks.
+
+Priority applies only before dequeue: an already-started JSONL frame cannot be
+preempted safely. The caller must validate serialized frames, preserve immutable
+submission provenance, and recheck display identity/floor at consumption. This queue
+alone does not establish end-to-end latency or paint safety. The negotiated helper
+adapter must additionally drop history before admission when required output is
+pending, reset negotiation on restart, and preserve the existing stopped-reader
+failure bound. Native agreement is recorded in issue 2 comment 5644981151; activation
+and actual Mac paint/source-action acceptance remain separate gates.
+
+## Negotiated stdio adapter
+
+The helper now supports a separate request, off by default:
+
+```json
+{"protocol_version":1,"session_id":"session1","id":"history-config","type":"configure_completed_snapshots","payload":{"capability":"completed-snapshots-v1","enabled":true}}
+```
+
+Wait for the matching `result` response carrying `capability` and `enabled` before
+submitting work. Put an opaque `source_binding_token` of 1..128 UTF-8 bytes in the
+payload of each `compile`, `edit`, or other request that submits compilation. The
+helper captures that token against the exact generation admitted while handling
+that request. It never supplies a token for earlier work or substitutes a later
+request's token. Tokens are opaque (JSON-escaped controls are preserved), not
+credentials. Invalid supplied tokens fail before request mutation. Missing tokens
+leave that compilation ineligible for historical output without rejecting edits.
+
+A `type:"update"`, `payload.kind:"completed_snapshot"` includes explicit session
+and project IDs, original source versions and token, compile/current-compile
+revisions, `is_current:false`, `source_actions_enabled:false`, request ID and the
+full original validated result. In negotiated mode this optional frame replaces
+its matching legacy stale notification; either can be omitted when optional
+admission is unavailable. Other existing default-mode event semantics remain.
+
+The adapter keeps the existing eight-slot required FIFO and two-second stalled
+write handling. A separately bounded single optional frame is rejected while any
+required response is queued or being written. New required output discards queued
+history. The writer checks the required channel before claiming optional work;
+serialization is skipped when required output is already pending, and admission
+rechecks under the shared lock. This gives scheduling priority, not preemption of
+an already-started frame or a hard end-to-end latency guarantee. Output remains
+bounded by the existing 16 MiB JSONL serialization limit; optional overflow drops
+without replacing a durable reply with an error. Source saving remains independent
+of compilation completion.
+
+`restart` and `close` disable negotiation and invalidate optional queued output;
+new helper sessions also start disabled. Reconfiguration clears prior bindings.
+The native consumer must still check session/project/token and monotonic generation
+immediately at paint, visibly label historical output and disable all source actions
+and export. No app default is activated by this helper change.
+
+Validation: 52 tests including explicit original-compiler gates, full-size output,
+EOF recovery and stalled readers pass, as does strict all-target Clippy. A controlled
+Python compiler fixture gates individual generations and proves original opaque
+UTF-8 token echo/source binding, newer current output, restart requiring negotiation,
+and invalid token rejection before a durable edit. It is a transport/lifecycle test,
+not compiler parity or a native paint benchmark. Two queue tests additionally cover
+required pending/in-flight rejection, FIFO/backpressure and optional replacement/reset.

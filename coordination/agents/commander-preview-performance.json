@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
+  "code_revision": "b04237d",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
+  "next_action": "Native owner consume documented negotiated helper contract; root extend actual-helper burst evidence with separate historical lag/current latency and durable recovery. No native activation or pixelparity claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
+  "summary": "Negotiated completed-snapshots-v1 stdio adapter implemented, default off. Original token/version binding, bounded one optional frame behind required traffic, restart reset. Full52 tests with actualcompiler gates and strictlint pass; gated subprocess proves historical/current lifecycle and invalidtoken pre-mutation rejection.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:37:15Z",
+  "updated_utc": "2026-09-12T09:56:22Z",
   "usage": {
     "status": "unknown"
   }
