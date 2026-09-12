@@ -1668,6 +1668,22 @@ impl P<'_> {
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
                 }),
+                // `\hfill`/`\hfil` take no argument, so — unlike `\hspace`,
+                // which needs a following brace group this flat,
+                // one-token-at-a-time pass has no way to consume — they fit
+                // here directly. This is what makes `\problem`-style macro
+                // bodies like `\subsection*{Problem #1 \hfill [#2 points]}`
+                // (see the `problem_style_macro...` test below) right-flush:
+                // heading/caption/`\textbf`-style content all reach the page
+                // through this function rather than through `command`'s
+                // ordinary dispatch. General nested-command dispatch inside
+                // that content remains out of scope, per the module doc
+                // comment.
+                TokenKind::Command(name) if name == "hfill" || name == "hfil" => {
+                    content.push(Inline::HFill {
+                        span: input.token.span,
+                    })
+                }
                 _ => {}
             }
         }
@@ -1807,6 +1823,7 @@ impl P<'_> {
     ///      a keyword — see `looks_like_recoverable_argument`. Anything else
     ///      (multiple words, punctuation, a capitalized word, a lone letter)
     ///      is left in place and typeset as text, exactly as before.
+    ///
     /// Either way, the diagnostic's recovery note records whether an argument
     /// was skipped, so the choice itself stays auditable from the output.
     fn unsupported(&mut self, name: &str, span: Span) {
@@ -2525,5 +2542,160 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, [("h", "1"), ("j", "2")]);
+    }
+
+    #[test]
+    fn hfill_right_flushes_a_problem_style_subsection_header() {
+        // The exact HW1 shape: `\hfill` inside a starred subsection built by
+        // a user macro, which routes through `inlines_from_tokens` rather
+        // than `command`'s ordinary dispatch.
+        let source = r"\newcommand{\problem}[2]{\subsection*{Problem #1 \hfill \normalfont[#2 points]}}\problem{1}{4}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let problem = items.iter().find(|i| i.text == "Problem").unwrap();
+        let points = items.iter().find(|i| i.text == "points]").unwrap();
+        assert_eq!(problem.x_pt, layout::MARGIN_PT);
+        let points_width = layout::text_width("points]", points.font_size_pt, points.font);
+        assert!(
+            (points.x_pt + points_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5,
+            "expected 'points]' flushed to the right margin, got x_pt={} width={}",
+            points.x_pt,
+            points_width
+        );
+    }
+
+    #[test]
+    fn multiple_hfills_on_one_line_share_the_leftover_space_equally() {
+        let (parsed, items) = items(r"A \hfill B \hfill C");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let c = items.iter().find(|i| i.text == "C").unwrap();
+        assert_eq!(a.x_pt, layout::MARGIN_PT);
+        let c_width = layout::text_width("C", c.font_size_pt, c.font);
+        assert!(
+            (c.x_pt + c_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5,
+            "expected the last item flushed to the right margin, got {}",
+            c.x_pt
+        );
+        // Two equal-sized fill gaps: B sits roughly a third of the way across
+        // the leftover space, not at the midpoint (one fill) or the margin
+        // (no fill).
+        let leftover = c.x_pt - a.x_pt;
+        assert!(
+            (b.x_pt - a.x_pt - leftover / 2.0).abs() < 0.5,
+            "expected B roughly midway between A and C, got a={} b={} c={}",
+            a.x_pt,
+            b.x_pt,
+            c.x_pt
+        );
+    }
+
+    #[test]
+    fn hfil_behaves_like_hfill() {
+        let (parsed, items) = items(r"A \hfil B");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let b_width = layout::text_width("B", b.font_size_pt, b.font);
+        assert_eq!(a.x_pt, layout::MARGIN_PT);
+        assert!((b.x_pt + b_width - (layout::PAGE_WIDTH_PT - layout::MARGIN_PT)).abs() < 0.5);
+    }
+
+    #[test]
+    fn hspace_inserts_a_fixed_non_stretching_gap() {
+        let (parsed, items) = items(r"A\hspace{36pt}B");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let a = items.iter().find(|i| i.text == "A").unwrap();
+        let b = items.iter().find(|i| i.text == "B").unwrap();
+        let a_width = layout::text_width("A", a.font_size_pt, a.font);
+        // Every placed word already reserves its own trailing inter-word
+        // gap regardless of what follows (see `place`); `\hspace` adds 36pt
+        // on top of that, it does not replace it.
+        let word_gap = layout::word_space(a.font_size_pt, a.font);
+        assert!(
+            (b.x_pt - (a.x_pt + a_width) - word_gap - 36.0).abs() < 0.02,
+            "a={} a_width={} word_gap={} b={}",
+            a.x_pt,
+            a_width,
+            word_gap,
+            b.x_pt
+        );
+    }
+
+    #[test]
+    fn hspace_star_and_malformed_dimension_are_handled() {
+        let (starred_parsed, starred_items) = items(r"A\hspace*{1em}B");
+        assert!(
+            starred_parsed.diagnostics.is_empty(),
+            "{:?}",
+            starred_parsed.diagnostics
+        );
+        assert!(
+            starred_items.iter().any(|i| i.text == "A")
+                && starred_items.iter().any(|i| i.text == "B")
+        );
+
+        let (malformed_parsed, malformed_items) = items(r"A\hspace{oops}B");
+        assert!(malformed_parsed.diagnostics.iter().any(|d| d
+            .message
+            .contains(r"\hspace requires a recognised dimension")));
+        assert!(!malformed_items.iter().any(|i| i.text == "oops"));
+    }
+
+    #[test]
+    fn unsupported_command_dimension_or_keyword_argument_is_silently_skipped() {
+        let (parsed, items) = items(r"Visible \foocmd{0.6em} \barcmd{empty} Tail.");
+        assert!(!items.iter().any(|i| i.text == "0.6em"));
+        assert!(!items.iter().any(|i| i.text == "empty"));
+        assert!(items.iter().any(|i| i.text == "Visible"));
+        assert!(items.iter().any(|i| i.text == "Tail."));
+        let messages: Vec<&str> = parsed
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert!(messages.iter().any(|m| m.contains(r"\foocmd")));
+        assert!(messages.iter().any(|m| m.contains(r"\barcmd")));
+        assert!(parsed.diagnostics.iter().any(|d| d
+            .recovery
+            .as_deref()
+            .is_some_and(|r| r.contains("looked like a parameter"))));
+    }
+
+    #[test]
+    fn unsupported_command_prose_argument_is_never_swallowed() {
+        // Multiple words, and a single capitalized word, both fail the
+        // dimension/keyword heuristic and must survive as visible text.
+        let (parsed, items) = items(r"\foocmd{Hello world} \barcmd{Capitalized}");
+        let _ = parsed;
+        assert!(items.iter().any(|i| i.text == "Hello"));
+        assert!(items.iter().any(|i| i.text == "world"));
+        assert!(items.iter().any(|i| i.text == "Capitalized"));
+    }
+
+    #[test]
+    fn unsupported_command_single_letter_argument_is_never_swallowed() {
+        // A lone lowercase letter is excluded from the keyword heuristic:
+        // it is far more likely to be real one-letter content (as in
+        // `\def\x{y}`, from crates/compiler/tests/unsupported_inventory.rs)
+        // than a parameter like `empty` or `arabic`.
+        let (parsed, items) = items(r"\foocmd{y}");
+        let _ = parsed;
+        assert!(items.iter().any(|i| i.text == "y"));
+    }
+
+    #[test]
+    fn known_arity_unimplemented_command_always_skips_its_argument() {
+        // `1.5` has no unit suffix, so the dimension heuristic alone would
+        // never match it: this exercises the explicit
+        // `KNOWN_ARITY_UNIMPLEMENTED` list instead.
+        let (parsed, items) = items(r"\linespread{1.5} Visible.");
+        assert!(!items.iter().any(|i| i.text == "1.5"));
+        assert!(items.iter().any(|i| i.text == "Visible."));
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains(r"\linespread")));
     }
 }

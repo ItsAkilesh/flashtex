@@ -377,12 +377,7 @@ impl LayoutCursor {
     /// being built. `resolve_hfill` turns this into an actual shift once the
     /// line's full width is known.
     fn mark_hfill(&mut self) {
-        let boundary = self
-            .pages
-            .last()
-            .expect("at least one page")
-            .items
-            .len();
+        let boundary = self.pages.last().expect("at least one page").items.len();
         self.line_fills.push(boundary);
     }
 
@@ -806,15 +801,21 @@ impl LayoutCursor {
         &self.diagnostics[start..]
     }
 
-    pub fn into_pages(self) -> Vec<Page> {
+    pub fn into_pages(mut self) -> Vec<Page> {
+        // A trailing `\hfill` on the document's very last line has no
+        // following block to trigger `newline`'s resolution, so give it one
+        // last chance here. Idempotent when nothing is pending.
+        self.resolve_hfill();
         self.pages
     }
 
-    pub fn into_pages_and_diagnostics(self) -> (Vec<Page>, Vec<Diagnostic>) {
+    pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
+        self.resolve_hfill();
         (self.pages, self.diagnostics)
     }
 
-    fn into_result(self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+    fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+        self.resolve_hfill();
         (self.pages, self.collected_labels, self.diagnostics)
     }
 }
