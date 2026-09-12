@@ -9,8 +9,8 @@
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Paired pinned-font query performance and cached/direct exact equivalence",
-      "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
+      "name": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+      "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
       "owned_paths": [
         "crates/font-resources"
       ],
@@ -22,8 +22,8 @@
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
-      "objective": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
+      "name": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
+      "objective": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
       "owned_paths": [
         "crates/font-resources"
       ],

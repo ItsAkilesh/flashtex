@@ -9,21 +9,29 @@
 #      test (default origin/agent/mac-claude-a/mac-shell);
 #   3. runs tools/typing-bench/run.sh (fixture / demo / body60k at 30 ms and
 #      0 ms) with those helpers and records keystroke -> paint p50/p95/p99,
-#      paints and coalesced keystrokes — once with the direct compiler worker
-#      and once through the durable flashtex-preview-controller route
-#      (FLASHTEX_PREVIEW_CONTROLLER, also built from main);
+#      paints and coalesced keystrokes — with the direct compiler worker, with
+#      flashtex-render as a second direct producer, and through the durable
+#      flashtex-preview-controller route (FLASHTEX_PREVIEW_CONTROLLER, also
+#      built from main). Latency gates are applied only when the 1-minute load
+#      average before the bench is <= 10; above that they are reported only;
 #   4. packages FlashTeX.app with apps/mac/scripts/make-app.sh and runs
 #      apps/mac/scripts/launch-check.sh (compiler + bridge child kill, app
 #      survival) with FLASHTEX_NO_ACTIVATE=1 through the `open` shim in lib/;
 #   5. drives the packaged app's bundled helpers through the capture cycle
 #      (submit -> convert refused as provider_disabled -> offline proposal
 #      review -> durable ledger apply -> compile -> flashtex-pdf export);
+#      plus the two optional bundled routes: flashtex-render (branch
+#      origin/agent/mac-render-pipeline/unified; File > Attach Render Pipeline
+#      headlessly: `preview face: latin-modern` in FLASHTEX_LOG) and
+#      flashtex-pdf-exact (origin/agent/mac-pdf/v2-adapter; `from-v2` on the
+#      checked-in display-list-v2 fixture, read back through PDFKit);
 #   6. writes reports/<UTC>.md with every number, hash, SHA, machine/OS/Xcode
 #      version and exact command, asserted against thresholds.json.
 #
 # Usage: tools/native-validation/mac-live/run.sh [--branch <ref>] [--main-ref <ref>]
 #          [--intervals "30 0"] [--seeds "fixture demo body60k"] [--no-fetch]
-#          [--skip-bench] [--skip-controller] [--skip-launch] [--skip-cycle] [--rebuild] [--force]
+#          [--skip-bench] [--skip-controller] [--skip-extras] [--skip-launch] [--skip-cycle]
+#          [--render-ref <ref>] [--pdf-exact-ref <ref>] [--rebuild] [--force]
 #          [--work <dir>] [--session <url-or-id>] [--agent <id>]
 # Env:   FLASHTEX_MAC_LIVE_SESSION  provenance: the driving agent session (URL/id)
 #        FLASHTEX_MAC_LIVE_AGENT    provenance: the driving agent id
@@ -44,6 +52,9 @@ SKIP_BENCH=0
 SKIP_LAUNCH=0
 SKIP_CYCLE=0
 SKIP_CONTROLLER=0
+SKIP_EXTRAS=0
+RENDER_REF="origin/agent/mac-render-pipeline/unified"
+PDF_EXACT_REF="origin/agent/mac-pdf/v2-adapter"
 REBUILD=0
 FORCE=0
 WORK="$SCRIPT_DIR/build"
@@ -61,6 +72,9 @@ while [[ $# -gt 0 ]]; do
     --skip-launch) SKIP_LAUNCH=1; shift ;;
     --skip-cycle) SKIP_CYCLE=1; shift ;;
     --skip-controller) SKIP_CONTROLLER=1; shift ;;
+    --skip-extras) SKIP_EXTRAS=1; shift ;;
+    --render-ref) RENDER_REF="$2"; shift 2 ;;
+    --pdf-exact-ref) PDF_EXACT_REF="$2"; shift 2 ;;
     --rebuild) REBUILD=1; shift ;;
     --force) FORCE=1; shift ;;
     --work) WORK="$2"; shift 2 ;;
@@ -131,7 +145,7 @@ env = {
                "os": sh("sw_vers", "-productVersion"), "os_build": sh("sw_vers", "-buildVersion"), "kernel": platform.release(),
                "xcode": " ".join(sh("xcodebuild", "-version").split()), "swift": sh("swift", "--version").splitlines()[0] if sh("swift", "--version") else "",
                "cargo": sh("cargo", "--version"), "rustc": sh("rustc", "--version"), "python3": sys.version.split()[0],
-               "load_average_at_start": sh("sysctl", "-n", "vm.loadavg"),
+               "load_average_at_start": sh("sysctl", "-n", "vm.loadavg"), "uptime": sh("uptime"),
                "other_flashtex_processes_at_start": sh("pgrep", "-l", "-x", "FlashTeX|FlashTeXMac").replace("\n", "; ")},
   "sources": {"main_ref": main_ref, "main_sha": main_sha, "branch": branch, "branch_sha": branch_sha,
                "branch_contains_main": main_in_branch == "true", "merge_base": merge_base,
@@ -203,6 +217,58 @@ PY
 for c in "${CRATES[@]}"; do [[ -x "$(helper_path "$c")" ]] && note "flashtex-$c $(sha256 "$(helper_path "$c")")"; done
 [[ "$HELPER_HEAD" == "$MAIN_SHA" ]] || { note "helpers scratch clone HEAD $HELPER_HEAD != $MAIN_SHA"; HELPERS_OK=0; }
 
+# ------------------------------------------------- 1b. optional bundled routes
+# extra_build <name> <ref> <manifest-relative crate dir> <bin>: pinned shared
+# clone at <ref>, cargo build --release of one bin, path in EXTRA_<NAME>.
+EXTRAS_JSON="$RUN_DIR/extras.json"
+echo "{}" > "$EXTRAS_JSON"
+extra_build() {
+  local name="$1" ref="$2" crate="$3" bin="$4" sha dir src bin_path ok=1 head
+  sha="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}" 2>/dev/null)" || { note "$name: cannot resolve $ref"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d[sys.argv[2]]={"ref": sys.argv[3], "built_ok": False, "error": "unresolved ref"}; json.dump(d, open(sys.argv[1], "w"), indent=1)' "$EXTRAS_JSON" "$name" "$ref"; return; }
+  dir="$WORK/$name/$sha"; src="$dir/src"; bin_path="$src/$crate/target/release/$bin"
+  if [[ $REBUILD == 1 || ! -f "$dir/.complete" ]]; then
+    rm -rf "$dir"; mkdir -p "$dir"
+    cmd "$name-clone" git clone -q --shared --no-checkout "$ROOT" "$src"
+    [[ $CMD_STATUS == 0 ]] && cmd "$name-checkout" git -C "$src" checkout -q --detach "$sha"
+    [[ $CMD_STATUS == 0 ]] || ok=0
+    if [[ $ok == 1 ]]; then
+      export CARGO_TARGET_DIR="$WORK/cargo-target-$name"
+      cmd "$name-build" cargo build --release --offline --manifest-path "$src/$crate/Cargo.toml" --bin "$bin"
+      [[ $CMD_STATUS == 0 ]] || cmd "$name-build-online" cargo build --release --manifest-path "$src/$crate/Cargo.toml" --bin "$bin"
+      [[ $CMD_STATUS == 0 ]] || ok=0
+      if [[ $ok == 1 ]]; then mkdir -p "$(dirname "$bin_path")"; cp "$CARGO_TARGET_DIR/release/$bin" "$bin_path"; fi
+      unset CARGO_TARGET_DIR
+    fi
+    [[ $ok == 1 ]] && touch "$dir/.complete"
+  else
+    note "reusing $bin already built from $sha"
+    printf '[%s] reused %s\n' "$name" "$bin_path" >> "$COMMANDS"
+  fi
+  head="$(git -C "$src" rev-parse HEAD 2>/dev/null || echo unknown)"
+  [[ -x "$bin_path" ]] || ok=0
+  python3 - "$EXTRAS_JSON" "$name" "$ref" "$sha" "$crate" "$bin_path" "$ok" "$LIB" "$head" "$(git -C "$src" status --porcelain 2>/dev/null)" "$(git -C "$ROOT" log -1 --format=%s "$sha")" <<'PY'
+import json, sys
+out, name, ref, sha, crate, path, ok, lib, head, dirty, subject = sys.argv[1:12]
+sys.path.insert(0, lib)
+from hashes import describe
+d = json.load(open(out))
+e = describe(path); e.update({"ref": ref, "sha": sha, "crate": crate, "built_ok": ok == "1", "scratch_head": head, "scratch_dirty_status": dirty.splitlines(), "subject": subject})
+d[name] = e
+json.dump(d, open(out, "w"), indent=1, sort_keys=True)
+PY
+  [[ $ok == 1 ]] && note "$bin $(sha256 "$bin_path") ($ref @ $sha)"
+  eval "EXTRA_$(echo "$name" | tr 'a-z-' 'A-Z_')=\"$bin_path\""
+}
+EXTRA_RENDER=""; EXTRA_PDF_EXACT=""
+if [[ $SKIP_EXTRAS == 0 ]]; then
+  step "flashtex-render from $RENDER_REF"
+  extra_build render "$RENDER_REF" crates/render-pipeline flashtex-render
+  step "flashtex-pdf-exact from $PDF_EXACT_REF"
+  extra_build pdf-exact "$PDF_EXACT_REF" crates/pdf flashtex-pdf-exact
+fi
+[[ -x "$EXTRA_RENDER" ]] || EXTRA_RENDER=""
+[[ -x "$EXTRA_PDF_EXACT" ]] || EXTRA_PDF_EXACT=""
+
 # ------------------------------------------------------------------- 2. app
 step "app from $BRANCH ($BRANCH_SHA)"
 APP_SRC="$WORK/app/$BRANCH_SHA"
@@ -226,6 +292,8 @@ for c in "${CRATES[@]}"; do
   mkdir -p "$APP_SRC/crates/$c/target/release"
   [[ -x "$(helper_path "$c")" ]] && cp "$(helper_path "$c")" "$APP_SRC/crates/$c/target/release/flashtex-$c"
 done
+if [[ -n "$EXTRA_RENDER" ]]; then mkdir -p "$APP_SRC/crates/render-pipeline/target/release"; cp "$EXTRA_RENDER" "$APP_SRC/crates/render-pipeline/target/release/flashtex-render"; fi
+if [[ -n "$EXTRA_PDF_EXACT" ]]; then mkdir -p "$APP_SRC/crates/pdf/target/release"; cp "$EXTRA_PDF_EXACT" "$APP_SRC/crates/pdf/target/release/flashtex-pdf-exact"; fi
 if [[ $APP_OK == 1 ]]; then
   cmd app-build swift build -c release --package-path "$MAC"
   [[ $CMD_STATUS == 0 ]] || APP_OK=0
@@ -245,25 +313,39 @@ EXPECTED_CELLS=$(( $(wc -w <<< "$SEEDS") * $(wc -w <<< "$INTERVALS") ))
 # mid-run by something outside this runner (other agents run pkill/launch
 # checks on this machine) some cells have no summary — retry the whole pass
 # once into <out-dir>/retry so the report can fill the gaps and say so.
+# bench_pass <name> <out-dir> <producers>; the 1-minute load average sampled
+# right before the pass is recorded (latency gates apply only when it is <= 10).
 bench_pass() {
-  local name="$1" out="$2" found
+  local name="$1" out="$2" producers="$3" found expected
+  expected=$(( EXPECTED_CELLS * $(wc -w <<< "$producers") ))
   mkdir -p "$out"
-  cmd "$name" bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
+  printf '{"load_average":"%s","uptime":"%s","producers":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(uptime)" "$producers" > "$out/load-before.json"
+  cmd "$name" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" \
       --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/typing-bench.md"
   note "$name exit $CMD_STATUS"
   found=$(ls "$out"/typing-bench-*/*.json 2>/dev/null | wc -l | tr -d ' ')
-  if (( found < EXPECTED_CELLS )); then
-    note "$name: $found of $EXPECTED_CELLS cells have a summary (app killed or timed out mid-run); retrying the pass once"
-    printf '[%s] retry: %s of %s cells had a summary\n' "$name" "$found" "$EXPECTED_CELLS" >> "$COMMANDS"
+  if (( found < expected )); then
+    note "$name: $found of $expected cells have a summary (app killed or timed out mid-run); retrying the pass once"
+    printf '[%s] retry: %s of %s cells had a summary\n' "$name" "$found" "$expected" >> "$COMMANDS"
     mkdir -p "$out/retry"
-    cmd "$name-retry" bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
+    printf '{"load_average":"%s","uptime":"%s","producers":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(uptime)" "$producers" > "$out/retry/load-before.json"
+    cmd "$name-retry" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" \
         --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/retry/typing-bench.md"
     note "$name-retry exit $CMD_STATUS"
   fi
 }
 if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   step "typing bench ($SEEDS × $INTERVALS ms)"
-  bench_pass typing-bench "$RUN_DIR/typing-bench"
+  if [[ -n "$EXTRA_RENDER" ]]; then
+    # flashtex-render as a second direct producer (typing-bench/run.sh's `render`
+    # producer, taken from FLASHTEX_RENDER instead of its own scratch build).
+    export FLASHTEX_RENDER="$EXTRA_RENDER"
+    printf '[typing-bench] FLASHTEX_RENDER=%q\n' "$FLASHTEX_RENDER" >> "$COMMANDS"
+    bench_pass typing-bench "$RUN_DIR/typing-bench" "compiler render"
+    unset FLASHTEX_RENDER
+  else
+    bench_pass typing-bench "$RUN_DIR/typing-bench" "compiler"
+  fi
   if [[ $SKIP_CONTROLLER == 0 && -x "$(helper_path preview-controller)" ]]; then
     # Same bench, durable helper route: the app attaches flashtex-preview-controller
     # (which owns the ledger and launches the same compiler) instead of the direct
@@ -273,7 +355,7 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
     mkdir -p "$CTRL_LEDGERS"
     export FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)" FLASHTEX_CONTROLLER_LEDGER_ROOT="$CTRL_LEDGERS"
     printf '[typing-bench-controller] FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_CONTROLLER_LEDGER_ROOT=%q\n' "$FLASHTEX_PREVIEW_CONTROLLER" "$CTRL_LEDGERS" >> "$COMMANDS"
-    bench_pass typing-bench-controller "$RUN_DIR/typing-bench-controller"
+    bench_pass typing-bench-controller "$RUN_DIR/typing-bench-controller" "compiler"
     unset FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_CONTROLLER_LEDGER_ROOT
     rm -rf "$CTRL_LEDGERS"
   fi
@@ -285,9 +367,11 @@ fi
 BUNDLE="$MAC/build/FlashTeX.app"
 BUNDLE_OK=0
 if [[ $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
-  step "make-app.sh (bundle with the four helpers)"
-  cmd make-app bash "$MAC/scripts/make-app.sh" --compiler "$(helper_path compiler)" --pdf "$(helper_path pdf)" \
-      --bridge "$(helper_path bridge)" --ledger "$(helper_path edit-ledger)"
+  step "make-app.sh (bundle with the four helpers${EXTRA_RENDER:+ + flashtex-render}${EXTRA_PDF_EXACT:+ + flashtex-pdf-exact})"
+  MAKE_APP_ARGS=(--compiler "$(helper_path compiler)" --pdf "$(helper_path pdf)" --bridge "$(helper_path bridge)" --ledger "$(helper_path edit-ledger)")
+  [[ -n "$EXTRA_RENDER" ]] && MAKE_APP_ARGS+=(--render "$EXTRA_RENDER")
+  [[ -n "$EXTRA_PDF_EXACT" ]] && MAKE_APP_ARGS+=(--pdf-exact "$EXTRA_PDF_EXACT")
+  cmd make-app bash "$MAC/scripts/make-app.sh" "${MAKE_APP_ARGS[@]}"
   [[ $CMD_STATUS == 0 && -x "$BUNDLE/Contents/MacOS/FlashTeX" ]] && BUNDLE_OK=1
   python3 - "$RUN_DIR/bundle.json" "$BUNDLE" "$BUNDLE_OK" "$LIB" <<'PY'
 import json, os, sys
@@ -349,9 +433,38 @@ else
   step "capture cycle skipped (skip=$SKIP_CYCLE bundle_ok=$BUNDLE_OK)"
 fi
 
+# ------------------------------------------- 6b. bundled render + exact export
+if [[ $BUNDLE_OK == 1 && -x "$BUNDLE/Contents/MacOS/flashtex-render" ]]; then
+  step "packaged render pipeline attach (FLASHTEX_COMPILER=bundled flashtex-render, headless)"
+  RUNNING="$(pgrep -x FlashTeX || true)"
+  if [[ -n "$RUNNING" && $FORCE == 0 ]]; then
+    note "REFUSED: FlashTeX.app already running (pid $RUNNING)"
+    printf '{"refused":true,"reason":"FlashTeX already running (pid %s)","checks":[],"passed":0,"failed":1}\n' "$RUNNING" > "$RUN_DIR/render-attach.json"
+  else
+    cmd render-attach python3 "$LIB/app_features.py" render-attach --app "$BUNDLE" --work "$RUN_DIR/render-attach" --out "$RUN_DIR/render-attach.json"
+    rm -rf "$RUN_DIR/render-attach/captures"
+  fi
+elif [[ $BUNDLE_OK == 1 ]]; then
+  step "packaged render pipeline attach skipped (no bundled flashtex-render)"
+fi
+if [[ $BUNDLE_OK == 1 && -x "$BUNDLE/Contents/MacOS/flashtex-pdf-exact" ]]; then
+  step "packaged exact export (flashtex-pdf-exact from-v2 on the checked-in display-list-v2 fixture)"
+  PROBE="$WORK/pdfkit_probe"
+  if [[ ! -x "$PROBE" || "$LIB/pdfkit_probe.swift" -nt "$PROBE" ]]; then
+    cmd pdfkit-probe-build swiftc -O "$LIB/pdfkit_probe.swift" -o "$PROBE"
+  fi
+  [[ -x "$PROBE" ]] || PROBE=""
+  cmd exact-export python3 "$LIB/app_features.py" exact-export --app "$BUNDLE" \
+      --fixture "$APP_SRC/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json" \
+      --font-dir "$APP_SRC/apps/mac/Fonts" --probe "$PROBE" --work "$RUN_DIR/exact-export" --out "$RUN_DIR/exact-export.json" \
+      --expect-text "Office fixtures" --expect-text "office" --expect-text "bold" --expect-text "caf"
+elif [[ $BUNDLE_OK == 1 ]]; then
+  step "packaged exact export skipped (no bundled flashtex-pdf-exact)"
+fi
+
 # ---------------------------------------------------------------- 7. report
 step "report"
-printf '{"load_average_at_end":"%s","utc_end":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RUN_DIR/end.json"
+printf '{"load_average_at_end":"%s","uptime_at_end":"%s","utc_end":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(uptime)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RUN_DIR/end.json"
 python3 "$LIB/report.py" --run-dir "$RUN_DIR" --thresholds "$SCRIPT_DIR/thresholds.json" --out "$REPORT"
 STATUS=$?
 note "report: $REPORT"

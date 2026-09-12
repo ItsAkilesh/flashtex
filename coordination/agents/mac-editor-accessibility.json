@@ -2,26 +2,26 @@
   "agent_id": "mac-editor-accessibility",
   "allocation_id": "claude-mac20x-shared",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-editor-accessibility/responsive",
+  "branch": "agent/mac-editor-accessibility/ime",
   "capabilities": [
     "swift",
     "appkit",
     "accessibility"
   ],
-  "code_revision": "f979a2e9dd4a8e5012db65c42a303a89d9201948",
+  "code_revision": "271a3663789222b134151ece31b90dc8a56d23bf",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
-  "next_action": "Parent mac-claude-a reviews and merges into mac-shell; no lane items left",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent mac-claude-a reviews/merges agent/mac-editor-accessibility/ime; mac-completion lane applies the two-line Esc/marked-text guard from the handoff",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
-      "reviewed_utc": "2026-09-12T09:05:12Z",
-      "sha": "d8baed6bc2ef1e333ecad48d3d056478a9f984fd"
+      "adaptation": "Based on mac-shell 40d53b7 where lane 1 is merged; merged 271a366 (evidence/coord only, no apps/mac changes). Completion.swift untouched: the keyDown Esc/marked-text guard is reported as a diff for that lane",
+      "reviewed_utc": "2026-09-12T10:07:08Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
     },
     "origin/main": {
       "adaptation": "Merged mac-shell d8baed6 (Mark identity/resultStatus; completion lane's editorRevision/projectIndexMetadata hook kept in updateNSView) and main 5499e41; main 780f145 adds no apps/mac changes (preview helper envelopes, dispatch); kept the lastKnownText instance contract",
@@ -31,11 +31,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "SourceEditorView: VoiceOver label/value/selection + line-column announcements; windowed diagnostic marks (0.3-0.5 ms CPU for 200 marks on 60 KB); navigation selections deferred while typing (never move caret back) or IME; capture insertion one undo step delivered once via onEditApplied and verified against fake bridge+ledger (undo/redo order, tombstone); native UTF-8 text for the binding (keystroke round trip 4.2 ms -> 0.11 ms p50 on 60 KB); 60 KB/200-keystroke benchmark with exact UTF-8 caret bytes. swift test 320/320 (5 pre-existing skips) with real workers after merging mac-shell d8baed6 and main 5499e41.",
+  "summary": "Refill: input-method correctness in SourceEditorView. Marked text never reaches the binding (no revision/compile per composition step; commit = one change/revision/compile); caret reported at the composition start (exact caretByte); composition steps not announced; navigation deferred through the composition; completion list closed + scan cancelled at composition start via CompletingTextView public API; IME cancel leaves buffer/model/revision untouched; dead-key sequence not swallowed; e+U+0301 vs precomposed \u00e9 vs dead-key \u00e9 all give exact bytes and reverse mapping. swift test 384/384 (12 env skips) with real workers; SourceEditorViewTests 17/17 x6. One Completion.swift diff (Esc during composition) listed in handoff.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T09:05:12Z",
+  "updated_utc": "2026-09-12T10:07:08Z",
   "usage": {
-    "evidence": "apps/mac SourceEditorViewTests 14/14 x3 runs; full suite 320 tests 0 failures 5 skips; numbers in coordination/mac-editor-accessibility.md",
+    "evidence": "SourceEditorViewTests 17/17 (three IME tests: composition, cancel+completion list, composed bytes); full suite 384 tests 0 failures",
     "status": "shared Claude Max 20x quota of parent; figure unknown"
   }
 }

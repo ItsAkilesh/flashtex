@@ -73,6 +73,12 @@ final class ShellModel {
     @ObservationIgnored var controllerState = ControllerState()
     /// Status of the helper route (attached / ready / durable revision / errors).
     var controllerStatus: String = "no preview controller attached"
+    /// Set while the displayed result is a completed OLDER snapshot from the
+    /// helper (HistoricalPreview.swift): navigation, diagnostic jump, caret
+    /// sync, capture destinations and export are disabled until a current
+    /// preview replaces it. Explicit, never inferred from staleness.
+    var historicalPreview: HistoricalDisplay?
+    @ObservationIgnored var historicalState = HistoricalPreviewState()
     /// Project-index completion vocabulary (labels/citations/commands) bound to
     /// the editor revision it was fetched for (Completion.swift).
     var completionMetadata: Completion.Metadata?
@@ -210,19 +216,48 @@ final class ShellModel {
     /// shown in the footer. Memoized: ContentView reads this on every body
     /// evaluation and the rebase compares the compiled and current texts.
     var editorMarkReport: EditorDiagnostics.Report {
-        guard let result else { return .empty }
-        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath)
+        // Historical spans are inert: not drawn even when their offsets are in bounds.
+        guard let result, historicalPreview == nil else { return .empty }
+        let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
+                                 explanationsCount: explanations[resultID]?.count ?? -1)
         if let cached = editorMarksCache, cached.key == key { return cached.report }
-        let report = EditorDiagnostics.report(for: result, resultID: resultID, path: activePath,
-                                              compiledText: compiledDocuments[activePath], currentText: activeText)
+        let report = EditorDiagnostics.attach(explanations[resultID], to: EditorDiagnostics.report(
+            for: result, resultID: resultID, path: activePath,
+            compiledText: compiledDocuments[activePath], currentText: activeText))
         editorMarksCache = (key, report)
         return report
     }
-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String }
+    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String; var explanationsCount: Int }
     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
     /// start offset are each visited once (Navigation.swift).
     @ObservationIgnored var currentDiagnosticID: String?
+
+    /// Offline explanations per result id (crates/diagnostic-explanations via
+    /// flashtex-explain); attached to marks, never blocking a keystroke.
+    private(set) var explanations = EditorDiagnostics.ExplanationCache()
+    @ObservationIgnored private var explanationClient: ExplanationClient?
+    var explanationStatus: String?
+
+    /// Asks the helper once per result; the cache is read by `editorMarkReport`.
+    private func fetchExplanations(for result: RuntimeV1.CompileResult, id: String, documents: [RuntimeV1.Document]) {
+        guard explanations[id] == nil else { return }
+        if explanationClient == nil || explanationClient?.isRunning == false {
+            guard let exe = ExplanationClient.locate() else { explanationStatus = nil; return }
+            explanationClient = try? ExplanationClient(executable: exe) { [weak self] e in self?.explanationStatus = "flashtex-explain: " + e }
+        }
+        explanationClient?.explain(result: result, documents: documents, supported: Completion.defaultSupported) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success(let list):
+                self.explanations.store(list, for: id)
+                self.editorMarksCache = nil // re-attach on the next read
+                self.explanationStatus = nil
+            case .failure(let f):
+                self.explanationStatus = f.text // shown in the footer; marks stay as they are
+            }
+        }
+    }
 
     // MARK: caret sync (source -> preview)
 
@@ -304,12 +339,14 @@ final class ShellModel {
             self.resultID = res.id
             self.fixtureURL = result
             self.previewSource = .fixture
+            self.historicalPreview = nil
             bindLayout(of: res.payload, requested: requested)
             if let req {
                 documents = req.payload.documents
                 activePath = req.payload.entryPath
                 editorRevision = req.payload.revision
                 compiledDocuments = Dictionary(uniqueKeysWithValues: req.payload.documents.map { ($0.path, $0.text) })
+                fetchExplanations(for: res.payload, id: res.id, documents: req.payload.documents)
             } else {
                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
                 compiledDocuments = [:]
@@ -355,6 +392,7 @@ final class ShellModel {
         result = nil
         resultID = nil
         previewSource = .none
+        historicalPreview = nil
         negotiation = .legacy
         fontSubstitutions = []
         layoutDiagnostics = []
@@ -404,6 +442,39 @@ final class ShellModel {
 
     /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
     /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
+    /// Finds a built render pipeline (`flashtex-render`, crates/render-pipeline:
+    /// a drop-in runtime-v1 producer measured with Latin Modern metrics, so
+    /// the preview draws Computer Modern-style text): $FLASHTEX_RENDER, the
+    /// app bundle, then crates/render-pipeline/target/{release,debug}.
+    static func locateRenderPipeline() -> URL? {
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"], fm.isExecutableFile(atPath: env) {
+            return URL(fileURLWithPath: env)
+        }
+        if let bundled = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("flashtex-render"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
+        }
+        guard let root = locateRepoRoot() else { return nil }
+        for profile in ["release", "debug"] {
+            let url = root.appendingPathComponent("crates/render-pipeline/target/\(profile)/flashtex-render")
+            if fm.isExecutableFile(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// File > Attach Render Pipeline: the Latin Modern producer when it is built.
+    @discardableResult
+    func attachDiscoveredRenderPipeline() -> Bool {
+        guard let url = Self.locateRenderPipeline() else {
+            workerStatus = "no built flashtex-render found (build crates/render-pipeline or set FLASHTEX_RENDER)"
+            return false
+        }
+        attachWorker(at: url)
+        compile()
+        return true
+    }
+
     static func locateCompiler() -> URL? {
         let fm = FileManager.default
         if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
@@ -503,7 +574,7 @@ final class ShellModel {
         let request = RuntimeV1.CompileRequest(
             projectId: result?.projectId ?? "demo",
             revision: editorRevision,
-            entryPath: activePath,
+            entryPath: project.entryPath, // the entry stays first whichever document is being edited
             documents: documents,
             layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
         do {
@@ -584,8 +655,10 @@ final class ShellModel {
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            historicalPreview = nil
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(incoming.revision) at \(MonotonicClock.nowNs())") }
@@ -674,6 +747,7 @@ final class ShellModel {
 
     /// Pins the current caret as the insertion destination (`destination_id`).
     func pinAnchorAtCaret() {
+        if let why = historicalRefusal(of: "pinning an insertion point") { captureNote = why; return }
         guard let anchor = Insertion.makeAnchor(id: "mac-anchor-\(nextAnchorNumber)", path: activePath,
                                                 text: activeText, caretUTF16: caretUTF16, revision: editorRevision)
         else { captureNote = "Caret position is not valid."; return }

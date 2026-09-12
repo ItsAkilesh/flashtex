@@ -333,10 +333,10 @@ final class PreviewV2ShellTests: XCTestCase {
 
     func testRefusedDisplayListShowsNoFrame() throws {
         let model = try model()
-        load(model, Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json"))
         guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("expected refusal") }
         XCTAssertEqual(error.code, "font_resource_unavailable")
-        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-math.json")
+        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-missing-font.json")
         XCTAssertNil(model.displayListV2?.frame)
         XCTAssertTrue(model.captureNote?.hasPrefix("Display list refused: font_resource_unavailable") == true, model.captureNote ?? "")
         // A runtime-v1 fixture is not a display list either.
@@ -367,7 +367,7 @@ final class PreviewV2ShellTests: XCTestCase {
         XCTAssertNotEqual(V2FrameIdentity.token(second), V2FrameIdentity.token(first))
         XCTAssertGreaterThan(ticket, 0)
         // A refusal after a good frame drops it: nothing unverified stays on screen.
-        load(model, Self.fixtures.appendingPathComponent("display-list-v2-math.json"))
+        load(model, Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json"))
         XCTAssertNil(model.displayListV2?.frame)
     }
 
@@ -395,11 +395,11 @@ final class PreviewV2ShellTests: XCTestCase {
         model.loadDisplayListV2(url: text) { b.fulfill() }
         XCTAssertEqual(model.displayListV2?.ticket, ticketA, "b waits behind a; no new ticket yet")
         XCTAssertNotNil(model.displayListV2?.queued)
-        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-math.json")) { c.fulfill() }
+        model.loadDisplayListV2(url: Self.fixtures.appendingPathComponent("display-list-v2-missing-font.json")) { c.fulfill() }
         XCTAssertEqual(V2Loader.coalescedLoads, coalesced + 1, "b was dropped undecoded")
         wait(for: [b, a, c], timeout: 20, enforceOrder: true)
         guard case .failed(let error, let source) = model.displayListV2 else { return XCTFail("the newest load (a refusal) is the final state") }
-        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-math.json")
+        XCTAssertEqual(source.url?.lastPathComponent, "display-list-v2-missing-font.json")
         XCTAssertEqual(error.code, "font_resource_unavailable")
         XCTAssertEqual(V2Loader.staleResultsDropped, dropped + 2, "nothing prepared was dropped after preparation")
         XCTAssertEqual(V2Loader.resultsPublished, published + 2, "a and c were published, b never prepared")
@@ -570,7 +570,9 @@ final class PreviewV2LiveTests: XCTestCase {
         XCTAssertTrue(model.liveV2Accepted)
         XCTAssertEqual(model.acceptedLayoutCapabilities, [V2Live.capability])
         guard case .loaded(let frame, let source) = model.displayListV2 else { return XCTFail("\(String(describing: model.displayListV2))") }
-        guard case .worker(let id, let project, let revision) = source else { return XCTFail("live source expected") }
+        guard case .worker(let id, let project, let revision, let line) = source else { return XCTFail("live source expected") }
+        XCTAssertEqual(try RenderingV2.decode(line).payload.revision, revision, "the live line's bytes are retained with the frame")
+        XCTAssertEqual(try Data(contentsOf: try source.listFileURL()), line, "and can be handed to file-taking tools")
         XCTAssertEqual(id, model.resultID)
         XCTAssertEqual(revision, model.result?.revision)
         XCTAssertEqual(project, model.result?.projectId)

@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T08:50:08Z",
-      "adaptation": "Read exact published FT023 revision5. Current MathKernInfo exact source-bound replay implemented; synthetic tie/budget/tamper tests pass. Finish pinned boundary replay then device-context and cached/direct mixed-math followups; no script layout or wire activation.",
-      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T09:36:11Z",
+      "adaptation": "Use unchanged pipeline9bb7b27 and committed established-LaTeX PDF; preserve source transformations and ABI limitations.",
+      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
+      "revision": 7
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "fce561571abb1aa8c1b8b2edc4dd8c5ea63286a5",
+  "code_revision": "8131778accccd88006bf7c2a80fbdf6ac5bbbca5",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Publish kern checkpoint then consume additive published device context in same owned crate; retain raw design values and pixel corrections separately, preserve unhinted default. Follow with bounded cached/direct mixed-math replay. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core; no exposed native context telemetry/control.",
+  "main_integrated_through": "9d09582794299aee7ef751c77167130820d35be4",
+  "next_action": "Await producer rawSHA fix while continuing bounded malformed-resource followup; keep exact adapter refusal and no visual claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r5 exact MathKern consumer complete, unchanged peer1fc71f3. 135 ordinary tests and strict clippy pass; pinned STIX293 boundary replays across219 tables plus66 assembly replays pass. Explicit query heights, original GIDs, raw/scaled kerns, device flags and immutable source/registry/MATH identity. No script layout.",
+  "summary": "Replayed current4888a67 with matched/missing TFM and capped optional v2. Added bounded correlated sibling gate and explicit reference-metrics refusal; actual rawSHA defect remains.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:50:57Z",
+  "updated_utc": "2026-09-12T09:50:31Z",
   "usage": {
-    "evidence": "cargo test135 pass; cargo clippy all-targets -D warnings pass; pinned STIXMath source/license hashes checked,293 lookup cases/219 tables; synthetic negative/tie/absence/invalid GID/tamper/duplicate/stale/budget cases. No pending test process.",
+    "evidence": "155 tests and strictclippy pass. Current legacy PDF/reference comparison differs; matched actual CFF adapter refuses resource metadata mismatch. GH2 comment5645134718. MissingTFM warning/recovered now verified. No pending calls.",
     "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

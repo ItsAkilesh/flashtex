@@ -12,6 +12,17 @@ persistence failures (make the store directory read-only). A corrupt or
 unreadable document.json fails closed: every request answers `invalid_store`.
 
 Usage: python3 fake_edit_ledger.py --store <dir>
+
+Crash directives (exit status 3 without replying; "once" means a marker file
+in the store makes the identical retry proceed normally):
+    apply with edit.capture_id `crash-before-commit-*`
+                    exit before anything is written, once
+    apply with edit.capture_id `crash-after-commit-*`
+                    commit the edit durably, then exit before replying, once
+    replace_document whose text contains `%ledger-crash-once`
+                    exit before committing, once per distinct text
+    operation `crash`
+                    exit immediately (idle crash)
 """
 import hashlib
 import json
@@ -19,6 +30,22 @@ import os
 import re
 import sys
 import tempfile
+
+CRASH_STATUS = 3
+
+
+def crash():
+    sys.stdout.flush()
+    os._exit(CRASH_STATUS)
+
+
+def crash_once(root, key):
+    marker = os.path.join(root, "fake_crashed_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16])
+    if os.path.exists(marker):
+        return
+    with open(marker, "w") as f:
+        f.write(key)
+    crash()
 
 MAX_LINE = 12 * 1024 * 1024
 IDENT = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -157,6 +184,8 @@ class Store:
             if old["edit"] == edit:
                 return old["receipt"]
             raise Err("edit_id_conflict", "edit ID already binds different prepared fields")
+        if edit["capture_id"].startswith("crash-before-commit-"):
+            crash_once(self.root, "apply-before:" + edit["edit_id"])
         if any(t["edit"]["capture_id"] == edit["capture_id"] for t in txs.values()):
             raise Err("capture_id_conflict", "capture already applied under another edit ID")
         doc = self.state["document"]
@@ -183,6 +212,8 @@ class Store:
         state["transactions"][edit["edit_id"]] = {"edit": edit, "receipt": receipt, "document_before": doc,
                                                   "document_after_sha256": after["source_sha256"], "confirmed": False}
         self.commit(state)
+        if edit["capture_id"].startswith("crash-after-commit-"):
+            crash_once(self.root, "apply-after:" + edit["edit_id"])
         return receipt
 
     def replace_document(self, expected_revision, expected_sha256, text):
@@ -192,6 +223,8 @@ class Store:
         doc = self.state["document"]
         if doc["revision"] != expected_revision or doc["source_sha256"] != expected_sha256:
             raise Err("document_conflict", "ordinary edit snapshot is stale")
+        if "%ledger-crash-once" in text:
+            crash_once(self.root, "replace:" + sha(text))
         state = json.loads(json.dumps(self.state))
         state["document"] = {"project_id": doc["project_id"], "path": doc["path"], "revision": expected_revision + 1,
                              "text": text, "source_sha256": sha(text)}
@@ -279,6 +312,8 @@ def main():
                 payload = store.export_recovery()
             elif op == "recovery_import":
                 payload = store.import_recovery(req["recovery"])
+            elif op == "crash":
+                crash()
             else:
                 raise Err("invalid_request", "unknown operation %r" % op)
             reply(rid, payload=payload)

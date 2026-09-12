@@ -17,3 +17,6 @@ path = "../font-resources"
 flashtex-project-files = { path = "../project-files" }
 flashtex-font-engine = { path = "../font-engine" }
 tempfile = "3"
+
+[dependencies.flashtex-pdf]
+path = "../pdf"

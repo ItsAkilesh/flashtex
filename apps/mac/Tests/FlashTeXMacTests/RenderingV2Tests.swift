@@ -125,9 +125,11 @@ final class RenderingV2Tests: XCTestCase {
     }
 
     func testMathFixtureFailsClosedWithoutTheMathFontBundled() throws {
-        // The math fixture references latinmodern-math.otf, which apps/mac/Fonts does not
-        // ship: the WHOLE frame is refused with the missing hash, never partially drawn.
-        let env = try RenderingV2.decode(try Self.fixture("display-list-v2-math.json"))
+        // display-list-v2-missing-font.json is the math fixture with the math font's
+        // content hash replaced by one no bundled font has (latinmodern-math.otf is
+        // vendored now): the WHOLE frame is refused with the missing hash, never
+        // partially drawn.
+        let env = try RenderingV2.decode(try Self.fixture("display-list-v2-missing-font.json"))
         let math = try XCTUnwrap(env.payload.fonts.first { $0.postscriptName == "LatinModernMath-Regular" })
         XCTAssertThrowsError(try V2Frame.prepare(env, store: PreviewV2Tests.store)) { error in
             let e = error as? RenderingV2.ValidationError

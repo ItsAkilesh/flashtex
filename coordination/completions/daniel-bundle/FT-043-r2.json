@@ -1,0 +1,77 @@
+{
+  "agent_id": "daniel-bundle",
+  "archived_utc": "2026-09-12T09:36:00Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-bundle",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-bundle/project-bundle",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+    "objective": "Implement bounded manifest/import preview with full content hashes and explicit conflict/no-clobber behavior using existing rooted reader; no silent overwrite.",
+    "owned_paths": [
+      "crates/project-bundle"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-043",
+    "timebox_minutes": 40,
+    "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-bundle",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-043": {
+        "acknowledged_utc": "2026-09-12T09:31:51Z",
+        "adaptation": "Reused flashtex_project_files::ProjectRoot (openat/O_NOFOLLOW rooted reader) in place of rev1's canonicalize-based rooting after verifying it preserves (and exceeds) rev1's traversal/absolute-path/symlink-escape rejection; kept two deliberate behavior changes (dot/empty-segment normalization instead of hard rejection, every symlink refused instead of only escaping ones) as tightenings, not gaps, and updated tests accordingly. Added preview_import (no-write, full-hash New/Unchanged/Conflict classification) and apply_import (typed OverwriteNotDecided on an undecided conflict, ConcurrentModification on a race, no force anywhere), plus build_bundle_with_limits for entry-count/total-byte bounds.",
+        "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-bundle/project-bundle",
+    "capabilities": [
+      "rust",
+      "security",
+      "filesystem",
+      "project-bundle"
+    ],
+    "code_revision": "ddd445d421dae99f80c9bed37e253b3c6c69c82e",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+    "next_action": "Await Commander integration; no consumer crate depends on flashtex-project-bundle yet",
+    "reviewed_peers": {
+      "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/project-bundle rev2: ProjectRoot rewritten as a thin adapter over flashtex_project_files' openat(O_NOFOLLOW) rooted reader (no gap found vs rev1's proven traversal/absolute/symlink-escape rejection; reuse is strictly stronger, with two deliberate tightenings/relaxations documented, not regressions); new preview_import (read-only, full SHA-256 both sides, New/Unchanged/Conflict) and apply_import (writes a Conflict only on explicit ImportDecision::Write, absent decision is a typed OverwriteNotDecided error, races refused as ConcurrentModification via Expected::Hash/NewFile compare-and-swap, force never used); build_bundle_with_limits caps entry count and total bytes with typed errors. 43 tests (42 integration + 1 doctest), 0 failed; clippy clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:31:51Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription allocation; no purchases or overages; live plan consumption not exposed to this agent",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 249,
+  "report_path": "coordination/agents/daniel-bundle.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-043",
+  "worker_branch": "agent/daniel-bundle/project-bundle",
+  "worker_report_sha": "654df58d89241b6be5ce397b00fc463b373f65c9"
+}

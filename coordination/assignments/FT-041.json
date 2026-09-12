@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-041",
-  "agent_id": "daniel-snippets",
-  "branch": "agent/daniel-snippets/editor-snippets",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Bounded UTF8-safe editor snippet expansion with numbered placeholders, linked edits and guarded tab navigation; no automatic source mutation. Standalone additive crate only; coordinate consumer contract before integration.",
-  "owned_paths": [
-    "crates/editor-snippets"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-snippets",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-snippets/editor-snippets",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "ad4d89c5a43c67496ec0cffafa5541859c6064b1",
+  "objective": "Guarded snippet insertion: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/editor-snippets"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-041",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:39:24Z"
 }

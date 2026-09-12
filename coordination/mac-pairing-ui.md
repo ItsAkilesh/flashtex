@@ -1,6 +1,6 @@
 # mac-pairing-ui handoff
 
-- Updated UTC: 2026-09-12T08:58Z
+- Updated UTC: 2026-09-12T10:05Z
 - Agent / parent / machine alias: `mac-pairing-ui` (Claude Code subagent) /
   `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Native pairing state recovery and
@@ -15,14 +15,74 @@
   `apps/mac/tools/nearby-client` (mac-nearby-client), parent-retained
   `ShellModel*.swift`, `ContentView.swift`, `PreviewView.swift`,
   `FlashTeXMacApp.swift`, transferred crates.
-- Branch / code revision / main integrated through:
-  `agent/mac-pairing-ui/recovery` from `origin/agent/mac-claude-a/mac-shell`
-  6b43a3a, merged up to 71675cd, then `origin/main` 254f662 merged (worktree
-  `.claude/worktrees/agent-a4c2724311989ec2b`).
-- State: ready for integration (lane + both follow-ups implemented and tested;
-  the incomplete list names what still needs transport-owner APIs)
+- Branch / code revision / main integrated through: refill task on
+  `agent/mac-pairing-ui/events-consumer` from `origin/agent/mac-claude-a/mac-shell`
+  40d53b7 (which already carries the first lane branch
+  `agent/mac-pairing-ui/recovery` fbc3832 integrated by the parent, plus
+  mac-nearby-transport's `onEvent`/`receiving`/`closeConnection`/
+  `beginPairing(resuming:expiresAt:generation:)` and pairs.json v2). Worktree
+  `.claude/worktrees/agent-a4c2724311989ec2b`.
+- State: ready for integration (refill task done: live events wired, receiving
+  cancel, resume through `beginPairing(resuming:)`, persisted-generation stale
+  defence, real-app window evidence)
 
-## Ready behavior and evidence
+## Refill task (events consumer) — what changed on this branch
+
+- `PairingFlowController` subscribes to `NearbyState.onEvent` (chained after
+  any earlier consumer) and drives the machine from the real listener events:
+  `.connectionOpened` → verifying, `.hello(bootstrap:false)` → back to code
+  shown, `.hello(bootstrap:true)` → paired with the generation persisted on the
+  record (`PairRecord.generation`, pairs.json v2; a stored generation from
+  another attempt is stale), `.connectionClosed` → peer gone / receive failed,
+  `.receiving(identity:bytes:expected:)` → `receiving n bytes` (total unknown
+  by design: JSON Lines carry no length hint), `.capture`/`.captureDuplicate`
+  → received, `.captureRefused` → back with the error code, `.failed` → error.
+  The placeholder `observeProgress` and the `$status`/`$lastReceivedCaptureId`
+  string subscriptions are gone (`listener failed:` from a `start()` throw has
+  no event and is still read from `status`).
+- Generations: `showCode()` issues the code through
+  `beginPairing(resuming: Pairing.generateCode(), expiresAt:, generation:
+  journal.nextGeneration())`, so the transport's `Pending.generation`, the
+  stored record and the journal agree. Resume uses the same API with the
+  journaled code/expiry/generation, so `NearbyState.pairingCode` is set for a
+  resumed attempt and the transport runs its own expiry timer.
+- Receiving is cancellable: Cancel (Esc) → `NearbyState.closeConnection(pairId:)`;
+  the flow shows "Receive from X cancelled after n bytes; the companion can
+  resend it with the same capture_id." and the `.connectionClosed` that follows
+  does not overwrite it. A resend replaces the notice with live progress.
+- Refused-capture section (parent's addition) got accessibility label/value and
+  identifiers `nearby.refused.*`.
+- `FLASHTEX_NEARBY_AUTOSTART=code` (NearbyView) shows a code as soon as the
+  window opens, for evidence runs together with the parent's
+  `FLASHTEX_OPEN_WINDOW=nearby`.
+- Tests: `PairingFlowMachineTests` 30 (cancel-in-receiving, refused capture,
+  resend after cancel added), `PairingPersistenceTests` 7,
+  `NearbyViewControllerTests` 11 against the real loopback transport: live
+  verifying/paired with persisted generation; relaunch → resume through
+  `beginPairing(resuming:)` (published code, same generation) → pairs; bootstrap
+  session with a bad proof → `interrupted(peerGone, "pair mismatch")` → resume
+  without a listener restart → pairs; an already paired companion connecting
+  during a code is not the pairing peer; a ghost record with an older stored
+  generation reconnecting is stale; large capture trickled in 16 KiB chunks →
+  `receiving` with growing bytes → received; cancel mid-line → session closed by
+  the Mac, notice kept, pairing kept, capture never lands; a refused capture
+  (junk PNG) ends receiving with `unsupported_image`.
+- Evidence (`docs/evidence/nearby-pairing-2026-09-12/nearby-app-{1..6}-*.png`):
+  the real `.build/debug/FlashTeXMac` launched by `NearbyAppEvidenceTests`
+  (opt-in `FLASHTEX_NEARBY_APP_EVIDENCE_DIR`) with `FLASHTEX_OPEN_WINDOW=nearby
+  FLASHTEX_NO_ACTIVATE=1 FLASHTEX_NEARBY_AUTOSTART=code` and redirected
+  store/journal; the test reads the code from the journal, finds the port with
+  `lsof`, pairs over loopback as "Evidence iPad", trickles a 320×320 noise PNG
+  capture, and captures the "Nearby Companion" window by id at code shown,
+  verifying, paired, receiving (197 KB so far), received, disconnected. The app
+  is never activated. `nearby-{1..8}-*.png` from the first lane are the same
+  view hosted in a test window with synthetic inputs (interrupted/relaunch/error
+  states that the loopback run does not reach).
+- Full suite on this branch: `swift test` with the four release worker
+  binaries → 385 tests, 0 failures, 12 skipped (this lane's opt-in evidence
+  test and pre-existing skips), load average ~27 from other agents.
+
+## Ready behavior and evidence (first lane, unchanged)
 
 - `PairingFlow` (Pairing.swift): explicit pairing state machine — phases `off`,
   `advertising`, `codeShown`, `verifying`, `paired`, `receiving(n/m bytes)`,
@@ -90,31 +150,19 @@ granted), so window evidence comes from the test-hosted view.
 
 ## Incomplete behavior / blockers / needs from others
 
-- `verifying`, `peerGone` during pairing, `receiving n/m bytes` and the
-  `error <reason>` of a closed session are modelled and tested but not fed from
-  the live transport: `NearbyState` publishes no per-connection events or byte
-  progress. Needed from mac-nearby-transport (exact request): on `NearbyState`
-  add `var onEvent: ((NearbyListener.Event) -> Void)?` invoked from
-  `handle(_:)`, and a new `NearbyListener.Event.receiving(identity: String?,
-  bytes: Int, expected: Int?)` emitted from `Connection.consume` when
-  `splitter.pendingBytes` grows (expected stays nil unless the protocol gains a
-  length hint). The controller's `observe(_:)` is the consumer.
-- Resume after relaunch/advertising-off goes through
-  `NearbyState.coordinator.begin(code:lifetime:)` + `startAdvertising()`, so
-  `NearbyState.pairingCode` stays nil for a resumed attempt. Requested API:
-  `NearbyState.beginPairing(resuming code: String, expiresAt: Date)` that sets
-  its published code/expiry and timer like `beginPairing()`.
-- Receiving is not cancellable from the Mac (no API to close one session).
-  Requested: `NearbyState.closeConnection(pairId:)`.
-- Stale-reconnect defence at the durable layer: `PairingCoordinator.confirmPairing`
-  would accept a same-`pair_id` bootstrap session from a replaced pending code
-  only if two codes collide (10^-6); a `generation` on `Pending` and on
-  `PairRecord` (pairs.json v2 via `PairStore.upgrade`) would close that.
-  Not done because the coordinator is transport-owned.
+- Fresh codes are issued through `beginPairing(resuming:expiresAt:generation:)`
+  so the transport uses the journal's generation; `NearbyState` therefore logs
+  "pairing code resumed for …" for a fresh code. Cosmetic; a
+  `beginPairing(generation:)` overload (or a neutral log line) on the transport
+  side would remove it. A code minted by a direct `beginPairing()` call (no
+  caller in the app does this) carries the coordinator's own counter; the
+  controller then takes the next journal generation and the record's persisted
+  generation would not match the window's — documented, not observed.
+- `receiving` never shows a total (`n of m`): the transport reports
+  `expected: nil` because JSON Lines carry no length hint. The machine, the
+  status text and the progress bar already handle a total if the protocol ever
+  adds one.
 - Keychain storage: unchanged (still the 0600 file, per the proposal).
-- Window automation hook: `FLASHTEX_OPEN_WINDOW=nearby` would let evidence be
-  taken from the real app window; exact diff for `FlashTeXMacApp.swift` is in the
-  final report (parent-retained; not applied).
 
 ## Interface changes / consumer actions
 
@@ -144,10 +192,9 @@ thresholds in `docs/context-checkpoints.md`.
 
 ## Dirty files / running jobs / next action
 
-Everything committed and pushed; no background jobs. Next: parent review;
-if mac-nearby-transport adds `onEvent`/`receiving`/`closeConnection`/
-`beginPairing(resuming:)`, wire them in `PairingFlowController` (consumer side
-is already written and tested through `observe(_:)`).
+Everything committed and pushed; no background jobs (the evidence test
+terminates the app it launches). Next: parent review and integration into
+mac-shell.
 
 ## Resume reading list
 

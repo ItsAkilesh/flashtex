@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-math-access",
-  "task_id": "FT-038",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Original semantic math accessibility adapter over published math-layout nodes: structured readable/MathML output with explicit unsupported nodes and source identity. Integrate an explicit published consumer adapter without peer ownership edits",
-      "owned_paths": [
-        "crates/math-accessibility"
-      ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "name": "Accessible structured math: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Accessible structured math: bounded adversarial and stale-identity acceptance tests",
+      "owned_paths": [
+        "crates/math-accessibility"
+      ],
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Original semantic math accessibility adapter over published math-layout nodes: structured readable/MathML output with explicit unsupported nodes and source identity. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "owned_paths": [
-        "crates/math-accessibility"
-      ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "name": "Accessible structured math: actual existing consumer fixture and exact measured limitations",
+      "objective": "Accessible structured math: actual existing consumer fixture and exact measured limitations",
+      "owned_paths": [
+        "crates/math-accessibility"
+      ],
+      "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-038"
 }

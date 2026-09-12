@@ -83,7 +83,10 @@ private struct StatusBanner: View {
                     Text(String(format: "latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if model.previewIsStale {
+                if let historical = model.historicalPreview {
+                    Text(historical.label).foregroundStyle(.purple).bold()
+                        .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
+                } else if model.previewIsStale {
                     Text(model.workerAttached
                          ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
                          : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
@@ -105,7 +108,7 @@ private struct StatusBanner: View {
         let (label, color): (String, Color) = switch model.previewSource {
         case .none: ("NONE", .gray)
         case .fixture: ("FIXTURE", .orange)
-        case .worker: ("WORKER", .green)
+        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
         }
         return Text(label)
             .font(.caption.bold())
@@ -133,14 +136,23 @@ private struct EditorPane: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             HStack {
-                Picker("Document", selection: $model.activePath) {
-                    ForEach(model.documents, id: \.path) { Text($0.path).tag($0.path) }
+                // Switching goes through ProjectDocuments so each document's
+                // caret/selection is kept and a pending insertion is never
+                // applied to the wrong buffer (ProjectDocuments.swift).
+                Picker("Document", selection: Binding(get: { model.activePath },
+                                                      set: { model.project.switchDocument(to: $0) })) {
+                    ForEach(model.project.listing) { doc in
+                        Text(doc.path + (doc.isDirty ? " •" : "") + (doc.durableRevision.map { " r\($0)" } ?? "")).tag(doc.path)
+                    }
                 }
-                .labelsHidden().frame(maxWidth: 220)
+                .labelsHidden().frame(maxWidth: 260)
+                ProjectMenu()
                 if let url = model.documentURL {
-                    Text(url.lastPathComponent + (model.isDirty ? " — edited" : ""))
-                        .font(.caption).foregroundStyle(model.isDirty ? .orange : .secondary)
-                        .help(url.path)
+                    let dirty = model.project.isDirty(model.activePath)
+                    let name = model.activePath == model.project.entryPath ? url.lastPathComponent : model.activePath
+                    Text(name + (dirty ? " — edited" : ""))
+                        .font(.caption).foregroundStyle(dirty ? .orange : .secondary)
+                        .help(model.activePath == model.project.entryPath ? url.path : url.deletingLastPathComponent().appendingPathComponent(model.activePath).path)
                 } else {
                     Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
                 }
@@ -164,6 +176,53 @@ private struct EditorPane: View {
             CaptureBar()
             BridgeBar()
         }
+    }
+}
+
+/// Project membership: open the entry document's `\input`/`\include`
+/// targets, save or detach the active non-entry document. Discovery runs
+/// when the menu opens (bounded lexical scan, ProjectDocuments.swift).
+private struct ProjectMenu: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
+        Menu {
+            let found = model.project.discoverIncludes()
+            if found.isEmpty {
+                Text("No \\input or \\include in \(model.project.entryPath)")
+            }
+            ForEach(Array(found.enumerated()), id: \.offset) { _, d in
+                switch d.state {
+                case .available:
+                    Button("Open \(d.resolvedPath ?? d.reference.argument)") {
+                        Task { await model.project.openInclude(d.reference.argument) }
+                    }
+                case .open:
+                    Button("Show \(d.resolvedPath ?? d.reference.argument)") {
+                        if let path = d.resolvedPath { model.project.switchDocument(to: path) }
+                    }
+                case .unresolvable(let why):
+                    Text("\\\(d.reference.kind.rawValue){\(d.reference.argument)}: \(why)")
+                }
+            }
+            if !found.isEmpty, found.contains(where: { $0.state == .available }) {
+                Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
+            }
+            if model.activePath != model.project.entryPath {
+                Divider()
+                Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
+                    .disabled(model.documentURL == nil)
+                Button("Detach \(model.activePath)") {
+                    Task {
+                        if case .refused(let why) = await model.project.detachDocument(model.activePath) { model.captureNote = why }
+                    }
+                }
+            }
+        } label: {
+            Label("Project", systemImage: "doc.on.doc")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .help(model.project.status)
     }
 }
 
@@ -263,6 +322,9 @@ private struct PreviewPane: View {
                         if let line = EditorDiagnostics.recoveryLine(recovery: d.recovery, status: model.result?.status ?? .ok) {
                             Text("↳ \(line)").font(.caption).foregroundStyle(d.recovery == nil ? .tertiary : .secondary)
                         }
+                        if let explain = model.explanations.explanation(resultID: model.resultID, index: i)?.line {
+                            Text("↳ \(explain)").font(.caption).foregroundStyle(.secondary)
+                        }
                         if let result = model.result,
                            let id = EditorDiagnostics.identity(resultID: model.resultID, index: i, in: result),
                            model.editorMarkReport.staleIdentities.contains(id) {
@@ -289,7 +351,7 @@ private struct Footer: View {
 
     var body: some View {
         HStack {
-            Text(model.navigationNote ?? model.editorMarkReport.staleNote
+            Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus
                  ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()

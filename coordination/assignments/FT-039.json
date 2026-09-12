@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-039",
-  "agent_id": "daniel-spelling",
-  "branch": "agent/daniel-spelling/spellcheck",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Offline bounded source-aware spelling suggestions with caller-supplied dictionary and excluded math/command ranges, exact revisions and no network. Standalone additive crate only; coordinate consumer contract before integration.",
-  "owned_paths": [
-    "crates/spellcheck"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-spelling",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-spelling/spellcheck",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "a7168288b7baf836d3048199981fa7fb78bd1641",
+  "objective": "Revision-bound spelling suggestions: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/spellcheck"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-039",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:28:42Z"
 }

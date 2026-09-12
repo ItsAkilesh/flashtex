@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-templates",
-  "task_id": "FT-040",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Original undergraduate project templates and bounded manifest/instantiation API, explicit package support requirements and no arbitrary file overwrite. Integrate an explicit published consumer adapter without peer ownership edits",
-      "owned_paths": [
-        "crates/project-templates"
-      ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "name": "Recoverable project template creation: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Recoverable project template creation: bounded adversarial and stale-identity acceptance tests",
+      "owned_paths": [
+        "crates/project-templates"
+      ],
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Original undergraduate project templates and bounded manifest/instantiation API, explicit package support requirements and no arbitrary file overwrite. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "owned_paths": [
-        "crates/project-templates"
-      ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "name": "Recoverable project template creation: actual existing consumer fixture and exact measured limitations",
+      "objective": "Recoverable project template creation: actual existing consumer fixture and exact measured limitations",
+      "owned_paths": [
+        "crates/project-templates"
+      ],
+      "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-040"
 }

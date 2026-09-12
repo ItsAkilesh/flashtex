@@ -20,17 +20,33 @@ enum V2Source: Equatable {
     /// `File > Open Display List (v2)…` / `FLASHTEX_V2_FILE`.
     case file(URL)
     /// The negotiated `display_list` sibling line of a `compile_result`
-    /// (docs/contracts/runtime-v1-display-list-v2.md): request id, project, revision.
-    case worker(requestID: String, projectId: String, revision: Int)
+    /// (docs/contracts/runtime-v1-display-list-v2.md): request id, project,
+    /// revision, and the line's bytes (kept for the current frame so tools that
+    /// take a list file — the exact PDF export — can run on a live frame).
+    case worker(requestID: String, projectId: String, revision: Int, line: Data)
 
     var label: String {
         switch self {
         case .file(let u): u.lastPathComponent
-        case .worker(let id, _, let revision): "live \(id) (revision \(revision))"
+        case .worker(let id, _, let revision, _): "live \(id) (revision \(revision))"
         }
     }
     var url: URL? { if case .file(let u) = self { u } else { nil } }
     var isLive: Bool { if case .worker = self { true } else { false } }
+
+    /// A file holding the list: the opened file, or the live line written to a
+    /// temporary file named by request id and revision.
+    func listFileURL() throws -> URL {
+        switch self {
+        case .file(let u): return u
+        case .worker(let id, _, let revision, let line):
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-v2-live", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent("\(id)-r\(revision).json")
+            try line.write(to: url, options: .atomic)
+            return url
+        }
+    }
 }
 
 /// The negotiated live route: `display-list-v2` in `layout_capabilities`
@@ -213,7 +229,7 @@ extension ShellModel {
         }
         V2Live.note(accepted: true)
         let expectedProject = result.projectId, expectedRevision = result.revision
-        startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision), completion: completion) {
+        startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision, line: line), completion: completion) {
             switch V2Loader.prepare(data: line) {
             case .loaded(let frame) where frame.list.projectId != expectedProject || frame.list.revision != expectedRevision:
                 return .failed(RenderingV2.ValidationError(code: "correlation_mismatch",
@@ -487,7 +503,7 @@ enum V2ParityEvidence {
         let scale = Double(ProcessInfo.processInfo.environment["FLASHTEX_V2_PARITY_SCALE"] ?? "") ?? 2
         V2Loader.queue.async {
             var out = URL(fileURLWithPath: dir)
-            if case .worker(let id, _, let revision) = source { out.appendPathComponent("live-\(id)-r\(revision)") }
+            if case .worker(let id, _, let revision, _) = source { out.appendPathComponent("live-\(id)-r\(revision)") }
             try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             let report = V2Parity.compare(frame: frame, scale: scale) { page in
                 write(page.preview, to: out.appendingPathComponent("page-\(page.page)-preview.png"))
