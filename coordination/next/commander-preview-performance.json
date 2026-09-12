@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-preview-performance",
-  "task_id": "FT-048",
   "assignment_path": "coordination/assignments/FT-048.json",
-  "revision": 1,
   "branch": "agent/commander-preview-performance/preview-performance",
-  "updated_utc": "2026-09-12T08:57:30.114547+00:00"
+  "previous_report_sha": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
+  "revision": 2,
+  "schema_version": 1,
+  "task_id": "FT-048",
+  "updated_utc": "2026-09-12T09:00:59Z"
 }
