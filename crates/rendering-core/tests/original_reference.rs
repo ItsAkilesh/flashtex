@@ -224,7 +224,7 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
     .unwrap();
     assert_eq!(
         escaped.export_searchable(8 * 1024 * 1024).unwrap().bytes,
-        include_bytes!("fixtures/original-reference/escaped-searchable.pdf")
+        include_bytes!("fixtures/pdf-subset-20e5277/escaped.pdf")
     );
 
     let unavailable = PipelineCff::bind(
@@ -244,7 +244,7 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
     );
     assert_eq!(
         original_pdf.bytes,
-        include_bytes!("fixtures/original-reference/65dbe7d-clean-searchable.pdf")
+        include_bytes!("fixtures/pdf-subset-20e5277/plain.pdf")
     );
 
     // Explicit consumer extraction fixture with a real empty-outline space,
