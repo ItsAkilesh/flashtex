@@ -8,15 +8,15 @@
     "appkit",
     "xctest"
   ],
-  "code_revision": "cd58fc2e",
+  "code_revision": "14c0ac70",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005",
-  "next_action": "Implement DirtySnapshots.swift (app-support dirty snapshots offered on reopen) + DirtySnapshotsTests with the real project-files helper and preview controller",
+  "next_action": "Parent applies the FlashTeXMacApp.swift diff (Don't Save \u2192 preserveDirtyBuffers; File > Restore Unsaved Snapshot\u2026) and merges agent/mac-document-files-2/dirty-preserve into mac-shell",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
       "adaptation": "Branch base; DocumentFiles/ProjectDocuments lanes merged there, edited in place",
@@ -25,12 +25,12 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Coverage audit done (coordination/mac-document-files-2.md); implementing durable dirty snapshots",
+  "state": "ready_for_integration",
+  "summary": "Durable dirty-text snapshots (DirtySnapshots.swift) offered on reopen; exact receipt guard on the member export route (ProjectDocuments.exportVerdict); DispatchSource DocumentWatcher driving refreshDiskStatus. 10 new tests (+1 load-gated) green with real helpers; file-related suites green except two pre-existing load flakes (verified on base sources).",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T16:08:27Z",
+  "updated_utc": "2026-09-12T16:36:09Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "see coordination/mac-document-files-2.md Evidence; owned + neighbouring suites 41/41 (run 1), 82 tests/2 pre-existing load flakes (run 3); no full swift test (load 30-80)",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
