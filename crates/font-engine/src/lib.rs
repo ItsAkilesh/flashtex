@@ -41,7 +41,9 @@ use std::path::{Path, PathBuf};
 
 pub use core14::Core14Face;
 pub use shape::{Cluster, Glyph, MissingGlyph, ShapeOptions, Shaped};
-pub use truetype::{Outlines, TrueTypeFace};
+pub use truetype::{
+    CollectionLayout, FaceLayout, Outlines, TableRange, TrueTypeFace, collection_layout,
+};
 
 /// Errors from loading, parsing, shaping or subsetting.
 #[derive(Debug, Clone, PartialEq, Eq)]

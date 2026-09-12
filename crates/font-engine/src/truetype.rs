@@ -24,6 +24,203 @@ use crate::{
     Error, Face, FontId, FontSource, GlyphId, KerningSource, Style, Unsupported, VerticalMetrics,
 };
 
+/// The byte range `[offset, offset + length)` one table directory record
+/// claims within a font program, alongside its 4-byte tag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableRange {
+    pub tag: [u8; 4],
+    pub offset: usize,
+    pub length: usize,
+}
+
+impl TableRange {
+    fn end(&self) -> usize {
+        self.offset + self.length
+    }
+
+    fn overlaps(&self, other: &TableRange) -> bool {
+        self.offset < other.end() && other.offset < self.end()
+    }
+}
+
+/// One face's table directory: where its `sfnt` header begins in the
+/// program, and the validated ranges of every table it lists.
+#[derive(Debug, Clone)]
+pub struct FaceLayout {
+    pub face_index: u32,
+    pub sfnt_offset: usize,
+    pub tables: Vec<TableRange>,
+}
+
+/// Validated face/table-directory layout of a font program: one face for a
+/// plain `sfnt`, or every face of a `ttcf` collection.
+///
+/// This walks the same table-directory bytes [`TrueTypeFace::parse`] reads,
+/// but only the directory: tags, offsets and lengths, not table contents. It
+/// adds the checks a bare directory walk skips:
+///
+/// * every count (`numFonts`, `numTables`) is checked against the actual
+///   buffer length with checked arithmetic *before* any `Vec` sized by that
+///   count is allocated, so a hostile header claiming billions of faces or
+///   tables fails fast instead of attempting a huge allocation;
+/// * within one face, a repeated table tag is rejected
+///   ([`Error::Malformed`]);
+/// * within one face, two tables whose byte ranges intersect at all are
+///   rejected — real fonts never lay tables on top of each other;
+/// * across two different faces of the same collection, tables at the
+///   *exact* same `(offset, length)` are accepted as the normal, legitimate
+///   data sharing a `ttcf` uses to avoid duplicating tables per face; any
+///   other intersection (partial overlap, or overlap with mismatched
+///   extents) is rejected as corruption.
+pub fn collection_layout(data: &[u8]) -> Result<CollectionLayout, Error> {
+    let tag = u32_at(data, 0)?;
+    let mut faces = Vec::new();
+    if tag == 0x7474_6366 {
+        // 'ttcf'
+        let n = u32_at(data, 8)? as usize;
+        let dir_bytes = n
+            .checked_mul(4)
+            .ok_or_else(|| Error::Malformed("ttc face count overflows directory size".into()))?;
+        let needed = 12usize
+            .checked_add(dir_bytes)
+            .ok_or_else(|| Error::Malformed("ttc face count overflows directory size".into()))?;
+        if needed > data.len() {
+            return Err(Error::Malformed(format!(
+                "ttc claims {n} faces but its {needed}-byte offset table overruns the \
+                 {}-byte file",
+                data.len()
+            )));
+        }
+        faces.reserve(n);
+        for i in 0..n {
+            let sfnt_offset = u32_at(data, 12 + 4 * i)? as usize;
+            faces.push(face_layout(data, i as u32, sfnt_offset)?);
+        }
+        validate_cross_face_sharing(&faces)?;
+    } else {
+        faces.push(face_layout(data, 0, 0)?);
+    }
+    Ok(CollectionLayout { faces })
+}
+
+/// Layout of every face of a font program; see [`collection_layout`].
+#[derive(Debug, Clone)]
+pub struct CollectionLayout {
+    pub faces: Vec<FaceLayout>,
+}
+
+fn face_layout(data: &[u8], face_index: u32, sfnt_offset: usize) -> Result<FaceLayout, Error> {
+    let n_tables = usize::from(u16_at(data, sfnt_offset + 4)?);
+    let dir_bytes = n_tables.checked_mul(16).ok_or_else(|| {
+        Error::Malformed(format!(
+            "face {face_index} table count overflows directory size"
+        ))
+    })?;
+    let needed = sfnt_offset
+        .checked_add(12)
+        .and_then(|v| v.checked_add(dir_bytes))
+        .ok_or_else(|| {
+            Error::Malformed(format!(
+                "face {face_index} table count overflows directory size"
+            ))
+        })?;
+    if needed > data.len() {
+        return Err(Error::Malformed(format!(
+            "face {face_index} claims {n_tables} tables but its {needed}-byte directory \
+             overruns the {}-byte file",
+            data.len()
+        )));
+    }
+    let mut tables: Vec<TableRange> = Vec::with_capacity(n_tables);
+    for i in 0..n_tables {
+        let rec = sfnt_offset + 12 + 16 * i;
+        let record_tag: [u8; 4] = slice(data, rec, 4)?.try_into().unwrap();
+        let offset = u32_at(data, rec + 8)? as usize;
+        let length = u32_at(data, rec + 12)? as usize;
+        let end = offset.checked_add(length).ok_or_else(|| {
+            Error::Malformed(format!(
+                "face {face_index} table {} range overflows",
+                tag_str(&record_tag)
+            ))
+        })?;
+        if end > data.len() {
+            return Err(Error::Malformed(format!(
+                "face {face_index} table {} overruns file",
+                tag_str(&record_tag)
+            )));
+        }
+        if tables.iter().any(|t| t.tag == record_tag) {
+            return Err(Error::Malformed(format!(
+                "face {face_index} has duplicate table tag {}",
+                tag_str(&record_tag)
+            )));
+        }
+        let candidate = TableRange {
+            tag: record_tag,
+            offset,
+            length,
+        };
+        if let Some(existing) = tables.iter().find(|t| candidate.overlaps(t)) {
+            return Err(Error::Malformed(format!(
+                "face {face_index} tables {} ({}..{}) and {} ({}..{}) overlap",
+                tag_str(&existing.tag),
+                existing.offset,
+                existing.end(),
+                tag_str(&record_tag),
+                candidate.offset,
+                candidate.end(),
+            )));
+        }
+        tables.push(candidate);
+    }
+    Ok(FaceLayout {
+        face_index,
+        sfnt_offset,
+        tables,
+    })
+}
+
+/// Rejects any cross-face table overlap except an exact `(offset, length)`
+/// match, which is the legitimate table sharing a `ttcf` collection uses.
+fn validate_cross_face_sharing(faces: &[FaceLayout]) -> Result<(), Error> {
+    let mut all: Vec<(u32, &TableRange)> = Vec::new();
+    for f in faces {
+        for t in &f.tables {
+            all.push((f.face_index, t));
+        }
+    }
+    for i in 0..all.len() {
+        for j in (i + 1)..all.len() {
+            let (fa, ta) = all[i];
+            let (fb, tb) = all[j];
+            if fa == fb {
+                continue; // already checked within face_layout
+            }
+            let identical = ta.offset == tb.offset && ta.length == tb.length;
+            if identical {
+                continue; // legitimate shared table across faces
+            }
+            if ta.overlaps(tb) {
+                return Err(Error::Malformed(format!(
+                    "faces {fa} and {fb} have inconsistently overlapping tables {} ({}..{}) \
+                     and {} ({}..{})",
+                    tag_str(&ta.tag),
+                    ta.offset,
+                    ta.end(),
+                    tag_str(&tb.tag),
+                    tb.offset,
+                    tb.end(),
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn tag_str(tag: &[u8; 4]) -> String {
+    String::from_utf8_lossy(tag).into_owned()
+}
+
 /// Which outline format the program carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outlines {
