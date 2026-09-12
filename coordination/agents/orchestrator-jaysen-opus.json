@@ -1,0 +1,37 @@
+{
+  "agent_id": "orchestrator-jaysen-opus",
+  "allocation_id": "jaysen-max20x-commander-standby",
+  "assignment_acknowledgements": {
+    "FT-028": {
+      "acknowledged_utc": "2026-09-12T07:20:03Z",
+      "adaptation": "Read FT-028 r1 on main 41b7fde and Astra commits 0512585/23f1dd1/d128b48 plus docs/commander-failover.md. Moved deliverables to owned path tools/commander-standby; monitor.sh consumes witness branch agent/orchestrator-witness/astra-30612338; standby_gate.py is a fail-closed deterministic gate (15 tests) whose one-shot --once prints the would-be claim and --prepare requires an exact human phrase and only creates a LOCAL commit, never a push. Read-only for main/control/authority/queues; no dispatch. Not implemented: end-to-end synthetic handoff with a real Linux receipt (witness transport marked unverified by its author).",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 1
+    }
+  },
+  "branch": "agent/orchestrator-jaysen-opus/standby",
+  "capabilities": [
+    "orchestration-standby"
+  ],
+  "code_revision": "2fd302675040308c2b07d346c07389a051518979",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Parent mac-claude-a keeps monitor running; this subagent stops after push. Re-invoke only on witness receipt; human phrase required for any local claim prepare; push remains manual non-force.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Reviewed Astra 0512585/23f1dd1/d128b48/41b7fde and docs/commander-failover.md: moved to tools/commander-standby; gate consumes agent/orchestrator-witness/astra-30612338 receipt against failover.json pin; prepare requires human phrase; no global write",
+      "reviewed_utc": "2026-09-12T07:20:35Z",
+      "sha": "2fd302675040308c2b07d346c07389a051518979"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-028 r1 standby: read-only monitor (tools/commander-standby/monitor.sh) consuming witness branch, fail-closed standby_gate.py with 15 passing tests, revival packet template, standby report. No main/control/authority/queue/next writes; no dispatch; no claim executed. Gate verdict today: no_action (no_terminal_receipt_published).",
+  "tool": "Claude Code Opus subagent (standby, parent mac-claude-a)",
+  "updated_utc": "2026-09-12T07:20:35Z",
+  "usage": {
+    "evidence": "tools/commander-standby/test_standby_gate.py: 15 tests OK; monitor samples in coordination/orchestrator-jaysen-opus.md",
+    "status": "claude-mac20x shared Max20x allowance on mac-m1max-a; numeric quota unknown; no purchases"
+  }
+}
