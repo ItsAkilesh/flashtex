@@ -12,10 +12,18 @@ import FlashTeXProtocol
 final class DisplayListDeltaTests: XCTestCase {
     // MARK: a tiny line-protocol driver (no shell model, no UI)
 
+    /// Reads on a background thread; `readLine(timeout:)` is genuinely
+    /// deadline-bounded (semaphore wait), so a producer that never writes a
+    /// second line (an ordinary v1 compiler) makes the test SKIP, never stall
+    /// (recovery issue #50).
     final class Worker {
+        struct Timeout: Error {}
         let process = Process()
         let stdin = Pipe(), stdout = Pipe()
-        var buffer = Data()
+        private let lock = NSLock()
+        private var buffer = Data()
+        private var closed = false
+        private let available = DispatchSemaphore(value: 0)
         init(_ url: URL) throws {
             process.executableURL = url
             process.standardInput = stdin
@@ -25,22 +33,42 @@ final class DisplayListDeltaTests: XCTestCase {
             env["FLASHTEX_NO_ACTIVATE"] = "1"
             process.environment = env
             try process.run()
+            let reader = stdout.fileHandleForReading
+            Thread.detachNewThread { [weak self] in
+                while true {
+                    let chunk = reader.availableData
+                    guard let self else { return }
+                    self.lock.lock()
+                    if chunk.isEmpty { self.closed = true } else { self.buffer.append(chunk) }
+                    self.lock.unlock()
+                    self.available.signal()
+                    if chunk.isEmpty { return }
+                }
+            }
         }
-        deinit { if process.isRunning { process.terminate() } }
+        deinit {
+            try? stdin.fileHandleForWriting.close()
+            if process.isRunning { process.terminate() }
+        }
         func send(_ request: RuntimeV1.CompileRequest, id: String) throws {
             try stdin.fileHandleForWriting.write(contentsOf: try RuntimeV1.encodeLine(RuntimeV1.compileEnvelope(id: id, request)))
         }
-        func readLine(timeout: TimeInterval = 120) throws -> Data {
-            let deadline = Date().addingTimeInterval(timeout)
+        /// The next line, or `Timeout` when none arrives within `timeout` seconds
+        /// (also when the producer closes stdout).
+        func readLine(timeout: TimeInterval = 20) throws -> Data {
+            let deadline = DispatchTime.now() + timeout
             while true {
+                lock.lock()
                 if let nl = buffer.firstIndex(of: 0x0A) {
                     let line = buffer.subdata(in: buffer.startIndex..<nl)
                     buffer.removeSubrange(buffer.startIndex...nl)
+                    lock.unlock()
                     return line
                 }
-                guard Date() < deadline else { throw XCTSkip("producer did not answer within \(timeout) s") }
-                let chunk = stdout.fileHandleForReading.availableData
-                if chunk.isEmpty { usleep(5_000) } else { buffer.append(chunk) }
+                let isClosed = closed
+                lock.unlock()
+                if isClosed { throw Timeout() }
+                if available.wait(timeout: deadline) == .timedOut { throw Timeout() }
             }
         }
     }
@@ -74,34 +102,51 @@ final class DisplayListDeltaTests: XCTestCase {
         var a: Worker, b: Worker
     }
 
-    /// Two real workers, or a skip when the producer does not speak the capability.
+    /// Two real workers, or a skip within seconds when the producer does not
+    /// speak the capability: the negotiation ECHO of each probe is checked
+    /// before any sibling is awaited, so an ordinary v1 compiler (no
+    /// `display-list-v2`) and a producer without `-delta` both skip finitely.
     func session() throws -> Session {
         guard let path = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], FileManager.default.isExecutableFile(atPath: path) else { throw XCTSkip("set FLASHTEX_COMPILER to a delta-capable flashtex-render") }
         let url = URL(fileURLWithPath: path)
+        if url.lastPathComponent == "flashtex-compiler" { throw XCTSkip("FLASHTEX_COMPILER is the plain compiler; the delta gate needs flashtex-render from agent/mac-render-pipeline/delta-proposal") }
         guard V2FontStore.shared.fonts.contains(where: { $0.url.lastPathComponent.hasPrefix("lmroman12") }) else { throw XCTSkip("Latin Modern not bundled") }
         let a = try Worker(url), b = try Worker(url)
-        // capability probe: the first delta-mode reply must be a full sibling; a producer
-        // without the capability answers full too, so probe the SECOND reply with an ack.
+        func echo(_ w: Worker, _ id: String) throws -> [String] {
+            let line: Data
+            do { line = try w.readLine(timeout: 20) } catch { throw XCTSkip("producer did not answer \(id) within 20 s") }
+            guard let result = try? RuntimeV1.decodeCompileResult(line), result.id == id else { throw XCTSkip("producer's first line for \(id) is not its compile_result") }
+            return result.payload.layoutCapabilities ?? []
+        }
         try a.send(Self.request(Self.text0, revision: 1, delta: true, ack: nil), id: "probe-1")
-        let r1 = try a.readLine(); let s1 = try a.readLine()
+        guard try echo(a, "probe-1").contains("display-list-v2") else { throw XCTSkip("producer does not offer display-list-v2 (no sibling to wait for)") }
+        let s1: Data
+        do { s1 = try a.readLine(timeout: 20) } catch { throw XCTSkip("no display_list sibling within 20 s") }
         guard let h1 = RenderingV2Fast.header(s1), h1.type == "display_list" else { throw XCTSkip("no display_list sibling from the producer") }
         let (env1, pb1) = try RenderingV2Fast.envelopeWithPageBytes(s1)
         guard let inst = DisplayListDelta.installed(from: env1, pageBytes: pb1, lineBytes: s1.count) else { throw XCTSkip("probe frame over the retention cap") }
-        _ = r1
         try a.send(Self.request(Self.edits()[0], revision: 2, delta: true, ack: inst.acknowledgement), id: "probe-2")
-        _ = try a.readLine(); let s2 = try a.readLine()
-        guard let h2 = RenderingV2Fast.header(s2), h2.type == DisplayListDelta.messageType else {
-            throw XCTSkip("FLASHTEX_COMPILER does not emit display_list_delta (build flashtex-render from agent/mac-render-pipeline/delta-proposal)")
+        let echo2 = try echo(a, "probe-2")
+        guard echo2.contains(DisplayListDelta.capability) else {
+            throw XCTSkip("producer does not offer display-list-v2-delta (echoed \(echo2)); build flashtex-render from agent/mac-render-pipeline/delta-proposal")
         }
+        let s2: Data
+        do { s2 = try a.readLine(timeout: 20) } catch { throw XCTSkip("no display_list_delta sibling within 20 s") }
+        guard let h2 = RenderingV2Fast.header(s2), h2.type == DisplayListDelta.messageType else { throw XCTSkip("echoed -delta but the sibling is not a display_list_delta") }
         return Session(a: a, b: b)
+    }
+
+    /// Bounded read that converts a timeout into a finite skip.
+    func line(_ w: Worker, _ what: String) throws -> Data {
+        do { return try w.readLine(timeout: 60) } catch { throw XCTSkip("producer did not deliver \(what) within 60 s") }
     }
 
     /// One full install on worker A (fresh chain start), returning the installed base.
     func install(_ s: Session, text: String, revision: Int, id: String) throws -> DisplayListDelta.Installed {
         try s.a.send(Self.request(text, revision: revision, delta: false, ack: nil), id: id) // clears the producer snapshot
-        _ = try s.a.readLine(); _ = try s.a.readLine()
+        _ = try line(s.a, "\(id) result"); _ = try line(s.a, "\(id) sibling")
         try s.a.send(Self.request(text, revision: revision, delta: true, ack: nil), id: id + "-full")
-        _ = try s.a.readLine(); let line = try s.a.readLine()
+        _ = try line(s.a, "\(id)-full result"); let line = try line(s.a, "\(id)-full sibling")
         let (env, pb) = try RenderingV2Fast.envelopeWithPageBytes(line)
         try RenderingV2.validate(env.payload)
         return try XCTUnwrap(DisplayListDelta.installed(from: env, pageBytes: pb, lineBytes: line.count))
@@ -118,12 +163,12 @@ final class DisplayListDeltaTests: XCTestCase {
     /// Next edit on the chain: worker A answers a delta (asserted), worker B the fresh full line.
     func step(_ s: Session, installed: DisplayListDelta.Installed, text: String, revision: Int, id: String) throws -> Step {
         try s.a.send(Self.request(text, revision: revision, delta: true, ack: installed.acknowledgement), id: id)
-        let result = try s.a.readLine(); let sibling = try s.a.readLine()
+        let result = try line(s.a, "\(id) result"); let sibling = try line(s.a, "\(id) sibling")
         let echo = try RuntimeV1.decodeCompileResult(result).payload.layoutCapabilities ?? []
         XCTAssertTrue(echo.contains(DisplayListDelta.capability), "\(id): producer echoed \(echo)")
         let d = try RenderingV2Fast.delta(sibling, maxPages: DisplayListDelta.maxSnapshotPages)
         try s.b.send(Self.request(text, revision: revision, delta: false, ack: nil), id: id)
-        _ = try s.b.readLine(); let freshLine = try s.b.readLine()
+        _ = try line(s.b, "\(id) fresh result"); let freshLine = try line(s.b, "\(id) fresh sibling")
         let (fresh, fpb) = try RenderingV2Fast.envelopeWithPageBytes(freshLine)
         return Step(delta: d, deltaLine: sibling, freshLine: freshLine, fresh: fresh, freshPageBytes: fpb)
     }
@@ -195,7 +240,7 @@ final class DisplayListDeltaTests: XCTestCase {
         let installed = try install(s, text: Self.text0, revision: 30, id: "c2-0")
         _ = try step(s, installed: installed, text: Self.edits()[0], revision: 31, id: "c2-1") // producer now holds c2-1
         try s.a.send(Self.request(Self.edits()[1], revision: 32, delta: true, ack: installed.acknowledgement), id: "c2-2")
-        let result = try s.a.readLine(); let sibling = try s.a.readLine()
+        let result = try line(s.a, "c2-2 result"); let sibling = try line(s.a, "c2-2 sibling")
         let echo = try RuntimeV1.decodeCompileResult(result).payload.layoutCapabilities ?? []
         XCTAssertFalse(echo.contains(DisplayListDelta.capability))
         XCTAssertEqual(RenderingV2Fast.header(sibling)?.type, "display_list")
