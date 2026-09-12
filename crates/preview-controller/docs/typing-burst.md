@@ -249,3 +249,34 @@ For the measured prefix, optional writes total17.95ms and receiver JSON decoding
 model or a native paint measurement. The reopened timeout cause remains unknown;
 these prefix timings do not explain it. The original partial output must be
 investigated before calling the full experiment successful.
+
+## Proxy failure propagation and reopen evidence
+
+The original proxy output thread could raise on a producer read, capture write or
+forward write while its main thread remained waiting for input. That is a concrete
+error-propagation gap, not an established explanation of run68918.
+
+The output pump now reports a scalar stage/error type/errno, attempts a sidecar and
+stderr record, and exits126 on an exception; the existing Linux parent-death signal
+terminates its producer. Exception message text is omitted. Deterministic tests
+cover read failure with process termination, a partial capture-write ENOSPC error
+that does not forward the uncaptured frame, forwarding failure after original
+capture, and unchanged original bytes including partial EOF. Four tests pass.
+
+Reopen now retains original helper event lines, raw stderr (up to1MiB, explicit
+truncation flag) and bounded receiver timing records even when snapshot acceptance
+fails. The normal original measurement and failed archive remain unchanged. No
+producer/typing rerun was performed for this change.
+
+A later independent Commander decompression under /tmp encountered OSError122
+(Disk quota exceeded). That later observation does not establish the earlier
+capture's cause; filesystem-wide free space is not quota evidence. Small fault
+tests used a temporary directory on /home to avoid repeating that storage failure.
+
+Review added a fifth test for an already-full diagnostic pipe: error logging uses
+an independently opened nonblocking Linux pipe descriptor and leaves inherited
+flags unchanged. The proxy does not wait for that pipe before exit. Regular-file
+and sidecar I/O remain ordinary filesystem operations, not hard real-time bounds.
+Reopen capture status explicitly labels its stderr as a pre-stop snapshot; late
+shutdown stderr may be missing. Child termination is checked separately from
+reaping by the OS, and no remote/native recovery acceptance is implied.
