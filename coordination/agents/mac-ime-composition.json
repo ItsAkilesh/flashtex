@@ -9,15 +9,15 @@
     "xctest",
     "nstextinputclient"
   ],
-  "code_revision": "5bc3fc0f",
+  "code_revision": "7062c55a",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 75
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "as merged into origin/agent/mac-claude-a/mac-shell 5bc3fc0f",
-  "next_action": "Coverage audit written; implementing IMEHarness + IMECompositionTests against the real preview controller",
+  "next_action": "Parent merges agent/mac-ime-composition/ime (test-only: IMEHarness.swift, IMECompositionTests.swift, evidence) into mac-shell; no parent-retained file diffs",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
       "adaptation": "Branched from 5bc3fc0f; reuses the SourceEditorViewTests hosting pattern (NSHostingView, never key) and the EditHistoryTests real-helper fixture",
@@ -26,12 +26,12 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Gap 1 coverage audit: editor-side IME behaviour is covered with the fake worker; nothing exercises marked text against the real preview controller (document/file_status, preview mid-composition, kill-by-pid mid-composition, undo/history_status). Implementing the uncovered part as new test files only.",
+  "state": "ready_for_integration",
+  "summary": "IME composition verified against the real preview controller + compiler: marked text never durable (document/file_status per step), one commit = one revision/durable edit/ledger entry/undo step, preview mid-composition leaves marked range+caret intact, SIGKILL by launched pid mid-composition keeps the composition and the commit is durable exactly once after reattach, cancel leaves helper+ledger untouched; JA/ZH (surrogate pair)/KO with UTF-8 byte checks. 4 tests, 4/4 x2 under load.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T13:45:00Z",
+  "updated_utc": "2026-09-12T13:41:00Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "swift build --build-tests clean; IMECompositionTests 4/4 in runs 2 and 3 (2.9 s) with real helpers under 1-min load 16-27 (parent heavy-build window; not isolated timing); XCTSkip without env verified; full swift test not run per parent notice",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }
