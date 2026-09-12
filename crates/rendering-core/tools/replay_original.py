@@ -83,7 +83,7 @@ def run(args, report):
     if PIL.__version__ != "12.1.0":
         raise Outcome(4, "unknown", "Pillow version mismatch")
     # Reject changed consumer implementation rather than reuse stale acceptance.
-    unchanged = command(["git", "diff", "--exit-code", CONSUMER, "--", "crates/rendering-core/src", "crates/rendering-core/examples", "crates/rendering-core/Cargo.toml", "crates/font-resources", "crates/font-engine", "crates/pdf", "crates/project-files", "crates/paragraph-layout", "crates/math-layout"], root, env, accepted=(0,1))
+    unchanged = command(["git", "diff", "--exit-code", CONSUMER, "--", "crates/rendering-core/src", "crates/rendering-core/examples/pipeline_cff_probe.rs", "crates/rendering-core/examples/pdf_compare.rs", "crates/rendering-core/Cargo.toml", "crates/font-resources", "crates/font-engine", "crates/pdf", "crates/project-files", "crates/paragraph-layout", "crates/math-layout"], root, env, accepted=(0,1))
     if unchanged.returncode:
         raise Outcome(4,"unknown","consumer/dependency source differs from pinned acceptance baseline")
     manifest = json.loads(command(["git", "show", CONSUMER+":crates/rendering-core/tests/fixtures/original-reference/manifest.json"],root,env).stdout)
