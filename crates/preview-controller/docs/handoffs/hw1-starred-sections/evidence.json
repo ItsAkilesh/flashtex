@@ -4,7 +4,7 @@
   "full_suite": "41 library + 1 scaling pass; initial integration setup failure resolved; all49 integration pass,3 ignored",
   "files": {
     "candidate.patch": "32d96a63b0d84f902c80df6eddc2e942bee9dcfb94570f2d4bfb665068f3481b",
-    "README.md": "f31c05633a88efa775c84a3f696850e1bc90fb7b05118d8900c5a20206febf0e",
+    "README.md": "8ac931434713708c7c1851803c8138bc4c3e7782c203442c316c867cb2e7dd0c",
     "red.log": "c589aadfccb13e874c23e0a0c0fe9f184936b8f1d2b8b17eb7c6aea0459b1be4",
     "focused.log": "a84aeced90a61fcdf5e0a1009015cd3fd007c155c833398d9969ffa17a56879c",
     "green.log": "78f2149f8604d434847902f80a4f185e1a07aab5fa956a17466b0063a3881f9b",
@@ -15,8 +15,10 @@
     "base.jsonl.gz": "96f965da03adebbdc9db270355bcf6b18fc822d9276d22c5df65ab41290c5ecd",
     "candidate.jsonl.gz": "85d2086777b2aaeb4c53aaebd10b9b86bf030c9c702d24224dcdfa59fb715c04",
     "corrected.jsonl.gz": "6227774a2925edfafbd86ed1219982415ab9800f7cde51d0eb7a74dc7d5f2112",
-    "hw1-comparison.json": "1df4928c44755f4bfa876eddb5d401338a1d290ca4a0702b238953e41401dff1"
+    "hw1-comparison.json": "1df4928c44755f4bfa876eddb5d401338a1d290ca4a0702b238953e41401dff1",
+    "corrected-integration.log": "480ac11e26188a5cfddabb837cf56c5d832a1eeaf27a3e2121878baa24f910f4",
+    "corrected-clippy.log": "8ed3a218e8100cc328ebb5185ec770471c96490fa1293862206033b6584a78ea"
   },
   "clippy": "all-targets -D warnings pass",
-  "latest_correction": "GH38:54 focused/library tests pass; previous broader checks belong to earlier candidate"
+  "latest_correction": "GH38:41 library +50 integration pass,3 existing ignored; strict Clippy pass; reverse apply pass"
 }
