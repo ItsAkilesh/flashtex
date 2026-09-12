@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "cargo test passes with Unicode source offsets and math fixtures",
-    "Positioned output reflects actual source edits; no existing TeX engine is invoked",
-    "Publish supported constructs and reproducible rendering evidence"
+    "Compare incremental results with clean builds after edits and macro changes",
+    "Measure cold/warm/edit latency on documented fixtures; report actual sub-200ms result or gap",
+    "Malformed-input examples retain partial output and explicit source diagnostics"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage2",
+  "allocation_id": "openai-kabir-plus-ft002-stage3",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
+  "input_main_sha": "60ceb5c3caedad2cb06d2862836d3f97dc04067b",
+  "objective": "Add dependency-aware invalidation and cached reusable compiler work to the original Rust implementation. Preserve state semantics; recover malformed input with marked diagnostics.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T04:21:55Z"
+  "updated_utc": "2026-09-12T04:49:19Z"
 }
