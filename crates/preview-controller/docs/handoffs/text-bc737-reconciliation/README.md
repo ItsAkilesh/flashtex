@@ -38,3 +38,34 @@ The test fixture comes from the previously reviewed Text candidate, not a newly
 invented parser variant. Renderer review f261b36c/a5e7fa7c documents the remaining
 producer gaps. Native pixel comparison and typing-to-visible latency are separate
 acceptance gates and remain unmet by this source-only check.
+
+## Static consumer inventory on the pinned base
+
+Repository-wide Rust search for `Nucleus::` and `MathItem {` found compiler enum
+matches only in `src/math.rs` and `src/incremental.rs`. The patch covers layout,
+recursive offset copying, minimum-source-offset traversal, and incremental source
+remapping. All three MathItem constructors are in math.rs: literal nucleus,
+radical sign, and fraction rule. Text supplies Roman font intent; the latter two
+supply None to retain current symbol/rule behavior. layout.rs consumes the explicit
+font when emitting positioned items.
+
+The similarly named enum in crates/math-layout is a different type and is not
+modified here. Its Text support does not remove the producer adapter obligation.
+External/vendor consumers are outside this compiler-branch inventory; the existing
+producer owner must retain the reviewed hash/shift/Ord Text conversion adapter.
+
+These are actual test target names present on bc737126 plus the proposed fixture:
+
+```sh
+cargo test --manifest-path crates/compiler/Cargo.toml --lib \
+  --test math_text --test delimiters --test acceptance --test burst_edits \
+  --test corpus_gate --test layout_capabilities --test pinned_fixtures \
+  --test recovery --test references_and_figures --test restart \
+  --test robustness --test unsupported_inventory
+cargo clippy --manifest-path crates/compiler/Cargo.toml --all-targets -- -D warnings
+```
+
+These commands are the next owner gate, not executed results. On this base,
+delimiters.rs also contains the membership/export, starred-heading and unknown
+control-word delimiter regressions. Do not copy old commands naming separate
+starred_sections/membership/quantifiers test targets absent from this branch.

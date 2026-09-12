@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-title",
+  "archived_utc": "2026-09-12T16:34:02Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-title",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-title/title-layout",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
+    "objective": "Title geometry consumer integration: adversarial bounds and exact identity regressions",
+    "owned_paths": [
+      "crates/title-layout"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-033",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:26:03Z"
+  },
+  "report": {
+    "agent_id": "daniel-title",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-033": {
+        "acknowledged_utc": "2026-09-12T16:30:27Z",
+        "adaptation": "Read src/title.rs, src/error.rs, src/metrics.rs and both existing test files before changing anything. Validated advance_width/em outputs (finite, non-negative) at the point measure_line and the em-gap computation receive them, rather than trusting Some() to mean usable -- the sharp case the objective named. Added InvalidPageArea by reading document-style's Geometry/apply_geometry to confirm a degenerate text_area is reachable through the existing public Stylesheet API (with_geometry) instead of poking at private fields. Grepped the whole repo for any flashtex_title_layout/flashtex-title-layout consumer before writing the report: none found, so no consumer was invented and no other crate was edited, per the assignment's own acceptance criterion.",
+        "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-title/title-layout",
+    "capabilities": [
+      "rust",
+      "title-layout",
+      "document-style"
+    ],
+    "code_revision": "3356d659c0b56e7de41d9c30b35de75956834b55",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+    "next_action": "Await Commander integration; no consumer wiring in this revision. A future consumer implementing GlyphMetrics must only return None or a finite, non-negative Pt.",
+    "reviewed_peers": {
+      "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-033 rev 3: adversarial bounds on the rev-2 metrics-bound title/author/date layout, plus exact identity regressions. Validated GlyphMetrics::advance_width/em values as finite and non-negative before they reach layout arithmetic (new TitleLayoutError::InvalidGlyphMetric/InvalidEmMetric); a NaN width previously compared false against every page-fit `>` check and could have silently produced a NaN baseline. Added TitleLayoutError::InvalidPageArea, checked once against sheet.page_layout().text_area before the existing BlockTallerThanPage comparison, reachable via Stylesheet::with_geometry (oversized margin or explicit zero/negative textwidth/textheight), not a hand-crafted internal state. tests/adversarial.rs (17 tests): enormous title (500k chars), 5000 authors, whitespace-only author line, mid-string None, non-finite/negative glyph and em metrics, degenerate page area, combining marks and zero-width text -- every case a typed error or a bounded Ok, never a panic or hang. tests/exact_identity.rs (3 tests): literal exact-equality pins (assert_eq!, no epsilon) of computed row font sizes, baselines, total heights, and horizontal extents for representative 10pt/12pt inputs. Consumer check: grep -rln 'flashtex_title_layout|flashtex-title-layout' crates outside crates/title-layout finds nothing -- no consumer exists yet; adapter contract documented in coordination/daniel-title.md rather than inventing one. cargo test: 46 tests + 1 doctest, all pass. cargo clippy --all-targets -- -D warnings: clean. cargo fmt --check: clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:30:27Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 215,
+  "report_path": "coordination/agents/daniel-title.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-033",
+  "worker_branch": "agent/daniel-title/title-layout",
+  "worker_report_sha": "483a8724bd8e2fef74ae59185192589c9c7651f4"
+}
