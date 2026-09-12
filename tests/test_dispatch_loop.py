@@ -242,7 +242,7 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(result['prepared'], ['TASK'])
 
     def test_authoritative_control_stops_without_dispatch_or_spend(self):
-        for state in ['user_stopped', 'verified_complete']:
+        for state in ['user_stopped']:
             self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': state})
             self.commit(self.root)
             self.run_git(self.root, 'push', 'origin', 'HEAD:main')
@@ -254,6 +254,14 @@ class DispatcherTests(unittest.TestCase):
             self.assertEqual(result['reason'], state)
             self.assertFalse(result['prepared'])
             self.assertFalse(self.run_git(self.root, 'status', '--porcelain'))
+
+    def test_verified_milestone_continues_dispatch(self):
+        self.write(self.root, 'coordination/control.json', {'schema_version': 1, 'state': 'verified_complete'})
+        self.commit(self.root)
+        self.run_git(self.root, 'push', 'origin', 'HEAD:main')
+        result = loop.scan_once(self.root, self.args)
+        self.assertEqual(result['prepared'], ['TASK'])
+        self.assertFalse(result.get('stopped', False))
 
     def test_queue_exhaustion_is_not_project_completion(self):
         self.queue['next_index'] = 1

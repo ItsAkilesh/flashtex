@@ -168,7 +168,7 @@ def scan_once(root, args):
         control_path = 'coordination/control.json'
         if not coord.run(['git', 'cat-file', '-e', baseline + ':' + control_path], cwd=root, check=False).returncode:
             control = coord.peer_json(root, baseline, control_path)
-            if control.get('state') in ['user_stopped', 'verified_complete']:
+            if control.get('state') == 'user_stopped':
                 return {'prepared': [], 'skipped': [], 'published': False, 'paths': [],
                         'baseline_main': baseline, 'stopped': True, 'reason': control['state']}
         assignments = main_records(root, 'coordination/assignments')

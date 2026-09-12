@@ -7,8 +7,9 @@ and higher-priority platform instructions take precedence.
 
 ## Current user authorization — September 12
 
-The user explicitly authorizes autonomous project work until they stop it or the
-entire project, including extra features, is implemented and fully tested. The
+The user explicitly authorizes continuous autonomous project improvement until
+they explicitly stop it. Verified completion starts another improvement cycle;
+it is never an automatic stop condition. The
 former 10am deadline and stabilization window are no longer stop conditions.
 Do not stop solely because a task time estimate elapsed. Keep individual model
 calls bounded, publish recovery evidence on failures, and continue other eligible

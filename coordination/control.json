@@ -2,7 +2,7 @@
   "schema_version": 1,
   "state": "running",
   "stop_at_utc": null,
-  "stop_condition": "explicit user stop or whole-project implementation and full validation including extras",
-  "authorization": "User explicitly authorized autonomous operation and removed the 10am deadline on September 12, 2026",
+  "stop_condition": "explicit user stop only; verified completion starts another improvement cycle",
+  "authorization": "Latest explicit user instruction: continue improvements even after verified completion until the user explicitly stops work. Existing billing and authentication restrictions remain.",
   "completion_evidence": []
 }
