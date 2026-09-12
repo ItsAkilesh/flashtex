@@ -12,3 +12,9 @@ Two acceptance gaps need the existing owner’s attention:
 The supplementary TFMs have their own pinned CTAN archive provenance (`71c48809…`) and declared local package history. They were not independently checked against the earlier official `97a725ea…` bas archive. Agreement of the five overlapping pinned files does not establish cross-release equivalence of all 23 supplementary files. The retained per-file hashes are the precise verified claim.
 
 This review makes no claim about GUI execution, parent-branch adoption, signing verification, native painting latency or broad TeX compatibility. The recorded producer source and signed binary identities remain owner-reported build provenance; resource hashes and original output classifications above were independently checked here. No peer sources were changed and no existing tests were redundantly rerun.
+
+## Followup: official archive comparison
+
+`official-archive-comparison.json` now resolves the earlier unverified archive comparison for these specific files. All **23 supplementary metrics and the exact vendored GUST license** are byte-identical to uniquely named members in the existing official archive SHA-256 `97a725ea012d41367bf44fec1a2f4ccf4fe134c016715522133594e347115a7c` (18,852,065 bytes). Each supplementary manifest hash and length also matches its published Git file. The comparison read members directly with Python `zipfile`; no download, installation or archive extraction was needed.
+
+This supplements, rather than changes, the owner's CTAN provenance. It proves equality of these 24 selected files across the two recorded sources; it does not establish equality of entire distributions or other versions. The override collision and failed helper candidate-configuration acceptance gaps above remain unchanged.

@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "2293f8dfe5fad05f90e705b9cacc9e09e0f83d04",
+  "code_revision": "28266fc50be4e978fe45caa744883b8788ab57fd",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "2293f8dfe5fad05f90e705b9cacc9e09e0f83d04",
-  "next_action": "Existing Mac owner should correct route-specific acceptance and prove explicit override policy; await next bounded consumer assignment.",
+  "next_action": "Existing Mac owner resolves explicit override and helper candidate acceptance; await bounded next consumer task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Reviewed exact Mac packaging 7be5396d: 32 resource hashes verified; helper configuration error and explicit override test gaps recorded.",
+  "summary": "All 23 supplementary metrics and exact license match existing official 97a725ea archive byte-for-byte; per-file evidence published.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:09:05Z",
+  "updated_utc": "2026-09-12T14:11:26Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/native-assets/packaging-7be5396d/review.json",
-    "status": "Existing OpenAI session only; no providers, descendants, builds or native execution. No exact context telemetry or compaction control available."
+    "evidence": "crates/rendering-core/docs/handoffs/native-assets/packaging-7be5396d/official-archive-comparison.json",
+    "status": "Existing OpenAI session; no downloads, external providers, builds, native calls or descendants."
   }
 }
