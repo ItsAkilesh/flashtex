@@ -1,0 +1,13 @@
+[package]
+name = "flashtex-math-accessibility"
+version = "0.1.0"
+edition = "2024"
+description = "Semantic accessibility adapter over flashtex-math-layout math lists: structured readable text and MathML, with explicit unsupported-node reporting."
+publish = false
+
+[lib]
+name = "flashtex_math_accessibility"
+path = "src/lib.rs"
+
+[dependencies]
+flashtex-math-layout = { path = "../math-layout" }
