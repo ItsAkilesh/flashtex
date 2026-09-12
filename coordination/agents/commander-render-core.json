@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "revision": 17,
-      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
       "acknowledged_utc": "2026-09-12T13:16:34.309615+00:00",
-      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims."
+      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims.",
+      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
+      "revision": 17
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8e6d2787ffb3463ae74199de5b67887ec8c21a2e",
+  "code_revision": "f576ac11002f3ad64ddbf4172aba7d95d912dbbf",
   "eta_minutes": {
     "likely": 2,
     "optimistic": 1,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d8931d5f948416ca9c7e915da47808b3f9fe10e",
-  "next_action": "Existing Mac owners run verifier against fixed signed bundle then separate native/nohostTeX discovery gate. No native implementation or activation by renderer.",
+  "next_action": "Commander route exact patches to existing packaging/pipeline owners; require their appliedSHA/buildidentity and nohostTeX native acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "GH36 read-only pinned bundle verifier8e6d2787 complete: exact9assets/layout/license, bounded no-follow resource reads and manifest pin.",
+  "summary": "GH36 candidate patches prepared only in owned handoff: rooted official asset staging via existing verifier and producer bundle discovery after explicit TFM overrides.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:16:22Z",
+  "updated_utc": "2026-09-12T13:21:46Z",
   "usage": {
-    "evidence": "9Python tests pass. ActualCLI isolatedofficial9assetstage exit0; missing10pt/corrupt10pt/misrooted12pt/wronglicense stages refuse. CLIrefusal exit1/2 tested, sourcebytes unchanged. Evidence under native-assets/verifier-evidence.json.",
-    "status": "Hosted OpenAI only; no providers/descendants. All light Python checks terminal; no build/timing jobs. Context telemetry/native compaction unavailable."
+    "evidence": "Exactaf155e59/f762f82a gitapplychecks and bashsyntax pass; isolatedstaging9assetsverified, missing10pt refuses. Override ordering checked structurally, no native execution claim. patch-manifest and patch-check-evidence record hashes.",
+    "status": "Hosted OpenAI only; no descendants/providers. Scratch-only git/shell/Python checks terminal; no native or Rust builds. Context telemetry/native compaction unavailable."
   }
 }
