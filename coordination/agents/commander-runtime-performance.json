@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-runtime-performance",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-047": {
+      "acknowledged_utc": "2026-09-12T08:35:48Z",
+      "adaptation": "Exclusive document-runtime worktree; additive profiling baseline preserves full validation and output; no compiler/native edits.",
+      "main_sha": "781aafab73d0c94b53a549b70cea7fbdc17ba0a2",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-runtime-performance/runtime-performance",
+  "capabilities": [
+    "Runtime profiling and exact source validation"
+  ],
+  "code_revision": "2508e1d095b809067a9bcc2d3b99be0a15439aac",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+  "next_action": "Commander integrate instrumentation/parser; continue measured validation optimization after review.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT047 UTF8-once parser: paired median10.25% reduction,19/20wins, exact Values; 180 repeat scaling samples exact-clean. Existing20tests plus invalidUTF8 regression and strict Clippy pass.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T08:49:19Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

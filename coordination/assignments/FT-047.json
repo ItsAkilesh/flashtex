@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-047",
+  "agent_id": "commander-runtime-performance",
+  "branch": "agent/commander-runtime-performance/runtime-performance",
+  "revision": 1,
+  "state": "awaiting_integration",
+  "objective": "GH21 measured runtime serialization, transport and validation performance with exact-output and stale-safety preservation",
+  "owned_paths": [
+    "crates/document-runtime"
+  ],
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "dependencies": [],
+  "allocation_id": "hosted-openai-product",
+  "timebox_minutes": 30,
+  "deadline_utc": null,
+  "input_main_sha": "3423970b300e878062f2a124fb8004545626200b",
+  "updated_utc": "2026-09-12T08:35:11.897361+00:00",
+  "integration_evidence": "UTF8 stagee5a804d integrated254f662; final validationa47bd38 ready, root moves toFT048."
+}

@@ -69,7 +69,19 @@ pub enum Event {
         reason: String,
     },
 }
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ResponseProfile {
+    pub request_id: String,
+    pub response_bytes: usize,
+    pub encode_ms: f64,
+    pub reader_delivery_wait_ms: f64,
+    pub dispatch_to_first_byte_ms: f64,
+    pub frame_read_ms: f64,
+    pub parse_ms: f64,
+    pub validation_ms: f64,
+}
 struct Pending {
+    encode_ms: f64,
     capabilities: Vec<String>,
     cancelled: bool,
     request: Request,
@@ -78,7 +90,7 @@ struct Pending {
     sent: Option<Instant>,
 }
 enum Input {
-    Frame(Vec<u8>),
+    Frame(Vec<u8>, Instant, Instant),
     Failure(String),
 }
 struct Process {
@@ -112,6 +124,11 @@ impl Process {
             let mut reader = BufReader::new(stdout);
             loop {
                 let mut frame = Vec::new();
+                if reader.fill_buf().is_err() {
+                    let _ = out_tx.send(Input::Failure("compiler output read failed".into()));
+                    break;
+                }
+                let first_byte = Instant::now();
                 let result = reader
                     .by_ref()
                     .take(limit as u64 + 1)
@@ -122,7 +139,10 @@ impl Process {
                         break;
                     }
                     Ok(_) if frame.len() <= limit && frame.last() == Some(&b'\n') => {
-                        if out_tx.send(Input::Frame(frame)).is_err() {
+                        if out_tx
+                            .send(Input::Frame(frame, first_byte, Instant::now()))
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -165,6 +185,7 @@ pub struct Session {
     queue: VecDeque<Pending>,
     latest: BTreeMap<String, (u64, String)>,
     events: VecDeque<Event>,
+    last_profile: Option<ResponseProfile>,
 }
 impl Session {
     pub fn spawn(executable: impl AsRef<Path>, limits: Limits) -> Result<Self, String> {
@@ -188,6 +209,7 @@ impl Session {
             queue: VecDeque::new(),
             latest: BTreeMap::new(),
             events: VecDeque::new(),
+            last_profile: None,
         })
     }
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
@@ -207,7 +229,9 @@ impl Session {
                 "compiler session failed; create a new session with complete snapshots".into(),
             );
         }
+        let encode_start = Instant::now();
         let bytes = encode(&request, self.limits.max_frame, &capabilities)?;
+        let encode_ms = encode_start.elapsed().as_secs_f64() * 1000.0;
         if self.latest.values().any(|(_, id)| id == &request.id)
             || self
                 .active
@@ -240,6 +264,7 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            encode_ms,
             capabilities,
             cancelled: false,
             request,
@@ -321,19 +346,52 @@ impl Session {
                     self.fail(&reason);
                     break;
                 }
-                Ok(Input::Frame(bytes)) => {
+                Ok(Input::Frame(bytes, first_byte, reader_done)) => {
+                    let reader_delivery_wait_ms = reader_done.elapsed().as_secs_f64() * 1000.0;
                     let Some(pending) = self.active.as_ref() else {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
+                    let parsed_at = Instant::now();
+                    // Validate UTF-8 once for the whole frame instead of once per JSON string.
+                    // Keep the same Value and semantic validation path below.
+                    let parsed: Value = match std::str::from_utf8(&bytes)
+                        .map_err(|_| ())
+                        .and_then(|text| serde_json::from_str(text).map_err(|_| ()))
+                    {
+                        Ok(value) => value,
+                        Err(_) => {
+                            self.fail("compiler returned malformed JSON");
+                            break;
+                        }
+                    };
+                    let parse_ms = parsed_at.elapsed().as_secs_f64() * 1000.0;
+                    let validate_at = Instant::now();
                     let result =
-                        match validate_reply(&bytes, &pending.request, &pending.capabilities) {
-                            Ok(v) => v,
+                        match validate_reply_value(parsed, &pending.request, &pending.capabilities)
+                        {
+                            Ok(value) => value,
                             Err(reason) => {
                                 self.fail(&reason);
                                 break;
                             }
                         };
+                    self.last_profile = Some(ResponseProfile {
+                        request_id: pending.request.id.clone(),
+                        response_bytes: bytes.len(),
+                        encode_ms: pending.encode_ms,
+                        reader_delivery_wait_ms,
+                        dispatch_to_first_byte_ms: first_byte
+                            .saturating_duration_since(pending.sent.unwrap())
+                            .as_secs_f64()
+                            * 1000.0,
+                        frame_read_ms: reader_done
+                            .saturating_duration_since(first_byte)
+                            .as_secs_f64()
+                            * 1000.0,
+                        parse_ms,
+                        validation_ms: validate_at.elapsed().as_secs_f64() * 1000.0,
+                    });
                     let pending = self.active.take().unwrap();
                     if pending.cancelled {
                         self.dispatch();
@@ -381,6 +439,11 @@ impl Session {
             self.fail("compiler response timeout");
         }
         self.events.drain(..).collect()
+    }
+    /// Last fully validated response, including stale/cancelled work. Match its
+    /// request ID; these phases do not measure native paint or compiler CPU alone.
+    pub fn last_profile(&self) -> Option<&ResponseProfile> {
+        self.last_profile.as_ref()
     }
     pub fn is_alive(&self) -> bool {
         self.process.is_some()
