@@ -57,7 +57,9 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
 - Navigation converts the contract's zero-based end-exclusive UTF-8 byte offsets to
   a UTF-16 `NSRange` (`String.nsRange(utf8Bytes:)`). Offsets that are out of range,
   reversed, or inside a multi-byte scalar are rejected with a footer message rather
-  than applied. Unknown item `kind`s decode as `.unknown` and are skipped.
+  than applied. Unknown item `kind`s decode as `.unknown`; on the legacy route
+  they are skipped, on a negotiated route they are reported (see "Negotiated
+  layout capabilities").
 - Caret sync (source→preview): text items whose `source` range contains the
   editor caret (UTF-16 caret → UTF-8 byte via `String.utf8ByteRange(of:)`,
   `CaretSync.itemsContaining`) get a secondary highlight (15% accent fill +
@@ -77,8 +79,10 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
   item's text when known, and refused ("recompile to navigate") if it overlaps the
   edited region. Multiple edits collapse conservatively.
 - Auto-compile (toolbar toggle, default on when a worker is attached): edits are
-  debounced 250 ms and coalesced — one request in flight, the newest buffer goes
-  out when it returns. Latency (send→result) is shown in the banner with a median.
+  debounced (`FLASHTEX_DEBOUNCE_MS`, default 0) and coalesced — one request in
+  flight, the newest buffer goes out when it returns; only a layout-capability
+  switch is sent immediately alongside it (see "Negotiated layout capabilities").
+  Latency (send→result) is shown in the banner with a median.
   Measured with the FT-002 compiler on an M1 Max: 0.5–9 ms per request; a 10-edit
   burst coalesced into 2 requests (`RealCompilerTests`).
 - Worker transport: `File > Attach Built Compiler` (⌘⇧K) finds `$FLASHTEX_COMPILER`
@@ -106,11 +110,13 @@ update-path and launch-recovery evidence (`scripts/launch-check.sh`).
   See `Samples/capture-proposal.json`. No network or Grok call is involved here.
 - PDF export: `File > Export PDF…` (⌘⇧E) writes the current preview with
   CoreGraphics/CoreText (`PDFExport.swift`): one PDF page per `pages` entry at
-  `width_pt` × `height_pt`, each text item in Times at `font_size_pt` with its
-  baseline exactly `baseline_y_pt` from the top (flipped to PDF's bottom-left
-  origin). It exports the layout the Rust compiler reported, not a TeX-engine
-  PDF: no fonts beyond Times, no images/lines, no links or metadata. The dark
-  toggle only changes page/text colors. Disabled when no result is loaded.
+  `width_pt` × `height_pt`, each text item in its resolved face at `font_size_pt`
+  with its baseline exactly `baseline_y_pt` from the top (flipped to PDF's
+  bottom-left origin), and each typed `rule` item as a filled rectangle
+  (`RuleGeometry.pdfRect`). It exports the layout the Rust compiler reported,
+  not a TeX-engine PDF: no fonts beyond Latin Modern/Times, no images, no links
+  or metadata. The dark toggle only changes page/text colors. Disabled when no
+  result is loaded.
 
 ## Capture bridge (transfer-v1)
 
@@ -337,6 +343,11 @@ keystroke-to-compile delay (default 0: every edit submits immediately; one
 request in flight, newest buffer coalesced).
 `FLASHTEX_LOG=<path>` appends timestamped worker/bridge status lines (e.g.
 `status: worker exited (9)`) for automation such as `scripts/launch-check.sh`.
+`FLASHTEX_TRANSCRIPT=<path>` appends every runtime-v1 JSON line the shell sends
+to or receives from the worker, verbatim and in transport order, so a session
+can be validated afterwards with main's `python3 scripts/check_runtime.py
+<path>` (exit 0 = valid protocol; its `responses[].preview` says which replies
+were `current` and which `stale_ignore`).
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
 (a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
@@ -355,11 +366,120 @@ preview drew with the system serif (New York) instead of Times-Roman. With
 compiler de1020c the preview now matches: `docs/evidence/mac-shell-math-times-2026-09-12.png`
 (inline fractions with rules, Greek, radicals, sum limits).
 
-Rules: text items consisting only of U+2500 are the compiler's fraction bars and
-are drawn as filled rectangles (`RuleConvention`: 0.5 em per character, 0.0857 em
-thick, hugging the baseline) in the preview and both PDF paths, so bars never
-depend on font glyph coverage. Heading weight (Times-Bold in the compiler) is not
-reproducible until runtime-v1 carries a font field; the preview draws Times-Roman.
+Rules on the legacy route (no `rules-v1` accepted): text items consisting only
+of U+2500 are taken to be the compiler's fraction bars and are **approximated**
+as filled rectangles (`RuleConvention`: 0.5 em per character, 0.0857 em thick,
+hugging the baseline) in the preview and both PDF paths, so bars never depend on
+font glyph coverage. This is a convention, not contract geometry, and cannot
+establish exact rule fidelity; typed rules replace it once `rules-v1` is
+negotiated (next section). Heading weight is honored only through a negotiated
+`font-hints-v1` hint; without one the preview draws the regular face.
+
+## Negotiated layout capabilities
+
+Contract: `docs/contracts/runtime-v1-layout-capabilities.md` (additive to
+runtime-v1). Every compile request carries `layout_capabilities`, by default
+`["rules-v1", "font-hints-v1"]` (`ShellModel.requestedLayoutCapabilities`;
+gate 3 of the contract — the consumer tests below passed first). Override with
+`FLASHTEX_LAYOUT_CAPABILITIES` (comma-separated; an empty string sends no field
+at all, i.e. the legacy request). The result's accepted set is bound to that
+result: the banner shows `layout: legacy` or `layout: rules-v1, font-hints-v1`
+for the preview currently on screen, never for the request in flight.
+
+- Per-request binding. Each in-flight request records its capability set; a
+  reply is correlated by `id` + `project_id` + `revision` *and* checked against
+  that request's set, so a late reply for an older request never changes the
+  renderer mode, and rapid legacy↔extended switching binds each preview to its
+  own request (`ShellLayoutNegotiationTests`).
+- Capability switch = its own request. Changing the set re-requests the current
+  buffers under a new `id` at the **same** revision when nothing was edited
+  (revisions never decrease; with auto-compile on the switch compiles by
+  itself). Edits still coalesce behind the request in flight, but a switch does
+  not wait: it goes out immediately, and the older request's reply — when it
+  arrives later — is *superseded*: checked for violations, logged as `ignored
+  stale compile_result mac-6 (...): superseded by mac-7`, and never applied.
+  This is exactly `scripts/check_runtime.py`'s classification (a reply to any
+  id older than the newest request is `stale_ignore`, never an error);
+  `RuntimeTranscriptTests` records the shell's real exchange with the worker
+  double and asserts the validator exits 0 and that its `current`/`stale_ignore`
+  verdicts coincide with the ids the shell applied, including the asynchronous
+  same-revision switch (slow legacy request, immediate extended request, legacy
+  reply arriving last). A reply carrying an unnegotiated rule/font hint is
+  rejected by both (validator exit 1, request left pending).
+- Protocol violations (result rejected, banner `protocol violation: …`, log):
+  an accepted capability that was not requested; a `rule` item without accepted
+  `rules-v1`; a `font` hint without accepted `font-hints-v1` — including when the
+  client asked but the worker did not echo acceptance (support is never guessed).
+  A fixture loaded with ⌘O is checked the same way against its sibling request
+  or, failing that, the set it declares itself.
+- Not accepted: when the worker does not echo a requested capability the banner
+  says `capability rules-v1 not accepted by the worker` (one note per missing
+  capability) and the legacy rendering applies (fake worker without `%caps`,
+  and any unknown capability such as `future-v9`).
+- Against main's `flashtex-compiler` (main 462fb27, built from this tree): it
+  **accepts both** — `RealCompilerTests.testLayoutCapabilityNegotiationAgainstRealWorkerIsExplicit`
+  prints `REAL-COMPILER CAPABILITIES: requested=["rules-v1", "font-hints-v1"]
+  accepted=["rules-v1", "font-hints-v1"] notes=[]` and checks end to end that
+  `$\frac{1}{2}$` arrives as a typed rule (positive geometry, numerator baseline
+  above `y_pt`, denominator below `y_pt + height_pt`, source navigating to
+  `\frac`, no U+2500 text and no "will not survive PDF export" diagnostic),
+  that every text item carries a hint (`\section` → `Times-Bold` bold, honored
+  with no substitution note), that the CoreGraphics export still renders, and
+  that opting out (`requestedLayoutCapabilities = []`, same revision, new id)
+  returns the U+2500 legacy route with the compiler's own diagnostic.
+  `testRealWorkerTranscriptPassesRuntimeValidator` runs `check_runtime.py` over
+  that real exchange (four replies, all `current`, accepted sets `[both]`,
+  `[rules-v1]`, `[]`, `[both]` with `future-v9` reported missing). The
+  compiler does not yet style `\textbf`/`\emph` in its hints (they arrive as
+  `Times-Roman` normal) — a producer limitation, reported as-is.
+- Typed rules (`rules-v1`): `{"kind":"rule","x_pt","y_pt","width_pt","height_pt","source"}`
+  decodes only as a typed rule — top-left corner at `(x_pt, y_pt)`, positive
+  finite dimensions, magnitudes ≤ 1e6; anything else is a decode error, never
+  downgraded to an unknown item. Preview and CoreGraphics export fill the
+  rectangle (`RuleGeometry`; dark preview only recolors, export is opaque black
+  on white); `y_pt` is never reinterpreted as a baseline. Clicking a rule
+  navigates to its `source`. Once `rules-v1` is accepted the U+2500
+  approximation is off for that result.
+- Font hints (`font-hints-v1`): `{"family","weight":normal|bold,"style":normal|italic}`
+  on text items (family 1–128 UTF-8 bytes, no control characters). Resolution
+  (`PreviewFonts.resolve`): `Latin Modern*`/`lmroman*`/`Computer Modern` → the
+  bundled LM masters (`apps/mac/Fonts`, registered from the repo copy in tests
+  and from `Fonts/` in the app) at the requested weight/style —
+  `Latin Modern Roman` bold at 12 pt is `LMRoman12-Bold`, a real CoreText face,
+  with **no** substitution (`testBundledLatinModernBoldHintResolvesToLMRoman12BoldWithoutSubstitution`);
+  Core-14 families `Times`/`Times New Roman`, `Helvetica`/`Arial`/`Helvetica
+  Neue`, `Courier`/`Courier New` → their Core-14 faces at the hint's
+  weight/style (`Times-BoldItalic`, `Helvetica-BoldOblique`, `Courier-Bold`),
+  and the compiler's face-named families (`Times-Bold`, `Times-Italic`, …) are
+  aliases of the family, not substitutions; anything else (e.g. `Comic Sans`)
+  → Times at the requested weight/style **and** a banner note
+  `font substituted: <family> [bold] [italic] → <face>`. A hint fixes style
+  intent only; the shell never claims the requested metrics were preserved.
+  Absent hint = legacy face selection, never a substitution.
+- Unknown primitive kinds: on a negotiated route (at least one capability
+  accepted) every unknown `kind` becomes an error diagnostic in the diagnostics
+  list — `unsupported layout primitive 'X' at main.tex bytes a..<b on page n`
+  (with "Go to source" when the item carried a `source`) — so nothing is
+  silently dropped. On the legacy route unknown kinds are still skipped
+  silently, as before.
+- Not covered: the accessibility overlay (`FlashTeXAccessibility`, owner
+  mac-accessibility) still reads only text items and the legacy U+2500 bars;
+  typed rules and font hints are not yet exposed to VoiceOver. The Rust writer
+  export (⌘⌥E) forwards the result envelope unchanged, including `rule` items
+  and `layout_capabilities`; whether `flashtex-pdf` on main understands them is
+  its owner's call and is not verified here.
+- Tests: `LayoutCapabilityTests` (protocol: field round trip and limits, rule
+  and font-hint validation, negotiation checks), `RuleGeometryTests`,
+  `FontHintResolutionTests` (bundled LM, Core-14 aliases, substitution),
+  `LayoutCapabilityPDFExportTests`, `ShellLayoutNegotiationTests` (fake worker
+  `%caps` directive: negotiated compile, requested-but-not-accepted,
+  substitution, unknown-kind diagnostic vs legacy skip, unrequested-shape and
+  false-claim rejection, rapid switching with the in-flight reply superseded,
+  same-revision switch and auto-compile switch, late/out-of-order replies,
+  fixture rejection), `RuntimeTranscriptTests` (main's validator over the
+  shell's transcript), and the two `RealCompilerTests` cases above (need
+  `FLASHTEX_COMPILER`). The test double only *echoes* capabilities; the real
+  compiler cases are the producer evidence.
 
 ## Completion and navigation
 
@@ -522,7 +642,9 @@ spans are exact. Reported to the fixture owner (Commander, FT-001).
 - PDF export draws only what the contract's text items describe; it is not a
   TeX-engine PDF and has no compiler-produced `pdf_path` behind it. A result with
   zero pages exports one blank page (a PDF must have at least one).
-- No image/line items (not in v1). Caret sync highlights items and scrolls to
-  the page under the caret, not to the item within the page.
+- No image items. Typed rules exist only through negotiated `rules-v1`, which
+  main's compiler does not yet accept (checked with `RealCompilerTests`). Caret
+  sync highlights items and scrolls to the page under the caret, not to the
+  item within the page.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

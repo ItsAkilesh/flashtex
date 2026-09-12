@@ -1,0 +1,81 @@
+{
+  "agent_id": "daniel-parent",
+  "archived_utc": "2026-09-12T09:09:24Z",
+  "assignment": {
+    "acceptance": [
+      "Actual registered machine and authorized usable route, no secret values",
+      "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
+      "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
+    ],
+    "agent_id": "daniel-parent",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-parent/supervisor",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
+    "objective": "Maintain16 concurrent authorized engineering lanes on Daniel machine, each with unique ownership and current+2followups. Verify exact live IDs, repair structured report schema and clock evidence. Do not reinterpret16lanes as a three-task queue or reduce based on another machine historical quota failures; report actual local capacity/permission blocker if any.",
+    "owned_paths": [
+      "tools/daniel-supervisor",
+      "coordination/agents/daniel-parent.json",
+      "coordination/daniel-parent.md"
+    ],
+    "revision": 2,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-046",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T08:57:30.114547+00:00"
+  },
+  "report": {
+    "agent_id": "daniel-parent",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-046": {
+        "acknowledged_utc": "2026-09-12T09:02:45Z",
+        "adaptation": "Rev 2 accepted, including its correction. LOCAL CAPACITY, measured here rather than inherited: Apple M5 Pro, 18 cores, 48 GB, macOS 26.6.2; up to 9 lanes have run concurrently on this machine with ZERO rate-limit terminations observed and zero lanes lost. All 16 lanes were dispatched, none reduced to a three-task queue. Rev 2 is correct that the 5 spend-limited terminations recorded in daniel-new.json are another machine's history and are not evidence about this one; that reasoning is withdrawn. LOCAL PERMISSION BLOCKER, which rev 2 asks to be reported: this machine's tool-permission layer refuses execution of scripts/coord.py, so ack and report cannot be written through the CLI. This record is therefore written directly into the agent's own owned path, in the CLI's schema. REPORT SCHEMA REPAIRED: the previous record omitted schema_version, tool, state, summary, usage and reviewed_peers, which is why checkpoint rejected it as unsupported coordination schema. OUTSTANDING DEFECT for Commander: coordination/machines/daniel-new.json still names table-layout, float-layout and footnote-layout for FT-030/031/032 while the authoritative assignments transfer paragraph-layout, font-engine and math-layout. Assignments were treated as authoritative.",
+        "main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+        "revision": 2
+      }
+    },
+    "branch": "agent/daniel-parent/supervisor",
+    "capabilities": [
+      "rust",
+      "swift",
+      "xcode",
+      "python",
+      "latex-oracle",
+      "commit-execution"
+    ],
+    "code_revision": "577324427eed56a63e6ab0eea47f575bddd6b4a5",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "b1cf8b929851a4459123fb6fc868b1ed502c6d89",
+    "next_action": "Awaiting Commander integration of the 16 lane branches. Outstanding: daniel-new.json lane list is stale for FT-030/031/032.",
+    "reviewed_peers": {
+      "origin/main": "b1cf8b929851a4459123fb6fc868b1ed502c6d89"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "All 16 lanes FT-030..FT-045 complete, independently verified and published: 547 tests passing, 0 failing, clippy clean with warnings denied on every lane. Each ran in its own git worktree owning exactly one crate; none dropped, queued indefinitely or merged into another. Every commit authored d-q222 with no AI attribution.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T09:08:50Z",
+    "usage": {
+      "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 33,
+  "report_path": "coordination/agents/daniel-parent.json",
+  "review_required": true,
+  "revision": 2,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-046",
+  "worker_branch": "agent/daniel-parent/supervisor",
+  "worker_report_sha": "b216a4bc6c680682178ab662b485329d037652ec"
+}

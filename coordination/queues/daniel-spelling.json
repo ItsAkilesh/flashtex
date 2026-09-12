@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Offline bounded source-aware spelling suggestions with caller-supplied dictionary and excluded math/command ranges, exact revisions and no network. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Revision-bound spelling suggestions: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Revision-bound spelling suggestions: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/spellcheck"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Offline bounded source-aware spelling suggestions with caller-supplied dictionary and excluded math/command ranges, exact revisions and no network. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Revision-bound spelling suggestions: actual existing consumer fixture and exact measured limitations",
+      "objective": "Revision-bound spelling suggestions: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/spellcheck"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

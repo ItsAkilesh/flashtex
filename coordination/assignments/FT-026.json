@@ -16,8 +16,9 @@
   ],
   "revision": 6,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-026",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T08:33:09Z"
+  "updated_utc": "2026-09-12T08:33:09Z",
+  "integration_evidence": "Integrated tested product checkpoint bded7bd; current user staffing rule leaves this engineer stopped with queue paused."
 }

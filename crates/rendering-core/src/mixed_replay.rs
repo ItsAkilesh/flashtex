@@ -429,6 +429,23 @@ fn validate_step(step: &Value) -> MixedResult<()> {
             hash(string(&r["tfm_sha256"])?)?;
             require(integer(&r["face_index"])? == 0, "resource face")?;
         }
+        "cff_physical" => {
+            object(
+                r,
+                &[
+                    "kind",
+                    "font_sha256",
+                    "cff_sha256",
+                    "tfm_sha256",
+                    "encoding_sha256",
+                    "face_index",
+                ],
+            )?;
+            for field in ["font_sha256", "cff_sha256", "tfm_sha256", "encoding_sha256"] {
+                hash(string(&r[field])?)?;
+            }
+            require(integer(&r["face_index"])? == 0, "CFF resource face")?;
+        }
         "virtual" => {
             object(r, &["kind", "vf_sha256", "tfm_sha256"])?;
             hash(string(&r["vf_sha256"])?)?;

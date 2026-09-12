@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FlashTeX literal replacement proposal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "proposal_only", "requires_user_approval", "application_order", "snapshot", "search", "replacement", "edits"],
+  "properties": {
+    "schema": {"const": "flashtex.literal-replacement-plan.v1"},
+    "proposal_only": {"const": true},
+    "requires_user_approval": {"const": true},
+    "application_order": {"const": "reverse_byte_offset_per_document"},
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "generation", "documents"],
+      "properties": {
+        "project_id": {"type": "string"},
+        "generation": {"$ref": "#/$defs/decimal"},
+        "documents": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["file", "revision"],
+          "properties": {"file": {"type": "string"}, "revision": {"$ref": "#/$defs/decimal"}}
+        }}
+      }
+    },
+    "search": {
+      "type": "object", "additionalProperties": false,
+      "required": ["literal", "documents", "max_matches", "max_work", "work_used", "termination"],
+      "properties": {
+        "literal": {"type": "string", "minLength": 1},
+        "documents": {"type": ["array", "null"], "uniqueItems": true, "items": {"type": "string"}},
+        "max_matches": {"$ref": "#/$defs/decimal"},
+        "max_work": {"$ref": "#/$defs/decimal"},
+        "work_used": {"$ref": "#/$defs/decimal"},
+        "termination": {"const": "complete"}
+      }
+    },
+    "replacement": {"type": "string"},
+    "edits": {"type": "array", "maxItems": 100000, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["file", "revision", "start_byte", "end_byte", "expected_text", "replacement"],
+      "properties": {
+        "file": {"type": "string"},
+        "revision": {"$ref": "#/$defs/decimal"},
+        "start_byte": {"$ref": "#/$defs/decimal"},
+        "end_byte": {"$ref": "#/$defs/decimal"},
+        "expected_text": {"type": "string", "minLength": 1},
+        "replacement": {"type": "string"}
+      }
+    }}
+  },
+  "$defs": {"decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}}
+}
