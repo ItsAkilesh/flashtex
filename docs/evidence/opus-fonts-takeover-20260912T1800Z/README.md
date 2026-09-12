@@ -59,3 +59,17 @@ It was stopped after roughly four minutes by SIGTERM to the exact owned xctest
 PID; SwiftPM exited 1 and released its lock. It is incomplete, not a passing
 suite. Log/status are retained. Final focused optical tests passed five of five
 again after the stop. Parent ShellModel/test infrastructure remains out of scope.
+
+Final affected-consumer regression at published code `22bddb4c`: 18 tests,
+zero failures/skips (BundledFacesTests, PreviewFontsTests,
+FontHintResolutionTests, RuleGeometryTests, LayoutCapabilityPDFExportTests).
+Recovery issue: https://github.com/flash-tex/flashtex/issues/50.
+Draft stacked review: https://github.com/flash-tex/flashtex/pull/49.
+
+The broad probe inherited FLASHTEX_COMPILER pointing to the parent's ordinary
+v1 compiler; only FLASHTEX_RENDER was overridden. The delta test expected a
+second display-list response and its blocking availableData read prevented the
+nominal120s deadline from firing. This is a configuration mismatch exposing a
+parent test timeout defect; it is not evidence of a font regression. The sample
+and final flushed log identify DisplayListDeltaTests, correcting the provisional
+DisplayCandidate location inferred from buffered output.

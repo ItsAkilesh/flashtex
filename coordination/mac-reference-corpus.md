@@ -38,3 +38,21 @@ producer optical profile adoption independently, triage broad Swift hang.
 No continuing task queue claimed after the user-authorized temporary window.
 Context usage telemetry/native compaction controls unavailable; no percentages
 invented. This handoff is the durable resumption packet.
+
+## Published handback
+
+Code/evidence revision: 22bddb4c, pushed non-force; affected-consumer final
+regression18/18 at that revision. Draft stacked PR49:
+https://github.com/flash-tex/flashtex/pull/49.
+Recovery50: https://github.com/flash-tex/flashtex/issues/50 (blocking delta test
+read with inherited ordinary compiler; parent lane owns fix).
+Initial Commander notice: issue2#issuecomment-5647693931; final notice pending
+one explicit handback comment after this final docs-only commit push.
+All owned tests exited; exact xctest63296 stopped/reaped, SwiftPM62593 exited1;
+no paid calls or potentially uncertain publication remains. The preserved Opus
+process is not claimed terminated; its original worktree is unchanged.
+Temporary job is complete early within20min; no staffing reassignment requested.
+Exact next commands for parent: inspect PR49 against mac-shell, read evidence,
+review supplemental face pins/staging, then integrate through Commander route.
+Final handoff notes/log commit may follow22bddb4c; no implementation changes after
+the tested revision. Clean branch status must be verified after final push.
