@@ -55,6 +55,10 @@ enum EditorDiagnostics {
         /// (`EditorDiagnostics.Explanation.line`), attached by `attach(_:to:)`
         /// once the helper has answered for this result; nil until then.
         var explanation: String? = nil
+        /// Set when the newest result is a failure with no output and this
+        /// mark was kept from the last result that had output (`Carried`);
+        /// nil for marks of the result currently shown.
+        var carried: Carried? = nil
 
         var id: String { identity.key }
         var diagnosticIndex: Int { identity.index }
@@ -67,17 +71,31 @@ enum EditorDiagnostics {
         /// results whose diagnostic has no recovery note.
         var recoveryLine: String? { EditorDiagnostics.recoveryLine(recovery: recovery, status: resultStatus) }
 
-        /// Tooltip text: message, then the recovery line and the explanation
-        /// line when present.
+        /// Tooltip text: message, then the recovery line, the explanation
+        /// line and the carried-over line when present.
         var toolTip: String {
             message + (recoveryLine.map { "\n↳ " + $0 } ?? "") + (explanation.map { "\n↳ " + $0 } ?? "")
+                + (carried.map { "\n↳ " + $0.line } ?? "")
         }
 
-        /// "Error: message — recovery: … — explanation" as the accessibility layer speaks it.
+        /// "Error: message — recovery: … — explanation — kept from revision N…"
+        /// as the accessibility layer speaks it.
         var spokenDescription: String {
             (severity == .error ? "Error: " : "Warning: ") + message
                 + (recoveryLine.map { " — " + $0 } ?? "") + (explanation.map { " — " + $0 } ?? "")
+                + (carried.map { " — " + $0.line } ?? "")
         }
+    }
+
+    /// Why a mark is shown although it is not from the newest result: the
+    /// newest result (`failedRevision`) failed with no output, so the marks
+    /// of the last result with output (`revision`) are kept, rebased to the
+    /// current text, and flagged — never cleared, never duplicated.
+    struct Carried: Equatable {
+        let revision: Int
+        let failedRevision: Int
+
+        var line: String { "kept from revision \(revision): revision \(failedRevision) failed with no output" }
     }
 
     /// A diagnostic whose span overlaps the edit made since the compile. Its
@@ -96,14 +114,27 @@ enum EditorDiagnostics {
         /// The edit the marks were rebased across (nil: compiled text unknown
         /// or unchanged).
         var edit: SourceMapping.ChangedRegion?
+        /// Set when the marks were kept from an older result because the
+        /// newest one failed with no output (see `report(for:resultID:retained:…)`).
+        var carried: Carried? = nil
 
         static let empty = Report(marks: [], stale: [], edit: nil)
 
         var staleCount: Int { stale.count }
         var staleIdentities: Set<Identity> { Set(stale.map(\.identity)) }
 
-        /// Footer/list caption, nil when nothing is withheld.
+        /// Footer/list caption: the carried-over line, the withheld count, or
+        /// both; nil when the marks are current and complete.
         var staleNote: String? {
+            switch (carried, withheldNote) {
+            case (nil, let w): return w
+            case (let c?, nil): return "\(marks.count) underline\(marks.count == 1 ? "" : "s") \(c.line)"
+            case (let c?, let w?): return "\(marks.count) underline\(marks.count == 1 ? "" : "s") \(c.line); \(w)"
+            }
+        }
+
+        /// The withheld count alone, nil when nothing is withheld.
+        var withheldNote: String? {
             guard !stale.isEmpty else { return nil }
             let errors = stale.filter { $0.severity == .error }.count
             let what: String
@@ -192,6 +223,161 @@ enum EditorDiagnostics {
         let model = text.map { AccessibleEditorModel(text: $0) }
         return EditorDiagnosticNavigation.step(navigationItems(marks), fromUTF16: caret, forward: forward,
                                                currentID: currentID, lineOf: { model?.line(containingUTF16: $0)?.number })
+    }
+}
+
+// MARK: - Partial output: a failed follow-up keeps the last marks, flagged
+
+extension EditorDiagnostics {
+    /// The last result that produced output, remembered by the shell so a
+    /// later `failed` result with no pages does not clear the underlines.
+    struct Retained: Equatable {
+        var resultID: String?
+        var result: RuntimeV1.CompileResult
+        /// Document texts the retained result was compiled from, by path.
+        var compiledDocuments: [String: String]
+
+        init(resultID: String?, result: RuntimeV1.CompileResult, compiledDocuments: [String: String]) {
+            self.resultID = resultID; self.result = result; self.compiledDocuments = compiledDocuments
+        }
+    }
+
+    /// True when `result` is a failure that produced no output, so the marks
+    /// of the last result with output are kept (flagged) rather than cleared.
+    /// Any result with pages, and any `ok`/`recovered` result — an empty
+    /// document compiles `ok` to no pages and no marks — replaces them.
+    static func keepsPreviousMarks(_ result: RuntimeV1.CompileResult) -> Bool {
+        result.status == .failed && result.pages.isEmpty
+    }
+
+    /// The `Retained` record to remember after binding `result`: the result
+    /// itself when it produced output, otherwise the previous record
+    /// (retention never chains through failures, so one failed follow-up or
+    /// ten keep the same marks exactly once).
+    static func retained(after result: RuntimeV1.CompileResult, resultID: String?, compiledDocuments: [String: String],
+                         previous: Retained?) -> Retained? {
+        keepsPreviousMarks(result) ? previous : Retained(resultID: resultID, result: result, compiledDocuments: compiledDocuments)
+    }
+
+    /// `report(for:…)` that survives a failed follow-up: when `latest` is a
+    /// failure with no output and `retained` holds an earlier result with
+    /// output, the marks are the retained result's, rebased from the text it
+    /// was compiled from to `currentText` and flagged `carried`; any sourced
+    /// diagnostic of the failed result itself (e.g. a span the compiler
+    /// refused) is a fresh, unflagged mark alongside them. Otherwise this is
+    /// exactly `report(for:resultID:path:compiledText:currentText:)`.
+    static func report(for latest: RuntimeV1.CompileResult, resultID: String?, retained: Retained?, path: String,
+                       compiledText: String?, currentText: String) -> Report {
+        let fresh = report(for: latest, resultID: resultID, path: path, compiledText: compiledText, currentText: currentText)
+        guard keepsPreviousMarks(latest), let retained, !keepsPreviousMarks(retained.result) else { return fresh }
+        var kept = report(for: retained.result, resultID: retained.resultID, path: path,
+                          compiledText: retained.compiledDocuments[path], currentText: currentText)
+        let carried = Carried(revision: retained.result.revision, failedRevision: latest.revision)
+        for i in kept.marks.indices { kept.marks[i].carried = carried }
+        kept.marks = fresh.marks + kept.marks
+        kept.stale = fresh.stale + kept.stale
+        kept.carried = carried
+        if kept.edit == nil { kept.edit = fresh.edit }
+        return kept
+    }
+}
+
+// MARK: - Identical diagnostics grouped (count + per-occurrence jump)
+
+extension EditorDiagnostics {
+    /// Diagnostics of one result with the same severity and message, in the
+    /// order of their first occurrence; `occurrences` are indices into
+    /// `result.diagnostics` in document order (by path in `documentOrder`,
+    /// then start byte; unsourced last), so "occurrence k of n" is stable
+    /// and each one can be jumped to on its own.
+    struct Group: Equatable, Identifiable {
+        let severity: RuntimeV1.Severity
+        let message: String
+        /// The recovery note when every occurrence has the same one, else nil.
+        let recovery: String?
+        let occurrences: [Int]
+
+        var count: Int { occurrences.count }
+        /// Index of the first occurrence (document order); the row's explanation and quick fix use it.
+        var first: Int { occurrences[0] }
+        var id: String { "\(severity.rawValue):\(message)" }
+        /// "12× \in is not supported in math mode", or just the message for one.
+        var title: String { count > 1 ? "\(count)× " + message : message }
+    }
+
+    /// Groups `result.diagnostics` by (severity, message). `documentOrder`
+    /// orders occurrences across documents (unknown paths after known ones).
+    static func groups(of result: RuntimeV1.CompileResult, documentOrder: [String] = []) -> [Group] {
+        groups(of: result.diagnostics, documentOrder: documentOrder)
+    }
+
+    /// `groups(of:)` over any diagnostics list (the panel shows the result's
+    /// diagnostics followed by the shell's own layout diagnostics).
+    static func groups(of diagnostics: [RuntimeV1.Diagnostic], documentOrder: [String] = []) -> [Group] {
+        func rank(_ path: String) -> Int { documentOrder.firstIndex(of: path) ?? documentOrder.count }
+        var order: [String] = []
+        var members: [String: [Int]] = [:]
+        for (i, d) in diagnostics.enumerated() {
+            let key = "\(d.severity.rawValue):\(d.message)"
+            if members[key] == nil { order.append(key); members[key] = [] }
+            members[key]!.append(i)
+        }
+        func before(_ a: Int, _ b: Int) -> Bool {
+            switch (diagnostics[a].source, diagnostics[b].source) {
+            case (nil, nil): return a < b
+            case (nil, _): return false
+            case (_, nil): return true
+            case (let x?, let y?):
+                if x.path != y.path { return rank(x.path) != rank(y.path) ? rank(x.path) < rank(y.path) : x.path < y.path }
+                return x.startByte != y.startByte ? x.startByte < y.startByte : a < b
+            }
+        }
+        var groups: [Group] = order.map { key in
+            let sorted = members[key]!.sorted(by: before)
+            let recoveries = Set(sorted.map { diagnostics[$0].recovery })
+            return Group(severity: diagnostics[sorted[0]].severity, message: diagnostics[sorted[0]].message,
+                         recovery: recoveries.count == 1 ? diagnostics[sorted[0]].recovery : nil, occurrences: sorted)
+        }
+        groups.sort { before($0.first, $1.first) }
+        return groups
+    }
+
+    /// The source of occurrence `k` (zero-based, document order) of `group`,
+    /// nil when out of range or unsourced.
+    static func occurrence(_ k: Int, of group: Group, in result: RuntimeV1.CompileResult) -> RuntimeV1.SourceRange? {
+        occurrence(k, of: group, in: result.diagnostics)
+    }
+
+    static func occurrence(_ k: Int, of group: Group, in diagnostics: [RuntimeV1.Diagnostic]) -> RuntimeV1.SourceRange? {
+        guard group.occurrences.indices.contains(k), diagnostics.indices.contains(group.occurrences[k]) else { return nil }
+        return diagnostics[group.occurrences[k]].source
+    }
+
+    /// "3 of 12: main.tex line 41" (line from `texts[path]`, the compiled
+    /// text, when known; else "bytes a..<b"); "3 of 12: no source" when
+    /// unsourced. One label per menu item of the per-occurrence jump.
+    static func occurrenceLabel(_ k: Int, of group: Group, in result: RuntimeV1.CompileResult,
+                                texts: [String: String] = [:]) -> String {
+        occurrenceLabel(k, of: group, in: result.diagnostics, texts: texts)
+    }
+
+    static func occurrenceLabel(_ k: Int, of group: Group, in diagnostics: [RuntimeV1.Diagnostic],
+                                texts: [String: String] = [:]) -> String {
+        let prefix = "\(k + 1) of \(group.count): "
+        guard let s = occurrence(k, of: group, in: diagnostics) else { return prefix + "no source" }
+        if let text = texts[s.path], let line = lineNumber(ofByte: s.startByte, in: text) {
+            return prefix + "\(s.path) line \(line)"
+        }
+        return prefix + "\(s.path) bytes \(s.startByte)..<\(s.endByte)"
+    }
+
+    /// One-based line containing byte `offset` of `text` (LF-counted); nil
+    /// when out of range.
+    static func lineNumber(ofByte offset: Int, in text: String) -> Int? {
+        guard offset >= 0, offset <= text.utf8.count else { return nil }
+        var line = 1
+        for b in text.utf8.prefix(offset) where b == 0x0A { line += 1 }
+        return line
     }
 }
 
@@ -423,14 +609,21 @@ extension EditorDiagnostics {
     }
 
     /// `report` with each mark's `explanation` line set from `explanations`
-    /// (matched by diagnostic index; nil leaves the marks untouched). O(marks):
-    /// this is all a keystroke pays once the helper has answered.
-    static func attach(_ explanations: [Explanation]?, to report: Report) -> Report {
-        guard let explanations, !explanations.isEmpty else { return report }
+    /// (matched by diagnostic index; nil leaves the marks untouched). Marks
+    /// `carried` from an older result belong to that result's diagnostics,
+    /// so they take their lines from `carried` (the cache entry for the
+    /// retained result id), never from the newest result's. O(marks): this
+    /// is all a keystroke pays once the helper has answered.
+    static func attach(_ explanations: [Explanation]?, carried carriedExplanations: [Explanation]? = nil,
+                       to report: Report) -> Report {
+        let current = (explanations?.isEmpty == false) ? explanations : nil
+        let kept = (carriedExplanations?.isEmpty == false) ? carriedExplanations : nil
+        guard current != nil || kept != nil else { return report }
         var out = report
         for i in out.marks.indices {
+            guard let list = out.marks[i].carried == nil ? current : kept else { continue }
             let index = out.marks[i].diagnosticIndex
-            out.marks[i].explanation = explanations.indices.contains(index) ? explanations[index].line : nil
+            out.marks[i].explanation = list.indices.contains(index) ? list[index].line : nil
         }
         return out
     }

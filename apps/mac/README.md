@@ -144,6 +144,21 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   unaffected. After edits a mark is rebased through `SourceMapping` or dropped when
   it overlaps the edited region — never drawn under the wrong text. Diagnostics
   with null `source` appear only in the preview's diagnostics list.
+  Partial output (`recovered` with pages AND diagnostics) marks every reported
+  span, including spans inside regions the compiler skipped; a diagnostic raised
+  while expanding a user macro is reported at the macro's call site (HW1:
+  `\problem` carries `\subsection`/`\hfill`/`\normalfont`, `\Z` carries
+  `\mathbb`), verified for all 119 HW1 diagnostics in
+  `EditorDiagnosticsPartialOutputTests`. A `failed` result with no pages keeps
+  the last result's underlines, rebased and flagged "kept from revision N:
+  revision M failed with no output" (tooltip, VoiceOver line, footer) — never
+  cleared, never duplicated across consecutive failures; any result with
+  output replaces them (`EditorDiagnostics.Retained`,
+  `ShellModel+DiagnosticRetention.swift`). The diagnostics list groups
+  identical diagnostics (same severity and message) into one row — "12× `\in`
+  is not supported in math mode" — with an "N places" menu that jumps to each
+  occurrence ("3 of 12: main.tex line 41"); Fix… and the explanation line
+  belong to the first occurrence (`EditorDiagnostics.groups`).
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
