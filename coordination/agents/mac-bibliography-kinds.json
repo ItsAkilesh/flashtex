@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-bibliography-kinds",
+  "allocation_id": "claude-mac20x-bibliography-kinds",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-bibliography-kinds/bibkinds",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "5bc3fc0f",
+  "eta_minutes": {
+    "likely": 50,
+    "optimistic": 35,
+    "pessimistic": 70
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6472a5d2 (helper contract read-only; branch base is origin/agent/mac-claude-a/mac-shell 5bc3fc0f)",
+  "next_action": "Implement DocumentKinds.swift + tests; Config.bibliographyPaths; hook diffs for parent",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Consumed crates/preview-controller/docs/source-plans.md + STDIO.md: bibliography_paths at startup, open_document document_kind, snapshot document_kinds; application owns persistence; no extension inference",
+      "reviewed_utc": "2026-09-12T13:35:00Z",
+      "sha": "6472a5d2"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Coverage audit done: Mac shell has no document-kind handling (no bibliography_paths in Config, untyped open_document, document_kinds dropped from snapshot, nothing persisted). Implementing the uncovered part.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T13:36:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
