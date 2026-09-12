@@ -70,3 +70,10 @@ and `current_sources`. It reconstructs/checks the same bound context, returns a
 `validated_proposal` with `applied:false`, and never writes source. `prepare`
 returns `prepared_context`. Errors return `type:error` and nonzero exit status.
 Provider transport and actual user approval remain separate native operations.
+
+Source binding rejects more than32MiB of aggregate source before hashing, more
+than8MiB in one document, or paths longer than1024bytes. This bounds work when
+called directly as a library as well as through the16MiB JSON helper. The limit
+is explicit; this crate does not silently omit source identities to make a large
+project fit. Malformed/oversized helper requests fail without mutating source;
+a subsequent clean process can prepare a fresh context normally.

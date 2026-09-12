@@ -242,3 +242,47 @@ fn native_json_helper_prepares_and_validates_without_applying() {
     assert_eq!(validated["type"], "validated_proposal");
     assert_eq!(validated["applied"], false);
 }
+
+#[test]
+fn native_helper_refuses_bad_and_oversized_requests_then_recovers() {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+    fn invoke(input: &[u8]) -> (bool, Value) {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = child.stdin.take().unwrap().write_all(input);
+        let output = child.wait_with_output().unwrap();
+        (
+            output.status.success(),
+            serde_json::from_slice(&output.stdout).unwrap(),
+        )
+    }
+    for bytes in [b"{".to_vec(), vec![b' '; 16 * 1024 * 1024 + 1]] {
+        let (success, reply) = invoke(&bytes);
+        assert!(!success);
+        assert_eq!(reply["type"], "error");
+    }
+    let docs = vec![source()];
+    let valid = json!({"operation":"prepare","binding":CompileBinding::capture("r","p",7,&docs).unwrap(),"sources":docs,"compiler_result":result(),"user_instruction":"Explain"});
+    let (success, reply) = invoke(&serde_json::to_vec(&valid).unwrap());
+    assert!(success);
+    assert_eq!(reply["type"], "prepared_context");
+}
+#[test]
+fn tampered_source_hash_and_outside_context_edits_are_refused() {
+    let mut bad = source();
+    bad.text.push('x');
+    assert!(CompileBinding::capture("r", "p", 7, &[bad]).is_err());
+    let text = format!("α \\bad{}", "x".repeat(3000));
+    let docs = vec![Document::new("p".into(), "main.tex".into(), 1, text).unwrap()];
+    let context = build(&docs);
+    let response = json!({"context_id":context.payload().context_id,"explanation":"Change unseen text","edits":[{"location":{"path":"main.tex","start_byte":2500,"end_byte":2501},"removed_text":"x","replacement":"y"}]});
+    assert!(context
+        .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
+        .is_err());
+}

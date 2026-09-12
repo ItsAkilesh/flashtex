@@ -35,9 +35,17 @@ impl CompileBinding {
         {
             return Err("invalid compile binding".into());
         }
+        let source_bytes = sources
+            .iter()
+            .try_fold(0usize, |sum, doc| sum.checked_add(doc.text.len()))
+            .ok_or("source snapshot size overflow")?;
+        if source_bytes > 32 * 1024 * 1024 {
+            return Err("source snapshot exceeds32MiB".into());
+        }
         let mut identities = BTreeMap::new();
         for doc in sources {
             if doc.project_id != project_id
+                || doc.path.len() > 1024
                 || doc.revision == 0
                 || doc.text.len() > 8 * 1024 * 1024
                 || ProjectPath::normalize(&doc.path)

@@ -14,19 +14,19 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "f153058ab98211226a166dd54c0a84de0ff29e92",
+  "code_revision": "cd6b9b1069ed06aa2e810015d5e9b2d54e399e9d",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
-  "next_action": "Native provider adapter integration and lifecycle consumer review; no autonomous edit application.",
+  "next_action": "Integrate bounded assistant helper into native provider flow via owning worker; retain explicit approval and cancellation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Explicit edit destinations and bounded native JSON helper complete;8tests including original compiler diagnostics and actual prepare/validate subprocess pass, strict clippy passes.",
+  "summary": "Adversarial helper/source checks complete:10tests including real compiler, malformed/oversized process recovery, tampered hashes and outside-snippet edits pass; strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:41:06Z",
+  "updated_utc": "2026-09-12T07:43:50Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing root hosted slot only; no inference or credentials used."
+    "status": "Same existing root hosted slot; no model/provider calls."
   }
 }
