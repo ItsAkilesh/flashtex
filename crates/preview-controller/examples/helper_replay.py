@@ -24,6 +24,8 @@ class Client:
         self.receive_ordinal = 0
         self.receiver_timings = []
         self.receiver_timings_dropped = 0
+        self.last_diagnostics_raw = b''
+        self.diagnostics_status = {}
 
     def send(self, identity, kind, payload):
         value = dict(protocol_version=1, session_id="benchmark", id=identity,
@@ -72,14 +74,30 @@ class Client:
         return {name: value.strip() for line in status.read_text().splitlines()
                 if ":" in line for name, value in [line.split(":", 1)] if name in wanted}
 
-    def diagnostics(self):
+    def diagnostic_bytes(self):
         if self.diagnostic_file is None:
-            return []
-        self.diagnostic_file.seek(0)
-        raw = self.diagnostic_file.read(1024 * 1024 + 1)
+            return b''
+        # stderr and this file share an open-file description. Positional reads
+        # must not seek the helper's concurrently used write offset.
+        raw = os.pread(self.diagnostic_file.fileno(), 1024 * 1024 + 1, 0)
+        self.last_diagnostics_raw = raw
+        self.diagnostics_status = dict(truncated=len(raw)>1024*1024,
+            partial_tail=bool(raw and not raw.endswith(b'\n')), non_json=False,
+            scope='live positional snapshot; later stderr may be absent')
+        return raw
+
+    def diagnostics(self):
+        raw = self.diagnostic_bytes()
         if len(raw) > 1024 * 1024:
             raise RuntimeError("diagnostic capture limit")
-        return [json.loads(line) for line in raw.splitlines() if line]
+        # A concurrent write can leave a partial final line in this snapshot.
+        # Retain it verbatim and report it, but parse only completed records.
+        complete = raw[:raw.rfind(b'\n')+1]
+        try:
+            return [json.loads(line) for line in complete.splitlines() if line]
+        except (ValueError, UnicodeDecodeError):
+            self.diagnostics_status['non_json'] = True
+            raise
 
     def stop(self):
         self.proc.kill()

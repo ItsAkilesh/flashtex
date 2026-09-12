@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "9f4a310528329eb08a43179341751de73073cfb3",
+  "code_revision": "77c8cab12fff96d5ad882568551c5b2843f9486f",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "9f4a310528329eb08a43179341751de73073cfb3",
-  "next_action": "Publish reviewed harness fix and resume bounded failure investigation with Commander.",
+  "main_integrated_through": "77c8cab12fff96d5ad882568551c5b2843f9486f",
+  "next_action": "Independent review and publication of pread snapshot repair; no workload rerun until approved.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r28 fiveproxyfault testsPASS, including fullstderrpipe refusal without flagchanges; reopen evidence explicitly prestop.",
+  "summary": "FT048 correctedrun58242 faileddiagnosticJSON before reopen; positional snapshot repair and fourdeterministic tests pass; original remainingfailure artifacts preserved.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:00:37Z",
+  "updated_utc": "2026-09-12T14:05:50Z",
   "usage": {
     "status": "unknown"
   }
