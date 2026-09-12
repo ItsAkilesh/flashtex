@@ -171,7 +171,8 @@ private struct EditorPane: View {
                 projectIndexMetadata: model.completionMetadata,
                 onCaretChange: { model.caretUTF16 = $0 },
                 onSelectionChange: { model.caretLengthUTF16 = $0.length },
-                onEditApplied: { model.editApplied($0, newText: $1) }
+                onEditApplied: { model.editApplied($0, newText: $1) },
+                autoClosePairs: model.autoClosePairs
             )
             CaptureBar()
             BridgeBar()
