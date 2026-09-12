@@ -1,0 +1,46 @@
+warning: 'mac': found 22 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/holding_preview_controller_proxy.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_xai_http.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-missing-font.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/delaying_assistant_context_proxy.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_context.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_provider.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_grok_session.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_preview_controller.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker_v2.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/controlled_assistant_provider.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a2b5f9da704bfbf4b/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+[0/1] Planning build
+Building for debugging...
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.85s)
+Test Suite 'Selected tests' started at 2026-09-12 15:12:11.541.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 15:12:11.542.
+Test Suite 'GrokLiveAcceptanceTests' started at 2026-09-12 15:12:11.542.
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testLiveCaptureConversionThroughTheBridge]' started.
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testLiveCaptureConversionThroughTheBridge]' passed (3.450 seconds).
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testLiveExplanationThroughTheProviderSession]' started.
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testLiveExplanationThroughTheProviderSession]' passed (70.092 seconds).
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testProbeReportsTheKeyClass]' started.
+Test Case '-[FlashTeXMacTests.GrokLiveAcceptanceTests testProbeReportsTheKeyClass]' passed (0.175 seconds).
+Test Suite 'GrokLiveAcceptanceTests' passed at 2026-09-12 15:13:25.261.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 73.717 (73.718) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 15:13:25.261.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 73.717 (73.718) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 15:13:25.261.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 73.717 (73.720) seconds
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

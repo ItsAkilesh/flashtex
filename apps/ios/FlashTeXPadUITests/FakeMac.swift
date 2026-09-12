@@ -1,0 +1,1 @@
+../FlashTeXPadTests/FakeMac.swift
