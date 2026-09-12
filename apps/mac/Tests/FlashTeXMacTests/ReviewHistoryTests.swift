@@ -164,10 +164,14 @@ final class ReviewHistoryTests: XCTestCase {
 
         // Default location under Application Support, project id sanitized.
         let support = URL(fileURLWithPath: "/tmp/support")
-        XCTAssertEqual(ReviewHistory.defaultURL(projectId: "my project/1", applicationSupport: support)?.path,
+        XCTAssertEqual(ReviewHistory.defaultURL(projectId: "my project/1", applicationSupport: support, environment: [:])?.path,
                        "/tmp/support/FlashTeX/review-history/my_project_1.json")
-        XCTAssertEqual(ReviewHistory.defaultURL(projectId: "", applicationSupport: support)?.lastPathComponent, "project.json")
-        XCTAssertNil(ReviewHistory.defaultURL(projectId: "x", applicationSupport: nil))
-        XCTAssertTrue(ReviewHistory.defaultURL(projectId: "demo")!.path.contains("/Library/Application Support/FlashTeX/review-history/demo.json"))
+        XCTAssertEqual(ReviewHistory.defaultURL(projectId: "", applicationSupport: support, environment: [:])?.lastPathComponent, "project.json")
+        XCTAssertNil(ReviewHistory.defaultURL(projectId: "x", applicationSupport: nil, environment: [:]))
+        XCTAssertTrue(ReviewHistory.defaultURL(projectId: "demo", environment: [:])!.path.contains("/Library/Application Support/FlashTeX/review-history/demo.json"))
+        // The environment override (test runs, sandboxes) and the in-memory switch.
+        XCTAssertEqual(ReviewHistory.defaultURL(projectId: "demo", applicationSupport: support, environment: ["FLASHTEX_REVIEW_HISTORY_DIR": "/tmp/override"])?.path,
+                       "/tmp/override/FlashTeX/review-history/demo.json")
+        XCTAssertNil(ReviewHistory.defaultURL(projectId: "demo", applicationSupport: support, environment: ["FLASHTEX_REVIEW_HISTORY_DIR": "off"]))
     }
 }
