@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T13:56:22.683353+00:00",
-      "adaptation": "Read FT023 revision21. Reuse existing binaries for strict PipelineCff identity/export and exact matching-fixture comparison; no rebuild or native claim.",
-      "main_sha": "d5440b01f1681175e8dc25108d92424db188a7fe",
-      "revision": 21
+      "acknowledged_utc": "2026-09-12T14:14:35Z",
+      "adaptation": "Read exact assignment at 228c5fa1. Source-pinned rendering invariants and bounded reconstruction handoff only; no wire/native activation.",
+      "main_sha": "228c5fa11b892bf74e5ed5aad86a2013e930e988",
+      "revision": 23
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "28266fc50be4e978fe45caa744883b8788ab57fd",
+  "code_revision": "96c66f2af7914d803473746e9c03bd6fcd3667e0",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "2293f8dfe5fad05f90e705b9cacc9e09e0f83d04",
-  "next_action": "Existing Mac owner resolves explicit override and helper candidate acceptance; await bounded next consumer task.",
+  "main_integrated_through": "96c66f2af7914d803473746e9c03bd6fcd3667e0",
+  "next_action": "Coordinate actual native schema with root helper review; no activation before complete owner contract and acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "All 23 supplementary metrics and exact license match existing official 97a725ea archive byte-for-byte; per-file evidence published.",
+  "summary": "FT023r23: documented strict full-list invariants, source/resource closure, atomic reconstruction, byte identity distinction and bounded lifecycle gates for page delta proposal.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:11:26Z",
+  "updated_utc": "2026-09-12T14:14:35Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/native-assets/packaging-7be5396d/official-archive-comparison.json",
-    "status": "Existing OpenAI session; no downloads, external providers, builds, native calls or descendants."
+    "evidence": "crates/rendering-core/docs/handoffs/page-delta/README.md",
+    "status": "Existing OpenAI session only; no new workers/providers/builds/corpus/native execution."
   }
 }
