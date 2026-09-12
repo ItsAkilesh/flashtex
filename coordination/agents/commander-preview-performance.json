@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "bb4fa4899c4b513df2a0371aecc5925e9660d276",
+  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Commander/native remeasure integratedserializer; continue snapshot negotiation afterconsumeragreement.",
+  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Serializer-onlye757 audit:20/20full301page replies byte-identical to4425;120sameharnesssamples exactclean.500KBmedian278\u2192153ms,p952048\u2192843ms,tailcauseunknown. Fulloutputretained,no universal200ms/nativeclaim.",
+  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:35:31Z",
+  "updated_utc": "2026-09-12T09:37:15Z",
   "usage": {
     "status": "unknown"
   }
