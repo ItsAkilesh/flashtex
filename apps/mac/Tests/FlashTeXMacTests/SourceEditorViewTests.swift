@@ -46,6 +46,7 @@ final class SourceEditorViewTests: XCTestCase {
     private final class Probe {
         var editApplied: [(ShellModel.PendingEdit, String)] = []
         var bindingSetNs: UInt64 = 0
+        var bindingSetCpuNs: UInt64 = 0
         var coordinator: SourceEditorView.Coordinator?
     }
 
@@ -57,6 +58,7 @@ final class SourceEditorViewTests: XCTestCase {
                 text: Binding(get: { model.activeText }, set: { new in
                     model.updateActiveText(new)
                     probe.bindingSetNs = MonotonicClock.nowNs()
+                    probe.bindingSetCpuNs = SourceEditorViewTests.threadCpuNs()
                 }),
                 selection: model.selection,
                 pendingEdit: model.pendingEdit,
@@ -635,6 +637,213 @@ final class SourceEditorViewTests: XCTestCase {
         model.detachBridge()
     }
 
+    // MARK: input methods (marked text)
+
+    /// What an input method does, expressed as the `NSTextInputClient` calls
+    /// AppKit forwards to the text view. A synthesized `NSEvent` cannot drive
+    /// a real input source in a test process (an Option-e key event inserts
+    /// its `characters` literally; no dead-key state, no IME candidate window),
+    /// so the sequences are replayed at the client API, which is the same code
+    /// path the view takes when the input context calls it.
+    private static let noReplacement = NSRange(location: NSNotFound, length: 0)
+    private func compose(_ tv: NSTextView, _ text: String) {
+        tv.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0), replacementRange: Self.noReplacement)
+    }
+
+    func testCompositionReachesTheModelOnlyWhenCommitted() async throws {
+        let model = ShellModel()
+        model.attachWorker(at: WorkerClientTests.python, arguments: [WorkerClientTests.fakeWorker.path])
+        XCTAssertTrue(model.workerAttached)
+        model.replaceProject(entryText: "ab\n")
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+        model.compile()
+        try await waitUntil("first compile") { model.inFlightRevision == nil && model.result?.revision == model.editorRevision }
+        TypingBench.shared.reset() // from here every compile result is recorded by revision
+        tv.setSelectedRange(NSRange(location: 2, length: 0))
+        try await turn()
+        let rev = model.editorRevision
+        let spokenBefore = co.announcements.count
+
+        // Three composition steps (Japanese-style): the view shows the marked
+        // text, the model holds the committed text, no revision, no compile.
+        for (i, step) in ["か", "かん", "漢"].enumerated() {
+            compose(tv, step)
+            XCTAssertTrue(tv.hasMarkedText())
+            XCTAssertEqual(tv.string, "ab\(step)\n")
+            XCTAssertEqual(model.activeText, "ab\n", "step \(i) did not reach the model")
+            XCTAssertEqual(model.editorRevision, rev, "step \(i) bumped no revision")
+            XCTAssertEqual(model.caretUTF16, 2, "the caret the model hears is the composition start")
+            XCTAssertEqual(model.caretByte, 2)
+            XCTAssertEqual(model.caretLengthUTF16, 0)
+            XCTAssertTrue(co.composing)
+            XCTAssertGreaterThanOrEqual(co.compositionSteps, i + 1, "AppKit posts one or two selection changes per step")
+            XCTAssertNotEqual(co.lastUserEditNs, 0, "composing counts as typing")
+        }
+        try await turn()
+        XCTAssertEqual(co.announcements.count, spokenBefore, "composition steps are not announced")
+        XCTAssertNil(model.inFlightRevision)
+        XCTAssertTrue(TypingBench.shared.recorder.compilesMs.isEmpty, "no compile per composition step")
+
+        // Commit: exactly one text change, one revision, one compile.
+        tv.insertText("漢字", replacementRange: Self.noReplacement)
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertFalse(co.composing)
+        XCTAssertEqual(tv.string, "ab漢字\n")
+        XCTAssertEqual(model.activeText, "ab漢字\n")
+        XCTAssertEqual(model.editorRevision, rev + 1)
+        XCTAssertEqual(model.caretUTF16, 4)
+        XCTAssertEqual(model.caretByte, 2 + "漢字".utf8.count)
+        try await waitUntil("commit compiled") { model.inFlightRevision == nil && model.result?.revision == rev + 1 }
+        XCTAssertEqual(Array(TypingBench.shared.recorder.compilesMs.keys), [rev + 1], "one compile, for the committed revision")
+        try await turn()
+        XCTAssertEqual(co.announcements.count, spokenBefore, "the commit is a typing step, not a caret move")
+
+        // Navigation during a composition waits for it to end. (Without the
+        // worker: the model drops `selection` when a compile result lands, so a
+        // navigation still deferred when the commit's result arrives is
+        // invalidated by the model, not applied late by the editor.)
+        model.detachWorker()
+        compose(tv, "x")
+        model.selection = .init(path: "main.tex", nsRange: NSRange(location: 0, length: 2), token: 1)
+        try await turn()
+        XCTAssertTrue(tv.hasMarkedText(), "syncing the view did not disturb the composition")
+        XCTAssertEqual(tv.string, "ab漢字x\n")
+        XCTAssertNotEqual(tv.selectedRange(), NSRange(location: 0, length: 2))
+        tv.insertText("x", replacementRange: Self.noReplacement)
+        XCTAssertEqual(model.activeText, "ab漢字x\n")
+        try await turn()
+        XCTAssertEqual(co.deferredSelection?.token, 1, "deferred until the typing pause, not dropped")
+        try await waitUntil("navigation after the composition", timeout: 3) { tv.selectedRange() == NSRange(location: 0, length: 2) }
+        XCTAssertEqual(co.announcements.last, "Selected 2 characters, line 1 column 1 to 3")
+    }
+
+    func testCompositionCancelDropsTheStepsAndClosesTheCompletionList() async throws {
+        let model = ShellModel()
+        model.replaceProject(entryText: "x \\s")
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+        let completing = try XCTUnwrap(tv as? CompletingTextView)
+        let end = (tv.string as NSString).length
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        try await turn()
+        let rev = model.editorRevision
+
+        // The list is open; a composition starting under it closes it and its
+        // pending scan can never reopen it while marked text exists.
+        completing.requestCompletion()
+        try await waitUntil("completion list") { completing.session != nil }
+        XCTAssertEqual(completing.session?.items.first?.label, "\\section")
+        compose(tv, "か")
+        completing.requestCompletion() // what the list's key path does after every keystroke
+        try await waitUntil("list closed by the composition") { completing.session == nil }
+        XCTAssertEqual(completing.lastCloseReason, .textChanged)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertNil(completing.session, "no list opened mid-composition")
+        XCTAssertTrue(tv.hasMarkedText())
+        XCTAssertEqual(model.activeText, "x \\s")
+        XCTAssertEqual(model.editorRevision, rev)
+
+        // IME cancel (Esc in the candidate window): the marked text is removed
+        // and unmarked; the buffer is back to the committed text, nothing was
+        // pushed, no revision.
+        compose(tv, "")
+        tv.unmarkText()
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "x \\s")
+        XCTAssertEqual(model.activeText, "x \\s")
+        XCTAssertEqual(model.editorRevision, rev)
+        try await turn()
+        XCTAssertFalse(co.composing)
+        XCTAssertNil(completing.session)
+        XCTAssertEqual(model.caretUTF16, end)
+
+        // `unmarkText` with marked text left commits it: one text change, one revision.
+        compose(tv, "y")
+        tv.unmarkText()
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(model.activeText, "x \\sy")
+        XCTAssertEqual(model.editorRevision, rev + 1)
+        XCTAssertEqual(model.caretUTF16, end + 1)
+
+        // Dead key under the open list (Option-e then e on a US layout): the
+        // input method marks "´", then replaces it with "é". The list closes,
+        // nothing is swallowed, the model sees the accent once.
+        tv.setSelectedRange(NSRange(location: end, length: 0))
+        tv.insertText("", replacementRange: NSRange(location: end, length: 1)) // drop the "y"
+        XCTAssertEqual(model.activeText, "x \\s")
+        let rev2 = model.editorRevision
+        completing.requestCompletion()
+        try await waitUntil("completion list 2") { completing.session != nil }
+        compose(tv, "´")
+        XCTAssertEqual(tv.string, "x \\s´")
+        try await waitUntil("list closed by the dead key") { completing.session == nil }
+        XCTAssertEqual(model.activeText, "x \\s")
+        XCTAssertEqual(model.editorRevision, rev2)
+        tv.insertText("é", replacementRange: Self.noReplacement)
+        XCTAssertFalse(tv.hasMarkedText())
+        XCTAssertEqual(tv.string, "x \\sé", "the dead-key sequence was not swallowed")
+        XCTAssertEqual(model.activeText, "x \\sé")
+        XCTAssertEqual(model.editorRevision, rev2 + 1)
+        XCTAssertEqual(model.caretUTF16, end + 1)
+        XCTAssertEqual(model.caretByte, "x \\sé".utf8.count)
+        try await turn()
+        XCTAssertNil(completing.session, "the list does not reopen by itself after the commit")
+    }
+
+    func testCaretBytesAreExactAcrossComposedAndDecomposedCharacters() async throws {
+        let model = ShellModel()
+        model.replaceProject(entryText: "")
+        let probe = Probe()
+        let (window, tv) = try await host(model, probe: probe)
+        defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
+
+        // e + combining acute (2 UTF-16 units, 3 bytes) is one user character.
+        tv.insertText("e", replacementRange: NSRange(location: 0, length: 0))
+        tv.insertText("\u{301}", replacementRange: NSRange(location: 1, length: 0))
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: 2, length: 0))
+        XCTAssertEqual(model.caretUTF16, 2)
+        XCTAssertEqual(model.caretByte, 3)
+        XCTAssertEqual(model.activeText.utf8.count, 3, "the decomposed form is kept byte for byte")
+        XCTAssertTrue(model.activeText.sameBytes(as: "e\u{301}"))
+        XCTAssertTrue(model.activeText == "é", "Swift == is canonical equivalence; the model compares bytes")
+        XCTAssertFalse(model.activeText.sameBytes(as: "é"))
+        XCTAssertEqual(SourceEditorView.lineColumn(text: model.activeText, utf16: 2)?.column, 2)
+        XCTAssertEqual(model.activeText.nsRange(utf8Bytes: .init(path: "main.tex", startByte: 3, endByte: 3)), NSRange(location: 2, length: 0))
+
+        // Precomposed é (1 unit, 2 bytes) after it.
+        tv.insertText("é", replacementRange: NSRange(location: 2, length: 0))
+        XCTAssertEqual(model.caretUTF16, 3)
+        XCTAssertEqual(model.caretByte, 5)
+        XCTAssertEqual(model.activeText.utf8.count, 5)
+        XCTAssertEqual(SourceEditorView.lineColumn(text: model.activeText, utf16: 3)?.column, 3)
+        XCTAssertEqual(model.activeText.nsRange(utf8Bytes: .init(path: "main.tex", startByte: 5, endByte: 5)), NSRange(location: 3, length: 0))
+        XCTAssertEqual(model.activeText.nsRange(utf8Bytes: .init(path: "main.tex", startByte: 0, endByte: 3)), NSRange(location: 0, length: 2))
+
+        // The same accent composed through the input method (dead key) lands identically.
+        compose(tv, "´")
+        XCTAssertEqual(model.caretUTF16, 3, "composition start while marked")
+        tv.insertText("é", replacementRange: Self.noReplacement)
+        XCTAssertEqual(model.caretUTF16, 4)
+        XCTAssertEqual(model.caretByte, 7)
+        XCTAssertTrue(model.activeText.sameBytes(as: "e\u{301}éé"))
+
+        // Selecting the decomposed cluster announces one character; the byte range is exact.
+        try await turn() // the typing event ends before the user selects
+        tv.setSelectedRange(NSRange(location: 0, length: 2))
+        try await turn()
+        XCTAssertEqual(co.announcements.last, "Selected 1 character, line 1 column 1 to 2")
+        XCTAssertEqual(model.caretLengthUTF16, 2)
+        XCTAssertEqual(model.activeText.utf8ByteRange(of: NSRange(location: 0, length: 2))?.end, 3)
+        // A mark or selection mapped from bytes 0..<3 covers the whole cluster, never half of it.
+        XCTAssertEqual(model.activeText.clusterAlignedNSRange(utf8Start: 0, utf8End: 1), NSRange(location: 0, length: 2))
+    }
+
     // MARK: large document keystrokes
 
     func testLargeDocumentKeystrokeRoundTripAndCaretBytesStayCorrect() async throws {
@@ -644,6 +853,7 @@ final class SourceEditorViewTests: XCTestCase {
         let probe = Probe()
         let (window, tv) = try await host(model, probe: probe)
         defer { window.orderOut(nil) }
+        let co = try XCTUnwrap(probe.coordinator)
         XCTAssertGreaterThanOrEqual(seed.utf8.count, 60_000)
 
         // Type 200 keystrokes before `\end{document}`: ASCII, 2-, 3- and 4-byte scalars, newlines.
@@ -658,6 +868,7 @@ final class SourceEditorViewTests: XCTestCase {
         try XCTUnwrap(tv.layoutManager).ensureLayout(forCharacterRange: NSRange(location: 0, length: caret))
         try await turn()
         var roundTripsMs: [Double] = []
+        var roundTripsCpuMs: [Double] = []
         var keystrokeCpuMs: [Double] = []
         var typed = ""
         let insertAtByte = SourceEditorView.caretByte(text: seed, utf16: caret)!
@@ -678,6 +889,7 @@ final class SourceEditorViewTests: XCTestCase {
             XCTAssertNotEqual(delegateNs, 0, "the delegate stamped this keystroke")
             XCTAssertGreaterThanOrEqual(probe.bindingSetNs, delegateNs)
             roundTripsMs.append(Double(probe.bindingSetNs &- delegateNs) / 1e6)
+            roundTripsCpuMs.append(Double(probe.bindingSetCpuNs &- co.lastUserEditCpuNs) / 1e6)
             // The model holds the edited text and a caret whose UTF-8 offset is exact.
             XCTAssertEqual(tv.selectedRange(), NSRange(location: caret, length: 0))
             XCTAssertEqual(model.caretUTF16, caret)
@@ -686,14 +898,14 @@ final class SourceEditorViewTests: XCTestCase {
         }
         XCTAssertEqual(model.activeText.utf8.count, seed.utf8.count + typed.utf8.count)
         XCTAssertTrue(model.activeText.sameBytes(as: tv.string))
-        let stats = LatencyStats(roundTripsMs), cpu = LatencyStats(keystrokeCpuMs)
-        print("large-document keystrokes (60 KB, debug build): \(stats.count) textDidChange -> binding round trips, wall p50 \(stats.p50Ms!) ms, p99 \(stats.p99Ms!) ms, max \(stats.maxMs!) ms; whole keystroke CPU p50 \(cpu.p50Ms!) ms, p99 \(cpu.p99Ms!) ms, max \(cpu.maxMs!) ms")
+        let stats = LatencyStats(roundTripsMs), rtCpu = LatencyStats(roundTripsCpuMs), cpu = LatencyStats(keystrokeCpuMs)
+        print("large-document keystrokes (60 KB, debug build): \(stats.count) textDidChange -> binding round trips, wall p50 \(stats.p50Ms!) ms, p99 \(stats.p99Ms!) ms, max \(stats.maxMs!) ms; round trip CPU p50 \(rtCpu.p50Ms!) ms, max \(rtCpu.maxMs!) ms; whole keystroke CPU p50 \(cpu.p50Ms!) ms, p99 \(cpu.p99Ms!) ms, max \(cpu.maxMs!) ms")
         // Each keystroke's round trip stays under 1 ms. A wall-clock miss counts
-        // only when the keystroke's own CPU time (a superset of the round trip)
-        // also exceeded the budget, so preemption by other processes is not a failure.
+        // only when the round trip's own CPU time also exceeded the budget, so
+        // preemption by other processes (other agents' builds) is not a failure.
         for (i, ms) in roundTripsMs.enumerated() {
-            XCTAssertTrue(ms < 1.0 || keystrokeCpuMs[i] < 1.0,
-                          "keystroke \(i) (\(script[i].debugDescription)) textDidChange -> binding took \(ms) ms wall, \(keystrokeCpuMs[i]) ms CPU for the whole keystroke")
+            XCTAssertTrue(ms < 1.0 || roundTripsCpuMs[i] < 1.0,
+                          "keystroke \(i) (\(script[i].debugDescription)) textDidChange -> binding took \(ms) ms wall, \(roundTripsCpuMs[i]) ms CPU (\(keystrokeCpuMs[i]) ms CPU for the whole keystroke)")
         }
         XCTAssertLessThan(stats.p50Ms!, 0.5, "median round trip")
         let slowest = keystrokeCpuMs.enumerated().sorted { $0.element > $1.element }.prefix(3)

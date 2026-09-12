@@ -22,6 +22,14 @@ import FlashTeXProtocol
 ///   broken on both sides, the change goes through `shouldChangeText` /
 ///   `didChangeText`, and the model learns about it once through
 ///   `onEditApplied` (the binding is not written during the view update).
+/// - Input methods: while the view has marked text (IME composition, dead
+///   keys) nothing reaches the binding — AppKit does not post a text change
+///   for `setMarkedText`, and a commit that still had marked text is held
+///   back — so no revision/compile per composition step; the caret is
+///   reported at the composition start (a position of the model's text);
+///   composition steps are not announced; the completion list is closed and
+///   its pending scan cancelled; the view is not re-synced from the model
+///   until the composition ends.
 struct SourceEditorView: NSViewRepresentable {
     @Binding var text: String
     var selection: ShellModel.Selection?
@@ -77,7 +85,10 @@ struct SourceEditorView: NSViewRepresentable {
         }
         // Until `onEditApplied` has delivered an applied edit, the binding still
         // holds the pre-edit text; resetting the view from it would undo the edit.
-        guard !co.awaitingEditDelivery else { return }
+        // While marked text exists the storage is ahead of the model by the
+        // composition; every sync waits for the commit (which updates the model
+        // and brings the next update here).
+        guard !co.awaitingEditDelivery, !tv.hasMarkedText() else { return }
         // `tv.string` bridges a fresh copy and compares it character by character
         // (Unicode-normalized) on every update. The coordinator keeps the exact
         // String instance last exchanged with the text view; when the binding
@@ -360,6 +371,9 @@ struct SourceEditorView: NSViewRepresentable {
         private(set) var awaitingEditDelivery = false
         /// Monotonic time of the last text change the user made (0 = never).
         private(set) var lastUserEditNs: UInt64 = 0
+        /// Thread CPU time at the last user text change (benchmark evidence:
+        /// the delegate -> binding round trip net of preemption).
+        private(set) var lastUserEditCpuNs: UInt64 = 0
         /// Navigation selection waiting for a typing pause or the end of an IME composition.
         private(set) var deferredSelection: ShellModel.Selection?
         private var deferredTimer: Timer?
@@ -367,6 +381,10 @@ struct SourceEditorView: NSViewRepresentable {
         /// changes in that turn are typing steps, not caret moves.
         private var textChangedThisTurn = false
         private var announcementPending = false
+        /// True while the view has marked text (an IME composition or dead key).
+        var composing: Bool { textView?.hasMarkedText() ?? false }
+        /// Composition selection changes observed (tests and evidence).
+        private(set) var compositionSteps = 0
         /// VoiceOver sink; tests replace it to observe announcements.
         var announce: (String) -> Void = { _ in }
         /// Announcements posted (tests and evidence).
@@ -499,6 +517,10 @@ struct SourceEditorView: NSViewRepresentable {
             }
             guard programmaticChanges == 0 else { return }
             lastUserEditNs = MonotonicClock.nowNs()
+            lastUserEditCpuNs = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+            // A change that leaves marked text behind is a composition step:
+            // the model sees the buffer once the composition is committed.
+            guard !tv.hasMarkedText() else { return }
             let s = SourceEditorView.nativeText(of: tv)
             lastKnownText = s
             parent.text = s
@@ -506,6 +528,7 @@ struct SourceEditorView: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
+            if tv.hasMarkedText() { compositionStep(tv); return }
             let range = tv.selectedRange()
             parent.onCaretChange(range.location)
             parent.onSelectionChange(range)
@@ -520,6 +543,30 @@ struct SourceEditorView: NSViewRepresentable {
                 announcementPending = false
                 guard !textChangedThisTurn, let tv = textView, tv.window?.firstResponder === tv else { return }
                 announceNow(text: currentText(of: tv), range: tv.selectedRange(), prefix: "")
+            }
+        }
+
+        // MARK: input method composition
+
+        /// `setMarkedText` posts no text change, only selection changes. The
+        /// caret the model hears is the composition start — a position of the
+        /// text it holds — nothing is announced, and the completion list (whose
+        /// key path re-scans after every keystroke) is closed with its pending
+        /// scan cancelled at the head of the next run-loop turn, i.e. after the
+        /// keystroke that started the step has enqueued that scan.
+        private func compositionStep(_ tv: NSTextView) {
+            compositionSteps += 1
+            lastUserEditNs = MonotonicClock.nowNs() // composing is typing for the navigation guard
+            let start = tv.markedRange().location
+            if start != NSNotFound {
+                parent.onCaretChange(start)
+                parent.onSelectionChange(NSRange(location: start, length: 0))
+            }
+            guard let completing = tv as? CompletingTextView else { return }
+            TypingBench.nextRunLoopTurn { [weak completing] in
+                guard let completing, completing.hasMarkedText() else { return }
+                completing.scheduler.cancel()
+                completing.close(.textChanged)
             }
         }
 
