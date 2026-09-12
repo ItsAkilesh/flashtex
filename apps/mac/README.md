@@ -473,7 +473,7 @@ Bounded disconnect/reconnect (`NearbyReconnector`, actor):
   **5 destination changed on the Mac, reselect and send again** · 64/65/66
   usage/not an image/unreadable file.
 
-Tests: `swift test` in `tools/nearby-client` (35: vectors, wire shapes, TXT
+Tests: `swift test` in `tools/nearby-client` (40: vectors, wire shapes, TXT
 validation, pair file, and a loopback-only `FakeMac` with fault injection —
 drop before ack → identical re-send, idle drop, refused key terminal, remote
 error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
@@ -481,7 +481,12 @@ refused port fails fast, 9th in-flight request refused, oversized inbound line
 closes, request timeout, CLI exit codes 0/2/3/4/5; backpressure retried on the
 same session after acks and budget-bounded, `too_many_sessions` retried after
 a reconnect, image/revision/conflict refusals terminal, local image checks,
-CLI hints per code). `swift test` here runs the same client against the real
+CLI hints per code; `NearbyTranscriptFixtureTests` replays duplicate delivery,
+revocation — key removed by a same-port listener restart, and `pair_mismatch`
+at hello — and idle-drop reconnect and compares every wire line and reconnector
+event with the captured client-side transcripts in `tools/nearby-client/
+Tests/Fixtures/*.jsonl`, ids/nonce/proof normalised; re-record after a
+deliberate wire change with `NEARBY_CLIENT_RECORD_FIXTURES=1`). `swift test` here runs the same client against the real
 stack in `NearbyReferenceClientTests` (Bonjour pair → send → identical retry →
 conflict → status → forget; direct mode and listener refusals; listener
 dropped after the inbox stored a capture and restarted on the same port →

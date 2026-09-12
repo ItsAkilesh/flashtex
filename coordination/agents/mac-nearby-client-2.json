@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-nearby-client-2",
+  "allocation_id": "claude-mac20x-nearby-client-2",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5646989044-item-13": "acknowledged 2026-09-12T16:05Z; current task done, follow-ups in progress"
+  },
+  "branch": "agent/mac-nearby-client-2/fixtures",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "PENDING",
+  "eta_minutes": {
+    "likely": 45,
+    "optimistic": 30,
+    "pessimistic": 70
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Follow-up 1: capture_list client-side state machine stub behind a feature flag (no bridge implementation); then follow-up 2: `nearby-client doctor`",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Base cd58fc2e; coverage audit of mac-nearby-client / mac-nearby-transport tests (see coordination/mac-nearby-client-2.md); only the uncovered part implemented: client-side JSONL transcript fixtures and revocation-between-drop-and-reconnect cases",
+      "reviewed_utc": "2026-09-12T16:10:00Z",
+      "sha": "cd58fc2e790f29bff50a5af7b4127027e841078a"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Nearby client item 13, current task: coverage audit found duplicate delivery / revocation / reconnect already asserted via counters against FakeMac and the real listener; added the uncovered part: four captured client-side JSONL transcripts (tools/nearby-client/Tests/Fixtures) with a TranscriptRecorder (ids/nonce/proof normalised, error kinds) and NearbyTranscriptFixtureTests (5 tests) including revocation between an unacknowledged capture and the reconnect (TLS refusal via same-port FakeMac restart without the key; pair_mismatch at hello): typed terminal error, no re-send. Package 40/40 at load avg 31.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:20:00Z",
+  "usage": {
+    "evidence": "cd apps/mac/tools/nearby-client && swift test -> 40 tests, 0 failures (load avg 31.7); NearbyTranscriptFixtureTests 5/5 x3 consecutive runs",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; usage unknown to the subagent"
+  }
+}

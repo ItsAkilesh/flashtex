@@ -42,7 +42,11 @@ final class FakeMac {
     private(set) var port: UInt16 = 0
     private let ready = DispatchSemaphore(value: 0)
 
-    init(keys: [Key], macName: String = "Fake Mac", destination: NearbyWire.Destination? = nil, advertise: String? = nil, salt: Data? = nil) throws {
+    /// `port` 0 picks a free loopback port; a fixed port lets a test bring a
+    /// second FakeMac up where a stopped one was (the Mac restarting its
+    /// listener with a changed key table, as `NearbyState.forget` does).
+    init(keys: [Key], macName: String = "Fake Mac", destination: NearbyWire.Destination? = nil, advertise: String? = nil, salt: Data? = nil,
+         port: UInt16 = 0) throws {
         self.keys = keys
         self.macName = macName
         self._destination = destination
@@ -59,7 +63,7 @@ final class FakeMac {
         let params = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         params.allowLocalEndpointReuse = true
         params.requiredInterfaceType = .loopback // tests never open a port beyond loopback
-        listener = try NWListener(using: params, on: .any)
+        listener = try NWListener(using: params, on: port == 0 ? .any : NWEndpoint.Port(rawValue: port)!)
         if let advertise, let salt {
             listener.service = NWListener.Service(name: advertise, type: NearbyWire.serviceType, domain: nil, txtRecord: NWTXTRecord(
                 ["v": "1", "name": macName, "fp": NearbyCrypto.fingerprint(salt: salt), "salt": NearbyCrypto.hex(salt)]))
@@ -75,6 +79,24 @@ final class FakeMac {
     func start() {
         listener.start(queue: queue)
         _ = ready.wait(timeout: .now() + 5)
+    }
+
+    /// Stops `previous` and starts a replacement on its port with `keys`
+    /// (retrying the bind briefly while the old socket is released).
+    static func restart(_ previous: FakeMac, keys: [Key], destination: NearbyWire.Destination? = nil) throws -> FakeMac {
+        let port = previous.port
+        previous.stop()
+        var last: Error?
+        for _ in 0..<50 {
+            do {
+                let m = try FakeMac(keys: keys, macName: previous.macName, destination: destination ?? previous.destination, port: port)
+                m.start()
+                if m.port == port { return m }
+                m.stop()
+            } catch { last = error }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        throw last ?? NearbyError.unreachable("could not rebind FakeMac on port \(port)")
     }
 
     func stop() { listener.cancel(); queue.sync { connections.forEach { $0.cancel() }; connections.removeAll() } }
