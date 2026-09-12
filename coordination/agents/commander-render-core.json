@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "5c5e3f89dd51cc0c1517b915b95c9a65a654bd89",
+  "code_revision": "c5b894b975695edbd927b3aa5b7628ae1826ea47",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 30
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 25
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Consume font6404ea6 CFF physical VF endpoints and adapt owned exhaustive matches, then nested consumer acceptance.",
+  "next_action": "Next rendering-core product assignment after this tested mixed VF checkpoint; font MATH adapter available separately.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact bounded PDF operator-stream fallback implemented; original backend API gap tracked in GH25.",
+  "summary": "CFF physical VF dependency and exact mixed registry packet consumer implemented; source/encoding identities retained.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:13:11Z",
+  "updated_utc": "2026-09-12T08:21:22Z",
   "usage": {
-    "evidence": "131 ordinary tests and strict clippy pass. Actual CLI emits32 operators/694 content bytes from pinned synthetic sourceSHAabfb227dafe89962540936529bdd8244a6b6201160f7ed491529fc924797f1a5. Real pinned STIX emits247 operators/3649 bytes SHA b5c42ae77008a3823076688513d636925c8c86dfdc5223f00ad481083b87bb42. Nonterminating decimals and alpha reject. PDF4bd8c2e readonly API cannot accept paths and rounds3decimals; no standalone PDF/native parity claim.",
-    "status": "Hosted OpenAI only; no paid providers or descendants."
+    "evidence": "132 ordinary Rust tests and strict all-target clippy pass. Peer6404ea6 merged unchanged; exhaustive resource matches adapted. Synthetic sfnt/TFM/VF flat/nested mixedTTF-CFF exact geometry equal, fractional origin/1001-over2 advance retained, encodingSHA traces validated, missing bindings/stale registry/source reject. Retained frame bytes immutable. Graph dependency reload detection remains caller-owned; no realVF/native parity claim.",
+    "status": "Hosted OpenAI allocation only; no paid providers or descendants."
   }
 }

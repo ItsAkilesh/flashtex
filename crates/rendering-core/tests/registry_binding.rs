@@ -739,3 +739,273 @@ fn manifest_roundtrip_preserves_active_render_lease_and_bounded_discovery() {
         )
         .unwrap();
 }
+fn synthetic_tfm() -> flashtex_font_resources::tfm::Tfm {
+    let mut bytes = [15u16, 2, 65, 65, 2, 1, 1, 1, 0, 0, 0, 1]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [0u32, 10 << 20, 0x01000000, 0, 1 << 19, 0, 0, 0, 0] {
+        bytes.extend(word.to_be_bytes())
+    }
+    flashtex_font_resources::tfm::Tfm::parse(&bytes).unwrap()
+}
+fn synthetic_vf(
+    commands: &[u8],
+    fonts: usize,
+    tag: u8,
+) -> flashtex_font_resources::vf::VirtualFont {
+    let mut b = vec![247, 202, 0];
+    for n in [0u32, 10 << 20] {
+        b.extend(n.to_be_bytes())
+    }
+    for i in 0..fonts {
+        b.extend([243, i as u8]);
+        for n in [0u32, 1 << 20, 10 << 20] {
+            b.extend(n.to_be_bytes())
+        }
+        b.extend([0, 1, tag + i as u8]);
+    }
+    b.extend([commands.len() as u8, 65, 8, 0, 0]);
+    b.extend(commands);
+    b.push(248);
+    flashtex_font_resources::vf::VirtualFont::parse(&b).unwrap()
+}
+#[test]
+fn mixed_ttf_cff_nested_packets_keep_exact_geometry_and_stale_registry_gates() {
+    use flashtex_font_resources::{cff::*, encoding::*, vf_graph::*};
+    use flashtex_rendering_core::{
+        graph_cache::GraphCache,
+        mixed::*,
+        registry_binding::nested::*,
+        tex_adapter::{MetricPolicy, RunScale},
+        Tick,
+    };
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let tt = font_fixture::shaping_fixture();
+    let cff = font_fixture::cff_fixture();
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![
+            entry(&tt, "body", "static-truetype", b"test"),
+            entry(&cff, "cff", "static-cff", b"test"),
+        ],
+    };
+    for (e, bytes) in manifest.entries.iter().zip([&tt, &cff]) {
+        std::fs::write(dir.path().join(&e.resource.path), bytes).unwrap();
+        std::fs::write(dir.path().join(&e.resource.license.text_path), b"test").unwrap();
+    }
+    save(dir.path(), &manifest);
+    let registry = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "nested",
+        registry.clone(),
+        RegistryRenderLimits {
+            max_bindings: 2,
+            max_cache_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let ttlease = renderer
+        .bind(&selection("body"), registry.generation())
+        .unwrap();
+    let cfflease = renderer
+        .bind(&selection("cff"), registry.generation())
+        .unwrap();
+    let tfm = synthetic_tfm();
+    let ttresource = registry.get(&selection("body")).unwrap();
+    let RegistryResource::Cff(cffresource) = registry.resource(&selection("cff")).unwrap() else {
+        panic!()
+    };
+    let ttmanifest = EncodingManifest {
+        font_sha256: ttresource.descriptor().sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![EncodingEntry {
+            code: 65,
+            glyph_name: "triangle".into(),
+        }],
+        declared_glyphs: vec![NamedGlyph {
+            glyph_name: "triangle".into(),
+            glyph_id: 1,
+        }],
+    };
+    let ttbound = BoundTfmFont::new(&tfm, &ttresource, &ttmanifest).unwrap();
+    let cffcache = cffresource
+        .outline_cache(CacheLimits {
+            max_entries: 10,
+            max_bytes: 100000,
+        })
+        .unwrap();
+    let cffmanifest = CffEncodingManifest {
+        font_sha256: cffcache.identity().font_sha256.clone(),
+        cff_sha256: cffcache.identity().cff_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![EncodingEntry {
+            code: 65,
+            glyph_name: "space".into(),
+        }],
+    };
+    let cffbound = BoundCffTfmFont::new(&tfm, &cffcache, &cffmanifest).unwrap();
+    let bindings = vec![
+        renderer
+            .bind_metrics(&ttlease, MetricBinding::TrueType(&ttbound))
+            .unwrap(),
+        renderer
+            .bind_metrics(&cfflease, MetricBinding::Cff(&cffbound))
+            .unwrap(),
+    ];
+    let mut graph = ResourceGraph::new();
+    let tkey = graph.insert(Resource::Physical(&ttbound)).unwrap();
+    let ckey = graph.insert(Resource::CffPhysical(&cffbound)).unwrap();
+    let mixed = synthetic_vf(&[65, 172, 65], 2, b'm');
+    let mkey = graph
+        .insert(Resource::Virtual {
+            vf: &mixed,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, ckey.clone()), (1, tkey)]),
+        })
+        .unwrap();
+    let rootvf = synthetic_vf(&[65], 1, b'r');
+    let rootkey = graph
+        .insert(Resource::Virtual {
+            vf: &rootvf,
+            tfm: &tfm,
+            fonts: BTreeMap::from([(0, mkey.clone())]),
+        })
+        .unwrap();
+    let mut cache = GraphCache::new(&graph, 10, 100000).unwrap();
+    let snapshot = SourceSnapshot {
+        revision: 4,
+        text: "A".into(),
+    };
+    let context = || NestedContext {
+        page: MixedContext {
+            project_id: "nested",
+            revision: 4,
+            page: 1,
+            page_width: Tick(100000),
+            page_height: Tick(100000),
+            clip: ExactClip {
+                left: r(0, 1),
+                top: r(0, 1),
+                right: r(100000, 1),
+                bottom: r(100000, 1),
+            },
+        },
+        origin: OutlinePoint {
+            x: r(1, 2),
+            y: r(20001, 4),
+        },
+        scale: RunScale::canonical(Tick(1001), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+        source_path: "main.tex",
+        snapshot: &snapshot,
+        source_range: 0..1,
+        paint: flashtex_rendering_core::Paint {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        },
+        cff_policy: HintPolicy::Unhinted,
+    };
+    let flat = renderer
+        .nested_packet(
+            &mut cache,
+            &mkey,
+            65,
+            &bindings,
+            context(),
+            MixedLimits::default(),
+        )
+        .unwrap();
+    let nested = renderer
+        .nested_packet(
+            &mut cache,
+            &rootkey,
+            65,
+            &bindings,
+            context(),
+            MixedLimits::default(),
+        )
+        .unwrap();
+    assert_eq!(flat.advance(), r(1001, 2));
+    assert_eq!(flat.advance(), nested.advance());
+    assert_eq!(flat.batch().primitives().len(), 2);
+    for (a, b) in flat
+        .batch()
+        .primitives()
+        .iter()
+        .zip(nested.batch().primitives())
+    {
+        assert_eq!(a.font_sha256, b.font_sha256);
+        assert_eq!(a.original_gid, Some(1));
+        assert_eq!(a.identity, b.identity);
+        assert_eq!(a.source_chain.len() + 1, b.source_chain.len());
+        match (&a.geometry, &b.geometry) {
+            (MixedGeometry::Cubic(a), MixedGeometry::Cubic(b)) => {
+                assert_eq!(a.commands, b.commands)
+            }
+            (MixedGeometry::Quadratic(a), MixedGeometry::Quadratic(b)) => assert_eq!(a, b),
+            _ => panic!(),
+        }
+    }
+    assert!(matches!(
+        flat.batch().primitives()[0].geometry,
+        MixedGeometry::Cubic(_)
+    ));
+    assert!(matches!(
+        flat.batch().primitives()[1].geometry,
+        MixedGeometry::Quadratic(_)
+    ));
+    let fixture: serde_json::Value = serde_json::from_slice(flat.batch().fixture_bytes()).unwrap();
+    assert_eq!(
+        fixture["primitives"][0]["source_chain"][1]["resource"]["encoding_sha256"],
+        cffbound.encoding().encoding_sha256()
+    );
+    let frozen = flat.batch().fixture_bytes().to_vec();
+    flat.require_current(&renderer, "main.tex", &snapshot)
+        .unwrap();
+    let stale = SourceSnapshot {
+        revision: 5,
+        ..snapshot.clone()
+    };
+    assert!(flat.require_current(&renderer, "main.tex", &stale).is_err());
+    assert!(renderer
+        .nested_packet(
+            &mut cache,
+            &mkey,
+            65,
+            &bindings[..1],
+            context(),
+            MixedLimits::default()
+        )
+        .is_err());
+    let bad = ResourceKey::CffPhysical {
+        font_sha256: "f".repeat(64),
+        cff_sha256: "f".repeat(64),
+        tfm_sha256: "f".repeat(64),
+        encoding_sha256: "bad".into(),
+        face_index: 0,
+    };
+    assert!(cache.lookup(&bad, 65).is_err());
+    manifest.entries[0].resource.license.source = "updated".into();
+    save(dir.path(), &manifest);
+    renderer.replace(load(&root)).unwrap();
+    assert!(flat
+        .require_current(&renderer, "main.tex", &snapshot)
+        .is_err());
+    assert!(renderer
+        .nested_packet(
+            &mut cache,
+            &rootkey,
+            65,
+            &bindings,
+            context(),
+            MixedLimits::default()
+        )
+        .is_err());
+    assert_eq!(flat.batch().fixture_bytes(), frozen);
+}

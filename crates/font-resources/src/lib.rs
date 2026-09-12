@@ -127,7 +127,9 @@ fn check_entry_common(entry: &ManifestEntry) -> Result<()> {
             "invalid declared font metrics/name".into(),
         ));
     }
-    let l = &entry.license;
+    check_license_metadata(&entry.license)
+}
+fn check_license_metadata(l: &LicenseMetadata) -> Result<()> {
     if [&l.identifier, &l.copyright, &l.source]
         .iter()
         .any(|s| s.trim().is_empty() || s.len() > 8192)

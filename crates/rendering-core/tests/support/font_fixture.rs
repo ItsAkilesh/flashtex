@@ -103,3 +103,45 @@ fn build(triangle: bool, grid: bool, shaping: bool) -> Vec<u8> {
     }
     bytes
 }
+
+/// Original tiny sfnt/CFF fixture with a triangular original GID1, named space
+/// by the default CFF charset. Tests bind TeX code65 explicitly, never via Unicode.
+#[allow(dead_code)]
+pub fn cff_fixture() -> Vec<u8> {
+    let source = shaping_fixture();
+    let count = u16::from_be_bytes(source[4..6].try_into().unwrap()) as usize;
+    let mut tables = BTreeMap::new();
+    for i in 0..count {
+        let at = 12 + 16 * i;
+        let tag: [u8; 4] = source[at..at + 4].try_into().unwrap();
+        if tag == *b"glyf" || tag == *b"loca" {
+            continue;
+        }
+        let offset = u32::from_be_bytes(source[at + 8..at + 12].try_into().unwrap()) as usize;
+        let len = u32::from_be_bytes(source[at + 12..at + 16].try_into().unwrap()) as usize;
+        tables.insert(tag, source[offset..offset + len].to_vec());
+    }
+    be16(tables.get_mut(b"maxp").unwrap(), 4, 2);
+    let mut cff = vec![
+        1, 0, 4, 4, 0, 1, 1, 1, 2, b'F', 0, 1, 1, 1, 3, 160, 17, 0, 0, 0, 0,
+    ];
+    cff.extend([
+        0, 2, 1, 1, 2, 12, 14, 139, 139, 21, 239, 139, 5, 39, 239, 5, 14,
+    ]);
+    tables.insert(*b"CFF ", cff);
+    let mut bytes = vec![0; 12 + tables.len() * 16];
+    bytes[..4].copy_from_slice(b"OTTO");
+    be16(&mut bytes, 4, tables.len() as u16);
+    for (i, (tag, data)) in tables.into_iter().enumerate() {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0)
+        }
+        let offset = bytes.len();
+        let at = 12 + i * 16;
+        bytes[at..at + 4].copy_from_slice(&tag);
+        be32(&mut bytes, at + 8, offset as u32);
+        be32(&mut bytes, at + 12, data.len() as u32);
+        bytes.extend(data);
+    }
+    bytes
+}

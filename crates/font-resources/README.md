@@ -484,3 +484,78 @@ the bounded declared registry: exact case-sensitive prefix/style/weight filterin
 before enumeration. No filesystem discovery or implicit fallback occurs. Roundtrip
 and pagination tests cover both synthetic resources and the pinned mixed licensed
 STIX/Liberation registry; no native wire negotiation or visual parity is implied.
+
+TFM run interpretation now honors implicit left/right boundaries from the first
+and last lig/kern marker records. The authoritative format rules are in TeX's
+TFM specification, `tex.web` sections on the lig/kern array:
+https://raw.githubusercontent.com/TeX-Live/texlive-source/trunk/texk/web2c/tex.web
+The original interpreter uses distinct invisible boundary sentinels; these are
+never emitted as glyphs or cast to Unicode/GIDs. Left-boundary programs and
+right-boundary matching support exact ligature retention/advance and signed kerns.
+A real encoded glyph matching the boundary byte remains a real glyph. Replacement
+intervals cover participating real input; boundary sentinels contribute only
+zero-length start/end intervals. Missing input glyphs are rejected.
+
+`apply_ligatures_kerns_with_boundaries(input, BoundaryOptions { left, right })`
+allows explicit suppression; the existing method enables both. Both
+`BoundTfmFont` and `BoundCffTfmFont` expose `map_run_with_boundaries` and preserve
+explicit encoding mappings, missing-map errors, metrics and input intervals.
+Empty runs produce nothing.4096 input bytes,8192 working items (including
+sentinels), and65536 combined run/program steps bound malformed cycles and scans.
+Cache consumers must bind TFM hash, explicit encoding/font identity, boundary
+options, input bytes and implementation version. No TeX token scanning, automatic
+font-run segmentation, hyphenation/discretionary reconstruction, or scaled-point
+rounding is added.
+
+Boundary-specific fixtures are hand-checked synthetic programs for left/right
+kerns and ligatures, retention, suppression, cycles, invalid addresses and encoded
+mapping. The existing licensed peer `ec-lmr10.tfm` (SHA cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5)
+provides real fi->slot28 and AV kern(-116509 fix_word) regression evidence, but it
+has no boundary marker/program. No real-font boundary oracle is claimed.
+
+`registry::vf_project::ResolvedVfProject` resolves explicit VF dependencies through
+the same rooted reader and immutable project font registry. No published real VF
+fixture was available; the only special fixture contains `ps`, so no special
+semantics were guessed. All specials remain explicit unsupported expansion results.
+
+Dependency schema1 binds `registry_generation`, a root node ID, and physical or
+virtual nodes. Each TFM/VF asset declares path/full SHA/license provenance and
+license hash; physical nodes declare a registry StyleBinding and explicit encoding
+manifest. Virtual nodes map every local font ID to an explicit target node ID.
+There is no path/name/font fallback. Load verifies bytes/licenses, TFM/VF headers,
+local checksum/design size, complete local-ID bindings, unique resource identities,
+missing nodes and dependency cycles before returning an immutable resolved project.
+
+Limits reuse RegistryLimits (128nodes,257reads,1MiB manifest,256MiB total maximum),
+plus131068bytes per TFM,16MiB per VF and32 graph-depth limit. `expand(code,
+registry_generation)` refuses stale context and builds borrowed bindings for the
+existing ResourceGraph exact expansion/source-chain implementation. It does not
+reimplement packet execution. Physical endpoints explicitly select TrueType BoundTfmFont or CFF BoundCffTfmFont
+through separate node variants; no backend inference occurs.
+
+`generation`, `manifest`, `loaded_bytes` and retained license texts provide
+recoverable provenance. Node/local-ID ordering is normalized before generation
+hashing; explicit encoding declarations are preserved. Caller caches must bind
+project instance, registry/dependency generations, character and implementation
+profile. Synthetic rooted-project tests cover originalGID/source-chain expansion,
+missing/duplicate/cyclic dependencies, changed bytes, missing licenses, symlinks,
+read budgets, retained snapshots and explicit unknown-special rejection. These do
+not establish real VF special or visual reference equivalence.
+
+
+VF graphs now accept `Resource::CffPhysical(&BoundCffTfmFont)` with a distinct
+`ResourceKey::CffPhysical` binding full-font SHA, CFF SHA, TFM SHA, canonical encoding
+SHA and face. Existing TrueType keys/API stay intact. Physical mapping reuses the
+bound CFF encoding and exact TFM dimensions; missing mappings and `.notdef` fail.
+Nested packets preserve original GIDs, exact scaling and complete source chains.
+Rooted dependency schema1 adds explicit `kind: "cff_physical"` nodes with a CFF
+encoding manifest and registry StyleBinding. Assets retain the same license/read
+bounds; a wrong backend/hash cannot silently resolve to another resource.
+
+99tests and strictclippy cover flat/nested CFF equivalence, mixed TrueType/CFF
+packets, explicit missing/.notdef errors and rooted CFF binding mismatch. Specials
+remain unsupported. Renderer adoption requires new exhaustive-match handling:
+read-only compile of rendering-core5c5e3f89dd51cc0c1517b915b95c9a65a654bd89 against
+this candidate identified `tex_adapter.rs:602`, `graph_cache.rs:149` and
+`mixed.rs:380`. These consumer files were not edited; no integrated renderer
+compatibility claim is made until its owner publishes that adaptation.

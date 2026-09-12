@@ -458,3 +458,20 @@ provenance sidecar. It refuses unsupported decimal rounding/transparency and doe
 not write another PDF container. See [PDF-INTEGRATION.md](PDF-INTEGRATION.md) for
 the reviewed backend limitation, missing owner API, exact geometry gates and
 executable synthetic/real-font stream checks.
+
+`registry_binding::nested` consumes immutable VF graph-cache packets with explicit
+registry leases and independently bound TFM encodings for both TrueType and CFF
+endpoints. Original GIDs, full font/CFF/TFM/encoding hashes, face identity and source
+chains survive mixed batch serialization. Exact VF coordinates and TFM advances
+use the caller-selected rational policy; they do not claim TeX scaled-point
+rounding equivalence. Unbound endpoints and stale registry leases reject before a
+partial frame is returned. The older TrueType-only `nested_run` explicitly rejects
+CFF roots; use the mixed registry consumer instead.
+
+Synthetic sfnt/TFM/VF acceptance proves flat/nested mixed geometry equality,
+fractional origins/advances, explicit encoding provenance and immutable retained
+frames after registry/source changes. The graph cache is scoped to one immutable
+graph; callers still own dependency reload detection. `require_current` checks
+registry/source state, not external VF file freshness. No real VF oracle or native
+wire integration is claimed. Resource cache charging includes the expanded CFF
+identity fields; caller-held frames/Arcs remain outside current cache residency.
