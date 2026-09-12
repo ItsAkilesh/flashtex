@@ -122,6 +122,8 @@ struct FlashTeXMacApp: App {
                 Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }
                     .keyboardShortcut("e", modifiers: [.command, .option])
                     .disabled(model.result == nil)
+                Button("Export PDF (exact, v2)…") { model.exportPDFExact() } // ExactPDFExport.swift
+                    .disabled(model.displayListV2?.frame == nil)
                 Divider()
                 Button("Attach Built Compiler") { model.attachDiscoveredWorker() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])

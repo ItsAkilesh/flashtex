@@ -7,7 +7,7 @@ import Foundation
 public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case openLaTeXFile, save, saveAs, openFixture, reloadFixture
     case attachBuiltCompiler, attachRenderPipeline, attachWorker, compile
-    case exportPDF, exportPDFViaRust
+    case exportPDF, exportPDFViaRust, exportPDFExact
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
     case undo, completion
@@ -69,6 +69,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Export PDF via Rust writer", shortcuts: ["⌘⌥E"], menu: "File",
                          description: "Pipes the compile result to flashtex-pdf --verify (always white).",
                          requires: "a compile result")
+        case .exportPDFExact:
+            return Entry(command: self, title: "Export PDF (exact, v2)", shortcuts: ["File > Export PDF (exact, v2)…"], menu: "File",
+                         description: "Hands the loaded v2 display list to flashtex-pdf-exact from-v2: glyphs by original GID, embedded font programs, typed rules; refuses what it cannot express exactly.",
+                         requires: "a loaded v2 display list and a built flashtex-pdf-exact")
         case .pinInsertionPoint:
             return Entry(command: self, title: "Pin insertion point", shortcuts: ["⌘⇧P"], menu: "Edit",
                          description: "Records the caret as the destination anchor for capture proposals; the capture bar reads it back.")

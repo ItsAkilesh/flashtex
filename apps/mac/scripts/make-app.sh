@@ -7,7 +7,7 @@
 # with `open` and eventually granted such permissions.
 #
 # Usage: apps/mac/scripts/make-app.sh [--debug] [--compiler <path>] [--pdf <path>]
-#                                      [--bridge <path>] [--ledger <path>] [--render <path>]
+#                                      [--bridge <path>] [--ledger <path>] [--render <path>] [--pdf-exact <path>]
 #                                      [--open] [--install] [--dmg]
 set -euo pipefail
 
@@ -21,6 +21,7 @@ PDF_PATH=""
 BRIDGE_PATH=""
 LEDGER_PATH=""
 RENDER_PATH=""
+PDF_EXACT_PATH=""
 DO_OPEN=0
 DO_INSTALL=0
 DO_DMG=0
@@ -41,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --bridge)
       BRIDGE_PATH="${2:-}"
+      shift 2
+      ;;
+    --pdf-exact)
+      PDF_EXACT_PATH="${2:-}"
       shift 2
       ;;
     --render)
@@ -259,6 +264,19 @@ if [[ -n "${RENDER_PATH:-}" && -f "$RENDER_PATH" ]]; then
 else
   echo "    no flashtex-render found (optional; build crates/render-pipeline or pass --render <path>); skipping"
   record_component "render" "" ""
+fi
+
+# Exact PDF route (crates/pdf flashtex-pdf-exact, mac-pdf lane): bundled when built.
+EXACT_DEFAULT="$REPO_ROOT/crates/pdf/target/release/flashtex-pdf-exact"
+if [[ -n "${PDF_EXACT_PATH:-}" && -f "$PDF_EXACT_PATH" ]] || [[ -f "$EXACT_DEFAULT" ]]; then
+  SRC="${PDF_EXACT_PATH:-$EXACT_DEFAULT}"
+  cp "$SRC" "$MACOS_DIR/flashtex-pdf-exact"
+  chmod +x "$MACOS_DIR/flashtex-pdf-exact"
+  echo "    bundled flashtex-pdf-exact from $SRC"
+  record_component "pdf_exact" "$MACOS_DIR/flashtex-pdf-exact" "$SRC"
+else
+  echo "    no flashtex-pdf-exact found (optional; build crates/pdf or pass --pdf-exact <path>); skipping"
+  record_component "pdf_exact" "" ""
 fi
 
 # The app's own entry uses $GIT_SHA (already resolved for the whole repo
