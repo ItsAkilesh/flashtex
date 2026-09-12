@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T14:25:11Z",
-      "adaptation": "Read FT049r41; exact9aa unchangedarchive offlinebuildPASS347429f4,18fullruntimepairsPASS, rawbyte3+6comparisonPASS andcap1explicitfailed verified. Completing resource/source/hash evidence+publication, no timing or oldgeometryoracle.",
-      "main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
-      "revision": 41
+      "acknowledged_utc": "2026-09-12T14:42:21Z",
+      "adaptation": "Read exact r43 helper518a2ce3 audit objective; completed c6fd04f6 without rerun. Exact captured raw/source bindings pass; reopen only owner assertion because snapshot not archived. No native claim.",
+      "main_sha": "cde5dd8385fb5449ed83077421cca287d2318cb3",
+      "revision": 43
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "c6fd04f67208dcb9037fe0055f8281162eab90f2",
+  "code_revision": "bd6190a954c97a8aae148280f645e3f75a3ab7cb",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "4da0f772cf8f30259b502af09bfe2fa701c699af",
+  "main_integrated_through": "cf7650cbf0ad6dc56884fa6942c757418004f24a",
   "next_action": "Commander integrate audit; await next bounded runtime assignment. No jobs, workload rerun, native or performance claim.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "c6fd04f6 independent helper518a2ce3 audit PASS:9 compressed/original artifacts,78 assets, scripts and actual298/347 binaries verified;3 full v1/v2/raw and source/editor/compile bindings exact. Reopen assertion and reconstructed producer stdin limitations explicit. HW1 empty Heading.number already suppressed by9aa adapter; no production change.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T14:41:56Z",
+  "updated_utc": "2026-09-12T14:42:21Z",
   "usage": {
     "status": "unknown"
   }
