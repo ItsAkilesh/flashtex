@@ -1,0 +1,13 @@
+[package]
+name = "flashtex-project-templates"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Original FlashTeX undergraduate project templates: a bounded manifest of built-in templates (report, thesis, problem set, lab notebook) and a rooted, non-destructive instantiation API."
+
+[lib]
+name = "flashtex_project_templates"
+path = "src/lib.rs"
+
+[dependencies]
