@@ -82,76 +82,76 @@ exists yet and FT-046 remains formally unacknowledged. This handoff carries the
 same evidence in the meantime. Per `docs/coordination-cli.md` a comment is not
 an acknowledgement, so the Commander should not treat this as one.
 
-## Lane status — 7 complete, 9 running, 0 queued
+## Lane status — 14 complete, 2 running, 0 queued
 
-Updated 2026-09-12T09:40Z. All 16 lanes are dispatched. Every lane has its own
-git worktree, as AGENTS.md requires and FT-046 acceptance demands, and owns
-exactly one crate.
+Updated 2026-09-12T09:04:17Z. All 16 lanes dispatched, each in its own git worktree owning
+exactly one crate. None dropped, none merged into another, none left queued.
 
 ### Complete, independently verified, published
 
-Each was re-verified here rather than accepted on the lane's own report: build,
+Re-verified here rather than accepted on each lane's own report: build,
 `cargo test`, `cargo clippy --all-targets -- -D warnings`, the exact set of paths
-touched, and the author and trailers on every commit.
+touched, that no workspace root `Cargo.toml` was created, and the author and
+trailers on every commit.
 
-| Task | Agent | Crate | Tests | Branch tip |
-|---|---|---|---|---|
-| FT-030 | daniel-tables | `paragraph-layout` | 27 | `e69165a` |
-| FT-031 | daniel-floats | `font-engine` | 65 | `8080c90` |
-| FT-032 | daniel-footnotes | `math-layout` | 34 | `801c649` |
-| FT-033 | daniel-title | `title-layout` | 15 | `7da3992` |
-| FT-034 | daniel-contents | `toc-layout` | 24 | `da1edc7` |
-| FT-035 | daniel-color | `color-expressions` | 42 | `0c78017` |
-| FT-036 | daniel-images | `image-assets` | 38 | `c553990` |
+| Task | Crate | Tests | Kind |
+|---|---|---|---|
+| FT-030 | `paragraph-layout` | 27 | transfer |
+| FT-031 | `font-engine` | 65 | transfer |
+| FT-032 | `math-layout` | 34 | transfer |
+| FT-033 | `title-layout` | 15 | new |
+| FT-034 | `toc-layout` | 24 | new |
+| FT-035 | `color-expressions` | 42 | new |
+| FT-036 | `image-assets` | 38 | new |
+| FT-037 | `link-annotations` | 47 | new |
+| FT-038 | `math-accessibility` | 17 | new |
+| FT-039 | `spellcheck` | 26 | new |
+| FT-040 | `project-templates` | 37 | new |
+| FT-041 | `editor-snippets` | 42 | new |
+| FT-042 | `document-statistics` | 31 | new |
+| FT-043 | `project-bundle` | 26 | new |
 
-**245 tests passing, 0 failing.** Every lane touched only its own crate plus its
-own handoff. Clippy clean with warnings denied on all seven. Every commit is
-authored `d-q222` and carries that co-author trailer, with no AI attribution
-anywhere, verified by grep on each branch.
-
-### Security results worth the Commander's attention
-
-FT-036 `image-assets` was the highest-risk lane and its rooting holds up under
-inspection, not merely by assertion. Nine dedicated tests pass: traversal at the
-start of a path and buried mid-path, absolute paths, symlink escape through a
-linked file, symlink escape through a linked *directory component*, and a
-positive control proving an in-root symlink is still permitted. It canonicalises
-and then checks containment, which is what catches the symlink cases a purely
-lexical check misses. It reuses the `image` dependency at the version and feature
-set two sibling crates already pin, and carries their decompression-bomb limits.
-
-FT-035 `color-expressions` bounds input at 512 bytes and recursion at depth 32 on
-a single shared budget covering negation, parentheses and mix chains, so no
-nesting path escapes it. Unknown palette names always produce a typed error and
-never silently resolve to black. `crates/vector-graphics` is untouched, confirmed
-by diff.
+**471 tests passing, 0 failing.** Every lane stayed inside its own crate plus
+its own handoff. Clippy clean with warnings denied on all fourteen. Every commit
+authored `d-q222` with that co-author trailer and no AI attribution, checked by
+grep on each branch.
 
 ### Running
 
-FT-037 link-annotations, FT-038 math-accessibility, FT-039 spellcheck,
-FT-040 project-templates, FT-041 editor-snippets, FT-042 document-statistics,
-FT-043 project-bundle, FT-044 collaboration-core, FT-045 tex-calc.
+FT-044 `collaboration-core`, FT-045 `tex-calc`.
 
-**Actual live count is 9**, reported separately as acceptance requires.
+### Security results
 
-### Deliberate omissions, recorded rather than hidden
+Four lanes carried explicit trust boundaries, and each proved them rather than
+asserting them:
 
-FT-030 rejected the `bad0666` fixtures: 1,461 lines of transcribed TFM data whose
-own commit says "Validation: none run", plus an oracle test needing font files at
-test time and a dev-dependency on an unmerged branch. FT-031 declined to wire
-`tfm_binding.rs` because `font-resources` already depends on `font-engine`, so it
-would be a package dependency cycle cargo refuses. FT-032 left the cancelled
-lane's visual-regression harness out because it needs unverifiable external
-tooling. FT-033 published a documented list of what it cannot measure rather than
-inventing numbers. Each is recorded in that lane's own handoff.
+- **FT-036 image-assets** and **FT-043 project-bundle** both canonicalise then
+  check containment, so a symlink escaping the root is caught, and both keep a
+  positive control proving an in-root symlink is still allowed. FT-043 also
+  proves its path rejection is syntactic rather than existence-based, by testing
+  a traversal target that does not exist.
+- **FT-037 link-annotations** uses a positive scheme allowlist of http, https and
+  mailto, and tests mixed-case `JavaScript:` to rule out a case-folding bypass.
+  Length is checked before any parsing, so a 50 MB hostile input fails instantly.
+- **FT-040 project-templates** preflights every declared target before writing
+  anything, so one conflict blocks the whole batch and no partial tree is left
+  behind. It also went beyond its acceptance criteria and LaTeX-escapes the
+  project name and author, with a test proving a `}\input{...}{` payload cannot
+  close the macro argument early.
 
-### Consumer-visible API change
+### Corrections found by lanes, not by the supervisor
 
-`math-layout`'s `Nucleus::Radical(MathList)` became a struct variant
-`Nucleus::Radical { radicand, degree: Option<MathList> }` to carry `\sqrt[n]{}`.
-Source-breaking only for code matching that variant directly. `Atom::sqrt()` is
-unchanged and the only in-repo consumer, `font-engine` under feature `math`, does
-not touch it and still builds.
+**FT-038 caught a supervisor error.** Its brief stated that `math-layout`'s
+radical had become a struct variant carrying a degree. It verified against its
+own worktree and `input_main_sha`, found the variant is still
+`Radical(MathList)` on main, and built against the real tree. The struct variant
+exists only on FT-032's branch, which is not yet integrated. The brief was wrong
+and the lane was right.
+
+**FT-043 documented a filesystem caveat** rather than hiding a surprising test
+result: two filenames differing only by Unicode normalisation collide on default
+macOS APFS, which is outside the crate's logic but changes what a test can
+assert.
 
 ## Why batched, with evidence
 

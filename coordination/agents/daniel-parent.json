@@ -19,18 +19,18 @@
     "commit-execution"
   ],
   "eta_minutes": {
-    "likely": 25,
-    "optimistic": 10,
-    "pessimistic": 60
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 40
   },
   "machine": "mac-m5pro-dq222",
-  "next_action": "Verify and publish the 5 remaining lanes, then re-checkpoint and adapt to peer changes.",
+  "next_action": "Verify and publish FT-044 and FT-045, then re-checkpoint against origin/main and adapt.",
   "reviewed_peers": {
     "origin/main": "5499e419b09868e2e248c413351a5646db74fac1"
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "All 16 lanes FT-030..FT-045 dispatched, each in its own git worktree owning exactly one crate. 11 complete, verified and published; 5 running. No lane has been dropped, queued indefinitely, or merged into another. Every lane commit is authored d-q222 with no AI attribution.",
+  "summary": "All 16 lanes FT-030..FT-045 dispatched, each in its own git worktree owning exactly one crate. 14 complete, independently verified and published, totalling 471 tests passing with 0 failing; 2 running. No lane dropped, queued indefinitely, or merged into another. Every commit authored d-q222, no AI attribution.",
   "tool": "Claude Code on Claude Max 20x",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
