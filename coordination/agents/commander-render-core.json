@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "revision": 21,
-      "main_sha": "d5440b01f1681175e8dc25108d92424db188a7fe",
       "acknowledged_utc": "2026-09-12T13:56:22.683353+00:00",
-      "adaptation": "Read FT023 revision21. Reuse existing binaries for strict PipelineCff identity/export and exact matching-fixture comparison; no rebuild or native claim."
+      "adaptation": "Read FT023 revision21. Reuse existing binaries for strict PipelineCff identity/export and exact matching-fixture comparison; no rebuild or native claim.",
+      "main_sha": "d5440b01f1681175e8dc25108d92424db188a7fe",
+      "revision": 21
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "57e37a1bee9043f6c0109da445492990ec14e034",
+  "code_revision": "73401a5aa5cd2faca06031cf094a3228fc2fa845",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "512ddff3f4304efebd61e5f94d8923bdf65f1ea9",
-  "next_action": "Commander integrate acceptance; native helper route and signed no-TeX package gates remain separate. No new producer/consumer rebuild required for this increment.",
+  "main_integrated_through": "92ff8c3766f29c63094c280d90fd4b8702759f4a",
+  "next_action": "Prioritize read-only actual packaging7be5396 artifact review, including bundle-before-user override ordering and supplementary asset provenance. No native edits/rebuild.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "New 7ca producer 10pt/12pt outputs bind and export through existing strict consumer; old/new PDF and extraction bytes match, exact hit geometry differences retained.",
+  "summary": "Actual recovery standalone export: warning10pt permits labeled fallback, error12pt refuses noPDF. Strict paired/helper rules inspected unchanged;12pt sidefile was not negotiated stdout.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:56:22Z",
+  "updated_utc": "2026-09-12T14:02:03Z",
   "usage": {
-    "evidence": "Consumer binary 41d9cc1f; source trees unchanged from fce554f1. PDFs d1cc00ca (10pt), fdaf6f84 (12pt). Exactly99/20 cluster hit/caret top leaves -1tick, all other leaves unchanged. Bad raw font/source identity refused, no PDF created. Actual v1 inputs zero diagnostics.",
-    "status": "Hosted OpenAI only; no providers or descendants. Four export and two malformed-input probes terminal; no timed measurements or native calls. Context telemetry/native compaction unavailable."
+    "evidence": "Report retains originalsource/diagnostic hashes/spans, consumerbinary41d9cc1f, warningfallbackPDFde995170 and errornoPDF. Pair true rejects both by existing source rule; permissive12 sidefile would mismatch capabilities. No new policy/nativeclaim.",
+    "status": "Hosted OpenAI only; no providers/descendants. Four lightweight existing exporter calls terminal, no builds. Context telemetry/native compaction unavailable."
   }
 }
