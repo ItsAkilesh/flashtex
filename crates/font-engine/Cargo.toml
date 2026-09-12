@@ -21,3 +21,14 @@ pdf = ["dep:flashtex-pdf"]
 flashtex-paragraph-layout = { path = "../paragraph-layout", optional = true }
 flashtex-math-layout = { path = "../math-layout", optional = true }
 flashtex-pdf = { path = "../pdf", optional = true }
+
+[dev-dependencies]
+# font-resources is a real consumer of collection_layout (registry::collections
+# requires an external VerifiedCollectionResolver); tests/consumer_integration.rs
+# drives that trait through font-resources' own CollectionRegistry::load, not a
+# stand-in. Dev-only, so this does not create a build cycle for normal builds
+# (font-resources' own [dependencies] on this crate is unaffected).
+flashtex-font-resources = { path = "../font-resources" }
+flashtex-project-files = { path = "../project-files" }
+serde_json = "1"
+tempfile = "3"
