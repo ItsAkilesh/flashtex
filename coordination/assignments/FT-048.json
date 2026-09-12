@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "3c6821d526885e8bc4235f21bf73a0e4d91ac49d",
-  "objective": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
+  "input_main_sha": "7c332dca8982ecaf5370db446ceca187e3f1f380",
+  "objective": "Prepare isolated exact-base HW1 quantifier command and Symbol export candidate after renderer verifies forall and exists mapping chain",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 38,
+  "revision": 39,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:03:27.838395+00:00"
+  "updated_utc": "2026-09-12T15:08:26.375824+00:00"
 }

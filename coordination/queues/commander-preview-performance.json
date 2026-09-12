@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
-      "objective": "Prepare isolated exact-base HW1 set-membership command candidate in existing compiler recognition and Symbol export tables; preserve source ranges and deliver patch to unchanged FT002 owner",
+      "name": "Prepare isolated exact-base HW1 quantifier command and Symbol export candidate after renderer verifies forall and exists mapping chain",
+      "objective": "Prepare isolated exact-base HW1 quantifier command and Symbol export candidate after renderer verifies forall and exists mapping chain",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify Symbol export mapping and incremental clean equality with actual immutable HW1 diagnostic preservation",
-      "objective": "Verify Symbol export mapping and incremental clean equality with actual immutable HW1 diagnostic preservation",
+      "name": "Verify exact unsupported diagnostic removals source spans and incremental clean equality without hiding remaining HW1 gaps",
+      "objective": "Verify exact unsupported diagnostic removals source spans and incremental clean equality without hiding remaining HW1 gaps",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish separate candidate and compatibility with starred heading patch; no authoritative compiler or producer edits and no full PDF parity claim",
-      "objective": "Publish separate candidate and compatibility with starred heading patch; no authoritative compiler or producer edits and no full PDF parity claim",
+      "name": "Publish separate and combined candidate validation with exact provenance for existing compiler owner; no authoritative compiler or native edits",
+      "objective": "Publish separate and combined candidate validation with exact provenance for existing compiler owner; no authoritative compiler or native edits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
