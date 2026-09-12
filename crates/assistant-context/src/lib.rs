@@ -336,3 +336,73 @@ impl Context {
         Ok(proposal)
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlightState {
+    AwaitingResponse,
+    Completed,
+    Cancelled,
+    Expired,
+    Failed,
+}
+/// Local lifecycle only; the native caller owns the actual provider task and must
+/// cancel that task separately. An invalid/late response never revives a flight.
+pub struct ExplanationFlight {
+    context: Context,
+    deadline: std::time::Instant,
+    state: FlightState,
+}
+impl ExplanationFlight {
+    pub fn new(
+        context: Context,
+        current: &[Document],
+        timeout: std::time::Duration,
+    ) -> Result<Self, String> {
+        context.check_current(current)?;
+        if timeout.is_zero() || timeout > std::time::Duration::from_secs(120) {
+            return Err("explanation timeout must be positive and at most120seconds".into());
+        }
+        Ok(Self {
+            context,
+            deadline: std::time::Instant::now() + timeout,
+            state: FlightState::AwaitingResponse,
+        })
+    }
+    pub fn payload(&self) -> &PromptPayload {
+        self.context.payload()
+    }
+    pub fn state(&mut self) -> FlightState {
+        if self.state == FlightState::AwaitingResponse && std::time::Instant::now() >= self.deadline
+        {
+            self.state = FlightState::Expired;
+        }
+        self.state
+    }
+    pub fn cancel(&mut self) {
+        if self.state() == FlightState::AwaitingResponse {
+            self.state = FlightState::Cancelled;
+        }
+    }
+    pub fn receive(
+        &mut self,
+        bytes: &[u8],
+        current: &[Document],
+    ) -> Result<ExplanationProposal, String> {
+        if self.state() != FlightState::AwaitingResponse {
+            return Err("explanation request is no longer awaiting a response".into());
+        }
+        match self.context.validate_response(bytes, current) {
+            Ok(proposal) => {
+                if self.state() != FlightState::AwaitingResponse {
+                    return Err("explanation expired during validation".into());
+                }
+                self.state = FlightState::Completed;
+                Ok(proposal)
+            }
+            Err(error) => {
+                self.state = FlightState::Failed;
+                Err(error)
+            }
+        }
+    }
+}

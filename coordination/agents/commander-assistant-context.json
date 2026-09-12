@@ -14,19 +14,19 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+  "code_revision": "eed9aeaef5f98bdee4045435d247cca964b1d0ef",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
-  "next_action": "Publish crate contract; add immutable payload handling and cancellation/request lifecycle integration.",
+  "next_action": "Add selected diagnostic context and explicit reviewed destination binding for native integration.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded source/request/digest-bound explanation context and response proposals implemented.4tests including actual compiler diagnostics and strict clippy pass.",
+  "summary": "Added terminal explanation request lifecycle: cancelled/expired/stale/duplicate responses refused.4 local tests plus earlier actual compiler gate; strict clippy passes.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:30:47Z",
+  "updated_utc": "2026-09-12T07:36:11Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Same hosted root Astra slot; no provider calls, credentials, new workers or extra spend."
+    "status": "Existing root hosted slot; no provider/model calls or staffing changes."
   }
 }

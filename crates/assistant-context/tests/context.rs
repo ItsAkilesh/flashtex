@@ -124,3 +124,34 @@ fn actual_compiler_diagnostic_builds_source_bound_context() {
         "Explain this error without editing"
     );
 }
+
+#[test]
+fn cancelled_expired_and_stale_flights_never_accept_late_results() {
+    use flashtex_assistant_context::{ExplanationFlight, FlightState};
+    use std::time::Duration;
+    let docs = vec![source()];
+    let context = build(&docs);
+    let response = serde_json::to_vec(
+        &json!({"context_id":context.payload().context_id,"explanation":"Explanation","edits":[]}),
+    )
+    .unwrap();
+    let mut cancelled = ExplanationFlight::new(context, &docs, Duration::from_secs(5)).unwrap();
+    cancelled.cancel();
+    assert_eq!(cancelled.state(), FlightState::Cancelled);
+    assert!(cancelled.receive(&response, &docs).is_err());
+    let mut expired =
+        ExplanationFlight::new(build(&docs), &docs, Duration::from_millis(1)).unwrap();
+    std::thread::sleep(Duration::from_millis(2));
+    assert!(expired.receive(&response, &docs).is_err());
+    assert_eq!(expired.state(), FlightState::Expired);
+    let changed =
+        vec![Document::new("p".into(), "main.tex".into(), 2, "new source".into()).unwrap()];
+    let mut stale = ExplanationFlight::new(build(&docs), &docs, Duration::from_secs(5)).unwrap();
+    assert!(stale.receive(&response, &changed).is_err());
+    assert_eq!(stale.state(), FlightState::Failed);
+    assert!(stale.receive(&response, &docs).is_err());
+    let mut success = ExplanationFlight::new(build(&docs), &docs, Duration::from_secs(5)).unwrap();
+    success.receive(&response, &docs).unwrap();
+    assert_eq!(success.state(), FlightState::Completed);
+    assert!(success.receive(&response, &docs).is_err());
+}

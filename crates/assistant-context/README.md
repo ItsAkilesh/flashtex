@@ -43,3 +43,10 @@ cannot be mutated through Context after its context ID is computed. A cloned
 payload is presentation data, not a new validated context. Each clipped diagnostic
 sets `message_truncated:true`, so clients and the model can distinguish incomplete
 message text from a complete compiler diagnostic.
+
+`ExplanationFlight` binds one Context to a local deadline (at most120seconds).
+It accepts at most one validated response. Cancellation, expiry and validation
+failure are terminal; stale or duplicate responses cannot revive the request.
+The native caller must cancel the actual provider task separately and still
+recheck source when approving any returned proposal. Polling `state()` observes
+expiry without an inference call; this library does not run a timer or network job.
