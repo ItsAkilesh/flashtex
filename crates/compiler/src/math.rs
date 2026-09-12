@@ -196,6 +196,11 @@ impl MathParser<'_> {
                     self.i += 1;
                     atoms.extend(self.list(true).atoms);
                 }
+                // Limit-placement switches produce no atom, so a following
+                // script still attaches to the operator (`\lim\limits_{x}`).
+                TokenKind::Command(ref switch) if switch == "limits" || switch == "nolimits" => {
+                    self.i += 1;
+                }
                 TokenKind::Command(ref infix) if infix == "choose" || infix == "over" => {
                     // TeX infix forms: everything before in this group is the
                     // top, everything after (to the group's end) the bottom.
@@ -380,8 +385,8 @@ impl MathParser<'_> {
                 let body = self.required_group(&name, span);
                 self.group_atom(body, span)
             }
-            "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "limits"
-            | "nolimits" | "nonumber" | "notag" | "middle" => space(0.0, span),
+            "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
+            | "notag" | "middle" => space(0.0, span),
             "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm"
             | "Biggm" | "Bigl" | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
                 self.take_delimiter(&name, span)
@@ -1796,12 +1801,17 @@ mod parse_tests {
     #[test]
     fn stacked_scripts_and_infix_choose_over_build_real_atoms() {
         let mut diagnostics = Vec::new();
-        let tokens =
-            crate::lexer::tokenize(r"\overset{?}{=} \underset{x}{\min} {n \choose k} {a \over b}");
+        let tokens = crate::lexer::tokenize(
+            r"\overset{?}{=} \underset{x}{\min} {n \choose k} {a \over b} \lim\limits_{x}",
+        );
         let list = parse_tokens(&tokens, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
-        assert_eq!(nuclei.len(), 4, "{nuclei:?}");
+        assert_eq!(nuclei.len(), 5, "{nuclei:?}");
+        assert!(
+            list.atoms[4].subscript.is_some(),
+            "limits keeps the script on lim"
+        );
         assert!(matches!(
             nuclei[0],
             Nucleus::Stacked {
