@@ -1,0 +1,28 @@
+Test Suite 'Selected tests' started at 2026-09-12 09:38:51.870.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 09:38:51.871.
+Test Suite 'IMECompositionTests' started at 2026-09-12 09:38:51.871.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testCancelledCompositionLeavesTheHelperAndLedgerUntouched]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testCancelledCompositionLeavesTheHelperAndLedgerUntouched]' passed (0.948 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testHelperKilledMidCompositionKeepsTheCompositionAndTheCommitIsDurableOnceAfterReattach]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testHelperKilledMidCompositionKeepsTheCompositionAndTheCommitIsDurableOnceAfterReattach]' passed (0.884 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testMarkedTextIsNeverDurableAndTheCommitIsOneDurableEditAndOneUndoStep]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testMarkedTextIsNeverDurableAndTheCommitIsOneDurableEditAndOneUndoStep]' passed (0.385 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testPreviewArrivingMidCompositionLeavesTheMarkedRangeCaretAndCompositionIntact]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testPreviewArrivingMidCompositionLeavesTheMarkedRangeCaretAndCompositionIntact]' passed (0.648 seconds).
+Test Suite 'IMECompositionTests' passed at 2026-09-12 09:38:54.736.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.864 (2.865) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 09:38:54.736.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.864 (2.865) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 09:38:54.736.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.864 (2.866) seconds
+IME cancel test: canUndo after cancel = true (undoActionName 'Typing')
+IME test uptime: 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+IME restart test: killed pid 86453, relaunched pid 86455, commit durable once as r2; 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+IME test uptime: 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+IME durable test: r1..r4 verified; 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+IME test uptime: 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+IME preview test: preview r2 landed under marked 한; commit r3; 9:38  up 1 day,  8:31, 2 users, load averages: 16.73 37.57 27.16
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
