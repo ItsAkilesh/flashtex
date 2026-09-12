@@ -148,6 +148,7 @@ const BUILT_INS: &[&str] = &[
     "normalfont",
     "bfseries",
     "listfiles",
+    "noindent",
 ];
 
 /// Project-relative paths only: no absolute paths or parent traversal.
@@ -548,6 +549,10 @@ impl P<'_> {
             // declaration-scoped font state. These commands are explicit no-ops:
             // they never consume or alter surrounding content.
             "hfill" | "normalfont" | "bfseries" => {}
+            // No paragraph is ever given a first-line indent in this layout
+            // model, so there is nothing for \noindent to suppress: an honest
+            // no-op rather than a fabricated indent to cancel.
+            "noindent" => {}
             "par" => self.flush_paragraph(blocks, para),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
