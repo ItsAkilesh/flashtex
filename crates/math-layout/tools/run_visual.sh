@@ -12,8 +12,14 @@
 # Usage: tools/run_visual.sh [--harness-ref <sha>] [--pdf-ref <sha>] [--dpi 144]
 #                            [--scratch <dir>] [--evidence <dir>] [--regress <prev evidence dir>]
 #                            [--skip-build] [--engine pdflatex ...]
-# Output: <evidence>/{report.md,metrics.json,provenance.json,images/}; exit code
-# is diff.py's (0 ok, 3 regression, 4 threshold failure).
+# Output: <evidence>/{report.md,metrics.json,provenance.json,images/} from the
+# harness (raster gate), plus box-parity.{md,json} (tools/box_parity.py: the
+# PDF writer's and a CoreText draw's boxes vs the compile_result, < 0.05 pt)
+# and structural.md (tools/structural_gate.py --regress against the committed
+# baseline; pinned oracle geometry when pdflatex is not installed). Exit code:
+# diff.py's (0 ok, 3 regression, 4 threshold failure) unless parity or the
+# structural gate fails, then 5 / 6. FLASHTEX_LM_DIR is passed through to the
+# PDF writer so Latin Modern faces can be embedded when a directory is given.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRATE="$(dirname "$HERE")"
@@ -118,7 +124,9 @@ prov = {
                    "crate": "crates/math-layout", "binary": "flashtex-math-corpus",
                    "note": "declared-corpus lookup with rules-v1 + font-hints-v1 negotiated by a wrapper"}],
     "pdf_writer": {"ref": "origin/agent/mac-pdf/pdf-output", "sha": psha, "embed": True,
-                   "embed_font": "auto (Latin Modern via font hints; see build.json pdf_stderr)"},
+                   "embed_font": "auto (Latin Modern via font hints; see build.json pdf_stderr)",
+                   "FLASHTEX_LM_DIR": os.environ.get("FLASHTEX_LM_DIR")},
+    "oracle_available": bool(engines.get("pdflatex", {}).get("available")),
     "suite_branch": sh("git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"),
     "input_main_sha": sh("git", "-C", repo, "rev-parse", "origin/main"),
     "engines": {k: v for k, v in engines.items() if not k.startswith("_")}, "packages": engines.get("_packages", {}),
@@ -137,6 +145,17 @@ prov = {
 json.dump(prov, open(os.path.join(ev, "provenance.json"), "w"), indent=1, ensure_ascii=False)
 PY
 
+# --- box parity (preview draw vs PDF writer) and structural gate, from the same compile_results
+set +e
+python3 "$HERE/box_parity.py" --run "$WORK" --report "$EVIDENCE/box-parity.md" --json "$EVIDENCE/box-parity.json"
+parity_rc=$?
+python3 "$HERE/structural_gate.py" --regress "$CRATE/fixtures/visual/structural-baseline.json" \
+  --report "$EVIDENCE/structural.md" --scratch "$WORK/structural"
+structural_rc=$?
+set -e
+echo "box parity: exit $parity_rc ($EVIDENCE/box-parity.md)"
+echo "structural gate: exit $structural_rc ($EVIDENCE/structural.md)"
+
 DIFF_ARGS=(--reference "$WORK/reference" --flashtex "$WORK/flashtex" --evidence "$EVIDENCE" --dpi "$DPI" \
   --threshold 32 --provenance "$EVIDENCE/provenance.json" --thresholds "$CRATE/fixtures/visual/raster-thresholds.json" \
   --images-for-sides export --images-for-engines pdflatex-lm --max-png-bytes 45000)
@@ -147,4 +166,6 @@ rc=$?
 set -e
 cp "$CRATE/fixtures/visual/raster-thresholds.json" "$EVIDENCE/thresholds.used.json"
 echo "report: $EVIDENCE/report.md (diff exit $rc)"
+[[ $parity_rc -eq 0 ]] || exit 5
+[[ $structural_rc -eq 0 ]] || exit 6
 exit $rc

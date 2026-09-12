@@ -1,0 +1,157 @@
+{
+ "tolerance_pt": 0.05,
+ "max_delta_pdf_pt": 0.00096,
+ "max_delta_coretext_pt": 0.0,
+ "cases": [
+  {
+   "case": "01-stacked-fraction",
+   "text_items": 5,
+   "rule_items": 2,
+   "max_delta_pdf_pt": 0.00049,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "02-sqrt-left-right",
+   "text_items": 7,
+   "rule_items": 2,
+   "max_delta_pdf_pt": 0.00096,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "03-sum-limits-scripts",
+   "text_items": 8,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00048,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "04-tall-braces",
+   "text_items": 16,
+   "rule_items": 5,
+   "max_delta_pdf_pt": 0.00076,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "05-cube-root",
+   "text_items": 4,
+   "rule_items": 2,
+   "max_delta_pdf_pt": 0.00052,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "06-lim-sin",
+   "text_items": 11,
+   "rule_items": 1,
+   "max_delta_pdf_pt": 0.00072,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "07-tall-sqrt-braces",
+   "text_items": 22,
+   "rule_items": 6,
+   "max_delta_pdf_pt": 0.00056,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "08-nested-scripts",
+   "text_items": 5,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00046,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "09-int-display",
+   "text_items": 7,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00047,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "10-left-bracket-frac-squared",
+   "text_items": 5,
+   "rule_items": 1,
+   "max_delta_pdf_pt": 0.0005,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "11-accents",
+   "text_items": 5,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00039,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face\nwarning: embedded font LMRoman10-Italic (/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-italic.otf) has no glyph for '\\u{20d7}' (U+20D7); those characters fall back to '?'\nwarning: page 1: item 3 \"\\u{20d7}\": '\\u{20d7}' (U+20D7) not representable in WinAnsiEncoding, Symbol, or embedded LMRoman10-Italic; written as '?'\nnote: 2 warning(s); the PDF was written but some content was substituted or skipped (see above)"
+  },
+  {
+   "case": "12-sum-limits-inline",
+   "text_items": 7,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00048,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "13-bigop-scripts-inline",
+   "text_items": 7,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00043,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "14-mixed-text-math",
+   "text_items": 16,
+   "rule_items": 0,
+   "max_delta_pdf_pt": 0.00047,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  },
+  {
+   "case": "15-nested-fraction-sum",
+   "text_items": 7,
+   "rule_items": 2,
+   "max_delta_pdf_pt": 0.00049,
+   "max_delta_coretext_pt": 0.0,
+   "pass": true,
+   "problems": [],
+   "pdf_stderr": "note: embedding LMRoman10-Regular from /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/lm/lm/fonts/opentype/public/lm/lmroman10-regular.otf as the document face"
+  }
+ ]
+}

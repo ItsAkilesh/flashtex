@@ -1,0 +1,2125 @@
+{
+ "generated_utc": "2026-09-12T07:02:44Z",
+ "dpi": 144.0,
+ "threshold": 32,
+ "pillow": true,
+ "entries": [
+  {
+   "fixture": "01-stacked-fraction",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      74.391,
+      714.651,
+      4.498,
+      0.398
+     ],
+     [
+      73.196,
+      706.145,
+      6.889,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "01-stacked-fraction",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      74.391,
+      714.651,
+      4.498,
+      0.398
+     ],
+     [
+      73.196,
+      706.145,
+      6.889,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "01-stacked-fraction",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      74.391,
+      714.651,
+      4.498,
+      0.398
+     ],
+     [
+      73.196,
+      706.145,
+      6.889,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "01-stacked-fraction",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      74.391,
+      714.651,
+      4.498,
+      0.398
+     ],
+     [
+      73.196,
+      706.145,
+      6.889,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "02-sqrt-left-right",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      81.963,
+      714.211,
+      6.652,
+      0.478
+     ],
+     [
+      111.562,
+      707.845,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "02-sqrt-left-right",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      81.963,
+      714.211,
+      6.652,
+      0.478
+     ],
+     [
+      111.562,
+      707.845,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "02-sqrt-left-right",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      81.963,
+      714.211,
+      6.652,
+      0.478
+     ],
+     [
+      111.562,
+      707.845,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "02-sqrt-left-right",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      81.963,
+      714.211,
+      6.652,
+      0.478
+     ],
+     [
+      111.562,
+      707.845,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "03-sum-limits-scripts",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "03-sum-limits-scripts",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "03-sum-limits-scripts",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "03-sum-limits-scripts",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "04-tall-braces",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 5,
+    "pdf_re_f_rects": [
+     [
+      84.563,
+      713.101,
+      4.034,
+      0.398
+     ],
+     [
+      83.367,
+      707.385,
+      6.425,
+      0.398
+     ],
+     [
+      82.051,
+      698.879,
+      9.058,
+      0.398
+     ],
+     [
+      83.247,
+      690.231,
+      6.667,
+      0.398
+     ],
+     [
+      84.442,
+      685.112,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "04-tall-braces",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 5,
+    "pdf_re_f_rects": [
+     [
+      84.563,
+      713.101,
+      4.034,
+      0.398
+     ],
+     [
+      83.367,
+      707.385,
+      6.425,
+      0.398
+     ],
+     [
+      82.051,
+      698.879,
+      9.058,
+      0.398
+     ],
+     [
+      83.247,
+      690.231,
+      6.667,
+      0.398
+     ],
+     [
+      84.442,
+      685.112,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "04-tall-braces",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 5,
+    "pdf_re_f_rects": [
+     [
+      84.563,
+      713.101,
+      4.034,
+      0.398
+     ],
+     [
+      83.367,
+      707.385,
+      6.425,
+      0.398
+     ],
+     [
+      82.051,
+      698.879,
+      9.058,
+      0.398
+     ],
+     [
+      83.247,
+      690.231,
+      6.667,
+      0.398
+     ],
+     [
+      84.442,
+      685.112,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "04-tall-braces",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 5,
+    "pdf_re_f_rects": [
+     [
+      84.563,
+      713.101,
+      4.034,
+      0.398
+     ],
+     [
+      83.367,
+      707.385,
+      6.425,
+      0.398
+     ],
+     [
+      82.051,
+      698.879,
+      9.058,
+      0.398
+     ],
+     [
+      83.247,
+      690.231,
+      6.667,
+      0.398
+     ],
+     [
+      84.442,
+      685.112,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "05-cube-root",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      82.295,
+      719.203,
+      8.536,
+      0.398
+     ],
+     [
+      83.49,
+      706.877,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "05-cube-root",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      82.295,
+      719.203,
+      8.536,
+      0.398
+     ],
+     [
+      83.49,
+      706.877,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "05-cube-root",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      82.295,
+      719.203,
+      8.536,
+      0.398
+     ],
+     [
+      83.49,
+      706.877,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "05-cube-root",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      82.295,
+      719.203,
+      8.536,
+      0.398
+     ],
+     [
+      83.49,
+      706.877,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "06-lim-sin",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      92.657,
+      706.767,
+      23.017,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "06-lim-sin",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      92.657,
+      706.767,
+      23.017,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "06-lim-sin",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      92.657,
+      706.767,
+      23.017,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "06-lim-sin",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      92.657,
+      706.767,
+      23.017,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "07-tall-sqrt-braces",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 6,
+    "pdf_re_f_rects": [
+     [
+      82.516,
+      719.203,
+      29.16,
+      0.398
+     ],
+     [
+      95.079,
+      708.672,
+      4.034,
+      0.398
+     ],
+     [
+      93.884,
+      702.956,
+      6.425,
+      0.398
+     ],
+     [
+      92.567,
+      694.45,
+      9.058,
+      0.398
+     ],
+     [
+      93.763,
+      685.802,
+      6.667,
+      0.398
+     ],
+     [
+      94.958,
+      680.683,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "07-tall-sqrt-braces",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 6,
+    "pdf_re_f_rects": [
+     [
+      82.516,
+      719.203,
+      29.16,
+      0.398
+     ],
+     [
+      95.079,
+      708.672,
+      4.034,
+      0.398
+     ],
+     [
+      93.884,
+      702.956,
+      6.425,
+      0.398
+     ],
+     [
+      92.567,
+      694.45,
+      9.058,
+      0.398
+     ],
+     [
+      93.763,
+      685.802,
+      6.667,
+      0.398
+     ],
+     [
+      94.958,
+      680.683,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "07-tall-sqrt-braces",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 6,
+    "pdf_re_f_rects": [
+     [
+      82.516,
+      719.203,
+      29.16,
+      0.398
+     ],
+     [
+      95.079,
+      708.672,
+      4.034,
+      0.398
+     ],
+     [
+      93.884,
+      702.956,
+      6.425,
+      0.398
+     ],
+     [
+      92.567,
+      694.45,
+      9.058,
+      0.398
+     ],
+     [
+      93.763,
+      685.802,
+      6.667,
+      0.398
+     ],
+     [
+      94.958,
+      680.683,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "07-tall-sqrt-braces",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 6,
+    "pdf_re_f_rects": [
+     [
+      82.516,
+      719.203,
+      29.16,
+      0.398
+     ],
+     [
+      95.079,
+      708.672,
+      4.034,
+      0.398
+     ],
+     [
+      93.884,
+      702.956,
+      6.425,
+      0.398
+     ],
+     [
+      92.567,
+      694.45,
+      9.058,
+      0.398
+     ],
+     [
+      93.763,
+      685.802,
+      6.667,
+      0.398
+     ],
+     [
+      94.958,
+      680.683,
+      4.276,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "08-nested-scripts",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "08-nested-scripts",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "08-nested-scripts",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "08-nested-scripts",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "09-int-display",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "09-int-display",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "09-int-display",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "09-int-display",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "10-left-bracket-frac-squared",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      78.454,
+      705.864,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "10-left-bracket-frac-squared",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      78.454,
+      705.864,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "10-left-bracket-frac-squared",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      78.454,
+      705.864,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "10-left-bracket-frac-squared",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 1,
+    "pdf_re_f_rects": [
+     [
+      78.454,
+      705.864,
+      6.145,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "11-accents",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "11-accents",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "11-accents",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "11-accents",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "12-sum-limits-inline",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "12-sum-limits-inline",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "12-sum-limits-inline",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "12-sum-limits-inline",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "13-bigop-scripts-inline",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "13-bigop-scripts-inline",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "13-bigop-scripts-inline",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "13-bigop-scripts-inline",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "14-mixed-text-math",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "14-mixed-text-math",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "14-mixed-text-math",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "14-mixed-text-math",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 0,
+    "pdf_re_f_rects": [],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "15-nested-fraction-sum",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      73.196,
+      706.4,
+      26.592,
+      0.398
+     ],
+     [
+      74.391,
+      698.199,
+      4.357,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "15-nested-fraction-sum",
+   "engine": "pdflatex",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      73.196,
+      706.4,
+      26.592,
+      0.398
+     ],
+     [
+      74.391,
+      698.199,
+      4.357,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "15-nested-fraction-sum",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "export",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      73.196,
+      706.4,
+      26.592,
+      0.398
+     ],
+     [
+      74.391,
+      698.199,
+      4.357,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  },
+  {
+   "fixture": "15-nested-fraction-sum",
+   "engine": "pdflatex-lm",
+   "compiler": "math",
+   "side": "preview",
+   "engine_available": false,
+   "engine_exit": null,
+   "status": "ok",
+   "ref_pages": 0,
+   "our_pages": 1,
+   "build": {
+    "diagnostics": [],
+    "diagnostic_count": 0,
+    "rule_items": 0,
+    "pdf_re_f_count": 2,
+    "pdf_re_f_rects": [
+     [
+      73.196,
+      706.4,
+      26.592,
+      0.398
+     ],
+     [
+      74.391,
+      698.199,
+      4.357,
+      0.398
+     ]
+    ],
+    "pdf_exit": 0,
+    "compile_exit": 0
+   },
+   "skipped": "no reference raster"
+  }
+ ],
+ "gates": [
+  {
+   "fixture": "01-stacked-fraction",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 413,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "861254b0fe8b17a03f3620a0ffa0a67bdc4889d68389d5ec0d6b9af85d0ce243",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "02-sqrt-left-right",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 773,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "46bef2965d96fdf29d16c45efc803a779be2e56979478c2147d985938441c5ea",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "03-sum-limits-scripts",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 549,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "15084a3d05ef44d66035a0e89b801869c03b8d18b2ed0e1f9c4241274baa9984",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "04-tall-braces",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 944,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "ce22e3a2b7541f5bd4021a6780948d8cc5ff33c7d454a8eecd2a6463b8b5e3b9",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "05-cube-root",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 462,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "5949784f92e8aac5937793b06d8ec2d7783f24c53e9bdf2740478975a685e6b6",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "06-lim-sin",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 935,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "1f34260c90acb758ad10675dbf50601b16d41ca72017f3cc3f7fbcf2676536fe",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "07-tall-sqrt-braces",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 1687,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "2fa3a93fd09d9f653e9df6953fe1b43ede46142eff303fb9af587784b2bfaff6",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "08-nested-scripts",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 290,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "6d1307de434e0724e3a346747b386a1c1ca8deb90a2b73b26204f7b02c69a4fb",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "09-int-display",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 600,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "aff38fe95ae4d21ce64f345e06c239e917fa0dcc36e6552f874935bb1ccb3f99",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "10-left-bracket-frac-squared",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 489,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "4667029ffa9e603c6ac4749a55283d5079c810391028e9a35e0b2c2153e34594",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "11-accents",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 395,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "4d4658da3488f60a3dc3fc032c243fa73d339f8ac7dd957aaecd070c837c61bd",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "12-sum-limits-inline",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 480,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "abe692381c4f78938d112f5667c8fb078039ecb7046985b74c4577094ec94bd1",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "13-bigop-scripts-inline",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 599,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "61a9d1dace36ae2c0659b35faf39fdf8ea0f7748ba1f3463844bcf0400e55c12",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "14-mixed-text-math",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 1326,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "9163a9ba8e36546765324ef79d02c466528bc14575bc51dea12a5d033eafa93f",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  },
+  {
+   "fixture": "15-nested-fraction-sum",
+   "compiler": "math",
+   "export_vs_preview_equivalent": [
+    {
+     "equal": false,
+     "differing_pixels": 766,
+     "pixels": 1938816,
+     "max_abs_diff": 255,
+     "reason": "pixel values differ"
+    }
+   ],
+   "export_vs_native_preview": "unavailable",
+   "pdf_sha256": "825ecdd72de7d6a573f1b85486cea85057bdeca35faf1705d15387c7a8c29a08",
+   "pdf_pinned_sha256": null,
+   "pdf_byte_identity": "unpinned",
+   "pass_export_preview_equivalent": false,
+   "pass_export_native": false,
+   "pass_pdf_bytes": false
+  }
+ ],
+ "gate_failures": [
+  "01-stacked-fraction/math",
+  "02-sqrt-left-right/math",
+  "03-sum-limits-scripts/math",
+  "04-tall-braces/math",
+  "05-cube-root/math",
+  "06-lim-sin/math",
+  "07-tall-sqrt-braces/math",
+  "08-nested-scripts/math",
+  "09-int-display/math",
+  "10-left-bracket-frac-squared/math",
+  "11-accents/math",
+  "12-sum-limits-inline/math",
+  "13-bigop-scripts-inline/math",
+  "14-mixed-text-math/math",
+  "15-nested-fraction-sum/math"
+ ],
+ "regress": null,
+ "threshold_failures": []
+}
