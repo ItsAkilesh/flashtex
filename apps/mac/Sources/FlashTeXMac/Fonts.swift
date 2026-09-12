@@ -31,7 +31,9 @@ enum PreviewFonts {
     /// `FLASHTEX_PREVIEW_FACE` override, or an explicit `invalidateResources()`.
     /// Consumers stamp what they build with the generation it was built at and
     /// never serve an entry from another generation (`PreviewTextCache`), so
-    /// invalidation is keyed rather than a scattered `clear()`.
+    /// invalidation is keyed rather than a scattered `clear()`. Main-thread
+    /// state, like the cache: the draw closure, the shell's worker attach and
+    /// the CoreGraphics export all run there.
     private(set) static var resourceGeneration: UInt64 = 0
 
     /// Records a change of the font resource set that the other inputs do not
