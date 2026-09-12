@@ -22,3 +22,14 @@ These are one synthetic prose workload and sequential edits, not a broad speed
 claim. Transport timing excludes durable editor saves and native painting.
 Reference LaTeX/PDF parity and visual quality are not measured. Retain failures
 when comparing later runs; do not report only completed small cases.
+
+The replay accepts an optional second argument for maximum frame bytes. The Python
+runner exposes it as `--max-frame-bytes` (128..64MiB), default8MiB unchanged.
+This is a measurement override, not a production policy change.
+
+The16MiB experiment accepted17 clean, exactly equal500KB samples and then hit the
+runtime's5-second response timeout. First persistent sample247ms; later examples
+769ms and1,384ms, while fresh launches were approximately280–402ms. The report
+retains the incomplete classification;17 successes do not imply20 completed edits.
+This demonstrates that removing the transport cap is insufficient for the200ms
+objective. Compiler incremental-path attribution requires separate investigation.

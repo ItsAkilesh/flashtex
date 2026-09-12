@@ -43,10 +43,13 @@ def main():
     parser.add_argument('--replay', required=True, type=pathlib.Path)
     parser.add_argument('--output', required=True, type=pathlib.Path)
     parser.add_argument('--edits', type=int, default=20)
+    parser.add_argument('--max-frame-bytes', type=int, default=8 * 1024 * 1024)
     parser.add_argument('--compiler-source-sha', help='Caller-verified source commit; binary hash is always recorded')
     args = parser.parse_args()
     if not 1 <= args.edits <= 100:
         parser.error('edits must be 1..100')
+    if not 128 <= args.max_frame_bytes <= 64 * 1024 * 1024:
+        parser.error('max-frame-bytes must be 128..67108864')
     args.output.mkdir(parents=True, exist_ok=True)
     compiler, replay = args.compiler.resolve(), args.replay.resolve()
     results = []
@@ -55,7 +58,7 @@ def main():
         stem = args.output / str(size)
         stem.with_suffix('.jsonl').write_bytes(source)
         try:
-            run = subprocess.run([str(replay), str(compiler)], input=source,
+            run = subprocess.run([str(replay), str(compiler), str(args.max_frame_bytes)], input=source,
                                  capture_output=True, timeout=120)
             stdout, stderr, code = run.stdout, run.stderr, run.returncode
         except subprocess.TimeoutExpired as error:
@@ -77,7 +80,7 @@ def main():
                       mismatch_classes=sorted({s.get('mismatch_class', 'unknown') for s in samples}))
         results.append(result)
         print(json.dumps(result), flush=True)
-    report = dict(compiler_source_sha=args.compiler_source_sha, compiler_sha256=digest(compiler.read_bytes()), replay_sha256=digest(replay.read_bytes()),
+    report = dict(max_frame_bytes=args.max_frame_bytes, compiler_source_sha=args.compiler_source_sha, compiler_sha256=digest(compiler.read_bytes()), replay_sha256=digest(replay.read_bytes()),
                   generator_sha256=digest(pathlib.Path(__file__).read_bytes()), cases=results,
                   native_paint_measured=False, reference_pdf_measured=False,
                   measurement='Rust runtime submission to received positioned result; excludes editor save and native paint')

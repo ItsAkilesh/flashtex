@@ -47,8 +47,8 @@ fn mismatch_class(persistent: &Value, fresh: &Value) -> &'static str {
         "envelope_or_other_payload"
     }
 }
-fn run(binary: &Path) -> Result<(), String> {
-    let mut warm = Session::spawn(binary, Limits::default())?;
+fn run(binary: &Path, limits: Limits) -> Result<(), String> {
+    let mut warm = Session::spawn(binary, limits.clone())?;
     let mut samples = Vec::new();
     let mut input = io::stdin().lock();
     for index in 0..=10000 {
@@ -58,13 +58,13 @@ fn run(binary: &Path) -> Result<(), String> {
         let mut line = String::new();
         let read = input
             .by_ref()
-            .take(Limits::default().max_frame as u64 + 1)
+            .take(limits.max_frame as u64 + 1)
             .read_line(&mut line)
             .map_err(|e| e.to_string())?;
         if read == 0 {
             break;
         }
-        if line.len() > Limits::default().max_frame {
+        if line.len() > limits.max_frame {
             return Err("oversized replay line".into());
         }
         let input: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
@@ -87,7 +87,7 @@ fn run(binary: &Path) -> Result<(), String> {
         warm.submit(request.clone())?;
         let (persistent, timing) = response(&mut warm)?;
         let cold_started = Instant::now();
-        let mut cold = Session::spawn(binary, Limits::default())?;
+        let mut cold = Session::spawn(binary, limits.clone())?;
         cold.submit(request)?;
         let (fresh, _) = response(&mut cold)?;
         let equal = persistent == fresh;
@@ -113,7 +113,7 @@ fn run(binary: &Path) -> Result<(), String> {
     let percentile = |p: usize| samples[(samples.len() * p).div_ceil(100).saturating_sub(1)];
     println!(
         "{}",
-        json!({"type":"summary", "edits":samples.len(), "p50_ms":percentile(50),
+        json!({"type":"summary", "max_frame_bytes":limits.max_frame,"edits":samples.len(), "p50_ms":percentile(50),
         "p95_ms":percentile(95), "p99_ms":percentile(99), "max_ms":samples.last(),
         "measurement":"warm submission through received positioned result; compiler, pipe transport and polling combined",
         "native_paint_measured":false, "reference_pdf_measured":false})
@@ -124,7 +124,13 @@ fn main() {
     let result = std::env::args_os()
         .nth(1)
         .ok_or("usage: replay /absolute/original/compiler < edits.jsonl".to_owned())
-        .and_then(|binary| run(Path::new(&binary)));
+        .and_then(|binary| {
+            let mut limits = Limits::default();
+            if let Some(value) = std::env::args().nth(2) {
+                limits.max_frame = value.parse::<usize>().map_err(|_| "invalid frame bytes")?;
+            }
+            run(Path::new(&binary), limits)
+        });
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
