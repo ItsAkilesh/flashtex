@@ -34,7 +34,8 @@ impl FontSearch {
 
     /// The macOS system directories, in order, appended to the list.
     pub fn with_macos_system_dirs(mut self) -> FontSearch {
-        self.dirs.extend(MACOS_SYSTEM_DIRS.iter().map(PathBuf::from));
+        self.dirs
+            .extend(MACOS_SYSTEM_DIRS.iter().map(PathBuf::from));
         self
     }
 
@@ -56,10 +57,14 @@ impl FontSearch {
 
     /// Finds and parses face `face_index` of `file_name`.
     pub fn load(&self, file_name: &str, face_index: u32) -> Result<TrueTypeFace, Error> {
-        let path = self
-            .find(file_name)
-            .ok_or_else(|| Error::Io(format!("{file_name} not found in {} search dirs", self.dirs.len())))?;
-        let bytes = std::fs::read(&path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let path = self.find(file_name).ok_or_else(|| {
+            Error::Io(format!(
+                "{file_name} not found in {} search dirs",
+                self.dirs.len()
+            ))
+        })?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
         TrueTypeFace::parse_with_source(bytes, FontSource::File { path, face_index })
     }
 }

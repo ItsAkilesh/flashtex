@@ -38,7 +38,10 @@ impl Core14 {
 
     /// Resolves an AFM `FontName` such as `"Times-Roman"`.
     pub fn from_name(name: &str) -> Option<Core14> {
-        Core14::ALL.iter().copied().find(|f| f.header().font_name == name)
+        Core14::ALL
+            .iter()
+            .copied()
+            .find(|f| f.header().font_name == name)
     }
 
     pub fn header(self) -> &'static AfmHeader {
@@ -214,6 +217,14 @@ impl Face for Core14Face {
         }
     }
 
+    fn kerning_source(&self) -> KerningSource {
+        if self.which.kerns().is_empty() {
+            KerningSource::None
+        } else {
+            KerningSource::Afm
+        }
+    }
+
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId> {
         let chars: Option<String> = components.iter().map(|g| self.char_for(*g)).collect();
         let lig = match chars?.as_str() {
@@ -227,7 +238,11 @@ impl Face for Core14Face {
         self.glyph_id(lig)
     }
 
-    fn longest_ligature(&self, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
+    fn ligature_passes(&self) -> usize {
+        1
+    }
+
+    fn longest_ligature(&self, _pass: usize, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)> {
         for len in (2..=3.min(glyphs.len())).rev() {
             if let Some(g) = self.ligature(&glyphs[..len]) {
                 return Some((g, len));
@@ -306,7 +321,10 @@ mod tests {
         assert_ne!(a.id().content_sha256, c.id().content_sha256);
         assert_eq!(a.id().weight, 400);
         assert_eq!(c.id().weight, 700);
-        assert_eq!(Core14Face::new(Core14::TimesItalic).id().style, Style::Italic);
+        assert_eq!(
+            Core14Face::new(Core14::TimesItalic).id().style,
+            Style::Italic
+        );
         assert_eq!(Core14::from_name("Symbol"), Some(Core14::Symbol));
     }
 }

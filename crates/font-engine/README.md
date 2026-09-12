@@ -1,0 +1,283 @@
+# flashtex-font-engine
+
+Original Rust font engine for FlashTeX: font loading and metrics, TeX-oriented
+shaping with source-byte clusters, deterministic subsetting, and the data a PDF
+writer needs to embed a font. No external crates (matching the sibling crates),
+edition 2024, no existing TeX engine or shaping library involved.
+
+Task: FT-018 rev 1. Owner: `mac-font-engine` (Claude Code subagent, parent
+`mac-claude-a`, machine `mac-m1max-a`). Nothing under `crates/compiler` is
+touched; the compiler may adopt this crate later through its own owner.
+
+```sh
+cd crates/font-engine
+cargo test            # 36 tests; TrueType tests skip with a message if a system font is absent
+cargo clippy --all-targets
+swift examples/compare_coretext.swift   # macOS: CoreText cross-check (see "Engine comparison")
+```
+
+## What is implemented
+
+| Area | Implemented | Not implemented (declared, never silent) |
+| --- | --- | --- |
+| Font programs | TrueType / OpenType with `glyf` outlines; `.ttc` collections by face index (`head`, `hhea`, `hmtx`, `maxp`, `loca`, `glyf`, `cmap` formats 4 and 12, `OS/2`, `post`, `name`) | `CFF `/`OTTO` outlines (`Error::Unsupported`), variable fonts (`fvar`/`gvar` rejected), bitmap-only fonts, cmap formats other than 4/12, Type 1 / AFM files other than the built-in Core 14 tables |
+| Base-14 metrics | Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic, Helvetica, Courier, Symbol: Adobe AFM widths for every AFM glyph with an Adobe Glyph List code point (322 code points per text face, 194 for Symbol), AFM `KPX` kerning pairs, header metrics (bbox, cap/x height, ascender/descender, italic angle, StdVW, underline) | Helvetica-Bold/Oblique variants, Courier variants, ZapfDingbats (the seven faces the task named are included; adding the rest is a one-line change in `tools/gen_tables.py`) |
+| Kerning | `GPOS` `kern` feature: PairPos format 1 and 2 (lookup type 2), including type 9 Extension wrappers; legacy `kern` table format 0 (Microsoft and Apple headers); AFM `KPX` | GPOS lookup types other than 2 under `kern` (contextual 7/8, single 1) — recorded in `Face::unsupported()`; `kern` formats 1–3, vertical and cross-stream subtables; second-glyph value records and placement (only `xAdvance` of the first glyph is applied); script/language-system selection (all `kern` FeatureRecords contribute) |
+| Ligatures | `GSUB` `liga` feature: LigatureSubst (lookup type 4), including type 7 Extension wrappers; cmap fallback for `ff fi fl ffi ffl` → U+FB00..U+FB04 (used by the Core 14 faces, and by fonts such as Times New Roman whose `liga` is Arabic-only); never applied to fixed-pitch faces | Every other GSUB feature (`dlig`, `clig`, `calt`, `smcp`, `locl`, …) and lookup type (single, multiple, alternate, contextual, chained, reverse); lookup flags (mark filtering, ignore-marks) |
+| Marks | Base + combining mark composed through canonical pairwise compositions (870 primary composites, Unicode 15.0.0 via Python `unicodedata`) when the face has the precomposed glyph; otherwise the mark glyph joins the base cluster with zero advance (centred for spacing marks); otherwise a missing glyph inside that cluster | GPOS mark attachment (`mark`/`mkmk`), so unattached marks are only approximately placed |
+| Scripts | Latin, Greek, Cyrillic and other left-to-right scripts without reordering; CJK ideographs (1 em advances verified with Arial Unicode) | Hebrew, Arabic, Syriac, Thaana, NKo, Indic, Thai, Lao, Tibetan, Myanmar, Khmer, Mongolian and bidi control characters: `shape` returns `Error::UnsupportedScript { ch, byte_offset, reason }` and produces nothing (fail closed) |
+| Direction | Horizontal left-to-right | Vertical layout, right-to-left |
+| Subsetting | Deterministic glyf subset: `.notdef` + requested glyphs + transitive composite components, renumbered in ascending original order; `head`/`hhea`/`maxp`/`hmtx`/`loca`(long)/`glyf` rewritten, `cvt `/`fpgm`/`prep` copied; table checksums and `head.checkSumAdjustment`; `verify_checksums` re-checks a program | Subsetting of `cmap`/`name`/`OS/2`/`post`/`GPOS`/`GSUB` (deliberately dropped: the embedded program is glyph-addressed and already shaped); CFF subsetting |
+| Embedding data | `PdfFontProgram`: subset tag + `/BaseFont`, `/FontFile2` bytes, `/W` array, `CIDToGIDMap /Identity`, descriptor (flags, bbox, ascent, descent, cap height, x height, italic angle, placeholder StemV), `ToUnicode` CMap with multi-character `bfchar` destinations, OS/2 `fsType` | Writing PDF objects (a PDF crate does that); Type 1 / CFF embedding; `/Widths` arrays for standard-14 fonts beyond `embed::standard_font_widths` |
+| Resolution | `FontSearch`: explicit directory list, `dir/<file name>` probes only, macOS system directories offered as a constant | Directory scanning, fontconfig, name matching, `FLASHTEX_*` environment lookups |
+
+Everything in the right-hand column is either an error, an empty result, or an
+entry in `Face::unsupported()` (copied into every `Shaped`), never a silently
+wrong number.
+
+## API for preview and PDF consumers
+
+```rust
+use flashtex_font_engine::{Face, load_from_path, ShapeOptions, shape};
+use flashtex_font_engine::core14::{Core14, Core14Face};
+use flashtex_font_engine::embed::EmbedPlan;
+
+// Base-14 metrics without any font file:
+let times = Core14Face::new(Core14::TimesRoman);
+let s = shape(&times, "Hello", &ShapeOptions::PLAIN)?;
+assert_eq!(s.width_pt(12.0), 26.664);          // 2222 units at 1000/em
+
+// A real font program:
+let tnr = load_from_path("/System/Library/Fonts/Supplemental/Times New Roman.ttf".as_ref())?;
+let s = shape(&tnr, "office AV", &ShapeOptions::default())?;   // ligatures + kerning
+for cluster in &s.clusters {
+    // cluster.source_range: byte range of the input; cluster.text: that text;
+    // cluster.glyphs: ORIGINAL glyph ids with advances (font units) incl. kerning.
+}
+assert!(s.missing.is_empty());                  // or list of (char, byte_offset)
+
+// PDF embedding data:
+let mut plan = EmbedPlan::new();
+plan.add_shaped(&s);
+let pdf = plan.finish(&tnr)?;                   // subset program, /W, ToUnicode, descriptor
+let cid = pdf.cid(s.clusters[0].glyphs[0].gid); // original gid -> subset CID
+```
+
+Key types (all in `src/lib.rs` unless noted):
+
+* `FontId { family, weight, style, source, content_sha256 }` — content-addressed
+  identity (SHA-256 of the whole program bytes + 4-byte face index; Core 14
+  faces hash their generated table). Equal ids ⇒ identical glyph ids, metrics
+  and shaping.
+* `GlyphId(u16)` — always an ORIGINAL id in `Face` and `Shaped`. Subset ids
+  exist only in `subset::Subset { old_to_new, new_to_old }` and
+  `embed::PdfFontProgram::cid()`.
+* `Face` trait: `units_per_em`, `advance(gid)`, `glyph_id(char)`,
+  `vertical_metrics()` (ascender, descender, line gap, cap height, x height
+  with `*_declared` flags), `bbox()`, `italic_angle()`, `kerning(l, r)`,
+  `kerning_source()`, `ligature(&[gid])`, `unsupported()`, `postscript_name()`,
+  `is_fixed_pitch()`, and the converters `to_points(units, size_pt)` /
+  `to_pdf_units(units)`.
+* `shape::shape(face, text, &ShapeOptions) -> Result<Shaped>`;
+  `Shaped { clusters, missing, unsupported, units_per_em, kerning_source, ligatures_applied }`;
+  `Cluster { glyphs, source_range, text }`; `Glyph { gid, advance, x_offset, y_offset }`.
+  Helpers: `advance_units()`, `width_pt(size)`, `cluster_at_byte(offset)`,
+  `cluster_at_x(units)`.
+* `ShapeOptions { ligatures, kerning, compose_marks, cmap_ligature_fallback }`;
+  `ShapeOptions::PLAIN` is mapping only.
+* `subset::subset(&TrueTypeFace, &[GlyphId]) -> Subset`; `subset::verify_checksums`.
+* `embed::EmbedPlan` → `PdfFontProgram`; `embed::to_unicode_cmap` / `parse_to_unicode`.
+* `resolve::FontSearch`.
+
+Units: `Face` and `Shaped` values are font units (`units_per_em` = 1000 for Core
+14, typically 2048 for TrueType). Preview converts with `to_points`; PDF uses
+`to_pdf_units` (1/1000 em, rounded). Kerning is folded into the advance of the
+glyph before the pair; `x_offset`/`y_offset` are only non-zero for unattached
+marks.
+
+## Proposed ABI (non-authoritative until Commander accepts)
+
+This crate is a library for a future negotiated display format. It emits no
+runtime-v1 item kinds and proposes no protocol change. Before paragraph/math
+integration, the following would be the agreed contract between compiler,
+preview and PDF consumers:
+
+1. **Font identity** is `FontId.content_sha256` (hex via `content_hex()`),
+   never a file path or family name. Consumers key caches and PDF font
+   resources by it. Path and face index travel alongside for diagnostics.
+2. **Glyph ids in shaping output are original ids** of that face. Renumbering
+   happens only inside `subset`/`embed`, which return the explicit
+   `old_to_new` map; a PDF writer translates with `PdfFontProgram::cid()` at
+   write time. No other component ever sees subset ids.
+3. **Clusters carry source byte ranges** (`Range<usize>` into the UTF-8 input,
+   half-open) and the exact source text. Click-to-source maps a hit glyph to
+   its cluster, then to the byte range; source-to-preview maps a byte to
+   `cluster_at_byte`. Ligatures merge ranges; empty-glyph clusters keep
+   default-ignorable bytes addressable.
+4. **Multi-glyph and multi-character clusters** expose `Cluster::text` so a PDF
+   writer can emit `/Span << /ActualText (...) >>` for ligatures and composed
+   marks; `ToUnicode` is the fallback (first recorded text per CID), not the
+   only mechanism.
+5. **Metrics** are font units plus `units_per_em`; conversion to points is
+   `units * size / units_per_em` and to PDF glyph space is
+   `round(units * 1000 / units_per_em)`. Vertical metrics come from OS/2 typo
+   values when `USE_TYPO_METRICS` is set, else `hhea`; cap/x height from OS/2
+   v2+ or the `H`/`x` glyph `yMax` with `*_declared = false`.
+6. **Missing glyphs** are reported as `(char, byte_offset)` and rendered as
+   `.notdef` (advance of `.notdef`; 0 for Core 14). Consumers must surface them
+   (compiler diagnostic, preview marker). Nothing is replaced by `?`.
+7. **Unsupported shaping** is an error (`UnsupportedScript`) for scripts the
+   engine cannot lay out, and a list (`Shaped::unsupported`) for features the
+   font has that the engine skipped. Partial output is never returned for the
+   former.
+8. **Font resolution** is a bounded explicit search list supplied by the
+   caller; the engine never scans directories or reads environment variables.
+
+## Provenance, licences, hashes
+
+Nothing binary is committed. Inputs to the generated tables:
+
+| Input | Where obtained on `mac-m1max-a` | SHA-256 |
+| --- | --- | --- |
+| `Times-Roman.afm` | matplotlib `mpl-data/fonts/pdfcorefonts` (Adobe Core 14 AFMs, version 002.000, 1997) | `86136b527a5acee0c3283d56a6b68fc6a3d60982eb3bb0fb6cc54e83ecc8d77a` |
+| `Times-Bold.afm` | same | `7104e6af62c53f029013fb0641a81e31c98589c8f27b5ea6289b25b092c74321` |
+| `Times-Italic.afm` | same | `6cae69b92329193fd85082f0c89ad7a318df8fb5c939d7efe5343f88ab09473c` |
+| `Times-BoldItalic.afm` | same | `a7358e772726e91aa87015a001563926ad33dc5a7b2eea9680b34cc78aba385c` |
+| `Helvetica.afm` | same | `db772f2830fb6d000907791d8d26a12524d96943a9a739e520ee855c6b25c96f` |
+| `Courier.afm` | same | `31d72adad79910126b22a5579ec9e179eee86674ecebe3fcff6f76916193af0e` |
+| `Symbol.afm` | same | `3f951aa17af8cb4aa1e1288c6b9baa8a30d3e990ebdbe8cf9a3d5acabcb9f771` |
+| `glyphlist.txt` | TeX Live 2026 `texmf-dist/fonts/map/glyphlist/glyphlist.txt` (Adobe Glyph List) | recorded in `src/generated.rs` header |
+
+Adobe's AFM licence (the `readme.txt` shipped with them): the files "may be
+used, copied, and distributed for any purpose and without charge, with or
+without modification, provided that all copyright notices are retained". The
+widths are facts about the fonts; the generated Rust table records the source
+digests and does not reproduce the AFM files. TeX Live's
+`fonts/afm/adobe/times/*.afm` carry identical `WX` widths (only glyph bounding
+boxes differ between the older and 1997 sets), checked with `diff` on
+`ptmr8a.afm` and `psyr.afm`.
+
+The compiler's `crates/compiler/src/metrics.rs` on `de1020c` embeds the same
+Times/Helvetica/Courier ASCII and Latin-1 widths; `core14::tests` asserts
+equality on the values it quotes (`M` 889, space 250, "Mac" 21.324 pt).
+
+Reference fonts used only by tests and the comparison script (Apple-supplied,
+licensed for use on the device; redistribution, including inside a PDF, is the
+user's decision and this crate exposes `fsType` so a writer can warn):
+
+| File | SHA-256 (macOS 26.3.1) |
+| --- | --- |
+| `/System/Library/Fonts/Supplemental/Times New Roman.ttf` | `f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3` |
+| `/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf` | `7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0` |
+| `/System/Library/Fonts/Supplemental/Arial.ttf` | `525979822591a3447cfc49d943d6f7683508e25543407871c0ed8fed05fd2bd9` |
+| `/System/Library/Fonts/Supplemental/Arial Unicode.ttf` | `876af2cd4854644e7f3e7feb2f688997fdb3343c6df6693611209c9dfb47ccec` |
+| `/System/Library/Fonts/Supplemental/Iowan Old Style.ttc` | `3a6091b6c7e3cf97bf0a749f7f17769a97e5c46228aead256e2c6ccd94b43a7f` |
+| `/System/Library/Fonts/Times.ttc` | `20e3dc89912f4b37f2c29add764855164efafb4c66ca32551d9eb52c7411c7c7` |
+
+Which font exercises which path: Times New Roman — legacy `kern` table, cmap
+f-ligatures (its GSUB `liga` is Arabic-only, verified), mark composition,
+subsetting, ToUnicode; Times New Roman Italic and Arial — GPOS PairPos (Arial's
+GPOS values equal its legacy table's, asserted); Iowan Old Style — GPOS
+Extension (type 9 → 2) and a real Latin GSUB `liga`; Arial Unicode — CJK
+repertoire; Times.ttc — collection face indexing.
+
+## Reproducibility
+
+`src/generated.rs` is produced by:
+
+```sh
+python3 tools/gen_tables.py \
+  --afm-dir <dir with the seven AFMs> \
+  --glyphlist <glyphlist.txt> \
+  --out src/generated.rs
+```
+
+Running it twice on the same inputs gives byte-identical output (verified with
+`cmp` against the committed file). The header records the input digests and
+the Python `unicodedata` version (15.0.0 on the generating machine); a
+different Python may change the composition table, which the header would show.
+`lib.rs` marks the module `#[rustfmt::skip]` so `cargo fmt` cannot drift it.
+Aliases added by the generator (documented in `ALIASES`): U+00A0 → space,
+U+00AD/U+2010/U+2011 → hyphen, U+0394 → Delta, U+03A9 → Omega, U+03BC → mu,
+U+02C9 → macron.
+
+Known AFM quirk: Adobe's 1997 AFMs list `Euro` with `WX 500` and an empty
+bounding box in every text face (a placeholder); the tables carry it as-is, so
+U+20AC measures 500 units while Apple's Times draws a 744-unit Euro.
+
+## Engine comparison (CoreText)
+
+`examples/compare_coretext.swift` measures each case twice per side: `plain`
+(sum of per-glyph advances, no kerning/ligatures: `CTFontGetAdvancesForGlyphs`
+vs `ShapeOptions::PLAIN`) and `shaped` (`CTLineGetTypographicBounds` with
+CoreText's default kerning/ligatures vs `ShapeOptions::default()`). Text is
+passed to the Rust side on stdin so macOS cannot NFD-rewrite it. Run on
+macOS 26.3.1, 12 pt, delta = engine − CoreText in points:
+
+| face | mode | coretext | engine | delta | note |
+| --- | --- | --- | --- | --- | --- |
+| Times New Roman.ttf | plain | 26.6602 | 26.6602 | +0.0000 | "Hello" |
+| Times New Roman.ttf | plain | 376.2246 | 376.2246 | −0.0000 | "The quick brown fox jumps over the lazy dog. AVATAR office, fluffy waffle." |
+| Times New Roman.ttf | plain | 231.3340 | 231.3340 | +0.0000 | "Café naïve façade — “quoted” … 100% €5 ™ e◌́" |
+| Times New Roman.ttf | plain | 52.3184 | 52.3184 | +0.0000 | "AV fi fl ffi" |
+| Times New Roman.ttf | shaped | 369.5273 | 367.9922 | −1.5351 | 3 ligatures via cmap fallback (CoreText applies none: TNR has no Latin `liga`), kern table |
+| Times New Roman.ttf | shaped | 50.3379 | 48.5859 | −1.7520 | same cause: fi/fl/ffi ligated by the engine only |
+| Times-Roman (Core 14 vs Apple Times) | plain | 26.6602 | 26.6640 | +0.0038 | "Hello": 26.664 pt is the AFM value exactly (2222 units) |
+| Times-Roman | plain | 376.2246 | 376.2480 | +0.0234 | sentence |
+| Times-Bold | plain | 391.6406 | 391.6320 | −0.0086 | sentence |
+| Times-Italic | plain | 360.2754 | 360.3240 | +0.0486 | sentence |
+| Times-BoldItalic | plain | 376.3125 | 376.3320 | +0.0195 | sentence |
+| Helvetica | plain | 394.1719 | 394.1640 | −0.0079 | sentence |
+| Courier | plain | 532.8867 | 532.8000 | −0.0867 | sentence (60 glyphs × 0.5-unit rounding bound = 0.36 pt) |
+| Symbol | plain | 33.9316 | 33.9360 | +0.0044 | "αβγ ∑∫" |
+| Times-Roman | plain | 238.2598 | 231.3600 | −6.8998 | accented string: AFM Euro placeholder (−2.93 pt) and U+0301 missing in PLAIN mode (Core 14 has no combining acute; CoreText falls back) |
+| Times-Roman | shaped | 368.0098 | 366.8400 | −1.1698 | sentence: Adobe AFM `KPX` pairs differ from Apple Times' kern pairs; both ligate fi/fl/ff |
+
+Summary: TrueType advances are exact against CoreText (0.0000 pt on every
+plain case, same program on both sides). Core 14 tables versus Apple's
+different Times/Helvetica/Courier/Symbol programs agree within 0.05 pt on ASCII
+sentences (≤ 0.09 pt for 60 Courier glyphs), as expected for 1/1000-em
+rounding. Shaped deltas of 1–2 pt on a 60-glyph line are kerning-table and
+ligature-policy differences, itemised above, not measurement error. Full
+output: run the script; the table above is the 2026-09-12 run.
+
+## Tests
+
+`cargo test` — 36 tests:
+
+* unit (5): SHA-256 vectors; Core 14 values equal to compiler `metrics.rs`;
+  synthetic gid round trip for all seven faces; AFM kerning; stable identity.
+* `tests/core14.rs` (14): "Hello" = 26.664 pt and "Mac" = 21.324 pt; ASCII and
+  Latin-1 coverage of every text face; Unicode beyond Latin-1 (em dash, quotes,
+  Euro, Greek Delta/Omega, summation; CJK absent); missing glyphs listed with
+  byte offsets and never replaced by `?`; `e` + U+0301 ≡ `é`; unknown mark
+  stays in its cluster as missing; `fi` on/off with identical source bytes;
+  AV kerning −135 and optional; Hebrew/Arabic/bidi controls/Devanagari fail
+  closed; default ignorables keep bytes; cluster hit testing; AFM header
+  metrics; Courier never ligates.
+* `tests/truetype.rs` (17, each skips with a message when its font is absent):
+  metrics and content identity; "Hello" within 0.05 pt of Core 14; AV kerning
+  negative via kern table; `fi` one glyph vs two with the same source bytes;
+  mark composition via cmap; é/—/中 in Arial Unicode with byte-accurate
+  clusters and a 1 em ideograph; missing glyph → `.notdef` listed;
+  deterministic subsetting (order/duplicates irrelevant, byte-identical output,
+  checksums verified, subset re-parsed with advances preserved, distinct tags);
+  ToUnicode round trip including "fi" and "e◌́" multi-character entries and a
+  CID for every shaped glyph; `.ttc` face indexing; bounded resolution; malformed
+  and OTTO inputs are errors; GPOS PairPos in Arial equal to its legacy table;
+  GPOS in Times New Roman Italic; GPOS Extension in Iowan Old Style; TNR's
+  Latin ligatures come from cmap, not its Arabic-only `liga`; a real Latin GSUB
+  `liga` (Iowan, fi → gid 192) with the cmap fallback disabled.
+
+## Relationship to sibling crates
+
+* `crates/pdf` (branch `agent/mac-pdf/pdf-output`, `5b5f7b5`) has its own
+  `truetype.rs`/`embed.rs`. This crate reuses the same sfnt writer and checksum
+  approach and extends it (explicit maps, composite bbox, multi-char ToUnicode,
+  `verify_checksums`). `crates/pdf` could delegate to `subset` and `embed` here
+  and drop its copies; that is its owner's call.
+* `crates/fontmetrics` (branch `agent/mac-claude-a/fontmetrics`, `30a14a6`) is
+  the superseded CoreText-measured proposal; this crate replaces it with
+  AFM-exact tables plus a CoreText cross-check rather than CoreText-derived data.
+* `crates/compiler/src/metrics.rs` (`de1020c`) stays the compiler's own table
+  until its owner chooses to consume this crate.

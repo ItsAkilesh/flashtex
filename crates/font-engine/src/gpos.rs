@@ -119,7 +119,14 @@ impl GposKerning {
                     }
                     let c1 = usize::from(class1.class(left.0));
                     let c2 = usize::from(class2.class(right.0));
-                    return values.get(c1 * usize::from(*class2_count) + c2).copied();
+                    let v = values.get(c1 * usize::from(*class2_count) + c2).copied();
+                    // Class 0 means "not in any class"; a zero record there is
+                    // no match, so a later subtable may still apply (this is
+                    // how mainstream shapers treat it).
+                    if (c1 == 0 || c2 == 0) && v == Some(0) {
+                        continue;
+                    }
+                    return v;
                 }
             }
         }

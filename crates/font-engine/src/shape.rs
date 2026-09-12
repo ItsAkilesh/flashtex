@@ -107,7 +107,8 @@ pub struct Shaped {
     /// consumer holding only the result still sees what was skipped.
     pub unsupported: Vec<Unsupported>,
     pub units_per_em: u16,
-    /// Which kerning data was consulted (even if no pair matched).
+    /// Which kerning data was consulted (even if no pair matched); `None`
+    /// when kerning was disabled or the face has none.
     pub kerning_source: KerningSource,
     /// Number of ligatures applied.
     pub ligatures_applied: usize,
@@ -131,7 +132,9 @@ impl Shaped {
 
     /// Cluster containing byte `offset` of the source, for click-to-source.
     pub fn cluster_at_byte(&self, offset: usize) -> Option<&Cluster> {
-        self.clusters.iter().find(|c| c.source_range.contains(&offset))
+        self.clusters
+            .iter()
+            .find(|c| c.source_range.contains(&offset))
     }
 
     /// Cluster under horizontal position `x` (font units from the start).
@@ -210,63 +213,61 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
             });
             continue;
         }
-        if opts.compose_marks && is_mark(cp) {
-            if let Some(last) = clusters.last_mut() {
-                let base_char = last.text.chars().last();
-                let single_glyph = last.glyphs.len() == 1;
-                if let (Some(base), true) = (base_char, single_glyph) {
-                    if let Some(pre) = compose(base as u32, cp) {
-                        if let Some(c) = char::from_u32(pre) {
-                            if let Some(gid) = face.glyph_id(c) {
-                                let adv = i32::from(face.advance(gid)?);
-                                last.glyphs[0] = Glyph {
-                                    gid,
-                                    advance: adv,
-                                    x_offset: 0,
-                                    y_offset: 0,
-                                };
-                                // Keep the source text verbatim: the cluster
-                                // still reads "e\u{301}" even though one
-                                // precomposed glyph renders it.
-                                last.source_range.end = end;
-                                last.text.push(ch);
-                                continue;
-                            }
-                        }
+        if opts.compose_marks
+            && is_mark(cp)
+            && let Some(last) = clusters.last_mut()
+        {
+            let base_char = last.text.chars().last();
+            let single_glyph = last.glyphs.len() == 1;
+            if let (Some(base), true) = (base_char, single_glyph)
+                && let Some(pre) = compose(base as u32, cp)
+                && let Some(c) = char::from_u32(pre)
+                && let Some(gid) = face.glyph_id(c)
+            {
+                let adv = i32::from(face.advance(gid)?);
+                last.glyphs[0] = Glyph {
+                    gid,
+                    advance: adv,
+                    x_offset: 0,
+                    y_offset: 0,
+                };
+                // Keep the source text verbatim: the cluster still reads
+                // "e\u{301}" even though one precomposed glyph renders it.
+                last.source_range.end = end;
+                last.text.push(ch);
+                continue;
+            }
+            if !last.glyphs.is_empty() {
+                // Attach as a zero-advance mark glyph (or missing).
+                let base_adv = last.glyphs.last().map_or(0, |g| g.advance);
+                match face.glyph_id(ch) {
+                    Some(gid) => {
+                        let mark_adv = i32::from(face.advance(gid)?);
+                        let x_offset = if mark_adv == 0 {
+                            0
+                        } else {
+                            -(base_adv + mark_adv) / 2
+                        };
+                        last.glyphs.push(Glyph {
+                            gid,
+                            advance: 0,
+                            x_offset,
+                            y_offset: 0,
+                        });
+                    }
+                    None => {
+                        missing.push(MissingGlyph { ch, byte_offset });
+                        last.glyphs.push(Glyph {
+                            gid: GlyphId::NOTDEF,
+                            advance: 0,
+                            x_offset: 0,
+                            y_offset: 0,
+                        });
                     }
                 }
-                if !last.glyphs.is_empty() {
-                    // Attach as a zero-advance mark glyph (or missing).
-                    let base_adv = last.glyphs.last().map_or(0, |g| g.advance);
-                    match face.glyph_id(ch) {
-                        Some(gid) => {
-                            let mark_adv = i32::from(face.advance(gid)?);
-                            let x_offset = if mark_adv == 0 {
-                                0
-                            } else {
-                                -(base_adv + mark_adv) / 2
-                            };
-                            last.glyphs.push(Glyph {
-                                gid,
-                                advance: 0,
-                                x_offset,
-                                y_offset: 0,
-                            });
-                        }
-                        None => {
-                            missing.push(MissingGlyph { ch, byte_offset });
-                            last.glyphs.push(Glyph {
-                                gid: GlyphId::NOTDEF,
-                                advance: 0,
-                                x_offset: 0,
-                                y_offset: 0,
-                            });
-                        }
-                    }
-                    last.source_range.end = end;
-                    last.text.push(ch);
-                    continue;
-                }
+                last.source_range.end = end;
+                last.text.push(ch);
+                continue;
             }
         }
         let glyph = match face.glyph_id(ch) {
@@ -295,41 +296,55 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
 
     // 3: ligatures over runs of single-glyph, non-missing clusters.
     let mut ligatures_applied = 0;
-    if opts.ligatures {
-        let mut i = 0;
-        while i < clusters.len() {
-            let max = (clusters.len() - i).min(4);
-            let mut run: Vec<GlyphId> = Vec::with_capacity(max);
-            for c in &clusters[i..i + max] {
-                if c.glyphs.len() != 1 || c.glyphs[0].gid == GlyphId::NOTDEF {
-                    break;
+    // Monospaced faces never ligate (a 600-unit "fi" would swallow a cell),
+    // even when their character map carries f-ligature glyphs, as Courier's
+    // AFM does.
+    if opts.ligatures && !face.is_fixed_pitch() {
+        // One pass per GSUB lookup in lookup order, plus a final pass for the
+        // cmap fallback (pass index == ligature_passes()).
+        let gsub_passes = face.ligature_passes();
+        let fallback_pass = if opts.cmap_ligature_fallback { 1 } else { 0 };
+        for pass in 0..gsub_passes + fallback_pass {
+            let mut i = 0;
+            while i < clusters.len() {
+                let max = (clusters.len() - i).min(4);
+                let mut run: Vec<GlyphId> = Vec::with_capacity(max);
+                for c in &clusters[i..i + max] {
+                    if c.glyphs.len() != 1 || c.glyphs[0].gid == GlyphId::NOTDEF {
+                        break;
+                    }
+                    run.push(c.glyphs[0].gid);
                 }
-                run.push(c.glyphs[0].gid);
-            }
-            let mut found = if run.len() >= 2 {
-                face.longest_ligature(&run)
-            } else {
-                None
-            };
-            if found.is_none() && opts.cmap_ligature_fallback && run.len() >= 2 {
-                let joined: String = clusters[i..i + run.len()].iter().map(|c| c.text.as_str()).collect();
-                for (seq, lig) in [
-                    ("ffi", '\u{FB03}'),
-                    ("ffl", '\u{FB04}'),
-                    ("ff", '\u{FB00}'),
-                    ("fi", '\u{FB01}'),
-                    ("fl", '\u{FB02}'),
-                ] {
-                    if joined.starts_with(seq) {
-                        if let Some(gid) = face.glyph_id(lig) {
+                let mut found = if run.len() >= 2 && pass < gsub_passes {
+                    face.longest_ligature(pass, &run)
+                } else {
+                    None
+                };
+                if pass == gsub_passes && run.len() >= 2 {
+                    // Each component must be its own one-character cluster, so
+                    // an already-formed "fi" cluster is never re-ligated.
+                    let texts: Vec<&str> = clusters[i..i + run.len()]
+                        .iter()
+                        .map(|c| c.text.as_str())
+                        .collect();
+                    for (seq, lig) in [
+                        (&["f", "f", "i"][..], '\u{FB03}'),
+                        (&["f", "f", "l"][..], '\u{FB04}'),
+                        (&["f", "f"][..], '\u{FB00}'),
+                        (&["f", "i"][..], '\u{FB01}'),
+                        (&["f", "l"][..], '\u{FB02}'),
+                    ] {
+                        if texts.starts_with(seq)
+                            && let Some(gid) = face.glyph_id(lig)
+                        {
                             found = Some((gid, seq.len()));
                             break;
                         }
                     }
                 }
-            }
-            match found {
-                Some((gid, len)) if len >= 2 => {
+                if let Some((gid, len)) = found
+                    && len >= 2
+                {
                     let merged: Vec<Cluster> = clusters.drain(i..i + len).collect();
                     let text: String = merged.iter().map(|c| c.text.as_str()).collect();
                     clusters.insert(
@@ -348,15 +363,15 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
                     );
                     ligatures_applied += 1;
                 }
-                _ => {}
+                i += 1;
             }
-            i += 1;
         }
     }
 
     // 4: kerning between the last glyph of one cluster and the first of the next.
     let mut kerning_source = KerningSource::None;
     if opts.kerning {
+        kerning_source = face.kerning_source();
         let n = clusters.len();
         for i in 0..n.saturating_sub(1) {
             let (left, right) = {
@@ -367,14 +382,11 @@ pub fn shape(face: &dyn Face, text: &str, opts: &ShapeOptions) -> Result<Shaped,
                     _ => continue,
                 }
             };
-            let (adj, src) = face.kerning(left, right);
-            if src != KerningSource::None {
-                kerning_source = src;
-            }
-            if adj != 0 {
-                if let Some(g) = clusters[i].glyphs.last_mut() {
-                    g.advance += i32::from(adj);
-                }
+            let (adj, _) = face.kerning(left, right);
+            if adj != 0
+                && let Some(g) = clusters[i].glyphs.last_mut()
+            {
+                g.advance += i32::from(adj);
             }
         }
     }

@@ -19,15 +19,17 @@
 
 pub mod core14;
 pub mod embed;
+#[rustfmt::skip]
 mod generated;
 mod gpos;
 mod gsub;
 mod kern;
+pub mod math;
 mod otl;
 mod reader;
 pub mod resolve;
-pub mod shape;
 pub mod sha256;
+pub mod shape;
 pub mod subset;
 pub mod truetype;
 
@@ -36,7 +38,7 @@ use std::path::{Path, PathBuf};
 
 pub use core14::Core14Face;
 pub use shape::{Cluster, Glyph, MissingGlyph, ShapeOptions, Shaped};
-pub use truetype::TrueTypeFace;
+pub use truetype::{Outlines, TrueTypeFace};
 
 /// Errors from loading, parsing, shaping or subsetting.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,10 +183,15 @@ pub trait Face {
     /// Horizontal kerning adjustment for the pair, in font units (usually
     /// negative), and which table supplied it.
     fn kerning(&self, left: GlyphId, right: GlyphId) -> (i16, KerningSource);
-    /// Ligature glyph for the exact glyph sequence, if the font declares one.
+    /// Which kerning data this face would consult (regardless of any pair).
+    fn kerning_source(&self) -> KerningSource;
+    /// Ligature glyph the face's lookups produce for exactly this sequence.
     fn ligature(&self, components: &[GlyphId]) -> Option<GlyphId>;
-    /// Longest ligature starting at `glyphs[0]` (returns component count).
-    fn longest_ligature(&self, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)>;
+    /// Number of ligature passes (GSUB lookups) to run in order.
+    fn ligature_passes(&self) -> usize;
+    /// Longest ligature of pass `pass` starting at `glyphs[0]`; returns the
+    /// ligature glyph and the number of components it replaces (>= 2).
+    fn longest_ligature(&self, pass: usize, glyphs: &[GlyphId]) -> Option<(GlyphId, usize)>;
     fn unsupported(&self) -> &[Unsupported];
     /// PostScript name (`name` id 6 or AFM FontName).
     fn postscript_name(&self) -> &str;
