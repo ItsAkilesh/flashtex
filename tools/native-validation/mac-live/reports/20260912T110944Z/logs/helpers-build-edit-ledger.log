@@ -1,0 +1,16 @@
+   Compiling flashtex-edit-ledger v0.1.0 (/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/edit-ledger)
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> src/service.rs:312:14
+    |
+312 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+    |              ^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+    |
+312 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+312 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+    |
+
+warning: `flashtex-edit-ledger` (lib) generated 1 warning (run `cargo fix --lib -p flashtex-edit-ledger` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 9.73s

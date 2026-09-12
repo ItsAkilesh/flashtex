@@ -16,15 +16,15 @@
     "rust",
     "macos-simulators"
   ],
-  "code_revision": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21",
+  "code_revision": "837c17efff77bf3e9fd16fafaebbe84ce1a17d5c",
   "eta_minutes": {
-    "likely": 120,
-    "optimistic": 60,
-    "pessimistic": 240
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
-  "next_action": "Integrate remaining lanes (hybrid release policy, validation-3, packaging signing, search/history/preferences panels, braces, nearby generation API, render incremental cache); post census",
+  "main_integrated_through": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+  "next_action": "Integrate search/history/validation-3/helper-display lanes as they land; relay render-pipeline producer-gap result; refill toward 15 lanes",
   "reviewed_peers": {
     "origin/agent/aarush-macbook/companion-capture": {
       "adaptation": "Peer cannot run xcodebuild; will verify their branch from this Mac. No contract change.",
@@ -47,18 +47,18 @@
       "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     },
     "origin/main": {
-      "adaptation": "main through eed1847 read (one-permit JSON decoder 8a44552, v2-consumption fencing to Commander slots); no apps/mac interface change; FT-048/049 are Linux slots",
-      "reviewed_utc": "2026-09-12T10:55:23Z",
-      "sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0"
+      "adaptation": "Rebuilt preview-controller/compiler/assistant-context helpers at the merged tree; controller tests 16/16; helper display route delegated to lane mac-helper-display",
+      "reviewed_utc": "2026-09-12T11:21:51Z",
+      "sha": "5ab9eac199c59add83e52d705569d9f771053c4d"
     }
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-003 rev 7: mac-shell dbcf9c3 \u2014 481/481 native tests (6 opt-in skips) with eight real helpers at load 12; 26 lane deliveries integrated incl. live display-list-v2 preview (p50 89 ms on demo via flashtex-render, 0 px vs CG export), quick-fix from explanations, completion snippets, transitive includes, bundled assistant helper. Rust deliveries ready for Commander: mac-pdf 20e5277 (Type 1 subsetting charstring-identical to pdfTeX, 86 tests), render-pipeline d556519, visual-oracle dda8200. 9 lanes running.",
+  "summary": "Preferences lane integrated (3fcd2ad; full suite 510/510 with every helper); main 527ae54 merged (ff574d7); consumed e4c9252 helper display path and launched mac-helper-display for the native helper-route acceptance; census parent+5 live children posted (issue #2 5645568290)",
   "tool": "Claude Code",
-  "updated_utc": "2026-09-12T10:55:23Z",
+  "updated_utc": "2026-09-12T11:21:51Z",
   "usage": {
-    "evidence": "issue #2 comments 5645364728, 5645396898",
-    "status": "Claude Max 20x usable; 9 subagents + parent; no overage"
+    "evidence": "unknown",
+    "status": "Claude Max 20x; no overage"
   }
 }

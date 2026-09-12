@@ -1,0 +1,203 @@
+{
+  "coalesced" : 1,
+  "compile_ms" : {
+    "count" : 16,
+    "max_ms" : 16.101042,
+    "mean_ms" : 13.0837056875,
+    "min_ms" : 11.941708,
+    "p50_ms" : 12.899542,
+    "p95_ms" : 16.101042,
+    "p99_ms" : 16.101042
+  },
+  "compiles" : 16,
+  "debounce_ms" : 0,
+  "document_bytes_after" : 62,
+  "document_bytes_before" : 139,
+  "elapsed_ms" : 692.926292,
+  "interval_ms" : 30,
+  "keystroke_to_paint_ms" : {
+    "count" : 16,
+    "max_ms" : 58.1595,
+    "mean_ms" : 43.583125,
+    "min_ms" : 30.695459,
+    "p50_ms" : 41.654,
+    "p95_ms" : 58.1595,
+    "p99_ms" : 58.1595
+  },
+  "keystrokes" : 16,
+  "paint_point" : "first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated PreviewView for the revision (Canvas draw closures of every page ran inside that pass); the CoreAnimation commit has completed, the display's next vsync scan-out is not observed",
+  "painted" : 16,
+  "paints" : 16,
+  "paints_without_redraw" : 6,
+  "per_keystroke" : [
+    {
+      "compile_ms" : 13.376042,
+      "delegate_ns" : 88133956389541,
+      "keystroke_ns" : 88133955249875,
+      "paint_ns" : 88134013409375,
+      "painted_by_revision" : 3,
+      "redrawn" : true,
+      "revision" : 3
+    },
+    {
+      "compile_ms" : 12.298333,
+      "delegate_ns" : 88134014270500,
+      "keystroke_ns" : 88134013855750,
+      "paint_ns" : 88134055509750,
+      "painted_by_revision" : 4,
+      "redrawn" : true,
+      "revision" : 4
+    },
+    {
+      "compile_ms" : 12.697,
+      "delegate_ns" : 88134056362208,
+      "keystroke_ns" : 88134055955958,
+      "paint_ns" : 88134094955708,
+      "painted_by_revision" : 5,
+      "redrawn" : true,
+      "revision" : 5
+    },
+    {
+      "compile_ms" : 11.9945,
+      "delegate_ns" : 88134095660208,
+      "keystroke_ns" : 88134095254958,
+      "paint_ns" : 88134136802166,
+      "painted_by_revision" : 6,
+      "redrawn" : true,
+      "revision" : 6
+    },
+    {
+      "compile_ms" : 12.81675,
+      "delegate_ns" : 88134137252791,
+      "keystroke_ns" : 88134136864791,
+      "paint_ns" : 88134170047000,
+      "painted_by_revision" : 7,
+      "redrawn" : false,
+      "revision" : 7
+    },
+    {
+      "compile_ms" : 13.175958999999999,
+      "delegate_ns" : 88134169783833,
+      "keystroke_ns" : 88134169384541,
+      "paint_ns" : 88134213498000,
+      "painted_by_revision" : 8,
+      "redrawn" : true,
+      "revision" : 8
+    },
+    {
+      "compile_ms" : 12.899542,
+      "delegate_ns" : 88134214298041,
+      "keystroke_ns" : 88134213891750,
+      "paint_ns" : 88134254373166,
+      "painted_by_revision" : 9,
+      "redrawn" : true,
+      "revision" : 9
+    },
+    {
+      "compile_ms" : 11.941708,
+      "delegate_ns" : 88134258781291,
+      "keystroke_ns" : 88134258242500,
+      "paint_ns" : 88134302512833,
+      "painted_by_revision" : 10,
+      "redrawn" : true,
+      "revision" : 10
+    },
+    {
+      "compile_ms" : 13.132958,
+      "delegate_ns" : 88134303080375,
+      "keystroke_ns" : 88134302696125,
+      "paint_ns" : 88134349072000,
+      "painted_by_revision" : 11,
+      "redrawn" : true,
+      "revision" : 11
+    },
+    {
+      "compile_ms" : 16.101042,
+      "delegate_ns" : 88134350384125,
+      "keystroke_ns" : 88134349922875,
+      "paint_ns" : 88134399150333,
+      "painted_by_revision" : 12,
+      "redrawn" : true,
+      "revision" : 12
+    },
+    {
+      "compile_ms" : 14.908,
+      "delegate_ns" : 88134399988125,
+      "keystroke_ns" : 88134399528083,
+      "paint_ns" : 88134449009875,
+      "painted_by_revision" : 13,
+      "redrawn" : true,
+      "revision" : 13
+    },
+    {
+      "compile_ms" : 12.330125,
+      "delegate_ns" : 88134449823083,
+      "keystroke_ns" : 88134449383791,
+      "paint_ns" : 88134485859416,
+      "painted_by_revision" : 14,
+      "redrawn" : false,
+      "revision" : 14
+    },
+    {
+      "compile_ms" : 13.119041,
+      "delegate_ns" : 88134486374958,
+      "keystroke_ns" : 88134485920583,
+      "paint_ns" : 88134542859583,
+      "painted_by_revision" : 16,
+      "redrawn" : false,
+      "revision" : 15
+    },
+    {
+      "compile_ms" : 13.119041,
+      "delegate_ns" : 88134494004375,
+      "keystroke_ns" : 88134493567500,
+      "paint_ns" : 88134542859583,
+      "painted_by_revision" : 16,
+      "redrawn" : false,
+      "revision" : 16
+    },
+    {
+      "compile_ms" : 12.933625000000001,
+      "delegate_ns" : 88134542258875,
+      "keystroke_ns" : 88134541816625,
+      "paint_ns" : 88134578251458,
+      "painted_by_revision" : 17,
+      "redrawn" : false,
+      "revision" : 17
+    },
+    {
+      "compile_ms" : 12.549875,
+      "delegate_ns" : 88134580494583,
+      "keystroke_ns" : 88134580059291,
+      "paint_ns" : 88134610754750,
+      "painted_by_revision" : 18,
+      "redrawn" : false,
+      "revision" : 18
+    }
+  ],
+  "producer" : "flashtex-preview-controller",
+  "render_pass_ms" : {
+    "count" : 10,
+    "max_ms" : 19.986,
+    "mean_ms" : 16.4638086,
+    "min_ms" : 13.934375,
+    "p50_ms" : 16.06425,
+    "p95_ms" : 19.986,
+    "p99_ms" : 19.986
+  },
+  "result_to_paint_ms" : {
+    "count" : 15,
+    "max_ms" : 31.557459,
+    "mean_ms" : 23.8132474,
+    "min_ms" : 14.365834,
+    "p50_ms" : 25.502417,
+    "p95_ms" : 31.557459,
+    "p99_ms" : 31.557459
+  },
+  "script" : "\/Users\/jay3332\/Projects\/flashtex\/.claude\/worktrees\/agent-a19c42dc3e488a6de\/tools\/native-validation\/mac-live\/reports\/20260912T110944Z\/multifile\/typed.txt",
+  "script_keystrokes" : 16,
+  "started_at" : "2026-09-12T11:18:16Z",
+  "typed" : 16,
+  "typing_budget_exhausted" : false,
+  "unpainted" : 0
+}

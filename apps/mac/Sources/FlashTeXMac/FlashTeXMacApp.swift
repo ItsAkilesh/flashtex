@@ -89,7 +89,7 @@ struct FlashTeXMacApp: App {
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
-                    if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, ProjectSearch.windowID].contains(id) { openWindow(id: id) }
+                    if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID].contains(id) { openWindow(id: id) }
                 }
         }
         .commands {
@@ -123,6 +123,7 @@ struct FlashTeXMacApp: App {
                 Divider()
                 Button("Nearby Companion…") { openWindow(id: "nearby") }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+                Button("Durable History…") { openWindow(id: EditHistoryPanel.windowID) } // EditHistoryPanel.swift
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }
@@ -168,6 +169,9 @@ struct FlashTeXMacApp: App {
             NearbyView().environmentObject(nearby).environment(model)
         }
         .windowResizability(.contentSize)
+        Window("Durable History", id: EditHistoryPanel.windowID) {
+            EditHistoryPanel().environment(model) // undo/redo on the helper's ledger
+        }
         Window("Accessibility Help", id: AccessibilityHelpView.windowID) {
             AccessibilityHelpView() // FlashTeXAccessibility: focus order, VoiceOver notes, command table
         }

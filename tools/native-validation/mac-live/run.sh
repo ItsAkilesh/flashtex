@@ -12,8 +12,11 @@
 #      paints and coalesced keystrokes — with the direct compiler worker, with
 #      flashtex-render as a second direct producer, and through the durable
 #      flashtex-preview-controller route (FLASHTEX_PREVIEW_CONTROLLER, also
-#      built from main). Latency gates are applied only when the 1-minute load
-#      average before the bench is <= 10; above that they are reported only;
+#      built from main), plus the helper route again with
+#      FLASHTEX_COMPLETED_SNAPSHOTS=1 (historical previews) classified with the
+#      historical-preview analyze.py. Every cell waits for a quiet machine
+#      (typing-bench --quiet-load/--quiet-wait); latency gates are applied only
+#      to cells the bench did not mark load-affected (1-minute load > 10);
 #   4. packages FlashTeX.app with apps/mac/scripts/make-app.sh and runs
 #      apps/mac/scripts/launch-check.sh (compiler + bridge child kill, app
 #      survival) with FLASHTEX_NO_ACTIVATE=1 through the `open` shim in lib/;
@@ -24,14 +27,21 @@
 #      origin/agent/mac-render-pipeline/unified; File > Attach Render Pipeline
 #      headlessly: `preview face: latin-modern` in FLASHTEX_LOG) and
 #      flashtex-pdf-exact (origin/agent/mac-pdf/v2-adapter; `from-v2` on the
-#      checked-in display-list-v2 fixture, read back through PDFKit);
+#      checked-in display-list-v2 fixture, read back through PDFKit); the
+#      Accessibility Help and Nearby windows opened headlessly and captured by
+#      window id; bounded worker auto-relaunch after SIGKILL; a multi-file
+#      project (main.tex + \input{chapter}) opened through the helper, switched
+#      to chapter.tex and edited; and the branch's own XCTests for the save
+#      routing / quit-save / reviewed reload / conflict refusal paths that need
+#      menus or sheets, run against the real helpers;
 #   6. writes reports/<UTC>.md with every number, hash, SHA, machine/OS/Xcode
 #      version and exact command, asserted against thresholds.json.
 #
 # Usage: tools/native-validation/mac-live/run.sh [--branch <ref>] [--main-ref <ref>]
 #          [--intervals "30 0"] [--seeds "fixture demo body60k"] [--no-fetch]
 #          [--skip-bench] [--skip-controller] [--skip-extras] [--skip-launch] [--skip-cycle]
-#          [--render-ref <ref>] [--pdf-exact-ref <ref>] [--rebuild] [--force]
+#          [--render-ref <ref>] [--pdf-exact-ref <ref>] [--quiet-load 8] [--quiet-wait 300]
+#          [--skip-tests] [--skip-features] [--rebuild] [--force]
 #          [--work <dir>] [--session <url-or-id>] [--agent <id>]
 # Env:   FLASHTEX_MAC_LIVE_SESSION  provenance: the driving agent session (URL/id)
 #        FLASHTEX_MAC_LIVE_AGENT    provenance: the driving agent id
@@ -55,6 +65,10 @@ SKIP_CONTROLLER=0
 SKIP_EXTRAS=0
 RENDER_REF="origin/agent/mac-render-pipeline/unified"
 PDF_EXACT_REF="origin/agent/mac-pdf/v2-adapter"
+QUIET_LOAD=8
+QUIET_WAIT=300
+SKIP_TESTS=0
+SKIP_FEATURES=0
 REBUILD=0
 FORCE=0
 WORK="$SCRIPT_DIR/build"
@@ -75,6 +89,10 @@ while [[ $# -gt 0 ]]; do
     --skip-extras) SKIP_EXTRAS=1; shift ;;
     --render-ref) RENDER_REF="$2"; shift 2 ;;
     --pdf-exact-ref) PDF_EXACT_REF="$2"; shift 2 ;;
+    --quiet-load) QUIET_LOAD="$2"; shift 2 ;;
+    --quiet-wait) QUIET_WAIT="$2"; shift 2 ;;
+    --skip-tests) SKIP_TESTS=1; shift ;;
+    --skip-features) SKIP_FEATURES=1; shift ;;
     --rebuild) REBUILD=1; shift ;;
     --force) FORCE=1; shift ;;
     --work) WORK="$2"; shift 2 ;;
@@ -268,6 +286,12 @@ if [[ $SKIP_EXTRAS == 0 ]]; then
 fi
 [[ -x "$EXTRA_RENDER" ]] || EXTRA_RENDER=""
 [[ -x "$EXTRA_PDF_EXACT" ]] || EXTRA_PDF_EXACT=""
+# flashtex-project-files: the JSON Lines host lives in crates/project-files/src/bin
+# on the app branch (not on main yet), so it is built from the branch SHA.
+step "flashtex-project-files from $BRANCH"
+EXTRA_PROJECT_FILES=""
+extra_build project-files "$BRANCH_SHA" crates/project-files flashtex-project-files
+[[ -x "$EXTRA_PROJECT_FILES" ]] || EXTRA_PROJECT_FILES=""
 
 # ------------------------------------------------------------------- 2. app
 step "app from $BRANCH ($BRANCH_SHA)"
@@ -309,55 +333,88 @@ fi
 
 # ---------------------------------------------------------- 3. typing bench
 EXPECTED_CELLS=$(( $(wc -w <<< "$SEEDS") * $(wc -w <<< "$INTERVALS") ))
-# bench_pass <name> <out-dir>: runs the bench once; if the app was killed
-# mid-run by something outside this runner (other agents run pkill/launch
-# checks on this machine) some cells have no summary — retry the whole pass
-# once into <out-dir>/retry so the report can fill the gaps and say so.
-# bench_pass <name> <out-dir> <producers>; the 1-minute load average sampled
-# right before the pass is recorded (latency gates apply only when it is <= 10).
+# bench_pass <name> <out-dir> <producers>: one tools/typing-bench/run.sh pass.
+# The bench itself waits for a quiet machine before every cell (--quiet-load /
+# --quiet-wait) and marks cells whose 1-minute load exceeded --load-limit as
+# load-affected; the report applies latency gates only to unaffected cells.
+# If the app process disappeared mid-run (other agents run kill/launch checks
+# on this machine) some cells have no summary: the pass is repeated once into
+# <out-dir>/retry and the report fills the gaps from there, saying so. The
+# per-cell FLASHTEX_LOG files are copied next to the JSON summaries.
 bench_pass() {
-  local name="$1" out="$2" producers="$3" found expected
+  local name="$1" out="$2" producers="$3" found expected raw work
   expected=$(( EXPECTED_CELLS * $(wc -w <<< "$producers") ))
   mkdir -p "$out"
   printf '{"load_average":"%s","uptime":"%s","producers":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(uptime)" "$producers" > "$out/load-before.json"
-  cmd "$name" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" \
+  cmd "$name" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" --quiet-load "$QUIET_LOAD" --quiet-wait "$QUIET_WAIT" \
       --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/typing-bench.md"
   note "$name exit $CMD_STATUS"
+  for raw in "$out"/typing-bench-*/; do
+    work="$MAC/build/typing-bench/$(basename "$raw" | sed 's/^typing-bench-//')"
+    [[ -d "$work" ]] && cp "$work"/*.log "$raw" 2>/dev/null
+  done
   found=$(ls "$out"/typing-bench-*/*.json 2>/dev/null | wc -l | tr -d ' ')
   if (( found < expected )); then
     note "$name: $found of $expected cells have a summary (app killed or timed out mid-run); retrying the pass once"
     printf '[%s] retry: %s of %s cells had a summary\n' "$name" "$found" "$expected" >> "$COMMANDS"
     mkdir -p "$out/retry"
     printf '{"load_average":"%s","uptime":"%s","producers":"%s"}\n' "$(sysctl -n vm.loadavg)" "$(uptime)" "$producers" > "$out/retry/load-before.json"
-    cmd "$name-retry" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" \
+    cmd "$name-retry" bash "$APP_SRC/tools/typing-bench/run.sh" --producers "$producers" --quiet-load "$QUIET_LOAD" --quiet-wait "$QUIET_WAIT" \
         --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/retry/typing-bench.md"
     note "$name-retry exit $CMD_STATUS"
+    for raw in "$out"/retry/typing-bench-*/; do
+      work="$MAC/build/typing-bench/$(basename "$raw" | sed 's/^typing-bench-//')"
+      [[ -d "$work" ]] && cp "$work"/*.log "$raw" 2>/dev/null
+    done
   fi
 }
+CONTROLLER_BIN="$(helper_path preview-controller)"
+[[ $SKIP_CONTROLLER == 0 && -x "$CONTROLLER_BIN" ]] || CONTROLLER_BIN=""
 if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
-  step "typing bench ($SEEDS × $INTERVALS ms)"
-  if [[ -n "$EXTRA_RENDER" ]]; then
-    # flashtex-render as a second direct producer (typing-bench/run.sh's `render`
-    # producer, taken from FLASHTEX_RENDER instead of its own scratch build).
-    export FLASHTEX_RENDER="$EXTRA_RENDER"
-    printf '[typing-bench] FLASHTEX_RENDER=%q\n' "$FLASHTEX_RENDER" >> "$COMMANDS"
-    bench_pass typing-bench "$RUN_DIR/typing-bench" "compiler render"
-    unset FLASHTEX_RENDER
-  else
-    bench_pass typing-bench "$RUN_DIR/typing-bench" "compiler"
-  fi
-  if [[ $SKIP_CONTROLLER == 0 && -x "$(helper_path preview-controller)" ]]; then
-    # Same bench, durable helper route: the app attaches flashtex-preview-controller
-    # (which owns the ledger and launches the same compiler) instead of the direct
-    # worker. run.sh passes the environment through to the app unchanged.
-    step "typing bench via flashtex-preview-controller"
-    CTRL_LEDGERS="$WORK/controller-ledgers-$UTC"
-    mkdir -p "$CTRL_LEDGERS"
-    export FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)" FLASHTEX_CONTROLLER_LEDGER_ROOT="$CTRL_LEDGERS"
-    printf '[typing-bench-controller] FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_CONTROLLER_LEDGER_ROOT=%q\n' "$FLASHTEX_PREVIEW_CONTROLLER" "$CTRL_LEDGERS" >> "$COMMANDS"
-    bench_pass typing-bench-controller "$RUN_DIR/typing-bench-controller" "compiler"
-    unset FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_CONTROLLER_LEDGER_ROOT
-    rm -rf "$CTRL_LEDGERS"
+  # The bench finds flashtex-render and flashtex-preview-controller at their
+  # "this checkout" paths (copied into the pinned app clone above). They are
+  # deliberately NOT exported as FLASHTEX_RENDER / FLASHTEX_PREVIEW_CONTROLLER:
+  # the bench passes its whole environment to every cell, and an exported
+  # FLASHTEX_PREVIEW_CONTROLLER makes the app attach the helper in the direct
+  # worker cells too (observed: every "compiler" cell reported the controller).
+  PRODUCERS="compiler"
+  [[ -n "$EXTRA_RENDER" ]] && PRODUCERS="$PRODUCERS render"
+  [[ -n "$CONTROLLER_BIN" ]] && PRODUCERS="$PRODUCERS controller"
+  step "typing bench ($SEEDS × $INTERVALS ms; producers $PRODUCERS; quiet-load $QUIET_LOAD, wait up to $QUIET_WAIT s per cell)"
+  bench_pass typing-bench "$RUN_DIR/typing-bench" "$PRODUCERS"
+  if [[ -n "$CONTROLLER_BIN" ]]; then
+    # Helper route again with historical previews (completed-snapshots-v1):
+    # every keystroke becomes its own durable edit and the helper's
+    # completed_snapshot frames are painted labelled; classified afterwards.
+    step "typing bench via flashtex-preview-controller with FLASHTEX_COMPLETED_SNAPSHOTS=1"
+    export FLASHTEX_COMPLETED_SNAPSHOTS=1
+    printf '[typing-bench-historical] FLASHTEX_COMPLETED_SNAPSHOTS=1 (controller from %q)\n' "$CONTROLLER_BIN" >> "$COMMANDS"
+    bench_pass typing-bench-historical "$RUN_DIR/typing-bench-historical" "controller"
+    unset FLASHTEX_COMPLETED_SNAPSHOTS
+    ANALYZE="$APP_SRC/docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py"
+    if [[ -f "$ANALYZE" ]]; then
+      # analyze.py takes the mode from the directory name (baseline-* / historical-*).
+      HD="$RUN_DIR/historical"; rm -rf "$HD"; mkdir -p "$HD/baseline" "$HD/historical"
+      for raw in "$RUN_DIR"/typing-bench/typing-bench-*/ "$RUN_DIR"/typing-bench/retry/typing-bench-*/; do
+        [[ -d "$raw" ]] || continue
+        d="$HD/baseline/$(basename "$raw")"; mkdir -p "$d"
+        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && { cp "$f" "$d/"; cp "${f%.json}.log" "$HD/baseline/" 2>/dev/null; }; done
+      done
+      for raw in "$RUN_DIR"/typing-bench-historical/typing-bench-*/ "$RUN_DIR"/typing-bench-historical/retry/typing-bench-*/; do
+        [[ -d "$raw" ]] || continue
+        d="$HD/historical/$(basename "$raw")"; mkdir -p "$d"
+        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && { cp "$f" "$d/"; cp "${f%.json}.log" "$HD/historical/" 2>/dev/null; }; done
+      done
+      cmd historical-analyze python3 "$ANALYZE" "$HD/baseline" "$HD/historical"
+      cp "$LOGS/historical-analyze.log" "$HD/analysis.txt"
+      cp "$ANALYZE" "$HD/analyze.py"
+      # The inputs are copies of typing-bench*/…/controller-*.json|.log; keep the
+      # report directory small and record how to rebuild the layout instead.
+      rm -rf "$HD/baseline" "$HD/historical"
+      printf 'Inputs were copies of ../typing-bench*/typing-bench-*/controller-*.json (JSON under <mode>/typing-bench-*/, .log next to <mode>/); rebuild that layout from those files and run: python3 analyze.py baseline historical\n' > "$HD/README.txt"
+    else
+      note "analyze.py not found at $ANALYZE; historical classification skipped"
+    fi
   fi
 else
   step "typing bench skipped (skip=$SKIP_BENCH app_ok=$APP_OK helpers_ok=$HELPERS_OK)"
@@ -460,6 +517,58 @@ if [[ $BUNDLE_OK == 1 && -x "$BUNDLE/Contents/MacOS/flashtex-pdf-exact" ]]; then
       --expect-text "Office fixtures" --expect-text "office" --expect-text "bold" --expect-text "caf"
 elif [[ $BUNDLE_OK == 1 ]]; then
   step "packaged exact export skipped (no bundled flashtex-pdf-exact)"
+fi
+
+# ------------------------------------ 6c. windows, worker relaunch, multi-file
+if [[ $SKIP_FEATURES == 0 && $BUNDLE_OK == 1 ]]; then
+  RUNNING="$(pgrep -x FlashTeX || true)"
+  if [[ -n "$RUNNING" && $FORCE == 0 ]]; then
+    step "feature cycles REFUSED: FlashTeX.app already running (pid $RUNNING)"
+    for f in open-window-a11y-help open-window-nearby worker-relaunch multifile; do
+      printf '{"refused":true,"reason":"FlashTeX already running (pid %s)","checks":[],"passed":0,"failed":1}\n' "$RUNNING" > "$RUN_DIR/$f.json"
+    done
+  else
+    WPROBE="$WORK/window_probe"
+    if [[ ! -x "$WPROBE" || "$LIB/window_probe.swift" -nt "$WPROBE" ]]; then
+      cmd window-probe-build swiftc -O "$LIB/window_probe.swift" -o "$WPROBE"
+    fi
+    [[ -x "$WPROBE" ]] || WPROBE=""
+    step "secondary windows opened headlessly (FLASHTEX_OPEN_WINDOW) and captured by window id"
+    cmd open-window-a11y-help python3 "$LIB/app_features.py" open-window --app "$BUNDLE" --window-id a11y-help --expect-title "Accessibility Help" \
+        --probe "$WPROBE" --work "$RUN_DIR/open-window-a11y-help" --out "$RUN_DIR/open-window-a11y-help.json"
+    cmd open-window-nearby python3 "$LIB/app_features.py" open-window --app "$BUNDLE" --window-id nearby --expect-title "Nearby Companion" \
+        --probe "$WPROBE" --work "$RUN_DIR/open-window-nearby" --out "$RUN_DIR/open-window-nearby.json"
+    for f in open-window-a11y-help open-window-nearby; do rm -rf "$RUN_DIR/$f/captures"; done
+    step "worker crash auto-relaunch (SIGKILL the bundled compiler child x4)"
+    cmd worker-relaunch python3 "$LIB/app_features.py" worker-relaunch --app "$BUNDLE" --work "$RUN_DIR/worker-relaunch" --out "$RUN_DIR/worker-relaunch.json"
+    rm -rf "$RUN_DIR/worker-relaunch/captures"
+    if [[ -n "$CONTROLLER_BIN" ]]; then
+      step "multi-file project through the helper (main.tex + \\input{chapter}, switch to chapter.tex, type)"
+      cmd multifile python3 "$LIB/app_features.py" multifile --app "$BUNDLE" --controller "$CONTROLLER_BIN" --compiler "$BUNDLE/Contents/MacOS/flashtex-compiler" \
+          --project-files "$EXTRA_PROJECT_FILES" --work "$RUN_DIR/multifile" --out "$RUN_DIR/multifile.json"
+      rm -rf "$RUN_DIR/multifile/captures" "$RUN_DIR/multifile/ledgers"
+    fi
+  fi
+fi
+
+# --------------------------------------------- 6d. branch XCTests, real helpers
+# Save routing to a member (⌘S), quit-save, reviewed reload after an external
+# edit and the on-disk conflict refusal need menus/sheets that cannot be driven
+# without Accessibility; the branch's own XCTests exercise exactly those
+# ShellModel/ProjectDocuments/DocumentFiles paths, here against the real
+# helpers built above (no fakes for the helper-route cases).
+if [[ $SKIP_TESTS == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
+  step "swift test (ProjectDocumentsTests, DocumentFilesTests, DocumentFilesControllerTests, HistoricalPreviewTests, ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff) with the real helpers"
+  export FLASHTEX_COMPILER="$(helper_path compiler)" FLASHTEX_PDF="$(helper_path pdf)" FLASHTEX_BRIDGE="$(helper_path bridge)" \
+         FLASHTEX_EDIT_LEDGER="$(helper_path edit-ledger)" FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)"
+  [[ -n "$EXTRA_PROJECT_FILES" ]] && export FLASHTEX_PROJECT_FILES="$EXTRA_PROJECT_FILES"
+  [[ -n "$EXTRA_RENDER" ]] && export FLASHTEX_RENDER="$EXTRA_RENDER"
+  [[ -n "$EXTRA_PDF_EXACT" ]] && export FLASHTEX_PDF_EXACT="$EXTRA_PDF_EXACT"
+  printf '[app-tests] FLASHTEX_COMPILER=%q FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_PROJECT_FILES=%q FLASHTEX_EDIT_LEDGER=%q FLASHTEX_BRIDGE=%q FLASHTEX_PDF=%q\n' \
+      "$FLASHTEX_COMPILER" "$FLASHTEX_PREVIEW_CONTROLLER" "${FLASHTEX_PROJECT_FILES:-}" "$FLASHTEX_EDIT_LEDGER" "$FLASHTEX_BRIDGE" "$FLASHTEX_PDF" >> "$COMMANDS"
+  cmd app-tests swift test --package-path "$MAC" --filter 'ProjectDocumentsTests|DocumentFilesTests|DocumentFilesControllerTests|HistoricalPreviewTests|ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'
+  python3 "$LIB/xctest_summary.py" --log "$LOGS/app-tests.log" --exit "$CMD_STATUS" --out "$RUN_DIR/app-tests.json"
+  unset FLASHTEX_COMPILER FLASHTEX_PDF FLASHTEX_BRIDGE FLASHTEX_EDIT_LEDGER FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_PROJECT_FILES FLASHTEX_RENDER FLASHTEX_PDF_EXACT
 fi
 
 # ---------------------------------------------------------------- 7. report

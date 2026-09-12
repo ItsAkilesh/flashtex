@@ -1,0 +1,4 @@
+2026-09-12T11:17:31Z	status: attached: flashtex-render
+2026-09-12T11:17:31Z	launched /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-render (preview face: latin-modern)
+2026-09-12T11:17:31Z	status: compiling revision 1 (mac-1)…
+2026-09-12T11:17:31Z	status: revision 1: ok, 0 diagnostics in 167 ms

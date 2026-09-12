@@ -1,0 +1,53 @@
+==> Building FlashTeXMac (-c release) in /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac
+warning: 'mac': found 17 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_context.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-missing-font.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.json
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_provider.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.tex
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_preview_controller.py
+    /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker_v2.py
+[0/1] Planning build
+Building for production...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.76s)
+==> Assembling bundle at /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app
+==> Copying fixtures and samples into Contents/Resources/Samples
+    bundled 10 Latin Modern faces
+==> Locating built Rust binaries (helper root: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495)
+    bundled flashtex-compiler from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/compiler/target/release/flashtex-compiler
+    bundled flashtex-pdf from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/pdf/target/release/flashtex-pdf
+    bundled flashtex-bridge from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/bridge/target/release/flashtex-bridge
+    bundled flashtex-edit-ledger from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/helpers/1884986fe54ba3ff8f602b1e7711c9cee324cd25/src/crates/edit-ledger/target/release/flashtex-edit-ledger
+    bundled flashtex-render from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/render/6e696616cca27a6bff19d88f7e0fd51e64458e81/src/crates/render-pipeline/target/release/flashtex-render
+    bundled flashtex-pdf-exact from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/pdf-exact/20e5277857b2cd37f102fb07acdd164f82bb49db/src/crates/pdf/target/release/flashtex-pdf-exact
+    bundled flashtex-preview-controller from /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/crates/preview-controller/target/release/flashtex-preview-controller
+    no flashtex-project-files found (build crates/project-files or pass --project-files <path>); skipping
+    no flashtex-assistant-context found (build crates/assistant-context or pass --assistant <path>); skipping
+    no flashtex-explain found (build crates/diagnostic-explanations or pass --explain <path>); skipping
+==> Signing bundled helpers (adhoc, hardened runtime: no)
+    signed flashtex-compiler (tech.jay3332.flashtex.mac.flashtex-compiler)
+    signed flashtex-pdf (tech.jay3332.flashtex.mac.flashtex-pdf)
+    signed flashtex-bridge (tech.jay3332.flashtex.mac.flashtex-bridge)
+    signed flashtex-edit-ledger (tech.jay3332.flashtex.mac.flashtex-edit-ledger)
+    signed flashtex-render (tech.jay3332.flashtex.mac.flashtex-render)
+    signed flashtex-pdf-exact (tech.jay3332.flashtex.mac.flashtex-pdf-exact)
+    signed flashtex-preview-controller (tech.jay3332.flashtex.mac.flashtex-preview-controller)
+==> Writing Contents/Resources/components.json
+    components.json written and valid JSON
+==> Ad-hoc codesigning
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app: replacing existing signature
+    codesign OK (ad-hoc)
+    codesign --verify --deep --strict OK
+==> Done: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app
+    open "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app"

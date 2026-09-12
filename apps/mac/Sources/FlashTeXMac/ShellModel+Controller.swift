@@ -317,6 +317,33 @@ extension ShellModel {
         }
     }
 
+    /// A durable `history` result (undo/redo/apply_group; EditHistoryPanel.swift)
+    /// adopted like the reply to an edit: the durable revision/text are
+    /// recorded FIRST so nothing is resubmitted, the buffer takes the durable
+    /// text when it has not moved since the command was issued (else the
+    /// normal document path resubmits the newer buffer on top), and the result
+    /// is then recorded as the in-flight edit for `requestID` so the helper's
+    /// follow-up preview binds to the new editor revision.
+    func controllerAdoptHistoryResult(_ doc: [String: Any], requestID: String, payload: [String: Any], issuedAtEditorRevision: Int?) {
+        guard controller != nil, let path = doc["path"] as? String, let revision = doc["revision"] as? Int,
+              let sha = doc["source_sha256"] as? String, let text = doc["text"] as? String else {
+            log("controller history result \(requestID) is missing fields")
+            return
+        }
+        controllerState.durable[path] = (revision, sha)
+        controllerState.textByDurable[path, default: [:]][revision] = text
+        let bufferUnchanged = issuedAtEditorRevision.map { $0 == editorRevision } ?? true
+        if path == activePath, bufferUnchanged, !text.sameBytes(as: activeText) {
+            updateActiveText(text) // bumps editorRevision; controllerSubmitEdit sees the text is already durable
+        }
+        if path == activePath, text.sameBytes(as: activeText), controllerState.inFlight == nil {
+            controllerState.inFlight = (requestID, path, editorRevision, Date(), text, nil)
+            controllerState.queued = false
+            inFlightRevision = editorRevision
+        }
+        applyDurableDocument(doc, requestID: requestID, payload: payload)
+    }
+
     /// Hybrid policy: arms a check for when the in-flight (durable) edit has
     /// been in flight for the bound; a keystroke meanwhile checks immediately.
     private func controllerScheduleHybridRelease() {

@@ -2,21 +2,21 @@
   "agent_id": "mac-validation",
   "allocation_id": "claude-mac20x-validation",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-validation/mac-live-2",
+  "branch": "agent/mac-validation/mac-live-3",
   "capabilities": [
     "xcode",
     "validation",
     "python"
   ],
-  "code_revision": "40d53b784876d128b7d54f5a10438c71d7b1b756",
+  "code_revision": "89a272cb3e7d7d57b09301a804c0e05d553b1478",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
-  "next_action": "Re-run tools/native-validation/mac-live/run.sh after each integration; investigate what kills FlashTeXMac bench instances on this Mac",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Re-run tools/native-validation/mac-live/run.sh after each integration; bench owner: unset FLASHTEX_PREVIEW_CONTROLLER for worker cells",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
       "adaptation": "Runner builds from whatever these refs are at run time (recorded in env.json); read the preview-controller attach path and launch-check/make-app scripts; no product source edited",
@@ -31,11 +31,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "mac-live-2: acceptance runner extended with flashtex-render + flashtex-pdf-exact bundled routes (headless render attach, from-v2 exact export read back through PDFKit), render as a bench producer, uptime/load-aware latency gating; report 20260912T095354Z PASS 163/163 against main 1d25ed0 (compiler e75741e) and mac-shell 35b4e12",
+  "summary": "mac-live-3: acceptance report 20260912T110944Z PASS 230/230 against main 1884986 and mac-shell 7ccbd7e; new cycles: windows captured by id (a11y-help, nearby), worker auto-relaunch x3 + per-minute limit, multi-file project through the helper, historical previews classified, branch XCTests (43/43) against real helpers; per-cell load-aware latency gating with quiet waits",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:01:30Z",
+  "updated_utc": "2026-09-12T11:21:54Z",
   "usage": {
-    "evidence": "tools/native-validation/mac-live/reports/20260912T095354Z.md",
+    "evidence": "tools/native-validation/mac-live/reports/20260912T110944Z.md",
     "status": "Shared Claude Max quota via parent mac-claude-a; no purchases; no paid network calls"
   }
 }

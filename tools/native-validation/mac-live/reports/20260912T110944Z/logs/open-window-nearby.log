@@ -1,0 +1,5 @@
+    PASS app process running -- pid 15068
+    PASS on-screen window titled 'Nearby Companion' owned by the app (CGWindowList) -- {"bounds": [726, 392, 456, 588], "id": 12332, "layer": 0, "name": "Nearby Companion"}
+    PASS screencapture -l <window id> wrote a PNG (> 4 KB, > 100x100 px) -- {"path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T110944Z/open-window-nearb
+    PASS never activated (FLASHTEX_NO_ACTIVATE=1) -- env
+open-window: 4 passed, 0 failed
