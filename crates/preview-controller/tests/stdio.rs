@@ -163,6 +163,14 @@ fn metadata_group_ack_recovers_unread_reply_and_preserves_command_and_undo_ident
     client.send("group", "apply_group", request.clone());
     let compact = client.reply("group");
     assert_eq!(compact["type"], "result");
+    assert_eq!(
+        compact["payload"].get("compile_request_id"),
+        Some(&Value::Null)
+    );
+    assert_eq!(
+        compact["payload"].get("compile_revision"),
+        Some(&Value::Null)
+    );
     assert!(serde_json::to_vec(&compact).unwrap().len() < 1024);
     let history = &compact["payload"]["history"];
     assert_eq!(history["replayed_command"], true);
@@ -205,6 +213,7 @@ fn metadata_group_ack_recovers_unread_reply_and_preserves_command_and_undo_ident
         "expected_revision":2,"expected_sha256":history["document"]["source_sha256"]}}),
     );
     let undo = client.reply("undo");
+    assert!(undo["payload"].get("compile_request_id").is_none());
     assert_eq!(undo["payload"]["history"]["document"]["text"], source);
     client.send("group", "apply_group", request);
     let after = client.reply("group");
@@ -1848,6 +1857,70 @@ for line in sys.stdin:
         assert!(payload["preview_error"].is_null());
         assert!(payload["compile_request_id"].is_string());
         assert_ne!(payload["compile_revision"], payload["document"]["revision"]);
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            if event["payload"]["kind"] == "preview"
+                && event["payload"]["request_id"] == payload["compile_request_id"]
+            {
+                assert_eq!(
+                    event["payload"]["compile_revision"],
+                    payload["compile_revision"]
+                );
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+fn grouped_retry_retains_command_identity_but_admits_current_source_compile() {
+    use std::os::unix::fs::PermissionsExt;
+    for mode in ["full", "metadata"] {
+        let dir = tempfile::tempdir().unwrap();
+        let compiler = dir.path().join("group-gated.py");
+        std::fs::write(&compiler, r#"#!/usr/bin/python3
+import json,sys,pathlib,time
+root=pathlib.Path(__file__).parent
+for line in sys.stdin:
+ r=json.loads(line);p=r['payload'];(root/'started').touch()
+ while not (root/'release').exists(): time.sleep(.001)
+ print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)
+"#).unwrap();
+        std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while !dir.path().join("started").exists() {
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(2));
+        }
+        client.send("doc", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("doc")["payload"]["document"].clone();
+        let request = json!({"path":"main.tex","response_mode":mode,"command":{"command_id":"permanent-group","expected_revision":1,"expected_sha256":doc["source_sha256"],"label":"Replace alpha","edits":[{"start_byte":0,"end_byte":2,"removed_text":"α","replacement":"β"}]}});
+        client.send("group", "apply_group", request.clone());
+        let first = client.reply("group");
+        assert!(first["payload"]["compile_request_id"].is_string());
+        let saved = &first["payload"]["history"]["document"];
+        client.send("later", "edit", json!({"path":"main.tex","expected_revision":saved["revision"],"expected_sha256":saved["source_sha256"],"text":"later source"}));
+        let later = client.reply("later");
+        client.send("retry", "apply_group", request);
+        let retry = client.reply("retry");
+        let payload = &retry["payload"];
+        assert_eq!(payload["history"]["command_revision"], 2);
+        assert_eq!(payload["history"]["replayed_command"], true);
+        assert_eq!(payload["history"]["document"]["revision"], 3);
+        assert_eq!(
+            payload["history"]["document"]["source_sha256"],
+            later["payload"]["document"]["source_sha256"]
+        );
+        assert_ne!(
+            payload["compile_request_id"],
+            first["payload"]["compile_request_id"]
+        );
+        assert_ne!(
+            payload["compile_request_id"],
+            later["payload"]["compile_request_id"]
+        );
+        std::fs::write(dir.path().join("release"), "").unwrap();
         loop {
             let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
             if event["payload"]["kind"] == "preview"
