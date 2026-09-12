@@ -10,6 +10,8 @@ public enum NearbyCLI {
 
       pair   --code 123456 --name "iPad Sim" [--mac <name|fp>] [--seconds 5]
              [--host 127.0.0.1 --port N --salt <32 hex>]      (skip Bonjour)
+             [--qr "flashtex-nearby://pair?v=1&code=…&salt=…&fp=…&name=…"]
+             (the Mac's QR image, decoded: supplies --code, --mac fp and --salt)
       send   --image file.png|jpg [--instructions "..."] [--capture-id ID]
              [--mac <name|fp>] [--host H --port N]
              [--destination-id ID --base-revision N]          (override the Mac's pin)
@@ -36,6 +38,8 @@ public enum NearbyCLI {
     exit codes: 0 ok · 1 nothing stored / not found · 2 error (see message)
                 3 pairing refused: re-pair · 4 retry budget exhausted: try later
                 5 the Mac's pinned destination changed: reselect there, send again
+                6 this companion is view-only on the Mac (capture_not_permitted):
+                  the pairing is intact; change its permission in Nearby Companion
                 64 usage · 65 not a PNG/JPEG · 66 unreadable file
     """
 
@@ -78,6 +82,9 @@ public enum NearbyCLI {
         case .destinationChanged:
             emit("hint: the insertion point on the Mac was unpinned or moved since this capture was built; reselect it there (Edit > Pin Insertion Point) and send again (exit 5)")
             return 5
+        case .remote where e.needsPermission:
+            emit("hint: this companion is view-only on the Mac; the pairing is intact (no re-pair) — change its permission to “Captures allowed” in Nearby Companion and send the same capture again (exit 6)")
+            return 6
         case .remote(let code, _) where e.needsNewCapture:
             switch code {
             case "image_too_large": emit("hint: the Mac accepts images up to 8 MiB encoded and 8192×8192; shrink the image and send again with a new --capture-id (exit 2)")
@@ -202,14 +209,33 @@ public enum NearbyCLI {
     }
 
     static func pair(_ o: Options, emit: @escaping (String) -> Void) async throws {
-        let code = try o.require("code")
+        // `--qr <payload>` (the Mac's QR image, decoded) supplies code, salt
+        // and fingerprint; an explicit --code/--mac must agree with it.
+        let scanned: NearbyBootstrapPayload? = try o.string("qr").map { text in
+            do { return try NearbyBootstrapPayload.parse(text) } catch let e as NearbyError {
+                throw Failure(code: 64, message: "--qr: \(e.description)")
+            }
+        }
+        if let scanned {
+            if let c = o.string("code"), c != scanned.code { throw Failure(code: 64, message: "--code \(c) differs from the QR payload's code") }
+            if let m = o.string("mac"), m != scanned.fingerprint, m != scanned.macName {
+                throw Failure(code: 64, message: "--mac \(m) is neither the QR payload's fp \(scanned.fingerprint) nor its name")
+            }
+            emit("qr payload: fp \(scanned.fingerprint) name \"\(scanned.macName)\"")
+        }
+        let code = try scanned?.code ?? o.require("code")
         let name = try o.require("name")
         let file = try store(o)
         let timeout = try o.double("timeout", default: 10)
-        let (endpoint, mac) = try await resolveEndpoint(o, emit: emit)
+        let (endpoint, mac) = try await resolveEndpoint(o, emit: emit, wantFP: scanned?.fingerprint)
         let salt: Data, fp: String, macName: String
         if let mac {
             salt = mac.salt!; fp = mac.fingerprint!; macName = mac.macName
+            if let scanned, scanned.salt != salt {
+                throw NearbyError.unsupportedService("the discovered Mac's TXT salt differs from the QR payload's; scan again")
+            }
+        } else if let scanned {
+            salt = scanned.salt; fp = scanned.fingerprint; macName = scanned.macName.isEmpty ? o.string("host")! : scanned.macName
         } else {
             guard let s = NearbyCrypto.data(hex: try o.require("salt")), s.count == NearbyCrypto.saltLength else {
                 throw Failure(code: 64, message: "--salt must be the Mac's 32-hex TXT salt")

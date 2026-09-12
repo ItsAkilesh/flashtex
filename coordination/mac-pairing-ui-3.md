@@ -1,6 +1,6 @@
 # mac-pairing-ui-3 handoff
 
-- Updated UTC: 2026-09-12T12:45Z
+- Updated UTC: 2026-09-12T14:30Z
 - Agent / parent / machine alias: `mac-pairing-ui-3` (Claude Code subagent) /
   `mac-claude-a` / `mac-m1max-a`
 - Task: Commander replenishment (issue #2 comment 5646989044) item 14 follow-ups
@@ -53,9 +53,54 @@ Follow-up 2 (per-companion permissions):
 
 Conclusion: both follow-ups are entirely uncovered; implementing both.
 
+## Implementation (both follow-ups, 14:28Z)
+
+Follow-up 1 — QR + copyable code:
+- `apps/mac/Sources/FlashTeXMac/PairingQR.swift` (new): `PairingBootstrapPayload`
+  (`flashtex-nearby://pair?v=1&code=…&salt=…&fp=…&name=…`, strict `parse`) and
+  `PairingQR` (CoreImage `CIQRCodeGenerator`, level M, software renderer, nearest-neighbour scale).
+- `apps/mac/tools/nearby-client/Sources/NearbyClient/NearbyBootstrap.swift` (new):
+  `NearbyBootstrapPayload` — byte-identical string, same refusals; `NearbyCLI.pair --qr <text>`
+  supplies code/fp/salt (explicit `--code`/`--mac` must agree; `resolveEndpoint(wantFP:)`).
+- `NearbyView.swift`: `PairingFlowController.bootstrapPayload` (codeShown/verifying only),
+  `copyCode(to:)` (bare digits, announces pairs); `codeRow` shows the QR image (`nearby.pairing.qr`)
+  beside the code, `.onCopyCommand` (⌘C) on the focused code, "Copy code" button (`nearby.pairing.copy`).
+- `Pairing.swift`: `spokenCode` now grouped in pairs ("1 2, 3 4, 5 6"); `clipboardCode`.
+- `AccessibilityCommands.swift`: Nearby Companion description + `PanelFocusOrder` rows
+  (code, Copy code, Permission pop-up) with source markers verified by `CommandTableTests`.
+
+Follow-up 2 — per-companion permissions:
+- `Pairing.swift`: `CompanionPermission` (`captures` | `view_only`, `refusalCode = "capture_not_permitted"`),
+  `PairRecord.permission` (+`effectivePermission`), `PairStore.schemaVersion = 3` with `upgrade`
+  writing explicit `captures` for v1/v2 records, `setPermission`, `capturesPermitted`;
+  `PairingAccessibility.deviceRow` speaks the permission.
+- `NearbyProtocol.swift`: `PairingConfirmer.capturesPermitted(pairId:)` (default true);
+  `NearbySession` refuses `capture_submit` with `capture_not_permitted` before dedup memory, session open.
+- `NearbyState.swift`: `PairingCoordinator.capturesPermitted` reads the store per capture;
+  `NearbyState.setPermission` (persist + log, idempotent, no listener restart).
+- `NearbyView.swift`: per-device `Picker("Permission")` menu (`nearby.device.<id>.permission`).
+- Reference client: `NearbyWire.permissionErrorCodes`, `NearbyError.needsPermission`
+  (needsRepair=false, needsNewCapture=false, not retryable), CLI exit 6 + hint.
+- `apps/mac/docs/nearby-v1-proposal.md`: §2 v3 schema + QR bootstrap, error-code list.
+
+Tests (measured 14:27–14:28Z, load 1-min 14→79 during other agents' builds; `swift build` + `swift build --build-tests` clean):
+- `PairingQRTests` 4/4: pinned payload string equals the client's; CoreImage→Vision round trip;
+  `testDecodedQRPairsTheReferenceClient` (real loopback listener, Vision-decoded QR passed verbatim
+  to `nearby-client pair --qr`, long-term key handed over, disagreeing `--code` refused exit 64);
+  copy to a private pasteboard + announcement in pairs.
+- `CompanionPermissionTests` 3/3: v2→v3 upgrade/persist/reload; view-only refused with
+  `capture_not_permitted` (exit 6, no re-pair hint, session open, inbox empty, no restart) then the
+  identical capture accepted after the change; view-only survives relaunch against a fresh listener.
+- `PairingFlowMachineTests` 32/32 and `PairingPersistenceTests` 7/7 (3 assertions updated to the
+  paired spoken format / v3), `CommandTableTests` 8/8, `NearbyViewControllerTests` 13/13,
+  `NearbyReferenceClientTests` 11 (1 skipped, pre-existing), nearby-client package 50/50
+  (incl. `NearbyBootstrapPayloadTests` 3/3). Full `swift test` not run: 1-min load ≥ 15.
+
+Parent-retained files: none touched (no hooks needed — the Nearby window is reached through
+the existing `.nearbyCompanion` command).
+
 ## Checkpoint
 
-- Branch `agent/mac-pairing-ui-3/qr-permissions` @ 82749c26 (audit commit pending). Dirty: this file, agents json.
-- Next commands: implement `PairingQR.swift`, `PairRecord.permission` + store v3, listener check, client `--qr` + mapping,
-  `NearbyView` QR/copy/permission controls, tests; `swift build`; run new test classes.
-- Consumed main: 486b759c. Billing: shared Claude Max quota via parent; no purchases.
+- Branch `agent/mac-pairing-ui-3/qr-permissions`; implementation commit follows 706508d5; then merge
+  `origin/agent/mac-claude-a/mac-shell` 9ba9851c forward and re-run the classes above.
+- Consumed main: 486b759c (parent tip 9ba9851c). Billing: shared Claude Max quota via parent; no purchases.

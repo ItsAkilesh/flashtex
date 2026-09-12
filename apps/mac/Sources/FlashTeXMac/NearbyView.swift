@@ -83,6 +83,30 @@ final class PairingFlowController: ObservableObject {
     func resume() { apply(.resume) }
     func dismiss() { apply(.dismiss) }
 
+    /// The bootstrap payload the QR image carries while a code is shown or
+    /// being verified (same code, this Mac's salt and name); nil otherwise.
+    var bootstrapPayload: PairingBootstrapPayload? {
+        guard let nearby else { return nil }
+        switch phase {
+        case .codeShown(let a), .verifying(let a):
+            return PairingBootstrapPayload(code: a.code, salt: nearby.store.salt, macName: nearby.macName)
+        default:
+            return nil
+        }
+    }
+
+    /// "Copy code" / ⌘C on the code: puts the digits (no display spacing) on
+    /// `pasteboard` and announces it. False when no code is shown.
+    @discardableResult
+    func copyCode(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let a = machine.attempt, !a.isExpired(at: Date()) else { return false }
+        let text = Pairing.clipboardCode(a.code)
+        pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string) else { return false }
+        announce("Pairing code \(Pairing.spokenCode(a.code)) copied.")
+        return true
+    }
+
     func setAdvertising(_ on: Bool) {
         guard let nearby else { return }
         if on {
@@ -515,27 +539,56 @@ struct NearbyFlowView: View {
     }
 
     private func codeRow(_ a: PairingFlow.Attempt, verifying: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(Pairing.displayCode(a.code))
-                .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                .textSelection(.enabled)
-                .focusable()
-                .focused($focus, equals: .code)
-                .accessibilityLabel("Pairing code")
-                .accessibilityValue(Pairing.spokenCode(a.code))
-                .accessibilityHint("Type these six digits on the companion.")
-                .accessibilityIdentifier("nearby.pairing.code")
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                let left = Int(a.remaining(at: ctx.date).rounded(.up))
-                Text("expires in \(left) s").font(.callout).foregroundStyle(left <= 15 ? .red : .secondary)
-                    .accessibilityLabel("Code expiry")
-                    .accessibilityValue("\(left) seconds left")
-                    .accessibilityAddTraits(.updatesFrequently)
-                    .accessibilityIdentifier("nearby.pairing.expiry")
+        HStack(alignment: .top, spacing: 16) {
+            // QR image: the same bootstrap payload the reference client's
+            // `pair --qr` accepts (PairingBootstrapPayload). Text fallback beside it.
+            if let payload = controller.bootstrapPayload, let qr = PairingQR.nsImage(for: payload, side: 120) {
+                Image(nsImage: qr)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 120, height: 120)
+                    .background(Color.white)
+                    .accessibilityLabel("Pairing QR code")
+                    .accessibilityValue("Scan with the companion; carries code \(Pairing.spokenCode(a.code)) and this Mac's identity.")
+                    .accessibilityIdentifier("nearby.pairing.qr")
             }
-            if verifying {
-                ProgressView().controlSize(.small)
-                    .accessibilityLabel("Verifying companion")
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(Pairing.displayCode(a.code))
+                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                        .textSelection(.enabled)
+                        .focusable()
+                        .focused($focus, equals: .code)
+                        .onCopyCommand { // ⌘C while the code has focus
+                            controller.copyCode()
+                            return [NSItemProvider(object: Pairing.clipboardCode(a.code) as NSString)]
+                        }
+                        .accessibilityLabel("Pairing code")
+                        .accessibilityValue(Pairing.spokenCode(a.code))
+                        .accessibilityHint("Type these six digits on the companion, or press Command C to copy them.")
+                        .accessibilityIdentifier("nearby.pairing.code")
+                    Button("Copy code") { controller.copyCode() }
+                        .accessibilityLabel("Copy pairing code")
+                        .accessibilityHint("Puts the six digits on the clipboard.")
+                        .accessibilityIdentifier("nearby.pairing.copy")
+                }
+                HStack(spacing: 12) {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        let left = Int(a.remaining(at: ctx.date).rounded(.up))
+                        Text("expires in \(left) s").font(.callout).foregroundStyle(left <= 15 ? .red : .secondary)
+                            .accessibilityLabel("Code expiry")
+                            .accessibilityValue("\(left) seconds left")
+                            .accessibilityAddTraits(.updatesFrequently)
+                            .accessibilityIdentifier("nearby.pairing.expiry")
+                    }
+                    if verifying {
+                        ProgressView().controlSize(.small)
+                            .accessibilityLabel("Verifying companion")
+                    }
+                }
+                Text("Scan the QR code, or type the digits on the companion.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             Spacer()
             Button("Cancel") { controller.cancel() }
@@ -606,6 +659,17 @@ struct NearbyFlowView: View {
                         .accessibilityValue(a11y.value)
                         .accessibilityIdentifier("nearby.device.\(pair.pairId)")
                         Spacer()
+                        Picker("Permission", selection: Binding(
+                            get: { pair.effectivePermission },
+                            set: { nearby.setPermission(pairId: pair.pairId, $0) })) {
+                            ForEach(CompanionPermission.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .fixedSize()
+                        .accessibilityLabel("Permission for \(pair.companionName)")
+                        .accessibilityHint("Captures allowed, or view only: a view-only companion's captures are refused with capture_not_permitted.")
+                        .accessibilityIdentifier("nearby.device.\(pair.pairId).permission")
                         Button("Forget") { controller.forget(pairId: pair.pairId) }
                             .accessibilityLabel("Forget \(pair.companionName)")
                             .accessibilityHint("Removes the pairing and closes its connection.")

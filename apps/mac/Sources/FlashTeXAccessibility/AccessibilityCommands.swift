@@ -119,7 +119,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Convert Capture")
         case .nearbyCompanion:
             return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
-                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
+                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code (also as a QR image; Copy code or ⌘C on the code copies the digits), paired devices with a per-companion permission pop-up (Captures allowed / View only), received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
                          menuItem: "Nearby Companion…")
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
@@ -338,12 +338,14 @@ public enum PanelFocusOrder {
                 Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "paired banner"),
                 Control(name: "Cancel receiving", sourceMarker: "accessibilityLabel(\"Cancel receiving\")", when: "receiving a capture"),
                 Control(name: "Show Pairing Code / Show New Code", sourceMarker: "Button(title) { controller.showCode() }", when: "idle, paired, error or expired"),
-                Control(name: "Pairing code (spoken as digits)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Pairing code (spoken as digits in pairs; ⌘C copies it; a QR image of the same payload sits beside it)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Copy code", sourceMarker: "Button(\"Copy code\")", when: "code shown or verifying"),
                 Control(name: "Cancel pairing", sourceMarker: "accessibilityLabel(\"Cancel pairing\")", when: "code shown or verifying"),
                 Control(name: "Resume", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.resume\")", when: "interrupted, code still valid"),
                 Control(name: "Cancel interrupted pairing", sourceMarker: "accessibilityLabel(\"Cancel interrupted pairing\")", when: "interrupted, code still valid"),
                 Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "interrupted, code expired"),
                 Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "interrupted, code expired"),
+                Control(name: "Permission for <companion> (pop-up: Captures allowed / View only)", sourceMarker: "Picker(\"Permission\"", when: "one per paired companion"),
                 Control(name: "Forget <companion>", sourceMarker: "Button(\"Forget\")", when: "one per paired companion"),
                 Control(name: "Clear refused captures", sourceMarker: "Button(\"Clear\")", when: "after a refused capture"),
               ],

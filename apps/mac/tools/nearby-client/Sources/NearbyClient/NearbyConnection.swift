@@ -78,12 +78,22 @@ public enum NearbyError: Error, CustomStringConvertible, Equatable {
     }
 
     /// Terminal because the pairing itself was refused: the user must re-pair.
+    /// `capture_not_permitted` is deliberately not here: the pairing is intact,
+    /// the Mac's user set this companion to view-only (`needsPermission`).
     public var needsRepair: Bool {
         switch self {
         case .handshakeFailed: return true
         case .remote(let code, _): return code == "pair_mismatch" || code == "pairing_expired"
         default: return false
         }
+    }
+
+    /// Terminal for now, without re-pairing or a new capture: the Mac's user
+    /// set this companion to view-only. Session stays open; the same capture
+    /// is accepted once the permission is changed in Nearby Companion.
+    public var needsPermission: Bool {
+        if case .remote(let code, _) = self { return NearbyWire.permissionErrorCodes.contains(code) }
+        return false
     }
 
     /// Terminal because the capture itself was refused (image, id, revision,
