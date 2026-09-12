@@ -1,72 +1,17 @@
 {
   "agent_id": "claude",
-  "next_index": 7,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
       "acceptance": [
-        "cargo test passes with Unicode source offsets and math fixtures",
-        "Positioned output reflects actual source edits; no existing TeX engine is invoked",
-        "Publish supported constructs and reproducible rendering evidence"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage2",
-      "name": "Original mathematical layout and source-mapped output",
-      "objective": "Extend the original Rust compiler with displayed and inline math, fractions, superscripts/subscripts, multiline layout, and source mapping. Preserve runtime-v1 and document unsupported TeX honestly.",
-      "owned_paths": [
-        "crates/compiler"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Compare incremental results with clean builds after edits and macro changes",
-        "Measure cold/warm/edit latency on documented fixtures; report actual sub-200ms result or gap",
-        "Malformed-input examples retain partial output and explicit source diagnostics"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage3",
-      "name": "Incremental reuse and recovery",
-      "objective": "Add dependency-aware invalidation and cached reusable compiler work to the original Rust implementation. Preserve state semantics; recover malformed input with marked diagnostics.",
-      "owned_paths": [
-        "crates/compiler"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Corpus macro, scope, comments/escapes, and include cases improve without losing any passing check",
-        "Included output preserves exact source file identity and UTF-8 byte ranges",
-        "Compiler and PDF paths share one layout/font representation or document a tested adapter"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage4",
-      "name": "Macro, multifile, and PDF convergence",
-      "objective": "Integrate the four Kabir child streams: reusable incremental state, scoped macro expansion, project-relative multifile dependencies, and independent equivalence/performance evidence. Resolve issues #8 and #9 without duplicating layout or silently substituting unsupported glyphs.",
-      "owned_paths": [
-        "crates/compiler"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
-        "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
-        "Every remaining unsupported corpus feature is explicit with a reproducible case"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage5",
-      "name": "Compiler recovery and compatibility gate",
-      "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
-      "owned_paths": [
-        "crates/compiler"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Pinned fixture evidence reports every byte/pixel mismatch without normalization",
-        "Warm edit timing includes compiler work and leaves native paint gate explicit"
+        "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+        "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+        "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
       ],
       "allocation_id": "openai-kabir-plus-ft002-stage6",
-      "name": "Exact rendering convergence",
-      "objective": "Connect original compiler to negotiated original Rust font/layout pipeline with exact source identity. Separate raw PDF bytes, pixel equality and incremental-clean equivalence; no reference engine in production.",
+      "name": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
+      "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
       "owned_paths": [
         "crates/compiler"
       ],
@@ -74,27 +19,13 @@
     },
     {
       "acceptance": [
-        "Pinned input/binary hashes and p50/p95/p99 measurements",
-        "Exact incremental-clean equality and no lost corpus checks",
-        "Native paint and raw PDF byte equality remain separate gates"
+        "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+        "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+        "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
       ],
       "allocation_id": "openai-kabir-plus-ft002-stage6",
-      "name": "Standing compiler scaling and incremental engineering",
-      "objective": "Within existing Kabir staffing, own standing compiler bottleneck repair: measure 5KB/50KB/500KB edits, remove superlinear hot paths, add safe dependency-aware reuse and prove incremental equals clean full output. Do not add workers or reference engines to production.",
-      "owned_paths": [
-        "crates/compiler"
-      ],
-      "timebox_minutes": 45
-    },
-    {
-      "acceptance": [
-        "Pinned input/binary hashes and p50/p95/p99 measurements",
-        "Exact incremental-clean equality and no lost corpus checks",
-        "Native paint and raw PDF byte equality remain separate gates"
-      ],
-      "allocation_id": "openai-kabir-plus-ft002-stage6",
-      "name": "Compiler compatibility and latency regression closure",
-      "objective": "Extend pinned corpus breadth and repeated burst-edit/recovery performance gates; preserve exact source and capability identities. Publish unresolved byte/pixel parity separately from compiler latency.",
+      "name": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
+      "objective": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
       "owned_paths": [
         "crates/compiler"
       ],

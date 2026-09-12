@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-spelling",
-  "task_id": "FT-039",
-  "revision": 1,
-  "branch": "agent/daniel-spelling/spellcheck",
   "assignment_path": "coordination/assignments/FT-039.json",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "branch": "agent/daniel-spelling/spellcheck",
+  "previous_report_sha": "97e1831c653f0fe1e38f5dff868e2fa3f4205e76",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-039",
+  "updated_utc": "2026-09-12T09:28:42Z"
 }

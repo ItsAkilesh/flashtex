@@ -1,0 +1,30 @@
+{
+  "agent_id": "commander-preview-performance",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-048": {
+      "acknowledged_utc": "2026-09-12T10:08:35Z",
+      "adaptation": "Read main0dc50da ownership extension: profile retained-history cost before optimization; prefer immutable sharing/validation reuse preserving exact schema bytes, receipts and undo recovery, with existing root only.",
+      "main_sha": "0dc50da7dfc8237e533d3a34ceb2321400c5d386",
+      "revision": 4
+    }
+  },
+  "branch": "agent/commander-preview-performance/preview-performance",
+  "capabilities": [
+    "Preview helper serialization and latency"
+  ],
+  "code_revision": "397bff7",
+  "eta_minutes": null,
+  "machine": "linux-primary",
+  "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
+  "next_action": "Commander integrate then Mac/root measure real save/ACK/nativepath underfullhistory withunchangedsource. Cache adds boundedmemory; fullstatefilewrite remains.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "accepted",
+  "summary": "Bounded immutablehistory JSONcache preservesexactlegacybytes.18/18alternatingserializerpairs equal/faster;20entrymedian41vs94ms componentonly.67ledger tests/lint and53serialhelpergates pass; defaultformat/historyunchanged,cachecoldonload.",
+  "tool": "Codex GPT-6 Astra",
+  "updated_utc": "2026-09-12T10:22:28Z",
+  "usage": {
+    "status": "unknown"
+  }
+}

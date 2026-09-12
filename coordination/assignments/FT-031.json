@@ -1,15 +1,4 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-031",
-  "agent_id": "daniel-floats",
-  "branch": "agent/daniel-floats/float-layout",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Continue released Jaysen font-engine heavy work. Parent reported old worker terminal after spend limit. Inspect published WIP 7342245 and request exact dirty patch/base before reconstructing unpublished changes. WIP is not integration-ready. Own crates/font-engine exclusively under this transfer; existing agent name is retained to keep Daniel16 slots.",
-  "owned_paths": [
-    "crates/font-engine"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
@@ -17,9 +6,20 @@
     "Register Daniel machine and exact assignment ACK/session before working",
     "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
   ],
+  "agent_id": "daniel-floats",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-floats/float-layout",
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "dependencies": [],
+  "input_main_sha": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
+  "objective": "Verified collection face/table descriptor: adversarial bounds and exact identity regressions",
+  "owned_paths": [
+    "crates/font-engine"
+  ],
+  "revision": 4,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-031",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:46:48Z"
 }

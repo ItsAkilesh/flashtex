@@ -1,6 +1,7 @@
 //! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
 use flashtex_document_runtime::{Event, Limits};
 use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
+use flashtex_preview_controller::completed_protocol::{SubmissionBindings, CAPABILITY};
 use flashtex_preview_controller::file_project::{DiskState, FileProject};
 use flashtex_preview_controller::{ApprovedEdit, Controller, HistoryAction, Update};
 use flashtex_project_index::{Category, SearchRequest, SearchTermination, SourceSpan};
@@ -12,15 +13,23 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, SyncSender},
+        mpsc::{self},
         Arc, Mutex,
     },
     thread,
     time::Duration,
 };
+mod output_buffer;
+mod output_delivery;
+mod wire;
+use output_buffer::OutputBuffer;
+const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+
 const MAX_FRAME: usize = 1024 * 1024;
-// Leave four MiB below the helper frame bound for its wrapping metadata.
-const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
+// Reserve one MiB for typical wrapping metadata; this is not a proof that every
+// compiler frame fits after reserialization. OutputBuffer checks the complete JSONL.
+const COMPILER_ENVELOPE_RESERVE: usize = 1024 * 1024;
+const MAX_COMPILER_FRAME: usize = MAX_OUTPUT_BYTES - COMPILER_ENVELOPE_RESERVE;
 fn compiler_limits(config: &Value) -> Result<Limits, String> {
     let mut limits = Limits::default();
     if let Some(value) = config.get("compiler_max_frame_bytes") {
@@ -28,7 +37,7 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
             .filter(|n| (128..=MAX_COMPILER_FRAME).contains(n))
-            .ok_or("compiler_max_frame_bytes must be 128..12582912")?;
+            .ok_or("compiler_max_frame_bytes must be 128..15728640")?;
     }
     Ok(limits)
 }
@@ -38,23 +47,10 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
-struct OutputBuffer(Vec<u8>);
-impl Write for OutputBuffer {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if self.0.len().saturating_add(bytes.len()) > 16 * 1024 * 1024 {
-            return Err(io::Error::other("output frame exceeds 16 MiB"));
-        }
-        self.0.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
-    let mut buffer = OutputBuffer(Vec::new());
+fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
+    let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
     if serde_json::to_writer(&mut buffer, &value).is_err() {
-        buffer.0.clear();
+        buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
         let error = failure(
             value["session_id"].as_str().unwrap_or(""),
             value["id"].clone(),
@@ -65,8 +61,11 @@ fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
             return;
         }
     }
-    buffer.0.push(b'\n');
-    if tx.try_send(buffer.0).is_err() {
+    let Ok(bytes) = buffer.finish() else {
+        stopped.store(true, Ordering::SeqCst);
+        return;
+    };
+    if tx.try_send(bytes).is_err() {
         stopped.store(true, Ordering::SeqCst);
     }
 }
@@ -79,6 +78,7 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
     let (mut controller, file_project) = if config.get("project_root").is_some() {
@@ -119,7 +119,7 @@ fn run(config: Value) -> Result<(), String> {
         .as_ref()
         .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
-    let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(8);
+    let (output_tx, output_rx) = output_delivery::channel(8);
     let stopped = Arc::new(AtomicBool::new(false));
     let output_stopped = stopped.clone();
     let output_done = Arc::new(AtomicBool::new(false));
@@ -128,16 +128,22 @@ fn run(config: Value) -> Result<(), String> {
     let writer_clock = writing_since.clone();
     thread::spawn(move || {
         let mut stdout = io::stdout().lock();
-        for bytes in output_rx {
+        loop {
+            let frame = match output_rx.next(Duration::from_millis(2)) {
+                Ok(frame) => frame,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             *writer_clock.lock().unwrap() = Some(std::time::Instant::now());
             if stdout
-                .write_all(&bytes)
+                .write_all(&frame.bytes)
                 .and_then(|_| stdout.flush())
                 .is_err()
             {
                 output_stopped.store(true, Ordering::SeqCst);
                 break;
             }
+            output_rx.written(&frame);
             *writer_clock.lock().unwrap() = None;
         }
         *writer_clock.lock().unwrap() = None;
@@ -194,6 +200,8 @@ fn run(config: Value) -> Result<(), String> {
         json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error,"compiler_max_frame_bytes":limits.max_frame,"helper_max_output_bytes":16*1024*1024}}),
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
+    let mut bindings = SubmissionBindings::default();
+    let mut output_epoch = output_tx.reset_optional();
     while !stopped.load(Ordering::SeqCst) {
         if writing_since
             .lock()
@@ -205,6 +213,7 @@ fn run(config: Value) -> Result<(), String> {
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
             Ok(request) => {
+                let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
                     || request["session_id"] != session
@@ -212,30 +221,99 @@ fn run(config: Value) -> Result<(), String> {
                 {
                     Err("invalid version, session or request identity".into())
                 } else {
-                    handle(
-                        &mut controller,
-                        &mut reviews,
-                        &request,
-                        compiler.as_deref(),
-                        &limits,
-                        file_project.as_ref(),
-                    )
+                    (|| -> Result<Value, String> {
+                        let token = request["payload"]
+                            .get("source_binding_token")
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .ok_or("source_binding_token must be a string")
+                            })
+                            .transpose()?;
+                        if let Some(token) = token {
+                            SubmissionBindings::validate_token(token)?;
+                        }
+                        if request["type"] == "configure_completed_snapshots" {
+                            if request["payload"]["capability"] != CAPABILITY {
+                                return Err("unsupported completed snapshot capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            controller.configure_completed_snapshots(enabled)?;
+                            bindings.configure(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(json!({"capability":CAPABILITY,"enabled":enabled}));
+                        }
+                        if request["type"] == "restart" || request["type"] == "close" {
+                            controller.configure_completed_snapshots(false)?;
+                            bindings.configure(false)?;
+                            output_epoch = output_tx.reset_optional();
+                        }
+                        let before = controller.compile_revision();
+                        let result = handle(
+                            &mut controller,
+                            &mut reviews,
+                            &request,
+                            compiler.as_deref(),
+                            &limits,
+                            file_project.as_ref(),
+                        );
+                        let after = controller.compile_revision();
+                        if after != before && bindings.enabled() {
+                            if let Some(token) = token {
+                                // Synchronous request handling captured this exact admitted generation.
+                                // Optional metadata failure must not replace a durable operation's reply.
+                                let _ = bindings.record(after, token);
+                            }
+                        }
+                        result
+                    })()
                 };
                 let output = match response {
-                    Ok(payload) => {
-                        json!({"protocol_version":1,"session_id":session,"id":id,"type":"result","payload":payload})
-                    }
+                    Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
+                let handling_ms = request_started.elapsed().as_secs_f64() * 1000.0;
+                let serialization_started = std::time::Instant::now();
                 emit(&output_tx, &stopped, output);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"request","handling_ms":handling_ms,
+                        "response_serialization_ms":serialization_started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        for update in controller.poll() {
+        let poll_started = std::time::Instant::now();
+        let updates = controller.poll();
+        if diagnostic_timings && !updates.is_empty() {
+            eprintln!(
+                "{}",
+                json!({"phase":"compiler_poll","events":updates.len(),
+                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+            );
+        }
+        let historical = controller.take_completed_snapshot().and_then(|snapshot| {
+            bindings
+                .take(bindings.epoch(), snapshot.compile_revision())
+                .map(|token| (snapshot, token))
+        });
+        for update in updates {
+            // A negotiated historical frame replaces its legacy stale notification.
+            // Do not enqueue that notification ahead of its own optional replacement.
+            if matches!(&update, Update::Runtime(Event::Stale { id, .. })
+                if historical.as_ref().is_some_and(|(snapshot, _)| snapshot.request_id() == id))
+            {
+                continue;
+            }
             let payload = match update {
                 Update::Preview(preview) => {
-                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"missing_layout_capabilities":preview.missing_layout_capabilities,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
+                    bindings.retire_through(preview.compile_revision);
+                    wire::preview_payload(preview)
                 }
                 Update::Discarded { request_id } => {
                     json!({"kind":"discarded","request_id":request_id})
@@ -257,8 +335,27 @@ fn run(config: Value) -> Result<(), String> {
             emit(
                 &output_tx,
                 &stopped,
-                json!({"protocol_version":1,"session_id":session,"id":null,"type":"update","payload":payload}),
+                wire::envelope(&session, Value::Null, "update", payload),
             );
+        }
+        if let Some((snapshot, token)) = historical {
+            if output_tx.can_offer(output_epoch) && controller.claim_historical_display(&snapshot) {
+                let mut payload = json!({"kind":"completed_snapshot",
+                        "project_id":snapshot.source_versions().project_id,
+                        "session_id":session,"source_versions":snapshot.source_versions().documents,
+                        "request_id":snapshot.request_id(),"compile_revision":snapshot.compile_revision(),
+                        "current_compile_revision":controller.compile_revision(),
+                        "is_current":false,"source_actions_enabled":false,"source_binding_token":token});
+                payload["result"] = snapshot.into_result();
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
+                if serde_json::to_writer(&mut buffer, &value).is_ok() {
+                    if let Ok(bytes) = buffer.finish() {
+                        // Optional oversize/backpressure drops never fail durable source delivery.
+                        output_tx.optional(output_epoch, bytes);
+                    }
+                }
+            }
         }
     }
     // Drain normal EOF replies, bounded even if the native reader stopped.
@@ -599,6 +696,55 @@ fn main() {
 #[cfg(test)]
 mod configuration_tests {
     use super::*;
+    #[test]
+    fn oversized_result_error_does_not_retain_large_output_allocation() {
+        let (tx, rx) = output_delivery::channel(1);
+        let stopped = AtomicBool::new(false);
+        emit(&tx, &stopped, Value::String("x".repeat(MAX_OUTPUT_BYTES)));
+        let bytes = rx.next(Duration::ZERO).unwrap().bytes;
+        assert!(!stopped.load(Ordering::SeqCst));
+        assert!(bytes.capacity() < 4096);
+        assert_eq!(bytes.last(), Some(&b'\n'));
+        let error: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert!(error["payload"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("durable"));
+    }
+
+    #[test]
+    fn compiler_result_and_metadata_share_complete_output_budget_without_partial_frame() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        // A result admitted below the compiler ceiling can still have too much
+        // helper metadata. No fixed reserve can guarantee arbitrary path lengths.
+        let mut payload = json!({"kind":"preview","result":"r".repeat(MAX_COMPILER_FRAME-128)});
+        payload["source_versions"] = json!({"long-path":"m".repeat(COMPILER_ENVELOPE_RESERVE+256)});
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", Value::Null, "update", payload),
+        );
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("saved"), "result", json!({"durable":true})),
+        );
+        let rejected = rx.next(Duration::ZERO).unwrap();
+        assert!(rejected.bytes.capacity() < 4096);
+        let error: Value = serde_json::from_slice(&rejected.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["session_id"], "s");
+        rx.written(&rejected);
+        let ack = rx.next(Duration::ZERO).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&ack.bytes).unwrap()["id"],
+            "saved"
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
+    }
+
     #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(

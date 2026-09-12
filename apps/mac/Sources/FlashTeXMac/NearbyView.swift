@@ -5,7 +5,7 @@ import SwiftUI
 /// captures land in an in-memory inbox until the bridge client takes over.
 struct NearbyView: View {
     @EnvironmentObject private var nearby: NearbyState
-    @EnvironmentObject private var model: ShellModel
+    @Environment(ShellModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

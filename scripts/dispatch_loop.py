@@ -36,6 +36,23 @@ def fetch_origin(root):
 
 
 @contextmanager
+def publication_lock(root):
+    """Serialize local Commander and dispatcher writes across linked worktrees.
+
+    Remote writers still require the exact-main check and non-force push. Waiting
+    here does not authorize retrying a publication or an unresolved journal.
+    """
+    common = Path(coord.git(root, 'rev-parse', '--git-common-dir'))
+    if not common.is_absolute():
+        common = Path(root) / common
+    folder = common.resolve() / 'flashtex'
+    folder.mkdir(parents=True, exist_ok=True)
+    with (folder / 'main-publication.lock').open('a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
+@contextmanager
 def dispatcher_lock(root):
     folder = coord.local_state(root)
     folder.mkdir(parents=True, exist_ok=True)
@@ -190,7 +207,7 @@ def require_authority(root, args, ref='origin/main'):
 def scan_once(root, args):
     """Prepare all eligible next revisions, optionally publish once. No retries."""
     root = Path(root)
-    with dispatcher_lock(root) as folder:
+    with publication_lock(root), dispatcher_lock(root) as folder:
         journal_path = folder / 'dispatcher-publication.json'
         if journal_path.exists() and json.loads(journal_path.read_text()).get('state') == 'pending':
             raise RuntimeError('previous publication unresolved; inspect Git and publication journal before recovery')

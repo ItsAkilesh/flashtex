@@ -148,6 +148,30 @@ impl ResolvedCffEncoding {
     pub fn identity(&self) -> &CffIdentity {
         &self.identity
     }
+    pub(crate) fn preserve_literal_names(
+        mut self,
+        slots: &[EncodingEntry],
+        declaration_sha256: &str,
+    ) -> Result<Self> {
+        if !crate::valid_hash(declaration_sha256) {
+            return Err(invalid("CFF mapping declaration digest"));
+        }
+        for (&code, (name, _)) in &mut self.mapping {
+            let original = slots
+                .iter()
+                .find(|e| e.code == code)
+                .ok_or_else(|| invalid("CFF literal slot provenance"))?;
+            *name = original.glyph_name.clone();
+        }
+        self.digest = crate::sha256(
+            format!(
+                "cff-explicit-encoding-declarations-v1:{}:{}",
+                self.digest, declaration_sha256
+            )
+            .as_bytes(),
+        );
+        Ok(self)
+    }
     pub fn encoding_sha256(&self) -> &str {
         &self.digest
     }
@@ -350,8 +374,15 @@ impl<'a> BoundCffTfmFont<'a> {
         ))
     }
     pub fn map_run(&self, input: &[u8]) -> Result<Vec<MappedItem>> {
+        self.map_run_with_boundaries(input, crate::tfm::BoundaryOptions::default())
+    }
+    pub fn map_run_with_boundaries(
+        &self,
+        input: &[u8],
+        boundaries: crate::tfm::BoundaryOptions,
+    ) -> Result<Vec<MappedItem>> {
         self.tfm
-            .apply_ligatures_kerns(input)?
+            .apply_ligatures_kerns_with_boundaries(input, boundaries)?
             .into_iter()
             .map(|item| match item {
                 TfmItem::Kern(k) => Ok(MappedItem::Kern(k)),

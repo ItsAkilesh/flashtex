@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "cdc47170f4aa7990d8a8de8ff80482a555f98a86",
-  "objective": "Implement exact TFM boundary ligature/kern programs with bounded execution and source intervals",
+  "input_main_sha": "6c56263b4f3b8cf85370b6a9cedfd56566b26c1a",
+  "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 9,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:52:57.718501+00:00"
+  "updated_utc": "2026-09-12T09:45:44Z"
 }

@@ -1,7 +1,12 @@
 //! Durable grouped edits and undo/redo. All fields here are ledger-local.
 use crate::{digest, Document, Error, Result, State, Store, MAX_DOCUMENT_BYTES};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::value::RawValue;
+use std::io::{self, Write};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, OnceLock},
+};
 
 pub const MAX_HISTORY_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_HISTORY_ENTRIES: usize = 256;
@@ -44,14 +49,117 @@ pub struct HistoryStatus {
     pub permanent_command_ids: usize,
     pub history_bytes: usize,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize)]
 struct Entry {
     label: String,
     before_text: String,
     after_text: String,
     before_sha256: String,
     after_sha256: String,
+    // Private entries never mutate after construction. Deserialization starts cold;
+    // cache state is neither persisted nor part of semantic equality.
+    #[serde(skip)]
+    validated: OnceLock<bool>,
+    #[serde(skip)]
+    encoded: OnceLock<Option<Box<RawValue>>>,
 }
+#[derive(Serialize)]
+struct EntryFields<'a> {
+    label: &'a str,
+    before_text: &'a str,
+    after_text: &'a str,
+    before_sha256: &'a str,
+    after_sha256: &'a str,
+}
+struct EncodingBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+impl Write for EncodingBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let required = self
+            .bytes
+            .len()
+            .checked_add(bytes.len())
+            .filter(|n| *n <= self.limit)
+            .ok_or_else(|| io::Error::other("history cache budget"))?;
+        if required > self.bytes.capacity() {
+            let target = required
+                .max(self.bytes.capacity().saturating_mul(2))
+                .min(self.limit);
+            self.bytes
+                .try_reserve_exact(target - self.bytes.len())
+                .map_err(io::Error::other)?;
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+impl Serialize for Entry {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        let cached = self.encoded.get_or_init(|| {
+            // At most one MiB per entry, and at most retained source bytes +
+            // 512 bytes per entry in aggregate. Heavily escaped input falls back.
+            let limit = self
+                .before_text
+                .len()
+                .saturating_add(self.after_text.len())
+                .saturating_add(512)
+                .min(1024 * 1024);
+            let mut buffer = EncodingBuffer {
+                bytes: Vec::new(),
+                limit,
+            };
+            serde_json::to_writer(&mut buffer, &self.fields()).ok()?;
+            RawValue::from_string(String::from_utf8(buffer.bytes).ok()?).ok()
+        });
+        match cached {
+            Some(raw) => raw.serialize(serializer),
+            None => self.fields().serialize(serializer),
+        }
+    }
+}
+impl Entry {
+    fn fields(&self) -> EntryFields<'_> {
+        EntryFields {
+            label: &self.label,
+            before_text: &self.before_text,
+            after_text: &self.after_text,
+            before_sha256: &self.before_sha256,
+            after_sha256: &self.after_sha256,
+        }
+    }
+    fn valid_content(&self) -> bool {
+        *self.validated.get_or_init(|| {
+            self.label.len() <= 256
+                && self.before_text.len() <= MAX_DOCUMENT_BYTES
+                && self.after_text.len() <= MAX_DOCUMENT_BYTES
+                && digest(&self.before_text) == self.before_sha256
+                && digest(&self.after_text) == self.after_sha256
+        })
+    }
+}
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        (
+            &self.label,
+            &self.before_text,
+            &self.after_text,
+            &self.before_sha256,
+            &self.after_sha256,
+        ) == (
+            &other.label,
+            &other.before_text,
+            &other.after_text,
+            &other.before_sha256,
+            &other.after_sha256,
+        )
+    }
+}
+impl Eq for Entry {}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct CommandReceipt {
     request_sha256: String,
@@ -59,11 +167,19 @@ struct CommandReceipt {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct HistoryState {
-    undo: Vec<Entry>,
-    redo: Vec<Entry>,
+    undo: Vec<Arc<Entry>>,
+    redo: Vec<Arc<Entry>>,
     command_ids: BTreeMap<String, CommandReceipt>,
 }
 impl HistoryState {
+    pub(crate) fn preserves(&self, older: &Self) -> bool {
+        older
+            .command_ids
+            .iter()
+            .all(|(id, receipt)| self.command_ids.get(id) == Some(receipt))
+            && self.undo.ends_with(&older.undo)
+            && self.redo.ends_with(&older.redo)
+    }
     pub(crate) fn is_empty(&self) -> bool {
         self.undo.is_empty() && self.redo.is_empty() && self.command_ids.is_empty()
     }
@@ -85,12 +201,7 @@ impl HistoryState {
             ));
         }
         for entry in self.undo.iter().chain(&self.redo) {
-            if entry.label.len() > 256
-                || entry.before_text.len() > MAX_DOCUMENT_BYTES
-                || entry.after_text.len() > MAX_DOCUMENT_BYTES
-                || digest(&entry.before_text) != entry.before_sha256
-                || digest(&entry.after_text) != entry.after_sha256
-            {
+            if !entry.valid_content() {
                 return Err(Error::new(
                     "invalid_history",
                     "history payload hash/size mismatch",
@@ -143,14 +254,16 @@ pub(crate) fn record(next: &mut State, before: &Document, label: String) -> Resu
         return Ok(());
     }
     next.history.redo.clear();
-    next.history.undo.push(Entry {
+    next.history.undo.push(Arc::new(Entry {
         label,
         before_text: before.text.clone(),
         after_text: next.document.text.clone(),
         before_sha256: before.source_sha256.clone(),
         after_sha256: next.document.source_sha256.clone(),
-    });
-    next.schema_version = 3;
+        validated: OnceLock::new(),
+        encoded: OnceLock::new(),
+    }));
+    next.schema_version = next.schema_version.max(3);
     next.history.validate(&next.document)
 }
 fn fingerprint<T: Serialize>(kind: &str, value: &T) -> Result<String> {
@@ -204,7 +317,7 @@ fn remember(next: &mut State, id: String, fingerprint: String) {
             revision: next.document.revision,
         },
     );
-    next.schema_version = 3;
+    next.schema_version = next.schema_version.max(3);
 }
 
 impl Store {
@@ -647,5 +760,185 @@ mod tests {
             )
             .unwrap();
         assert_eq!(store.history_status().unwrap().undo_labels.len(), 2);
+    }
+    #[test]
+    fn shared_history_preserves_legacy_bytes_and_deserialization_revalidates() {
+        #[derive(Serialize)]
+        struct LegacyEntry<'a> {
+            label: &'a str,
+            before_text: &'a str,
+            after_text: &'a str,
+            before_sha256: &'a str,
+            after_sha256: &'a str,
+        }
+        let entry = Arc::new(Entry {
+            label: "Source edit".into(),
+            before_text: "α before".into(),
+            after_text: "β after".into(),
+            before_sha256: digest("α before"),
+            after_sha256: digest("β after"),
+            validated: OnceLock::new(),
+            encoded: OnceLock::new(),
+        });
+        assert!(entry.valid_content());
+        let legacy = LegacyEntry {
+            label: &entry.label,
+            before_text: &entry.before_text,
+            after_text: &entry.after_text,
+            before_sha256: &entry.before_sha256,
+            after_sha256: &entry.after_sha256,
+        };
+        let exact = serde_json::to_vec(&entry).unwrap();
+        assert_eq!(exact, serde_json::to_vec(&legacy).unwrap());
+        let history = HistoryState {
+            undo: vec![entry.clone()],
+            ..Default::default()
+        };
+        let shared = history.clone();
+        assert!(Arc::ptr_eq(&history.undo[0], &shared.undo[0]));
+        let decoded: Entry = serde_json::from_slice(&exact).unwrap();
+        assert!(decoded.validated.get().is_none());
+        assert_eq!(entry.as_ref(), &decoded);
+        assert!(decoded.valid_content());
+        let mut corrupted = serde_json::to_value(&entry).unwrap();
+        corrupted["before_text"] = serde_json::json!("corrupted");
+        let decoded: Entry = serde_json::from_value(corrupted).unwrap();
+        assert!(!decoded.valid_content());
+    }
+
+    #[test]
+    fn reopened_history_cannot_inherit_warm_validation_after_disk_tampering() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
+        let initial = Document::new("p".into(), "main.tex".into(), 1, "before".into()).unwrap();
+        store.initialize(initial.clone()).unwrap();
+        store
+            .replace_document(1, &initial.source_sha256, "after".into())
+            .unwrap();
+        let state = store.state.as_ref().unwrap();
+        assert_eq!(state.history.undo[0].validated.get(), Some(&true));
+        let mut corrupt = serde_json::to_value(state).unwrap();
+        corrupt["history"]["undo"][0]["before_text"] = serde_json::json!("tampered");
+        drop(store);
+        std::fs::write(
+            dir.path().join("document.json"),
+            serde_json::to_vec(&corrupt).unwrap(),
+        )
+        .unwrap();
+        assert!(Store::open(dir.path()).is_err());
+    }
+    #[test]
+    fn encoded_cache_matches_original_json_and_bounds_escape_heavy_entries() {
+        for text in [
+            "naïve \"quoted\" \\ α\n".repeat(20),
+            "\u{0001}".repeat(2000),
+            "x".repeat(600_000),
+        ] {
+            let entry = Entry {
+                label: "source".into(),
+                before_sha256: digest(&text),
+                after_sha256: digest("after"),
+                before_text: text,
+                after_text: "after".into(),
+                validated: OnceLock::new(),
+                encoded: OnceLock::new(),
+            };
+            let legacy = serde_json::to_vec(&entry.fields()).unwrap();
+            assert_eq!(serde_json::to_vec(&entry).unwrap(), legacy);
+            assert_eq!(serde_json::to_vec(&entry).unwrap(), legacy);
+            assert_eq!(
+                serde_json::to_value(&entry).unwrap(),
+                serde_json::to_value(entry.fields()).unwrap()
+            );
+            if let Some(Some(raw)) = entry.encoded.get() {
+                assert!(raw.get().len() <= 1024 * 1024);
+                assert!(raw.get().len() <= entry.before_text.len() + entry.after_text.len() + 512);
+            }
+            if entry.before_text.starts_with('\u{0001}') {
+                assert!(entry.encoded.get().unwrap().is_none());
+            }
+            let mut decoded: serde_json::Value = serde_json::from_slice(&legacy).unwrap();
+            decoded["encoded"] = serde_json::json!("forged-cache");
+            decoded["validated"] = serde_json::json!(true);
+            decoded["before_text"] = serde_json::json!("corrupted");
+            let decoded: Entry = serde_json::from_value(decoded).unwrap();
+            assert!(decoded.encoded.get().is_none());
+            assert!(decoded.validated.get().is_none());
+            assert!(!decoded.valid_content());
+        }
+        let mut bounded = EncodingBuffer {
+            bytes: Vec::new(),
+            limit: 16,
+        };
+        bounded.write_all(b"1234567890123456").unwrap();
+        assert!(bounded.write_all(b"x").is_err());
+        assert_eq!(bounded.bytes.len(), 16);
+        assert!(bounded.bytes.capacity() <= 16);
+    }
+    #[test]
+    #[ignore = "explicit release-mode paired immutable history encoding benchmark"]
+    fn paired_cached_history_encoding() {
+        use std::time::Instant;
+        #[derive(Serialize)]
+        struct LegacyHistory<'a> {
+            undo: Vec<EntryFields<'a>>,
+            redo: Vec<EntryFields<'a>>,
+            command_ids: &'a BTreeMap<String, CommandReceipt>,
+        }
+        let mut text = "x".repeat(521792);
+        let mut history = HistoryState::default();
+        for count in 1..=20 {
+            let mut after = text.clone();
+            after.replace_range(0..3, &format!("{count:03}"));
+            history.undo.push(Arc::new(Entry {
+                label: "Source edit".into(),
+                before_text: text.clone(),
+                before_sha256: digest(&text),
+                after_sha256: digest(&after),
+                after_text: after.clone(),
+                validated: OnceLock::new(),
+                encoded: OnceLock::new(),
+            }));
+            text = after;
+            if ![5, 10, 20].contains(&count) {
+                continue;
+            }
+            let legacy = LegacyHistory {
+                undo: history.undo.iter().map(|entry| entry.fields()).collect(),
+                redo: vec![],
+                command_ids: &history.command_ids,
+            };
+            // Populate only the runtime-only serialization cache before warm pairs.
+            let cold = Instant::now();
+            let expected = serde_json::to_vec(&history).unwrap();
+            let cold_us = cold.elapsed().as_micros();
+            let mut cached_us = Vec::new();
+            let mut legacy_us = Vec::new();
+            for pair in 0..6 {
+                let mut cached = Vec::new();
+                let mut ordinary = Vec::new();
+                for use_cache in if pair % 2 == 0 {
+                    [true, false]
+                } else {
+                    [false, true]
+                } {
+                    let start = Instant::now();
+                    if use_cache {
+                        cached = serde_json::to_vec(&history).unwrap();
+                        cached_us.push(start.elapsed().as_micros());
+                    } else {
+                        ordinary = serde_json::to_vec(&legacy).unwrap();
+                        legacy_us.push(start.elapsed().as_micros());
+                    }
+                }
+                assert_eq!(cached, ordinary);
+                assert_eq!(cached, expected);
+            }
+            println!(
+                "ENCODING {}",
+                serde_json::json!({"entries":count,"encoded_bytes":expected.len(),
+                "cold_us":cold_us,"cached_us":cached_us,"legacy_us":legacy_us,"exact_pairs":6})
+            );
+        }
     }
 }

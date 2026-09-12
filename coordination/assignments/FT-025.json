@@ -16,9 +16,10 @@
   ],
   "revision": 3,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "integrated",
   "task_id": "FT-025",
   "timebox_minutes": 30,
   "updated_utc": "2026-09-12T08:18:56.142617+00:00",
-  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation."
+  "pause_reason": "Local active-agent cap reduced from7to4; preserve work, no automatic revival/replacement/remote reallocation.",
+  "integration_evidence": "Integrated tested product checkpoint 978bd9b; current user staffing rule leaves this engineer stopped with queue paused."
 }

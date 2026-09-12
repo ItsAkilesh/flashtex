@@ -43,6 +43,77 @@ impl Drop for Helper {
 }
 
 #[test]
+fn checkpoint_helper_kill_reopen_preserves_backup_source_history_and_ids() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut helper = Helper::start(dir.path());
+    let document = Document::new("demo".into(), "main.tex".into(), 1, "original".into()).unwrap();
+    helper.ask(json!({"id":"init","operation":"initialize","document":document}));
+    let edit = PreparedEdit {
+        capture_id: "backup-capture".into(),
+        edit_id: "backup-edit".into(),
+        project_id: document.project_id.clone(),
+        path: document.path.clone(),
+        expected_revision: 1,
+        start_byte: 0,
+        end_byte: 8,
+        removed_text: "original".into(),
+        replacement: "revised".into(),
+        document_before_sha256: document.source_sha256.clone(),
+    };
+    let applied = helper.ask(json!({"id":"apply","operation":"apply","edit":edit}));
+    let rotate = json!({"id":"rotate","operation":"checkpoint_rotate",
+        "authorization":{"acknowledge_private_source_export":true},
+        "policy":{"acknowledge_checkpoint_deletion":true,"keep_latest":1,"max_total_bytes":1048576}});
+    let first = helper.ask(rotate.clone());
+    let old_session = first["session_id"].clone();
+    // Submit another rotation, then terminate without receiving its result.
+    // Scheduling may kill before, during, or after that rotation. Boundary
+    // failpoint tests separately cover each durable write ordering.
+    writeln!(helper.input, "{rotate}").unwrap();
+    drop(helper);
+    let mut helper = Helper::start(dir.path());
+    let status = helper.ask(json!({"id":"status","operation":"checkpoint_status"}));
+    assert_ne!(status["session_id"], old_session);
+    assert_eq!(status["payload"]["current_revision"], 2);
+    assert_eq!(
+        status["payload"]["checkpoints"].as_array().unwrap().len(),
+        1
+    );
+    let rotated = helper.ask(rotate);
+    let generation = rotated["payload"]["created"]["generation"].clone();
+    let backup =
+        helper.ask(json!({"id":"read","operation":"checkpoint_read","generation":generation}));
+    let checkpoint = backup["payload"].clone();
+    let recovered = tempfile::tempdir().unwrap();
+    let mut target = Helper::start(recovered.path());
+    let plan = target.ask(json!({"id":"plan","operation":"checkpoint_plan",
+        "checkpoint":checkpoint,"expected_identity":checkpoint["identity"]}));
+    target.ask(
+        json!({"id":"import","operation":"checkpoint_import","checkpoint":checkpoint,
+        "plan":plan["payload"],"authorization":{"approve_plan_id":plan["payload"]["plan_id"],
+        "allow_initialize_empty":true,"allow_same_source_metadata":false}}),
+    );
+    drop(target);
+    let mut target = Helper::start(recovered.path());
+    let retry = target.ask(json!({"id":"retry","operation":"apply","edit":edit}));
+    assert_eq!(retry["payload"]["receipt"], applied["payload"]["receipt"]);
+    assert_eq!(retry["payload"]["document"]["text"], "revised");
+    let history = target.ask(json!({"id":"history","operation":"history_status"}));
+    assert_eq!(
+        history["payload"]["undo_labels"].as_array().unwrap().len(),
+        1
+    );
+    let state = target.ask(json!({"id":"source","operation":"status"}));
+    assert_eq!(
+        state["payload"]["pending_receipts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn native_undo_restart_fixture_preserves_source_receipt_and_redo() {
     let fixture: Value =
         serde_json::from_str(include_str!("fixtures/native-undo-restart.json")).unwrap();
