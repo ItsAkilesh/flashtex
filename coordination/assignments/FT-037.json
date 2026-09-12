@@ -1,23 +1,23 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-037",
-  "agent_id": "daniel-links",
-  "branch": "agent/daniel-links/link-annotations",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Bind safe link annotations to exact source revision/hash/ranges and exportable page targets; preserve URI scheme allowlist and typed unresolved references.",
-  "owned_paths": [
-    "crates/link-annotations"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
     "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
     "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
   ],
+  "agent_id": "daniel-links",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 40,
+  "branch": "agent/daniel-links/link-annotations",
   "deadline_utc": null,
-  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "dependencies": [],
+  "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+  "objective": "Revision-bound link annotations: bounded adversarial and stale-identity acceptance tests",
+  "owned_paths": [
+    "crates/link-annotations"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-037",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:36:00Z"
 }
