@@ -14,23 +14,23 @@
     "rust",
     "source-navigation"
   ],
-  "code_revision": "8f48b549375fc0268fc8863e3b7c99b2a4d01c56",
+  "code_revision": "978bd9b55d13bfcc00bbbd5a3dc6d44b3deefe18",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "9372296059270ce3e8a6d578bcd87bed94be4421",
-  "next_action": "Orchestrator integration and independent product review; no provider calls or engine semantics claimed.",
+  "main_integrated_through": "579a58c71ce296bd7277b84fd20e2c6bc383d0da",
+  "next_action": "Orchestrator integration and native consumer wiring; explicit user approval and transactional application remain caller responsibilities.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published bounded bibliography value parser and incremental citation metadata cache. Exact UTF8 key/field/expression/atom spans; explicit malformed/duplicate/missing/cyclic states; author/title/year inspection and source navigation; 60 tests pass.",
+  "summary": "Published guarded citation-key rename plans across declared bibliography records and indexed cite uses, plus bounded native JSON proposal serialization with explicit citation_key_rename kind. 79 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:23:56Z",
+  "updated_utc": "2026-09-12T08:26:34Z",
   "usage": {
-    "evidence": "cargo test --offline: 60 passed; cargo clippy --offline --all-targets -- -D warnings passed; cargo fmt and git diff --check passed. Metadata rebuild equivalence, transitive invalidation, malformed recovery, Unicode spans, comment shielding and expansion bounds tested.",
+    "evidence": "79 offline Rust tests pass; strict Clippy, formatting and diff checks pass. Multi-file Unicode plans, duplicate/malformed/collision refusal, comment/verbatim preservation, stale/partial/tampered/overlapping guards and byte-limited wire tested. Python independently decoded native example with exact u64 revision and kind/envelope fields.",
     "status": "unknown"
   }
 }
