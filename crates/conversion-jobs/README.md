@@ -137,3 +137,26 @@ only the newly created intent because submission proves no provider started, so
 explicit backpressure retry remains possible. `usage` reports actual process-local
 calls and physical execution, not billing. Provider closures still need timeouts.
 The adapter does not implement the bridge CLI, networking or a native screen.
+
+## Typed background command/event boundary
+
+`bridge_adapter::native` provides bounded typed requests (`protocol_version`,
+correlation `id`, `command`) for Admit, Start, Status, Reconcile and Cancel. This
+is an internal adapter API, not an added bridge CLI message. Each command includes
+an exact capture ID and ContextIdentity (project, path, revision, context SHA-256).
+Admission confirms an existing durable capture without starting a provider. Start
+requires the unchanged admitted context; reconciliation takes the exact current
+context and preserves the original conversion identity in returned snapshots.
+
+Snapshots distinguish durable receipt, absent/durable attempt intent, queued/running,
+awaiting journal promotion, proposal-ready and recovery-required states. Restored
+intents are visible at admission before any dispatch. `NativeStatusHandle` reads
+only memory; typed events carry capture and admitted context identity. Full event
+channels remain lossy and clients resynchronize from status. Old buffered events
+are excluded when an identity is retired and newly admitted.
+
+Command bytes are bounded to 16 KiB before parsing. Snapshot serialization uses a
+writer that stops before exceeding its output budget (maximum 512 KiB); it never
+returns partial JSON. Unknown fields/types and mismatched identities fail closed.
+Provider failure messages are bounded to 2048 UTF-8 bytes. Twenty-five tests,
+strict Clippy and formatting pass for this checkpoint. No new CLI/provider call.

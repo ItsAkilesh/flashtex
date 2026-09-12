@@ -1,4 +1,4 @@
-//! Reusable off-UI bridge adapter. Status handles perform no disk or provider IO.
+pub mod native;
 use crate::*;
 use flashtex_bridge::{Bridge, CaptureSubmit, Context, Proposal};
 use sha2::{Digest, Sha256};
