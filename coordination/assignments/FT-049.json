@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "a8cf488fc46546e3f0ef4d72de3559e67c7d5b4b",
-  "objective": "Verify actual transport cancellation restart and renegotiation against pinned producer without modeled helper evidence",
+  "input_main_sha": "a45f7e28c0ed7c2bcc159bed7bfcf8e956ced749",
+  "objective": "Independently verify correctedeca6ab25 actual helper capture hashes source identities and zero diagnostics for GH34",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 20,
+  "revision": 21,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:57:19Z"
+  "updated_utc": "2026-09-12T13:01:24.315354+00:00"
 }

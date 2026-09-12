@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Resolve GH34 with separately labeled actual helper capture using verified official ec-lmr10 in an isolated rooted asset stage",
-      "objective": "Resolve GH34 with separately labeled actual helper capture using verified official ec-lmr10 in an isolated rooted asset stage",
+      "name": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
+      "objective": "Compare existing full-source edit and compact grouped edit for the same actual50KB typing sequence with pinned helper compiler and assets",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify identical source revisions producer bytes contract and durable cancellation restart with corrected metric diagnostics",
-      "objective": "Verify identical source revisions producer bytes contract and durable cancellation restart with corrected metric diagnostics",
+      "name": "Verify exact UTF8 edits permanent receipts source reopen and final current preview equality while measuring request acknowledgement bytes and phases",
+      "objective": "Verify exact UTF8 edits permanent receipts source reopen and final current preview equality while measuring request acknowledgement bytes and phases",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish corrected and original recovered evidence side by side for independent consumer without pixel parity or original evidence replacement",
-      "objective": "Publish corrected and original recovered evidence side by side for independent consumer without pixel parity or original evidence replacement",
+      "name": "Publish bounded paired adoption evidence and native integration limits without new protocol or unsupported paint claims",
+      "objective": "Publish bounded paired adoption evidence and native integration limits without new protocol or unsupported paint claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
