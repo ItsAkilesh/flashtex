@@ -119,7 +119,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Convert Capture")
         case .nearbyCompanion:
             return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
-                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal).",
+                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
                          menuItem: "Nearby Companion…")
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
@@ -328,6 +328,26 @@ public enum PanelFocusOrder {
                 Control(name: "Retry path", sourceMarker: "Button(\"Retry \\(outcome.path)\")", when: "an uncertain apply"),
               ],
               sourceFile: "ProjectSearchPanel.swift"),
+        Panel(name: "Nearby Companion", windowTitle: "Nearby Companion", command: .nearbyCompanion,
+              initialFocus: "Show Pairing Code (Return); focus follows the pairing state: the code while it is shown or verified, Resume when interrupted, Dismiss on paired/error, Cancel while receiving",
+              closing: "Esc cancels the current pairing step (or dismisses a banner); ⌘W closes the window; the editor text view is first responder again. The whole pairing is keyboard-only: Return shows or resumes a code, Esc cancels it.",
+              controls: [
+                Control(name: "Advertise on the local network (switch)", sourceMarker: "Toggle(\"Advertise\""),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "after an error"),
+                Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "after an error"),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "paired banner"),
+                Control(name: "Cancel receiving", sourceMarker: "accessibilityLabel(\"Cancel receiving\")", when: "receiving a capture"),
+                Control(name: "Show Pairing Code / Show New Code", sourceMarker: "Button(title) { controller.showCode() }", when: "idle, paired, error or expired"),
+                Control(name: "Pairing code (spoken as digits)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Cancel pairing", sourceMarker: "accessibilityLabel(\"Cancel pairing\")", when: "code shown or verifying"),
+                Control(name: "Resume", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.resume\")", when: "interrupted, code still valid"),
+                Control(name: "Cancel interrupted pairing", sourceMarker: "accessibilityLabel(\"Cancel interrupted pairing\")", when: "interrupted, code still valid"),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "interrupted, code expired"),
+                Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "interrupted, code expired"),
+                Control(name: "Forget <companion>", sourceMarker: "Button(\"Forget\")", when: "one per paired companion"),
+                Control(name: "Clear refused captures", sourceMarker: "Button(\"Clear\")", when: "after a refused capture"),
+              ],
+              sourceFile: "NearbyView.swift"),
     ]
 
     public static var helpLines: [String] { panels.map(\.helpLine) }

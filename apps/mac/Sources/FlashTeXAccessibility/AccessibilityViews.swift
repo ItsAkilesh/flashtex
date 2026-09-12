@@ -350,6 +350,7 @@ public struct AccessibilityHelpView: View {
         "Settings (⌘,): a form named “Editor preferences”; each control reads its label and value (“Editor font size, 13 points”, “Tab width, 4 columns”); hints explain the wrap, appearance, brace and completion switches.",
         "Durable History (Edit > Durable History…): the header reads the durable revision; Undo and Redo read how many steps are available; the retention gauge reads its percentage; each stack row is “undo/redo n of m: label”; empty stacks say so.",
         "Find in Project (⌘⇧F): the literal field reads its hint (Return searches or goes to the selected match, ↑/↓ move the selection); results read “match n of m, file, line, snippet”; replacement previews read “replacement n of m … becomes …”; status lines are labelled “Search status” and “Replacement status”.",
+        "Nearby Companion (⌘⇧N): the status row reads “Pairing state: <state>” with a countdown-free value; the step indicator reads “Pairing step n of 4: <step>, <in progress | interrupted | done>”; the code reads its six digits one by one and the expiry reads “n seconds left”; each companion row reads its name, pair id, connected/not connected, paired and last-seen times; every transition (code shown, companion connected, paired, cancelled, interrupted, reconnected, disconnected, capture received or refused) is announced.",
     ]
 
     public init() {}

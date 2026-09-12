@@ -336,21 +336,7 @@ struct NearbyFlowView: View {
                             lastCaptureId: nearby.lastReceivedCaptureId)
             if let e = nearby.lastReceiveError {
                 Divider()
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Refused capture").font(.headline).foregroundStyle(.red)
-                    Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        .accessibilityLabel("Last refused capture")
-                        .accessibilityValue(e.summary)
-                        .accessibilityIdentifier("nearby.refused.last")
-                    HStack {
-                        Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Clear") { nearby.clearReceiveErrors() }
-                            .accessibilityLabel("Clear refused captures")
-                            .accessibilityIdentifier("nearby.refused.clear")
-                    }
-                }
+                refusedSection(e)
             }
             Divider()
             logSection
@@ -622,6 +608,28 @@ struct NearbyFlowView: View {
             }
             Text("Keys live in \(nearby.store.url.path) (mode 0600), not the Keychain.")
                 .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: refused captures
+
+    /// Declared after the paired rows: the controls' source order is the
+    /// window's Tab order (`PanelFocusOrder`, checked by the accessibility tests).
+    private func refusedSection(_ e: NearbyState.ReceiveError) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Refused capture").font(.headline).foregroundStyle(.red)
+            Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                .accessibilityLabel("Last refused capture")
+                .accessibilityValue(e.summary)
+                .accessibilityIdentifier("nearby.refused.last")
+            HStack {
+                Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear") { nearby.clearReceiveErrors() }
+                    .accessibilityLabel("Clear refused captures")
+                    .accessibilityIdentifier("nearby.refused.clear")
+            }
         }
     }
 

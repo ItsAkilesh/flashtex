@@ -272,14 +272,14 @@ final class CommandTableTests: XCTestCase {
 
     // MARK: panel focus order
 
-    /// The panel tables list every interactive control of the three panel
+    /// The panel tables list every interactive control of the four panel
     /// views in source order (SwiftUI's Tab order): every marker is found in
     /// that order, every `Button(`/`Toggle(`/`Picker(`/`Slider(`/`Stepper(`/
     /// `TextField(`/`List(` declaration of the view body is covered by a
     /// marker (the search window's hidden Esc button is exempt), and each
     /// panel's command is in the command table with its window's shortcut.
     func testPanelFocusOrderMatchesThePanelSources() throws {
-        XCTAssertEqual(PanelFocusOrder.panels.map(\.name), ["Settings", "Durable History", "Find in Project"])
+        XCTAssertEqual(PanelFocusOrder.panels.map(\.name), ["Settings", "Durable History", "Find in Project", "Nearby Companion"])
         let controlPattern = try NSRegularExpression(pattern: #"\b(Button|Toggle|Picker|Slider|Stepper|TextField|List)\("#)
         for panel in PanelFocusOrder.panels {
             let text = try String(contentsOf: Self.shellSources.appendingPathComponent(panel.sourceFile), encoding: .utf8)
@@ -315,7 +315,9 @@ final class CommandTableTests: XCTestCase {
             XCTAssertTrue(AccessibilityCommand.allCases.contains(panel.command))
             XCTAssertTrue(panel.helpLine.contains(panel.command.entry.shortcuts[0]))
         }
-        XCTAssertEqual(PanelFocusOrder.helpLines.count, 3)
+        XCTAssertEqual(PanelFocusOrder.helpLines.count, 4)
+        XCTAssertTrue(PanelFocusOrder.helpLines[3].hasPrefix("Nearby Companion (⌘⇧N): opens with focus on Show Pairing Code (Return)"), PanelFocusOrder.helpLines[3])
+        XCTAssertTrue(PanelFocusOrder.helpLines[3].contains("Advertise on the local network (switch) → "), PanelFocusOrder.helpLines[3])
         XCTAssertTrue(PanelFocusOrder.helpLines[0].hasPrefix("Settings (⌘,): opens with focus on the font family pop-up. Tab order: Editor font family → "))
     }
 
@@ -323,7 +325,7 @@ final class CommandTableTests: XCTestCase {
     /// struct to the file's scene/commands types (which wire menu items, not
     /// panel controls).
     static func viewBody(of panel: PanelFocusOrder.Panel, in text: String) -> String {
-        let starts = ["struct EditorPreferencesView", "struct EditHistoryPanel", "struct ProjectSearchPanel"]
+        let starts = ["struct EditorPreferencesView", "struct EditHistoryPanel", "struct ProjectSearchPanel", "struct NearbyView"]
         guard let start = starts.compactMap({ text.range(of: $0)?.lowerBound }).min() else { return text }
         let rest = text[start...]
         let end = rest.range(of: ": Scene {")?.lowerBound ?? rest.range(of: ": Commands {")?.lowerBound ?? rest.endIndex

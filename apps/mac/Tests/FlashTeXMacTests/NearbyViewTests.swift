@@ -478,7 +478,7 @@ final class NearbyViewControllerTests: XCTestCase {
         XCTAssertEqual(state.pairs, [], "no half-paired record")
         XCTAssertEqual(state.store.pairs, [])
         XCTAssertFalse(state.log.contains { $0.hasPrefix("stored pairing") }, "\(state.log)")
-        XCTAssertTrue(state.log.contains("closed unauthenticated: pairing code withdrawn before hello"), "\(state.log)")
+        try await waitUntil("close logged") { state.log.contains("closed unauthenticated: pairing code withdrawn before hello") }
         // A late hello with the cancelled code cannot pair: the session is gone.
         let nonce = UUID().uuidString
         peer.send(id: "h", type: "hello", NearbyV1.Hello(pairId: derived.pairId, companionName: "Late", nonce: nonce,
