@@ -26,3 +26,8 @@ sha2 = "0.10"
 [[example]]
 name = "capture_pipeline"
 test = true
+
+[[bin]]
+name = "flashtex-review-inbox"
+path = "src/bin/review_inbox.rs"
+required-features = ["bridge-integration"]
