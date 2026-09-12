@@ -123,7 +123,6 @@ struct FlashTeXMacApp: App {
                 Button("Nearby Companion…") { openWindow(id: "nearby") }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("Durable History…") { openWindow(id: EditHistoryPanel.windowID) } // EditHistoryPanel.swift
-                    .keyboardShortcut("z", modifiers: [.command, .option])
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }
