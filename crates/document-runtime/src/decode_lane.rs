@@ -26,6 +26,7 @@ impl Drop for Permit {
 }
 pub(crate) struct DecodedFrame {
     pub value: Option<Value>,
+    pub raw: Option<Box<crate::raw_display::Parsed>>,
     pub response_bytes: usize,
     pub first_byte: Instant,
     pub reader_done: Instant,
@@ -43,7 +44,11 @@ pub(crate) struct Decoder {
     published: Receiver<()>,
 }
 impl Decoder {
+    #[cfg(test)]
     pub fn spawn(raw: Receiver<RawInput>) -> Self {
+        Self::spawn_mode(raw, false)
+    }
+    pub fn spawn_mode(raw: Receiver<RawInput>, raw_display: bool) -> Self {
         let (out, reader) = mpsc::sync_channel(1);
         let (wake, permits) = mpsc::sync_channel(1);
         wake.send(()).expect("initial decoder permit");
@@ -82,18 +87,31 @@ impl Decoder {
                         let start = Instant::now();
                         let decode_queue_wait_ms =
                             start.saturating_duration_since(reader_done).as_secs_f64() * 1000.0;
-                        let parsed = std::str::from_utf8(&bytes)
-                            .map_err(|_| ())
-                            .and_then(|text| serde_json::from_str(text).map_err(|_| ()));
+                        let raw_kind = if raw_display {
+                            crate::raw_display::is_display(&bytes)
+                        } else {
+                            Ok(false)
+                        };
+                        let parsed = match raw_kind {
+                            Err(e) => Err(e),
+                            Ok(true) => crate::raw_display::Parsed::parse(bytes)
+                                .map(|raw| (None, Some(Box::new(raw)))),
+                            Ok(false) => std::str::from_utf8(&bytes)
+                                .map_err(|e| e.to_string())
+                                .and_then(|text| {
+                                    serde_json::from_str(text).map_err(|e| e.to_string())
+                                })
+                                .map(|value| (Some(value), None)),
+                        };
                         let parse_ms = start.elapsed().as_secs_f64() * 1000.0;
-                        drop(bytes);
                         if stop.load(Ordering::Acquire) {
                             break;
                         }
                         match parsed {
-                            Ok(value) => {
+                            Ok((value, raw)) => {
                                 let packet = DecodedFrame {
-                                    value: Some(value),
+                                    value,
+                                    raw,
                                     response_bytes,
                                     first_byte,
                                     reader_done,
@@ -109,7 +127,7 @@ impl Decoder {
                                 let _ = published_tx.send(());
                                 // The packet keeps the only permit through owner validation.
                             }
-                            Err(()) => {
+                            Err(_) => {
                                 let _ = out.send(Input::Failure(
                                     "compiler returned malformed JSON".into(),
                                 ));
