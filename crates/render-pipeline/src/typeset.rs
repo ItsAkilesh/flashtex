@@ -640,7 +640,15 @@ impl<'a> Context<'a> {
         let mut sink = crate::mathtext::TextSink::default();
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
-        let ml_list = convert_math_fenced(list, &mut sink, &fence);
+        // `\quad`/`\qquad`/`\,`/`\:`/`\;`/`\!` (compiler `Space { em }`) at
+        // the top level of the formula (outside `\left...\right`): math-layout
+        // has no kern atom, so the formula is split there into runs laid out
+        // separately and joined by kerns of the requested width plus the
+        // inter-atom spacing TeX still inserts across glue (glue does not
+        // reset `r_type`, §760). Glue inside a fence pair or a sub-formula
+        // cannot be split out and stays reported.
+        let segments = split_at_spaces(list, &fence);
+        let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_fenced(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence)).collect();
         let mut grids = Vec::new();
         math_grids(list, &mut grids);
         for (rows, cols) in grids {
@@ -650,10 +658,10 @@ impl<'a> Context<'a> {
                 self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
             }
         }
-        let glue_em = math_glue_em(list);
-        if glue_em > 0.0 {
+        let nested_glue_em: f64 = segments.iter().map(|(atoms, _)| math_glue_em(&flashtex_compiler::math::MathList { atoms: atoms.clone() })).sum();
+        if nested_glue_em.abs() > 0.0 {
             let src = self.source(span);
-            let msg = format!("\\quad/\\qquad glue ({glue_em} em in this formula) dropped: math-layout has no kern atom");
+            let msg = format!("\\quad/\\qquad glue ({nested_glue_em} em in this formula) inside \\left...\\right or a sub-formula dropped: math-layout has no kern atom and only top-level glue can be split into separate runs");
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
         }
         let mut approximations = Vec::new();
@@ -664,7 +672,36 @@ impl<'a> Context<'a> {
         }
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
-        let mut laid = ml::layout_with_report(&ml_list, style, &text_metrics);
+        let mut laid = if ml_lists.len() == 1 {
+            ml::layout_with_report(&ml_lists[0], style, &text_metrics)
+        } else {
+            // Rules 5/6 (Bin -> Ord) over the whole formula, so the classes
+            // at each split are the ones TeX would space by.
+            let all_atoms: Vec<ml::Atom> = ml_lists.iter().flat_map(|l| l.atoms.iter().cloned()).collect();
+            let classes = ml::layout::effective_classes(&all_atoms);
+            let params = ml::MathFontMetrics::params(&text_metrics, style.size_class());
+            let (quad, mu) = (params.quad, params.mu());
+            let mut boxes = Vec::new();
+            let mut limitations = Vec::new();
+            let mut at = 0usize;
+            for (i, l) in ml_lists.iter().enumerate() {
+                let part = ml::layout_with_report(l, style, &text_metrics);
+                limitations.extend(part.limitations);
+                boxes.push((0.0, part.root));
+                at += l.atoms.len();
+                if let Some(em) = segments[i].1 {
+                    let spacing = match (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
+                        (Some(&left), Some(&right)) => ml::between(left, right, style).mu() * mu,
+                        _ => 0.0,
+                    };
+                    boxes.push((0.0, ml::MathBox::kern(em * quad + spacing)));
+                }
+            }
+            ml::Layout {
+                root: ml::MathBox::hbox(boxes),
+                limitations,
+            }
+        };
         let (text_runs, notices) = text_metrics.finish();
         crate::mathtext::substitute(&mut laid.root, &text_runs);
         for text in &sink.refused {
@@ -1575,6 +1612,43 @@ pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut 
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// Splits `list` at its top-level `Space` atoms (outside `\left...\right`
+/// pairs): each entry is a run of atoms and the glue after it in ems
+/// (`None` for the last run). Consecutive spaces sum; a formula without
+/// top-level glue is one run.
+fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> {
+    use flashtex_compiler::math::Nucleus as N;
+    let mut out: Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> = Vec::new();
+    let mut current = Vec::new();
+    let mut depth = 0usize;
+    for a in &list.atoms {
+        match &a.nucleus {
+            N::Space { em } if depth == 0 && a.superscript.is_none() && a.subscript.is_none() => {
+                if current.is_empty() {
+                    if let Some((_, Some(prev))) = out.last_mut() {
+                        *prev += em;
+                        continue;
+                    }
+                }
+                out.push((std::mem::take(&mut current), Some(*em)));
+            }
+            N::Symbol(sym) if sym.chars().count() <= 1 => {
+                match fence(&a.span) {
+                    Some(Fence::Left) => depth += 1,
+                    Some(Fence::Right) => depth = depth.saturating_sub(1),
+                    None => {}
+                }
+                current.push(a.clone());
+            }
+            _ => current.push(a.clone()),
+        }
+    }
+    // A trailing space keeps its kern: TeX includes it in the formula's
+    // box (an empty run follows it).
+    out.push((current, None));
+    out
 }
 
 /// Every `array`/`cases`/matrix grid in `list` and its sub-formulas as
