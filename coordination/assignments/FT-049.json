@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "1193bc5c1e2963da2269cee592d618f268681453",
-  "objective": "Audit isolated HW1 combined and quantifier candidate artifact provenance and exact diagnostic source-span changes",
+  "input_main_sha": "8e9ae6a9bf64ac98d05a5389ef87d45f92169c75",
+  "objective": "Isolated source-validation proof prototype only: path/length/rawSHA/exact UTF8 boundaries versus retained source. Verify existing captured v1/v2 checks, A-submit then mutableB stale/current proof, rollback and sibling drain. Compare complete preprocessing admission cost and retained bytes once after correctness. No production runtime API/helper/ledger adoption, trusted caller digest or broad benchmark.",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 47,
+  "revision": 48,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T15:10:47.807597+00:00"
+  "updated_utc": "2026-09-12T16:28:27.333441+00:00"
 }

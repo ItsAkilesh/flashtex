@@ -9,15 +9,15 @@
   "branch": "agent/daniel-color/color-expressions",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f",
-  "objective": "Color expression compatibility: adversarial bounds and exact identity regressions",
+  "input_main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+  "objective": "Color expression compatibility: existing consumer integration fixture and measured unsupported gaps",
   "owned_paths": [
     "crates/color-expressions"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-035",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:28:09Z"
+  "updated_utc": "2026-09-12T16:32:53Z"
 }
