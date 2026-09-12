@@ -15,7 +15,7 @@ final class GrokAssistantTests: XCTestCase {
     static let fakeSession = fixtures.appendingPathComponent("fake_grok_session.py")
     static let fakeHelper = fixtures.appendingPathComponent("fake_assistant_context.py")
 
-    static let text = "\\documentclass{article}\n\\begin{document}\nHello $x^2$ world.\n\\bad{one}\nTail line.\n\\end{document}\n"
+    nonisolated static let text = "\\documentclass{article}\n\\begin{document}\nHello $x^2$ world.\n\\bad{one}\nTail line.\n\\end{document}\n"
 
     static func result(diagnostics: [RuntimeV1.Diagnostic] = [
         .init(severity: .error, message: "Undefined control sequence \\bad", source: .init(path: "main.tex", startByte: 60, endByte: 64), recovery: nil),
@@ -413,16 +413,20 @@ final class GrokAssistantTests: XCTestCase {
         XCTAssertTrue(a.shown)
         XCTAssertEqual(a.instruction, "Fix this: Undefined control sequence \\bad")
         XCTAssertEqual(a.pinnedDiagnostic, 0)
-        XCTAssertEqual(model.selection?.nsRange, NSRange(location: 60, length: 4))
+        XCTAssertEqual(model.selection?.nsRange, NSRange(location: 60, length: 9), "the whole line, not the 4-byte span")
         XCTAssertEqual(model.caretUTF16, 60)
-        XCTAssertEqual(model.caretLengthUTF16, 4)
+        XCTAssertEqual(model.caretLengthUTF16, 9)
         let snapshot = try XCTUnwrap(model.grokSnapshot())
-        XCTAssertEqual(snapshot.selection, 60..<64)
+        XCTAssertEqual(snapshot.selection, 60..<69)
+        XCTAssertEqual(ShellModel.lineSpan(covering: 63..<64, in: Self.text), 60..<69)
+        XCTAssertEqual(ShellModel.lineSpan(covering: 41..<70, in: Self.text), 41..<69, "two lines, without the trailing newline")
+        XCTAssertEqual(ShellModel.lineSpan(covering: 0..<0, in: Self.text), 0..<23)
+        XCTAssertNil(ShellModel.lineSpan(covering: 90..<200, in: Self.text))
         model.askGrokNow()
         try await waitSettled(a)
         guard case .ready(let reply) = a.state else { return XCTFail("\(a.state)") }
         XCTAssertEqual(a.lastRequest?.selectedDiagnostics, [0])
-        XCTAssertEqual(reply.edits.first?.removedText, "\\bad")
+        XCTAssertEqual(reply.edits.first?.removedText, "\\bad{one}")
         // Opening the panel plainly afterwards keeps the text but drops the pin.
         model.askGrok()
         XCTAssertNil(a.pinnedDiagnostic)

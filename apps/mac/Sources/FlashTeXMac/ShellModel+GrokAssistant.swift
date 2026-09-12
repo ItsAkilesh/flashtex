@@ -16,20 +16,36 @@ extension ShellModel {
         grokAssistant.shown = true
     }
 
-    /// "Fix with Grok" on a Problems row: selects the diagnostic's span in the
-    /// editor and opens the panel pre-filled with "Fix this: <message>".
+    /// "Fix with Grok" on a Problems row: selects the whole line(s) holding the
+    /// diagnostic's span in the editor (a span is often one byte — the `$` or
+    /// `}` the compiler stopped at — and the selection is the only region the
+    /// model may edit; live check grok-assistant-20260912T221103Z-fix) and
+    /// opens the panel pre-filled with "Fix this: <message>".
     func fixWithGrok(diagnosticIndex i: Int) {
         guard let result, result.diagnostics.indices.contains(i) else {
             navigationNote = "No diagnostic \(i + 1) in the current result."; return
         }
         let d = result.diagnostics[i]
-        if let s = d.source, s.path == activePath, let ns = activeText.nsRange(utf8Bytes: s) {
+        if let s = d.source, s.path == activePath, let lines = Self.lineSpan(covering: s.startByte..<max(s.startByte, s.endByte), in: activeText),
+           let ns = activeText.nsRange(utf8Bytes: .init(path: s.path, startByte: lines.lowerBound, endByte: lines.upperBound)) {
             selection = .init(path: s.path, nsRange: ns, token: nextEditToken())
             caretUTF16 = ns.location
             caretLengthUTF16 = ns.length
         }
         let message = d.message.split(separator: "\n").first.map(String.init) ?? d.message
         askGrok(prefill: "Fix this: \(message.prefix(400))", diagnosticIndex: i)
+    }
+
+    /// The byte range of the whole line(s) containing `span` (LF-delimited,
+    /// without the trailing newline); nil when `span` is outside `text`.
+    static func lineSpan(covering span: Range<Int>, in text: String) -> Range<Int>? {
+        let bytes = Array(text.utf8)
+        guard span.lowerBound >= 0, span.upperBound <= bytes.count else { return nil }
+        var lo = span.lowerBound, hi = span.upperBound
+        while lo > 0, bytes[lo - 1] != 0x0A { lo -= 1 }
+        if hi > lo, bytes[hi - 1] == 0x0A { hi -= 1 }
+        while hi < bytes.count, bytes[hi] != 0x0A { hi += 1 }
+        return lo..<hi
     }
 
     /// What one Ask binds to: the last compile (result id, compiled sources)
