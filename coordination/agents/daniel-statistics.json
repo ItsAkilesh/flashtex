@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-statistics",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
+  "capabilities": ["rust", "document-statistics", "caching"],
+  "branch": "agent/daniel-statistics/document-statistics",
+  "state": "ready_for_integration",
+  "summary": "crates/document-statistics rev 2: ProjectCache keyed by exact source identity (RevisionId + FNV-1a content fingerprint) with per-document invalidation and dependency-aware project totals; ScanLimit/ScanTooLarge bounds scanned bytes; property test over 40 edit sequences (1160 steps) proves incremental equals fresh at every step and measures incremental scanning 127436 bytes vs 326335 fresh. 46 tests pass, clippy and fmt clean.",
+  "next_action": "Await Commander integration; no consumer wired up yet (deferred per FT-042 negotiation).",
+  "eta_minutes": {
+    "optimistic": 0,
+    "likely": 0,
+    "pessimistic": 0
+  },
+  "allocation_id": "daniel-claude20x-shared",
+  "usage": {
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; live consumption not exposed to this agent."
+  },
+  "reviewed_peers": {
+    "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  },
+  "assignment_acknowledgements": {
+    "FT-042": {
+      "acknowledged_utc": "2026-09-12T09:27:47Z",
+      "revision": 2,
+      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+      "adaptation": "Accepted FT-042 rev 2 as owner of crates/document-statistics only. Kept rev 1's pure Statistics::compute and its word-counting/CJK honesty tests unchanged. Added ScanLimit/ScanTooLarge (typed cap on scanned bytes, enforced in Statistics::compute_bounded) and ProjectCache (per-document cache keyed by source+revision+content fingerprint, with dependency-aware project_totals summing only currently-cached entries so an unrelated document's entry survives a sibling's update). Proved incremental equals fresh with a hand-rolled deterministic-PRNG property test over 40 sequences / 1160 total steps, asserting exact agreement after every step and that incremental scanning (127436 bytes) is well under fresh recomputation (326335 bytes). No workspace root Cargo.toml touched, no peer crate edited, no push/merge to main performed."
+    }
+  },
+  "updated_utc": "2026-09-12T09:27:47Z",
+  "code_revision": "e56b2e56a9a4ca9409a74b43014039f2db051bb4",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+}

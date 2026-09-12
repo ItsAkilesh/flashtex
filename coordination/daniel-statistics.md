@@ -1,18 +1,69 @@
 # daniel-statistics handoff — FT-042
 
-Agent / task / branch: daniel-statistics / FT-042 (bounded document statistics)
-/ `agent/daniel-statistics/document-statistics`
+Agent / task / branch: daniel-statistics / FT-042 revision 2 (cached document
+statistics with dependency-aware project aggregation) /
+`agent/daniel-statistics/document-statistics`
 Owned paths: `crates/document-statistics/**`, `coordination/daniel-statistics.md`
 State: ready for integration (standalone additive crate; no consumer wired yet)
-Tested commit SHA: `92dd4ee806e513c68096e32ab0ff89a0133355d8`
-(branch base / `input_main_sha` per `coordination/assignments/FT-042.json`:
-`53fee3012b2902ca05bd31766defa515b3044cec`)
+Tested commit SHA: `e56b2e56a9a4ca9409a74b43014039f2db051bb4`
+Previous (rev 1) tested SHA: `92dd4ee806e513c68096e32ab0ff89a0133355d8`
+Main integrated through (merged and reviewed): `e5901797e8a7ebdd8d714ecdee6793e1097515a9`
 
 Validation at that SHA (`cd crates/document-statistics`):
 - `cargo build` — clean.
-- `cargo test` — 26 unit tests + 4 integration tests + 1 doctest, all pass.
+- `cargo test` — 46 tests total: 39 unit tests (`src/`), 2 property-style
+  integration tests (`tests/incremental_equals_fresh.rs`), 4 integration
+  tests (`tests/statistics.rs`), 1 doctest. All pass.
 - `cargo clippy --all-targets -- -D warnings` — 0 warnings.
 - `cargo fmt --check` — clean.
+
+## Rev 2: what changed
+
+Rev 2 adds a cache on top of rev 1's pure `Statistics::compute`, without
+changing rev 1's counting behavior or honesty guarantees at all.
+
+**New: `ScanLimit` / `ScanTooLarge` (`src/scan_limit.rs`).** A typed cap on
+how many source bytes (`SourceItem::Text` + `MathItem::source` byte length)
+one computation may scan. `Statistics::compute_bounded(revision, items,
+limit)` enforces it, stopping mid-scan and returning `ScanTooLarge { scanned,
+limit }` — never a partial or truncated `Statistics` — the instant the
+running total would exceed `limit`. `Statistics::compute` is now defined as
+`compute_bounded(..., ScanLimit::UNBOUNDED)`, so its behavior and doctest are
+unchanged. `Statistics` gained one new field, `scanned_bytes`, recording
+exactly what was scanned to produce it.
+
+**New: `ProjectCache` (`src/cache.rs`).** Caches one `Statistics` per
+document, keyed by exact source identity: `RevisionId.source` +
+`RevisionId.revision` + the same FNV-1a content fingerprint rev 1 already
+used for `is_current_for`. `ProjectCache::update(revision, items, limit)` is
+a hit (0 bytes rescanned) only when ALL THREE match the stored entry; a
+revision id reused over changed content is therefore a MISS, not a stale
+hit — see `cache::tests::reused_revision_id_over_changed_content_is_a_miss_not_a_stale_hit`
+and the same scenario exercised inside the big property test below.
+Updating one document leaves every other document's cached entry
+byte-for-byte unchanged (`cache::tests::unrelated_document_survives_a_sibling_update`),
+and `ProjectCache::project_totals()` sums whatever is currently cached — this
+is the dependency-aware project aggregation: the project total depends on
+every document, but invalidation is per-document.
+
+**Proof that incremental equals fresh
+(`tests/incremental_equals_fresh.rs`):** a hand-rolled deterministic PRNG
+(no external `rand` dependency) drives 40 independent edit sequences over
+1–5 documents each, 20–49 steps per sequence (1,160 steps total), mixing
+text/inline-math/display-math/page-mark appends, same-revision content
+replacement (the stale-reuse case), and no-op repeats (the pure-hit case).
+After **every single step**, the test asserts the `ProjectCache` lookup for
+the just-edited document, and the summed project totals over the whole
+cache, are exactly equal — word/math/page counts and content hash — to
+recomputing everything from scratch with `Statistics::compute`. A stale
+cache entry surviving an update, or a hit served for changed content, would
+fail this assertion; the test does not loosen it in either case. The same
+run also measures scanned bytes: over the full 1,160-step corpus the
+incremental path scanned 127,436 bytes total vs. 326,335 bytes for
+recomputing every document from scratch at every step (~39% of fresh, i.e.
+scanning well under half) — the test asserts this inequality, so a cache
+that stopped saving work would fail CI, not just look suspicious in a
+report.
 
 ## What this crate is
 
@@ -53,11 +104,39 @@ pub struct Statistics {
     pub words: WordStats,
     pub math: MathStats,
     pub pages: usize,
+    pub scanned_bytes: usize,   // rev 2: bytes actually scanned to produce this
 }
 impl Statistics {
     pub fn compute(revision: RevisionId, items: &[SourceItem]) -> Statistics;
+    pub fn compute_bounded(revision: RevisionId, items: &[SourceItem], limit: ScanLimit)
+        -> Result<Statistics, ScanTooLarge>;
     pub fn is_current_for(&self, revision: &RevisionId, items: &[SourceItem]) -> bool;
 }
+
+// rev 2 additions:
+pub struct ScanLimit(/* opaque */);
+impl ScanLimit {
+    pub const UNBOUNDED: ScanLimit;
+    pub const fn new(max_bytes: usize) -> Self;
+    pub const fn max_bytes(self) -> usize;
+}
+impl Default for ScanLimit { /* 1 MiB */ }
+
+pub struct ScanTooLarge { pub scanned: usize, pub limit: usize } // impl Error, Display
+
+pub struct ProjectCache { /* opaque */ }
+impl ProjectCache {
+    pub fn new() -> Self;
+    pub fn update(&mut self, revision: RevisionId, items: &[SourceItem], limit: ScanLimit)
+        -> Result<Lookup, ScanTooLarge>;
+    pub fn get(&self, source: &str) -> Option<&Statistics>;
+    pub fn contains(&self, source: &str) -> bool;
+    pub fn project_totals(&self) -> ProjectTotals;
+    pub fn len(&self) -> usize;
+    pub fn is_empty(&self) -> bool;
+}
+pub struct Lookup { pub stats: Statistics, pub hit: bool, pub bytes_scanned: usize }
+pub struct ProjectTotals { pub words: WordStats, pub math: MathStats, pub pages: usize }
 ```
 
 `Statistics::compute` is pure counting over `items`; `is_current_for` is the
@@ -123,6 +202,14 @@ which is what the acceptance criterion requires.
 - No consumer adapter: nothing in `crates/compiler` or elsewhere calls this
   crate yet. This crate does not decide how `SourceItem`s get produced from
   a real document; that's the negotiation FT-042 asks to defer.
-- No serialization (no `serde`): callers needing to persist `Statistics`
-  across process boundaries will need to add that at the integration
-  boundary, not in this crate.
+- No serialization (no `serde`): callers needing to persist `Statistics` or
+  `ProjectCache` across process boundaries will need to add that at the
+  integration boundary, not in this crate.
+- `ProjectCache` holds one entry per document `source` string; it does not
+  itself track which documents belong to which project, or evict entries for
+  documents that have been deleted from a project. A caller with a document
+  set that shrinks over time should drop the corresponding entries itself
+  (there is no `remove` method yet — add one if a consumer needs it).
+- `ScanLimit::default()` (1 MiB) is a placeholder; no consumer has stated a
+  real requirement yet, so it is not tuned to any actual document size
+  distribution.
