@@ -406,6 +406,214 @@ final class NearbyReferenceClientTests: XCTestCase {
         await reconnector.shutdown()
     }
 
+    // MARK: receive caps and validation codes (proposal §4) against the real listener
+
+    /// Records captures and holds their acknowledgements until released, so
+    /// bytes stay "accepted but unacknowledged" on the Mac.
+    final class HoldingSink: CaptureSink {
+        private let lock = NSLock()
+        private var held: [(id: String, captureId: String, reply: (Data) -> Void)] = []
+        private var holding = true
+        private(set) var deliveries: [String] = []
+        private static func ack(_ id: String, _ captureId: String) -> Data {
+            NearbyV1.line(id: id, type: "capture_received", NearbyV1.CaptureReceived(captureId: captureId, durable: false, hasProposal: false, applied: false))
+        }
+        func submit(_ envelope: RuntimeV1.Envelope<RuntimeV1.CaptureSubmit>, reply: @escaping (Data) -> Void) {
+            let hold: Bool = lock.withLock {
+                deliveries.append(envelope.payload.captureId)
+                if holding { held.append((envelope.id, envelope.payload.captureId, reply)) }
+                return holding
+            }
+            if !hold { reply(Self.ack(envelope.id, envelope.payload.captureId)) }
+        }
+        var heldCount: Int { lock.withLock { held.count } }
+        /// Acknowledges everything held and acknowledges later deliveries at once.
+        func releaseAll() {
+            let h: [(id: String, captureId: String, reply: (Data) -> Void)] = lock.withLock { holding = false; let x = held; held = []; return x }
+            for e in h { e.reply(Self.ack(e.id, e.captureId)) }
+        }
+    }
+
+    func testBackpressureCodesAreRetriedOnTheSameSessionAgainstRealListener() async throws {
+        let frame = try NearbyWire.line(id: "c-00000000-0000-0000-0000-000000000000", type: "capture_submit",
+                                        NearbyWire.CaptureSubmit(captureId: "ref-bp-1", destinationId: "direct-anchor", baseRevision: 2,
+                                                                 image: .init(mimeType: "image/png", dataBase64: Self.fixturePNG.base64EncodedString()),
+                                                                 instructions: "")).count
+        for (code, limits) in [("too_many_in_flight", { (l: inout NearbyReceiveLimits) in l.maxSessionBytesInFlight = frame + frame / 2 }),
+                               ("inbox_full", { (l: inout NearbyReceiveLimits) in l.maxInboxBytes = frame + frame / 2 })] {
+            var l = NearbyReceiveLimits()
+            limits(&l)
+            let sink = HoldingSink()
+            let dest = FixedDestinations(.init(destinationId: "direct-anchor", projectId: "demo", path: "main.tex", baseRevision: 2))
+            let h = ListenerHarness(psks: [longTermEntry], sink: sink, destinations: dest, limits: l)
+            try h.start()
+            let log = EventLog()
+            let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.05, maxDelay: 0.05, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+            let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+                                      endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+            let session = try await r.connect()
+            let first = try session.makeCapture(captureId: "ref-bp-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+            let second = try session.makeCapture(captureId: "ref-bp-2", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+            // One frame is accepted and held unacknowledged; the next exceeds the cap.
+            let heldTask = Task { try await session.connection.submitCapture(first) }
+            try await waitUntil("first delivered") { sink.heldCount == 1 }
+            let started = Date()
+            let retried = Task { try await r.submit(second) }
+            try await waitUntil("client waiting for acks (\(code))") {
+                log.list.contains { if case .waitingForAcks(1) = $0 { return true }; return false }
+            }
+            XCTAssertTrue(h.snapshot.contains { if case .captureRefused(Self.longTermPairId?, nil, code, _) = $0 { return true }; return false },
+                          "\(code) refused with the code: \(h.snapshot)")
+            XCTAssertEqual(sink.deliveries, ["ref-bp-1"], "\(code): the second capture never reached the sink")
+            sink.releaseAll()
+            let firstAck = try await heldTask.value
+            let secondAck = try await retried.value
+            let elapsed = Date().timeIntervalSince(started)
+            XCTAssertEqual(firstAck.captureId, "ref-bp-1")
+            XCTAssertEqual(secondAck.captureId, "ref-bp-2")
+            XCTAssertEqual(sink.deliveries, ["ref-bp-1", "ref-bp-2"], "\(code): same capture_id re-sent once the ack went out")
+            let made = await r.attemptsMade
+            XCTAssertEqual(made, 1, "\(code): no reconnect")
+            XCTAssertTrue(log.list.contains { if case .failed(1, let why, 0.05) = $0 { return why.contains(code) }; return false }, "\(log.list)")
+            XCTAssertFalse(log.list.contains { if case .disconnected = $0 { return true }; return false }, "\(code): session kept")
+            XCTAssertTrue(session.isOpen)
+            print("measured: real-listener \(code) → wait for acks → same-session re-send acknowledged in \(String(format: "%.3f", elapsed))s")
+            sink.releaseAll()
+            await r.shutdown()
+            h.stop()
+        }
+    }
+
+    func testTooManySessionsIsRetriedAfterClosingTheOlderConnection() async throws {
+        var limits = NearbyReceiveLimits()
+        limits.maxSessionsPerPeer = 1
+        let sink = RecordingSink()
+        let dest = FixedDestinations(.init(destinationId: "direct-anchor", projectId: "demo", path: "main.tex", baseRevision: 2))
+        let h = ListenerHarness(psks: [longTermEntry], sink: sink, destinations: dest, limits: limits)
+        try h.start()
+        defer { h.stop() }
+        // An older connection of the same pairing already holds the one session.
+        let older = NearbyConnection(host: "127.0.0.1", port: h.port, pairId: Self.longTermPairId, psk: Self.longTermPSK)
+        try await older.connect()
+        try await older.hello(companionName: "older")
+        let log = EventLog()
+        let closedOlder = XCTestExpectation(description: "older closed during backoff")
+        let policy = ReconnectPolicy(maxAttempts: 4, initialDelay: 0.1, maxDelay: 0.1, jitter: 0, connectTimeout: 3, requestTimeout: 5)
+        let r = NearbyReconnector(pair: longTermPair(), policy: policy,
+                                  endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) },
+                                  onEvent: log.record,
+                                  sleep: { s in
+                                      // What a companion does on too_many_sessions: close its older connections, then retry.
+                                      older.close(); closedOlder.fulfill()
+                                      try await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000))
+                                  })
+        let started = Date()
+        let session = try await r.connect()
+        let elapsed = Date().timeIntervalSince(started)
+        await fulfillment(of: [closedOlder], timeout: 5)
+        XCTAssertTrue(session.isOpen)
+        let made = await r.attemptsMade
+        XCTAssertEqual(made, 2)
+        XCTAssertTrue(log.list.contains { if case .failed(1, let why, 0.1) = $0 { return why.contains("too_many_sessions") }; return false }, "\(log.list)")
+        XCTAssertTrue(h.snapshot.contains { if case .connectionClosed(nil, "too many sessions") = $0 { return true }; return false }, "\(h.snapshot)")
+        XCTAssertEqual(h.snapshot.filter { if case .hello = $0 { return true }; return false }.count, 2, "older + the successful retry")
+        let capture = try session.makeCapture(captureId: "ref-sessions-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+        _ = try await r.submit(capture)
+        XCTAssertEqual(sink.count, 1)
+        print("measured: real-listener too_many_sessions → older closed → reconnect in \(String(format: "%.3f", elapsed))s")
+        // Budget spent while the older session stays: terminal, no storm.
+        let keeper = NearbyConnection(host: "127.0.0.1", port: h.port, pairId: Self.longTermPairId, psk: Self.longTermPSK)
+        await r.shutdown()
+        try await waitUntil("session released") { h.snapshot.filter { if case .connectionClosed(Self.longTermPairId?, _) = $0 { return true }; return false }.count >= 2 }
+        try await keeper.connect()
+        try await keeper.hello(companionName: "keeper")
+        let r2 = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 3, initialDelay: 0.02, maxDelay: 0.02, jitter: 0, connectTimeout: 3),
+                                   endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) })
+        do { _ = try await r2.connect(); XCTFail() } catch let e as NearbyError {
+            guard case .attemptsExhausted(3, let last) = e, last.contains("too_many_sessions") else { return XCTFail("unexpected \(e)") }
+        }
+        keeper.close()
+    }
+
+    func testImageRefusalsFromTheRealListenerAreTerminal() async throws {
+        var limits = NearbyReceiveLimits()
+        limits.maxImageBytes = 1024
+        let sink = RecordingSink()
+        let dest = FixedDestinations(.init(destinationId: "direct-anchor", projectId: "demo", path: "main.tex", baseRevision: 2))
+        let h = ListenerHarness(psks: [longTermEntry], sink: sink, destinations: dest, limits: limits)
+        try h.start()
+        defer { h.stop() }
+        let log = EventLog()
+        let r = NearbyReconnector(pair: longTermPair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0, jitter: 0),
+                                  endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }, onEvent: log.record)
+        let session = try await r.connect()
+        // Structurally broken PNG (signature + garbage): passes the client's cheap check, refused by the Mac.
+        let broken = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + Data(repeating: 0x42, count: 64)
+        let invalid = try session.makeCapture(captureId: "ref-invalid", image: broken, mimeType: "image/png", instructions: "")
+        do { _ = try await r.submit(invalid); XCTFail() } catch let e as NearbyError {
+            guard case .remote("invalid_image", _) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(e.needsNewCapture); XCTAssertFalse(e.isRetryable)
+        }
+        // Over the Mac's (lowered) size cap, with the client's own 8 MiB check bypassed.
+        let big = Self.fixturePNG + Data(repeating: 0, count: 2048)
+        let tooLarge = try session.makeCapture(captureId: "ref-large", image: big, mimeType: "image/png", instructions: "")
+        do { _ = try await r.submit(tooLarge, validateImage: false); XCTFail() } catch let e as NearbyError {
+            guard case .remote("image_too_large", _) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(e.needsNewCapture)
+        }
+        // Declared JPEG, PNG bytes: refused on the client before a byte is sent.
+        let mismatched = try session.makeCapture(captureId: "ref-mime", image: Self.fixturePNG, mimeType: "image/jpeg", instructions: "")
+        do { _ = try await r.submit(mismatched); XCTFail() } catch let e as NearbyError {
+            XCTAssertEqual(e, .invalidInput("mime_type image/jpeg but the bytes are not a JPEG"))
+        }
+        XCTAssertEqual(sink.count, 0, "nothing reached the sink")
+        let made = await r.attemptsMade
+        XCTAssertEqual(made, 1, "no retry, no reconnect")
+        XCTAssertTrue(session.isOpen, "refusals keep the session open")
+        let refused = h.snapshot.compactMap { e -> String? in if case .captureRefused(_, _, let code, _) = e { return code }; return nil }
+        XCTAssertEqual(refused, ["invalid_image", "image_too_large"])
+        // The session is still good for a valid capture.
+        let ok = try session.makeCapture(captureId: "ref-ok", image: Self.fixturePNG, mimeType: "image/png", instructions: "")
+        let okAck = try await r.submit(ok)
+        XCTAssertEqual(okAck.captureId, "ref-ok")
+        XCTAssertEqual(sink.count, 1)
+        await r.shutdown()
+    }
+
+    func testSameSessionRetryIsAcknowledgedWithoutRedeliveryAndRevisionMismatchIsTerminal() async throws {
+        let sink = RecordingSink()
+        let dest = FixedDestinations(.init(destinationId: "direct-anchor", projectId: "demo", path: "main.tex", baseRevision: 2))
+        let h = ListenerHarness(psks: [longTermEntry], sink: sink, destinations: dest)
+        try h.start()
+        defer { h.stop() }
+        let r = NearbyReconnector(pair: longTermPair(), policy: .immediate,
+                                  endpoints: { [port = h.port] in .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) })
+        let session = try await r.connect()
+        let capture = try session.makeCapture(captureId: "ref-same-1", image: Self.fixturePNG, mimeType: "image/png", instructions: "once")
+        let a1 = try await r.submit(capture)
+        let a2 = try await r.submit(capture) // identical retry on the same session
+        XCTAssertEqual(a1.captureId, "ref-same-1"); XCTAssertEqual(a2.captureId, "ref-same-1")
+        XCTAssertEqual(sink.count, 1, "acknowledged again, not re-delivered")
+        XCTAssertTrue(h.snapshot.contains(.captureDuplicate(identity: Self.longTermPairId, captureId: "ref-same-1")), "\(h.snapshot)")
+        // Same id, other revision → revision_mismatch (terminal; the destination check is bypassed to reach the Mac).
+        var moved = capture; moved.baseRevision = 3
+        do { _ = try await r.submit(moved, requireCurrentDestination: false); XCTFail() } catch let e as NearbyError {
+            guard case .remote("revision_mismatch", _) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(e.needsNewCapture); XCTAssertFalse(e.isRetryable)
+        }
+        // Same id and revision, other payload → capture_id_conflict.
+        var changed = capture; changed.instructions = "twice"
+        do { _ = try await r.submit(changed); XCTFail() } catch let e as NearbyError {
+            guard case .remote("capture_id_conflict", _) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(e.needsNewCapture)
+        }
+        XCTAssertEqual(sink.count, 1)
+        let made = await r.attemptsMade
+        XCTAssertEqual(made, 1)
+        XCTAssertTrue(session.isOpen)
+        await r.shutdown()
+    }
+
     /// Manual/live harness, skipped unless `FLASHTEX_NEARBY_SERVE_INFO=<path>` is
     /// set: advertises a real NearbyState with a fresh pairing code, writes
     /// `{code, port, fp, name}` to that path, then serves for

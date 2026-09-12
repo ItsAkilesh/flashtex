@@ -61,12 +61,27 @@ public enum NearbyCLI {
             return 3
         }
         switch e {
-        case .attemptsExhausted:
-            emit("hint: the Mac stayed unreachable for the whole retry budget; check it is advertising and try again (exit 4)")
+        case .attemptsExhausted(_, let last):
+            if last.contains("too_many_sessions") {
+                emit("hint: the Mac already holds its maximum sessions for this pairing; close the companion's other connections to it (or wait for them to time out) and try again (exit 4)")
+            } else if last.contains("too_many_in_flight") || last.contains("inbox_full") {
+                emit("hint: the Mac is still working through earlier captures; wait for their acknowledgements and try again (exit 4)")
+            } else {
+                emit("hint: the Mac stayed unreachable for the whole retry budget; check it is advertising and try again (exit 4)")
+            }
             return 4
         case .destinationChanged:
             emit("hint: the insertion point on the Mac was unpinned or moved since this capture was built; reselect it there (Edit > Pin Insertion Point) and send again (exit 5)")
             return 5
+        case .remote(let code, _) where e.needsNewCapture:
+            switch code {
+            case "image_too_large": emit("hint: the Mac accepts images up to 8 MiB encoded and 8192×8192; shrink the image and send again with a new --capture-id (exit 2)")
+            case "invalid_image": emit("hint: the Mac could not parse the image as the declared PNG/JPEG; re-export it and send again with a new --capture-id (exit 2)")
+            case "revision_mismatch": emit("hint: this capture_id was already accepted at another base_revision; use a new --capture-id for the new revision (exit 2)")
+            case "capture_id_conflict": emit("hint: this capture_id was already accepted with different content; use a new --capture-id (exit 2)")
+            default: emit("hint: the Mac refused this capture as sent; fix the input and send again with a new --capture-id (exit 2)")
+            }
+            return 2
         default:
             return 2
         }
@@ -220,6 +235,9 @@ public enum NearbyCLI {
         guard let mime = sniffMime(image) else {
             throw Failure(code: 65, message: "\(imagePath) is not a PNG or JPEG (the Mac accepts image/png and image/jpeg)")
         }
+        if let why = NearbyWire.checkImage(image, mimeType: mime) {
+            throw Failure(code: 65, message: "\(imagePath): \(why)")
+        }
         let pair: PairedMac
         if let key = o.string("mac") {
             guard let p = file.pair(matching: key) else { throw Failure(code: 1, message: "no stored pairing matches \(key); run `nearby-client pair`") }
@@ -256,6 +274,7 @@ public enum NearbyCLI {
             case .connected(let mac, let n, let d): emit("hello_ack from \"\(mac)\" (attempt \(n)); destination: \(describe(d))")
             case .failed(let n, let why, let wait): emit("attempt \(n) failed: \(why); retrying in \(String(format: "%.2f", wait ?? 0))s")
             case .disconnected(let why): emit("disconnected: \(why)")
+            case .waitingForAcks(let n): emit("the Mac asked to wait: \(n) request\(n == 1 ? "" : "s") still awaiting acknowledgement")
             case .gaveUp: break // the thrown error is reported by `run`
             }
         }, onLine: lineLogger(o, emit: emit))

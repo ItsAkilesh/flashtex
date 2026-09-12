@@ -56,15 +56,25 @@ public enum NearbyError: Error, CustomStringConvertible, Equatable {
     }
 
     /// Failures a bounded reconnect may retry: the Mac was not there, the
-    /// connection dropped, or a reply did not arrive. Everything else is
-    /// terminal — a refused key, an `error` reply, bad input, a protocol
-    /// violation — and retrying would only repeat it (proposal §7.5).
+    /// connection dropped, a reply did not arrive, or the Mac asked for a
+    /// bounded wait (`too_many_in_flight` / `inbox_full`: session stays open;
+    /// `too_many_sessions`: close older connections, reconnect). Everything
+    /// else is terminal — a refused key, any other `error` reply, bad input, a
+    /// protocol violation — and retrying would only repeat it (proposal §7.5).
     public var isRetryable: Bool {
         switch self {
         case .unreachable, .closed, .timeout, .browseFailed, .noMatchingMac: return true
-        case .handshakeFailed, .remote, .protocolViolation, .invalidInput, .unsupportedService,
+        case .remote(let code, _): return NearbyWire.backpressureErrorCodes.contains(code) || code == "too_many_sessions"
+        case .handshakeFailed, .protocolViolation, .invalidInput, .unsupportedService,
              .overloaded, .destinationChanged, .attemptsExhausted, .cancelled: return false
         }
+    }
+
+    /// Backpressure: the Mac kept the session open and will accept the same
+    /// capture once its outstanding acknowledgements have gone out.
+    public var isBackpressure: Bool {
+        if case .remote(let code, _) = self { return NearbyWire.backpressureErrorCodes.contains(code) }
+        return false
     }
 
     /// Terminal because the pairing itself was refused: the user must re-pair.
@@ -72,6 +82,16 @@ public enum NearbyError: Error, CustomStringConvertible, Equatable {
         switch self {
         case .handshakeFailed: return true
         case .remote(let code, _): return code == "pair_mismatch" || code == "pairing_expired"
+        default: return false
+        }
+    }
+
+    /// Terminal because the capture itself was refused (image, id, revision):
+    /// a retry with the same bytes repeats it; build a new capture.
+    public var needsNewCapture: Bool {
+        switch self {
+        case .remote(let code, _): return NearbyWire.captureInputErrorCodes.contains(code)
+        case .invalidInput: return true
         default: return false
         }
     }
@@ -106,7 +126,18 @@ public final class NearbyConnection: @unchecked Sendable { // all mutable state 
     private let queue: DispatchQueue
     private var splitter = LineSplitter()
     private struct Pending { let type: String; let timer: DispatchWorkItem; let resume: (Result<Data, Error>) -> Void }
-    private var pending: [String: Pending] = [:]
+    private var pending: [String: Pending] = [:] {
+        didSet {
+            closedLock.withLock { pendingSnapshot = pending.count }
+            if pending.isEmpty, !idleWaiters.isEmpty { let w = idleWaiters; idleWaiters.removeAll(); for i in w { i.timer.cancel(); i.resume(.success(())) } }
+        }
+    }
+    private var pendingSnapshot = 0
+    /// Requests awaiting a reply right now. Safe from any thread.
+    public var pendingRequestCount: Int { closedLock.withLock { pendingSnapshot } }
+    private struct IdleWaiter { let serial: Int; let timer: DispatchWorkItem; let resume: (Result<Void, Error>) -> Void }
+    private var idleWaiterSerial = 0
+    private var idleWaiters: [IdleWaiter] = []
     private var connectWaiter: ((Result<Void, Error>) -> Void)?
     private var connectTimer: DispatchWorkItem?
     private var lastWaitingError: NWError?
@@ -238,9 +269,34 @@ public final class NearbyConnection: @unchecked Sendable { // all mutable state 
         closedLock.withLock { closedSnapshot = reason }
         connectTimer?.cancel(); connectTimer = nil
         let waiting = pending
+        let idle = idleWaiters
+        idleWaiters.removeAll()
         pending.removeAll()
         for (_, p) in waiting { p.timer.cancel(); p.resume(.failure(NearbyError.closed(reason))) }
+        for i in idle { i.timer.cancel(); i.resume(.failure(NearbyError.closed(reason))) }
         onClose?(reason)
+    }
+
+    /// Resolves once no request awaits a reply (backpressure recovery: the
+    /// Mac answered `too_many_in_flight`/`inbox_full` and wants the companion
+    /// to wait for its outstanding acknowledgements). Throws `timeout` after
+    /// `timeout`, `closed` if the connection ends first.
+    public func waitUntilIdle(timeout: TimeInterval = 30) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            queue.async {
+                if let why = self.closedReason { cont.resume(throwing: NearbyError.closed(why)); return }
+                if self.pending.isEmpty { cont.resume(returning: ()); return }
+                self.idleWaiterSerial += 1
+                let serial = self.idleWaiterSerial
+                let timer = DispatchWorkItem { [weak self] in
+                    guard let self, let i = self.idleWaiters.firstIndex(where: { $0.serial == serial }) else { return }
+                    let w = self.idleWaiters.remove(at: i)
+                    w.resume(.failure(NearbyError.timeout("\(self.pending.count) requests still awaiting a reply after \(timeout)s")))
+                }
+                self.idleWaiters.append(IdleWaiter(serial: serial, timer: timer, resume: { cont.resume(with: $0) }))
+                self.queue.asyncAfter(deadline: .now() + timeout, execute: timer)
+            }
+        }
     }
 
     private func receiveLoop() {
@@ -359,13 +415,22 @@ public final class NearbyConnection: @unchecked Sendable { // all mutable state 
     }
 
     /// `capture_submit` → `capture_received`. Retry after a disconnect with the
-    /// *same* `capture_id` and payload; the Mac de-duplicates.
+    /// *same* `capture_id` and payload; the Mac de-duplicates. With
+    /// `validateImage` (default) the cheap checks the Mac would fail anyway —
+    /// size ≤ 8 MiB, signature matches `mime_type`, valid base64 — are refused
+    /// here as `invalidInput` before a byte is sent; pass false to exercise the
+    /// Mac's `image_too_large` / `invalid_image` replies.
     public func submitCapture(_ capture: NearbyWire.CaptureSubmit, requestID: String? = nil,
-                              timeout: TimeInterval = 60) async throws -> NearbyWire.CaptureReceived {
+                              timeout: TimeInterval = 60, validateImage: Bool = true) async throws -> NearbyWire.CaptureReceived {
         guard NearbyWire.isValidID(capture.captureId) else { throw NearbyError.invalidInput("capture_id must be 1–128 ASCII [A-Za-z0-9_-]") }
         guard NearbyWire.isValidID(capture.destinationId) else { throw NearbyError.invalidInput("destination_id must be 1–128 ASCII [A-Za-z0-9_-]") }
         guard NearbyWire.acceptedMimeTypes.contains(capture.image.mimeType) else { throw NearbyError.invalidInput("mime_type must be image/png or image/jpeg") }
         guard capture.instructions.utf8.count <= 4096 else { throw NearbyError.invalidInput("instructions exceed 4096 bytes") }
+        guard capture.baseRevision >= 0 else { throw NearbyError.invalidInput("base_revision must be non-negative") }
+        if validateImage {
+            guard let bytes = Data(base64Encoded: capture.image.dataBase64) else { throw NearbyError.invalidInput("image data_base64 is not valid base64") }
+            if let why = NearbyWire.checkImage(bytes, mimeType: capture.image.mimeType) { throw NearbyError.invalidInput(why) }
+        }
         let r: NearbyWire.Envelope<NearbyWire.CaptureReceived> =
             try await request(type: "capture_submit", capture, expecting: "capture_received", id: requestID, timeout: timeout)
         return r.payload

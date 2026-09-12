@@ -25,7 +25,7 @@ final class NearbyReconnectTests: XCTestCase {
     func endpoint(_ port: UInt16) -> NWEndpoint { .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!) }
     func capture(_ id: String = "cap-retry-1") -> NearbyWire.CaptureSubmit {
         .init(captureId: id, destinationId: anchor.destinationId, baseRevision: anchor.baseRevision,
-              image: .init(mimeType: "image/png", dataBase64: Data([0x89, 0x50, 0x4E, 0x47]).base64EncodedString()), instructions: "retry me")
+              image: .init(mimeType: "image/png", dataBase64: TestImages.png1x1.base64EncodedString()), instructions: "retry me")
     }
 
     /// A loopback port nothing listens on: bound with a BSD socket to learn a

@@ -20,6 +20,11 @@ public enum NearbyWire {
     public static let maxLineBytes = 12 * 1024 * 1024
     public static let maxIDBytes = 128
     public static let acceptedMimeTypes: Set<String> = ["image/png", "image/jpeg"]
+    /// Encoded PNG/JPEG bytes the Mac accepts (transfer-v1 / proposal §4); the
+    /// Mac also caps width and height at `maxImageSide` and refuses images
+    /// that are not structurally valid (`invalid_image`).
+    public static let maxImageBytes = 8 * 1024 * 1024
+    public static let maxImageSide = 8192
 
     /// runtime-v1 envelope: `{protocol_version, id, type, payload}`.
     public struct Envelope<Payload: Codable>: Codable {
@@ -136,9 +141,35 @@ public enum NearbyWire {
 
     /// Error codes after which the Mac closes the connection: fix the client or
     /// re-pair, never retry blindly (§8 "Parse these reply lines").
+    /// `too_many_sessions` also closes, but is retryable once the companion has
+    /// closed its older connections to that Mac.
     public static let closingErrorCodes: Set<String> = [
         "pair_mismatch", "pairing_expired", "hello_required", "unsupported_version", "line_too_long", "bad_request",
+        "too_many_sessions",
     ]
+    /// Backpressure (proposal §4 receive caps): the session stays open; wait
+    /// for outstanding acknowledgements, then retry the *same* capture.
+    public static let backpressureErrorCodes: Set<String> = ["too_many_in_flight", "inbox_full"]
+    /// The Mac refused this capture's content or identity; retrying the same
+    /// bytes can only repeat the refusal. Build a new capture (new id, valid
+    /// image, current destination) instead.
+    public static let captureInputErrorCodes: Set<String> = [
+        "image_too_large", "invalid_image", "unsupported_image", "revision_mismatch", "capture_id_conflict", "bad_request",
+    ]
+
+    /// Client-side mirror of the Mac's cheap image checks: declared MIME must
+    /// match the file signature and the encoded size must be within
+    /// `maxImageBytes`. Structural validation stays the Mac's (`invalid_image`).
+    public static func checkImage(_ bytes: Data, mimeType: String) -> String? {
+        guard acceptedMimeTypes.contains(mimeType) else { return "mime_type must be image/png or image/jpeg" }
+        guard !bytes.isEmpty else { return "image is empty" }
+        guard bytes.count <= maxImageBytes else { return "image is \(bytes.count) bytes; the Mac accepts at most \(maxImageBytes)" }
+        let png = bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let jpeg = bytes.starts(with: [0xFF, 0xD8, 0xFF])
+        if mimeType == "image/png", !png { return "mime_type image/png but the bytes are not a PNG" }
+        if mimeType == "image/jpeg", !jpeg { return "mime_type image/jpeg but the bytes are not a JPEG" }
+        return nil
+    }
 
     // MARK: encoding
 

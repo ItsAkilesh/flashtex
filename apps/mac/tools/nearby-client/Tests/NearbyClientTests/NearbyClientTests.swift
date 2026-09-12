@@ -168,12 +168,12 @@ final class NearbyClientFlowTests: XCTestCase {
         XCTAssertTrue(transcript[1].contains("\"pair_psk\""))
 
         // The bootstrap connection stays usable.
-        let cap = try session.makeCapture(captureId: "cap-1", image: Data([0x89, 0x50]), mimeType: "image/png", instructions: "hi")
+        let cap = try session.makeCapture(captureId: "cap-1", image: TestImages.png1x1, mimeType: "image/png", instructions: "hi")
         XCTAssertEqual(cap.destinationId, "anchor-1")
         XCTAssertEqual(cap.baseRevision, 5)
         let ack = try await session.submitCapture(cap)
         XCTAssertEqual(ack, .init(captureId: "cap-1", durable: false, hasProposal: false, applied: false))
-        XCTAssertEqual(mac.captures.first?.image.dataBase64, Data([0x89, 0x50]).base64EncodedString())
+        XCTAssertEqual(mac.captures.first?.image.dataBase64, TestImages.png1x1.base64EncodedString())
         session.close()
 
         // Reconnect with the long-term key only (what the Mac keeps after pairing).

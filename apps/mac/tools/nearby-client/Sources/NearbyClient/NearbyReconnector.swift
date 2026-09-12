@@ -62,6 +62,8 @@ public actor NearbyReconnector {
         case failed(attempt: Int, error: String, retryIn: TimeInterval?)
         /// A live session ended (the next operation reconnects).
         case disconnected(reason: String)
+        /// Backpressure: waiting for this session's outstanding acknowledgements.
+        case waitingForAcks(pending: Int)
         case gaveUp(error: String)
     }
 
@@ -143,8 +145,15 @@ public actor NearbyReconnector {
     /// unpinned anchor without the user knowing. A fresh connection's
     /// `hello_ack` supplies that destination for free; a reused session pays
     /// one `destination_query`.
+    ///
+    /// Backpressure replies (`too_many_in_flight`, `inbox_full`) keep the
+    /// session: the retry waits until this connection has no request awaiting
+    /// a reply (bounded by `requestTimeout`), then backs off and re-sends.
+    /// `too_many_sessions` closes: this reconnector's own session is dropped
+    /// and the reconnect backs off, so a sibling session the Mac still counts
+    /// has time to be closed by its owner.
     public func submit(_ capture: NearbyWire.CaptureSubmit, requireCurrentDestination: Bool = true,
-                       requestID: String? = nil) async throws -> NearbyWire.CaptureReceived {
+                       requestID: String? = nil, validateImage: Bool = true) async throws -> NearbyWire.CaptureReceived {
         guard NearbyWire.isValidID(capture.captureId) else { throw NearbyError.invalidInput("capture_id must be 1–128 ASCII [A-Za-z0-9_-]") }
         return try await withRetries { budget in
             let (session, fresh) = try await self.openSession(budget: budget)
@@ -156,7 +165,8 @@ public actor NearbyReconnector {
                         current: now.map { "\($0.destinationId) @ rev \($0.baseRevision)" })
                 }
             }
-            return try await session.connection.submitCapture(capture, requestID: requestID, timeout: self.policy.requestTimeout)
+            return try await session.connection.submitCapture(capture, requestID: requestID, timeout: self.policy.requestTimeout,
+                                                              validateImage: validateImage)
         }
     }
 
@@ -194,12 +204,19 @@ public actor NearbyReconnector {
         let budget = Budget(started: clock())
         var last: NearbyError?
         while true {
-            if let l = last { try await waitBeforeRetry(budget, after: l) }
+            if let l = last {
+                if l.isBackpressure, let s = currentSession {
+                    // The Mac keeps the session; its acknowledgements must go out first.
+                    onEvent?(.waitingForAcks(pending: s.connection.pendingRequestCount))
+                    try await s.connection.waitUntilIdle(timeout: policy.requestTimeout)
+                }
+                try await waitBeforeRetry(budget, after: l)
+            }
             budget.tries += 1
             do {
                 return try await body(budget)
             } catch let e as NearbyError where e.isRetryable {
-                dropSession(reason: e.description)
+                if !e.isBackpressure { dropSession(reason: e.description) }
                 last = e
             } catch let e as NearbyError {
                 if case .cancelled = e { throw e }

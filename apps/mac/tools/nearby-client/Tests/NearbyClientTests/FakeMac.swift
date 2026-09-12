@@ -3,6 +3,13 @@ import Network
 import Security
 @testable import NearbyClient
 
+enum TestImages {
+    /// The 1×1 PNG from protocol/fixtures/capture-submission.json.
+    static let png1x1 = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC")!
+    /// PNG signature followed by garbage: the Mac's structural check refuses it.
+    static let brokenPNG = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + Data(repeating: 0x42, count: 64)
+}
+
 /// Minimal stand-in for the Mac listener: same TLS-PSK parameters, verifies
 /// `hello.proof`, hands over a `pair_psk` on the bootstrap key, answers
 /// `destination_query` and `capture_submit`, errors on anything else.
@@ -22,6 +29,10 @@ final class FakeMac {
     private var _captures: [NearbyWire.CaptureSubmit] = []
     private var _hellos: [NearbyWire.Hello] = []
     private var _dropCapturesBeforeReply = 0
+    /// Error replies to give the next capture_submits instead of an ack (session stays open).
+    private var _refuseCaptures: [(code: String, message: String)] = []
+    /// Refuse the next N hellos with this code and close (e.g. `too_many_sessions`).
+    private var _refuseHellos: (code: String, message: String, remaining: Int)?
     private var _replyDelay: TimeInterval = 0
     private var _junkBytesBeforeReply = 0
     private var _acceptedConnections = 0
@@ -83,6 +94,14 @@ final class FakeMac {
         get { queue.sync { _dropCapturesBeforeReply } }
         set { queue.sync { _dropCapturesBeforeReply = newValue } }
     }
+    var refuseCaptures: [(code: String, message: String)] {
+        get { queue.sync { _refuseCaptures } }
+        set { queue.sync { _refuseCaptures = newValue } }
+    }
+    var refuseHellos: (code: String, message: String, remaining: Int)? {
+        get { queue.sync { _refuseHellos } }
+        set { queue.sync { _refuseHellos = newValue } }
+    }
     var replyDelay: TimeInterval {
         get { queue.sync { _replyDelay } }
         set { queue.sync { _replyDelay = newValue } }
@@ -130,6 +149,11 @@ final class FakeMac {
                                   NearbyCrypto.verifyHelloProof(h.proof, psk: key.psk, nonce: h.nonce) else {
                                 fail("pair_mismatch", "unknown pair or bad proof"); closeAfterFlush(); return
                             }
+                            if var r = self._refuseHellos, r.remaining > 0 {
+                                r.remaining -= 1
+                                self._refuseHellos = r
+                                fail(r.code, r.message); closeAfterFlush(); return
+                            }
                             helloDone = true
                             reply("hello_ack", NearbyWire.HelloAck(macName: self.macName, nonce: h.nonce, destination: self._destination,
                                                                    pairPsk: key.bootstrap ? self.longTermPSK.base64EncodedString() : nil))
@@ -140,6 +164,11 @@ final class FakeMac {
                         case "capture_submit":
                             let cap = try! NearbyWire.decode(line, as: NearbyWire.CaptureSubmit.self).payload
                             self._captures.append(cap)
+                            if !self._refuseCaptures.isEmpty {
+                                let r = self._refuseCaptures.removeFirst()
+                                fail(r.code, r.message)
+                                continue // session stays open; keep reading
+                            }
                             if self._dropCapturesBeforeReply > 0 {
                                 // Delivered but never acknowledged: the client must re-send the same id.
                                 self._dropCapturesBeforeReply -= 1
