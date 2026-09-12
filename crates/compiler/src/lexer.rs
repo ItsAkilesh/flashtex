@@ -187,4 +187,143 @@ mod tests {
         assert_eq!(toks[0].kind, TokenKind::Command("section".into()));
         assert_eq!(toks[2].kind, TokenKind::LineBreak);
     }
+
+    // ── math shift ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn dollar_produces_math_shift() {
+        let toks = tokenize("$x$");
+        assert!(
+            toks.iter().any(|t| t.kind == TokenKind::MathShift),
+            "$ must produce a MathShift token"
+        );
+    }
+
+    // ── control symbols ───────────────────────────────────────────────────────
+
+    #[test]
+    fn escaped_percent_becomes_literal_word() {
+        // \% is a control symbol (escaped percent) — treated as the literal '%' word.
+        let toks = tokenize("\\%");
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].kind, TokenKind::Word("%".into()));
+    }
+
+    #[test]
+    fn escaped_dollar_becomes_literal_word() {
+        let toks = tokenize("\\$");
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].kind, TokenKind::Word("$".into()));
+    }
+
+    // ── comments ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn percent_starts_comment_to_end_of_line() {
+        let toks = tokenize("word % this is a comment\nnext");
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        assert!(kinds.contains(&TokenKind::Comment), "% must produce a Comment token");
+        // Words before and after the comment must be present.
+        let words: Vec<_> = toks
+            .iter()
+            .filter_map(|t| if let TokenKind::Word(w) = &t.kind { Some(w.as_str()) } else { None })
+            .collect();
+        assert!(words.contains(&"word"), "word before comment must be tokenized");
+        assert!(words.contains(&"next"), "word after comment's newline must be tokenized");
+    }
+
+    #[test]
+    fn comment_span_does_not_include_trailing_newline() {
+        let text = "% comment\nnext";
+        let toks = tokenize(text);
+        let comment = toks.iter().find(|t| t.kind == TokenKind::Comment).unwrap();
+        // The newline following the comment must not be inside the Comment span.
+        assert_eq!(&text[comment.span.start..comment.span.end], "% comment",
+            "Comment span must cover exactly the % through the last non-newline char");
+    }
+
+    // ── braces ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn braces_are_individual_tokens() {
+        let toks = tokenize("{hello}");
+        assert_eq!(toks[0].kind, TokenKind::LBrace);
+        assert_eq!(toks[2].kind, TokenKind::RBrace);
+    }
+
+    // ── whitespace varieties ──────────────────────────────────────────────────
+
+    #[test]
+    fn single_newline_is_space_not_par_break() {
+        let toks = tokenize("a\nb");
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        assert!(kinds.contains(&TokenKind::Space));
+        assert!(!kinds.contains(&TokenKind::ParBreak),
+            "a single newline must not produce a ParBreak");
+    }
+
+    #[test]
+    fn three_newlines_produce_par_break() {
+        // ≥2 newlines in a single whitespace run → ParBreak.
+        let toks = tokenize("a\n\n\nb");
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        assert!(kinds.contains(&TokenKind::ParBreak));
+    }
+
+    // ── edge cases ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn empty_input_produces_no_tokens() {
+        let toks = tokenize("");
+        assert!(toks.is_empty(), "empty input must produce no tokens");
+    }
+
+    #[test]
+    fn backslash_at_eof_produces_empty_command() {
+        // A bare \ at end-of-input — no following character. The lexer
+        // produces a Command("") token rather than panicking.
+        let toks = tokenize("\\");
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].kind, TokenKind::Command("".into()));
+    }
+
+    #[test]
+    fn unicode_word_span_is_byte_not_char_offset() {
+        // A multi-byte word must have start/end in bytes, not characters.
+        let text = "αβγ";              // 6 bytes (3 × 2-byte Greek letters)
+        let toks = tokenize(text);
+        let word = toks.iter().find(|t| matches!(t.kind, TokenKind::Word(_))).unwrap();
+        assert_eq!(word.span.end - word.span.start, text.len(),
+            "span width must equal byte length of the word");
+        assert_eq!(&text[word.span.start..word.span.end], "αβγ");
+    }
+
+    #[test]
+    fn command_name_span_starts_at_backslash() {
+        let text = "\\section";
+        let toks = tokenize(text);
+        assert_eq!(toks[0].kind, TokenKind::Command("section".into()));
+        // The span must cover from the \ through the last letter.
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, text.len());
+    }
+
+    #[test]
+    fn linebreak_token_span_covers_both_backslashes() {
+        let text = "\\\\";
+        let toks = tokenize(text);
+        assert_eq!(toks[0].kind, TokenKind::LineBreak);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 2, "LineBreak span must cover both backslashes");
+    }
+
+    #[test]
+    fn all_span_ranges_are_valid_utf8_slice_boundaries() {
+        let text = "héllo \\section{wörld} % comm\n\\\\";
+        let toks = tokenize(text);
+        for tok in &toks {
+            // If this panics the span is not on a UTF-8 boundary.
+            let _ = &text[tok.span.start..tok.span.end];
+        }
+    }
 }
