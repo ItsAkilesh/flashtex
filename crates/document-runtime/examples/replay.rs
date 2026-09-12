@@ -34,6 +34,19 @@ fn response(session: &mut Session) -> Result<(Value, [f64; 3]), String> {
         thread::sleep(Duration::from_micros(100));
     }
 }
+fn mismatch_class(persistent: &Value, fresh: &Value) -> &'static str {
+    if persistent == fresh {
+        "none"
+    } else if persistent["payload"]["status"] != fresh["payload"]["status"] {
+        "status"
+    } else if persistent["payload"]["diagnostics"] != fresh["payload"]["diagnostics"] {
+        "diagnostics"
+    } else if persistent["payload"]["pages"] != fresh["payload"]["pages"] {
+        "positioned_pages"
+    } else {
+        "envelope_or_other_payload"
+    }
+}
 fn run(binary: &Path) -> Result<(), String> {
     let mut warm = Session::spawn(binary, Limits::default())?;
     let mut samples = Vec::new();
@@ -81,6 +94,10 @@ fn run(binary: &Path) -> Result<(), String> {
         println!(
             "{}",
             json!({"type":"sample", "id":id, "exact_json_equal":equal,
+            "mismatch_class":mismatch_class(&persistent, &fresh),
+            "compiler_status":persistent["payload"]["status"],
+            "pages":persistent["payload"]["pages"].as_array().map(Vec::len),
+            "diagnostics":persistent["payload"]["diagnostics"].as_array().map(Vec::len),
             "warm_queue_ms":timing[0], "warm_compiler_transport_poll_ms":timing[1],
             "warm_total_ms":timing[2], "fresh_launch_to_result_ms":cold_started.elapsed().as_secs_f64()*1000.0})
         );

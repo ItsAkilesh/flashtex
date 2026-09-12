@@ -13,7 +13,7 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "3e8861e4403f5934c5a4c0a387f2393d4870a5f5",
+  "code_revision": "3d3194ad5b5290747306f44b012c35f8e03b23e6",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -21,15 +21,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "3e8861e4403f5934c5a4c0a387f2393d4870a5f5",
-  "next_action": "Publish status integration; review dynamic include discovery dependency and next compiler parity integration task.",
+  "next_action": "Publish evidence; resolve bounded large-result transport with commander assignment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded active project status and real helper membership regression complete; compiler restart preserves increasing index generation. 33 controller tests plus strict clippy pass.",
+  "summary": "Pinned 5KB/50KB/500KB scaling harness:40 exact clean fresh/persistent matches; 500KB valid10.1MB output exceeds runtime8MiB frame. GH21 opened.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T06:59:00Z",
+  "updated_utc": "2026-09-12T07:03:16Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing hosted Astra; no extra workers or API calls."
+    "status": "Existing hosted Astra only; no provider calls. Deterministic compiler probes only."
   }
 }
