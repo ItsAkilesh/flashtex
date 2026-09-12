@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-historical-preview",
+  "allocation_id": "claude-mac20x-historical-preview",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-historical-preview/consumer",
+  "capabilities": [
+    "swift",
+    "macos"
+  ],
+  "code_revision": "6bbe6a10d84bd2d0ba194fdb0f2fcd773065d143",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:15:29Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
