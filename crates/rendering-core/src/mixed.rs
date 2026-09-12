@@ -385,6 +385,15 @@ fn resource(key: &ResourceKey) -> Value {
         } => {
             json!({"kind":"physical","font_sha256":font_sha256,"tfm_sha256":tfm_sha256,"face_index":face_index})
         }
+        ResourceKey::CffPhysical {
+            font_sha256,
+            cff_sha256,
+            tfm_sha256,
+            encoding_sha256,
+            face_index,
+        } => {
+            json!({"kind":"cff_physical","font_sha256":font_sha256,"cff_sha256":cff_sha256,"tfm_sha256":tfm_sha256,"encoding_sha256":encoding_sha256,"face_index":face_index})
+        }
         ResourceKey::Virtual {
             vf_sha256,
             tfm_sha256,
@@ -453,4 +462,45 @@ pub(crate) fn cubic_geometry_value(path: &PositionedCubic) -> Value {
         json!([v.numerator().to_string(), (1u128 << v.shift()).to_string()])
     };
     json!({"kind":"cubic","cff_table_sha256":path.cff_table_sha256,"full_font_identity":path.full_font_identity.as_ref().map(|identity|json!({"font_sha256":identity.font_sha256,"cff_sha256":identity.cff_sha256,"face_index":identity.face_index,"table_range":[identity.table_range.start,identity.table_range.end]})),"font_matrix":path.font_matrix.iter().map(|v|json!([v.numerator().to_string(),v.denominator().to_string()])).collect::<Vec<_>>(),"advance":point(path.advance),"commands":path.commands.iter().map(cubic).collect::<Vec<_>>(),"hint_policy":match path.hints.policy{HintPolicy::Reject=>"reject",HintPolicy::Unhinted=>"unhinted"},"stems":path.hints.stems.iter().map(|h|json!({"vertical":h.vertical,"delta":dyadic(h.delta),"width":dyadic(h.width)})).collect::<Vec<_>>(),"masks":path.hints.masks.iter().map(|h|json!({"counter":h.counter,"stem_count":h.stem_count,"bytes":h.bytes})).collect::<Vec<_>>(),"flex_depths":path.hints.flex_depths.iter().map(|v|dyadic(*v)).collect::<Vec<_>>()})
+}
+
+impl MixedBatch {
+    /// Internal consumer assembly gate. Caller has verified source/resource bytes;
+    /// replay validates all emitted primitive geometry and provenance structure.
+    pub(crate) fn assembled(
+        context: MixedContext<'_>,
+        primitives: Vec<MixedPrimitive>,
+        limits: MixedLimits,
+    ) -> MixedResult<Self> {
+        let commands = primitives.iter().try_fold(0usize, |sum, p| {
+            sum.checked_add(match &p.geometry {
+                MixedGeometry::Quadratic(v) => v.len(),
+                MixedGeometry::Cubic(v) => v.commands.len(),
+                MixedGeometry::Rule(_) => 0,
+            })
+            .ok_or(MixedError::Budget)
+        })?;
+        if primitives.len() > limits.max_primitives || commands > limits.max_commands {
+            return Err(MixedError::Budget);
+        }
+        let mut result = Self {
+            project_id: context.project_id.into(),
+            revision: context.revision,
+            page: context.page,
+            page_width: context.page_width,
+            page_height: context.page_height,
+            clip: context.clip,
+            primitives,
+            commands,
+            encoded: vec![],
+        };
+        let mut output = BoundedOutput {
+            bytes: vec![],
+            limit: limits.max_serialized_bytes.min(MAX_MESSAGE_BYTES),
+        };
+        serde_json::to_writer(&mut output, &result).map_err(|_| MixedError::Budget)?;
+        crate::mixed_replay::ReplayBatch::parse(&output.bytes, limits)?;
+        result.encoded = output.bytes;
+        Ok(result)
+    }
 }

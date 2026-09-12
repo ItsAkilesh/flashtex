@@ -8,15 +8,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "28a4657f70269b800e963081b969572d3006644a",
-  "objective": "Measure and implement bounded immutable MATH query caching with exact resource and device context identity",
+  "input_main_sha": "6f02330b5a12c01028549ed61d254f401c2a1f34",
+  "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 10,
+  "revision": 11,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T08:49:23.060270+00:00"
+  "updated_utc": "2026-09-12T08:55:45Z"
 }

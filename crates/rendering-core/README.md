@@ -402,3 +402,147 @@ status and 100 identical placement/serialization repetitions. Timings are labell
 as local debug measurements; they exclude native painting and are not a preview
 latency claim. Replay includes the shaping implementation cache key, so a source
 revision may legitimately change the replay hash without changing geometry.
+
+`registry_binding::RegistryRenderer` binds explicit family/weight/style choices
+from an immutable `ProjectFontRegistry`. Every lease retains the project instance,
+registry generation, full resource declaration (including file and licensing
+provenance), verified engine identity and exact CFF table identity when applicable.
+Shaping and placement check the active lease; no nearest-style or system-font
+fallback occurs. Per-binding cache allocations share the configured total charged
+cache payload budget. Verified font storage, engine copies and caller-held frames
+or leases are outside that cache budget.
+
+Replacing a registry with a different semantic generation clears active bindings
+and rejects prior leases, even if a later replacement returns to an earlier
+hash. Existing frames and their exact paths remain immutable. Identical semantic
+generations preserve active caches. Renderer instances have separate local lease
+identities even when their caller-supplied project labels match.
+
+Registry frame replay wraps shaped evidence with the complete binding.
+`verify_replay` checks the current lease, source snapshot, exact declaration,
+engine/raw font identities, backend and CFF table range/hash. This establishes
+resource provenance, not that arbitrary externally supplied outline commands
+match the font; it does not grant painting or activate a native wire.
+
+Synthetic tests exercise replacement and retained-frame behavior. Run the separate
+pinned TTF/CFF acceptance when those licensed installed resources are available:
+`cargo test --offline --manifest-path crates/rendering-core/Cargo.toml --test
+registry_binding pinned_mixed_backend_registry_replay_and_replacement -- --ignored
+--nocapture`. It pins both fonts/licenses before creating a temporary project.
+
+`registry_binding::selection` provides source-aware historical hit inspection and
+current insertion destinations. The caller supplies exact bounds and start/end
+carets for every shaped cluster; glyph advances are never treated as ink bounds.
+Clusters without hit bounds, including invisible characters, remain addressable
+through their complete source metadata. Ligatures expose their indivisible source
+range and supplied edge carets. RTL/reordered caret layouts are explicitly rejected
+until the shaping engine supports that ordering.
+
+Selection creation requires the current registry lease and exact source snapshot.
+Historical `inspect` remains available after replacement, but `destination` and
+`validate_destination` reject old epochs, foreign frames, source revisions/hashes
+or paths. Call `validate_destination` at the edit boundary: an earlier destination
+is not a permanent authorization to edit a changed document. Exact nearest-caret
+comparison can return a precision-bound error rather than round coordinates.
+
+`RegistryRenderer::export_manifest(expected_generation, max_bytes)` consumes the
+font owner's version2 manifest API without rewriting its format. Bounded
+`metadata_page` exposes exact declared styles and CFF table provenance for an
+explicit user choice. Importing the exported manifest through the rooted registry
+loader preserves the semantic generation and active rendering leases. Saving is
+left to the caller's existing rooted file layer. No system discovery or native
+protocol change is introduced.
+
+The opt-in `pdf_stream` adapter emits validated exact PDF path operators and a
+provenance sidecar. It refuses unsupported decimal rounding/transparency and does
+not write another PDF container. See [PDF-INTEGRATION.md](PDF-INTEGRATION.md) for
+the reviewed backend limitation, missing owner API, exact geometry gates and
+executable synthetic/real-font stream checks.
+
+`registry_binding::nested` consumes immutable VF graph-cache packets with explicit
+registry leases and independently bound TFM encodings for both TrueType and CFF
+endpoints. Original GIDs, full font/CFF/TFM/encoding hashes, face identity and source
+chains survive mixed batch serialization. Exact VF coordinates and TFM advances
+use the caller-selected rational policy; they do not claim TeX scaled-point
+rounding equivalence. Unbound endpoints and stale registry leases reject before a
+partial frame is returned. The older TrueType-only `nested_run` explicitly rejects
+CFF roots; use the mixed registry consumer instead.
+
+Synthetic sfnt/TFM/VF acceptance proves flat/nested mixed geometry equality,
+fractional origins/advances, explicit encoding provenance and immutable retained
+frames after registry/source changes. The graph cache is scoped to one immutable
+graph; callers still own dependency reload detection. `require_current` checks
+registry/source state, not external VF file freshness. No real VF oracle or native
+wire integration is claimed. Resource cache charging includes the expanded CFF
+identity fields; caller-held frames/Arcs remain outside current cache residency.
+
+`registry_binding::math` consumes the existing original MATH parser through
+`BoundMathFont`; it adds no parser or layout algorithm. Bind a `MathLease` from a
+current rendering lease with explicit `UnhintedDesignUnits`, then request a
+`MathMetricsSnapshot` with source path/revision/range, exact font size and at most
+256 original GIDs. All56 constants retain raw values and a typed dimension:
+53 lengths scale exactly to canonical ticks, while3 percentages become independent
+dimensionless ratios. Italic corrections and optional top-accent attachments
+retain original design units alongside scaled values. Absent accents stay absent.
+
+Snapshots expose complete registry/style/declaration/license, raw font and engine
+face identities, MATH table SHA/length and parser source SHA. Replay also records
+the consumer source SHA and exact source snapshot identity. `verify_replay`
+compares all supplied values against current verified bound metrics and rejects
+duplicate/malformed/tampered or stale evidence. Retained snapshots stay immutable
+after replacement. Device adjustments, variants, math kerning and extended-shape
+coverage remain explicit unsupported capabilities in this stage.
+
+Synthetic acceptance covers signed lengths, unsigned minimum heights, percentages,
+glyph corrections, absent accents, exact scaling and stale font/source refusal.
+The separately run pinned `pinned_stix_math_metric_consumer_replay` test uses the
+installed STIXTwoMath resource SHA
+`3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c`
+and the already pinned OFL license. Its MATH table is27408 bytes, SHA
+`0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a`.
+It verifies56 constants,6 original GIDs and deterministic exact replay at a
+fractional size; this is consumer consistency, not a mathematical layout oracle
+or native painting claim.
+
+### Exact fitted MATH construction placement
+
+`registry_binding::math::assembly::RegistryRenderer::math_assembly` consumes the
+original font resource fitter through an explicit strategy and limits. The caller
+supplies target extent in design units, page font size, baseline origin, direction,
+clip, source range and CFF unhinted policy. Horizontal assembly offsets advance
+right; vertical offsets advance upward (one conversion to downward page y).
+No automatic baseline alignment or TeX delimiter policy is inferred.
+
+`MathAssemblyFrame` retains immutable bound MATH metrics, the complete fitted
+result (part/instance identity, exact offsets/overlaps, italic correction and
+strategy), and mixed quadratic/cubic batch. Stable primitive index corresponds to
+the fitted part index; the original GID and source range remain on every primitive.
+`require_current` gates reuse against registry lease and source revision/hash;
+retained geometry remains readable. Device-adjusted assemblies are explicitly
+unsupported. Budget failures return no partial frame. The mixed fixture is still
+an internal geometry format: retain the frame's fit/metrics provenance alongside
+it, since it does not serialize new MATH wire fields.
+
+The synthetic test proves exact fractional origins in both directions, overlaps,
+ready variants and primitive/command/byte/fit budget rejection. The pinned STIX
+acceptance exercises 32 vertical and 34 horizontal assemblies at target5000.5
+with cache/direct byte equality and stale-source refusal. Three other STIX
+constructions refuse the declared fit budget. These are consistency tests;
+TeX layout, native paint and visual parity are not established.
+
+### Source-bound MathKern metrics replay
+
+`RegistryRenderer::math_kerns` accepts up to256 explicit original-GID, corner and
+rational design-unit height queries. It consumes the original bounded parser's
+upper-bound tie policy, preserves raw kern values and scales them exactly to the
+requested page font size. Absent corners return the parser's zero value; invalid
+GIDs fail. Height-record and selected-value device flags remain separate and no
+device correction or script layout occurs.
+
+`MathKernSnapshot` retains the source/registry/MATH snapshot. Its bounded replay
+records query heights, tie policy, scaled values and consumer source hash;
+verification rejects tampering, duplicate JSON keys, stale source or stale lease.
+Synthetic checks cover negative heights/values, exact ties, missing corners and
+request/output limits. Pinned STIX replay compares every available corner table
+around its correction-height boundaries against the bound resource API. This
+is exact consumer consistency rather than an independent typesetting oracle.
