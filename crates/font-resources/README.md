@@ -530,8 +530,8 @@ Limits reuse RegistryLimits (128nodes,257reads,1MiB manifest,256MiB total maximu
 plus131068bytes per TFM,16MiB per VF and32 graph-depth limit. `expand(code,
 registry_generation)` refuses stale context and builds borrowed bindings for the
 existing ResourceGraph exact expansion/source-chain implementation. It does not
-reimplement packet execution. Current physical endpoints use the graph's existing
-TrueType BoundTfmFont profile; CFF endpoints remain explicitly unsupported here.
+reimplement packet execution. Physical endpoints explicitly select TrueType BoundTfmFont or CFF BoundCffTfmFont
+through separate node variants; no backend inference occurs.
 
 `generation`, `manifest`, `loaded_bytes` and retained license texts provide
 recoverable provenance. Node/local-ID ordering is normalized before generation
@@ -541,3 +541,21 @@ profile. Synthetic rooted-project tests cover originalGID/source-chain expansion
 missing/duplicate/cyclic dependencies, changed bytes, missing licenses, symlinks,
 read budgets, retained snapshots and explicit unknown-special rejection. These do
 not establish real VF special or visual reference equivalence.
+
+
+VF graphs now accept `Resource::CffPhysical(&BoundCffTfmFont)` with a distinct
+`ResourceKey::CffPhysical` binding full-font SHA, CFF SHA, TFM SHA, canonical encoding
+SHA and face. Existing TrueType keys/API stay intact. Physical mapping reuses the
+bound CFF encoding and exact TFM dimensions; missing mappings and `.notdef` fail.
+Nested packets preserve original GIDs, exact scaling and complete source chains.
+Rooted dependency schema1 adds explicit `kind: "cff_physical"` nodes with a CFF
+encoding manifest and registry StyleBinding. Assets retain the same license/read
+bounds; a wrong backend/hash cannot silently resolve to another resource.
+
+99tests and strictclippy cover flat/nested CFF equivalence, mixed TrueType/CFF
+packets, explicit missing/.notdef errors and rooted CFF binding mismatch. Specials
+remain unsupported. Renderer adoption requires new exhaustive-match handling:
+read-only compile of rendering-core5c5e3f89dd51cc0c1517b915b95c9a65a654bd89 against
+this candidate identified `tex_adapter.rs:602`, `graph_cache.rs:149` and
+`mixed.rs:380`. These consumer files were not edited; no integrated renderer
+compatibility claim is made until its owner publishes that adaptation.

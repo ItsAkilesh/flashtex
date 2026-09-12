@@ -28,6 +28,12 @@ pub enum Node {
         binding: StyleBinding,
         encoding: EncodingManifest,
     },
+    CffPhysical {
+        id: String,
+        tfm: Asset,
+        binding: StyleBinding,
+        encoding: crate::cff::CffEncodingManifest,
+    },
     Virtual {
         id: String,
         tfm: Asset,
@@ -38,7 +44,9 @@ pub enum Node {
 impl Node {
     fn id(&self) -> &str {
         match self {
-            Self::Physical { id, .. } | Self::Virtual { id, .. } => id,
+            Self::Physical { id, .. } | Self::CffPhysical { id, .. } | Self::Virtual { id, .. } => {
+                id
+            }
         }
     }
 }
@@ -56,6 +64,11 @@ enum Loaded {
         font: Arc<FontResource>,
         encoding: EncodingManifest,
     },
+    CffPhysical {
+        tfm: Tfm,
+        font: Arc<CffFontResource>,
+        encoding: Arc<crate::cff::ResolvedCffEncoding>,
+    },
     Virtual {
         tfm: Tfm,
         vf: VirtualFont,
@@ -65,7 +78,9 @@ enum Loaded {
 impl Loaded {
     fn tfm(&self) -> &Tfm {
         match self {
-            Self::Physical { tfm, .. } | Self::Virtual { tfm, .. } => tfm,
+            Self::Physical { tfm, .. }
+            | Self::CffPhysical { tfm, .. }
+            | Self::Virtual { tfm, .. } => tfm,
         }
     }
     fn key(&self) -> ResourceKey {
@@ -74,6 +89,17 @@ impl Loaded {
                 font_sha256: font.descriptor().sha256.clone(),
                 tfm_sha256: tfm.source_sha256.clone(),
                 face_index: font.descriptor().face_index,
+            },
+            Self::CffPhysical {
+                tfm,
+                font,
+                encoding,
+            } => ResourceKey::CffPhysical {
+                font_sha256: font.identity().font_sha256.clone(),
+                cff_sha256: font.identity().cff_sha256.clone(),
+                tfm_sha256: tfm.source_sha256.clone(),
+                encoding_sha256: encoding.encoding_sha256().into(),
+                face_index: font.identity().face_index,
             },
             Self::Virtual { tfm, vf, .. } => ResourceKey::Virtual {
                 vf_sha256: vf.source_sha256.clone(),
@@ -186,6 +212,34 @@ impl ResolvedVfProject {
                         tfm: parsed,
                         font,
                         encoding: encoding.clone(),
+                    }
+                }
+                Node::CffPhysical {
+                    tfm,
+                    binding,
+                    encoding,
+                    ..
+                } => {
+                    let bytes = asset(&mut reader, tfm, 131068, &mut license_texts)?;
+                    let parsed = Tfm::parse(&bytes).map_err(|e| resource_error(&tfm.path, e))?;
+                    let RegistryResource::Cff(font) = registry.resource(binding)? else {
+                        return Err(RegistryError::InvalidManifest(
+                            "CFF VF endpoint selected non-CFF registry resource".into(),
+                        ));
+                    };
+                    let cache = font
+                        .outline_cache(crate::cff::CacheLimits {
+                            max_entries: 0,
+                            max_bytes: 0,
+                        })
+                        .map_err(|e| resource_error(&tfm.path, e))?;
+                    let bound = crate::cff::BoundCffTfmFont::new(&parsed, &cache, encoding)
+                        .map_err(|e| resource_error(&tfm.path, e))?;
+                    let resolved = bound.encoding().clone();
+                    Loaded::CffPhysical {
+                        tfm: parsed,
+                        font,
+                        encoding: resolved,
                     }
                 }
                 Node::Virtual { tfm, vf, fonts, .. } => {
@@ -336,7 +390,22 @@ impl ResolvedVfProject {
                 );
             }
         }
+        let mut cff_bindings = Vec::new();
+        for node in self.nodes.values() {
+            if let Loaded::CffPhysical { tfm, encoding, .. } = node {
+                cff_bindings.push(
+                    crate::cff::BoundCffTfmFont::from_resolved(tfm, encoding.clone())
+                        .map_err(|e| resource_error("VF CFF binding", e))?,
+                );
+            }
+        }
         let mut graph = ResourceGraph::new();
+        for binding in &cff_bindings {
+            graph
+                .insert(Resource::CffPhysical(binding))
+                .map_err(|e| resource_error("VF CFF graph", e))?;
+        }
+
         for binding in &bindings {
             graph
                 .insert(Resource::Physical(binding))
