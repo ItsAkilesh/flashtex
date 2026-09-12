@@ -1,6 +1,6 @@
 # Claude handoff — machine resource inventory
 
-- Updated UTC: 2026-09-12T03:25Z
+- Updated UTC: 2026-09-12T03:40Z
 - Agent / parent / machine alias: Claude (Opus 5) / user-directed, no parent agent /
   `mac-m5pro-kabir`
 - Task / acceptance gate / owned paths: record the verified agent-tool and build
@@ -30,6 +30,9 @@
     supplied key.
   - Claude live plan consumption is unreadable non-interactively; a human must run
     `/usage` in the TUI. Cursor exposes no quota at all from the CLI.
+  - Resource owner action: correct the "20x Codex plan" line in `RESOURCES.md` to
+    ChatGPT Plus, and add the three user-reported weekly resets as a tracked,
+    decrementing quantity. This agent does not own that file and did not edit it.
   - Other machines have no entry yet. The register is one file per machine; each
     machine's own agent should add its own rather than one agent guessing.
 - Interface changes / consumer actions: none to application code. Adds a new
@@ -80,9 +83,12 @@
   - `~/.codex/auth.json` could not be read — blocked as credential access. The
     signed-in Codex account identity is therefore unconfirmed. Plan tier came from
     the session rate-limit payload instead, which needed no credential access.
-  - Recorded discrepancy: the Codex CLI reports `plan_type: "plus"`, while
-    `RESOURCES.md` notes a user mention of a "20x Codex plan". Left unreconciled
-    rather than resolved by assumption.
+  - Discrepancy resolved by the user at 2026-09-12T03:40Z: the ChatGPT account is
+    the $20 Plus plan, matching the CLI's `plan_type: "plus"`. The "20x Codex plan"
+    in `RESOURCES.md` does not describe this account. The user also reports
+    substantially all weekly/session allowance is available for this project, plus
+    three weekly resets. The reset count is user-reported; the CLI exposes no reset
+    figure, so Git is the only ledger for decrementing it.
   - **Policy conflict, for the user, not for me to settle:** `CLAUDE.md` on main
     says not to invoke Claude inference until separate funding is verified. The
     user directed this Claude session personally and AGENTS.md states user

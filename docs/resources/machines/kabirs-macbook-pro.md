@@ -1,7 +1,7 @@
 # Machine: mac-m5pro-kabir
 
 Verified by: Claude agent, session of 2026-09-12.
-Verified at: 2026-09-12T03:18Z (quota readings are point-in-time).
+Verified at: 2026-09-12T03:18Z; plan facts updated 2026-09-12T03:40Z (quota readings are point-in-time).
 Owner agent: Claude on this machine.
 Status: capability evidence. Confers no spending permission; see
 [RESOURCES.md](../../../coordination/RESOURCES.md).
@@ -80,10 +80,28 @@ Quota, read 2026-09-12T03:18:08Z from a deliberate 4,175-token probe:
 Credits block reports `has_credits: false`, `unlimited: false`, `balance: "0"` —
 this account has **no purchased credit balance**, only plan quota.
 
-**Discrepancy to reconcile:** the CLI reports `plan_type: "plus"`. `RESOURCES.md`
-records a user mention of a "20x Codex plan". Those are not the same tier. Either
-a different account holds the higher plan, or the mention needs correcting. Do not
-size Codex allocations off the higher figure until the account is confirmed.
+**Discrepancy resolved, 2026-09-12T03:40Z.** The user confirmed this is the $20
+ChatGPT Plus plan, which matches the CLI's `plan_type: "plus"`. The "20x Codex
+plan" mentioned in `RESOURCES.md` does **not** describe this account. The resource
+owner should correct that entry; size Codex allocations off Plus.
+
+User-reported availability, not readable from the CLI:
+
+- Substantially all of the weekly and 5-hour session allowance is available for
+  this project. The measured 0% / 4% readings above are consistent with that.
+- **Three weekly resets** are available and may be used for this project.
+
+Resets are a separate mechanism from purchased credits, so the `balance: "0"`
+reading above does not contradict this; the CLI exposes no reset count at all, so
+the figure of three is user-reported and cannot be verified from this machine.
+Decrement it in `RESOURCES.md` as resets are consumed — Git is the only ledger
+for it.
+
+**This makes Codex the least-constrained measured resource on this machine.** It
+is also the only route here that is simultaneously funded, authorized, and
+unblocked: Claude work is policy-blocked pending funding isolation, and Cursor
+exposes no quota to measure against. Allocate sustained autonomous work here to
+Codex, on the Rust compiler, since the Xcode blocker below rules out Apple work.
 
 Rate-limit percentages are only refreshed by making a request; between requests
 the last snapshot goes stale. The snapshot preceding this one was 13 days old.
