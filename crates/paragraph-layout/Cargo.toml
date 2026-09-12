@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-paragraph-layout"
+version = "0.1.0"
+edition = "2024"
+description = "Original FlashTeX paragraph line breaking (Knuth-Plass total-fit and first-fit), horizontal/vertical metrics, and deterministic page breaking behind an integration API. No external crates."
+publish = false
+
+[lib]
+name = "flashtex_paragraph_layout"
+path = "src/lib.rs"
+
+[dependencies]
