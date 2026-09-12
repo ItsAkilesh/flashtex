@@ -249,7 +249,9 @@ funded. Persist with useful actions; avoid blind retry loops or false optimism.
 Each worker owns one task branch. The Commander is the integration owner of main.
 All new commits, including necessary merge commits, are executed by Cursor CLI
 with `Cursor <cursor@flashtex.invalid>` and truthful implementation/execution
-trailers. Do not rewrite previous human commits or claim vendor verification.
+trailers, except on `mac-m1max-a`, where the user is the primary author (see the
+machine exception in AGENTS.md). Do not rewrite previous human commits or claim
+vendor verification.
 
 For each integration:
 

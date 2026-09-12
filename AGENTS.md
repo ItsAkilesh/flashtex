@@ -65,6 +65,15 @@ non-deliverable address, not a verified Cursor employee or vendor account.
 Use repository-local configuration or per-command identity; do not change global
 Git identity or rewrite existing commits.
 
+**Machine exception — `mac-m1max-a` (the user's own Mac):** the user directed
+that everything committed and pushed from this computer carries the user as the
+primary Git author, using the repository's configured `user.name`/`user.email`
+(`jay3332`). Do not set the Cursor author on commits from this machine. The
+Cursor rules above still apply unchanged on every other machine, and the
+truthful trailers below are still required here: name the implementing agent,
+name the actual commit executor, and add `Co-authored-by: Cursor
+<cursoragent@cursor.com>` only when Cursor CLI actually executed the commit.
+
 Record the actual contributors using truthful trailers, for example:
 
 ```text
@@ -72,9 +81,10 @@ Implementation-Agent: Codex
 Commit-Executor: Cursor CLI
 ```
 
-The user explicitly requires Cursor CLI itself to execute every new agent commit;
-setting the Git author alone does not satisfy this. Hold commits while
-Cursor login/funding is unavailable. Record its actual review/execution accurately.
+The user explicitly requires Cursor CLI itself to execute every new agent commit
+on machines other than `mac-m1max-a`; setting the Git author alone does not
+satisfy this. Hold commits while Cursor login/funding is unavailable. Record
+its actual review/execution accurately.
 Never claim Cursor wrote or reviewed changes merely because the Git author is
 Cursor. Implementation may be performed by other agents.
 
