@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ffe199d89302a4353f621923c0914707b5611a80",
-  "objective": "Independently audit historical burst original producer correlation source tokens and currentness",
+  "input_main_sha": "f9b6c150589f15ccf54f9c039384343a76177d44",
+  "objective": "Review separate-process sender lifecycle and byte-order guarantees without peer mutation or duplicate workload",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 27,
+  "revision": 28,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:33:32.337444+00:00"
+  "updated_utc": "2026-09-12T13:35:16Z"
 }
