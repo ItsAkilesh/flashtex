@@ -1,0 +1,71 @@
+{
+  "agent_id": "commander-font-resources",
+  "archived_utc": "2026-09-12T09:45:44Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful bounded behavior tests and strict lint pass",
+      "Preserve exact identities; publish measured evidence and unsupported gates"
+    ],
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-corpus/font-resources",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "d8d96a4d4df0eba3deef36a90dcf4048da335a74",
+    "objective": "Obtain pinned official matching ec-lmr12/rm-lmr metrics and verify shared TFM migration with explicit required-resource failure; no silent OTF fallback or peer edits.",
+    "owned_paths": [
+      "crates/font-resources"
+    ],
+    "revision": 14,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-024",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:42:29.993287+00:00"
+  },
+  "report": {
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-024": {
+        "acknowledged_utc": "2026-09-12T09:43:43Z",
+        "adaptation": "Reviewed current assignment14: official2.004 metric assets obtained, source-hash matching confirmed against pinned ec-lmr10; implementing bounded required-metric failure and exact peer differential replay. No peer changes or fallback.",
+        "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
+        "revision": 14
+      }
+    },
+    "branch": "agent/commander-corpus/font-resources",
+    "capabilities": [
+      "rust-font-resources"
+    ],
+    "code_revision": "cb4ff5f4b224b553eaaf580f1676e50f03a8c43c",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
+    "next_action": "Commander integrate cb4ff5f; pipeline consumer wires required-mode diagnostic and renderer reruns with /tmp/flashtex-lm-tfm-0or97xdj/v2.004. TTC gate remains unchanged. Await bounded next assignment; no pending processes or peer writes.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT024r14 published cb4ff5f. Official LM2.004 matching ec-lmr12/rm-lmr12/8/6 retrieved temporarily with archive/file/license hashes; exact actual9bb7b27 reader replay matches all present metrics/fontdimens/ten runs. RequiredMetrics rooted SHA-bound all-or-error loader explicitly rejects missing/changed metric/license; no OTF fallback. Full tests/clippy and real opt-in tests pass; renderer has asset path, issue2 handoff published.",
+    "tool": "Codex Astra",
+    "updated_utc": "2026-09-12T09:45:22Z",
+    "usage": {
+      "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
+      "status": "Hosted allocation; no external provider calls; account remainder unknown."
+    }
+  },
+  "report_age_seconds": 22,
+  "report_path": "coordination/agents/commander-font-resources.json",
+  "review_required": true,
+  "revision": 14,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-024",
+  "worker_branch": "agent/commander-corpus/font-resources",
+  "worker_report_sha": "578ac0c0d781d0e1d9aac23fbd0f3006d6068b88"
+}
