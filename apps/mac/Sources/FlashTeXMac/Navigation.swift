@@ -712,6 +712,8 @@ extension ShellModel {
 /// `Navigate` menu, added from `FlashTeXMacApp` with one line.
 struct NavigationCommands: Commands {
     var model: ShellModel
+    /// The diagnostics panel's selection/occurrence cursor (DiagnosticsPanel.swift), while one is in the scene.
+    @FocusedValue(\.diagnosticsPanel) private var diagnosticsPanel
 
     var body: some Commands {
         CommandMenu("Navigate") {
@@ -724,6 +726,12 @@ struct NavigationCommands: Commands {
             Button("Previous Diagnostic") { model.goToDiagnostic(forward: false) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
                 .disabled(model.result == nil)
+            Button("Next Occurrence") { if let p = diagnosticsPanel { model.stepOccurrence(forward: true, panel: p) } }
+                .keyboardShortcut("]", modifiers: [.command, .option])
+                .disabled(diagnosticsPanel == nil)
+            Button("Previous Occurrence") { if let p = diagnosticsPanel { model.stepOccurrence(forward: false, panel: p) } }
+                .keyboardShortcut("[", modifiers: [.command, .option])
+                .disabled(diagnosticsPanel == nil)
             Divider()
             Button("Reveal Caret in Preview") { model.revealCaretInPreview() }
                 .keyboardShortcut("j", modifiers: [.command, .shift])

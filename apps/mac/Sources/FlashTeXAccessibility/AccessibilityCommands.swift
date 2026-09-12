@@ -12,7 +12,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
     case undo, completion
-    case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
+    case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch
@@ -141,6 +141,21 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Selects the previous diagnostic with a source in the active document (wrapping).",
                          requires: "a compile result",
                          menuItem: "Previous Diagnostic")
+        case .nextOccurrence:
+            return Entry(command: self, title: "Next occurrence", shortcuts: ["⌘⌥]"], menu: "Navigate",
+                         description: "Steps to the next place of the diagnostics panel's selected group (else the group under the current diagnostic), wrapping within the group; the row then reads “k of n”.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Next Occurrence")
+        case .previousOccurrence:
+            return Entry(command: self, title: "Previous occurrence", shortcuts: ["⌘⌥["], menu: "Navigate",
+                         description: "Steps to the previous place of the selected group, wrapping within the group.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Previous Occurrence")
+        case .copyDiagnosticsAsText:
+            return Entry(command: self, title: "Copy diagnostics as text", shortcuts: ["⌘⌥C"], menu: "Edit",
+                         description: "Copies the selected diagnostics row as “path:line: error/warning: message” lines (every place of a grouped row; all diagnostics when nothing is selected); ⌘C does the same while the list has the keyboard.",
+                         requires: "the diagnostics panel (a result with diagnostics)",
+                         menuItem: "Copy Diagnostics as Text")
         case .revealCaretInPreview:
             return Entry(command: self, title: "Reveal caret in preview", shortcuts: ["⌘⇧J"], menu: "Navigate",
                          description: "Selects the source span of the preview item under the caret and names its page and item.",
@@ -223,7 +238,7 @@ public enum FocusOrder {
              rationale: "Follows the editor column so a user can check what the last edit produced, page by page, without leaving the keyboard.",
              container: "PreviewPane", sourceMarker: "PreviewView("),
         Pane(name: "Diagnostics",
-             contents: "List of the compile result's diagnostics: “Diagnostic n of m: Error/Warning: message”, the recovery note as the value, “Go to source” when it has a source.",
+             contents: "List of the compile result's diagnostics, identical ones folded into one row: “Diagnostic n of m: Error/Warning: message, 12 places, 3 of 12, main.tex line 41”, the recovery note as the value, “Go to source” when it has a source. ↑/↓ select a row, Return jumps to its current occurrence, Esc returns the keyboard to the editor, ⌘C copies the selection as path:line: message lines.",
              rationale: "Comes after the preview because the preview is still shown when errors exist; diagnostics refine, not replace, it.",
              container: "PreviewPane", sourceMarker: "diagnosticsList("),
     ]

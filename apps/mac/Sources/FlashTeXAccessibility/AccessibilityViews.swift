@@ -263,18 +263,43 @@ public struct DiagnosticRowAccessibility: Equatable {
     public static let noSourceHint = "No source mapping; listed only."
     public static let goToSourceAction = PreviewAccessibility.goToSourceAction
 
+    /// A grouped row (identical diagnostics folded into one row by the
+    /// shell's `EditorDiagnostics.groups`): how many places share the
+    /// message, which occurrence the row currently stands on (zero-based,
+    /// document order) and where that occurrence is ("main.tex line 41",
+    /// "main.tex bytes 10 to 20" or "no source"). Spoken as
+    /// "12 places, 3 of 12, main.tex line 41" after the message.
+    public struct GroupInfo: Equatable {
+        public var count: Int
+        public var occurrence: Int
+        public var location: String
+
+        public init(count: Int, occurrence: Int, location: String) {
+            self.count = count; self.occurrence = occurrence; self.location = location
+        }
+
+        /// "12 places, 3 of 12, main.tex line 41"; nil for a single place.
+        public var spoken: String? {
+            guard count > 1 else { return nil }
+            return "\(count) places, \(occurrence + 1) of \(count), \(location)"
+        }
+    }
+
     /// - Parameters:
     ///   - status: the result's status; a `recovered` result reads
     ///     "no provisional rendering" for a diagnostic without a recovery
     ///     note, exactly as the visible row and the keyboard navigator do.
     ///   - explanation: the offline explanation line the visible row shows
     ///     under the recovery line (`EditorDiagnosticNavigation.Item.explanation`), if any.
+    ///   - group: for a grouped row, the group count, the occurrence the
+    ///     row stands on and its location; the label then ends with
+    ///     ", 12 places, 3 of 12, main.tex line 41" (nil or count 1: unchanged).
     public init(_ diagnostic: RuntimeV1.Diagnostic, index: Int, total: Int, status: RuntimeV1.Status,
-                explanation: String? = nil) {
+                explanation: String? = nil, group: GroupInfo? = nil) {
         let element = AccessibleDocumentModel.DiagnosticElement(
             index: index, severity: diagnostic.severity, message: diagnostic.message,
             recovery: diagnostic.recovery, source: diagnostic.source, utf16Range: nil, textKnown: false, lines: [])
-        label = "Diagnostic \(index + 1) of \(total): \(element.label)"
+        label = "Diagnostic \(index + 1) of \(total): \(element.label)" + (group?.spoken.map { ", " + $0 } ?? "")
         var parts: [String] = []
         if let line = Self.recoveryLine(recovery: diagnostic.recovery, status: status) { parts.append(line) }
         if let explanation, !explanation.isEmpty { parts.append(explanation) }
@@ -298,10 +323,15 @@ public extension View {
     /// message" with the recovery line, the explanation line and source
     /// bytes as the value and a "Go to source" action when the diagnostic
     /// has a source. The visible row is unchanged.
+    ///
+    /// `group` (a grouped row) appends "12 places, 3 of 12, main.tex line 41"
+    /// to the label; `goToSource` should then jump to that occurrence.
     func accessibleDiagnostic(_ diagnostic: RuntimeV1.Diagnostic, index: Int, total: Int,
                               status: RuntimeV1.Status, explanation: String? = nil,
+                              group: DiagnosticRowAccessibility.GroupInfo? = nil,
                               goToSource: @escaping () -> Void) -> some View {
-        let row = DiagnosticRowAccessibility(diagnostic, index: index, total: total, status: status, explanation: explanation)
+        let row = DiagnosticRowAccessibility(diagnostic, index: index, total: total, status: status, explanation: explanation,
+                                             group: group)
         let base = accessibilityElement(children: .ignore)
             .accessibilityLabel(row.label)
             .accessibilityValue(row.value)
