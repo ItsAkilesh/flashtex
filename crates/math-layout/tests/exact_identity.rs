@@ -1,0 +1,328 @@
+//! Exact-identity regression pins.
+//!
+//! Every number in `CASES` below is the layout engine's *own* current
+//! output against the Computer Modern adapter (`CmMathMetrics::latex_10pt`),
+//! captured once and frozen here as a literal so any future change that
+//! shifts a position, a height, a depth, a width, a rule thickness, or the
+//! count of emitted glyphs/rules/limitations for these representative math
+//! lists fails loudly. This is deliberately *not* the same kind of test as
+//! `tests/golden.rs` (which independently re-derives the expected number
+//! from the TeXbook rule and cross-checks it against pdfTeX `\showbox`
+//! output) — it is a change-detector: it does not claim these numbers are
+//! "correct" by any outside authority, only that they must not drift
+//! silently. `tests/golden.rs` and `tests/explicit_metrics.rs` already carry
+//! the "these numbers are right" burden.
+//!
+//! Every fixture in [`fixtures::all`] is covered (not a hand-picked subset)
+//! across all four base styles (`DISPLAY`, `TEXT`, `SCRIPT`, `SCRIPT_SCRIPT`)
+//! — 22 fixtures × 4 styles = 88 cases. For each case we pin:
+//!   - the root box's `height`/`depth`/`width`, compared by **exact `f64`
+//!     bit pattern** (`to_bits()`), which is strictly stronger than
+//!     `==`/`PartialEq`: it distinguishes `0.0` from `-0.0` and would catch
+//!     a change that produced `NaN` (where `==` is vacuously false but a
+//!     careless `assert!(a.is_nan() == b.is_nan())` could be fooled);
+//!   - the exact count of limitations, positioned glyphs, and positioned
+//!     rules `positioned_runs` emits, so a change that drops/duplicates a
+//!     glyph or a rule (fraction bar, radical overbar, underline rule)
+//!     fails even if the root box's outer dimensions happen to coincide.
+//!
+//! FT-032 revision 4, part 2/2 (exact identity regressions).
+
+use flashtex_math_layout::{CmMathMetrics, Style, fixtures, layout_with_report, positioned_runs};
+
+/// `(height_bits, depth_bits, width_bits, limitations, glyphs, rules)` for
+/// one (fixture, style) case. Bit patterns from `f64::to_bits()`.
+type Case = (u64, u64, u64, usize, usize, usize);
+
+/// One row per fixture, styles in the fixed order `[DISPLAY, TEXT, SCRIPT,
+/// SCRIPT_SCRIPT]` (the same order [`styles`] below drives the lookup with).
+/// Regenerate by running `cargo run --example gen_snapshot` (kept only as a
+/// throwaway dev tool, not part of the crate's public surface) after a
+/// deliberate geometry change, then re-verify each new number against
+/// `tests/golden.rs`'s independent derivation before trusting it.
+const CASES: &[(&str, [Case; 4])] = &[
+    (
+        "x^2",
+        [
+            (0x402147b200000000, 0x0000000000000000, 0x4024671e00000000, 0, 2, 0),
+            (0x402047b200000000, 0x0000000000000000, 0x4024671e00000000, 0, 2, 0),
+            (0x4018f5c400000000, 0x0000000000000000, 0x4020e00800000000, 0, 2, 0),
+            (0x4014f5bc00000000, 0x0000000000000000, 0x401f71dc00000000, 0, 2, 0),
+        ],
+    ),
+    (
+        "x_i^2",
+        [
+            (0x402147b200000000, 0x4003c70000000000, 0x4024671e00000000, 0, 3, 0),
+            (0x402047b200000000, 0x4004d2c800000000, 0x4024671e00000000, 0, 3, 0),
+            (0x4018f5c400000000, 0x3ffffff000000000, 0x4020e00800000000, 0, 3, 0),
+            (0x4014f5bc00000000, 0x400750e000000000, 0x401f71dc00000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "x^{y^z}",
+        [
+            (0x4022995600000000, 0x0000000000000000, 0x402d4d0e00000000, 0, 3, 0),
+            (0x4021995600000000, 0x0000000000000000, 0x402d4d0e00000000, 0, 3, 0),
+            (0x401cc0d800000000, 0x0000000000000000, 0x4029fda600000000, 0, 3, 0),
+            (0x4018c0d000000000, 0x0000000000000000, 0x4028d68c00000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "\\frac{\\frac{a}{b}}{c}",
+        [
+            (0x402c995d00000000, 0x401b702400000000, 0x4022467800000000, 0, 3, 2),
+            (0x4024b2f900000000, 0x400b965800000000, 0x4021582200000000, 0, 3, 2),
+            (0x4022864400000000, 0x400346a800000000, 0x4021582200000000, 0, 3, 2),
+            (0x4021864400000000, 0x400546b800000000, 0x4021582200000000, 0, 3, 2),
+        ],
+    ),
+    (
+        "\\sqrt{x}",
+        [
+            (0x4020fb5900000000, 0x3ffe8b7800000000, 0x402c18e600000000, 0, 2, 1),
+            (0x4020016440000000, 0x40032d8f00000000, 0x402c18e600000000, 0, 2, 1),
+            (0x4017114c80000000, 0x3ff92b4e00000000, 0x4026355a00000000, 0, 2, 1),
+            (0x4010fc4880000000, 0x3ff089be00000000, 0x4022e39e00000000, 0, 2, 1),
+        ],
+    ),
+    (
+        "\\sqrt{\\frac{a}{b}}",
+        [
+            (0x402ee33c00000000, 0x4021e9ac00000000, 0x4031af9700000000, 0, 3, 2),
+            (0x402133eb40000000, 0x400e63b300000000, 0x4030bcd700000000, 0, 3, 2),
+            (0x4020216f40000000, 0x401156d180000000, 0x403045ac00000000, 0, 3, 2),
+            (0x401def9380000000, 0x4013aa1c80000000, 0x403045ac00000000, 0, 3, 2),
+        ],
+    ),
+    (
+        "\\left(\\frac{a}{b}\\right)",
+        [
+            (0x4027000b00000000, 0x401b702400000000, 0x4033a15e00000000, 0, 4, 1),
+            (0x4021000700000000, 0x400c001c00000000, 0x402fcf0800000000, 0, 4, 1),
+            (0x401f000e00000000, 0x4011000e00000000, 0x402ee0b200000000, 0, 4, 1),
+            (0x401d000e00000000, 0x4013000e00000000, 0x402ee0b200000000, 0, 4, 1),
+        ],
+    ),
+    (
+        "\\sum_{i=1}^n",
+        [
+            (0x4030839100000000, 0x402998e800000000, 0x402ce39200000000, 0, 5, 0),
+            (0x4020156000000000, 0x4008001800000000, 0x4038028a00000000, 0, 5, 0),
+            (0x401b001000000000, 0x400e002000000000, 0x403643e700000000, 0, 5, 0),
+            (0x4019001000000000, 0x4011001000000000, 0x403643e700000000, 0, 5, 0),
+        ],
+    ),
+    (
+        "\\int_0^1",
+        [
+            (0x402f4cdf00000000, 0x402238f100000000, 0x402cf8e800000000, 0, 3, 0),
+            (0x4024306500000000, 0x400c71dc00000000, 0x40264e3c00000000, 0, 3, 0),
+            (0x40201c7700000000, 0x401138f200000000, 0x4025239600000000, 0, 3, 0),
+            (0x401e38ee00000000, 0x401338f200000000, 0x4025239600000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "\\hat{x}",
+        [
+            (0x401bc71c00000000, 0x0000000000000000, 0x4016dc7000000000, 0, 2, 0),
+            (0x401bc71c00000000, 0x0000000000000000, 0x4016dc7000000000, 0, 2, 0),
+            (0x401371c400000000, 0x0000000000000000, 0x4012239000000000, 0, 2, 0),
+            (0x400bc71800000000, 0x0000000000000000, 0x400faab800000000, 0, 2, 0),
+        ],
+    ),
+    (
+        "a+b",
+        [
+            (0x401bc71c00000000, 0x3feaaaa000000000, 0x4035ccb800000000, 0, 3, 0),
+            (0x401bc71c00000000, 0x3feaaaa000000000, 0x4035ccb800000000, 0, 3, 0),
+            (0x401371c400000000, 0x3feaaac000000000, 0x402bfc8800000000, 0, 3, 0),
+            (0x400bc71800000000, 0x3feaaae000000000, 0x40285b0800000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "a=b",
+        [
+            (0x401bc71c00000000, 0x0000000000000000, 0x4036e92800000000, 0, 3, 0),
+            (0x401bc71c00000000, 0x0000000000000000, 0x4036e92800000000, 0, 3, 0),
+            (0x401371c400000000, 0x0000000000000000, 0x402bfc8800000000, 0, 3, 0),
+            (0x400bc71800000000, 0x0000000000000000, 0x40285b0800000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "f(x)",
+        [
+            (0x401e000000000000, 0x4004000000000000, 0x4033772000000000, 0, 4, 0),
+            (0x401e000000000000, 0x4004000000000000, 0x4033772000000000, 0, 4, 0),
+            (0x4015000000000000, 0x3ffc000000000000, 0x402ef00c00000000, 0, 4, 0),
+            (0x400e000000000000, 0x3ff4000000000000, 0x402ac56400000000, 0, 4, 0),
+        ],
+    ),
+    (
+        "a,b",
+        [
+            (0x401bc71c00000000, 0x3fff1c7000000000, 0x402c0b3e00000000, 0, 3, 0),
+            (0x401bc71c00000000, 0x3fff1c7000000000, 0x402c0b3e00000000, 0, 3, 0),
+            (0x401371c400000000, 0x3ff5c71000000000, 0x4024756800000000, 0, 3, 0),
+            (0x400bc71800000000, 0x3fef1c6000000000, 0x4022a93800000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "\\left\\{\\frac{\\frac{\\frac{a}{b}}{c}}{\\frac{d}{\\frac{e}{f}}}\\right\\}",
+        [
+            (0x4034800c00000000, 0x402f001800000000, 0x403cfcfd00000000, 0, 12, 5),
+            (0x4031800980000000, 0x4029001300000000, 0x403b525500000000, 0, 8, 5),
+            (0x402b8b2100000000, 0x4026fce700000000, 0x403a35e100000000, 0, 8, 5),
+            (0x402a8b2100000000, 0x4027fce700000000, 0x403a35e100000000, 0, 8, 5),
+        ],
+    ),
+    (
+        "\\sqrt[3]{\\frac{a}{b}}",
+        [
+            (0x402ee33c00000000, 0x4021e9ac00000000, 0x40324f9f00000000, 0, 4, 2),
+            (0x402133eb40000000, 0x400e63b300000000, 0x40315cdf00000000, 0, 4, 2),
+            (0x4020216f40000000, 0x401156d180000000, 0x4031661500000000, 0, 4, 2),
+            (0x401def9380000000, 0x4013aa1c80000000, 0x4031a15700000000, 0, 4, 2),
+        ],
+    ),
+    (
+        "\\lim_{x\\to 0}\\frac{\\sin x}{x}",
+        [
+            (0x402ae32800000000, 0x401cb60800000000, 0x40441c1600000000, 0, 11, 1),
+            (0x40214a9400000000, 0x400b965800000000, 0x4049595100000000, 0, 11, 1),
+            (0x4018583000000000, 0x400346a800000000, 0x4044ed9e00000000, 0, 11, 1),
+            (0x4015583000000000, 0x400546b800000000, 0x404422f680000000, 0, 11, 1),
+        ],
+    ),
+    (
+        "\\overline{x}",
+        [
+            (0x401938c400000000, 0x0000000000000000, 0x4016dc7000000000, 0, 1, 1),
+            (0x401938c400000000, 0x0000000000000000, 0x4016dc7000000000, 0, 1, 1),
+            (0x40140e1c00000000, 0x0000000000000000, 0x4012239000000000, 0, 1, 1),
+            (0x40109c5400000000, 0x0000000000000000, 0x400faab800000000, 0, 1, 1),
+        ],
+    ),
+    (
+        "\\underline{x}",
+        [
+            (0x401138e000000000, 0x3fffff9000000000, 0x4016dc7000000000, 0, 1, 1),
+            (0x401138e000000000, 0x3fffff9000000000, 0x4016dc7000000000, 0, 1, 1),
+            (0x40081c7000000000, 0x3fffff9000000000, 0x4012239000000000, 0, 1, 1),
+            (0x400138e000000000, 0x3fffff9000000000, 0x400faab800000000, 0, 1, 1),
+        ],
+    ),
+    (
+        "\\hat{x}^2",
+        [
+            (0x402147b200000000, 0x0000000000000000, 0x4024671e00000000, 0, 3, 0),
+            (0x402047b200000000, 0x0000000000000000, 0x4024671e00000000, 0, 3, 0),
+            (0x4018f5c400000000, 0x0000000000000000, 0x4020e00800000000, 0, 3, 0),
+            (0x4014f5bc00000000, 0x0000000000000000, 0x401f71dc00000000, 0, 3, 0),
+        ],
+    ),
+    (
+        "\\widehat{xyz}",
+        [
+            (0x401e000000000000, 0x3fff1c7000000000, 0x4030113200000000, 0, 4, 0),
+            (0x401e000000000000, 0x3fff1c7000000000, 0x4030113200000000, 0, 4, 0),
+            (0x401e000000000000, 0x3ff5c71000000000, 0x4029e5f800000000, 0, 4, 0),
+            (0x401e000000000000, 0x3fef1c6000000000, 0x4026d68c00000000, 0, 4, 0),
+        ],
+    ),
+    (
+        "\\sqrt{\\frac{\\frac{a}{b}}{\\frac{c}{d}}}",
+        [
+            (0x40325587c0000000, 0x402821e080000000, 0x4033233d00000000, 0, 5, 4),
+            (0x40283114c0000000, 0x4019379680000000, 0x4032ac1200000000, 0, 5, 4),
+            (0x4027333840000000, 0x401b334f80000000, 0x4032ac1200000000, 0, 5, 4),
+            (0x4026333840000000, 0x401d334f80000000, 0x4032ac1200000000, 0, 5, 4),
+        ],
+    ),
+    (
+        "{\\displaystyle\\sum_{i=1}^n}{\\textstyle\\frac{a}{b}}",
+        [
+            (0x4030839100000000, 0x402998e800000000, 0x40352e9f00000000, 0, 7, 1),
+            (0x4030839100000000, 0x402998e800000000, 0x40352e9f00000000, 0, 7, 1),
+            (0x4030839100000000, 0x402998e800000000, 0x40352e9f00000000, 0, 7, 1),
+            (0x4030839100000000, 0x402998e800000000, 0x40352e9f00000000, 0, 7, 1),
+        ],
+    ),
+];
+
+#[test]
+fn every_fixture_matches_its_pinned_geometry_in_all_four_styles() {
+    let m = CmMathMetrics::latex_10pt();
+    let styles = [Style::DISPLAY, Style::TEXT, Style::SCRIPT, Style::SCRIPT_SCRIPT];
+    let style_names = ["DISPLAY", "TEXT", "SCRIPT", "SCRIPT_SCRIPT"];
+    let live = fixtures::all();
+
+    // Catches a fixture being added/removed/reordered before the per-case
+    // asserts below would otherwise just silently run over a shorter/longer
+    // or misaligned list.
+    assert_eq!(
+        live.len(),
+        CASES.len(),
+        "fixtures::all() length changed: update CASES (see the module doc \
+         comment for how to regenerate)"
+    );
+
+    for ((name, list), (expected_name, expected)) in live.iter().zip(CASES.iter()) {
+        assert_eq!(
+            name, expected_name,
+            "fixture order changed: update CASES to match fixtures::all()"
+        );
+        for (style, style_name, exp) in zip4(&styles, &style_names, expected) {
+            let report = layout_with_report(list, style, &m);
+            let root = &report.root;
+            let runs = positioned_runs(root, (0.0, 0.0));
+            let (h_bits, d_bits, w_bits, n_limitations, n_glyphs, n_rules) = *exp;
+            assert_eq!(
+                root.height.to_bits(),
+                h_bits,
+                "{name} @ {style_name}: height regressed (was {}, now {})",
+                f64::from_bits(h_bits),
+                root.height
+            );
+            assert_eq!(
+                root.depth.to_bits(),
+                d_bits,
+                "{name} @ {style_name}: depth regressed (was {}, now {})",
+                f64::from_bits(d_bits),
+                root.depth
+            );
+            assert_eq!(
+                root.width.to_bits(),
+                w_bits,
+                "{name} @ {style_name}: width regressed (was {}, now {})",
+                f64::from_bits(w_bits),
+                root.width
+            );
+            assert_eq!(
+                report.limitations.len(),
+                n_limitations,
+                "{name} @ {style_name}: limitation count regressed"
+            );
+            assert_eq!(
+                runs.glyphs.len(),
+                n_glyphs,
+                "{name} @ {style_name}: glyph count regressed"
+            );
+            assert_eq!(
+                runs.rules.len(),
+                n_rules,
+                "{name} @ {style_name}: rule count regressed"
+            );
+        }
+    }
+}
+
+/// Zips three same-length arrays by value (`Style`/`&str`/`&Case` are all
+/// `Copy` or cheap to reborrow), just to keep the loop body above readable.
+fn zip4<'a>(
+    styles: &'a [Style; 4],
+    names: &'a [&'static str; 4],
+    cases: &'a [Case; 4],
+) -> impl Iterator<Item = (Style, &'static str, &'a Case)> {
+    (0..4).map(move |i| (styles[i], names[i], &cases[i]))
+}

@@ -477,8 +477,23 @@ impl MathFontMetrics for CmMathMetrics {
     }
 
     /// `\operator@font` is the roman family (cmr) at the current size.
+    ///
+    /// Only ASCII *printable* characters (space through `~`, 0x20-0x7E) map
+    /// to a `cmr10` code point: `cmr10` uses OT1, not ASCII, as its encoding,
+    /// so the ASCII control range (0x00-0x1F, plus DEL at 0x7F) sits at OT1
+    /// code points that hold unrelated, real characters instead (OT1 0x00 is
+    /// capital Gamma, for one) -- `ch.is_ascii()` alone (0x00-0x7F) let a
+    /// literal NUL byte or DEL through and silently render as whatever OT1
+    /// glyph happened to occupy that low code point, with no
+    /// `Limitation` reported. A control character has no printable upright
+    /// text form; treating it as absent, like any other unmapped character,
+    /// is what the crate's typed-limitation contract already promises.
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
-        let code = if ch.is_ascii() { ch as u8 } else { return None };
+        let code = if ch.is_ascii_graphic() || ch == ' ' {
+            ch as u8
+        } else {
+            return None;
+        };
         self.make_glyph(Family::Roman, code, ch, size)
     }
 
@@ -575,5 +590,31 @@ mod tests {
         assert_eq!(small.gid, 0x50);
         assert_eq!(big.gid, 0x58);
         assert!(big.total_height() > small.total_height());
+    }
+
+    /// A NUL byte or DEL passed to `text_glyph` (`\operator@font`, the roman
+    /// text font `\lim`/`\sin`-style operators use) must be reported as a
+    /// missing glyph, not silently rendered as whichever OT1 character
+    /// happens to sit at that low code point in `cmr10` (0x00 is capital
+    /// Gamma there, not NUL). Every other ASCII control character
+    /// (0x01-0x1F) is checked too, since the fix is a single printable-range
+    /// test, not a per-character exception list.
+    #[test]
+    fn text_glyph_rejects_ascii_control_characters() {
+        let m = CmMathMetrics::latex_10pt();
+        for code in 0u8..=0x1F {
+            let ch = code as char;
+            assert!(
+                m.text_glyph(ch, SizeClass::Text).is_none(),
+                "control character {code:#04x} must have no text glyph"
+            );
+        }
+        assert!(m.text_glyph('\u{7F}', SizeClass::Text).is_none(), "DEL must have no text glyph");
+        // The printable boundary right next to the fix must still resolve:
+        // space (0x20) and '~' (0x7E) are the printable range's own edges.
+        assert!(m.text_glyph(' ', SizeClass::Text).is_some());
+        assert!(m.text_glyph('~', SizeClass::Text).is_some());
+        // And an ordinary letter is unaffected by the tightened range.
+        assert!(m.text_glyph('a', SizeClass::Text).is_some());
     }
 }

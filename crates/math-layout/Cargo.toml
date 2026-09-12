@@ -10,3 +10,13 @@ name = "flashtex_math_layout"
 path = "src/lib.rs"
 
 [dependencies]
+
+# Dev-only: FT-032 rev4's consumer-fixture test (tests/font_engine_consumer.rs)
+# drives the real flashtex-font-engine math adapter end to end. font-engine's
+# own [dependencies] pulls this crate back in via "../math-layout" (feature
+# "math"), but only as its *library* dependency, never a dev-dependency, so
+# this is a supported dev-dependency cycle, not a build cycle: this crate's
+# library still builds with zero dependencies; only its test binaries need
+# font-engine.
+[dev-dependencies]
+flashtex-font-engine = { path = "../font-engine", default-features = false, features = ["math"] }
