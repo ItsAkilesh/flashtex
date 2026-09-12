@@ -1,0 +1,337 @@
+//! Local stdio adapter. Native callers must put pipe IO on a dedicated worker.
+use flashtex_document_runtime::{Event, Limits};
+use flashtex_edit_ledger::{AppliedReceipt, PreparedEdit, Store};
+use flashtex_preview_controller::{ApprovedEdit, Controller, Update};
+use serde_json::{json, Value};
+use std::{
+    collections::BTreeMap,
+    fs::File,
+    io::{self, BufRead, BufReader, Read, Write},
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, SyncSender},
+        Arc,
+    },
+    thread,
+    time::Duration,
+};
+const MAX_FRAME: usize = 1024 * 1024;
+fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
+    v[name].as_str().ok_or(format!("missing string {name}"))
+}
+fn number(v: &Value, name: &str) -> Result<u64, String> {
+    v[name].as_u64().ok_or(format!("missing integer {name}"))
+}
+struct OutputBuffer(Vec<u8>);
+impl Write for OutputBuffer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if self.0.len().saturating_add(bytes.len()) > 16 * 1024 * 1024 {
+            return Err(io::Error::other("output frame exceeds 16 MiB"));
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+fn emit(tx: &SyncSender<Vec<u8>>, stopped: &AtomicBool, value: Value) {
+    let mut buffer = OutputBuffer(Vec::new());
+    if serde_json::to_writer(&mut buffer, &value).is_err() {
+        buffer.0.clear();
+        let error = failure(
+            value["session_id"].as_str().unwrap_or(""),
+            value["id"].clone(),
+            "response exceeds output limit; source may already be durable",
+        );
+        if serde_json::to_writer(&mut buffer, &error).is_err() {
+            stopped.store(true, Ordering::SeqCst);
+            return;
+        }
+    }
+    buffer.0.push(b'\n');
+    if tx.try_send(buffer.0).is_err() {
+        stopped.store(true, Ordering::SeqCst);
+    }
+}
+fn failure(session: &str, id: Value, reason: impl AsRef<str>) -> Value {
+    json!({"protocol_version":1,"session_id":session,"id":id,"type":"error","payload":{"message":reason.as_ref()}})
+}
+fn run(config: Value) -> Result<(), String> {
+    let session = string(&config, "session_id")?.to_owned();
+    if session.is_empty() || session.len() > 128 {
+        return Err("invalid session identity".into());
+    }
+    let project = string(&config, "project_id")?.to_owned();
+    let entry = string(&config, "entry_path")?.to_owned();
+    let paths = config["store_paths"]
+        .as_array()
+        .ok_or("store_paths array required")?;
+    if paths.is_empty() || paths.len() > 256 {
+        return Err("expected 1..256 stores".into());
+    }
+    let stores = paths
+        .iter()
+        .map(|p| {
+            Store::open(p.as_str().ok_or("store path must be string")?).map_err(|e| e.to_string())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut controller = Controller::open_without_compiler(project, entry, stores)?;
+    let compiler = config
+        .get("compiler_path")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let compiler_error = compiler.as_ref().and_then(|path| {
+        controller
+            .restart(Command::new(path), Limits::default())
+            .err()
+    });
+    let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
+    let (output_tx, output_rx) = mpsc::sync_channel::<Vec<u8>>(8);
+    let stopped = Arc::new(AtomicBool::new(false));
+    let output_stopped = stopped.clone();
+    let output_done = Arc::new(AtomicBool::new(false));
+    let writer_done = output_done.clone();
+    thread::spawn(move || {
+        let mut stdout = io::stdout().lock();
+        for bytes in output_rx {
+            if stdout
+                .write_all(&bytes)
+                .and_then(|_| stdout.flush())
+                .is_err()
+            {
+                output_stopped.store(true, Ordering::SeqCst);
+                break;
+            }
+        }
+        writer_done.store(true, Ordering::SeqCst);
+    });
+    let reader_output = output_tx.clone();
+    let reader_stopped = stopped.clone();
+    let reader_session = session.clone();
+    thread::spawn(move || {
+        let mut stdin = io::stdin().lock();
+        loop {
+            if reader_stopped.load(Ordering::SeqCst) {
+                break;
+            }
+            let mut frame = Vec::new();
+            match stdin
+                .by_ref()
+                .take(MAX_FRAME as u64 + 1)
+                .read_until(b'\n', &mut frame)
+            {
+                Ok(0) => break,
+                Ok(_) if frame.len() <= MAX_FRAME && frame.last() == Some(&b'\n') => {}
+                _ => {
+                    emit(
+                        &reader_output,
+                        &reader_stopped,
+                        failure(&reader_session, Value::Null, "truncated or oversized input"),
+                    );
+                    break;
+                }
+            }
+            let request: Value = match serde_json::from_slice(&frame) {
+                Ok(value) => value,
+                Err(_) => {
+                    emit(
+                        &reader_output,
+                        &reader_stopped,
+                        failure(&reader_session, Value::Null, "malformed request JSON"),
+                    );
+                    continue;
+                }
+            };
+            if let Err(error) = input_tx.try_send(request) {
+                match error {
+                    mpsc::TrySendError::Full(request) => emit(&reader_output,&reader_stopped,failure(&reader_session,request["id"].clone(),"busy: request not admitted; retry same operation after draining replies")),
+                    mpsc::TrySendError::Disconnected(_) => break,
+                }
+            }
+        }
+    });
+    emit(
+        &output_tx,
+        &stopped,
+        json!({"protocol_version":1,"session_id":session,"id":null,"type":"ready","payload":{"compiler_error":compiler_error}}),
+    );
+    let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
+    while !stopped.load(Ordering::SeqCst) {
+        match input_rx.recv_timeout(Duration::from_millis(2)) {
+            Ok(request) => {
+                let id = request["id"].clone();
+                let response = if request["protocol_version"] != 1
+                    || request["session_id"] != session
+                    || !id.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+                {
+                    Err("invalid version, session or request identity".into())
+                } else {
+                    handle(&mut controller, &mut reviews, &request, compiler.as_deref())
+                };
+                let output = match response {
+                    Ok(payload) => {
+                        json!({"protocol_version":1,"session_id":session,"id":id,"type":"result","payload":payload})
+                    }
+                    Err(reason) => failure(&session, id, reason),
+                };
+                emit(&output_tx, &stopped, output);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        for update in controller.poll() {
+            let payload = match update {
+                Update::Preview(preview) => {
+                    json!({"kind":"preview","request_id":preview.request_id,"compile_revision":preview.compile_revision,"source_versions":preview.source_versions.documents,"result":preview.result,"runtime_total_ms":preview.runtime_total_ms,"controller_total_ms":preview.controller_total_ms})
+                }
+                Update::Discarded { request_id } => {
+                    json!({"kind":"discarded","request_id":request_id})
+                }
+                Update::Runtime(event) => match event {
+                    Event::Superseded { id, by_id } => {
+                        json!({"kind":"superseded","request_id":id,"by_id":by_id})
+                    }
+                    Event::Stale { id, revision } => {
+                        json!({"kind":"stale","request_id":id,"compile_revision":revision})
+                    }
+                    Event::Cancelled { id } => json!({"kind":"cancelled","request_id":id}),
+                    Event::Failed { id, reason } => {
+                        json!({"kind":"failed","request_id":id,"reason":reason})
+                    }
+                    Event::Preview { .. } => unreachable!("controller unwraps previews"),
+                },
+            };
+            emit(
+                &output_tx,
+                &stopped,
+                json!({"protocol_version":1,"session_id":session,"id":null,"type":"update","payload":payload}),
+            );
+        }
+    }
+    // Drain normal EOF replies, bounded even if the native reader stopped.
+    drop(output_tx);
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while !output_done.load(Ordering::SeqCst)
+        && !stopped.load(Ordering::SeqCst)
+        && std::time::Instant::now() < deadline
+    {
+        thread::sleep(Duration::from_millis(2));
+    }
+    if stopped.load(Ordering::SeqCst) || !output_done.load(Ordering::SeqCst) {
+        return Err(
+            "output stalled; delivery uncertain, recover durable source and receipts".into(),
+        );
+    }
+    Ok(())
+}
+fn handle(
+    controller: &mut Controller,
+    reviews: &mut BTreeMap<String, PreparedEdit>,
+    request: &Value,
+    compiler: Option<&str>,
+) -> Result<Value, String> {
+    let p = &request["payload"];
+    match string(request, "type")? {
+        "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
+        "edit" => {
+            let result = controller.replace_document(
+                string(p, "path")?,
+                number(p, "expected_revision")?,
+                string(p, "expected_sha256")?,
+                string(p, "text")?.to_owned(),
+            )?;
+            Ok(
+                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
+            )
+        }
+        "compile" => {
+            controller.compile_current()?;
+            Ok(json!({"submitted":true}))
+        }
+        "restart" => {
+            controller.restart(
+                Command::new(compiler.ok_or("compiler not configured")?),
+                Limits::default(),
+            )?;
+            Ok(json!({"submitted":true}))
+        }
+        "close" => {
+            controller.close()?;
+            reviews.clear();
+            Ok(json!({"closed":true}))
+        }
+        "review" => {
+            if reviews.len() >= 128 {
+                return Err("review capacity reached; retire a review first".into());
+            }
+            let edit: PreparedEdit =
+                serde_json::from_value(p["edit"].clone()).map_err(|e| e.to_string())?;
+            let current = controller.document(&edit.path)?;
+            if current.project_id != edit.project_id
+                || current.revision != edit.expected_revision
+                || current.source_sha256 != edit.document_before_sha256
+                || current.text.get(edit.start_byte..edit.end_byte)
+                    != Some(edit.removed_text.as_str())
+            {
+                return Err("review differs from current source".into());
+            }
+            let mut random = [0u8; 32];
+            getrandom::fill(&mut random).map_err(|e| e.to_string())?;
+            let token = random
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
+            reviews.insert(token.clone(), edit.clone());
+            Ok(json!({"approval_token":token,"edit":edit,"requires_explicit_user_approval":true}))
+        }
+        "apply_reviewed" => {
+            if p["user_approved"] != true {
+                return Err("explicit user approval required".into());
+            }
+            let edit = reviews
+                .get(string(p, "approval_token")?)
+                .ok_or("unknown review token")?
+                .clone();
+            let result =
+                controller.apply_reviewed(ApprovedEdit::from_explicit_user_approval(edit))?;
+            Ok(
+                json!({"receipt":result.receipt,"document":result.source.document,"preview_error":result.source.preview_error}),
+            )
+        }
+        "retire_review" => {
+            reviews.remove(string(p, "approval_token")?);
+            Ok(json!({"retired":true}))
+        }
+        "recovery" => Ok(json!({"transactions":controller.recovery(string(p,"path")?)?})),
+        "confirm_receipt" => {
+            let receipt: AppliedReceipt =
+                serde_json::from_value(p["receipt"].clone()).map_err(|e| e.to_string())?;
+            controller.confirm_receipt(string(p, "path")?, &receipt)?;
+            Ok(json!({"confirmed":true}))
+        }
+        _ => Err("unknown operation".into()),
+    }
+}
+fn main() {
+    let result = std::env::args_os()
+        .nth(1)
+        .ok_or("usage: flashtex-preview-controller CONFIG.json".to_owned())
+        .and_then(|path| {
+            let file = File::open(path).map_err(|e| e.to_string())?;
+            let mut bytes = Vec::new();
+            BufReader::new(file)
+                .take(MAX_FRAME as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > MAX_FRAME {
+                return Err("oversized configuration".into());
+            }
+            run(serde_json::from_slice(&bytes).map_err(|e| e.to_string())?)
+        });
+    if let Err(error) = result {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}

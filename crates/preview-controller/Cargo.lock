@@ -94,6 +94,7 @@ dependencies = [
  "flashtex-document-runtime",
  "flashtex-edit-ledger",
  "flashtex-project-index",
+ "getrandom",
  "serde_json",
  "tempfile",
 ]
