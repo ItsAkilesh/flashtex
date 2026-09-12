@@ -440,7 +440,21 @@ struct ProjectSearchPanel: View {
             if let client {
                 ProjectSearchBody(client: client, fieldFocused: $fieldFocused)
             } else {
-                ProgressView().onAppear { client = ProjectSearchClient(model: model) }
+                ProgressView().onAppear {
+                    let c = ProjectSearchClient(model: model)
+                    client = c
+                    // Automation evidence only (launch-check screenshots): seed a
+                    // query and run it once the helper is ready (bounded wait).
+                    if let seed = ProcessInfo.processInfo.environment["FLASHTEX_SEARCH_QUERY"], !seed.isEmpty {
+                        c.query = seed
+                        if let n = ProcessInfo.processInfo.environment["FLASHTEX_SEARCH_MAX_MATCHES"].flatMap(Int.init) { c.maxMatches = n }
+                        Task {
+                            let deadline = Date().addingTimeInterval(10)
+                            while !c.helperAvailable, Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+                            await c.search()
+                        }
+                    }
+                }
             }
         }
         .frame(minWidth: 520, minHeight: 320)
