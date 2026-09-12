@@ -139,12 +139,12 @@ final class RenderingV2Tests: XCTestCase {
         }
     }
 
-    func testRealTextFixturePreparesAgainstBundledFontsByPipelineHash() throws {
+    func testRealTextFixturePreparesAgainstBundledFontsByRawByteHash() throws {
         let env = try RenderingV2.decode(try Self.fixture("display-list-v2-text.json"))
         let frame = try V2Frame.prepare(env, store: PreviewV2Tests.store)
         XCTAssertEqual(frame.fonts.count, 4)
         for (_, f) in frame.fonts {
-            XCTAssertEqual(f.hashConvention, "bytes+face0", "flashtex-render hashes bytes ‖ face index")
+            XCTAssertEqual(f.resource.sha256, f.file.bytesSha256, "flashtex-render names fonts by the raw byte SHA-256 (D3)")
             XCTAssertEqual(f.cgFont.postScriptName as String?, f.resource.postscriptName)
         }
         XCTAssertEqual(Set(frame.fonts.values.map { $0.file.url.lastPathComponent }),

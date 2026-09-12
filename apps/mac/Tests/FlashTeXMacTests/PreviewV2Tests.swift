@@ -1,6 +1,7 @@
 import XCTest
 import CoreGraphics
 import CoreText
+import CryptoKit
 import PDFKit
 import FlashTeXProtocol
 @testable import FlashTeXMac
@@ -250,15 +251,20 @@ final class PreviewV2Tests: XCTestCase {
         XCTAssertThrowsError(try Self.store.resolve(metricsOnly)) { XCTAssertEqual(($0 as? RenderingV2.ValidationError)?.code, "font_resource_unavailable") }
     }
 
-    func testPipelineHashConventionResolvesToTheSameBytes() throws {
-        // flashtex-render names fonts by SHA-256(bytes ‖ face_index BE u32); the
-        // store accepts that alongside the schema's SHA-256(bytes).
+    /// D3: the historical SHA-256(bytes ‖ face_index BE u32) engine identifier
+    /// is not a resource digest (draft contract L55–57); the producer emits raw
+    /// digests and the store no longer tolerates the obsolete spelling.
+    func testObsoleteBytesFace0DigestIsRefusedAsUnknown() throws {
         let (resource, byBytes) = try Self.lmRoman10()
-        var pipeline = resource; pipeline.sha256 = byBytes.file.face0Sha256
-        let byFace0 = try Self.store.resolve(pipeline)
-        XCTAssertEqual(byFace0.file.url, byBytes.file.url)
-        XCTAssertEqual(byFace0.hashConvention, "bytes+face0")
-        XCTAssertEqual(byBytes.hashConvention, "bytes")
+        XCTAssertEqual(resource.sha256, byBytes.file.bytesSha256)
+        var face0 = try Data(contentsOf: byBytes.file.url); face0.append(contentsOf: [0, 0, 0, 0])
+        var obsolete = resource; obsolete.sha256 = V2FontStore.hex(SHA256.hash(data: face0))
+        XCTAssertNotEqual(obsolete.sha256, resource.sha256)
+        XCTAssertThrowsError(try Self.store.resolve(obsolete)) {
+            let e = $0 as? RenderingV2.ValidationError
+            XCTAssertEqual(e?.code, "font_resource_unavailable")
+            XCTAssertTrue(e?.message.contains("no bundled font has this content hash") == true, e?.message ?? "")
+        }
     }
 }
 
@@ -356,7 +362,7 @@ final class PreviewV2ShellTests: XCTestCase {
         // A second load: the first frame stays paintable, explicitly stale.
         let done = expectation(description: "reload")
         model.loadDisplayListV2(url: text) { done.fulfill() }
-        guard case .loading(let source, let ticket, let previous, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
+        guard case .loading(let source, let ticket, let previous, _, _) = model.displayListV2 else { return XCTFail("expected .loading, got \(String(describing: model.displayListV2))") }
         XCTAssertEqual(source, .file(text))
         XCTAssertEqual(previous?.preparedNonce, first.preparedNonce, "the previous verified frame is retained while loading")
         XCTAssertEqual(model.displayListV2?.frame?.preparedNonce, first.preparedNonce)

@@ -82,6 +82,41 @@ final class PreviewControllerClient {
     /// Helper output frames are bounded at 16 MiB each (STDIO.md).
     static let maxFrameBytes = 16 * 1024 * 1024
 
+    /// The helper reads each stdin line through a 1 MiB bound
+    /// (`crates/preview-controller/src/main.rs` `MAX_FRAME`; draft contract
+    /// docs/contracts/runtime-v1-display-list-v2.md "Current helper stdin is
+    /// bounded at 1 MiB"). Measured against the real helper (2026-09-12,
+    /// docs/evidence/mac-v2-conformance-2026-09-12/helper-stdin-measurement.jsonl):
+    /// an `edit` line of exactly 1,048,576 bytes including the newline is
+    /// admitted as a durable revision; 1,048,577 and 2,097,156 bytes answer
+    /// `error {id:null, message:"truncated or oversized input"}` and the
+    /// helper then CLOSES stdout and exits (status 0) — every later request
+    /// is a broken pipe. So the client refuses such a line locally, typed,
+    /// before any byte reaches the helper (`RequestTooLarge`); nothing is
+    /// split or truncated.
+    static let maxRequestLineBytes = 1024 * 1024
+
+    /// A request line the helper would refuse (and die on): refused here instead.
+    struct RequestTooLarge: LocalizedError, Equatable {
+        var type: String
+        var lineBytes: Int
+        var errorDescription: String? {
+            "\(type) request of \(lineBytes) bytes exceeds the helper's \(PreviewControllerClient.maxRequestLineBytes)-byte stdin line limit; not sent (the helper would answer \"truncated or oversized input\" and exit)"
+        }
+    }
+
+    /// The exact bytes `send` writes for a request (newline included).
+    static func requestLine(sessionID: String, id: String, type: String, payload: JSONObject) throws -> Data {
+        let frame: JSONObject = ["protocol_version": 1, "session_id": sessionID, "id": id, "type": type, "payload": payload]
+        var line = try JSONSerialization.data(withJSONObject: frame, options: [.sortedKeys, .withoutEscapingSlashes])
+        line.append(0x0A)
+        return line
+    }
+
+    private static let refusedLock = NSLock()
+    /// Requests refused locally by `maxRequestLineBytes` (tests/evidence).
+    private(set) static var requestsRefusedTooLarge = 0
+
     let executable: URL
     let config: Config
     let configURL: URL
@@ -106,6 +141,10 @@ final class PreviewControllerClient {
         try JSONSerialization.data(withJSONObject: config.json(), options: [.sortedKeys]).write(to: configURL)
         process.executableURL = executable
         process.arguments = [configURL.path]
+        // A write into a pipe whose helper died (measured: it exits after an
+        // oversized stdin line) must surface as a thrown error, not SIGPIPE
+        // (same rule as LineProcessClient).
+        signal(SIGPIPE, SIG_IGN)
         // Helper-spawned producer route: the helper's compiler child inherits
         // this environment, so the bundled rooted TFM directory is prepended
         // to FLASHTEX_TFM_DIRS here too (BundledMetrics.swift, GH36).
@@ -145,9 +184,11 @@ final class PreviewControllerClient {
     @discardableResult
     func send(_ type: String, _ payload: JSONObject, id explicitID: String? = nil) throws -> String {
         let id = explicitID ?? stateLock.withLock { defer { nextID += 1 }; return "pc-\(nextID)" }
-        let frame: JSONObject = ["protocol_version": 1, "session_id": config.sessionID, "id": id, "type": type, "payload": payload]
-        var line = try JSONSerialization.data(withJSONObject: frame, options: [.sortedKeys, .withoutEscapingSlashes])
-        line.append(0x0A)
+        let line = try Self.requestLine(sessionID: config.sessionID, id: id, type: type, payload: payload)
+        guard line.count <= Self.maxRequestLineBytes else {
+            Self.refusedLock.lock(); Self.requestsRefusedTooLarge += 1; Self.refusedLock.unlock()
+            throw RequestTooLarge(type: type, lineBytes: line.count)
+        }
         writeLock.lock(); defer { writeLock.unlock() }
         try stdin.fileHandleForWriting.write(contentsOf: line)
         return id

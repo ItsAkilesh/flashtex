@@ -19,10 +19,12 @@ import Foundation
 ///   bytes). The model decodes all three; only `static-truetype`/`opentype-cff`
 ///   are paintable — a run that references a `core14-afm` font fails resolution.
 /// - `fonts[].byte_length`: schema minimum 1; `core14-afm` entries carry 0.
-/// - `fonts[].sha256`/`font_id`: the pipeline's value is SHA-256(program bytes
-///   ‖ face_index as 4-byte big-endian), font-engine's `content_sha256`, not
-///   SHA-256(bytes). Consumers resolving by hash must try both conventions
-///   (see `GlyphRunRenderer`'s font store); the model only checks the format.
+/// - `fonts[].sha256`/`font_id`: SHA-256 of the raw program bytes, exactly as
+///   the schema and the draft contract (runtime-v1-display-list-v2.md L55–57)
+///   say; the producer emits raw-byte digests for OTF faces. The historical
+///   SHA-256(bytes ‖ face_index) engine identifier is NOT a resource digest
+///   and is refused as an unknown hash by `GlyphRunRenderer`'s font store
+///   (never tolerated as an alias); the model only checks the format.
 /// - Unknown JSON keys are ignored by the decoder (Swift `Codable`), where the
 ///   schema says `additionalProperties: false`. Unknown `kind` values, unknown
 ///   `required_features`, unknown protocol versions and message types are

@@ -379,7 +379,7 @@ final class DisplayCandidateTests: XCTestCase {
             XCTAssertEqual(Int(doc.byteLength), model.activeText.utf8.count)
             XCTAssertEqual(doc.revision, model.displayCandidates.applied?.compileRevision, "the envelope's document revision is the compile generation")
             XCTAssertNotEqual(doc.revision, model.controllerState.durable["main.tex"]?.revision ?? -1, "…not the durable revision (they must not be equated)")
-            for f in frame.fonts.values { XCTAssertEqual(f.hashConvention, "bytes", "flashtex-render names fonts by raw byte SHA-256") }
+            for f in frame.fonts.values { XCTAssertEqual(f.resource.sha256, f.file.bytesSha256, "flashtex-render names fonts by raw byte SHA-256") }
             XCTAssertGreaterThan(frame.prepared.reduce(0) { $0 + $1.glyphCount }, 0)
             XCTAssertFalse(model.isHistoricalPreview)
 
