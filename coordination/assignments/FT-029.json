@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Exact source revision/digest and UTF8 range guards reject stale context",
+    "Bounded multi-document prompt and response proposals preserve explicit user intent",
+    "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+  ],
+  "agent_id": "commander-assistant-context",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander/assistant-context",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "64c7b8965f5a1dd3ba7ccbb35780195edfd37bd6",
+  "objective": "Native helper context registry recovery contract and bounded resource diagnostics",
+  "owned_paths": [
+    "crates/assistant-context"
+  ],
+  "revision": 5,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-029",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T08:02:58Z"
+}

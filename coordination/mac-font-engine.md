@@ -1,9 +1,50 @@
-Agent / task / branch: mac-font-engine (Claude Code subagent, parent mac-claude-a, mac-m1max-a) / FT-018 rev 1 / agent/mac-font-engine/tex-fonts
+Agent / task / branch: mac-font-engine (Claude Code subagent, parent mac-claude-a, mac-m1max-a) / FT-018 rev 3 (rev 1, rev 2 complete) / agent/mac-font-engine/tex-fonts
 State: ready for integration (library only; follow-ups listed)
 Owned paths: crates/font-engine/**, coordination/mac-font-engine.md, coordination/agents/mac-font-engine.json
-Main integrated through: 984fa28f2537feadb9f848eb90f69de0327d1fa5 (branch base; origin/main a77e697 reviewed, no overlap with owned paths — see below)
+Main integrated through: 4d2ec1c (merged at the rev 3 start; d783fbe was rev 3's input main)
 
-Ready behavior (crates/font-engine, edition 2024, zero external crates):
+Rev 3 ready behavior (all acceptance items):
+- One shared metric source: adapters::paragraph (FontMetricsSource for any
+  Face + glyph_run -> GlyphRun::from_shaped), adapters::pdf
+  (to_pdf_embedded_subset -> flashtex_pdf::embed::EmbeddedSubset),
+  adapters::math (MathFontMetrics from OpenType MATH), adapters::preview
+  (face_metrics.json). Optional path deps on the sibling crates on main behind
+  default features; engine-only build with --no-default-features.
+- Visual corpus quantified: docs/consumers.md. Paragraph shaped route, PDF
+  /W+TJ and CoreText drawing of exported positions: 0.0000 pt and 0 differing
+  px on all 8 corpus lines; paragraph char route +0.336 pt on the ffi/ffl line
+  (char->char ligature contract); compiler's Times table -0.02..-42.7 pt
+  (different font until it adopts the adapter). tools/preview_positions_check.swift.
+- Unsupported shaping fails explicitly: Error::UnsupportedScript (rev 1) and
+  new Error::UnsupportedFeature when a requested feature meets an unsupported
+  lookup type (default on; Arial Unicode MarkToLigature test).
+
+Rev 2 ready behavior (all acceptance items):
+- Licensed pinned fonts: fonts/manifest.json (font-resources descriptor/licence
+  shape, schema 1) pins LM Roman 10 x4, LM Sans 10, LM Mono 10, LM Math with
+  sha256/byte length/glyph count/PostScript name + GUST FL text (hashed);
+  PinnedFontSet::load verifies everything, refuses tampering.
+- Fallback identity: shape_with_fallback over an explicit ordered chain
+  (LM Roman -> LM Sans -> LM Mono -> Core14 Symbol in tests); per-cluster
+  Cluster::font -> Shaped::fonts FontId; deterministic; missing stays explicit.
+- Combining marks: GPOS MarkToBase anchors (x + U+0301 in TNR attached at the
+  x-height anchor; verified pixel-identical to CoreText), else documented approx.
+- Subset embedding + ToUnicode: bytes identical across runs (glyf subset and
+  CFF); CFF embedded as bare `CFF ` under /FontFile3 /CIDFontType0C (PDF
+  worker's finding), CIDFontType0, identity CIDs.
+- Round-trip + native rendering (tools/pdf_extract_check.swift,
+  tools/render_check.swift, examples/pdf_roundtrip.rs): PDFKit extracts the
+  exact Unicode (ligatures via ActualText+ToUnicode, attached marks) for LM
+  and TNR; CoreText drawing of the engine's gids/positions from the same file
+  is pixel-identical (0 differing px at 8x) to CoreText's own line for LM and
+  for TNR without f-ligatures; the TNR f-ligature case differs by policy
+  (documented).
+- Commander notes: EncodingCode(u8)/char/GlyphId non-coercible (compile_fail
+  doctests), OT1/T1 tables + mapping example; fixtures/tfm/ ec-lmr10 TFM
+  fixture in font-resources EncodingManifest shape with independent CFF-charset
+  vs cmap GID evidence (250 names, 0 disagreements), reference metrics, README.
+
+Rev 1 ready behavior (crates/font-engine, edition 2024, zero external crates):
 - TrueType/OpenType glyf parsing and OpenType CFF (OTTO, Latin Modern): head,
   hhea, hmtx, maxp, loca/glyf or raw `CFF `, cmap 4/12, OS/2, post, name, MATH;
   .ttc by face index; variable fonts and Type 1 rejected explicitly.
@@ -38,8 +79,10 @@ face index), ORIGINAL glyph ids in shaping output, clusters with byte ranges and
 text, renumbering only inside embed with an explicit map, unit conversions,
 missing/unsupported reporting, bounded resolution.
 
-Validation: `cargo test` 45 passed (5 unit, 14 Core14, 9 Latin Modern, 17
-TrueType; font-file tests skip with a message if absent); clippy and fmt clean.
+Validation: `cargo test` 63 passed (8 unit, 14 Core14, 9 Latin Modern, 6 pinned,
+18 TrueType, 6 adapters; + 2 compile_fail doctests; font-file tests skip with a
+message if absent); clippy and fmt clean; --no-default-features builds.
+Round-trip/render results in README; corpus evidence in docs/consumers.md.
 CoreText comparison (examples/compare_coretext.swift, macOS 26.3.1): TrueType
 and Latin Modern plain advances 0.0000 pt delta on the same file; Latin Modern
 shaped lines (kerning + ligatures) 0.0000 pt delta; Core 14 tables vs Apple's
@@ -50,7 +93,10 @@ fractionRuleThickness 40, radicalKernAfterDegree -556 verified independently.
 
 Needs from others: Commander review of the proposed ABI; PDF crate owner to
 decide whether crates/pdf delegates subsetting/embedding here.
-Next action: none pending for rev 1; follow-ups above on request.
+Next action: rev 3 complete. Consumer-side adoption is theirs: compiler ->
+glyph_run, Mac shell -> face_metrics.json + CTFontDrawGlyphs, pdf writer ->
+cluster CIDs + ActualText. Follow-ups here on request: CFF subsetting,
+MathVariants, MarkToMark, per-run language tags, kern/lig suppression input.
 
 Peer revisions reviewed and adaptations:
 - de1020c (compiler metrics.rs): identical AFM widths; kept an independent
@@ -64,8 +110,10 @@ Peer revisions reviewed and adaptations:
   provenance, and missing font = failure; this crate's FontId/GlyphId/Cluster/
   missing design satisfies each point (variable-font "instance" is moot: they
   are rejected). transfer-v1.md does not touch fonts. No adaptation needed.
-Commit identity note: 07fa9fe was authored as jay3332 <me@jay3332.tech> (the
+Commit identity notes: 07fa9fe was authored as jay3332 <me@jay3332.tech> (the
 user's address, not the repo-configured noreply one); later commits use the
-repository configuration unchanged. Not rewritten (published history).
+repository configuration unchanged. d0c64cf's Claude-Session trailer URL is
+truncated (typo); the correct session is the one on every other commit.
+Neither rewritten (published history).
 Resource: allocation claude-mac20x-font-engine; shared Max quota unknown.
-Updated: 2026-09-12T06:45:00Z
+Updated: 2026-09-12T08:35:00Z

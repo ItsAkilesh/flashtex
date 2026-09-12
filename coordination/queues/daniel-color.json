@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "agent_id": "daniel-color",
+  "task_id": "FT-035",
+  "next_index": 0,
+  "steps": [
+    {
+      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
+      "objective": "Original bounded xcolor-style expression parser resolving explicit named palettes to existing vector-graphics color types; no duplicate drawing engine. Integrate an explicit published consumer adapter without peer ownership edits",
+      "owned_paths": [
+        "crates/color-expressions"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    },
+    {
+      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "objective": "Original bounded xcolor-style expression parser resolving explicit named palettes to existing vector-graphics color types; no duplicate drawing engine. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "owned_paths": [
+        "crates/color-expressions"
+      ],
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
+      "timebox_minutes": 40
+    }
+  ]
+}

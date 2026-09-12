@@ -451,6 +451,9 @@ fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>,
 }
 fn validate_reply(bytes: &[u8], r: &Request, requested: &[String]) -> Result<Value, String> {
     let v: Value = serde_json::from_slice(bytes).map_err(|_| "compiler returned malformed JSON")?;
+    validate_reply_value(v, r, requested)
+}
+fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<Value, String> {
     if v["protocol_version"] != 1
         || v["id"] != r.id
         || v["type"] != "compile_result"
@@ -586,3 +589,5 @@ pub fn validate_layout_capabilities(capabilities: &[String]) -> Result<(), Strin
     }
     Ok(())
 }
+
+pub mod experimental_chunks;

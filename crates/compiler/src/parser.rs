@@ -356,12 +356,11 @@ impl P<'_> {
         }
         if let Some(definition) = self.macros.get(name).cloned() {
             self.record_macro_read(name, &definition);
-            // The command token has already been consumed by the main loop.
-            // Remove it before inserting its replacement so math-mode slices
-            // cannot accidentally retain and typeset the original command too.
-            self.i -= 1;
-            self.t.remove(self.i);
-            self.expand_macro(name, span, depth, definition);
+            // The command token has already been consumed by the main loop. Keep
+            // its index while arguments are consumed, then replace the complete
+            // invocation with one splice.
+            let invocation_start = self.i - 1;
+            self.expand_macro(name, span, depth, definition, invocation_start);
             return;
         }
 
@@ -718,7 +717,14 @@ impl P<'_> {
         }
     }
 
-    fn expand_macro(&mut self, name: &str, span: Span, depth: usize, definition: MacroDef) {
+    fn expand_macro(
+        &mut self,
+        name: &str,
+        span: Span,
+        depth: usize,
+        definition: MacroDef,
+        invocation_start: usize,
+    ) {
         let mut arguments = Vec::new();
         for _ in 0..definition.argument_count {
             let (argument, argument_span) = self.required_group(name, span);
@@ -747,6 +753,8 @@ impl P<'_> {
                 Some(span),
                 Some("stopped expanding this macro invocation".into()),
             ));
+            self.t.drain(invocation_start..self.i);
+            self.i = invocation_start;
             return;
         }
 
@@ -764,7 +772,19 @@ impl P<'_> {
                 }),
             }
         }
-        self.t.splice(self.i..self.i, expanded);
+        // One shift, not two. Callers used to `remove` the invocation token and
+        // then `splice` the expansion into the gap, so every macro invocation
+        // moved the tail of the token vector twice. Callers now leave the
+        // invocation in place and this replaces it in a single splice.
+        //
+        // This halves the work but the operation is still linear in the tokens
+        // after the cursor, so parsing remains superlinear in macro-dense
+        // documents. Measured: parse is 402 ms of a 420 ms edit at 500 KB.
+        // The real fix is incremental parsing, which is a larger change than
+        // this revision's scope; the README records the measurement.
+        let invocation_end = self.i;
+        self.t.splice(invocation_start..invocation_end, expanded);
+        self.i = invocation_start;
     }
 
     fn expand_macro_word(
@@ -1035,8 +1055,15 @@ impl P<'_> {
             return false;
         };
         self.record_macro_read(name, &definition);
-        self.t.remove(self.i);
-        self.expand_macro(name, input.token.span, input.expansion_depth, definition);
+        let invocation_start = self.i;
+        self.i += 1;
+        self.expand_macro(
+            name,
+            input.token.span,
+            input.expansion_depth,
+            definition,
+            invocation_start,
+        );
         true
     }
 
