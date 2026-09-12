@@ -109,7 +109,7 @@ default document route uses is outward-facing and touches pinned evidence.
   LMRoman8 (`crates/pdf/docs/export-fidelity-hw1.md`).
 - Export: `flashtex-pdf-exact from-v2` subsets CFF by original GID
   (`crates/pdf/src/cff.rs`); no program is embedded whole.
-- Assets: 22 LM Roman OTFs + `latinmodern-math.otf` + 29 rooted TFMs are
+- Assets: 21 LM Roman OTFs + `latinmodern-math.otf` + 28 rooted TFMs are
   tracked and hash-pinned in `apps/mac/Fonts` (`SUPPLEMENTARY-FACES.json`,
   `texmf/SUPPLEMENTARY-METRICS.json`), and `apps/mac/scripts/make-app.sh`
   bundles the rooted texmf tree (the GH36 fix is on main; the issue is still
