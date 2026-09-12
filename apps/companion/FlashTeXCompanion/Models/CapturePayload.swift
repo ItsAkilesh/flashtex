@@ -14,11 +14,21 @@ struct CaptureEnvelope: Codable {
         case id, type, payload
     }
 
-    static func create(captureID: String, destinationID: String, baseRevision: Int, image: UIImage, instructions: String) -> CaptureEnvelope? {
-        guard let pngData = image.pngData() else { return nil }
-        let base64 = pngData.base64EncodedString()
-
-        return CaptureEnvelope(
+    /// Create a capture envelope from pre-validated image data.
+    ///
+    /// Accepts raw image bytes + MIME type from `ImageValidator.encode()` so that
+    /// the declared `mime_type` always matches the actual encoding on the wire.
+    /// Passing the data directly avoids the re-encode-to-PNG bug that occurred when
+    /// the validator's JPEG fallback was subsequently re-encoded by `UIImage.pngData()`.
+    static func create(
+        captureID: String,
+        destinationID: String,
+        baseRevision: Int,
+        imageData: Data,
+        mimeType: String,
+        instructions: String
+    ) -> CaptureEnvelope {
+        CaptureEnvelope(
             protocolVersion: 1,
             id: UUID().uuidString,
             type: "capture_submit",
@@ -26,9 +36,34 @@ struct CaptureEnvelope: Codable {
                 captureID: captureID,
                 destinationID: destinationID,
                 baseRevision: baseRevision,
-                image: CaptureImage(mimeType: "image/png", dataBase64: base64),
+                image: CaptureImage(
+                    mimeType: mimeType,
+                    dataBase64: imageData.base64EncodedString()
+                ),
                 instructions: instructions
             )
+        )
+    }
+
+    /// Convenience overload: validates and encodes a UIImage, then creates the envelope.
+    ///
+    /// Returns `nil` only when `ImageValidator.encode(_:)` cannot produce any
+    /// acceptable encoding (image is malformed or exceeds all size limits).
+    static func create(
+        captureID: String,
+        destinationID: String,
+        baseRevision: Int,
+        image: UIImage,
+        instructions: String
+    ) -> CaptureEnvelope? {
+        guard let (data, mime) = ImageValidator.encode(image) else { return nil }
+        return create(
+            captureID: captureID,
+            destinationID: destinationID,
+            baseRevision: baseRevision,
+            imageData: data,
+            mimeType: mime,
+            instructions: instructions
         )
     }
 
