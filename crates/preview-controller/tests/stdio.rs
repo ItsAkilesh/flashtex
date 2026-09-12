@@ -1126,6 +1126,28 @@ fn full_size_optional_expansion_drops_candidate_and_keeps_edit_ack_and_reopen() 
     }
     client.send("doc", "document", json!({"path":"main.tex"}));
     let doc = client.reply("doc")["payload"]["document"].clone();
+    let log = std::fs::read_to_string(&diagnostic_path).unwrap();
+    let profiles: Vec<Value> = log
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|event| event["phase"] == "display_transport")
+        .collect();
+    assert_eq!(
+        profiles.len(),
+        1,
+        "unchanged profile repeated on idle/document polls"
+    );
+    let profile = &profiles[0]["profile"];
+    assert!(profile["response_bytes"].as_u64().unwrap() > 5_000_000);
+    for field in [
+        "parse_ms",
+        "decode_queue_wait_ms",
+        "reader_delivery_wait_ms",
+        "source_binding_ms",
+    ] {
+        let duration = profile[field].as_f64().unwrap();
+        assert!(duration.is_finite() && duration >= 0.0);
+    }
     client.send(
         "edit",
         "edit",

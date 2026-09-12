@@ -119,3 +119,17 @@ must not be summed as complete owner CPU/wall time. Ordinary fast idle polls sta
 unlogged. Poll duration includes scheduling and owner work, not just source hashing,
 and does not include all background decoder CPU. Fine-grained candidate timing is
 owned by the runtime and remains separate from native renderer timing.
+
+With `diagnostic_timings:true`, helper stderr now emits `phase:display_transport`
+and the runtime's source-bound scalar `profile`, once per request/revision/display
+epoch. No repeated idle-poll measurements are emitted. A cleared runtime profile
+resets deduplication. Profile fields are request/project/revision/epoch, framed byte
+count, JSON parse time, decoder queue wait, owner delivery wait and source-binding
+validation time. They contain no document text or renderer resources. They remain
+transport measurements; native font/render validation and paint are not included.
+
+The actual oversized-frame helper test verifies exactly one logged profile after
+idle and document-query polls, framed bytes above5MB, and finite nonnegative stage
+durations before confirming that durable editing still works. Use these stages
+alongside optional-output serialization and end-to-end receipt timings; do not
+infer a full latency budget by summing phases from different requests or processes.
