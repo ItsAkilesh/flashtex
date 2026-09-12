@@ -4,7 +4,7 @@
   "agent_id": "commander-runtime-performance",
   "branch": "agent/commander-runtime-performance/runtime-performance",
   "revision": 1,
-  "state": "awaiting_integration",
+  "state": "integrated",
   "objective": "GH21 measured runtime serialization, transport and validation performance with exact-output and stale-safety preservation",
   "owned_paths": [
     "crates/document-runtime"
@@ -20,5 +20,5 @@
   "deadline_utc": null,
   "input_main_sha": "3423970b300e878062f2a124fb8004545626200b",
   "updated_utc": "2026-09-12T08:35:11.897361+00:00",
-  "integration_evidence": "UTF8 stagee5a804d integrated254f662; final validationa47bd38 ready, root moves toFT048."
+  "integration_evidence": "Final a47bd38 integrated after21 tests including original compiler and strict Clippy. Exact Value preserved; isolated validation median ratio0.648607. Root now FT048."
 }

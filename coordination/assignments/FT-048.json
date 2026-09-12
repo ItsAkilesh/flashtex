@@ -1,23 +1,24 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-048",
-  "agent_id": "commander-preview-performance",
-  "branch": "agent/commander-preview-performance/preview-performance",
-  "revision": 1,
-  "state": "assigned",
-  "objective": "Measure and remove redundant native helper JSON result copies while preserving exact wire values, durability, ordering and backpressure",
-  "owned_paths": [
-    "crates/preview-controller"
-  ],
   "acceptance": [
     "Meaningful tests and strict lint pass",
     "Publish truthful execution provenance and exact tested SHA",
     "No native integration or PDF parity claim without measured evidence"
   ],
-  "dependencies": [],
+  "agent_id": "commander-preview-performance",
   "allocation_id": "hosted-openai-product",
-  "timebox_minutes": 30,
+  "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
-  "input_main_sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
-  "updated_utc": "2026-09-12T08:57:30.114547+00:00"
+  "dependencies": [],
+  "input_main_sha": "da9dc355a6fab08ac53812c8a04042781d9d9dc4",
+  "objective": "Prototype opt-in bounded completed-snapshot progress with immutable original source identity; strict current-preview default unchanged, no native activation before consumer gates",
+  "owned_paths": [
+    "crates/preview-controller",
+    "crates/document-runtime"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-048",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:17:16.587022+00:00"
 }

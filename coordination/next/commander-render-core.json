@@ -2,8 +2,8 @@
   "schema_version": 1,
   "agent_id": "commander-render-core",
   "task_id": "FT-023",
-  "revision": 5,
+  "revision": 6,
   "branch": "agent/commander-render-core/rendering-core",
   "assignment_path": "coordination/assignments/FT-023.json",
-  "updated_utc": "2026-09-12T08:49:23.060270+00:00"
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }

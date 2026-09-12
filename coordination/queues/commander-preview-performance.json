@@ -1,14 +1,14 @@
 {
-  "schema_version": 1,
   "agent_id": "commander-preview-performance",
-  "task_id": "FT-048",
   "next_index": 0,
+  "schema_version": 1,
   "steps": [
     {
-      "name": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
-      "objective": "Measure real helper result delivery with exact current-source and lost-reply recovery gates",
+      "name": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
+      "objective": "Exact immutable-origin snapshot identity and bounded retention/cancellation tests",
       "owned_paths": [
-        "crates/preview-controller"
+        "crates/preview-controller",
+        "crates/document-runtime"
       ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
@@ -19,10 +19,11 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
-      "objective": "Bound helper serialization and stalled-output residency without altering durable source guarantees",
+      "name": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
+      "objective": "Opt-in controller consumption and burst-progress evidence with strict default and source-action refusal",
       "owned_paths": [
-        "crates/preview-controller"
+        "crates/preview-controller",
+        "crates/document-runtime"
       ],
       "acceptance": [
         "Meaningful tests and strict lint pass",
@@ -32,5 +33,6 @@
       "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-048"
 }
