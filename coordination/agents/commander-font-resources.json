@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "01acbb10d76bb136985927e968a4b97bd6fae94e",
+  "code_revision": "d26d412c89d2b69cf9920eba61718e37d61870b4",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
-  "next_action": "Mac matching-font verification pending exact LM fontSHA1aa18cf...; compiled tests/rooted_lm_encoding.rs opt-in via FLASHTEX_LM_FONT. Request sent Commander; no substitute evidence. Same owned crate, clean branch after publication, no providers/descendants.",
+  "next_action": "Assets /tmp/flashtex-lm-official-27_umgtf; official URL/archive/font/license hashes in fixtures/rooted-lm-download.json. No install/repo font copies. Optional declarations field on schema2 CFF asset node, default strict. Consumer handoff next; no providers/descendants/peer writes or pending jobs.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Rooted .enc asset integration complete: schema2 TT/CFF physical asset nodes, schema1 unchanged,120 ordinary tests/clippy pass. Project generation binds encoding SHA/path/license; existing graph expansion and new exact physical_run preserve intervals. Synthetic end-to-end proofs pass; real TFM/enc metrics pinned.",
+  "summary": "Matching LM gate closed: official GUST exactfont1aa18cf... retrieved temp; strict initial missing-name failure retained. Explicit SHA-bound5aliases/3unavailable slots added; real rooted fi GID125 interval0..2 and AVkern-116509 pass, unavailable slots fail.120 ordinary tests/clippy+real test pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:19:18Z",
+  "updated_utc": "2026-09-12T09:26:09Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
