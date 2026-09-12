@@ -454,6 +454,8 @@ is a stand-in, the real listener is only exercised from `apps/mac`.
 
 ## Launch hooks and evidence
 
+Assistant: `FLASHTEX_ASSISTANT_CONTEXT` (helper, offline), `FLASHTEX_ASSISTANT_PROVIDER` (optional local provider command — the only thing that may reach a network, by the user's choice).
+
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
 automation; never steals keyboard focus). `FLASHTEX_DEBOUNCE_MS` sets the
 keystroke-to-compile delay (default 0: every edit submits immediately; one
@@ -468,7 +470,6 @@ were `current` and which `stale_ignore`).
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
 (a compiler bundled inside `FlashTeX.app` attaches by default; `=0` disables);
 `FLASHTEX_SEED_FILE=<path.tex>` seeds the editor. Example (from `apps/mac`):
-
 ```sh
 FLASHTEX_REPO=$(git rev-parse --show-toplevel) FLASHTEX_AUTOATTACH=1 \
   FLASHTEX_SEED_FILE=Samples/recovery-demo.tex .build/debug/FlashTeXMac
