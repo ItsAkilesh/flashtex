@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:44:49Z",
-      "adaptation": "Move validated owned edit text out of parsed JSON; keep source token owned across dispatch and preserve all existing authority checks. Pointer/capacity proof500KB source clone eliminated; no aggregate latency claim.",
-      "main_sha": "6cc3b33d3e549c8b3ba5e51d6ae4da3450ef603e",
-      "revision": 15
+      "acknowledged_utc": "2026-09-12T12:49:00Z",
+      "adaptation": "Prioritize actual multi-document capture with transparent producer proxy and explicit bibkind/revisions7/19/23. Deferred clone patch saved separately. First capture default/raw/restart/reenable; stale/cancel follows, no modeledoutput claim.",
+      "main_sha": "a7388f6966f047b39403d6b2196179a95f1ad17f",
+      "revision": 16
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "894b393f006b25de9324613d7ee4d05f2683c6dd",
+  "code_revision": "9f28baebad9585940a390fef699fefc6a3e5d142",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "d53c50738e4e26276a014835537e4ebd46a31e80",
-  "next_action": "Commander integrate then next helper responsiveness task.",
+  "main_integrated_through": "894b393f006b25de9324613d7ee4d05f2683c6dd",
+  "next_action": "Runtime owner independently consume exact captured frames; Commander review. Full font/bibliography/native acceptance remains incomplete.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r15 moves parsed owned edit source into existing durable API for full and metadata replies, eliminating one full text clone.",
+  "summary": "FT048r16 actual multi-document helper capture published for independent runtime consumption: distinct editor revisions, declared bibliography, restart/reenable and gated supersession.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:44:50Z",
+  "updated_utc": "2026-09-12T12:52:00Z",
   "usage": {
     "status": "unknown"
   }
