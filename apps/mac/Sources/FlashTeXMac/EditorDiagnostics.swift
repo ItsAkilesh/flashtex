@@ -609,14 +609,21 @@ extension EditorDiagnostics {
     }
 
     /// `report` with each mark's `explanation` line set from `explanations`
-    /// (matched by diagnostic index; nil leaves the marks untouched). O(marks):
-    /// this is all a keystroke pays once the helper has answered.
-    static func attach(_ explanations: [Explanation]?, to report: Report) -> Report {
-        guard let explanations, !explanations.isEmpty else { return report }
+    /// (matched by diagnostic index; nil leaves the marks untouched). Marks
+    /// `carried` from an older result belong to that result's diagnostics,
+    /// so they take their lines from `carried` (the cache entry for the
+    /// retained result id), never from the newest result's. O(marks): this
+    /// is all a keystroke pays once the helper has answered.
+    static func attach(_ explanations: [Explanation]?, carried carriedExplanations: [Explanation]? = nil,
+                       to report: Report) -> Report {
+        let current = (explanations?.isEmpty == false) ? explanations : nil
+        let kept = (carriedExplanations?.isEmpty == false) ? carriedExplanations : nil
+        guard current != nil || kept != nil else { return report }
         var out = report
         for i in out.marks.indices {
+            guard let list = out.marks[i].carried == nil ? current : kept else { continue }
             let index = out.marks[i].diagnosticIndex
-            out.marks[i].explanation = explanations.indices.contains(index) ? explanations[index].line : nil
+            out.marks[i].explanation = list.indices.contains(index) ? list[index].line : nil
         }
         return out
     }
