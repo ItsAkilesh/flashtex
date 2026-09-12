@@ -41,8 +41,17 @@ def main():
     if args.reply_limit is not None:
         os.environ['FLASHTEX_MAX_REPLY_BYTES'] = str(args.reply_limit)
     fixture = json.loads(Path(args.fixture).read_text())
-    source = fixture['payload']['documents'][0]['text']
-    source = source.replace('Office AV fi.', ('Office AV fi.\n' * args.repeat).rstrip())
+    source_states = None
+    if isinstance(fixture, list):
+        assert len(fixture) == 3 and args.repeat == 1, 'sequence requires three exact states and repeat=1'
+        fixture = [case.get('request', case) for case in fixture]
+        assert all(len(r['payload']['documents']) == 1 and
+                   r['payload']['documents'][0]['path'] == 'main.tex' for r in fixture)
+        source_states = [r['payload']['documents'][0]['text'] for r in fixture]
+        source = source_states[0]
+    else:
+        source = fixture['payload']['documents'][0]['text']
+        source = source.replace('Office AV fi.', ('Office AV fi.\n' * args.repeat).rstrip())
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
     cases = []
@@ -74,7 +83,9 @@ def main():
                         enabled=True, renderer_support_confirmed=True))
                     reply_id = 'enable'
                 else:
-                    source = source.replace('Office AV fi.', 'Office AV fi. More text.') if step == 1 else source.replace('More text.', 'More text. Final edit.')
+                    source = source_states[step] if source_states else (
+                        source.replace('Office AV fi.', 'Office AV fi. More text.') if step == 1
+                        else source.replace('More text.', 'More text. Final edit.'))
                     reply_id = 'edit-' + str(step)
                     client.send(reply_id, 'edit', dict(path='main.tex', expected_revision=document['revision'],
                         expected_sha256=document['source_sha256'], text=source))
@@ -143,6 +154,8 @@ def main():
                     exact_direct_v1=True, exact_direct_display=True if candidate else None, source_sha256=source_hash,
                     exact_raw_body=True if candidate and args.display_transport == 'raw-prototype' else None,
                     v2_accepted=candidate is not None, status=lines[0]['payload']['status'], diagnostics=lines[0]['payload']['diagnostics'],
+                    page_count=len(lines[0]['payload']['pages']),
+                    page_item_counts=[len(p.get('items', [])) for p in lines[0]['payload']['pages']],
                     ack_receipt_ms=ack_ms, v1_receipt_ms=v1_ms, candidate_receipt_ms=candidate_ms))
             diagnostics = client.diagnostics()
         finally:
@@ -161,6 +174,7 @@ def main():
         native_rendering='not performed', native_latency='not measured')
     evidence['helper_source_sha'] = args.helper_source_sha
     evidence['replay_script_sha256'] = digest(__file__)
+    evidence['replay_client_sha256'] = digest(Path(__file__).with_name('helper_replay.py'))
     if args.compress_artifacts:
         for artifact in list(output.glob('step-*.json')) + list(output.glob('step-*.jsonl')):
             artifact.with_name(artifact.name + '.gz').write_bytes(gzip.compress(artifact.read_bytes(), mtime=0))
@@ -168,7 +182,8 @@ def main():
     evidence['artifact_encoding'] = 'gzip' if args.compress_artifacts else 'json'
     evidence['step_artifact_sha256'] = {p.name: digest(p) for p in sorted(output.glob('step-*.json*'))}
     (output/'provenance.json').write_text(json.dumps(evidence, indent=2)+'\n')
-    print(json.dumps(cases))
+    print(json.dumps([{**{k:v for k,v in case.items() if k != 'diagnostics'},
+                       'diagnostic_count':len(case['diagnostics'])} for case in cases]))
 
 
 if __name__ == '__main__':

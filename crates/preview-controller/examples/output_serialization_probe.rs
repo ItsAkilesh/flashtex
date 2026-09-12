@@ -4,7 +4,7 @@ mod output_buffer;
 use output_buffer::OutputBuffer;
 use serde::Serialize;
 use serde_json::{json, value::RawValue, Value};
-use std::{io::BufWriter, time::Instant};
+use std::time::Instant;
 
 fn encode<T: Serialize + ?Sized>(
     value: &T,
@@ -13,13 +13,7 @@ fn encode<T: Serialize + ?Sized>(
 ) -> Result<Vec<u8>, String> {
     let output = OutputBuffer::new(limit);
     if buffered {
-        let mut writer = BufWriter::with_capacity(8192, output);
-        serde_json::to_writer(&mut writer, value).map_err(|e| e.to_string())?;
-        writer
-            .into_inner()
-            .map_err(|e| e.to_string())?
-            .finish()
-            .map_err(|e| e.to_string())
+        output_buffer::serialize(value, limit).map_err(|e| e.to_string())
     } else {
         let mut output = output;
         serde_json::to_writer(&mut output, value).map_err(|e| e.to_string())?;

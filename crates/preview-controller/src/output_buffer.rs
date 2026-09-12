@@ -1,6 +1,16 @@
 //! JSONL buffer whose byte budget includes the newline and bounds requested growth.
 use std::io::{self, Write};
 
+/// Batch small serializer writes; return only a complete, bounded JSONL frame.
+pub fn serialize<T: serde::Serialize + ?Sized>(value: &T, limit: usize) -> io::Result<Vec<u8>> {
+    let mut writer = io::BufWriter::with_capacity(8192, OutputBuffer::new(limit));
+    serde_json::to_writer(&mut writer, value).map_err(io::Error::other)?;
+    writer
+        .into_inner()
+        .map_err(|error| error.into_error())?
+        .finish()
+}
+
 pub struct OutputBuffer {
     bytes: Vec<u8>,
     limit: usize,

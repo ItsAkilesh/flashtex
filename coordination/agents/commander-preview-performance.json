@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T11:37:30Z",
-      "adaptation": "Read published FT048r8; buffered serialization9da22ae6 delivered. Prepare private raw-body serializer acceptance while runtime owner retains all parser/source-binding changes; required output unchanged.",
-      "main_sha": "36c062924dd56ad15a0ddc5772cb262e84113541",
-      "revision": 8
+      "acknowledged_utc": "2026-09-12T12:04:19Z",
+      "adaptation": "Read Commander FT048r9 dispatch: implement measured required-output batching using shared bounded serializer; retain fallback/error/ACK and exact16MiB newline limits.",
+      "main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
+      "revision": 9
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e39f50e594703c0d4b4bd6848e72fd2fe5169678",
+  "code_revision": "549b4841cbd325a1daaf9cf53e51be1e4f929227",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "b5ec8e4270dcd2beb47967a3bad788233a3a3b22",
-  "next_action": "Publish exact raw artifacts for renderer uptake; coordinate next native/source acceptance without default promotion.",
+  "main_integrated_through": "f5524794eb2581bdace0f32681041aeb9912e292",
+  "next_action": "Publish checkpoint for integration; review next measured helper bottleneck while peers validate renderer/runtime phases.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Actual65dbe7d\u2192raw helper repeat100 passes exact original nested wire bytes, direct v1/v2 semantic equality, source identity and durable reopen.",
+  "summary": "FT048r9 required-output batching implemented via shared bounded serializer; exact frame/error/ACK behavior passes full relevant gates.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:56:43Z",
+  "updated_utc": "2026-09-12T12:05:11Z",
   "usage": {
     "status": "unknown"
   }
