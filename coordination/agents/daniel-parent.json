@@ -3,9 +3,9 @@
   "allocation_id": "daniel-claude20x-shared",
   "assignment_acknowledgements": {
     "FT-046": {
-      "acknowledged_utc": "2026-09-12T16:20:32Z",
-      "adaptation": "Active at 2026-09-12T16:20:32Z. Machine mac-m5pro-dq222, Apple M5 Pro, 18 cores, 48 GB, macOS 26.6.2, 17 worktrees on disk. The earlier gap was idleness, not failure: rounds 1 and 2 finished and this supervisor reported completion without re-reading the next/ queue, so newer lane revisions went unclaimed. Corrected: next/ is now read before reporting. Lanes executing right now: 0, reported as measured rather than as the nominal 16. Round 3 starts next. Quota is not readable from the terminal; extra usage is disabled so no spend is possible; no rate-limit failure has occurred here across two rounds. FT-030 has not started. The local tooling layer declines to launch that lane. This is a tooling limit on this machine, not quota, capacity or ownership, and it needs the machine owner to resolve.",
-      "main_sha": "805777e4dff47e821d6a0c6aae6c44d457675aa0",
+      "acknowledged_utc": "2026-09-12T16:39:15Z",
+      "adaptation": "Active at 2026-09-12T16:39:15Z on mac-m5pro-dq222, 16 lane worktrees present. Round 3 status by lane: 12 of 16 published at their current dispatched revision, each re-verified here for tests, clippy with warnings denied, paths touched, and commit authorship before publication. FT-039, FT-043 and FT-044 were halted part-way by the machine owner and hold uncommitted changes; their last committed state is intact and nothing was lost, but they are behind their dispatched revision. FT-030 has still never started. The local tooling layer declines to launch that lane. Not quota, not capacity, not ownership. It needs the machine owner. Notable result this round: FT-031 found two real defects in its own previous revision while attacking it. An all-zero-byte file parsed as a valid empty font because the version was never checked, and zero-length tables, misaligned offsets and out-of-order directories were all accepted. Both are fixed and the fix was validated against 787 faces across 128 real system fonts with byte-identical results and no regressions.",
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
       "revision": 5
     }
   },
@@ -18,23 +18,23 @@
     "latex-oracle",
     "commit-execution"
   ],
-  "code_revision": "b40e994880463b0aca1c1018d5d7b81eb7252eeb",
+  "code_revision": "2b98e7f94f99a03f339a8b4efdff624c2dfc7d3c",
   "eta_minutes": {
-    "likely": 45,
-    "optimistic": 15,
-    "pessimistic": 120
+    "likely": 60,
+    "optimistic": 20,
+    "pessimistic": 150
   },
   "machine": "mac-m5pro-dq222",
   "main_integrated_through": "e4e0c69edba4d22206a498db9ad94ef45f75e7cd",
-  "next_action": "Start round 3 on lane revisions 3 and 4.",
+  "next_action": "Resume FT-039, FT-043 and FT-044 from their existing worktrees when cleared to do so. FT-030 still needs the machine owner to clear a local tooling restriction.",
   "reviewed_peers": {
-    "origin/main": "805777e4dff47e821d6a0c6aae6c44d457675aa0"
+    "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Active at 2026-09-12T16:20:32Z on mac-m5pro-dq222, 17 worktrees present. Round 1: 16/16 lanes, 547 tests. Round 2: 15/16 lanes published with valid ack records. 0 lanes executing at this instant. Round 3 on lane revisions 3 and 4 is next. FT-030 has not started.",
+  "summary": "Round 3 in progress. 12 of 16 lanes have their current dispatched revision published and verified: FT-031 r4, FT-032 r4, FT-033 r3, FT-034 r3, FT-035 r3, FT-036 r2, FT-037 r3, FT-038 r3, FT-040 r3, FT-041 r3, FT-042 r3, FT-045 r3. Four are not current: FT-030 has never started, and FT-039, FT-043 and FT-044 were halted part-way and hold uncommitted changes in their worktrees.",
   "tool": "Claude Code on Claude Max 20x",
-  "updated_utc": "2026-09-12T16:20:32Z",
+  "updated_utc": "2026-09-12T16:39:15Z",
   "usage": {
     "evidence": "Claude Max 20x, organizationRateLimitTier default_claude_max_20x, hasExtraUsageEnabled=false, so no overage, purchase or API fallback is possible from this machine. Live quota is not readable non-interactively: /usage is an interactive slash command and no CLI subcommand prints it. Unknown is not zero.",
     "status": "unknown"
