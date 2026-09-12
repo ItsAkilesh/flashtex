@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
+name = "flashtex-project-files"
+version = "0.1.0"
+
+[[package]]
 name = "flashtex-project-templates"
 version = "0.1.0"
+dependencies = [
+ "flashtex-project-files",
+]

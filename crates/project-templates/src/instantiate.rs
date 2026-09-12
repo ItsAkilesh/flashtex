@@ -1,29 +1,61 @@
 //! Rooted, non-destructive instantiation of a [`Template`] into a target
-//! directory.
+//! directory, with an explicit creation receipt and whole-batch
+//! interrupted-write recovery.
 //!
 //! Security is the point of this module: a template must never write
-//! outside the caller's target directory, and must never silently clobber a
-//! file that is already there. [`instantiate`] enforces both by
-//! construction, not by convention:
+//! outside the caller's target directory, must never silently clobber a
+//! file that is already there, and must never leave the target directory in
+//! a half-written state if instantiation fails partway through. [`instantiate`]
+//! enforces all three by construction, not by convention:
 //!
 //! - Every declared file path is validated by [`crate::path::validate`]
 //!   before any I/O happens; a path containing `..` or an absolute path is
-//!   rejected with a typed [`InstantiateError::InvalidTemplate`].
-//! - Each target path is then built by pushing the *validated segments*
-//!   individually onto `target_root` (never by parsing/joining the raw
-//!   string), so there is no code path through which a rejected path could
-//!   still reach the filesystem. A debug assertion double-checks the result
-//!   stayed under `target_root`.
+//!   rejected with a typed [`InstantiateError::InvalidTemplate`]. This
+//!   validation is strict in a way `flashtex_project_files::ProjectPath`
+//!   deliberately is not: that type *resolves* `..` (popping a segment, only
+//!   erroring if it would leave the root), whereas ours refuses any `..`
+//!   segment outright, even one that would mathematically cancel out (see
+//!   `crate::path`'s tests). Because that guarantee is ours alone, this
+//!   module keeps `crate::path::validate` as the sole judge of a raw
+//!   template-declared path string; a `flashtex_project_files::ProjectPath`
+//!   is only ever built from segments that already passed it, never from a
+//!   raw string, so it can't reintroduce the traversal it would otherwise
+//!   silently resolve.
+//! - Every write and pre-existence check goes through
+//!   `flashtex_project_files::ProjectRoot`/`ProjectLock`: rooted,
+//!   `O_NOFOLLOW` at every path component, so a symlink planted at (or
+//!   above) a declared path is refused rather than written through. Rev 1's
+//!   plain `Path::exists`/`fs::write` would have followed such a symlink;
+//!   that gap is closed here, not merely refactored around.
 //! - Before writing anything, every target path is checked for an existing
-//!   file; if one is found and [`InstantiateOptions::overwrite`] is `false`,
-//!   instantiation fails with [`InstantiateError::AlreadyExists`] and
-//!   *nothing is written* — a template can't clobber half the project and
-//!   leave a mix of old and new files behind.
+//!   file through that same rooted reader; if one is found and
+//!   [`InstantiateOptions::overwrite`] is `false`, instantiation fails with
+//!   [`InstantiateError::AlreadyExists`] and *nothing is written* — a
+//!   template can't clobber half the project and leave a mix of old and new
+//!   files behind. This whole-batch preflight is ours: `ProjectRoot` only
+//!   guarantees no-clobber per individual write, not across a batch.
+//! - Every successful write returns a [`CreationRecord`] (path, content hash,
+//!   size) taken from the rooted writer's own post-write verification, not
+//!   recomputed separately, so [`InstantiateReport::created`] is an honest
+//!   receipt of what actually landed on disk.
+//! - If a write fails partway through a multi-file template — a late
+//!   conflict the preflight couldn't see (an external writer racing us), a
+//!   disk error, or a refused symlink — every file this call already wrote
+//!   is rolled back: restored to the exact bytes it held before this call if
+//!   it pre-existed (captured during preflight), or removed if this call
+//!   created it. The result is that `instantiate` is all-or-nothing: either
+//!   every declared file ends up as specified, or the target directory is
+//!   left exactly as it was found.
 
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use flashtex_project_files::{
+    DEFAULT_READ_LIMIT, Digest, Expected, ProjectLock, ProjectPath as RootedPath, ProjectRoot,
+    Refused, SaveConflictKind, SaveError,
+};
 
 use crate::escape;
 use crate::field::{self, FieldError};
@@ -44,15 +76,35 @@ pub struct InstantiateOptions {
     pub overwrite: bool,
 }
 
+/// One file [`instantiate`] created or replaced: proof of exactly what
+/// happened, without the caller needing to re-read and re-hash the file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreationRecord {
+    pub path: PathBuf,
+    pub sha256: Digest,
+    pub bytes: u64,
+}
+
+impl CreationRecord {
+    pub fn sha256_hex(&self) -> String {
+        flashtex_project_files::sha256_to_hex(&self.sha256)
+    }
+}
+
 /// What [`instantiate`] wrote on success.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstantiateReport {
     /// Every file path written, in template order.
     pub written_files: Vec<PathBuf>,
+    /// The creation receipt: one entry per `written_files`, same order, with
+    /// the exact content hash and size the rooted writer verified after the
+    /// file landed on disk.
+    pub created: Vec<CreationRecord>,
 }
 
-/// Why instantiation failed. No file is written when any variant is
-/// returned.
+/// Why instantiation failed. No file is left in a changed state when any
+/// variant is returned: either nothing was written yet, or every file this
+/// call had written was rolled back (see [`InstantiateError::Rooted`]).
 #[derive(Debug)]
 pub enum InstantiateError {
     /// The template manifest itself failed validation (bad path, bad
@@ -67,10 +119,26 @@ pub enum InstantiateError {
     /// `target_root` exists and is not a directory.
     RootNotADirectory(PathBuf),
     /// A file this template would write already exists and
-    /// `options.overwrite` was `false`.
+    /// `options.overwrite` was `false`. Nothing was written.
     AlreadyExists(PathBuf),
-    /// An I/O operation failed.
+    /// An I/O operation outside the rooted writer failed (creating
+    /// `target_root` itself). Nothing from this template was written.
     Io { path: PathBuf, source: io::Error },
+    /// The rooted filesystem layer refused an operation on `path`, or
+    /// reported a conflict it could not resolve as a plain
+    /// [`InstantiateError::AlreadyExists`] (a late conflict discovered
+    /// mid-batch, a symlink refusal, or a disk error). If this happened
+    /// after this call had already written one or more files,
+    /// `rollback_incomplete` is empty when every one of them was
+    /// successfully restored to its pre-call state (or removed, if this
+    /// call had created it) — the common case — and otherwise lists the
+    /// files that could not be rolled back, which must be inspected
+    /// manually.
+    Rooted {
+        path: PathBuf,
+        source: SaveError,
+        rollback_incomplete: Vec<PathBuf>,
+    },
 }
 
 impl fmt::Display for InstantiateError {
@@ -93,23 +161,68 @@ impl fmt::Display for InstantiateError {
             InstantiateError::Io { path, source } => {
                 write!(f, "I/O error at {}: {source}", path.display())
             }
+            InstantiateError::Rooted {
+                path,
+                source,
+                rollback_incomplete,
+            } => {
+                if rollback_incomplete.is_empty() {
+                    write!(
+                        f,
+                        "rooted filesystem operation on {} failed: {source}",
+                        path.display()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "rooted filesystem operation on {} failed: {source}; {} previously-written file(s) could not be rolled back: {:?}",
+                        path.display(),
+                        rollback_incomplete.len(),
+                        rollback_incomplete
+                    )
+                }
+            }
         }
     }
 }
 
 impl std::error::Error for InstantiateError {}
 
+/// Test-only fault injection, mirroring `flashtex_project_files::save`'s own
+/// `Hooks` pattern: lets unit tests simulate a write failing partway through
+/// a multi-file batch — a disk error or a late-discovered conflict — without
+/// needing to actually trigger one, so the rollback behavior can be
+/// exercised deterministically.
+#[derive(Default)]
+pub(crate) struct Hooks<'h> {
+    /// Called immediately before writing the file at batch index `i`
+    /// (0-based, template order). Returning `Err` aborts the batch as if
+    /// that write had failed with this I/O error, after any files with a
+    /// smaller index have already landed and must now be rolled back.
+    pub before_write: Option<&'h dyn Fn(usize) -> io::Result<()>>,
+}
+
 /// Instantiates `template` under `target_root`, substituting `options` into
-/// each file body, and returns the paths written.
+/// each file body, and returns a receipt of every file written.
 ///
 /// `target_root` is created (via `create_dir_all`) if it does not exist. No
-/// file is written outside `target_root`, and no existing file is
-/// overwritten unless `options.overwrite` is `true` — see the module docs
-/// for exactly how both guarantees are enforced.
+/// file is written outside `target_root`, no existing file is overwritten
+/// unless `options.overwrite` is `true`, and a failure partway through
+/// leaves `target_root` exactly as it was before the call — see the module
+/// docs for exactly how all three guarantees are enforced.
 pub fn instantiate(
     template: &Template,
     target_root: &Path,
     options: &InstantiateOptions,
+) -> Result<InstantiateReport, InstantiateError> {
+    instantiate_with_hooks(template, target_root, options, &Hooks::default())
+}
+
+pub(crate) fn instantiate_with_hooks(
+    template: &Template,
+    target_root: &Path,
+    options: &InstantiateOptions,
+    hooks: &Hooks<'_>,
 ) -> Result<InstantiateReport, InstantiateError> {
     template
         .validate()
@@ -133,20 +246,30 @@ pub fn instantiate(
         ));
     }
 
-    // Resolve every target path from validated segments only, and refuse to
-    // proceed at all if any of them already exists and overwriting was not
-    // requested. This whole-template preflight means instantiate() never
-    // leaves a project half-written because of one conflicting file.
-    // `Template::validate` above already rejects duplicate raw paths, and
-    // path validation is injective on the accepted subset (no `.`/empty
-    // segments), so distinct declared paths always resolve to distinct
-    // targets; no additional dedup is needed here.
-    let mut targets = Vec::with_capacity(template.files.len());
+    // From here on every read and write is rooted at `target_root`:
+    // `ProjectRoot::open` itself refuses a `target_root` whose final
+    // component is a symlink, and every subsequent walk refuses a symlink
+    // at any parent component too.
+    let root = ProjectRoot::open(target_root).map_err(|source| InstantiateError::Rooted {
+        path: target_root.to_path_buf(),
+        source,
+        rollback_incomplete: Vec::new(),
+    })?;
+    let lock = root.lock().map_err(|source| InstantiateError::Rooted {
+        path: target_root.to_path_buf(),
+        source,
+        rollback_incomplete: Vec::new(),
+    })?;
+
+    // Resolve every declared path from *validated segments only* (never by
+    // parsing/joining the raw string), exactly as before, so there is no
+    // code path through which a rejected path could still reach the
+    // filesystem. `Template::validate` above already rejected `..`,
+    // absolute paths, duplicates, and forbidden characters, so joining the
+    // accepted segments back into a `RootedPath` cannot fail or reintroduce
+    // a traversal.
+    let mut plan = Vec::with_capacity(template.files.len());
     for file in &template.files {
-        // `Template::validate` above already rejected `..`, absolute paths,
-        // and forbidden characters, so this can only build a path under
-        // `target_root`. The assertion is defense-in-depth against a future
-        // change to path resolution, not a load-bearing check today.
         let segments = crate::path::validate(&file.path)
             .expect("template already validated: path must be well-formed");
         let mut target = target_root.to_path_buf();
@@ -157,10 +280,50 @@ pub fn instantiate(
             target.starts_with(target_root),
             "resolved path escaped target_root"
         );
-        if !options.overwrite && target.exists() {
-            return Err(InstantiateError::AlreadyExists(target));
+        let rooted_path = RootedPath::normalize(&segments.join("/"))
+            .expect("validated segments cannot fail rooted normalization");
+        plan.push((file, target, rooted_path));
+    }
+
+    // Whole-template preflight, through the rooted reader instead of
+    // `Path::exists` (which follows symlinks). Non-overwrite mode fails the
+    // whole batch — nothing written — the moment any target is found to
+    // exist. Overwrite mode instead reads back each existing target's
+    // current bytes, which double as the rollback source if a later write
+    // in this same call fails.
+    let mut originals: Vec<Option<Vec<u8>>> = Vec::with_capacity(plan.len());
+    for (_, target, rooted_path) in &plan {
+        match root.read(rooted_path, DEFAULT_READ_LIMIT) {
+            Ok(Some(read)) => {
+                if !options.overwrite {
+                    return Err(InstantiateError::AlreadyExists(target.clone()));
+                }
+                originals.push(Some(read.bytes));
+            }
+            Ok(None) => originals.push(None),
+            // A nested file's containing directory does not exist yet:
+            // `ProjectRoot::read` walks without creating directories, so
+            // this surfaces as a plain `NotFound` I/O error rather than
+            // `Ok(None)`. A missing directory means the file itself is
+            // certainly missing too, so treat it the same as `Ok(None)`;
+            // `ProjectLock::save` below creates the missing directories
+            // when it actually writes.
+            Err(SaveError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
+                originals.push(None);
+            }
+            Err(SaveError::Refused(Refused::TooLarge { .. })) if !options.overwrite => {
+                // Too large to read back, but its mere existence already
+                // blocks a non-overwrite write.
+                return Err(InstantiateError::AlreadyExists(target.clone()));
+            }
+            Err(source) => {
+                return Err(InstantiateError::Rooted {
+                    path: target.clone(),
+                    source,
+                    rollback_incomplete: Vec::new(),
+                });
+            }
         }
-        targets.push(target);
     }
 
     let packages_block = template
@@ -172,28 +335,86 @@ pub fn instantiate(
     let project_name_escaped = escape::escape(&options.project_name);
     let author_escaped = escape::escape(&options.author);
 
-    let mut written_files = Vec::with_capacity(targets.len());
-    for (file, target) in template.files.iter().zip(targets.iter()) {
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).map_err(|source| InstantiateError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
+    // Write every file, in template order, tracking exactly enough to fully
+    // undo this call if a later file fails: the project path plus whatever
+    // content (or absence) was there before this call started.
+    let mut written: Vec<(RootedPath, PathBuf, Option<Vec<u8>>)> = Vec::with_capacity(plan.len());
+    let mut created = Vec::with_capacity(plan.len());
+    let mut written_files = Vec::with_capacity(plan.len());
+
+    for (i, ((file, target, rooted_path), original)) in plan.iter().zip(originals).enumerate() {
+        if let Some(hook) = hooks.before_write
+            && let Err(io_err) = hook(i)
+        {
+            let rollback_incomplete = rollback(&lock, &written);
+            return Err(InstantiateError::Rooted {
+                path: target.clone(),
+                source: SaveError::Io(io_err),
+                rollback_incomplete,
+            });
         }
+
         let contents = render(
             &file.body,
             &project_name_escaped,
             &author_escaped,
             packages_block,
         );
-        fs::write(target, contents).map_err(|source| InstantiateError::Io {
-            path: target.clone(),
-            source,
-        })?;
-        written_files.push(target.clone());
+        let expected = match &original {
+            Some(bytes) => Expected::Hash(flashtex_project_files::sha256(bytes)),
+            None => Expected::NewFile,
+        };
+        match lock.save(rooted_path, contents.as_bytes(), expected, false) {
+            Ok(receipt) => {
+                written.push((rooted_path.clone(), target.clone(), original));
+                created.push(CreationRecord {
+                    path: target.clone(),
+                    sha256: receipt.sha256,
+                    bytes: receipt.bytes,
+                });
+                written_files.push(target.clone());
+            }
+            Err(source) => {
+                let rollback_incomplete = rollback(&lock, &written);
+                if rollback_incomplete.is_empty()
+                    && matches!(&source, SaveError::Conflict(c) if c.kind == SaveConflictKind::AlreadyExists)
+                {
+                    return Err(InstantiateError::AlreadyExists(target.clone()));
+                }
+                return Err(InstantiateError::Rooted {
+                    path: target.clone(),
+                    source,
+                    rollback_incomplete,
+                });
+            }
+        }
     }
 
-    Ok(InstantiateReport { written_files })
+    Ok(InstantiateReport {
+        written_files,
+        created,
+    })
+}
+
+/// Undoes every entry in `written`, most recent first: restores the
+/// original bytes for a file that pre-existed this call, or removes a file
+/// this call created. Returns the (absolute) paths of any entry that could
+/// not be undone; empty in the common case.
+fn rollback(
+    lock: &ProjectLock<'_>,
+    written: &[(RootedPath, PathBuf, Option<Vec<u8>>)],
+) -> Vec<PathBuf> {
+    let mut incomplete = Vec::new();
+    for (rooted_path, target, original) in written.iter().rev() {
+        let ok = match original {
+            Some(bytes) => lock.save(rooted_path, bytes, Expected::Any, true).is_ok(),
+            None => lock.remove(rooted_path).is_ok(),
+        };
+        if !ok {
+            incomplete.push(target.clone());
+        }
+    }
+    incomplete
 }
 
 fn render(body: &str, project_name: &str, author: &str, packages_block: &str) -> String {
@@ -424,5 +645,133 @@ mod tests {
             }
         ));
         assert!(!root.exists());
+    }
+
+    #[test]
+    fn creation_receipt_reports_hash_and_size_for_every_written_file() {
+        let root = tempdir("receipt");
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![
+                TemplateFile::new("a.tex", "aaa"),
+                TemplateFile::new("chapters/b.tex", "bbbbb"),
+            ],
+        };
+        let report = instantiate(&t, &root, &opts("R")).unwrap();
+        assert_eq!(report.created.len(), 2);
+        for record in &report.created {
+            let on_disk = fs::read(&record.path).unwrap();
+            assert_eq!(record.bytes, on_disk.len() as u64);
+            assert_eq!(record.sha256, flashtex_project_files::sha256(&on_disk));
+            assert_eq!(record.sha256_hex().len(), 64);
+        }
+        assert_eq!(report.created[0].path, root.join("a.tex"));
+        assert_eq!(report.created[1].path, root.join("chapters/b.tex"));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn mid_batch_write_failure_leaves_no_partial_tree() {
+        // Inject a failure while writing the third of three new files,
+        // after the first two have already landed on disk, and assert the
+        // whole batch is rolled back: none of the three files survive.
+        let root = tempdir("mid-batch-new");
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![
+                TemplateFile::new("a.tex", "a"),
+                TemplateFile::new("b.tex", "b"),
+                TemplateFile::new("c.tex", "c"),
+            ],
+        };
+        let fail_at_index_2 = |i: usize| -> io::Result<()> {
+            if i == 2 {
+                Err(io::Error::other("simulated disk error mid-batch"))
+            } else {
+                Ok(())
+            }
+        };
+        let hooks = Hooks {
+            before_write: Some(&fail_at_index_2),
+        };
+        let err = instantiate_with_hooks(&t, &root, &opts("X"), &hooks).unwrap_err();
+        match &err {
+            InstantiateError::Rooted {
+                rollback_incomplete,
+                ..
+            } => assert!(
+                rollback_incomplete.is_empty(),
+                "rollback should have fully succeeded: {rollback_incomplete:?}"
+            ),
+            other => panic!("expected Rooted, got {other:?}"),
+        }
+        assert!(!root.join("a.tex").exists(), "a.tex must be rolled back");
+        assert!(!root.join("b.tex").exists(), "b.tex must be rolled back");
+        assert!(!root.join("c.tex").exists(), "c.tex was never written");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn mid_batch_write_failure_during_overwrite_restores_original_content() {
+        // Two files already exist with distinct content; overwrite: true is
+        // used to replace both, but the second write fails after the first
+        // has already been overwritten. The first file must end up back at
+        // its *original* content, not left holding the new content, and not
+        // deleted outright.
+        let root = tempdir("mid-batch-overwrite");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.tex"), "ORIGINAL A").unwrap();
+        fs::write(root.join("b.tex"), "ORIGINAL B").unwrap();
+
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![
+                TemplateFile::new("a.tex", "NEW A"),
+                TemplateFile::new("b.tex", "NEW B"),
+            ],
+        };
+        let fail_at_index_1 = |i: usize| -> io::Result<()> {
+            if i == 1 {
+                Err(io::Error::other("simulated disk error mid-batch"))
+            } else {
+                Ok(())
+            }
+        };
+        let hooks = Hooks {
+            before_write: Some(&fail_at_index_1),
+        };
+        let mut options = opts("X");
+        options.overwrite = true;
+        let err = instantiate_with_hooks(&t, &root, &options, &hooks).unwrap_err();
+        match &err {
+            InstantiateError::Rooted {
+                rollback_incomplete,
+                ..
+            } => assert!(
+                rollback_incomplete.is_empty(),
+                "rollback should have fully succeeded: {rollback_incomplete:?}"
+            ),
+            other => panic!("expected Rooted, got {other:?}"),
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("a.tex")).unwrap(),
+            "ORIGINAL A",
+            "a.tex must be restored to its pre-call content, not left as NEW A or deleted"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("b.tex")).unwrap(),
+            "ORIGINAL B",
+            "b.tex was never touched by the failed write"
+        );
+        fs::remove_dir_all(&root).ok();
     }
 }

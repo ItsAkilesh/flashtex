@@ -130,6 +130,59 @@ fn overwrite_true_explicitly_permits_replacing_an_existing_file() {
 }
 
 #[test]
+fn instantiation_returns_a_creation_receipt_matching_disk_content() {
+    let root = temp_dir("receipt");
+    let template = find_template("course-report").unwrap();
+    let report = instantiate(&template, &root, &options("Receipt Test")).unwrap();
+    assert_eq!(report.created.len(), report.written_files.len());
+    assert!(!report.created.is_empty());
+    for record in &report.created {
+        assert!(report.written_files.contains(&record.path));
+        let on_disk = std::fs::read(&record.path).unwrap();
+        // The receipt's size and hash must match exactly what is on disk,
+        // not merely be internally well-formed.
+        assert_eq!(record.bytes, on_disk.len() as u64);
+        assert_eq!(record.sha256, flashtex_project_files::sha256(&on_disk));
+        assert_eq!(record.sha256_hex().len(), 64);
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_planted_at_a_declared_path_is_refused_and_original_target_untouched() {
+    // A symlink at a template-declared path must never be written *through*
+    // to wherever it points, unlike plain `fs::write`/`Path::exists` would.
+    let root = temp_dir("symlink-refused");
+    std::fs::create_dir_all(&root).unwrap();
+    let outside = temp_dir("symlink-refused-victim");
+    std::fs::write(&outside, "UNTOUCHABLE OUTSIDE FILE").unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("main.tex")).unwrap();
+
+    let template = Template {
+        id: "hostile".into(),
+        title: "Hostile".into(),
+        description: "d".into(),
+        packages: vec![],
+        files: vec![TemplateFile::new("main.tex", "pwned")],
+    };
+    let mut opts = options("X");
+    opts.overwrite = true; // even with overwrite requested, a symlink is refused
+    let err = instantiate(&template, &root, &opts).unwrap_err();
+    assert!(
+        matches!(err, InstantiateError::Rooted { .. }),
+        "expected a Rooted refusal for a symlinked target, got {err:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&outside).unwrap(),
+        "UNTOUCHABLE OUTSIDE FILE",
+        "the file the symlink points at must never be written to"
+    );
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_file(&outside).ok();
+}
+
+#[test]
 fn a_project_name_with_non_ascii_characters_instantiates_every_builtin_template() {
     for template in flashtex_project_templates::all_templates() {
         let root = temp_dir(&format!("unicode-{}", template.id));

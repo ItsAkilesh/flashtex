@@ -35,6 +35,8 @@ pub mod package;
 pub mod path;
 pub mod registry;
 
-pub use instantiate::{InstantiateError, InstantiateOptions, InstantiateReport, instantiate};
+pub use instantiate::{
+    CreationRecord, InstantiateError, InstantiateOptions, InstantiateReport, instantiate,
+};
 pub use manifest::{ManifestError, Template, TemplateFile};
 pub use registry::{all_templates, find_template};

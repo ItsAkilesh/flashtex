@@ -11,3 +11,4 @@ name = "flashtex_project_templates"
 path = "src/lib.rs"
 
 [dependencies]
+flashtex-project-files = { path = "../project-files" }
