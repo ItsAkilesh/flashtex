@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-bundle",
-  "task_id": "FT-043",
-  "revision": 2,
-  "branch": "agent/daniel-bundle/project-bundle",
   "assignment_path": "coordination/assignments/FT-043.json",
-  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
+  "branch": "agent/daniel-bundle/project-bundle",
+  "previous_report_sha": "654df58d89241b6be5ce397b00fc463b373f65c9",
+  "revision": 3,
+  "schema_version": 1,
+  "task_id": "FT-043",
+  "updated_utc": "2026-09-12T09:36:00Z"
 }

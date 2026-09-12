@@ -15,6 +15,20 @@ import dispatch_loop as loop
 
 
 class FetchRaceTests(unittest.TestCase):
+    def test_linked_worktrees_share_publication_lock(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            common = root / 'common.git'
+            common.mkdir()
+            with patch.object(coord, 'git', return_value=str(common)):
+                with loop.publication_lock(root / 'one'):
+                    with (common / 'flashtex' / 'main-publication.lock').open('a') as other:
+                        with self.assertRaises(BlockingIOError):
+                            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                with loop.publication_lock(root / 'two'):
+                    pass
+
     def test_shared_ref_compare_and_swap_race_retries_read_only_fetch(self):
         race = RuntimeError("cannot lock ref 'refs/remotes/origin/agent/a': is at abc but expected def")
         with patch.object(coord, 'git', side_effect=[race, 'ok']) as git, patch.object(loop.time, 'sleep'):

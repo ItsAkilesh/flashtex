@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-statistics",
-  "task_id": "FT-042",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
       "objective": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/document-statistics"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Incremental document statistics: actual existing consumer fixture and exact measured limitations",
       "objective": "Incremental document statistics: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/document-statistics"
       ],
-      "acceptance": [
-        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
-        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-042"
 }

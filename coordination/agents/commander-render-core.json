@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "d5e26ae2a41e6e19b680dedcce34af41a039bfd4",
+  "code_revision": "4ee877fda92ee24bba2866a3beda9e6d1fea4e2c",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "528ef7e4a1afb9a1872a1c8e63d3df59e066f089",
-  "next_action": "Publish tested checkpoint and issue25 owner handoff, then next Commander product assignment. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core. Own crate/report changes only plus unchanged peer merge ancestry; git diff d25a647 -- crates/pdf empty. No providers/descendants/native/schema activation. Outline export has no embedded fonts/searchable text; nonterminating rational/alpha refused. Context telemetry/native compaction unavailable; no pending test process.",
+  "main_integrated_through": "4ee877fda92ee24bba2866a3beda9e6d1fea4e2c",
+  "next_action": "Publish comparison checkpoint and issue28 owner followup; next Commander product assignment. Worktree /home/natkarri/flashtex-rendering-core branch agent/commander-render-core/rendering-core. Own crate/report only; no providers/descendants/native activation. Checked latest origin/main FT023 remainsr6; latest direct Commander dispatch authorizes comparison stage. No context telemetry/native compaction control exposed; no pending processes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r6 exact PDF export complete against unchanged d25a647. Real PDF+bounded original GID/fullfont/source/operator sidecar, xref/page/content readback; corrected empty-space fill while retaining span. 140 ordinary tests, strict all-target clippy, both pinned registry tests pass. STIX4219bytePDF SHAd9df3bf55c2b2dcb126717b9a479965b7a7fd71f39733ff1c52a10d4cd019714;245operators. Poppler parse/raster smoke passed.",
+  "summary": "Actual PDF comparison API/CLI complete using unchanged owner reader/classifier, no duplicate parser or reference re-emission. Exact operand/geometry/paint deltas attach regenerated candidate spans; original GID/font/source claims marked unverified, reference correspondence unknown. Raw/parsed/visual equality separate; unsupported/truncated parsed equality unknown. 147 ordinary tests + strict all-target clippy pass; actual STIX self and existing legacy reference CLI exercised.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:16:30Z",
+  "updated_utc": "2026-09-12T09:29:21Z",
   "usage": {
-    "evidence": "Four PDF tests include checked-in synthetic/STIX real outputs, exact operators/provenance, budgets/nonterminating refusal and empty glyph regression. Pinned full font/license probe verified source beforeexport; contentSHA e67b45a267111a19dce157d3492b62ddc54ef357e1916b94e351ce2b8abebac3. Owner issue25 comment5644924145; no visual oracle parity claim.",
+    "evidence": "Seven comparison tests: exact self, geometry/paint provenance, unsupported identical streams, raw-only differences, legacy reference, truncation/budgets, repeated page/content graph preflight. Legacy referenceSHA ca65e836026239ece90053a638c48055bffd69497b491f10028414fbd62fd9b6 is FlashTeX output not TeX oracle. Issue28 confirms owner identical-content unsupported fastpath; adapter safely guards. CLI0 same supported bytes/3different/4unknown/1error.",
     "status": "Hosted OpenAI only; no providers or descendants."
   }
 }
