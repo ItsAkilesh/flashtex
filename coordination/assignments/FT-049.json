@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6bd43ca976bb9b1af5f0856ca861727b32868a50",
-  "objective": "Independently verify failed capture prefix and missing reopen acceptance from immutable archived artifacts",
+  "input_main_sha": "d5a13c42f627ea0776d67b41a82bafd96711bc87",
+  "objective": "Review proxy pump exception propagation child lifetime and retained error evidence without peer edits",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 35,
+  "revision": 36,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:57:42.777424+00:00"
+  "updated_utc": "2026-09-12T14:01:47Z"
 }
