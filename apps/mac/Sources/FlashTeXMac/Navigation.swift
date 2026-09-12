@@ -3,10 +3,13 @@ import SwiftUI
 import FlashTeXProtocol
 
 /// Source-aware navigation. The text functions are pure and return UTF-8 byte
-/// ranges into the current buffer (no compile result involved, so they are
-/// never stale). Diagnostic navigation goes through `ShellModel.navigate`, so
-/// a diagnostic whose source overlaps an edit made since the compile is
-/// refused ("recompile to navigate") rather than mapped onto the wrong text.
+/// ranges into the current buffers (no compile result involved, so they are
+/// never stale). Result-backed navigation (preview click, diagnostics, caret
+/// reveal) goes through `ShellModel.navigateExactly`, which maps runtime-v1
+/// UTF-8 byte spans onto the editor's UTF-16 selection exactly: a span whose
+/// bytes were edited since the compile is refused with an explanation, a span
+/// is never split inside a scalar or a composed character sequence, and a span
+/// in another open document switches the active document.
 enum Navigation {
     struct ByteRange: Equatable {
         let start: Int
@@ -23,34 +26,40 @@ enum Navigation {
     }
 
     static let referenceCommands: Set<String> = ["ref", "eqref", "pageref", "autoref"]
+    private static let interestingCommands: Set<String> = referenceCommands.union(["begin", "end", "label"])
 
     /// Every `\begin{…}`, `\end{…}`, `\label{…}`, and reference command with a
-    /// complete braced argument, in document order.
+    /// complete braced argument, in document order. Commands inside a `%`
+    /// comment (to the end of the line) are skipped; `\%` and `\\` are escapes.
     static func commandUses(in text: String) -> [CommandUse] {
         var out: [CommandUse] = []
         Completion.withBytes(text) { b in
             guard let p = b.baseAddress else { return }
             let n = b.count
             let table = Completion.wordByteClass
-            var i = Completion.nextBackslash(p, from: 0, count: n)
+            let backslash = Completion.backslash, percent = UInt8(ascii: "%"), newline = UInt8(ascii: "\n")
+            let open = UInt8(ascii: "{"), close = UInt8(ascii: "}")
+            var i = 0
             while i < n {
+                let c = p[i]
+                if c == percent {
+                    while i < n, p[i] != newline { i += 1 }
+                    continue
+                }
+                guard c == backslash else { i += 1; continue }
                 var j = i + 1
                 while j < n, table[Int(p[j])] == 1 { j += 1 }
-                guard j > i + 1 else { i = Completion.nextBackslash(p, from: j + 1, count: n); continue }
+                guard j > i + 1 else { i = min(n, i + 2); continue } // `\%`, `\\`, `\{`, trailing `\`
                 let nameBytes = UnsafeBufferPointer(start: p + i + 1, count: j - i - 1)
-                let interesting = Completion.bytes(nameBytes, equal: "begin") || Completion.bytes(nameBytes, equal: "end")
-                    || Completion.bytes(nameBytes, equal: "label") || Completion.bytes(nameBytes, equal: "ref")
-                    || Completion.bytes(nameBytes, equal: "eqref") || Completion.bytes(nameBytes, equal: "pageref")
-                    || Completion.bytes(nameBytes, equal: "autoref")
-                guard interesting, j < n, p[j] == UInt8(ascii: "{") else { i = Completion.nextBackslash(p, from: j, count: n); continue }
+                let name = String(decoding: nameBytes, as: UTF8.self)
+                guard interestingCommands.contains(name), j < n, p[j] == open else { i = j; continue }
                 var k = j + 1
-                while k < n, p[k] != UInt8(ascii: "}"), p[k] != UInt8(ascii: "{"), p[k] != Completion.backslash,
-                      p[k] != UInt8(ascii: "\n") { k += 1 }
-                guard k < n, p[k] == UInt8(ascii: "}") else { i = Completion.nextBackslash(p, from: j, count: n); continue }
-                out.append(CommandUse(name: String(decoding: nameBytes, as: UTF8.self),
+                while k < n, p[k] != close, p[k] != open, p[k] != backslash, p[k] != newline, p[k] != percent { k += 1 }
+                guard k < n, p[k] == close else { i = j; continue }
+                out.append(CommandUse(name: name,
                                       arg: String(decoding: UnsafeBufferPointer(start: p + j + 1, count: k - j - 1), as: UTF8.self),
                                       range: ByteRange(start: i, end: k + 1), argRange: ByteRange(start: j + 1, end: k)))
-                i = Completion.nextBackslash(p, from: k + 1, count: n)
+                i = k + 1
             }
         }
         return out
@@ -61,22 +70,49 @@ enum Navigation {
         case notFound(String)
     }
 
-    /// Counterpart of the command under the caret (`caretByte`, UTF-8):
-    /// `\ref{X}` → its `\label{X}`; `\label{X}` → the next reference to it
-    /// (wrapping); `\begin{X}` ↔ `\end{X}` honouring nesting of the same name.
+    /// Counterpart of the command under the caret (`caretByte`, UTF-8) within
+    /// one document: `\ref{X}` → its `\label{X}`; `\label{X}` → the next
+    /// reference to it (wrapping); `\begin{X}` ↔ `\end{X}` honouring nesting
+    /// of the same name. See `matchingRange(in:activePath:caretByte:)` for
+    /// labels and references that live in other open documents.
     static func matchingRange(in text: String, caretByte: Int) -> Target {
-        let uses = commandUses(in: text)
-        guard let here = uses.firstIndex(where: { $0.range.start <= caretByte && caretByte <= $0.range.end }) else {
+        switch matchingRange(in: [.init(path: "", text: text)], activePath: "", caretByte: caretByte) {
+        case .found(_, let range, let note): return .found(range, note: note)
+        case .notFound(let why): return .notFound(why)
+        }
+    }
+
+    enum DocumentTarget: Equatable {
+        case found(path: String, ByteRange, note: String)
+        case notFound(String)
+    }
+
+    /// Multi-document counterpart lookup. `\begin`/`\end` match within the
+    /// active document. `\ref{X}` finds `\label{X}` in the active document
+    /// first, then the other open documents in project order. `\label{X}`
+    /// cycles through every reference to it: those after the caret in the
+    /// active document, then the following documents, wrapping around.
+    static func matchingRange(in documents: [RuntimeV1.Document], activePath: String, caretByte: Int) -> DocumentTarget {
+        guard let active = documents.firstIndex(where: { $0.path == activePath }) else {
+            return .notFound("No open document named \(activePath).")
+        }
+        let uses = commandUses(in: documents[active].text)
+        // A caret at the byte where one command ends and the next begins
+        // (`\end{a}\begin{b}`) belongs to the one that starts there.
+        let here = uses.firstIndex(where: { $0.range.start == caretByte })
+            ?? uses.firstIndex(where: { $0.range.start <= caretByte && caretByte <= $0.range.end })
+        guard let here else {
             return .notFound("Caret is not inside \\begin, \\end, \\label, or a \\ref-style command.")
         }
         let use = uses[here]
+        let elsewhere = documents.count > 1 ? " or any open document" : ""
         switch use.name {
         case "begin":
             var depth = 0
             for other in uses[(here + 1)...] where other.arg == use.arg {
                 if other.name == "begin" { depth += 1 }
                 else if other.name == "end" {
-                    if depth == 0 { return .found(other.range, note: "Matched \\begin{\(use.arg)} → \\end{\(use.arg)} at byte \(other.range.start).") }
+                    if depth == 0 { return .found(path: activePath, other.range, note: "Matched \\begin{\(use.arg)} → \\end{\(use.arg)} at byte \(other.range.start).") }
                     depth -= 1
                 }
             }
@@ -86,29 +122,85 @@ enum Navigation {
             for other in uses[..<here].reversed() where other.arg == use.arg {
                 if other.name == "end" { depth += 1 }
                 else if other.name == "begin" {
-                    if depth == 0 { return .found(other.range, note: "Matched \\end{\(use.arg)} → \\begin{\(use.arg)} at byte \(other.range.start).") }
+                    if depth == 0 { return .found(path: activePath, other.range, note: "Matched \\end{\(use.arg)} → \\begin{\(use.arg)} at byte \(other.range.start).") }
                     depth -= 1
                 }
             }
             return .notFound("\\end{\(use.arg)} at byte \(use.range.start) has no matching \\begin{\(use.arg)}.")
         case "label":
-            let refs = uses.filter { referenceCommands.contains($0.name) && $0.arg == use.arg }
-            guard !refs.isEmpty else { return .notFound("No reference to label \(use.arg) in this document.") }
-            let next = refs.first { $0.range.start > use.range.start } ?? refs[0]
-            let index = refs.firstIndex(of: next)! + 1
-            return .found(next.range, note: "Reference \(index) of \(refs.count) to label \(use.arg) at byte \(next.range.start).")
-        default:
-            guard let label = uses.first(where: { $0.name == "label" && $0.arg == use.arg }) else {
-                return .notFound("No \\label{\(use.arg)} in this document.")
+            // All references in project order, starting with the active document.
+            var refs: [(path: String, use: CommandUse)] = []
+            for offset in 0..<documents.count {
+                let doc = documents[(active + offset) % documents.count]
+                let docUses = offset == 0 ? uses : commandUses(in: doc.text)
+                for r in docUses where referenceCommands.contains(r.name) && r.arg == use.arg {
+                    refs.append((doc.path, r))
+                }
             }
-            return .found(label.range, note: "Definition of \(use.arg): \\label at byte \(label.range.start).")
+            guard !refs.isEmpty else { return .notFound("No reference to label \(use.arg) in this document\(elsewhere).") }
+            let after = refs.firstIndex { $0.path != activePath || $0.use.range.start > use.range.start }
+            let next = refs[after ?? 0]
+            let index = (after ?? 0) + 1
+            let place = next.path == activePath ? "" : " in \(next.path)"
+            return .found(path: next.path, next.use.range,
+                          note: "Reference \(index) of \(refs.count) to label \(use.arg) at byte \(next.use.range.start)\(place).")
+        default:
+            for offset in 0..<documents.count {
+                let doc = documents[(active + offset) % documents.count]
+                let docUses = offset == 0 ? uses : commandUses(in: doc.text)
+                if let label = docUses.first(where: { $0.name == "label" && $0.arg == use.arg }) {
+                    let place = doc.path == activePath ? "" : " in \(doc.path)"
+                    return .found(path: doc.path, label.range, note: "Definition of \(use.arg): \\label at byte \(label.range.start)\(place).")
+                }
+            }
+            return .notFound("No \\label{\(use.arg)} in this document\(elsewhere).")
         }
     }
+
+    // MARK: - byte span → editor selection
+
+    enum RangeMapping: Equatable {
+        /// `widenedFrom` is set when the span started or ended inside a
+        /// composed character sequence (`e` + U+0301, a ZWJ emoji, a ligature
+        /// glyph is one scalar and never splits) and was extended to cover it.
+        case selected(NSRange, widenedFrom: NSRange?)
+        case refused(String)
+    }
+
+    /// Exact UTF-16 selection for UTF-8 bytes `start..<end` of `text`.
+    /// Refused when out of range, reversed, or inside a multi-byte scalar;
+    /// widened outward to whole composed character sequences (the units the
+    /// text view selects and moves the caret by), so the selection is never a
+    /// split cluster. An empty span at a cluster-interior position is moved
+    /// to the start of that cluster and stays empty.
+    static func editorRange(start: Int, end: Int, in text: String, path: String = "") -> RangeMapping {
+        let byteCount = text.utf8.count
+        let label = path.isEmpty ? "" : " in \(path)"
+        guard start >= 0, end >= start, end <= byteCount else {
+            return .refused("Bytes \(start)..<\(end) are not a valid range\(label) (buffer is \(byteCount) bytes).")
+        }
+        guard let r = text.rangeOfUTF8(start: start, end: end) else {
+            return .refused("Bytes \(start)..<\(end)\(label) start or end inside a multi-byte character; refusing to split it.")
+        }
+        let ns = NSRange(r, in: text)
+        let nsText = text as NSString
+        let whole: NSRange
+        if ns.length == 0 {
+            whole = ns.location < nsText.length
+                ? NSRange(location: nsText.rangeOfComposedCharacterSequence(at: ns.location).location, length: 0)
+                : ns
+        } else {
+            whole = nsText.rangeOfComposedCharacterSequences(for: ns)
+        }
+        return .selected(whole, widenedFrom: whole == ns ? nil : ns)
+    }
+
+    // MARK: - diagnostics
 
     /// Diagnostics with a source in `path`, ordered by their start offset in
     /// the current buffer (rebased across edits when possible; a diagnostic
     /// whose range overlaps an edit keeps its compiled offset for ordering and
-    /// is refused by `ShellModel.navigate` when chosen).
+    /// is refused by `ShellModel.navigateExactly` when chosen).
     struct Stop: Equatable {
         let index: Int          // index into `result.diagnostics`
         let diagnostic: RuntimeV1.Diagnostic
@@ -118,13 +210,16 @@ enum Navigation {
 
     static func stops(in result: RuntimeV1.CompileResult, path: String,
                       compiledText: String?, currentText: String) -> [Stop] {
+        var region: SourceMapping.ChangedRegion?
+        if let compiledText, !compiledText.sameBytes(as: currentText) {
+            region = SourceMapping.changedRegion(from: compiledText, to: currentText)
+        }
         var out: [Stop] = []
         for (i, d) in result.diagnostics.enumerated() {
             guard let s = d.source, s.path == path else { continue }
             var start = s.startByte
-            if let compiledText, compiledText != currentText,
-               let rebased = SourceMapping.rebase(s, from: compiledText, to: currentText, expectedText: nil) {
-                start = rebased.startByte
+            if let region, case .rebased(let mapped, _) = SourceMapping.rebase(start: s.startByte, end: s.endByte, across: region) {
+                start = mapped
             }
             out.append(Stop(index: i, diagnostic: d, source: s, currentStart: start))
         }
@@ -138,56 +233,166 @@ enum Navigation {
         if forward { return stops.first { $0.currentStart > caretByte } ?? stops[0] }
         return stops.last { $0.currentStart < caretByte } ?? stops[stops.count - 1]
     }
+
+    /// Stops across every open document, in project order (`documents`
+    /// order, then start offset). Diagnostics naming a path that is not open
+    /// are left out.
+    static func stops(in result: RuntimeV1.CompileResult, documents: [RuntimeV1.Document],
+                      compiledDocuments: [String: String]) -> [Stop] {
+        documents.flatMap { doc in
+            stops(in: result, path: doc.path, compiledText: compiledDocuments[doc.path], currentText: doc.text)
+        }
+    }
+
+    /// Next stop after the caret (`activePath`, `caretByte`) in project order,
+    /// wrapping; the stops must come from `stops(in:documents:compiledDocuments:)`.
+    static func nextStop(_ stops: [Stop], documents: [RuntimeV1.Document], activePath: String,
+                         caretByte: Int, forward: Bool) -> Stop? {
+        guard !stops.isEmpty else { return nil }
+        let order = Dictionary(documents.enumerated().map { ($1.path, $0) }, uniquingKeysWith: { first, _ in first })
+        let here = order[activePath] ?? -1
+        func isAfter(_ s: Stop) -> Bool {
+            let d = order[s.source.path] ?? -1
+            return d != here ? d > here : s.currentStart > caretByte
+        }
+        func isBefore(_ s: Stop) -> Bool {
+            let d = order[s.source.path] ?? -1
+            return d != here ? d < here : s.currentStart < caretByte
+        }
+        if forward { return stops.first(where: isAfter) ?? stops[0] }
+        return stops.last(where: isBefore) ?? stops[stops.count - 1]
+    }
 }
 
 // MARK: - model actions
 
 extension ShellModel {
+    /// Exact preview → source navigation. Same contract as `navigate(to:expectedText:)`
+    /// with these guarantees:
+    /// - staleness is decided byte-for-byte (`sameBytes`), so a normalization-only
+    ///   edit (é → e + U+0301) is an edit, not a match;
+    /// - a span overlapping the edited region is refused, and the note says
+    ///   which bytes were edited;
+    /// - a rebased span is verified to spell the same bytes it did at compile
+    ///   time (item text is informational: generated text such as a section
+    ///   number legitimately differs from its source);
+    /// - the selection covers whole composed character sequences;
+    /// - the active document switches when the span lives in another open one.
+    func navigateExactly(to source: RuntimeV1.SourceRange?, expectedText: String? = nil) {
+        guard let source else {
+            navigationNote = "This item has no source mapping."
+            return
+        }
+        guard let doc = documents.first(where: { $0.path == source.path }) else {
+            let open = documents.map(\.path).joined(separator: ", ")
+            navigationNote = "No open document named \(source.path) (open: \(open))."
+            return
+        }
+        var start = source.startByte, end = source.endByte
+        var notes: [String] = []
+        let revision = result?.revision ?? 0
+        if let compiled = compiledDocuments[source.path] {
+            if !compiled.sameBytes(as: doc.text) {
+                let region = SourceMapping.changedRegion(from: compiled, to: doc.text)
+                switch SourceMapping.rebase(start: start, end: end, across: region) {
+                case .overlapsEdit:
+                    navigationNote = "Source for this item was edited since revision \(revision) (bytes \(source.startByte)..<\(source.endByte) of \(source.path) overlap the edit at \(region.startByte)..<\(region.oldEndByte), now \(region.startByte)..<\(region.newEndByte)); recompile to navigate."
+                    return
+                case .rebased(let s, let e):
+                    if s != start { notes.append("rebased from \(start)..<\(end) across edits") }
+                    start = s; end = e
+                case .unchanged:
+                    break
+                }
+                // The single-region rebase keeps the bytes outside the edit identical;
+                // check anyway so a wrong span can never be selected silently.
+                guard let was = compiled.rangeOfUTF8(start: source.startByte, end: source.endByte),
+                      let now = doc.text.rangeOfUTF8(start: start, end: end),
+                      String(compiled[was]).sameBytes(as: String(doc.text[now])) else {
+                    navigationNote = "Bytes \(source.startByte)..<\(source.endByte) of \(source.path) no longer spell the compiled text after rebasing to \(start)..<\(end); recompile to navigate."
+                    return
+                }
+            }
+        } else if previewIsStale {
+            navigationNote = "Buffer edited since revision \(revision) and no compiled text is recorded; recompile to navigate."
+            return
+        }
+        let ns: NSRange
+        switch Navigation.editorRange(start: start, end: end, in: doc.text, path: source.path) {
+        case .refused(let why):
+            navigationNote = why
+            return
+        case .selected(let range, let widenedFrom):
+            ns = range
+            if let widenedFrom {
+                notes.append("widened from UTF-16 \(widenedFrom.location)..<\(NSMaxRange(widenedFrom)) to whole characters")
+            }
+        }
+        if let expectedText, !(doc.text as NSString).substring(with: ns).sameBytes(as: expectedText) {
+            notes.append("“\(expectedText)” is generated from this source")
+        }
+        if activePath != source.path {
+            activePath = source.path
+            notes.append("switched to \(source.path)")
+        }
+        selection = .init(path: source.path, nsRange: ns, token: (selection?.token ?? 0) + 1)
+        caretUTF16 = ns.location
+        caretLengthUTF16 = ns.length
+        navigationNote = "Selected \(source.path) bytes \(start)..<\(end) → UTF-16 \(ns.location)..<\(NSMaxRange(ns))"
+            + (notes.isEmpty ? "" : " (" + notes.joined(separator: "; ") + ")")
+    }
+
     /// ⌘⇧D: select the counterpart of the `\begin`/`\end`/`\label`/`\ref`
-    /// under the caret in the current buffer.
+    /// under the caret; a label or reference in another open document
+    /// switches to it.
     func goToMatching() {
-        let text = activeText
-        guard let caretByte else {
+        guard let caretByte = CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) else {
             navigationNote = "Caret position \(caretUTF16) is not valid in \(activePath)."
             return
         }
-        switch Navigation.matchingRange(in: text, caretByte: caretByte) {
+        switch Navigation.matchingRange(in: documents, activePath: activePath, caretByte: caretByte) {
         case .notFound(let why):
             navigationNote = why
-        case .found(let range, let note):
-            guard let ns = text.nsRange(utf8Bytes: .init(path: activePath, startByte: range.start, endByte: range.end)) else {
-                navigationNote = "Bytes \(range.start)..<\(range.end) are not a valid range in \(activePath)."
+        case .found(let path, let range, let note):
+            guard let text = documents.first(where: { $0.path == path })?.text,
+                  case .selected(let ns, _) = Navigation.editorRange(start: range.start, end: range.end, in: text, path: path) else {
+                navigationNote = "Bytes \(range.start)..<\(range.end) are not a valid range in \(path)."
                 return
             }
-            selection = .init(path: activePath, nsRange: ns, token: (selection?.token ?? 0) + 1)
+            activePath = path
+            selection = .init(path: path, nsRange: ns, token: (selection?.token ?? 0) + 1)
             caretUTF16 = ns.location
+            caretLengthUTF16 = ns.length
             navigationNote = note
         }
     }
 
     /// ⌘⇧] / ⌘⇧[: cycle through the result's diagnostics that have a source
-    /// in the active document. Uses `navigate(to:expectedText:)`, so an edited
-    /// span is refused with "recompile to navigate".
+    /// in any open document, in project order. Uses `navigateExactly`, so an
+    /// edited span is refused with "recompile to navigate" and a diagnostic in
+    /// another document switches to it.
     func goToDiagnostic(forward: Bool) {
         guard let result else {
             navigationNote = "No compile result loaded; nothing to navigate to."
             return
         }
-        let stops = Navigation.stops(in: result, path: activePath,
-                                     compiledText: compiledDocuments[activePath], currentText: activeText)
-        guard let stop = Navigation.nextStop(stops, from: caretByte ?? 0, forward: forward) else {
+        let stops = Navigation.stops(in: result, documents: documents, compiledDocuments: compiledDocuments)
+        let caret = CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) ?? 0
+        guard let stop = Navigation.nextStop(stops, documents: documents, activePath: activePath,
+                                             caretByte: caret, forward: forward) else {
             let total = result.diagnostics.count
+            let open = documents.map(\.path).joined(separator: ", ")
             navigationNote = total == 0
                 ? "Revision \(result.revision) has no diagnostics."
-                : "None of the \(total) diagnostic\(total == 1 ? "" : "s") has a source in \(activePath)."
+                : "None of the \(total) diagnostic\(total == 1 ? "" : "s") has a source in an open document (\(open))."
             return
         }
         let before = selection
-        navigate(to: stop.source, expectedText: nil)
+        navigateExactly(to: stop.source, expectedText: nil)
         if let sel = selection, sel != before {
-            caretUTF16 = sel.nsRange.location
             let position = stops.firstIndex(of: stop).map { $0 + 1 } ?? 0
-            navigationNote = "Diagnostic \(position) of \(stops.count) (\(stop.diagnostic.severity.rawValue)): \(stop.diagnostic.message)"
+            let place = documents.count > 1 ? " in \(stop.source.path)" : ""
+            navigationNote = "Diagnostic \(position) of \(stops.count) (\(stop.diagnostic.severity.rawValue))\(place): \(stop.diagnostic.message)"
         }
     }
 
@@ -199,11 +404,11 @@ extension ShellModel {
             navigationNote = "No compile result loaded; the caret maps to no preview item."
             return
         }
-        guard let byte = caretByte else {
+        guard let byte = CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) else {
             navigationNote = "Caret position \(caretUTF16) is not valid in \(activePath)."
             return
         }
-        let hits = CaretSync.itemsContaining(byte: byte, path: activePath, in: result)
+        let hits = caretIndex()?.itemsContaining(byte: byte) ?? []
         guard let hit = hits.first,
               let page = result.pages.first(where: { $0.number == hit.page }),
               hit.index < page.items.count,
@@ -212,10 +417,13 @@ extension ShellModel {
             return
         }
         let before = selection
-        navigate(to: source, expectedText: item.text)
+        navigateExactly(to: source, expectedText: item.text)
         if let sel = selection, sel != before {
-            caretUTF16 = sel.nsRange.location
-            navigationNote = "Caret is in page \(hit.page) item \(hit.index) “\(item.text)”" + (hits.count > 1 ? " (+\(hits.count - 1) more)." : ".")
+            let pages = Set(hits.map(\.page)).sorted()
+            let more = hits.count > 1
+                ? " (+\(hits.count - 1) more" + (pages.count > 1 ? ", pages \(pages.map(String.init).joined(separator: ", "))" : "") + ")."
+                : "."
+            navigationNote = "Caret is in page \(hit.page) item \(hit.index) “\(item.text)”" + more
         }
     }
 }
