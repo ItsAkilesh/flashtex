@@ -1,0 +1,196 @@
+import Foundation
+
+/// Wire types of the nearby transport (apps/mac/docs/nearby-v1-proposal.md §4).
+///
+/// KEEP IN SYNC — these are copies of the Mac-side definitions so this package
+/// has no dependency on the app:
+///   `Envelope`, `CaptureSubmit`, `CaptureImage`, `LineSplitter`
+///       ← apps/mac/Sources/FlashTeXProtocol/{RuntimeV1,Capture,JSONLines}.swift
+///   `Hello`, `HelloAck`, `Destination`, `CaptureReceived`, `ErrorPayload`
+///       ← apps/mac/Sources/FlashTeXMac/NearbyProtocol.swift
+/// `NearbyReferenceClientTests` in apps/mac round-trips every one of them
+/// through the real listener, so a drift shows up there.
+public enum NearbyWire {
+    /// Nearby protocol version carried in `hello.payload.protocol_version`.
+    public static let version = 1
+    /// runtime-v1 envelope version carried in every line.
+    public static let envelopeVersion = 1
+    public static let serviceType = "_flashtex._tcp"
+    /// A line including its newline may not exceed this (transfer-v1 bound).
+    public static let maxLineBytes = 12 * 1024 * 1024
+    public static let maxIDBytes = 128
+    public static let acceptedMimeTypes: Set<String> = ["image/png", "image/jpeg"]
+
+    /// runtime-v1 envelope: `{protocol_version, id, type, payload}`.
+    public struct Envelope<Payload: Codable>: Codable {
+        public var protocolVersion: Int
+        public var id: String
+        public var type: String
+        public var payload: Payload
+        enum CodingKeys: String, CodingKey { case protocolVersion = "protocol_version", id, type, payload }
+        public init(id: String, type: String, payload: Payload) {
+            self.protocolVersion = NearbyWire.envelopeVersion; self.id = id; self.type = type; self.payload = payload
+        }
+    }
+
+    /// Header only, for dispatching on `type` before decoding a payload. `id`
+    /// is optional because `error` lines for unidentifiable requests carry `null`.
+    public struct Header: Decodable {
+        public var protocolVersion: Int
+        public var id: String?
+        public var type: String
+        enum CodingKeys: String, CodingKey { case protocolVersion = "protocol_version", id, type }
+    }
+
+    /// First line on every connection. `role` is what the pre-TLS companion
+    /// already sent; the Mac ignores it. Everything else is the nearby-v1 delta.
+    public struct Hello: Codable, Equatable {
+        public var role: String = "companion"
+        public var pairId: String
+        public var companionName: String
+        public var protocolVersion: Int = NearbyWire.version
+        public var nonce: String
+        public var proof: String
+        enum CodingKeys: String, CodingKey {
+            case role, pairId = "pair_id", companionName = "companion_name"
+            case protocolVersion = "protocol_version", nonce, proof
+        }
+        public init(pairId: String, companionName: String, nonce: String, proof: String) {
+            self.pairId = pairId; self.companionName = companionName; self.nonce = nonce; self.proof = proof
+        }
+    }
+
+    /// The Mac's pinned insertion anchor; copied verbatim into `capture_submit`.
+    public struct Destination: Codable, Equatable {
+        public var destinationId: String
+        public var projectId: String
+        public var path: String
+        public var baseRevision: Int
+        enum CodingKeys: String, CodingKey {
+            case destinationId = "destination_id", projectId = "project_id", path, baseRevision = "base_revision"
+        }
+        public init(destinationId: String, projectId: String, path: String, baseRevision: Int) {
+            self.destinationId = destinationId; self.projectId = projectId; self.path = path; self.baseRevision = baseRevision
+        }
+    }
+
+    /// `destination` is always present (explicit `null` when nothing is pinned);
+    /// `pair_psk` only on the bootstrap (pairing-code) connection.
+    public struct HelloAck: Codable, Equatable {
+        public var macName: String
+        public var nonce: String
+        public var destination: Destination?
+        public var pairPsk: String?
+        enum CodingKeys: String, CodingKey { case macName = "mac_name", nonce, destination, pairPsk = "pair_psk" }
+    }
+
+    public struct DestinationReply: Codable, Equatable {
+        public var destination: Destination?
+    }
+
+    public struct CaptureImage: Codable, Equatable {
+        public var mimeType: String
+        public var dataBase64: String
+        enum CodingKeys: String, CodingKey { case mimeType = "mime_type", dataBase64 = "data_base64" }
+        public init(mimeType: String, dataBase64: String) { self.mimeType = mimeType; self.dataBase64 = dataBase64 }
+    }
+
+    /// Unchanged runtime-v1 `capture_submit` payload.
+    public struct CaptureSubmit: Codable, Equatable {
+        public var captureId: String
+        public var destinationId: String
+        public var baseRevision: Int
+        public var image: CaptureImage
+        public var instructions: String
+        enum CodingKeys: String, CodingKey {
+            case captureId = "capture_id", destinationId = "destination_id", baseRevision = "base_revision", image, instructions
+        }
+        public init(captureId: String, destinationId: String, baseRevision: Int, image: CaptureImage, instructions: String) {
+            self.captureId = captureId; self.destinationId = destinationId; self.baseRevision = baseRevision
+            self.image = image; self.instructions = instructions
+        }
+    }
+
+    /// transfer-v1 acknowledgement. `durable` is true only when the Mac's bridge
+    /// journaled the capture; the in-memory inbox answers false.
+    public struct CaptureReceived: Codable, Equatable {
+        public var captureId: String
+        public var durable: Bool
+        public var hasProposal: Bool
+        public var applied: Bool
+        enum CodingKeys: String, CodingKey { case captureId = "capture_id", durable, hasProposal = "has_proposal", applied }
+    }
+
+    public struct ErrorPayload: Codable, Equatable {
+        public var code: String
+        public var message: String
+    }
+
+    /// `error` envelope; `id` is `null` when the request could not be identified.
+    public struct ErrorLine: Decodable {
+        public var id: String?
+        public var payload: ErrorPayload
+    }
+
+    public struct Empty: Codable, Equatable { public init() {} }
+
+    /// Error codes after which the Mac closes the connection: fix the client or
+    /// re-pair, never retry blindly (§8 "Parse these reply lines").
+    public static let closingErrorCodes: Set<String> = [
+        "pair_mismatch", "pairing_expired", "hello_required", "unsupported_version", "line_too_long", "bad_request",
+    ]
+
+    // MARK: encoding
+
+    public static func line<P: Codable>(id: String, type: String, _ payload: P) throws -> Data {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.withoutEscapingSlashes, .sortedKeys] // deterministic lines (order is not significant)
+        var data = try enc.encode(Envelope(id: id, type: type, payload: payload))
+        data.append(0x0A)
+        return data
+    }
+
+    public static func header(of line: Data) throws -> Header {
+        try JSONDecoder().decode(Header.self, from: line)
+    }
+
+    public static func decode<P: Codable>(_ line: Data, as: P.Type = P.self) throws -> Envelope<P> {
+        try JSONDecoder().decode(Envelope<P>.self, from: line)
+    }
+
+    /// `capture_id`/`destination_id` rule the Mac enforces: 1–128 ASCII `[A-Za-z0-9_-]`.
+    public static func isValidID(_ id: String) -> Bool {
+        !id.isEmpty && id.utf8.count <= maxIDBytes
+            && id.unicodeScalars.allSatisfy { $0.isASCII && (CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_") }
+    }
+}
+
+/// Splits a byte stream into complete lines, keeping a partial trailing line
+/// (copy of FlashTeXProtocol.LineSplitter).
+public struct LineSplitter {
+    private var buffer = Data()
+    private var scanned = 0
+    public init() {}
+
+    public mutating func append(_ data: Data) -> [Data] {
+        buffer.append(data)
+        var lines: [Data] = []
+        var start = 0
+        buffer.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            var i = scanned
+            let n = raw.count
+            while i < n {
+                if raw[i] == 0x0A {
+                    lines.append(Data(raw[start..<i]))
+                    start = i + 1
+                }
+                i += 1
+            }
+        }
+        if start > 0 { buffer.removeSubrange(0..<start) }
+        scanned = buffer.count
+        return lines
+    }
+
+    public var pendingBytes: Int { buffer.count }
+}
