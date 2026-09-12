@@ -58,7 +58,7 @@ never proof the Commander is offline. The successor fetches and pins current mai
 selects one leader identity, publishes an atomic non-force authority claim, and
 rereads that claim immediately before every main/control write. An old Commander
 that resumes must reread authority and remain quiesced unless explicitly handed
-command again. See `docs/autonomous-workers.md`.
+command again. See the copyable revival prompt in `docs/autonomous-workers.md`.
 
 Every blocked worker opens a GitHub recovery issue with task/revision, exact branch
 and SHA, failing command, non-secret error, process state, resource state, and any
