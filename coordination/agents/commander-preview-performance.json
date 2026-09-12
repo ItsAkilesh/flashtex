@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:25:05Z",
-      "adaptation": "Published d6b3df2b source-bound disposition audit first. Now one --historical20@30ms explicitcompleted-snapshot opt-in, tokens/stale/sourceactionsfalse and separatecounts, samebinaries/source, defaultunchanged. Disableaftermeasurement beforeoldreceiptchecks.",
-      "main_sha": "dda0b624bf5505b2db81a932c0f0d707f42295c0",
-      "revision": 22
+      "acknowledged_utc": "2026-09-12T13:35:41Z",
+      "adaptation": "Separate-process sender implementation with bounded pipe writes and deterministic lifecycle checks; original captures preserved and no new timing run.",
+      "main_sha": "8caf94141ae366e7c47639af7c974ec4c50b7490",
+      "revision": 23
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "d6b3df2b567a2cb9593a6c13abcf7f9ca6215db0",
+  "code_revision": "8d913d2a3db241417c071709ca7c9fa857778fd8",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "de574ec71b4f918388ff588d32b83a44ac84e4b3",
-  "next_action": "Independent artifactreview; nextboundedsenderprocess implementation beforefuturecadencecomparisons, noadditionalrun now.",
+  "main_integrated_through": "8d913d2a3db241417c071709ca7c9fa857778fd8",
+  "next_action": "Address independent sender lifecycle review before any controlled comparative typing run.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r22 historicalopt-in observation delivers6historicalsnapshotsduringburst+1after, then current21; defaults/sourceguards unchanged.",
+  "summary": "FT048r23 separate-process sender implemented; five lifecycle tests pass, independent review pending.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:27:30Z",
+  "updated_utc": "2026-09-12T13:35:41Z",
   "usage": {
     "status": "unknown"
   }
