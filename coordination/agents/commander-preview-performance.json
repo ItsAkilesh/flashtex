@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "7a7fd4f26290c2ee41115734631991d2557672bd",
+  "code_revision": "e874c1353f1d1524ba01591f3ae7ede42fbb2534",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7a7fd4f26290c2ee41115734631991d2557672bd",
-  "next_action": "Commander/producer/Mac crossowner schema agreement, reconcile renderingreview bba26e82 before implementation.",
+  "next_action": "Publish for Commander integration and GH37 closure; review reconciledfullsnapshot contract next.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r32 helperpage/delta review prepared, no wirechange/activation; identifies fullv1cost/resynclimit and deliveredbaseACK requirements.",
+  "summary": "Commander-approved GH37 compilegeneration guard fixed in publiccurrentness and poll; red-before/greenafter regression plus47integrationchecksPASS.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:15:30Z",
+  "updated_utc": "2026-09-12T14:19:54Z",
   "usage": {
     "status": "unknown"
   }

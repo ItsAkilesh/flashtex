@@ -505,6 +505,7 @@ impl Controller {
     /// Dispatching a preview event is not permission to paint it after a newer edit.
     pub fn is_current_preview(&self, preview: &Preview) -> bool {
         !self.closed
+            && preview.compile_revision == self.generation
             && self.submitted.as_ref().is_some_and(|(id, snapshot, _)| {
                 id == &preview.request_id
                     && snapshot == &preview.source_versions
@@ -537,6 +538,7 @@ impl Controller {
                     ..
                 } => {
                     if !self.closed
+                        && revision == self.generation
                         && self
                             .submitted
                             .as_ref()
