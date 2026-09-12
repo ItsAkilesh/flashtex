@@ -1,6 +1,6 @@
 # mac-accessibility (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T10:25Z
+- Updated UTC: 2026-09-12T10:40Z
 - Agent / parent / machine alias: mac-accessibility / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "keyboard/VoiceOver completeness
   for the shell": (1) Help > Accessibility Help window content and
@@ -356,6 +356,18 @@ index a3ca1a5..d6123f3 100644
   ExactPDFExport, NearbyReferenceClient, NearbyView screenshots,
   PreviewController x2, ProposalPreview x3) plus this lane's documented
   SwiftUI-hosting skip. Log: scratchpad `fullsuite1.log` (not committed).
+- Full `swift test` on the merged tip (1d75acb, mac-shell b898cfc merged),
+  same environment: 437 tests, 19 skips, 4 failures, all in the preview-v2
+  lane's tests and all caused by mac-shell b898cfc vendoring
+  `Fonts/latinmodern-math.otf`: `PreviewV2ShellTests.testRefusedDisplayListShowsNoFrame`,
+  `…testLoadingRetainsThePreviousFrameAsStaleUntilTheNewOneIsVerified`,
+  `…testStaleLoadResultNeverOverwritesANewerState` and
+  `RenderingV2Tests.testMathFixtureFailsClosedWithoutTheMathFontBundled`
+  expect `display-list-v2-math.json` to be refused with
+  `font_resource_unavailable`, and the math font now resolves. Not this
+  lane's files (PreviewV2Tests/RenderingV2Tests, owner mac-preview-v2 /
+  parent); nothing in FlashTeXAccessibility is involved. Reported, not
+  fixed. Log: scratchpad `fullsuite2.log`.
 - The parent-file diffs were applied locally, built and tested, then
   reverted, so the patch above is the verified text.
 - Help window evidence: with the patch applied, the debug app was launched

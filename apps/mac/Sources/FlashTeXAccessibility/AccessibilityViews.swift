@@ -123,7 +123,6 @@ final class PreviewAXElement: NSAccessibilityElement {
     private(set) weak var pageView: NSView?
     /// Frame in `pageView` coordinates (top-left origin).
     private(set) var viewFrame: CGRect = .zero
-    private var navigationChildren: [PreviewAXElement] = []
 
     static func make(role: NSAccessibility.Role, label: String, viewFrame: CGRect, pageView: NSView,
                      parent: Any) -> PreviewAXElement {
@@ -155,7 +154,6 @@ final class PreviewAXElement: NSAccessibilityElement {
     }
 
     func setNavigationChildren(_ children: [PreviewAXElement]) {
-        navigationChildren = children
         setAccessibilityChildren(children)
         setAccessibilityChildrenInNavigationOrder(Self.navigationOrder(children))
     }
