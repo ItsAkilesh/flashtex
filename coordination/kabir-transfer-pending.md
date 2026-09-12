@@ -21,3 +21,9 @@ Daniel recovery actual contact https://github.com/flash-tex/flashtex/issues/23#i
 Review root be426cb8/cd009d75 and renderer f261b36c before integration. HW1 compiler pickup GH38/GH40 remains unconfirmed. GH39 native typing reconciliation, GH36 packaging acceptance, delta r4 reconstructed/resident memory bounds remain tracked. No delta activation. Main queues/assignments remain authoritative until revised; queued rows are not launches.
 
 Pixel-perfect rendered reference fidelity is priority; whole-PDF byte equality is not acceptance. Integrity resource hashes, protocol/source identity and incremental correctness remain. Telemetry poststop candidate stays deferred; no extra benchmark loops. Use /home scratch because /tmp user quota is nearly full. No paid calls pending from root; no new purchases or protected-account bypass.
+
+## Fresh census correction, 2026-09-12T16:07:54Z
+
+Jaysen GH2#5647048391 explicitly corrects summary:15 engineering children plus parent=16 sessions,14 newly launched plus existing ab69. All15 exact session IDs and per-worktree running state published;53 integrated today,none waiting. This is fresh owner-reported evidence, not Linux verification of remote processes. Target staffing is now reported met; maintain replenishment. Pixel fidelity priority acknowledged to visual/PDF lanes. Kabir and Daniel requests remain unanswered at this checkpoint. Dispatcher1099831 verified active.
+
+Main e8db97be integrated root cd009d75/be426 cumulative compiler handoff, renderer f261 actual modified-producer gaps and runtime8ed91df0 independent audit. Root runner925590b9 is next review, with final stale-output/finite-timeout correction pending. Renderer reviews delta r5 and supports existing native Text owner; runtime reviews runner, no repeated performance workload.
