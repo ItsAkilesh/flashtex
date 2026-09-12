@@ -2920,16 +2920,16 @@ mod tests {
         let a = items.iter().find(|i| i.text == "A").unwrap();
         let b = items.iter().find(|i| i.text == "B").unwrap();
         let a_width = layout::text_width("A", a.font_size_pt, a.font);
-        // Every placed word already reserves its own trailing inter-word
-        // gap regardless of what follows (see `place`); `\hspace` adds 36pt
-        // on top of that, it does not replace it.
-        let word_gap = layout::word_space(a.font_size_pt, a.font);
+        // `hspace` (layout.rs) starts from the preceding item's true end
+        // (`content_end`), not from the cursor's eagerly reserved trailing
+        // inter-word space, so it adds exactly the requested 36pt on top of
+        // "A"'s real width — no separate word gap is also added. See the
+        // doc comment on `LayoutCursor::hspace`.
         assert!(
-            (b.x_pt - (a.x_pt + a_width) - word_gap - 36.0).abs() < 0.02,
-            "a={} a_width={} word_gap={} b={}",
+            (b.x_pt - (a.x_pt + a_width) - 36.0).abs() < 0.02,
+            "a={} a_width={} b={}",
             a.x_pt,
             a_width,
-            word_gap,
             b.x_pt
         );
     }
