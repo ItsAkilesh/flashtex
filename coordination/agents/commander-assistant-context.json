@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-029": {
-      "acknowledged_utc": "2026-09-12T08:02:50Z",
-      "adaptation": "Reviewed current assignment and commander followup authorizing optional Grok transport in same crate; no live inference or credentials accessed.",
-      "main_sha": "64c7b8965f5a1dd3ba7ccbb35780195edfd37bd6",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T08:22:47Z",
+      "adaptation": "Reviewed current native-helper recovery/resource scope; explicit startup and bounded client now ready for Mac consumer.",
+      "main_sha": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+      "revision": 5
     }
   },
   "branch": "agent/commander/assistant-context",
@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "d1f0adf603a17ec7522c697bcdfb092565e4c3b8",
+  "code_revision": "d059a0b2220e97854f9d1be38ab20c2a64ec4c7b",
   "eta_minutes": {
-    "likely": 30,
-    "optimistic": 15,
-    "pessimistic": 50
+    "likely": 25,
+    "optimistic": 10,
+    "pessimistic": 45
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Native Mac lane consumes helper; extend supervised client provider startup and full fake transport subprocess coverage.",
+  "next_action": "Mac consumer handoff; await next high-value product assignment rather than duplicate native owner work.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Explicit opt-in provider JSONL mode supports admit/poll/cancel/revoke/retire/snapshot.23 tests incl realcompiler and no-inference subprocess startup/admission gates; strictlint pass.",
+  "summary": "Supervised Unix client can explicitly spawn provider helper using childenv key, default strips inherited key.24tests pass including zero-call provider startup and realcompiler; strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:20:54Z",
+  "updated_utc": "2026-09-12T08:22:48Z",
   "usage": {
-    "evidence": "23allfeaturetests; strict allfeaturelint; defaultlint pass",
-    "status": "Hosted OpenAI; dummy credentials/local fixtures only; no paid provider calls."
+    "evidence": "24allfeaturetests include-ignored; strictlint allfeatures/alltargets",
+    "status": "Hosted OpenAI only, no provider inference."
   }
 }

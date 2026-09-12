@@ -29,8 +29,41 @@ impl SessionClient {
     /// discarded so diagnostics cannot fill a pipe. Use a fresh session ID.
     pub fn spawn(executable: &Path, session: &str) -> Result<Self, String> {
         crate::ExplanationRegistry::new(session.to_owned(), 8, 64)?;
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(["--session", session])
+            .env_remove("FLASHTEX_GROK_API_KEY");
+        Self::spawn_command(command)
+    }
+    /// Explicit provider helper startup. Credentials go only into this child's
+    /// environment, never argv or request JSON. Startup performs no inference.
+    #[cfg(feature = "grok")]
+    pub fn spawn_provider(
+        executable: &Path,
+        session: &str,
+        model: &str,
+        key: &str,
+    ) -> Result<Self, String> {
+        crate::ExplanationRegistry::new(format!("provider_{session}"), 8, 64)?;
+        if key.is_empty() || key.len() > 8192 || key.bytes().any(|b| b.is_ascii_control()) {
+            return Err("invalid provider credential".into());
+        }
+        if model.is_empty()
+            || model.len() > 128
+            || !model
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b))
+        {
+            return Err("invalid provider model".into());
+        }
+        let mut command = Command::new(executable);
+        command
+            .args(["--provider-session", session, model])
+            .env("FLASHTEX_GROK_API_KEY", key);
+        Self::spawn_command(command)
+    }
+    fn spawn_command(mut command: Command) -> Result<Self, String> {
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

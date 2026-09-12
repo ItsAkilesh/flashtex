@@ -226,3 +226,11 @@ changes, poll/retire jobs, supervise helper lifetime, and request user review be
 applying proposals. Provider subprocess tests verify startup/admission gates and
 zero scheduled tasks; local HTTP and scheduler tests verify the lower-level
 workflow separately. A complete native→helper→liveGrok integration remains untested.
+
+Unix native Rust consumers can use `SessionClient::spawn_provider(executable,
+session,model,key)` to launch that explicit mode under the same pipe deadlines.
+It validates inputs before spawning and passes the key only through the child
+environment. Ordinary `SessionClient::spawn` removes that provider variable from
+the child's inherited environment. Startup does not submit jobs; the first status
+snapshot reports zero scheduler starts. This is not a keychain adapter: the native
+host still owns secure credential retrieval and user authorization.

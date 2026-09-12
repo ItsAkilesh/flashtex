@@ -590,3 +590,32 @@ fn provider_helper_requires_explicit_startup_and_admission() {
         assert!(replies[1]["error"].is_string());
     }
 }
+
+#[cfg(all(unix, feature = "grok"))]
+#[test]
+fn supervised_provider_startup_is_explicit_and_does_not_start_calls() {
+    use flashtex_assistant_context::SessionClient;
+    use std::{path::Path, time::Duration};
+    let binary = Path::new(env!("CARGO_BIN_EXE_flashtex-assistant-context"));
+    let mut client = SessionClient::spawn_provider(
+        binary,
+        "native_client",
+        "explicit-model",
+        "dummy-local-secret",
+    )
+    .unwrap();
+    let snapshot = client
+        .call(
+            json!({"operation":"provider","command":{"operation":"snapshot"}}),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+    assert_eq!(snapshot["result"]["payload"]["scheduler_tasks_started"], 0);
+    assert_eq!(
+        snapshot["result"]["payload"]["provider_billing_known"],
+        false
+    );
+    assert!(!snapshot.to_string().contains("dummy-local-secret"));
+    assert!(SessionClient::spawn_provider(binary, "native_client", "model", "bad\nkey").is_err());
+    assert!(SessionClient::spawn_provider(binary, "native_client", "", "dummy").is_err());
+}
