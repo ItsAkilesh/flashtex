@@ -13,8 +13,11 @@
   below and in the final report.
 - Branch / code revision / main integrated through:
   `agent/mac-preferences/editor` from `origin/agent/mac-claude-a/mac-shell`
-  `f4c8aea` / see the agents JSON `code_revision` / main as merged into
-  mac-shell at that tip.
+  `f4c8aea`, merged forward to `a73bdf2` (braces and nearby lanes integrated) / see the
+  agents JSON `code_revision` / main as merged into mac-shell at that tip.
+  `agent/mac-preferences/editor-applied` carries one labelled LOCAL
+  APPLICATION commit of the requested diffs (compiled and captured here; not
+  for integration — the parent applies from the report).
 - State: ready for integration (model, settings view and tests done; the
   parent/editor wiring is a requested diff, not applied here).
 
@@ -76,8 +79,28 @@ See the final report (identical text). Summary:
 2. `ShellModel.swift`: `var darkPreview = EditorPreferences.shared.darkPreviewDefault`.
 3. `SourceEditorView.swift`: replace the hard-coded font with
    `context.coordinator.preferencesToken = EditorPreferences.shared.observeApplying(to: tv)`
-   in `makeNSView`; Tab key / auto-close read `indentString` / `autoCloseBraces`.
-4. `Completion.swift` `requestCompletion()`: `guard EditorPreferences.shared.completionPopup else { return }`.
+   in `makeNSView` (plus the token property on the Coordinator).
+4. `ContentView.swift` (EditorPane): `autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : []`
+   — the braces lane's set stays the model's; the preference gates it live
+   (a SwiftUI body read of the singleton is observed).
+5. `Completion.swift` `requestCompletion()`: `guard EditorPreferences.shared.completionPopup else { return }`.
+
+## Evidence
+
+- `swift test` on the merged tip: 507 tests, 25 env-gated skips (other
+  lanes' helpers/nearby plus the gated PNG render), 0 failures, real
+  compiler/pdf/bridge/edit-ledger binaries, load average 12–27.
+- Applied-branch app launched with `FLASHTEX_NO_ACTIVATE=1` and stored
+  preferences (Menlo 16, tab 8, appearance dark, wrap off/on) vs a base
+  control: the editor shows Menlo 16, an 8-column tab, no wrapping with a
+  horizontal scroller (or wrapping), and the Dark preview toggle starts on;
+  the control shows the system 13 pt face, wrapping and Dark preview off.
+  The large empty region above the panes at launch is present in the control
+  too (pre-existing mac-shell layout with a seed file and no result, not a
+  preferences effect). Captures are in the session scratchpad, not committed.
+- A bare SwiftPM executable stores `UserDefaults.standard` under the
+  process-name domain (`defaults read FlashTeXMac`); the app repaired the
+  three keys the capture script left absent to their defaults.
 
 ## Limitations
 

@@ -330,6 +330,12 @@ final class ProjectDocuments {
         case refused(String)
     }
 
+    /// What a detach means today: the helper offers no persistent exclusion
+    /// (STDIO.md: "Project restart restores all retained documents; persistent
+    /// exclusions are not implemented"), and the direct route has no project
+    /// file either — a detach lasts for this session only.
+    static let detachScopeNote = "this session only: the helper restores retained documents on restart and includes are rediscovered from the entry"
+
     enum DetachOutcome: Equatable {
         case detached(path: String)
         case refused(String)
@@ -453,7 +459,106 @@ final class ProjectDocuments {
         prune()
         let from = path ?? entryPath
         guard let text = model.documents.first(where: { $0.path == from })?.text else { return [] }
-        return ProjectIncludes.scan(text).map { ref in
+        return resolve(ProjectIncludes.scan(text), route: model.controllerAttached)
+    }
+
+    // MARK: transitive discovery
+
+    /// Nesting bound for the include closure (entry = depth 0).
+    nonisolated static let maxIncludeDepth = 8
+    /// Total documents the closure may name (the helper's project bound).
+    nonisolated static let maxClosureDocuments = 256
+
+    /// One reference in the include closure of the entry document.
+    struct ClosureNode: Equatable {
+        var reference: ProjectIncludes.Reference
+        /// Document the reference was found in.
+        var from: String
+        /// 1 for the entry's own includes, up to `maxIncludeDepth`.
+        var depth: Int
+        var candidates: [String]
+        var resolvedPath: String?
+        var state: Discovered.State
+        /// A diamond: the path was already reached through another reference
+        /// (not scanned again, not a cycle).
+        var duplicate = false
+    }
+
+    struct Closure: Equatable {
+        /// Nodes in stable depth-first source order.
+        var nodes: [ClosureNode]
+        /// Resolved paths in first-reached order (entry excluded).
+        var paths: [String]
+        var truncated = false
+        var unresolvable: [ClosureNode] { nodes.filter { if case .unresolvable = $0.state { true } else { false } } }
+    }
+
+    /// Text a document contributes to discovery: the open buffer, else the
+    /// rooted disk file (both routes; on the helper route the ledger may
+    /// differ from disk until the document is opened, which then reads the
+    /// ledger). Nil when the text is not available.
+    private func discoveryText(for path: String) -> String? {
+        if let doc = model.documents.first(where: { $0.path == path }) { return doc.text }
+        guard let root = projectRoot, case .file(let url) = Self.rootedFile(path, under: root),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              (attrs[.size] as? Int ?? 0) <= ProjectIncludes.maxDocumentBytes,
+              let data = try? Data(contentsOf: url) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// The transitive `\input`/`\include` closure of the entry document
+    /// (chapter → section → …), depth-first in source order, bounded by
+    /// `maxIncludeDepth` and `maxClosureDocuments`. A reference back to a
+    /// document on the current include chain is refused as a cycle; a
+    /// document reached twice through different parents is listed once as
+    /// `duplicate`. Lexical only: no macro expansion.
+    func discoverClosure(maxDepth: Int = ProjectDocuments.maxIncludeDepth) -> Closure {
+        prune()
+        var closure = Closure(nodes: [], paths: [])
+        var reached: Set<String> = [entryPath]
+        var chain: [String] = [entryPath]
+        func visit(_ path: String, depth: Int) {
+            guard depth <= maxDepth, let text = discoveryText(for: path) else { return }
+            for d in resolve(ProjectIncludes.scan(text), route: model.controllerAttached) {
+                var node = ClosureNode(reference: d.reference, from: path, depth: depth, candidates: d.candidates,
+                                       resolvedPath: d.resolvedPath, state: d.state)
+                if let resolved = d.resolvedPath ?? d.candidates.first(where: reached.contains) {
+                    if chain.contains(resolved) {
+                        node.resolvedPath = resolved
+                        node.state = .unresolvable("\\\(d.reference.kind.rawValue){\(d.reference.argument)} closes an include cycle: "
+                                                   + (chain + [resolved]).joined(separator: " → "))
+                        closure.nodes.append(node)
+                        continue
+                    }
+                    if reached.contains(resolved) {
+                        node.resolvedPath = resolved
+                        node.duplicate = true
+                        node.state = isOpen(resolved) ? .open : .available
+                        closure.nodes.append(node)
+                        continue
+                    }
+                }
+                if node.resolvedPath != nil, depth + 1 > maxDepth {
+                    node.state = .unresolvable("nested deeper than \(maxDepth) levels; not discovered")
+                }
+                closure.nodes.append(node)
+                guard let resolved = node.resolvedPath else { continue }
+                if case .unresolvable = node.state { continue }
+                guard closure.paths.count < Self.maxClosureDocuments else { closure.truncated = true; continue }
+                reached.insert(resolved)
+                closure.paths.append(resolved)
+                chain.append(resolved)
+                visit(resolved, depth: depth + 1)
+                chain.removeLast()
+            }
+        }
+        visit(entryPath, depth: 0)
+        return closure
+    }
+
+    /// Resolves scanned references like `discoverIncludes` does.
+    private func resolve(_ refs: [ProjectIncludes.Reference], route helper: Bool) -> [Discovered] {
+        refs.map { ref in
             guard ref.literal else {
                 return Discovered(reference: ref, candidates: [], resolvedPath: nil, state: .unresolvable("argument needs macro expansion"))
             }
@@ -463,11 +568,8 @@ final class ProjectDocuments {
             if let open = candidates.first(where: isOpen) {
                 return Discovered(reference: ref, candidates: candidates, resolvedPath: open, state: .open)
             }
-            if model.controllerAttached {
-                // The helper decides on open (rooted read or retained ledger);
-                // a path it already lists is available without a disk check.
-                let known = candidates.first { sourceVersions[$0] != nil }
-                return Discovered(reference: ref, candidates: candidates, resolvedPath: known ?? candidates[0], state: .available)
+            if helper, let known = candidates.first(where: { sourceVersions[$0] != nil }) {
+                return Discovered(reference: ref, candidates: candidates, resolvedPath: known, state: .available)
             }
             guard let root = projectRoot else {
                 return Discovered(reference: ref, candidates: candidates, resolvedPath: nil, state: .unresolvable("no project root (the entry document is not saved)"))
@@ -481,18 +583,69 @@ final class ProjectDocuments {
                 default: continue
                 }
             }
+            if helper {
+                // The helper may still open it (retained ledger); let it decide.
+                return Discovered(reference: ref, candidates: candidates, resolvedPath: candidates[0], state: .available)
+            }
             return Discovered(reference: ref, candidates: candidates, resolvedPath: nil, state: .unresolvable("no such file under the project root"))
         }
     }
 
-    /// Opens every available include of the entry document, in source order.
+    /// Result of the last `openDiscoveredIncludes` ("Open All Includes").
+    struct OpenReport: Equatable {
+        var opened: [String] = []
+        var alreadyOpen: [String] = []
+        var refused: [String] = []
+        /// `"\input{x} in main.tex: why"` for each unresolvable reference.
+        var unresolvable: [String] = []
+        var truncated = false
+        var summary: String {
+            var parts: [String] = []
+            parts.append("opened \(opened.count)" + (opened.isEmpty ? "" : " (" + opened.joined(separator: ", ") + ")"))
+            if !alreadyOpen.isEmpty { parts.append("\(alreadyOpen.count) already open") }
+            if !refused.isEmpty { parts.append("refused: " + refused.joined(separator: "; ")) }
+            if !unresolvable.isEmpty { parts.append("unresolvable: " + unresolvable.joined(separator: "; ")) }
+            if truncated { parts.append("closure truncated at \(ProjectDocuments.maxClosureDocuments) documents") }
+            return parts.joined(separator: "; ")
+        }
+    }
+    private(set) var lastOpenReport: OpenReport?
+
+    /// Opens the entry document's include closure in stable depth-first
+    /// source order (chapter.tex before the sections it includes), through
+    /// the helper or directly, and reports what could not be resolved
+    /// (`lastOpenReport`, `status`). Rediscovers after each open so a
+    /// document read from the helper's ledger contributes its own includes.
     @discardableResult
     func openDiscoveredIncludes() async -> [OpenOutcome] {
         var outcomes: [OpenOutcome] = []
-        for d in discoverIncludes() where d.state == .available {
-            guard let path = d.resolvedPath else { continue }
-            outcomes.append(await openDocument(path, role: .included(from: entryPath)))
+        var report = OpenReport()
+        var attempted: Set<String> = []
+        var progress = true
+        while progress {
+            progress = false
+            let closure = discoverClosure()
+            report.truncated = closure.truncated
+            for node in closure.nodes where node.state == .available && !node.duplicate {
+                guard let path = node.resolvedPath, !attempted.contains(path) else { continue }
+                attempted.insert(path)
+                let outcome = await openDocument(path, role: .included(from: node.from))
+                outcomes.append(outcome)
+                switch outcome {
+                case .opened(let p): report.opened.append(p); progress = true
+                case .alreadyOpen(let p): report.alreadyOpen.append(p)
+                case .refused(let why): report.refused.append(why)
+                }
+            }
         }
+        let closure = discoverClosure()
+        report.unresolvable = closure.unresolvable.map {
+            "\\\($0.reference.kind.rawValue){\($0.reference.argument)} in \($0.from): " + { if case .unresolvable(let why) = $0.state { why } else { "" } }($0)
+        }
+        report.truncated = report.truncated || closure.truncated
+        lastOpenReport = report
+        status = "open all includes: " + report.summary
+        FlashTeXLog.write("project: " + status)
         return outcomes
     }
 
@@ -652,7 +805,7 @@ final class ProjectDocuments {
         carets.removeValue(forKey: path); diskBaselines.removeValue(forKey: path)
         if model.anchor?.path == path { model.anchor = nil }
         model.log("project: detached \(path) — \(model.documents.count) documents")
-        return note(.detached(path: path))
+        return note(.detached(path: path), extra: " (" + Self.detachScopeNote + ")")
     }
 
     // MARK: editor switch
@@ -1068,7 +1221,7 @@ final class ProjectDocuments {
             }
         case let o as DetachOutcome:
             switch o {
-            case .detached(let p): "detached \(p)"
+            case .detached(let p): "detached \(p)\(extra)"
             case .refused(let why): why
             }
         default: "\(outcome)"

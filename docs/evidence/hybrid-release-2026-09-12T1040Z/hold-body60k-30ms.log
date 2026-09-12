@@ -1,0 +1,757 @@
+2026-09-12T10:42:11Z	status: no worker attached
+2026-09-12T10:42:11Z	status: attached: flashtex-preview-controller
+2026-09-12T10:42:11Z	launched /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/helper-main-60c40c1/crates/preview-controller/target/release/flashtex-preview-controller for /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T/flashtex-project-17BEF4DE-6948-43FF-B058-087E8D01FC3E (ledger /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a25f8f8ba4a279a48/apps/mac/build/typing-bench/2026-09-12T103950Z/controller-body60k-30ms/ledger)
+2026-09-12T10:42:11Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T10:42:11Z	ignored controller preview preview-1: versions ["main.tex": 1] unknown to this session
+2026-09-12T10:42:11Z	bench: waiting for attach + first paint (200 keystrokes, 30.0 ms)
+2026-09-12T10:42:11Z	status: revision 2: ok, 0 diagnostics in 50 ms (durable r1)
+2026-09-12T10:42:11Z	paint: revision 2 at 85968850558125 (covers 0 keystrokes, redrawn true)
+2026-09-12T10:42:11Z	status: revision 2: ok, 0 diagnostics in 36 ms (durable r1)
+2026-09-12T10:42:11Z	bench: typing 200 keystrokes at UTF-16 offset 63719 every 30.0 ms
+2026-09-12T10:42:11Z	keystroke: revision 3 at 85968904043541 (delegate 85968923828000, revision 85968924009708)
+2026-09-12T10:42:11Z	compile: sending revision 3 at 85968924079458
+2026-09-12T10:42:11Z	durable: r2 for revision 3 at 85968952027208
+2026-09-12T10:42:11Z	keystroke: revision 4 at 85968952286083 (delegate 85968952716208, revision 85968952886708)
+2026-09-12T10:42:11Z	keystroke: revision 5 at 85968967116333 (delegate 85968967625500, revision 85968967811791)
+2026-09-12T10:42:11Z	keystroke: revision 6 at 85968995720000 (delegate 85968996261500, revision 85968996444583)
+2026-09-12T10:42:11Z	compile: sending revision 6 at 85969022102833
+2026-09-12T10:42:11Z	compile: applied revision 3 at 85969028463208
+2026-09-12T10:42:11Z	status: revision 3: ok, 0 diagnostics in 52 ms (durable r2)
+2026-09-12T10:42:11Z	paint: revision 3 redrew 1/23 pages
+2026-09-12T10:42:11Z	paint: revision 3 at 85969041168000 (covers 1 keystrokes, redrawn true)
+2026-09-12T10:42:11Z	durable: r3 for revision 6 at 85969041191625
+2026-09-12T10:42:11Z	completion metadata refused: helper error for pc-12: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:11Z	controller error pc-13: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:11Z	controller error pc-14: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:11Z	keystroke: revision 7 at 85969055397041 (delegate 85969055872625, revision 85969056038958)
+2026-09-12T10:42:11Z	keystroke: revision 8 at 85969085468041 (delegate 85969086033333, revision 85969086206541)
+2026-09-12T10:42:11Z	keystroke: revision 9 at 85969115692291 (delegate 85969116227291, revision 85969116400708)
+2026-09-12T10:42:11Z	compile: sending revision 9 at 85969120412875
+2026-09-12T10:42:11Z	compile: applied revision 6 at 85969126722000
+2026-09-12T10:42:11Z	status: revision 6: ok, 0 diagnostics in 50 ms (durable r3)
+2026-09-12T10:42:12Z	paint: revision 6 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 6 at 85969141849375 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r4 for revision 9 at 85969141874958
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-16: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-17: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-18: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 10 at 85969152752333 (delegate 85969153251083, revision 85969153427625)
+2026-09-12T10:42:12Z	keystroke: revision 11 at 85969174509000 (delegate 85969175082166, revision 85969175279041)
+2026-09-12T10:42:12Z	keystroke: revision 12 at 85969204211708 (delegate 85969204793500, revision 85969204983833)
+2026-09-12T10:42:12Z	compile: sending revision 12 at 85969226183916
+2026-09-12T10:42:12Z	compile: applied revision 9 at 85969233128916
+2026-09-12T10:42:12Z	status: revision 9: ok, 0 diagnostics in 55 ms (durable r4)
+2026-09-12T10:42:12Z	paint: revision 9 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 9 at 85969244533458 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r5 for revision 12 at 85969244558125
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-20: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-21: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-22: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 13 at 85969258434666 (delegate 85969259024958, revision 85969259215291)
+2026-09-12T10:42:12Z	keystroke: revision 14 at 85969271674916 (delegate 85969272117666, revision 85969272301583)
+2026-09-12T10:42:12Z	keystroke: revision 15 at 85969295348625 (delegate 85969295979541, revision 85969296168583)
+2026-09-12T10:42:12Z	compile: sending revision 15 at 85969324138375
+2026-09-12T10:42:12Z	compile: applied revision 12 at 85969331086541
+2026-09-12T10:42:12Z	status: revision 12: ok, 0 diagnostics in 49 ms (durable r5)
+2026-09-12T10:42:12Z	paint: revision 12 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 12 at 85969343000583 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r6 for revision 15 at 85969343022208
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-24: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-25: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-26: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 16 at 85969352949333 (delegate 85969353414125, revision 85969353595333)
+2026-09-12T10:42:12Z	keystroke: revision 17 at 85969367650458 (delegate 85969368113666, revision 85969368309541)
+2026-09-12T10:42:12Z	keystroke: revision 18 at 85969386041083 (delegate 85969386648166, revision 85969386834083)
+2026-09-12T10:42:12Z	keystroke: revision 19 at 85969414874333 (delegate 85969415440958, revision 85969415636375)
+2026-09-12T10:42:12Z	compile: sending revision 19 at 85969422225000
+2026-09-12T10:42:12Z	compile: applied revision 15 at 85969429166166
+2026-09-12T10:42:12Z	status: revision 15: ok, 0 diagnostics in 46 ms (durable r6)
+2026-09-12T10:42:12Z	durable: r7 for revision 19 at 85969448204916
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-28: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-29: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-30: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	paint: revision 15 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 15 at 85969454813125 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	keystroke: revision 20 at 85969454871250 (delegate 85969455392000, revision 85969455576166)
+2026-09-12T10:42:12Z	keystroke: revision 21 at 85969474511458 (delegate 85969475103250, revision 85969475301708)
+2026-09-12T10:42:12Z	keystroke: revision 22 at 85969504228708 (delegate 85969504844958, revision 85969505036000)
+2026-09-12T10:42:12Z	compile: sending revision 22 at 85969519646916
+2026-09-12T10:42:12Z	compile: applied revision 19 at 85969526676291
+2026-09-12T10:42:12Z	status: revision 19: ok, 0 diagnostics in 49 ms (durable r7)
+2026-09-12T10:42:12Z	paint: revision 19 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 19 at 85969538426750 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r8 for revision 22 at 85969538450250
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-32: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-33: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-34: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 23 at 85969553192208 (delegate 85969553712458, revision 85969553895208)
+2026-09-12T10:42:12Z	keystroke: revision 24 at 85969565711333 (delegate 85969566194333, revision 85969566378375)
+2026-09-12T10:42:12Z	keystroke: revision 25 at 85969595482875 (delegate 85969596089375, revision 85969596282708)
+2026-09-12T10:42:12Z	compile: sending revision 25 at 85969617009375
+2026-09-12T10:42:12Z	compile: applied revision 22 at 85969623946666
+2026-09-12T10:42:12Z	status: revision 22: ok, 0 diagnostics in 48 ms (durable r8)
+2026-09-12T10:42:12Z	paint: revision 22 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 22 at 85969636014125 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r9 for revision 25 at 85969636046291
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-36: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-37: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-38: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 26 at 85969651272708 (delegate 85969651821291, revision 85969652027583)
+2026-09-12T10:42:12Z	keystroke: revision 27 at 85969665242541 (delegate 85969665750916, revision 85969665956250)
+2026-09-12T10:42:12Z	keystroke: revision 28 at 85969685461958 (delegate 85969686079833, revision 85969686285666)
+2026-09-12T10:42:12Z	keystroke: revision 29 at 85969715743125 (delegate 85969716428500, revision 85969716641875)
+2026-09-12T10:42:12Z	compile: sending revision 29 at 85969725976041
+2026-09-12T10:42:12Z	compile: applied revision 25 at 85969735121000
+2026-09-12T10:42:12Z	status: revision 25: ok, 0 diagnostics in 52 ms (durable r9)
+2026-09-12T10:42:12Z	durable: r10 for revision 29 at 85969756898958
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-40: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-41: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-42: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	paint: revision 25 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 25 at 85969764159541 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	keystroke: revision 30 at 85969764209375 (delegate 85969764812916, revision 85969765017541)
+2026-09-12T10:42:12Z	keystroke: revision 31 at 85969777286500 (delegate 85969777731583, revision 85969777934416)
+2026-09-12T10:42:12Z	keystroke: revision 32 at 85969804236458 (delegate 85969804883166, revision 85969805090875)
+2026-09-12T10:42:12Z	compile: sending revision 32 at 85969832313833
+2026-09-12T10:42:12Z	compile: applied revision 29 at 85969839175375
+2026-09-12T10:42:12Z	status: revision 29: ok, 0 diagnostics in 52 ms (durable r10)
+2026-09-12T10:42:12Z	paint: revision 29 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 29 at 85969851398125 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r11 for revision 32 at 85969851429000
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-44: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-45: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-46: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 33 at 85969861373833 (delegate 85969861888791, revision 85969862072041)
+2026-09-12T10:42:12Z	keystroke: revision 34 at 85969870364625 (delegate 85969870851125, revision 85969871049375)
+2026-09-12T10:42:12Z	keystroke: revision 35 at 85969896032291 (delegate 85969896696041, revision 85969896889500)
+2026-09-12T10:42:12Z	keystroke: revision 36 at 85969924501500 (delegate 85969925167666, revision 85969925360708)
+2026-09-12T10:42:12Z	compile: sending revision 36 at 85969932451333
+2026-09-12T10:42:12Z	compile: applied revision 32 at 85969939382541
+2026-09-12T10:42:12Z	status: revision 32: ok, 0 diagnostics in 47 ms (durable r11)
+2026-09-12T10:42:12Z	durable: r12 for revision 36 at 85969957750125
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-48: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-49: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-50: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	paint: revision 32 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 32 at 85969964898708 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	keystroke: revision 37 at 85969964953708 (delegate 85969965518791, revision 85969965703500)
+2026-09-12T10:42:12Z	keystroke: revision 38 at 85969985437416 (delegate 85969986065875, revision 85969986255708)
+2026-09-12T10:42:12Z	keystroke: revision 39 at 85970015706375 (delegate 85970016487416, revision 85970016679125)
+2026-09-12T10:42:12Z	compile: sending revision 39 at 85970032019375
+2026-09-12T10:42:12Z	compile: applied revision 36 at 85970038908250
+2026-09-12T10:42:12Z	status: revision 36: ok, 0 diagnostics in 47 ms (durable r12)
+2026-09-12T10:42:12Z	paint: revision 36 redrew 1/23 pages
+2026-09-12T10:42:12Z	paint: revision 36 at 85970050611875 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:12Z	durable: r13 for revision 39 at 85970050640041
+2026-09-12T10:42:12Z	completion metadata refused: helper error for pc-52: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-53: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	controller error pc-54: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:12Z	keystroke: revision 40 at 85970064668625 (delegate 85970065242041, revision 85970065428041)
+2026-09-12T10:42:12Z	keystroke: revision 41 at 85970078466083 (delegate 85970078943166, revision 85970079155458)
+2026-09-12T10:42:12Z	keystroke: revision 42 at 85970104205833 (delegate 85970104797208, revision 85970104981583)
+2026-09-12T10:42:13Z	compile: sending revision 42 at 85970130268541
+2026-09-12T10:42:13Z	compile: applied revision 39 at 85970137155458
+2026-09-12T10:42:13Z	status: revision 39: ok, 0 diagnostics in 49 ms (durable r13)
+2026-09-12T10:42:13Z	paint: revision 39 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 39 at 85970149293833 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r14 for revision 42 at 85970149323791
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-56: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-57: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-58: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 43 at 85970164017833 (delegate 85970164565166, revision 85970164746875)
+2026-09-12T10:42:13Z	keystroke: revision 44 at 85970196025875 (delegate 85970196697291, revision 85970196889208)
+2026-09-12T10:42:13Z	keystroke: revision 45 at 85970224513708 (delegate 85970225202125, revision 85970225416875)
+2026-09-12T10:42:13Z	compile: sending revision 45 at 85970234180958
+2026-09-12T10:42:13Z	compile: applied revision 42 at 85970241079625
+2026-09-12T10:42:13Z	status: revision 42: ok, 0 diagnostics in 48 ms (durable r14)
+2026-09-12T10:42:13Z	durable: r15 for revision 45 at 85970259367583
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-60: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-61: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-62: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	paint: revision 42 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 42 at 85970266531041 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	keystroke: revision 46 at 85970266584833 (delegate 85970267171250, revision 85970267356708)
+2026-09-12T10:42:13Z	keystroke: revision 47 at 85970285192041 (delegate 85970285848083, revision 85970286040833)
+2026-09-12T10:42:13Z	keystroke: revision 48 at 85970315705750 (delegate 85970316319916, revision 85970316521875)
+2026-09-12T10:42:13Z	compile: sending revision 48 at 85970330811916
+2026-09-12T10:42:13Z	compile: applied revision 45 at 85970337164583
+2026-09-12T10:42:13Z	status: revision 45: ok, 0 diagnostics in 49 ms (durable r15)
+2026-09-12T10:42:13Z	durable: r16 for revision 48 at 85970353287833
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-64: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-65: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-66: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	paint: revision 45 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 45 at 85970359429208 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	keystroke: revision 49 at 85970359492083 (delegate 85970360028458, revision 85970360199125)
+2026-09-12T10:42:13Z	keystroke: revision 50 at 85970374509708 (delegate 85970375049416, revision 85970375225583)
+2026-09-12T10:42:13Z	keystroke: revision 51 at 85970404220750 (delegate 85970404820625, revision 85970404991041)
+2026-09-12T10:42:13Z	compile: sending revision 51 at 85970417134333
+2026-09-12T10:42:13Z	compile: applied revision 48 at 85970423355875
+2026-09-12T10:42:13Z	status: revision 48: ok, 0 diagnostics in 42 ms (durable r16)
+2026-09-12T10:42:13Z	paint: revision 48 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 48 at 85970434154041 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r17 for revision 51 at 85970443251541
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-68: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-69: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-70: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 52 at 85970447806750 (delegate 85970448333583, revision 85970448501125)
+2026-09-12T10:42:13Z	keystroke: revision 53 at 85970464289916 (delegate 85970464877083, revision 85970465055333)
+2026-09-12T10:42:13Z	keystroke: revision 54 at 85970494861958 (delegate 85970495501750, revision 85970495675291)
+2026-09-12T10:42:13Z	compile: sending revision 54 at 85970506764125
+2026-09-12T10:42:13Z	compile: applied revision 51 at 85970513105833
+2026-09-12T10:42:13Z	status: revision 51: ok, 0 diagnostics in 46 ms (durable r17)
+2026-09-12T10:42:13Z	paint: revision 51 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 51 at 85970523403291 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r18 for revision 54 at 85970532514166
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-72: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-73: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-74: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 55 at 85970536511750 (delegate 85970537022583, revision 85970537188250)
+2026-09-12T10:42:13Z	keystroke: revision 56 at 85970554227500 (delegate 85970554833125, revision 85970555002500)
+2026-09-12T10:42:13Z	keystroke: revision 57 at 85970585490875 (delegate 85970586069750, revision 85970586238291)
+2026-09-12T10:42:13Z	compile: sending revision 57 at 85970597470916
+2026-09-12T10:42:13Z	compile: applied revision 54 at 85970603722500
+2026-09-12T10:42:13Z	status: revision 54: ok, 0 diagnostics in 46 ms (durable r18)
+2026-09-12T10:42:13Z	paint: revision 54 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 54 at 85970614615791 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r19 for revision 57 at 85970614642791
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-76: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-77: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-78: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 58 at 85970627938458 (delegate 85970628502000, revision 85970628670041)
+2026-09-12T10:42:13Z	keystroke: revision 59 at 85970644832000 (delegate 85970645579333, revision 85970645762791)
+2026-09-12T10:42:13Z	keystroke: revision 60 at 85970674521875 (delegate 85970675136541, revision 85970675312208)
+2026-09-12T10:42:13Z	compile: sending revision 60 at 85970686088291
+2026-09-12T10:42:13Z	compile: applied revision 57 at 85970692357333
+2026-09-12T10:42:13Z	status: revision 57: ok, 0 diagnostics in 44 ms (durable r19)
+2026-09-12T10:42:13Z	paint: revision 57 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 57 at 85970703590750 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r20 for revision 60 at 85970703619083
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-80: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-81: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-82: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 61 at 85970717406500 (delegate 85970717977208, revision 85970718153875)
+2026-09-12T10:42:13Z	keystroke: revision 62 at 85970735211666 (delegate 85970735893208, revision 85970736073791)
+2026-09-12T10:42:13Z	keystroke: revision 63 at 85970765478166 (delegate 85970766165291, revision 85970766355416)
+2026-09-12T10:42:13Z	compile: sending revision 63 at 85970775881750
+2026-09-12T10:42:13Z	compile: applied revision 60 at 85970782175583
+2026-09-12T10:42:13Z	status: revision 60: ok, 0 diagnostics in 46 ms (durable r20)
+2026-09-12T10:42:13Z	paint: revision 60 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 60 at 85970793033208 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r21 for revision 63 at 85970803028291
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-84: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-85: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-86: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 64 at 85970803207875 (delegate 85970803744583, revision 85970803908000)
+2026-09-12T10:42:13Z	keystroke: revision 65 at 85970824501625 (delegate 85970825166500, revision 85970825341375)
+2026-09-12T10:42:13Z	keystroke: revision 66 at 85970854222083 (delegate 85970854804041, revision 85970854973500)
+2026-09-12T10:42:13Z	compile: sending revision 66 at 85970867809500
+2026-09-12T10:42:13Z	compile: applied revision 63 at 85970874061208
+2026-09-12T10:42:13Z	status: revision 63: ok, 0 diagnostics in 48 ms (durable r21)
+2026-09-12T10:42:13Z	paint: revision 63 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 63 at 85970884973708 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r22 for revision 66 at 85970885002333
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-88: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-89: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-90: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 67 at 85970893990708 (delegate 85970894555458, revision 85970894741083)
+2026-09-12T10:42:13Z	keystroke: revision 68 at 85970914875541 (delegate 85970915552208, revision 85970915728708)
+2026-09-12T10:42:13Z	keystroke: revision 69 at 85970946036875 (delegate 85970946749541, revision 85970946938500)
+2026-09-12T10:42:13Z	compile: sending revision 69 at 85970964225500
+2026-09-12T10:42:13Z	compile: applied revision 66 at 85970971247666
+2026-09-12T10:42:13Z	status: revision 66: ok, 0 diagnostics in 46 ms (durable r22)
+2026-09-12T10:42:13Z	paint: revision 66 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 66 at 85970983014458 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r23 for revision 69 at 85970983041916
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-92: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-93: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-94: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 70 at 85970997581791 (delegate 85970998208541, revision 85970998395250)
+2026-09-12T10:42:13Z	keystroke: revision 71 at 85971011164916 (delegate 85971011741500, revision 85971011939666)
+2026-09-12T10:42:13Z	keystroke: revision 72 at 85971036027416 (delegate 85971036670125, revision 85971036841541)
+2026-09-12T10:42:13Z	compile: sending revision 72 at 85971059172291
+2026-09-12T10:42:13Z	compile: applied revision 69 at 85971065458708
+2026-09-12T10:42:13Z	status: revision 69: ok, 0 diagnostics in 50 ms (durable r23)
+2026-09-12T10:42:13Z	paint: revision 69 redrew 1/23 pages
+2026-09-12T10:42:13Z	paint: revision 69 at 85971075665916 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:13Z	durable: r24 for revision 72 at 85971085000208
+2026-09-12T10:42:13Z	completion metadata refused: helper error for pc-96: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-97: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	controller error pc-98: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:13Z	keystroke: revision 73 at 85971088852791 (delegate 85971089382208, revision 85971089545875)
+2026-09-12T10:42:13Z	keystroke: revision 74 at 85971100950083 (delegate 85971101477541, revision 85971101646750)
+2026-09-12T10:42:13Z	keystroke: revision 75 at 85971124479458 (delegate 85971125106250, revision 85971125279041)
+2026-09-12T10:42:14Z	compile: sending revision 75 at 85971149602375
+2026-09-12T10:42:14Z	compile: applied revision 72 at 85971155836208
+2026-09-12T10:42:14Z	status: revision 72: ok, 0 diagnostics in 46 ms (durable r24)
+2026-09-12T10:42:14Z	paint: revision 72 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 72 at 85971166668750 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r25 for revision 75 at 85971175193916
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-100: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-101: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-102: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 76 at 85971179310166 (delegate 85971179890958, revision 85971180059416)
+2026-09-12T10:42:14Z	keystroke: revision 77 at 85971186925541 (delegate 85971187411958, revision 85971187572208)
+2026-09-12T10:42:14Z	keystroke: revision 78 at 85971216038750 (delegate 85971216741291, revision 85971216915083)
+2026-09-12T10:42:14Z	compile: sending revision 78 at 85971239384000
+2026-09-12T10:42:14Z	compile: applied revision 75 at 85971245728958
+2026-09-12T10:42:14Z	status: revision 75: ok, 0 diagnostics in 46 ms (durable r25)
+2026-09-12T10:42:14Z	paint: revision 75 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 75 at 85971256695125 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r26 for revision 78 at 85971266526208
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-104: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-105: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-106: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 79 at 85971270869291 (delegate 85971271468208, revision 85971271638916)
+2026-09-12T10:42:14Z	keystroke: revision 80 at 85971278593458 (delegate 85971279184125, revision 85971279347625)
+2026-09-12T10:42:14Z	keystroke: revision 81 at 85971304224541 (delegate 85971304845875, revision 85971305017666)
+2026-09-12T10:42:14Z	compile: sending revision 81 at 85971330019375
+2026-09-12T10:42:14Z	compile: applied revision 78 at 85971336892375
+2026-09-12T10:42:14Z	status: revision 78: ok, 0 diagnostics in 46 ms (durable r26)
+2026-09-12T10:42:14Z	keystroke: revision 82 at 85971337143208 (delegate 85971337787791, revision 85971337978125)
+2026-09-12T10:42:14Z	durable: r27 for revision 81 at 85971358436583
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-108: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-109: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-110: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	paint: revision 78 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 78 at 85971367123875 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	keystroke: revision 83 at 85971367326916 (delegate 85971367850208, revision 85971368041291)
+2026-09-12T10:42:14Z	keystroke: revision 84 at 85971394713916 (delegate 85971395554625, revision 85971395758708)
+2026-09-12T10:42:14Z	keystroke: revision 85 at 85971424469000 (delegate 85971425174083, revision 85971425365875)
+2026-09-12T10:42:14Z	compile: sending revision 85 at 85971435250791
+2026-09-12T10:42:14Z	compile: applied revision 81 at 85971442263666
+2026-09-12T10:42:14Z	status: revision 81: ok, 0 diagnostics in 52 ms (durable r27)
+2026-09-12T10:42:14Z	durable: r28 for revision 85 at 85971461174250
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-112: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-113: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-114: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 86 at 85971461359000 (delegate 85971461984666, revision 85971462175666)
+2026-09-12T10:42:14Z	paint: revision 81 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:14Z	paint: revision 81 at 85971462377708 (covers 3 keystrokes, redrawn false)
+2026-09-12T10:42:14Z	keystroke: revision 87 at 85971485493333 (delegate 85971486416791, revision 85971486595458)
+2026-09-12T10:42:14Z	keystroke: revision 88 at 85971516034375 (delegate 85971516777333, revision 85971516965750)
+2026-09-12T10:42:14Z	compile: sending revision 88 at 85971534493000
+2026-09-12T10:42:14Z	compile: applied revision 85 at 85971541403875
+2026-09-12T10:42:14Z	status: revision 85: ok, 0 diagnostics in 50 ms (durable r28)
+2026-09-12T10:42:14Z	paint: revision 85 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 85 at 85971553586583 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r29 for revision 88 at 85971553616791
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-116: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-117: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-118: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 89 at 85971568425791 (delegate 85971569055208, revision 85971569244333)
+2026-09-12T10:42:14Z	keystroke: revision 90 at 85971582347875 (delegate 85971582862625, revision 85971583045208)
+2026-09-12T10:42:14Z	keystroke: revision 91 at 85971604208375 (delegate 85971604849125, revision 85971605033708)
+2026-09-12T10:42:14Z	compile: sending revision 91 at 85971632725500
+2026-09-12T10:42:14Z	compile: applied revision 88 at 85971639061833
+2026-09-12T10:42:14Z	status: revision 88: ok, 0 diagnostics in 49 ms (durable r29)
+2026-09-12T10:42:14Z	paint: revision 88 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 88 at 85971649986291 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r30 for revision 91 at 85971658820708
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-120: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-121: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-122: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 92 at 85971663087208 (delegate 85971663683625, revision 85971663853041)
+2026-09-12T10:42:14Z	keystroke: revision 93 at 85971695206083 (delegate 85971695883041, revision 85971696059708)
+2026-09-12T10:42:14Z	keystroke: revision 94 at 85971725172166 (delegate 85971725876291, revision 85971726056625)
+2026-09-12T10:42:14Z	compile: sending revision 94 at 85971735197291
+2026-09-12T10:42:14Z	compile: applied revision 91 at 85971741430083
+2026-09-12T10:42:14Z	status: revision 91: ok, 0 diagnostics in 48 ms (durable r30)
+2026-09-12T10:42:14Z	durable: r31 for revision 94 at 85971758175166
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-124: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-125: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-126: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	paint: revision 91 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 91 at 85971765192958 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	keystroke: revision 95 at 85971765283958 (delegate 85971765869500, revision 85971766053541)
+2026-09-12T10:42:14Z	keystroke: revision 96 at 85971785625791 (delegate 85971786311208, revision 85971786502833)
+2026-09-12T10:42:14Z	keystroke: revision 97 at 85971815590166 (delegate 85971816288333, revision 85971816481583)
+2026-09-12T10:42:14Z	compile: sending revision 97 at 85971831524833
+2026-09-12T10:42:14Z	compile: applied revision 94 at 85971838445458
+2026-09-12T10:42:14Z	status: revision 94: ok, 0 diagnostics in 46 ms (durable r31)
+2026-09-12T10:42:14Z	paint: revision 94 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 94 at 85971850645541 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r32 for revision 97 at 85971860535166
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-128: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-129: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-130: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 98 at 85971860672958 (delegate 85971861302458, revision 85971861485541)
+2026-09-12T10:42:14Z	keystroke: revision 99 at 85971878748791 (delegate 85971879449458, revision 85971879640666)
+2026-09-12T10:42:14Z	keystroke: revision 100 at 85971904215291 (delegate 85971904961291, revision 85971905148875)
+2026-09-12T10:42:14Z	compile: sending revision 100 at 85971932552958
+2026-09-12T10:42:14Z	compile: applied revision 97 at 85971939482833
+2026-09-12T10:42:14Z	status: revision 97: ok, 0 diagnostics in 52 ms (durable r32)
+2026-09-12T10:42:14Z	paint: revision 97 redrew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 97 at 85971951589083 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	durable: r33 for revision 100 at 85971951618500
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-132: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-133: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-134: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	keystroke: revision 101 at 85971961536708 (delegate 85971962203666, revision 85971962410083)
+2026-09-12T10:42:14Z	keystroke: revision 102 at 85971969766750 (delegate 85971970420833, revision 85971970604833)
+2026-09-12T10:42:14Z	keystroke: revision 103 at 85971994818416 (delegate 85971995553500, revision 85971995748791)
+2026-09-12T10:42:14Z	keystroke: revision 104 at 85972024474041 (delegate 85972025207458, revision 85972025397083)
+2026-09-12T10:42:14Z	compile: sending revision 104 at 85972034437333
+2026-09-12T10:42:14Z	compile: applied revision 100 at 85972041355458
+2026-09-12T10:42:14Z	status: revision 100: ok, 0 diagnostics in 49 ms (durable r33)
+2026-09-12T10:42:14Z	durable: r34 for revision 104 at 85972059843583
+2026-09-12T10:42:14Z	completion metadata refused: helper error for pc-136: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-137: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	controller error pc-138: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:14Z	paint: revision 100 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:14Z	paint: revision 100 at 85972066452833 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:14Z	keystroke: revision 105 at 85972066502333 (delegate 85972067123083, revision 85972067305041)
+2026-09-12T10:42:14Z	keystroke: revision 106 at 85972085146416 (delegate 85972085837666, revision 85972086038708)
+2026-09-12T10:42:14Z	keystroke: revision 107 at 85972115691500 (delegate 85972116404666, revision 85972116617666)
+2026-09-12T10:42:15Z	compile: sending revision 107 at 85972133225375
+2026-09-12T10:42:15Z	compile: applied revision 104 at 85972140114208
+2026-09-12T10:42:15Z	status: revision 104: ok, 0 diagnostics in 50 ms (durable r34)
+2026-09-12T10:42:15Z	paint: revision 104 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 104 at 85972151713291 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r35 for revision 107 at 85972151741958
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-140: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-141: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-142: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 108 at 85972161651000 (delegate 85972162298833, revision 85972162479750)
+2026-09-12T10:42:15Z	keystroke: revision 109 at 85972178507500 (delegate 85972179209333, revision 85972179408208)
+2026-09-12T10:42:15Z	keystroke: revision 110 at 85972204215000 (delegate 85972204891083, revision 85972205077458)
+2026-09-12T10:42:15Z	compile: sending revision 110 at 85972229987375
+2026-09-12T10:42:15Z	compile: applied revision 107 at 85972237016333
+2026-09-12T10:42:15Z	status: revision 107: ok, 0 diagnostics in 48 ms (durable r35)
+2026-09-12T10:42:15Z	keystroke: revision 111 at 85972237205708 (delegate 85972237861958, revision 85972238054541)
+2026-09-12T10:42:15Z	durable: r36 for revision 110 at 85972256556083
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-144: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-145: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-146: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	paint: revision 107 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 107 at 85972266578875 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	keystroke: revision 112 at 85972266705791 (delegate 85972267269375, revision 85972267435916)
+2026-09-12T10:42:15Z	keystroke: revision 113 at 85972295446958 (delegate 85972296173125, revision 85972296355458)
+2026-09-12T10:42:15Z	compile: sending revision 113 at 85972321532375
+2026-09-12T10:42:15Z	compile: applied revision 110 at 85972327795000
+2026-09-12T10:42:15Z	status: revision 110: ok, 0 diagnostics in 47 ms (durable r36)
+2026-09-12T10:42:15Z	durable: r37 for revision 113 at 85972344595291
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-148: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-149: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-150: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	paint: revision 110 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 110 at 85972350572958 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	keystroke: revision 114 at 85972350596083 (delegate 85972351171916, revision 85972351342000)
+2026-09-12T10:42:15Z	keystroke: revision 115 at 85972360412125 (delegate 85972360936291, revision 85972361101958)
+2026-09-12T10:42:15Z	keystroke: revision 116 at 85972386022875 (delegate 85972386660208, revision 85972386827875)
+2026-09-12T10:42:15Z	compile: sending revision 116 at 85972413183666
+2026-09-12T10:42:15Z	compile: applied revision 113 at 85972419486958
+2026-09-12T10:42:15Z	status: revision 113: ok, 0 diagnostics in 48 ms (durable r37)
+2026-09-12T10:42:15Z	keystroke: revision 117 at 85972419700750 (delegate 85972420297041, revision 85972420468875)
+2026-09-12T10:42:15Z	durable: r38 for revision 116 at 85972438667583
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-152: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-153: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-154: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	paint: revision 113 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:15Z	paint: revision 113 at 85972438778416 (covers 3 keystrokes, redrawn false)
+2026-09-12T10:42:15Z	keystroke: revision 118 at 85972446018208 (delegate 85972446625958, revision 85972446801833)
+2026-09-12T10:42:15Z	keystroke: revision 119 at 85972474466000 (delegate 85972475167333, revision 85972475345500)
+2026-09-12T10:42:15Z	keystroke: revision 120 at 85972504230291 (delegate 85972504855416, revision 85972505026500)
+2026-09-12T10:42:15Z	compile: sending revision 120 at 85972505208416
+2026-09-12T10:42:15Z	compile: applied revision 116 at 85972511610166
+2026-09-12T10:42:15Z	status: revision 116: ok, 0 diagnostics in 48 ms (durable r38)
+2026-09-12T10:42:15Z	durable: r39 for revision 120 at 85972529762416
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-156: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-157: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-158: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	paint: revision 116 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:15Z	paint: revision 116 at 85972529886083 (covers 3 keystrokes, redrawn false)
+2026-09-12T10:42:15Z	keystroke: revision 121 at 85972536971291 (delegate 85972537487333, revision 85972537653750)
+2026-09-12T10:42:15Z	keystroke: revision 122 at 85972565914208 (delegate 85972566604541, revision 85972566779416)
+2026-09-12T10:42:15Z	keystroke: revision 123 at 85972594596333 (delegate 85972595396083, revision 85972595569666)
+2026-09-12T10:42:15Z	compile: sending revision 123 at 85972602326708
+2026-09-12T10:42:15Z	compile: applied revision 120 at 85972608591708
+2026-09-12T10:42:15Z	status: revision 120: ok, 0 diagnostics in 49 ms (durable r39)
+2026-09-12T10:42:15Z	durable: r40 for revision 123 at 85972628262916
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-160: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-161: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-162: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 124 at 85972628462750 (delegate 85972629087250, revision 85972629265708)
+2026-09-12T10:42:15Z	paint: revision 120 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:15Z	paint: revision 120 at 85972629461833 (covers 4 keystrokes, redrawn false)
+2026-09-12T10:42:15Z	keystroke: revision 125 at 85972654222833 (delegate 85972654903041, revision 85972655089541)
+2026-09-12T10:42:15Z	keystroke: revision 126 at 85972685471041 (delegate 85972686184750, revision 85972686375333)
+2026-09-12T10:42:15Z	compile: sending revision 126 at 85972700745291
+2026-09-12T10:42:15Z	compile: applied revision 123 at 85972707003041
+2026-09-12T10:42:15Z	status: revision 123: ok, 0 diagnostics in 51 ms (durable r40)
+2026-09-12T10:42:15Z	paint: revision 123 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 123 at 85972718335041 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r41 for revision 126 at 85972728042166
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-164: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-165: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-166: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 127 at 85972728185000 (delegate 85972728785708, revision 85972728952750)
+2026-09-12T10:42:15Z	keystroke: revision 128 at 85972744159083 (delegate 85972744902083, revision 85972745085666)
+2026-09-12T10:42:15Z	keystroke: revision 129 at 85972774451208 (delegate 85972775168750, revision 85972775344416)
+2026-09-12T10:42:15Z	compile: sending revision 129 at 85972793213875
+2026-09-12T10:42:15Z	compile: applied revision 126 at 85972799675791
+2026-09-12T10:42:15Z	status: revision 126: ok, 0 diagnostics in 48 ms (durable r41)
+2026-09-12T10:42:15Z	paint: revision 126 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 126 at 85972810839500 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r42 for revision 129 at 85972820198083
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-168: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-169: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-170: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 130 at 85972820326833 (delegate 85972820868916, revision 85972821027208)
+2026-09-12T10:42:15Z	keystroke: revision 131 at 85972836745791 (delegate 85972837246833, revision 85972837412708)
+2026-09-12T10:42:15Z	keystroke: revision 132 at 85972865652125 (delegate 85972866331791, revision 85972866511458)
+2026-09-12T10:42:15Z	compile: sending revision 132 at 85972884179291
+2026-09-12T10:42:15Z	compile: applied revision 129 at 85972890402458
+2026-09-12T10:42:15Z	status: revision 129: ok, 0 diagnostics in 47 ms (durable r42)
+2026-09-12T10:42:15Z	paint: revision 129 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 129 at 85972901315875 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r43 for revision 132 at 85972910362541
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-172: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-173: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-174: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 133 at 85972910496458 (delegate 85972911066750, revision 85972911227750)
+2026-09-12T10:42:15Z	keystroke: revision 134 at 85972925773708 (delegate 85972926463291, revision 85972926627416)
+2026-09-12T10:42:15Z	keystroke: revision 135 at 85972954205666 (delegate 85972954837666, revision 85972955006458)
+2026-09-12T10:42:15Z	compile: sending revision 135 at 85972975319791
+2026-09-12T10:42:15Z	compile: applied revision 132 at 85972981563250
+2026-09-12T10:42:15Z	status: revision 132: ok, 0 diagnostics in 47 ms (durable r43)
+2026-09-12T10:42:15Z	paint: revision 132 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 132 at 85972992894041 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r44 for revision 135 at 85973002186666
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-176: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-177: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-178: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 136 at 85973002323458 (delegate 85973002829125, revision 85973002991333)
+2026-09-12T10:42:15Z	keystroke: revision 137 at 85973018161250 (delegate 85973018661500, revision 85973018826083)
+2026-09-12T10:42:15Z	keystroke: revision 138 at 85973045449541 (delegate 85973046117708, revision 85973046293833)
+2026-09-12T10:42:15Z	compile: sending revision 138 at 85973067051833
+2026-09-12T10:42:15Z	compile: applied revision 135 at 85973073307625
+2026-09-12T10:42:15Z	status: revision 135: ok, 0 diagnostics in 48 ms (durable r44)
+2026-09-12T10:42:15Z	paint: revision 135 redrew 1/23 pages
+2026-09-12T10:42:15Z	paint: revision 135 at 85973084323375 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:15Z	durable: r45 for revision 138 at 85973093795125
+2026-09-12T10:42:15Z	completion metadata refused: helper error for pc-180: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-181: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	controller error pc-182: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:15Z	keystroke: revision 139 at 85973093919666 (delegate 85973094510166, revision 85973094728083)
+2026-09-12T10:42:15Z	keystroke: revision 140 at 85973109461041 (delegate 85973110083208, revision 85973110270875)
+2026-09-12T10:42:16Z	keystroke: revision 141 at 85973136035833 (delegate 85973136705500, revision 85973136878000)
+2026-09-12T10:42:16Z	compile: sending revision 141 at 85973164056333
+2026-09-12T10:42:16Z	compile: applied revision 138 at 85973170345416
+2026-09-12T10:42:16Z	status: revision 138: ok, 0 diagnostics in 52 ms (durable r45)
+2026-09-12T10:42:16Z	durable: r46 for revision 141 at 85973187159916
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-184: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-185: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-186: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	paint: revision 138 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 138 at 85973193359375 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	keystroke: revision 142 at 85973193382458 (delegate 85973193975250, revision 85973194143250)
+2026-09-12T10:42:16Z	keystroke: revision 143 at 85973224447291 (delegate 85973225193291, revision 85973225370250)
+2026-09-12T10:42:16Z	keystroke: revision 144 at 85973254227750 (delegate 85973254934041, revision 85973255122750)
+2026-09-12T10:42:16Z	compile: sending revision 144 at 85973262048166
+2026-09-12T10:42:16Z	compile: applied revision 141 at 85973268398916
+2026-09-12T10:42:16Z	status: revision 141: ok, 0 diagnostics in 48 ms (durable r46)
+2026-09-12T10:42:16Z	durable: r47 for revision 144 at 85973287743125
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-188: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-189: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-190: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	paint: revision 141 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 141 at 85973294665833 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	keystroke: revision 145 at 85973294720458 (delegate 85973295427916, revision 85973295615291)
+2026-09-12T10:42:16Z	keystroke: revision 146 at 85973315786333 (delegate 85973316561625, revision 85973316752750)
+2026-09-12T10:42:16Z	keystroke: revision 147 at 85973345309000 (delegate 85973346082541, revision 85973346278791)
+2026-09-12T10:42:16Z	compile: sending revision 147 at 85973363675416
+2026-09-12T10:42:16Z	compile: applied revision 144 at 85973370675041
+2026-09-12T10:42:16Z	status: revision 144: ok, 0 diagnostics in 53 ms (durable r47)
+2026-09-12T10:42:16Z	paint: revision 144 redrew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 144 at 85973383323083 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	durable: r48 for revision 147 at 85973392754625
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-192: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-193: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-194: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 148 at 85973397558916 (delegate 85973398163625, revision 85973398345750)
+2026-09-12T10:42:16Z	keystroke: revision 149 at 85973409720541 (delegate 85973410320458, revision 85973410505625)
+2026-09-12T10:42:16Z	keystroke: revision 150 at 85973436013541 (delegate 85973436779791, revision 85973436971541)
+2026-09-12T10:42:16Z	keystroke: revision 151 at 85973465678916 (delegate 85973466448958, revision 85973466640291)
+2026-09-12T10:42:16Z	compile: sending revision 151 at 85973482600208
+2026-09-12T10:42:16Z	compile: applied revision 147 at 85973489557125
+2026-09-12T10:42:16Z	status: revision 147: ok, 0 diagnostics in 56 ms (durable r48)
+2026-09-12T10:42:16Z	paint: revision 147 redrew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 147 at 85973501548125 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	durable: r49 for revision 151 at 85973511950541
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-196: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-197: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-198: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 152 at 85973512136291 (delegate 85973512812833, revision 85973513000791)
+2026-09-12T10:42:16Z	keystroke: revision 153 at 85973529026291 (delegate 85973529778916, revision 85973529973458)
+2026-09-12T10:42:16Z	keystroke: revision 154 at 85973554239125 (delegate 85973555000541, revision 85973555190666)
+2026-09-12T10:42:16Z	keystroke: revision 155 at 85973586023416 (delegate 85973586800750, revision 85973587009250)
+2026-09-12T10:42:16Z	compile: sending revision 155 at 85973600233041
+2026-09-12T10:42:16Z	compile: applied revision 151 at 85973608032583
+2026-09-12T10:42:16Z	status: revision 151: ok, 0 diagnostics in 58 ms (durable r49)
+2026-09-12T10:42:16Z	paint: revision 151 redrew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 151 at 85973621484625 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	durable: r50 for revision 155 at 85973632828125
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-200: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-201: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-202: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 156 at 85973637927833 (delegate 85973638599083, revision 85973638803041)
+2026-09-12T10:42:16Z	keystroke: revision 157 at 85973652211500 (delegate 85973652845166, revision 85973653058500)
+2026-09-12T10:42:16Z	keystroke: revision 158 at 85973674443833 (delegate 85973675221875, revision 85973675433666)
+2026-09-12T10:42:16Z	keystroke: revision 159 at 85973704204250 (delegate 85973704939291, revision 85973705145750)
+2026-09-12T10:42:16Z	compile: sending revision 159 at 85973727640916
+2026-09-12T10:42:16Z	compile: applied revision 155 at 85973735346333
+2026-09-12T10:42:16Z	status: revision 155: ok, 0 diagnostics in 64 ms (durable r50)
+2026-09-12T10:42:16Z	paint: revision 155 redrew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 155 at 85973749429166 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	durable: r51 for revision 159 at 85973760889125
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-204: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-205: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-206: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 160 at 85973761064666 (delegate 85973761759541, revision 85973761956916)
+2026-09-12T10:42:16Z	keystroke: revision 161 at 85973771144083 (delegate 85973771830958, revision 85973772030291)
+2026-09-12T10:42:16Z	keystroke: revision 162 at 85973795653833 (delegate 85973796600583, revision 85973796820750)
+2026-09-12T10:42:16Z	keystroke: revision 163 at 85973824443125 (delegate 85973825227375, revision 85973825439041)
+2026-09-12T10:42:16Z	compile: sending revision 163 at 85973854286000
+2026-09-12T10:42:16Z	compile: applied revision 159 at 85973862039583
+2026-09-12T10:42:16Z	status: revision 159: ok, 0 diagnostics in 70 ms (durable r51)
+2026-09-12T10:42:16Z	keystroke: revision 164 at 85973862265250 (delegate 85973863011833, revision 85973863227333)
+2026-09-12T10:42:16Z	durable: r52 for revision 163 at 85973886287291
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-208: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-209: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-210: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 165 at 85973886415250 (delegate 85973887071416, revision 85973887268291)
+2026-09-12T10:42:16Z	paint: revision 159 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:16Z	paint: revision 159 at 85973887585791 (covers 4 keystrokes, redrawn false)
+2026-09-12T10:42:16Z	keystroke: revision 166 at 85973914211750 (delegate 85973915050666, revision 85973915262958)
+2026-09-12T10:42:16Z	keystroke: revision 167 at 85973944537750 (delegate 85973945481041, revision 85973945693083)
+2026-09-12T10:42:16Z	compile: sending revision 167 at 85973969522916
+2026-09-12T10:42:16Z	compile: applied revision 163 at 85973977285708
+2026-09-12T10:42:16Z	status: revision 163: ok, 0 diagnostics in 61 ms (durable r52)
+2026-09-12T10:42:16Z	paint: revision 163 redrew 1/23 pages
+2026-09-12T10:42:16Z	paint: revision 163 at 85973990596166 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:16Z	durable: r53 for revision 167 at 85974002749125
+2026-09-12T10:42:16Z	completion metadata refused: helper error for pc-212: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-213: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	controller error pc-214: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:16Z	keystroke: revision 168 at 85974002906750 (delegate 85974003727666, revision 85974003933416)
+2026-09-12T10:42:16Z	keystroke: revision 169 at 85974035411666 (delegate 85974036307541, revision 85974036521208)
+2026-09-12T10:42:16Z	keystroke: revision 170 at 85974066028083 (delegate 85974066837833, revision 85974067045750)
+2026-09-12T10:42:16Z	keystroke: revision 171 at 85974094671041 (delegate 85974095546125, revision 85974095768333)
+2026-09-12T10:42:16Z	compile: sending revision 171 at 85974105539666
+2026-09-12T10:42:16Z	compile: applied revision 167 at 85974113280250
+2026-09-12T10:42:16Z	status: revision 167: ok, 0 diagnostics in 62 ms (durable r53)
+2026-09-12T10:42:17Z	durable: r54 for revision 171 at 85974134695375
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-216: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-217: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-218: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	paint: revision 167 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 167 at 85974142466791 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	keystroke: revision 172 at 85974142524083 (delegate 85974143258625, revision 85974143466833)
+2026-09-12T10:42:17Z	keystroke: revision 173 at 85974157196500 (delegate 85974157778416, revision 85974157991916)
+2026-09-12T10:42:17Z	keystroke: revision 174 at 85974186029541 (delegate 85974186806791, revision 85974187014208)
+2026-09-12T10:42:17Z	keystroke: revision 175 at 85974215657291 (delegate 85974216460875, revision 85974216673708)
+2026-09-12T10:42:17Z	compile: sending revision 175 at 85974224101333
+2026-09-12T10:42:17Z	compile: applied revision 171 at 85974231834000
+2026-09-12T10:42:17Z	status: revision 171: ok, 0 diagnostics in 61 ms (durable r54)
+2026-09-12T10:42:17Z	durable: r55 for revision 175 at 85974253302500
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-220: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-221: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-222: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	paint: revision 171 needed 2 extra turn(s); drew 0/23 pages
+2026-09-12T10:42:17Z	paint: revision 171 at 85974253441750 (covers 4 keystrokes, redrawn false)
+2026-09-12T10:42:17Z	keystroke: revision 176 at 85974253472958 (delegate 85974254134125, revision 85974254331083)
+2026-09-12T10:42:17Z	keystroke: revision 177 at 85974274742541 (delegate 85974275479291, revision 85974275690125)
+2026-09-12T10:42:17Z	keystroke: revision 178 at 85974304314625 (delegate 85974305104416, revision 85974305312333)
+2026-09-12T10:42:17Z	keystroke: revision 179 at 85974335169500 (delegate 85974335979333, revision 85974336187833)
+2026-09-12T10:42:17Z	compile: sending revision 179 at 85974340997041
+2026-09-12T10:42:17Z	compile: applied revision 175 at 85974348845666
+2026-09-12T10:42:17Z	status: revision 175: ok, 0 diagnostics in 61 ms (durable r55)
+2026-09-12T10:42:17Z	paint: revision 175 redrew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 175 at 85974380721875 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	durable: r56 for revision 179 at 85974380754916
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-224: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-225: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-226: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	keystroke: revision 180 at 85974380909958 (delegate 85974381638916, revision 85974381849708)
+2026-09-12T10:42:17Z	keystroke: revision 181 at 85974394963833 (delegate 85974395971000, revision 85974396185333)
+2026-09-12T10:42:17Z	keystroke: revision 182 at 85974424439166 (delegate 85974425228666, revision 85974425438833)
+2026-09-12T10:42:17Z	keystroke: revision 183 at 85974454221541 (delegate 85974455016208, revision 85974455223625)
+2026-09-12T10:42:17Z	compile: sending revision 183 at 85974462683083
+2026-09-12T10:42:17Z	compile: applied revision 179 at 85974470561041
+2026-09-12T10:42:17Z	status: revision 179: ok, 0 diagnostics in 58 ms (durable r56)
+2026-09-12T10:42:17Z	durable: r57 for revision 183 at 85974491552333
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-228: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-229: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-230: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	paint: revision 179 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 179 at 85974500418500 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	keystroke: revision 184 at 85974500488583 (delegate 85974501229750, revision 85974501441166)
+2026-09-12T10:42:17Z	keystroke: revision 185 at 85974514133791 (delegate 85974514852458, revision 85974515059958)
+2026-09-12T10:42:17Z	keystroke: revision 186 at 85974546030958 (delegate 85974546880125, revision 85974547098833)
+2026-09-12T10:42:17Z	keystroke: revision 187 at 85974574451333 (delegate 85974575310458, revision 85974575519666)
+2026-09-12T10:42:17Z	compile: sending revision 187 at 85974591339666
+2026-09-12T10:42:17Z	compile: applied revision 183 at 85974599151333
+2026-09-12T10:42:17Z	status: revision 183: ok, 0 diagnostics in 67 ms (durable r57)
+2026-09-12T10:42:17Z	paint: revision 183 redrew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 183 at 85974612464666 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	durable: r58 for revision 187 at 85974623691166
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-232: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-233: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-234: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	keystroke: revision 188 at 85974628904166 (delegate 85974629758833, revision 85974629995000)
+2026-09-12T10:42:17Z	keystroke: revision 189 at 85974642370041 (delegate 85974643065750, revision 85974643275250)
+2026-09-12T10:42:17Z	keystroke: revision 190 at 85974665610250 (delegate 85974666432750, revision 85974666643666)
+2026-09-12T10:42:17Z	keystroke: revision 191 at 85974694827458 (delegate 85974695671625, revision 85974695884041)
+2026-09-12T10:42:17Z	compile: sending revision 191 at 85974714334500
+2026-09-12T10:42:17Z	compile: applied revision 187 at 85974722025916
+2026-09-12T10:42:17Z	status: revision 187: ok, 0 diagnostics in 67 ms (durable r58)
+2026-09-12T10:42:17Z	paint: revision 187 redrew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 187 at 85974735332791 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	durable: r59 for revision 191 at 85974746465875
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-236: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-237: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-238: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	keystroke: revision 192 at 85974751794416 (delegate 85974752480583, revision 85974752688291)
+2026-09-12T10:42:17Z	keystroke: revision 193 at 85974766804375 (delegate 85974767516083, revision 85974767723291)
+2026-09-12T10:42:17Z	keystroke: revision 194 at 85974786038208 (delegate 85974786893208, revision 85974787104875)
+2026-09-12T10:42:17Z	keystroke: revision 195 at 85974815645958 (delegate 85974816476458, revision 85974816689083)
+2026-09-12T10:42:17Z	compile: sending revision 195 at 85974840877291
+2026-09-12T10:42:17Z	compile: applied revision 191 at 85974850386708
+2026-09-12T10:42:17Z	status: revision 191: ok, 0 diagnostics in 62 ms (durable r59)
+2026-09-12T10:42:17Z	paint: revision 191 redrew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 191 at 85974864496208 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	keystroke: revision 196 at 85974877296666 (delegate 85974878040916, revision 85974878244000)
+2026-09-12T10:42:17Z	durable: r60 for revision 195 at 85974878526958
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-240: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-241: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-242: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	keystroke: revision 197 at 85974904229916 (delegate 85974905121083, revision 85974905365875)
+2026-09-12T10:42:17Z	keystroke: revision 198 at 85974936021958 (delegate 85974936904333, revision 85974937147708)
+2026-09-12T10:42:17Z	keystroke: revision 199 at 85974965963041 (delegate 85974966805291, revision 85974967020750)
+2026-09-12T10:42:17Z	compile: sending revision 199 at 85974985069750
+2026-09-12T10:42:17Z	compile: applied revision 195 at 85974993767666
+2026-09-12T10:42:17Z	status: revision 195: ok, 0 diagnostics in 78 ms (durable r60)
+2026-09-12T10:42:17Z	paint: revision 195 needed 1 extra turn(s); drew 1/23 pages
+2026-09-12T10:42:17Z	paint: revision 195 at 85975025803041 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:17Z	durable: r61 for revision 199 at 85975025837166
+2026-09-12T10:42:17Z	completion metadata refused: helper error for pc-244: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-245: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	controller error pc-246: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:17Z	keystroke: revision 200 at 85975025976750 (delegate 85975026747458, revision 85975026958666)
+2026-09-12T10:42:17Z	keystroke: revision 201 at 85975054227500 (delegate 85975055115666, revision 85975055353583)
+2026-09-12T10:42:17Z	keystroke: revision 202 at 85975085461458 (delegate 85975086339625, revision 85975086535458)
+2026-09-12T10:42:17Z	compile: sending revision 202 at 85975122407250
+2026-09-12T10:42:18Z	compile: applied revision 199 at 85975131164666
+2026-09-12T10:42:18Z	status: revision 199: ok, 0 diagnostics in 77 ms (durable r61)
+2026-09-12T10:42:18Z	paint: revision 199 redrew 1/23 pages
+2026-09-12T10:42:18Z	paint: revision 199 at 85975145013875 (covers 4 keystrokes, redrawn true)
+2026-09-12T10:42:18Z	durable: r62 for revision 202 at 85975156393458
+2026-09-12T10:42:18Z	completion metadata refused: helper error for pc-248: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:18Z	controller error pc-249: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:18Z	controller error pc-250: source versions changed; refresh snapshot before querying
+2026-09-12T10:42:18Z	compile: applied revision 202 at 85975287219625
+2026-09-12T10:42:18Z	status: revision 202: ok, 0 diagnostics in 76 ms (durable r62)
+2026-09-12T10:42:18Z	paint: revision 202 redrew 1/23 pages
+2026-09-12T10:42:18Z	paint: revision 202 at 85975317328708 (covers 3 keystrokes, redrawn true)
+2026-09-12T10:42:18Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 139, p50 173.130875 ms
