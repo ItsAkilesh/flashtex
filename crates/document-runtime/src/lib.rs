@@ -70,6 +70,7 @@ pub enum Event {
     },
 }
 struct Pending {
+    capabilities: Vec<String>,
     cancelled: bool,
     request: Request,
     bytes: Vec<u8>,
@@ -190,6 +191,14 @@ impl Session {
         })
     }
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
+        self.submit_with_capabilities(request, Vec::new())
+    }
+    pub fn submit_with_capabilities(
+        &mut self,
+        request: Request,
+        capabilities: Vec<String>,
+    ) -> Result<(), String> {
+        validate_layout_capabilities(&capabilities)?;
         if self.events.len() >= self.limits.max_pending_events {
             return Err("poll pending events before submitting more edits".into());
         }
@@ -198,7 +207,7 @@ impl Session {
                 "compiler session failed; create a new session with complete snapshots".into(),
             );
         }
-        let bytes = encode(&request, self.limits.max_frame)?;
+        let bytes = encode(&request, self.limits.max_frame, &capabilities)?;
         if self.latest.values().any(|(_, id)| id == &request.id)
             || self
                 .active
@@ -231,6 +240,7 @@ impl Session {
             (request.revision, request.id.clone()),
         );
         self.queue.push_back(Pending {
+            capabilities,
             cancelled: false,
             request,
             bytes,
@@ -316,13 +326,14 @@ impl Session {
                         self.fail("unsolicited compiler reply");
                         break;
                     };
-                    let result = match validate_reply(&bytes, &pending.request) {
-                        Ok(v) => v,
-                        Err(reason) => {
-                            self.fail(&reason);
-                            break;
-                        }
-                    };
+                    let result =
+                        match validate_reply(&bytes, &pending.request, &pending.capabilities) {
+                            Ok(v) => v,
+                            Err(reason) => {
+                                self.fail(&reason);
+                                break;
+                            }
+                        };
                     let pending = self.active.take().unwrap();
                     if pending.cancelled {
                         self.dispatch();
@@ -381,7 +392,7 @@ fn safe_path(p: &str) -> bool {
         && !p.contains(['\\', ':', '\0'])
         && !p.split('/').any(|s| s.is_empty() || s == "." || s == "..")
 }
-fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
+fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>, String> {
     if r.id.is_empty()
         || r.id.len() > 128
         || r.project_id.is_empty()
@@ -408,6 +419,8 @@ fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
         revision: u64,
         entry_path: &'a str,
         documents: &'a [Document],
+        #[serde(skip_serializing_if = "<[String]>::is_empty")]
+        layout_capabilities: &'a [String],
     }
     #[derive(Serialize)]
     struct Envelope<'a> {
@@ -426,6 +439,7 @@ fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
             revision: r.revision,
             entry_path: &r.entry_path,
             documents: &r.documents,
+            layout_capabilities: capabilities,
         },
     };
     let mut bytes = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
@@ -435,7 +449,7 @@ fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
     }
     Ok(bytes)
 }
-fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
+fn validate_reply(bytes: &[u8], r: &Request, requested: &[String]) -> Result<Value, String> {
     let v: Value = serde_json::from_slice(bytes).map_err(|_| "compiler returned malformed JSON")?;
     if v["protocol_version"] != 1
         || v["id"] != r.id
@@ -446,6 +460,19 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
         return Err("compiler reply correlation mismatch".into());
     }
     let p = &v["payload"];
+    let accepted: Vec<String> = match p.get("layout_capabilities") {
+        None => Vec::new(),
+        Some(value) => {
+            serde_json::from_value(value.clone()).map_err(|_| "invalid accepted capabilities")?
+        }
+    };
+    validate_layout_capabilities(&accepted)?;
+    if accepted.iter().any(|cap| {
+        !requested.contains(cap) || !matches!(cap.as_str(), "rules-v1" | "font-hints-v1")
+    }) {
+        return Err("compiler accepted unknown or unrequested capability".into());
+    }
+
     if !matches!(p["status"].as_str(), Some("ok" | "recovered" | "failed"))
         || !p["pages"].is_array()
         || !p["diagnostics"].is_array()
@@ -500,6 +527,36 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
             return Err("invalid page geometry".into());
         }
         for item in page["items"].as_array().ok_or("missing page items")? {
+            if item["kind"] == "rule" {
+                if !accepted.iter().any(|cap| cap == "rules-v1")
+                    || !["x_pt", "y_pt"].iter().all(|key| {
+                        item[*key]
+                            .as_f64()
+                            .is_some_and(|n| n.is_finite() && n.abs() <= 1_000_000.0)
+                    })
+                    || !["width_pt", "height_pt"].iter().all(|key| {
+                        item[*key]
+                            .as_f64()
+                            .is_some_and(|n| n.is_finite() && n > 0.0 && n <= 1_000_000.0)
+                    })
+                    || item["source"].is_null()
+                {
+                    return Err("unrequested or malformed rule".into());
+                }
+                span(&item["source"])?;
+                continue;
+            }
+            if let Some(font) = item.get("font") {
+                if !accepted.iter().any(|cap| cap == "font-hints-v1")
+                    || !font["family"].as_str().is_some_and(|name| {
+                        !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
+                    })
+                    || !matches!(font["weight"].as_str(), Some("normal" | "bold"))
+                    || !matches!(font["style"].as_str(), Some("normal" | "italic"))
+                {
+                    return Err("unrequested or malformed font hint".into());
+                }
+            }
             if item["kind"] != "text"
                 || !item["text"].is_string()
                 || !item["font_size_pt"]
@@ -516,4 +573,16 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
         }
     }
     Ok(v)
+}
+
+pub fn validate_layout_capabilities(capabilities: &[String]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    if capabilities.len() > 16
+        || capabilities
+            .iter()
+            .any(|cap| cap.is_empty() || cap.len() > 64 || !seen.insert(cap))
+    {
+        return Err("invalid or duplicate layout capabilities".into());
+    }
+    Ok(())
 }

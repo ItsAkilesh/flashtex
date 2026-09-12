@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "0e897dd40843eca64ae507512c1ad529d0e0ced5",
+  "code_revision": "a16e4f4586dca6af70c5f5790843b120a302dfd6",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 30
   },
   "machine": "linux-primary",
-  "main_integrated_through": "25d159d652204b61479a86f3910431039a052d50",
-  "next_action": "Continue next assigned rendering product stage after checkpoint; production consumers remain opt-in pending agreement.",
+  "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
+  "next_action": "Publish CFF consumer and continue next assigned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-023 exact unhinted quadratic glyph placement integrated with font owner446b608, preserving original GIDs,fontSHA,component instances and source cluster provenance.47 Rust tests pass; real LiberationSans A produced17 commands from GID36.",
+  "summary": "Separate CFF1 cubic consumer implemented with immutable table digest, explicit hint policy, exact FontMatrix and rational page placement. 84 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:07:35Z",
+  "updated_utc": "2026-09-12T06:42:54Z",
   "usage": {
-    "evidence": "47 Rust rendering tests pass; actual outline_probe A:17points2contours17commands, hintingfalse paintedfalse.",
-    "status": "Hosted OpenAI authorized; no auxiliary paid providers or purchases."
+    "evidence": "84 Rust tests and strict all-target clippy pass. Installed STIXTwoText-Regular: 2220 non-notdef exact placements accepted, 55177 commands, no native painting. Peer 8cf7304 merged unchanged.",
+    "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

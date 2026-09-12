@@ -517,3 +517,54 @@ fn editor_operates_without_compiler_then_attaches_and_renders() {
     });
     assert!(events.iter().any(|event| matches!(event, Update::Preview(preview) if preview.source_versions.documents["main.tex"] == 2)));
 }
+
+#[test]
+fn missing_negotiated_capability_is_explicit_and_legacy_switch_invalidates_preview() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller
+        .configure_layout(vec!["rules-v1".into()])
+        .unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let extended = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(extended.missing_layout_capabilities, vec!["rules-v1"]);
+    controller.configure_layout(vec![]).unwrap();
+    assert!(!controller.is_current_preview(&extended));
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let legacy = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(legacy.missing_layout_capabilities.is_empty());
+    assert!(controller.is_current_preview(&legacy));
+}

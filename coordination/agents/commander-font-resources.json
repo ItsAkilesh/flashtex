@@ -13,21 +13,21 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "bea66c762860dbab23616c43b1f1a65b1235717e",
+  "code_revision": "569fe9c7a0f08194973d2993bec064e5a2739b60",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "d643b6ec5aa63a1ce2b9ce97ab5292baf5205b5c",
-  "next_action": "Mac font-engine supplies real licensed TFM/encoding/font-name mapping evidence; integrate adapter without Unicode/GID casts.",
+  "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
+  "next_action": "Rendering-core cubic consumer with explicit font/text-space and policy contract; real visual/hinted/Latin Modern oracle gates remain pending.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Explicit TFM encoding map and original-GID/metrics run adapter published; 49 tests and strict clippy pass. Hash/face-bound declarations, explicit Notdef and missing mapping errors.",
+  "summary": "Explicit Unhinted CFF masks/flex and exact rational FontMatrix published; 74 tests and clippy pass. Same pinned STIX font: 2221 accepted, zero unsupported/invalid under Unhinted.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:11:55Z",
+  "updated_utc": "2026-09-12T06:38:19Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

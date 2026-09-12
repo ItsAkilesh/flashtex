@@ -77,7 +77,7 @@ fn wait(handle: &NativeStatusHandle, identity: &ContextIdentity) {
 }
 #[test]
 fn admission_intent_journal_states_have_exact_id_and_bounded_snapshots() {
-    let (_dir, mut bridge, mut service) = setup();
+    let (dir, mut bridge, mut service) = setup();
     let context = NativeService::context_identity(&bridge, "capture", vec![]).unwrap();
     let events = service.subscribe(16).unwrap();
     let admitted = service
@@ -91,6 +91,12 @@ fn admission_intent_journal_states_have_exact_id_and_bounded_snapshots() {
         )
         .unwrap();
     assert_eq!(admitted.id, "request-1");
+    let mut inbox = flashtex_conversion_jobs::bridge_adapter::review::ReviewInbox::open(
+        dir.path().join("review"),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(inbox.admit_ready(&admitted.status).is_err());
     assert!(matches!(
         admitted.status.conversion,
         ConversionState::Admitted
@@ -133,6 +139,9 @@ fn admission_intent_journal_states_have_exact_id_and_bounded_snapshots() {
         response.status.intent,
         IntentState::ProposalJournaled
     ));
+    inbox.admit_ready(&response.status).unwrap();
+    assert!(inbox.view().snapshot().unwrap().selected_capture.is_none());
+    assert!(inbox.view().snapshot().unwrap().decisions.is_empty());
     assert_eq!(
         bridge.document("project", "main.tex").unwrap().text,
         "hello"

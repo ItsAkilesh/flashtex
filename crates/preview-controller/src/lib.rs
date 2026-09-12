@@ -1,5 +1,7 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod file_project;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
+use flashtex_edit_ledger::history::{GroupedEdit, HistoryMove, HistoryResult, HistoryStatus};
 use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
 use flashtex_project_index::{ProjectIndex, VersionSnapshot};
 use serde_json::Value;
@@ -22,6 +24,16 @@ impl ApprovedEdit {
         Self(edit)
     }
 }
+pub enum HistoryAction {
+    Group(GroupedEdit),
+    Undo(HistoryMove),
+    Redo(HistoryMove),
+}
+#[derive(Debug)]
+pub struct HistoryOutcome {
+    pub history: HistoryResult,
+    pub source: EditOutcome,
+}
 #[derive(Debug)]
 pub struct AppliedOutcome {
     pub receipt: AppliedReceipt,
@@ -29,6 +41,7 @@ pub struct AppliedOutcome {
 }
 #[derive(Debug)]
 pub struct Preview {
+    pub missing_layout_capabilities: Vec<String>,
     pub request_id: String,
     pub compile_revision: u64,
     pub source_versions: VersionSnapshot,
@@ -51,6 +64,7 @@ pub struct Controller {
     index: ProjectIndex,
     runtime: Option<Session>,
     generation: u64,
+    layout_capabilities: Vec<String>,
     submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
 }
@@ -99,6 +113,7 @@ impl Controller {
             index,
             runtime: None,
             generation: 0,
+            layout_capabilities: Vec::new(),
             submitted: None,
             closed: false,
         })
@@ -199,6 +214,46 @@ impl Controller {
             .confirm(receipt)
             .map_err(|e| e.to_string())
     }
+    pub fn history_status(&self, path: &str) -> Result<HistoryStatus, String> {
+        self.stores
+            .get(path)
+            .ok_or("unknown document")?
+            .history_status()
+            .map_err(|e| e.to_string())
+    }
+    /// Ordinary explicitly requested editor history operations. Permanent command
+    /// IDs and source changes are committed by the authoritative ledger together.
+    pub fn apply_history(
+        &mut self,
+        path: &str,
+        action: HistoryAction,
+    ) -> Result<HistoryOutcome, String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        let started = Instant::now();
+        self.submitted = None;
+        let store = self.stores.get_mut(path).ok_or("unknown document")?;
+        let history = match action {
+            HistoryAction::Group(group) => store.apply_group(group),
+            HistoryAction::Undo(command) => store.undo(command),
+            HistoryAction::Redo(command) => store.redo(command),
+        }
+        .map_err(|e| e.to_string())?;
+        let source = self.after_save(history.document.clone(), started);
+        Ok(HistoryOutcome { history, source })
+    }
+    /// Explicit native opt-in after implementing the requested draw capabilities.
+    /// Empty restores legacy output. Every subsequent compile binds this request.
+    pub fn configure_layout(&mut self, capabilities: Vec<String>) -> Result<(), String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        self.layout_capabilities = capabilities;
+        self.submitted = None;
+        self.compile_current()
+    }
     pub fn compile_current(&mut self) -> Result<(), String> {
         let started = Instant::now();
         if self.closed {
@@ -228,13 +283,16 @@ impl Controller {
         self.runtime
             .as_mut()
             .ok_or("compiler unavailable; source remains saved")?
-            .submit(Request {
-                id: id.clone(),
-                project_id: self.project_id.clone(),
-                revision: generation,
-                entry_path: self.entry_path.clone(),
-                documents,
-            })?;
+            .submit_with_capabilities(
+                Request {
+                    id: id.clone(),
+                    project_id: self.project_id.clone(),
+                    revision: generation,
+                    entry_path: self.entry_path.clone(),
+                    documents,
+                },
+                self.layout_capabilities.clone(),
+            )?;
         self.generation = generation;
         self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
@@ -250,12 +308,15 @@ impl Controller {
             })
     }
     pub fn poll(&mut self) -> Vec<Update> {
-        let current = self.index.snapshot();
         let Some(runtime) = self.runtime.as_mut() else {
             return Vec::new();
         };
-        runtime
-            .poll()
+        let events = runtime.poll();
+        if events.is_empty() {
+            return Vec::new();
+        }
+        let current = self.index.snapshot();
+        events
             .into_iter()
             .map(|event| match event {
                 Event::Preview {
@@ -273,7 +334,19 @@ impl Controller {
                                 expected == &id && snapshot == &current
                             })
                     {
+                        let accepted = result["payload"]["layout_capabilities"].as_array();
+                        let missing_layout_capabilities = self
+                            .layout_capabilities
+                            .iter()
+                            .filter(|cap| {
+                                !accepted.is_some_and(|items| {
+                                    items.iter().any(|item| item.as_str() == Some(cap.as_str()))
+                                })
+                            })
+                            .cloned()
+                            .collect();
                         Update::Preview(Preview {
+                            missing_layout_capabilities,
                             request_id: id,
                             compile_revision: revision,
                             source_versions: current.clone(),

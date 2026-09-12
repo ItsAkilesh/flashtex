@@ -1,0 +1,14 @@
+{
+  "scenario": "Kill helper after durable undo response, before native view adopts it",
+  "initial_text": "aé😀z",
+  "capture_id": "capture-native",
+  "edit_id": "edit-native",
+  "start_byte": 1,
+  "end_byte": 7,
+  "removed_text": "é😀",
+  "replacement": "$x$",
+  "expected_after_capture": "a$x$z",
+  "expected_after_undo": "aé😀z",
+  "expected_pending_receipts": 1,
+  "expected_redo_units": 1
+}
