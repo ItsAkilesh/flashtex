@@ -119,6 +119,9 @@ final class DocumentFilesState {
     func noteDiskState(_ state: ProjectFilesV1.DiskState?) { lastDiskState = state }
 
     var helperRunning: Bool { client?.isRunning == true }
+    /// A request is still unanswered (its reply is reconciled late); a new
+    /// request now would restart the helper and lose that reply.
+    var helperBusy: Bool { (client?.outstanding ?? 0) > 0 }
     var usesHelper: Bool { if case .helper = backend { true } else { false } }
     var helperRoot: URL? { client?.root }
 
@@ -536,6 +539,7 @@ extension ShellModel {
         savedText = text
         files.conflict = nil
         files.noteDiskState(.unchanged)
+        watchOpenDocument() // DocumentWatcher.swift: live external-change detection
         if workerAttached { compile() }
     }
 
@@ -559,6 +563,7 @@ extension ShellModel {
         }
         files.conflict = nil
         recoverableBuffer = nil
+        watchOpenDocument()
         captureNote = "Restored the discarded buffer (\(kept.text.utf8.count) bytes, unsaved)."
         if workerAttached { compile() }
         return true
@@ -873,6 +878,7 @@ extension ShellModel {
         savedText = text
         files.conflict = nil
         files.noteDiskState(.unchanged)
+        watchOpenDocument()
         captureNote = "Reloaded \(review.url.lastPathComponent) through the preview controller (durable r\(revision); previous text in undo history"
             + (recoverableBuffer == nil ? ")." : " and Edit > Restore Discarded Buffer).")
         if let e = payload["preview_error"] as? String { FlashTeXLog.write("files: reload preview_error: \(e)") }
@@ -1026,6 +1032,7 @@ extension ShellModel {
             captureNote = "Saved \(url.lastPathComponent)" + (recreated ? " (recreated; it had been deleted on disk)" : "")
             bridgeSourceSaved(url: url, text: text)
             snapshotSaved(url: url, text: text)
+            watchOpenDocument() // Save As moves the watch; a replaced inode is re-opened
             return true
         case .conflict(let conflict):
             captureNote = conflict.summary
