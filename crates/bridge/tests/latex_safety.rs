@@ -158,8 +158,11 @@ fn invalid_utf8_cannot_reach_proposal_by_construction() {
     // `GrokClient::convert` (crates/bridge/src/grok.rs), which itself
     // requires its input to be valid UTF-8 JSON text and fails closed
     // (`provider_invalid_response`) otherwise. This test documents that
-    // invariant rather than exercising a reachable code path.
-    assert!(std::str::from_utf8(&[0xFF, 0xFE, 0xFD]).is_err());
+    // invariant (via a non-literal byte source, so the compiler can't just
+    // fold the known-bad literal at compile time) rather than exercising a
+    // reachable code path.
+    let bytes: Vec<u8> = [0xFF, 0xFE, 0xFD].into_iter().collect();
+    assert!(std::str::from_utf8(&bytes).is_err());
 }
 
 #[test]

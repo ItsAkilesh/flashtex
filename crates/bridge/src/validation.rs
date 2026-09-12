@@ -184,10 +184,7 @@ pub fn scan_latex(latex: &str) -> Result<LatexScan> {
                         if chars.get(j) == Some(&'{') {
                             let name_start = j + 1;
                             let mut k = name_start;
-                            while chars
-                                .get(k)
-                                .is_some_and(|c| !matches!(c, '}' | '{' | '\\'))
-                            {
+                            while chars.get(k).is_some_and(|c| !matches!(c, '}' | '{' | '\\')) {
                                 k += 1;
                             }
                             if chars.get(k) == Some(&'}') {
