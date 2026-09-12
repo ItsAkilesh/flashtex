@@ -9,15 +9,15 @@
   "branch": "agent/daniel-statistics/document-statistics",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
-  "objective": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
+  "input_main_sha": "ce7b6d0cf32358a379baa1be757d79e74886a3f8",
+  "objective": "Incremental document statistics: actual existing consumer fixture and exact measured limitations",
   "owned_paths": [
     "crates/document-statistics"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-042",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:36:00Z"
+  "updated_utc": "2026-09-12T16:35:39Z"
 }

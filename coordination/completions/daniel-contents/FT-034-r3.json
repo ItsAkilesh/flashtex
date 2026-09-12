@@ -1,0 +1,76 @@
+{
+  "agent_id": "daniel-contents",
+  "archived_utc": "2026-09-12T16:32:53Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-contents",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-contents/toc-layout",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "8e7546dfb4721c780036f03c21b14e6002062142",
+    "objective": "Contents stabilization: adversarial bounds and exact identity regressions",
+    "owned_paths": [
+      "crates/toc-layout"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-034",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:36:00Z"
+  },
+  "report": {
+    "agent_id": "daniel-contents",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-034": {
+        "acknowledged_utc": "2026-09-12T16:29:27Z",
+        "adaptation": "Attacked rev 2's stabilizer instead of changing its production behavior: added tests/adversarial_bounds.rs (hostile FrontMatterModels -- long-period oscillation at/under/over the 8-pass bound, unbounded doubling growth, an LCG-style wildly-varying model -- plus hostile data: tens of thousands of entries, a page number at u32::MAX, a million-character title, zero/negative LineBox width, duplicate sequence numbers), asserting every case is a typed error or bounded result and never a panic or hang. Confirmed the rev-2 cycle detector (earliest-repeated-value scan over the completed history) still classifies a period-5 and period-8 oscillation as Cycle, and documented in converge.rs that a period-9 oscillation (one longer than MAX_CONVERGENCE_ITERATIONS) is reported as Unresolved rather than Cycle, since the fixed-size history never observes that wraparound -- a real but unobserved cycle is indistinguishable from divergence at this bound. Added tests/exact_identity.rs pinning stabilize_toc + layout_entry output for a representative document as literal expected StabilizedToc/LaidOutEntry values via exact PartialEq (leader counts, widths, gaps, resolved pages), choosing only binary-exact f64 measurements so equality is never epsilon-based. No production code changed beyond one doc-comment clarification in converge.rs.",
+        "main_sha": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-contents/toc-layout",
+    "capabilities": [
+      "rust",
+      "toc-layout",
+      "fixed-point-convergence"
+    ],
+    "code_revision": "99b233124c833500fbdca7e32951c04c3b37fe78",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+    "next_action": "Await Commander integration; open item is unchanged from rev 1/2 scope -- a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout)",
+    "reviewed_peers": {
+      "origin/main": "a91fc1015e6884ab4a451d5d32a626271edacbd4"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/toc-layout rev 3: adversarial-bounds tests (tests/adversarial_bounds.rs, 14 tests) attack converge_front_matter_pages/stabilize_toc/layout_entry with hostile FrontMatterModels (long-period oscillation at period 5/8/9 against the 8-pass bound -- period 9 proves Unresolved, not Cycle, since the fixed-size history never observes a wraparound past the bound; unbounded doubling growth; an LCG-style wildly-varying model) and hostile data (30k entries, page number at u32::MAX, a 1,000,000-char title, zero/negative LineBox width, duplicate sequence numbers) -- every case is a typed error or bounded result, never a panic or hang. converge.rs's ConvergenceError::Unresolved doc comment now states the period-exceeds-bound classification explicitly. tests/exact_identity.rs (2 tests) pins stabilize_toc + layout_entry output for a representative 4-entry document as literal StabilizedToc/LaidOutEntry values (front-matter pages, resolved pages, leader counts 51/40/40/33, leader widths 76.5/60.0/60.0/49.5, gaps 1.0/0.0/0.0/0.5) via exact struct PartialEq, using only binary-exact f64 measurements. 47 tests + 1 doctest pass; clippy clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:29:27Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 206,
+  "report_path": "coordination/agents/daniel-contents.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-034",
+  "worker_branch": "agent/daniel-contents/toc-layout",
+  "worker_report_sha": "e93331e455f3d35a99ae76480ce32e2d9d7149d9"
+}

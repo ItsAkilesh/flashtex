@@ -9,15 +9,15 @@
   "branch": "agent/daniel-title/title-layout",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
-  "objective": "Title geometry consumer integration: adversarial bounds and exact identity regressions",
+  "input_main_sha": "ab5b4e049f0ef58c184853340bbd76213448c0a9",
+  "objective": "Title geometry consumer integration: existing consumer integration fixture and measured unsupported gaps",
   "owned_paths": [
     "crates/title-layout"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-033",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:26:03Z"
+  "updated_utc": "2026-09-12T16:34:02Z"
 }
