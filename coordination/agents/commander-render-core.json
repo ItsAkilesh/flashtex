@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "59b974e9c6bce6e090aaf7570bbe3950efb3d662",
+  "code_revision": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
     "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Obtain existing Mac LMmath asset/fixture for math cluster extraction evidence; preserve explicit text ambiguity guards. Prior211pixel run classified fallback/error, not matched acceptance.",
+  "main_integrated_through": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
+  "next_action": "Use exact b898cfc LMmath asset/license for one bounded actual math producer/reference investigation; no substitute font or parity assumptions.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Corrected required-metrics setup: untouched65dbe7d with rooted pinned assets and zero diagnostics yields identical plain fixture raster/text to pdfTeX reference. Added error-diagnostic export/ref gates and actual escaped-text evidence.",
+  "summary": "Single pinned fail-closed original/reference runner implemented and executed: accepted full rooted-assets pipeline replay, refused missingassets, unknown unpinnedtool.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:11:55Z",
+  "updated_utc": "2026-09-12T10:24:52Z",
   "usage": {
-    "evidence": "157tests and strictclippy pass. Clean originalPDF6308c8a95726a980ec341ad53af15a0b12654d27c9021d5a74306b8b807c9cb1;144DPI1224x1584 RGB0pixels differ, extractedtext equal. Escaped%_&#{}andffi/fi exact extraction verified; source spans retainTeX. Matching LMmath asset unavailable. No pending calls.",
+    "evidence": "Final runner accepted zero-diagnostic untouched65dbe7d\u2192registry\u2192ownerPDF\u2192reference; exacttext and144DPIpixels. Negative statuses2/4 verified. Sources/tools/assets pinned; twojob offline disposable build. First /tmp build failure recovered using repositorytarget scratch; no calls pending.",
     "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
