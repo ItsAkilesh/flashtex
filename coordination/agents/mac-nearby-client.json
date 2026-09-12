@@ -1,0 +1,40 @@
+{
+  "agent_id": "mac-nearby-client",
+  "allocation_id": "claude-mac20x-nearby-client",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-client/reconnect",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "6ee016325459c6c19e3d7d524f6965b9f7a9e895",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "2fd302675040308c2b07d346c07389a051518979",
+  "next_action": "Parent to merge agent/mac-nearby-client/reconnect into mac-shell (Package.swift test-only path dependency on tools/nearby-client carried from 80b5f84); on request merge origin/main and rerun both swift test suites",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/nearby-client": {
+      "adaptation": "Previous worker's 80b5f84 (tip 6e15104 merges mac-shell) resumed on the mac-shell base with its tests kept; FakeMac and NearbyState tests now bind loopback only. origin/main 1457db4 read: no apps/mac/tools overlap, not merged.",
+      "reviewed_utc": "2026-09-12T08:48:19Z",
+      "sha": "6e1510404eb14905fd5aa89c954ac14a2a582630"
+    },
+    "origin/main": {
+      "adaptation": "Previous worker's 80b5f84 (tip 6e15104 merges mac-shell) resumed on the mac-shell base with its tests kept; FakeMac and NearbyState tests now bind loopback only. origin/main 1457db4 read: no apps/mac/tools overlap, not merged.",
+      "reviewed_utc": "2026-09-12T08:48:19Z",
+      "sha": "1457db4f7a35a604c95c3e049df45fbceecac582"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Nearby reference client resumed from 80b5f84 on mac-shell 6b43a3a and hardened: NearbyReconnector (bounded attempts + deadline, exponential backoff with jitter, identical capture_id re-send, current-destination check), explicit terminal errors (handshakeFailed/needsRepair, remote, destinationChanged, attemptsExhausted, cancelled), connection bounds (8 in-flight, 1 MiB inbound line, cancelled timers, fail-fast unreachable); CLI send --attempts/--retry-delay/--max-delay/--deadline, exit 3/4/5. Tests: tools/nearby-client 28/28; apps/mac 191 tests 0 failures (real worker binaries), incl. real-listener e2e for duplicate delivery after a same-port restart, revoked pairing (NearbyState.forget) terminal after one refused reconnect, revoked destination (replaceProject/re-pin) terminal. Native cross-process evidence docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md (17/17). Loopback only everywhere.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T08:48:19Z",
+  "usage": {
+    "evidence": "docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md; coordination/mac-nearby-client.md",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; usage unknown"
+  }
+}

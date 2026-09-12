@@ -418,32 +418,67 @@ final class NearbyReferenceClientTests: XCTestCase {
             throw XCTSkip("set FLASHTEX_NEARBY_SERVE_INFO=<path> to serve a live listener for an external client")
         }
         let seconds = Double(env["FLASHTEX_NEARBY_SERVE_SECONDS"] ?? "") ?? 90
+        // Loopback only unless a human explicitly asks for the LAN (a real iPad);
+        // the automated suite never opens a port beyond loopback.
+        let lan = env["FLASHTEX_NEARBY_SERVE_LAN"] == "1"
+        // Optional native outage: stop advertising at +RESTART_AT s and come
+        // back after DOWN_SECONDS on a fresh ephemeral port, so an external
+        // client's bounded reconnect (re-browse by fp) can be measured.
+        let restartAt = Double(env["FLASHTEX_NEARBY_SERVE_RESTART_AT"] ?? "")
+        let downFor = Double(env["FLASHTEX_NEARBY_SERVE_DOWN_SECONDS"] ?? "") ?? 2
+        // Optional revocation: forget every stored pairing at +FORGET_AT s.
+        let forgetAt = Double(env["FLASHTEX_NEARBY_SERVE_FORGET_AT"] ?? "")
         let store = PairStore(url: tmp.appendingPathComponent("mac-pairs.json"))
         let model = ShellModel()
         model.caretUTF16 = 6
         model.pinAnchorAtCaret()
-        let state = NearbyState(store: store, macName: env["FLASHTEX_NEARBY_SERVE_NAME"] ?? "FlashTeX Serve", loopbackOnly: false)
+        let state = NearbyState(store: store, macName: env["FLASHTEX_NEARBY_SERVE_NAME"] ?? "FlashTeX Serve", loopbackOnly: !lan)
         state.attach(sink: model, destinations: model)
         state.startAdvertising()
         try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
         state.beginPairing()
         try await waitUntil("bootstrap key installed") { state.log.filter { $0.hasPrefix("ready on port") }.count >= 2 }
         let info: [String: Any] = ["code": state.pairingCode ?? "", "port": Int(state.port ?? 0), "fp": state.fingerprint,
-                                   "name": state.macName, "salt": Pairing.hex(store.salt),
+                                   "name": state.macName, "salt": Pairing.hex(store.salt), "loopback_only": !lan,
                                    "destination": model.nearbyDestination.map { ["destination_id": $0.destinationId, "base_revision": $0.baseRevision] } ?? [:]]
         try JSONSerialization.data(withJSONObject: info).write(to: URL(fileURLWithPath: infoPath))
         let logURL = URL(fileURLWithPath: infoPath + ".log")
         var written = 0
-        let deadline = Date().addingTimeInterval(seconds)
+        let started = Date()
+        let deadline = started.addingTimeInterval(seconds)
+        var outage: (stopAt: Date, resumeAt: Date, done: Bool)? = restartAt.map { (started.addingTimeInterval($0), started.addingTimeInterval($0 + downFor), false) }
+        var stopped = false
+        var forgotten = false
+        func append(_ text: String) {
+            if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+            else { try? Data(text.utf8).write(to: logURL) }
+        }
+        let stamp: () -> String = { String(format: "+%.3fs", Date().timeIntervalSince(started)) }
         while Date() < deadline {
+            if var o = outage, !o.done {
+                if !stopped, Date() >= o.stopAt {
+                    state.stopAdvertising()
+                    stopped = true
+                    append("mac: \(stamp()) outage: stopped advertising (listener gone, port released)\n")
+                } else if stopped, Date() >= o.resumeAt {
+                    state.startAdvertising()
+                    o.done = true
+                    outage = o
+                    append("mac: \(stamp()) outage: advertising again\n")
+                }
+            }
+            if let f = forgetAt, !forgotten, Date() >= started.addingTimeInterval(f) {
+                forgotten = true
+                let ids = state.pairs.map(\.pairId)
+                ids.forEach { state.forget(pairId: $0) }
+                append("mac: \(stamp()) revoked: forgot \(ids)\n")
+            }
             let log = state.log
             if log.count > written {
-                let chunk = log[written...].map { "mac: \($0)\n" }.joined()
-                if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(Data(chunk.utf8)); try? h.close() }
-                else { try? Data(chunk.utf8).write(to: logURL) }
+                append(log[written...].map { "mac: \(stamp()) \($0)\n" }.joined())
                 written = log.count
             }
-            try await Task.sleep(nanoseconds: 200_000_000)
+            try await Task.sleep(nanoseconds: 100_000_000)
         }
         let summary = "mac: served \(Int(seconds))s; pairs=\(state.pairs.map { "\($0.companionName) \($0.pairId)" }); inbox=\(model.nearbyInbox.received.map(\.captureId))\n"
         if let h = try? FileHandle(forWritingTo: logURL) { h.seekToEndOfFile(); h.write(Data(summary.utf8)); try? h.close() }

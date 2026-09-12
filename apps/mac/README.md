@@ -335,6 +335,95 @@ FT-004's. What is implemented here (Mac side only):
   `.app` will need `NSLocalNetworkUsageDescription`/`NSBonjourServices`; the
   bare executable and `swift test` did not prompt on macOS 26.3.
 
+### Reference companion client (`tools/nearby-client`) — owner: mac-nearby-client
+
+`apps/mac/tools/nearby-client` is a standalone Swift package (macOS 13+/iOS 15+,
+no dependency on this app or `FlashTeXProtocol`, so FT-004 can copy
+`Sources/NearbyClient` verbatim) plus the `nearby-client` CLI. It is the
+executable companion side of the proposal: `NearbyBrowser` (Bonjour with TXT,
+`fp` validated against `salt`), `NearbyCrypto` (HKDF/HMAC vectors pinned to
+`PairingTests`), `NearbyResolver` (resolve `.service` endpoints to host:port
+first — a refused TLS-PSK handshake on a service endpoint otherwise never
+leaves `.preparing`), `NearbyConnection` (TLS 1.2 / 0x00A8 / resumption off,
+JSON Lines, id-correlated replies), `NearbyClient.pair/connect`, `PairFile`
+(0600 JSON, **not** the Keychain) and `NearbyCLI`
+(`pair | send | status | browse | forget`, `nearby-client help` prints usage
+and exit codes).
+
+Bounded disconnect/reconnect (`NearbyReconnector`, actor):
+
+- `ReconnectPolicy`: `maxAttempts` (default 5, per operation), exponential
+  backoff `initialDelay` 0.25 s × 2 up to `maxDelay` 4 s with ±20 % jitter,
+  `overallDeadline` 60 s, `connectTimeout` 5 s, `requestTimeout` 30 s. The
+  schedule is pure (`delay(beforeAttempt:random:)`), so tests pin it.
+- Retryable, and only these: `unreachable` (TCP/DNS refused the dial — reported
+  at once from `.waiting`, not after the timeout), `closed`, `timeout`,
+  `noMatchingMac`/`browseFailed` (the Mac may be restarting; the Bonjour
+  endpoint source re-browses by `fp` before every attempt, so a Mac that
+  came back on another port is found).
+- Terminal, never retried: `handshakeFailed` / `pair_mismatch` /
+  `pairing_expired` (`needsRepair` → re-pair), every other `error` reply,
+  `invalidInput`, `protocolViolation`, `overloaded`, `destinationChanged`,
+  and `attemptsExhausted` once the budget is spent; a cancelled task is
+  `cancelled`.
+- `submit(capture)` is at-least-once with the *same* `capture_id` and payload
+  (the Mac de-duplicates; a bridge journals once). Before every delivery —
+  first or retry — the capture's `destination_id`/`base_revision` is checked
+  against what the Mac reports now (a fresh connection's `hello_ack`, or one
+  `destination_query` on a reused session); a mismatch or `null` is
+  `destinationChanged` and nothing is sent, so a capture never lands on a
+  re-pinned or unpinned anchor without the user knowing
+  (`requireCurrentDestination: false` / CLI `--destination-id` opts out).
+- Bounds: one session at a time and no pending-capture queue (callers hold
+  their capture and await); at most 8 in-flight requests per connection
+  (`overloaded`, nothing sent beyond); inbound line bound 1 MiB (an oversized
+  complete or unterminated line closes; the Mac's replies are a few hundred
+  bytes); every timer is cancelled when its request completes.
+- CLI `send --attempts N --retry-delay s --max-delay s --deadline s`
+  (connect and submit are two bounded operations); exit codes 0 ok · 1 nothing
+  stored · 2 error · **3 re-pair** · **4 retry budget exhausted** ·
+  **5 destination changed on the Mac, reselect and send again** · 64/65/66
+  usage/not an image/unreadable file.
+
+Tests: `swift test` in `tools/nearby-client` (28: vectors, wire shapes, TXT
+validation, pair file, and a loopback-only `FakeMac` with fault injection —
+drop before ack → identical re-send, idle drop, refused key terminal, remote
+error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
+refused port fails fast, 9th in-flight request refused, oversized inbound line
+closes, request timeout, CLI exit codes 0/2/3/4/5). `swift test` here runs the
+same client against the real stack in `NearbyReferenceClientTests` (Bonjour
+pair → send → identical retry → conflict → status → forget; direct mode and
+listener refusals; listener dropped after the inbox stored a capture and
+restarted on the same port → duplicate delivery acknowledged, stored once;
+`NearbyState.forget` with a live session → one refused reconnect, terminal,
+CLI exit 3; `replaceProject`/re-pin → `destinationChanged` on reused and fresh
+connections, nothing in the inbox until rebuilt). Everything binds loopback
+only; Bonjour still resolves loopback-only services on this machine.
+
+Measured native behavior (separate `nearby-client` process against a served
+`NearbyState`, loopback, M1 Max, macOS 26.3.1; reproduce with
+`python3 tools/nearby-client/scripts/measure-native.py --out <md>`), from
+[docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md](../../docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md):
+pair via Bonjour 0.75 s process-to-process; send via Bonjour 1.04 s cold, then
+0.04 s; send direct 0.02–0.03 s; identical retry acknowledged again 0.02 s;
+3 s listener outage with a new ephemeral port afterwards → one failed attempt,
+0.44 s backoff, re-browse finds the new port, same capture_id delivered,
+3.38 s total; forgotten pairing → refused handshake, no retry, exit 3 in
+0.48 s; Mac gone → 3 refused dials with backoff, exit 4 in 0.60 s (Bonjour:
+2 empty browses, 2.15 s). In-process (real listener): drop → duplicate ack
+0.21 s with a 0.2 s backoff; revoked pairing terminal 2–7 ms after the retry
+begins. The serve harness (`FLASHTEX_NEARBY_SERVE_INFO=<path>`) is loopback
+only unless `FLASHTEX_NEARBY_SERVE_LAN=1` is set by a human for a real iPad,
+and can stage an outage (`FLASHTEX_NEARBY_SERVE_RESTART_AT`,
+`_DOWN_SECONDS`) and a revocation (`FLASHTEX_NEARBY_SERVE_FORGET_AT`).
+
+Not done / limits: pairing itself is not retried (a bootstrap code is single
+use; a drop before `hello_ack` needs a new code); no Keychain; the CLI
+re-checks the destination but does not offer the reselection UI transfer-v1
+asks for (it exits 5 with the hint); the timing above is loopback on one
+machine — Wi‑Fi to a real iPad is not measured; `FakeMac` in the package tests
+is a stand-in, the real listener is only exercised from `apps/mac`.
+
 ## Launch hooks and evidence
 
 `FLASHTEX_NO_ACTIVATE=1` launches without activating/focusing the window (for
