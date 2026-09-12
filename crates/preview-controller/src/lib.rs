@@ -1,5 +1,6 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 pub mod completed_protocol;
+mod display;
 pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
@@ -63,6 +64,7 @@ pub enum Update {
 
 pub struct Controller {
     historical: historical::HistoricalState,
+    display_enabled: bool,
     project_id: String,
     entry_path: String,
     stores: BTreeMap<String, Store>,
@@ -137,6 +139,7 @@ impl Controller {
         }
         Ok(Self {
             historical: historical::HistoricalState::default(),
+            display_enabled: false,
             project_id,
             entry_path,
             stores: by_path,
@@ -388,6 +391,9 @@ impl Controller {
             return Err("project closed".into());
         }
         flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        if capabilities.iter().any(|cap| cap == "display-list-v2") && !self.display_enabled {
+            return Err("display candidates must be enabled before requesting their layout".into());
+        }
         self.historical.invalidate();
         self.layout_capabilities = capabilities;
         self.submitted = None;
@@ -454,6 +460,11 @@ impl Controller {
     pub fn configure_completed_snapshots(&mut self, enabled: bool) -> Result<(), String> {
         if self.closed {
             return Err("project closed".into());
+        }
+        if enabled && self.display_enabled {
+            return Err(
+                "display candidates and historical snapshots are mutually exclusive".into(),
+            );
         }
         self.historical.configure(enabled)?;
         if let Some(runtime) = self.runtime.as_mut() {
@@ -562,6 +573,9 @@ impl Controller {
         let expected = self.index.snapshot();
         let documents = self.membership_documents(None)?;
         let mut runtime = Session::spawn_command(command, limits)?;
+        self.display_enabled = false;
+        self.layout_capabilities
+            .retain(|cap| cap != "display-list-v2");
         runtime.set_completed_snapshots_enabled(self.historical.enabled)?;
         self.replace_membership(&expected, &documents, None)?;
         self.runtime = Some(runtime);
@@ -573,6 +587,7 @@ impl Controller {
             runtime.close_project(&self.project_id)?;
         }
         self.historical.invalidate();
+        self.display_enabled = false;
         self.closed = true;
         self.submitted = None;
         Ok(())

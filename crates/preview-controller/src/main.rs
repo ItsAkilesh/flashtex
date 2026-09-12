@@ -19,6 +19,7 @@ use std::{
     thread,
     time::Duration,
 };
+mod optional_output;
 mod output_buffer;
 mod output_delivery;
 mod source_plans;
@@ -242,6 +243,24 @@ fn run(config: Value) -> Result<(), String> {
                         if let Some(token) = token {
                             SubmissionBindings::validate_token(token)?;
                         }
+                        if request["type"] == "configure_display_candidates" {
+                            if request["payload"]["capability"] != "display-candidates-v1" {
+                                return Err("unsupported display candidate capability".into());
+                            }
+                            let enabled = request["payload"]["enabled"]
+                                .as_bool()
+                                .ok_or("enabled must be boolean")?;
+                            if enabled && request["payload"]["renderer_support_confirmed"] != true {
+                                return Err(
+                                    "explicit renderer support confirmation required".into()
+                                );
+                            }
+                            let preview_error = controller.configure_display_candidates(enabled)?;
+                            output_epoch = output_tx.reset_optional();
+                            return Ok(
+                                json!({"capability":"display-candidates-v1","enabled":enabled,"preview_error":preview_error}),
+                            );
+                        }
                         if request["type"] == "configure_completed_snapshots" {
                             if request["payload"]["capability"] != CAPABILITY {
                                 return Err("unsupported completed snapshot capability".into());
@@ -357,12 +376,30 @@ fn run(config: Value) -> Result<(), String> {
                         "is_current":false,"source_actions_enabled":false,"source_binding_token":token});
                 payload["result"] = snapshot.into_result();
                 let value = wire::envelope(&session, Value::Null, "update", payload);
-                let mut buffer = OutputBuffer::new(MAX_OUTPUT_BYTES);
-                if serde_json::to_writer(&mut buffer, &value).is_ok() {
-                    if let Ok(bytes) = buffer.finish() {
-                        // Optional oversize/backpressure drops never fail durable source delivery.
-                        output_tx.optional(output_epoch, bytes);
-                    }
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"completed_snapshot",
+                        "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
+            }
+        }
+        if output_tx.can_offer(output_epoch) {
+            if let Some(payload) = controller.take_current_display_payload() {
+                let value = wire::envelope(&session, Value::Null, "update", payload);
+                let started = std::time::Instant::now();
+                let outcome =
+                    optional_output::offer(&output_tx, output_epoch, &value, MAX_OUTPUT_BYTES);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"optional_output","kind":"display_candidate",
+                        "outcome":outcome.label(),"serialization_ms":started.elapsed().as_secs_f64()*1000.0})
+                    );
                 }
             }
         }

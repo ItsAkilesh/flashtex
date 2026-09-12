@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "64829a0db4eb7bd6d0dbad4e50ab72257880f210",
+  "code_revision": "42425a521336221766addd6dce4a9b8dd33da790",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Agree minimal current-only opt-in display-list candidate interface with FT049; preserve existing helper required-output priority and source identity.",
+  "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
+  "next_action": "Native helper-route consumer validation and full-size optional oversize/stall evidence; preserve defaultOFF.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r6 ACK: explicit document_kinds now included in same-source snapshot, allowing native project settings to preserve bibliography declarations.17 ordinary stdio tests and strict Clippy pass;2 explicit compiler tests not rerun for metadata-only change.",
+  "summary": "Actual65dbe7d producer\u2192helper replay passes original+2durable edits: exact direct/helper v1 and display JSON equality, exactsource hashes, matching v1 precedes candidate, finaldocument exact afterkill/reopen. Binary/font/TFM/license hashes checked; no nativepaint or latency claim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:54:30Z",
+  "updated_utc": "2026-09-12T11:10:00Z",
   "usage": {
     "status": "unknown"
   }
