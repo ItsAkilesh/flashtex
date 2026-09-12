@@ -1,3 +1,11 @@
+> LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
+> commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
+> supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
+> agents are paused; preserve all dirty/published work. Never revive or replace
+> them automatically and do not compensate by increasing staffing elsewhere.
+> This overrides older six-engineer staffing text below. Other authorization
+> and explicit-user-stop-only project continuity remain unchanged.
+
 # Astra orchestrator resumption packet
 
 Read AGENTS.md and fetch current authority before any global write. Sole active
@@ -50,3 +58,11 @@ Exact byte-PDF identity and exact pixel identity are separate acceptance gates.
 No alignment/tolerance normalization counts as success. Native typing-to-visible
 under200ms includes paint; Rust queue/compiler measurements alone do not establish it.
 Record explicit unsupported functionality and real/reference resource provenance.
+
+Paused work preservation at staffing cut: conversion-jobs clean c655cb2; project-index local579a58c plus dirty src/search.rs and untracked tests/search_replace.rs; edit-ledger local4f96ee1 plus dirty src/checkpoint.rs and untracked src/checkpoint/. Do not revive those agents, spawn replacements, or move the work to added remote staff. Existing tested published checkpoints may be reviewed by the active Commander; preserve unfinished files.
+
+## Latest integration checkpoint
+
+Main a6d6478 includes rooted export (GH18 fixed), compiler9026d8a negotiated layouts, renderer410a5b1/font8cf7304, jobs inboxc655cb2 and editorhelperac73844. Compiler corpus remains4pass/7unverified/2unsupported/1fail; non-regression only. Runtime validatorcab39a2 passes210 Python tests (10 optional skips), including same-revision capability-switch stale suppression.
+
+Mac candidate3e26ca6 is staged uncommitted in flashtex-mac-integration; GH19 blocks promotion: synchronous MainActor PDF child wait-before-drain deadlock and openTex dirty-source loss. Existing Mac parent notified, no added staff. Dispatcher active under Astra (latestPID619890), four-agent cap unchanged. Root now owns narrow additive project-index membership API in its existing worktree; paused index dirty search_replace remains untouched. Latest root61d29a0 reload, fonts63a9371 cache, rendererb18285c mixed batches remain task-branch checkpoints awaiting integration.

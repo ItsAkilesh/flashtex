@@ -319,3 +319,99 @@ fn closing_project_cancels_once_and_reclaims_slot_without_showing_old_result() {
     other.project_id = "other".into();
     session.submit(other).unwrap();
 }
+
+#[cfg(unix)]
+const LAYOUT: &str = "import json,sys,time\nfor line in sys.stdin:\n r=json.loads(line);p=r['payload'];caps=p.get('layout_capabilities',[]);time.sleep(.02)\n items=[]\n if 'rules-v1' in caps: items.append({'kind':'rule','x_pt':12,'y_pt':24,'width_pt':18,'height_pt':0.5,'source':{'path':'main.tex','start_byte':0,'end_byte':2}})\n if 'font-hints-v1' in caps: items.append({'kind':'text','text':'α','x_pt':12,'baseline_y_pt':24,'font_size_pt':12,'font':{'family':'Latin Modern Roman','weight':'normal','style':'italic'},'source':{'path':'main.tex','start_byte':0,'end_byte':2}})\n print(json.dumps({'protocol_version':1,'id':r['id'],'type':'compile_result','payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','layout_capabilities':caps,'pages':[{'number':1,'width_pt':612,'height_pt':792,'items':items}],'diagnostics':[]}}),flush=True)";
+#[test]
+#[cfg(unix)]
+fn negotiated_rules_and_fonts_preserve_exact_output() {
+    let (_dir, path) = executable(LAYOUT);
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session
+        .submit_with_capabilities(request(1), vec!["rules-v1".into(), "font-hints-v1".into()])
+        .unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Preview { .. }))
+    });
+    let result = events
+        .into_iter()
+        .find_map(|event| {
+            if let Event::Preview { result, .. } = event {
+                Some(result)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(
+        result["payload"]["pages"][0]["items"][0],
+        serde_json::json!({"kind":"rule","x_pt":12,"y_pt":24,"width_pt":18,"height_pt":0.5,"source":{"path":"main.tex","start_byte":0,"end_byte":2}})
+    );
+    assert_eq!(
+        result["payload"]["pages"][0]["items"][1]["font"]["style"],
+        "italic"
+    );
+}
+#[test]
+#[cfg(unix)]
+fn late_extended_response_does_not_activate_legacy_preview() {
+    let (_dir, path) = executable(LAYOUT);
+    let mut session = fake_session(path, Limits::default()).unwrap();
+    session
+        .submit_with_capabilities(request(1), vec!["rules-v1".into()])
+        .unwrap();
+    session.submit(request(2)).unwrap();
+    let events = collect_until(&mut session, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Preview { revision: 2, .. }))
+    });
+    assert!(events
+        .iter()
+        .any(|event| matches!(event, Event::Stale { revision: 1, .. })));
+    for event in events {
+        if let Event::Preview { result, .. } = event {
+            assert_eq!(
+                result["payload"]["layout_capabilities"],
+                serde_json::json!([])
+            );
+            assert!(result["payload"]["pages"][0]["items"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+        }
+    }
+}
+#[test]
+#[cfg(unix)]
+fn malformed_and_unrequested_layout_cannot_reach_preview() {
+    for body in [
+        LAYOUT.replace(
+            "caps=p.get('layout_capabilities',[])",
+            "caps=['rules-v1','font-hints-v1']",
+        ),
+        LAYOUT.replace("'height_pt':0.5", "'height_pt':0"),
+        LAYOUT.replace("'x_pt':12", "'x_pt':1000001"),
+        LAYOUT.replace("'style':'italic'", "'style':'unknown'"),
+        LAYOUT.replace("'kind':'rule'", "'kind':'unknown'"),
+    ] {
+        let (_dir, path) = executable(&body);
+        let mut session = fake_session(path, Limits::default()).unwrap();
+        let caps = if body.contains("caps=['rules-v1','font-hints-v1']") {
+            vec![]
+        } else {
+            vec!["rules-v1".into(), "font-hints-v1".into()]
+        };
+        session.submit_with_capabilities(request(1), caps).unwrap();
+        let events = collect_until(&mut session, |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Failed { .. }))
+        });
+        assert!(!events
+            .iter()
+            .any(|event| matches!(event, Event::Preview { .. })));
+    }
+}

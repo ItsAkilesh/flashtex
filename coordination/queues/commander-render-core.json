@@ -5,29 +5,27 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Validated font-resources adapter",
-      "objective": "Validated font-resources adapter",
+      "name": "Replay and serialize internal exact geometry without implicit rounding",
+      "objective": "Replay and serialize internal exact geometry without implicit rounding",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
       ],
       "timebox_minutes": 30,
       "allocation_id": "hosted-openai-product"
     },
     {
-      "name": "Selection and revision-safe retained page cache",
-      "objective": "Selection and revision-safe retained page cache",
+      "name": "Bound mixed-font batch/cache residency and test cancellation or stale-source invalidation",
+      "objective": "Bound mixed-font batch/cache residency and test cancellation or stale-source invalidation",
       "owned_paths": [
         "crates/rendering-core"
       ],
       "acceptance": [
-        "Meaningful tests and strict lint pass",
-        "Publish truthful execution provenance and exact tested SHA",
-        "No native integration or PDF parity claim without measured evidence"
+        "Focused regression tests and strict lint pass",
+        "Publish exact tested source revision and honest consumer limitations"
       ],
       "timebox_minutes": 30,
       "allocation_id": "hosted-openai-product"

@@ -538,3 +538,9 @@ pub use path::{PathCommand, QuadraticPath};
 pub mod tfm;
 
 pub mod encoding;
+
+pub mod vf;
+
+pub mod vf_graph;
+
+pub mod cff;

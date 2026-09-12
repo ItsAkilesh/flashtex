@@ -1,6 +1,6 @@
 {
   "agent_id": "claude",
-  "next_index": 4,
+  "next_index": 6,
   "schema_version": 1,
   "steps": [
     {
@@ -67,6 +67,34 @@
       "allocation_id": "openai-kabir-plus-ft002-stage6",
       "name": "Exact rendering convergence",
       "objective": "Connect original compiler to negotiated original Rust font/layout pipeline with exact source identity. Separate raw PDF bytes, pixel equality and incremental-clean equivalence; no reference engine in production.",
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Pinned input/binary hashes and p50/p95/p99 measurements",
+        "Exact incremental-clean equality and no lost corpus checks",
+        "Native paint and raw PDF byte equality remain separate gates"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
+      "name": "Standing compiler scaling and incremental engineering",
+      "objective": "Within existing Kabir staffing, own standing compiler bottleneck repair: measure 5KB/50KB/500KB edits, remove superlinear hot paths, add safe dependency-aware reuse and prove incremental equals clean full output. Do not add workers or reference engines to production.",
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Pinned input/binary hashes and p50/p95/p99 measurements",
+        "Exact incremental-clean equality and no lost corpus checks",
+        "Native paint and raw PDF byte equality remain separate gates"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
+      "name": "Compiler compatibility and latency regression closure",
+      "objective": "Extend pinned corpus breadth and repeated burst-edit/recovery performance gates; preserve exact source and capability identities. Publish unresolved byte/pixel parity separately from compiler latency.",
       "owned_paths": [
         "crates/compiler"
       ],

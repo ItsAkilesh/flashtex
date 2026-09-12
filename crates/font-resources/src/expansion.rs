@@ -12,7 +12,7 @@ impl Coordinate {
     pub fn shift(&self) -> u32 {
         self.shift
     }
-    fn new(mut n: i128, mut shift: u32) -> Result<Self> {
+    pub(crate) fn new(mut n: i128, mut shift: u32) -> Result<Self> {
         if shift > 96 {
             return Err(invalid("coordinate precision budget"));
         }
@@ -37,7 +37,7 @@ impl Coordinate {
             shift: 0,
         }
     }
-    fn add(self, rhs: Self) -> Result<Self> {
+    pub(crate) fn add(self, rhs: Self) -> Result<Self> {
         let shift = self.shift.max(rhs.shift);
         let a = self
             .numerator
@@ -51,6 +51,16 @@ impl Coordinate {
             a.checked_add(b)
                 .ok_or_else(|| invalid("coordinate overflow"))?,
             shift,
+        )
+    }
+    pub(crate) fn multiply(self, rhs: Self) -> Result<Self> {
+        Self::new(
+            self.numerator
+                .checked_mul(rhs.numerator)
+                .ok_or_else(|| invalid("coordinate product overflow"))?,
+            self.shift
+                .checked_add(rhs.shift)
+                .ok_or_else(|| invalid("coordinate precision overflow"))?,
         )
     }
     fn subtract(self, rhs: Self) -> Result<Self> {

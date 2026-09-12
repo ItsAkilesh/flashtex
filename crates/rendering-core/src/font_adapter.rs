@@ -40,7 +40,6 @@ pub fn validate_with_collection(
     collection: &FontCollection,
 ) -> Result<ResourceEvidence> {
     list.validate(capabilities)?;
-    let mut bytes = BTreeMap::new();
     for font in &list.fonts {
         let resource = collection
             .get(&font.font_id)
@@ -49,7 +48,47 @@ pub fn validate_with_collection(
             resource.descriptor() == &descriptor(font),
             "font collection descriptor mismatch",
         )?;
-        bytes.insert(font.font_id.clone(), resource.bytes().to_vec());
     }
-    list.validate_resources(capabilities, documents, &bytes, &StaticTrueTypeLoader)
+    // FontCollection already owns verified immutable bytes. Exact descriptor
+    // equality avoids copying and reparsing every font for each prepared scene.
+    for document in &list.documents {
+        let snapshot = documents
+            .get(&document.path)
+            .ok_or_else(|| ValidationError("missing source snapshot".into()))?;
+        require(
+            snapshot.revision == document.revision,
+            "source revision mismatch",
+        )?;
+        require(
+            snapshot.text.len() as u64 == document.byte_length
+                && digest(snapshot.text.as_bytes()) == document.sha256,
+            "source digest mismatch",
+        )?;
+    }
+    for page in &list.pages {
+        for item in &page.items {
+            match item {
+                Item::GlyphRun(run) => {
+                    for cluster in &run.clusters {
+                        if let Some(ranges) = &cluster.sources {
+                            validate_source_bytes(ranges, documents)?;
+                        }
+                    }
+                }
+                Item::Rule(rule) => {
+                    if let Some(ranges) = &rule.sources {
+                        validate_source_bytes(ranges, documents)?;
+                    }
+                }
+            }
+        }
+    }
+    for diagnostic in &list.diagnostics {
+        validate_source_bytes(&diagnostic.sources, documents)?;
+    }
+    Ok(ResourceEvidence {
+        source_snapshots_verified: true,
+        font_resources_verified: true,
+        paintable: false,
+    })
 }

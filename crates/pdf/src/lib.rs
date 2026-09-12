@@ -28,11 +28,52 @@ pub mod writer;
 /// One positioned text run. Coordinates follow runtime-v1: points, origin at the
 /// top-left of the page, `baseline_y_pt` measured downwards.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Item {
+pub struct TextItem {
     pub text: String,
     pub x_pt: f64,
     pub baseline_y_pt: f64,
     pub font_size_pt: f64,
+    /// `font-hints-v1` face request; `None` means legacy font selection.
+    pub font: Option<FontHint>,
+}
+
+/// A `font-hints-v1` face request (`docs/contracts/runtime-v1-layout-capabilities.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FontHint {
+    pub family: String,
+    pub weight: Weight,
+    pub style: Style,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub enum Weight {
+    #[default]
+    Normal,
+    Bold,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub enum Style {
+    #[default]
+    Normal,
+    Italic,
+}
+
+/// A `rules-v1` rectangle: `(x_pt, y_pt)` is the top-left corner in page
+/// coordinates (y downward), width and height are positive.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuleItem {
+    pub x_pt: f64,
+    pub y_pt: f64,
+    pub width_pt: f64,
+    pub height_pt: f64,
+}
+
+/// A page item; order is paint order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Item {
+    Text(TextItem),
+    Rule(RuleItem),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,7 +87,28 @@ pub struct Page {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CompileResult {
     pub pages: Vec<Page>,
+    /// The accepted `layout_capabilities` set. `None` is the legacy route
+    /// (no negotiation): unknown item kinds are skipped with a warning and
+    /// U+2500 runs are drawn as fraction rules. `Some` is the negotiated
+    /// route: unknown kinds are errors, `rule` items need `rules-v1`, and
+    /// font hints need `font-hints-v1`.
+    pub capabilities: Option<Vec<String>>,
 }
+
+impl CompileResult {
+    pub fn legacy(&self) -> bool {
+        self.capabilities.is_none()
+    }
+
+    pub fn accepts(&self, capability: &str) -> bool {
+        self.capabilities
+            .as_ref()
+            .is_some_and(|c| c.iter().any(|x| x == capability))
+    }
+}
+
+pub const CAP_RULES_V1: &str = "rules-v1";
+pub const CAP_FONT_HINTS_V1: &str = "font-hints-v1";
 
 /// The rendered document plus everything the writer had to approximate.
 #[derive(Debug, Clone, PartialEq)]

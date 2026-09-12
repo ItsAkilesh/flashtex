@@ -38,6 +38,78 @@ class RuntimeValidationTests(unittest.TestCase):
         stream = io.BytesIO(('\n'.join(json.dumps(message) for message in messages) + '\n').encode())
         return validator, runtime.validate_stream(stream, validator)
 
+    def test_negotiated_rules_fonts_and_missing_capabilities(self):
+        request, response = pair()
+        request['payload']['layout_capabilities'] = ['rules-v1', 'font-hints-v1', 'future-v1']
+        response['payload']['layout_capabilities'] = ['rules-v1', 'font-hints-v1']
+        item = response['payload']['pages'][0]['items'][0]
+        item['font'] = {'family': 'Latin Modern Roman', 'weight': 'bold', 'style': 'italic'}
+        response['payload']['pages'][0]['items'].append({
+            'kind': 'rule', 'x_pt': -2, 'y_pt': 3, 'width_pt': 20, 'height_pt': 0.5,
+            'source': copy.deepcopy(item['source'])})
+        validator, errors = self.validate([request, response])
+        self.assertEqual(errors, [])
+        self.assertEqual(validator.results[0]['missing_layout_capabilities'], ['future-v1'])
+        for field, value in [('width_pt', 0), ('height_pt', -1), ('x_pt', 1000001),
+                             ('y_pt', float('inf')), ('width_pt', True)]:
+            broken = copy.deepcopy(response)
+            broken['payload']['pages'][0]['items'][-1][field] = value
+            self.assertTrue(self.validate([request, broken])[1])
+
+    def test_capability_bounds_and_unsolicited_acceptance(self):
+        for caps in [None, ['rules-v1'] * 2, [''], ['é' * 33], ['x' + str(n) for n in range(17)], [1]]:
+            request, _ = pair()
+            request['payload']['layout_capabilities'] = caps
+            self.assertTrue(self.validate([request])[1], caps)
+        for requested, accepted in [([], ['rules-v1']), (['future-v1'], ['future-v1']),
+                                    (['rules-v1'], ['rules-v1', 'rules-v1'])]:
+            request, response = pair()
+            request['payload']['layout_capabilities'] = requested
+            response['payload']['layout_capabilities'] = accepted
+            self.assertTrue(self.validate([request, response])[1])
+
+    def test_same_revision_capability_switch_suppresses_old_response(self):
+        first, old = pair()
+        second, new = pair()
+        second['id'] = new['id'] = 'mode-switch'
+        second['payload']['layout_capabilities'] = ['rules-v1']
+        new['payload']['layout_capabilities'] = ['rules-v1']
+        validator, errors = self.validate([first, second, new, old])
+        self.assertEqual(errors, [])
+        self.assertEqual([r['preview'] for r in validator.results], ['current', 'stale_ignore'])
+
+    def test_font_hints_require_acceptance_and_valid_style(self):
+        for font in [None, {'family': 'x', 'weight': 'heavy', 'style': 'normal'},
+                     {'family': 'x', 'weight': 'normal', 'style': 'oblique'},
+                     {'family': 'x\n', 'weight': 'normal', 'style': 'normal'},
+                     {'family': 'é' * 65, 'weight': 'normal', 'style': 'normal'}]:
+            request, response = pair()
+            request['payload']['layout_capabilities'] = ['font-hints-v1']
+            response['payload']['layout_capabilities'] = ['font-hints-v1']
+            response['payload']['pages'][0]['items'][0]['font'] = font
+            self.assertTrue(self.validate([request, response])[1])
+        request, response = pair()
+        response['payload']['pages'][0]['items'][0]['font'] = {
+            'family': 'x', 'weight': 'normal', 'style': 'normal'}
+        self.assertTrue(self.validate([request, response])[1])
+
+    def test_rule_requires_acceptance_and_utf8_source(self):
+        request, response = pair()
+        item = response['payload']['pages'][0]['items'][0]
+        source = copy.deepcopy(item['source'])
+        response['payload']['pages'][0]['items'] = [{
+            'kind': 'rule', 'x_pt': 0, 'y_pt': 0, 'width_pt': 1, 'height_pt': 1, 'source': source}]
+        self.assertTrue(self.validate([request, response])[1])
+        request['payload']['layout_capabilities'] = ['rules-v1']
+        response['payload']['layout_capabilities'] = ['rules-v1']
+        request['payload']['documents'][0]['text'] = 'é'
+        source.update(start_byte=0, end_byte=1)
+        self.assertIn('UTF-8', self.validate([request, response])[1][0]['message'])
+        source.update(end_byte=2)
+        self.assertEqual(self.validate([request, response])[1], [])
+        response['payload']['pages'][0]['items'][0]['kind'] = 'mystery'
+        self.assertTrue(self.validate([request, response])[1])
+
     def test_real_contract_fixtures(self):
         validator, errors = self.validate([REQUEST, RESPONSE])
         self.assertEqual(errors, [])

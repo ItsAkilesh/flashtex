@@ -1,5 +1,56 @@
 # Project source index
 
+`search_literal(snapshot, &SearchRequest, cancelled)` searches raw document text,
+including comments and verbatim, independently of lexical symbol/metadata parsing.
+Matching is case-sensitive, nonoverlapping, with no Unicode normalization or regex.
+Results use exact UTF8 byte spans in deterministic project-relative file/offset
+order. `documents: None` selects all documents; `Some(empty)` selects none; all
+selected paths must exist. Empty queries and queries over 64 KiB are rejected.
+
+Search uses an original KMP implementation. `max_work` counts byte comparisons in
+both preprocessing and matching. `max_matches` is capped at 100,000. Results state
+`Complete`, `MatchLimit`, `WorkLimit`, or `Cancelled`; an incomplete result never
+asserts absence of later matches. A reached match limit conservatively reports
+`MatchLimit` unless the final document ended at that match. Cancellation callbacks
+are checked initially and before every comparison and must not block. Callback
+runtime, snapshot/path validation, allocation, and document selection are outside
+the comparison budget; this is not a wall-clock deadline guarantee.
+
+`citation_metadata(snapshot, key)` inspects bounded bibliography values locally.
+Records retain entry/key, field-name/expression, and atom UTF8 source spans.
+Braced and quoted literals preserve internal braces and TeX text; decimal atoms
+and `#` concatenation are supported. Bare identifiers resolve only against unique,
+ASCII-case-insensitive project `@string` declarations. There are no implicit month
+macros, declaration-order semantics, TeX expansion, or bibliography formatting.
+This is an IDE inspection convention, not BibTeX engine output.
+
+Missing keys, bibitems without metadata, duplicate definitions, malformed records,
+and incomplete values have separate states. Duplicate fields invalidate the record;
+missing, duplicate, malformed, cyclic, or over-limit macros produce no successful
+partial value. Field failures conservatively exclude the rest of that record;
+the outer scanner resumes only at a safely delimited following entry. Limits are
+128 fields, 256 atoms per expression, 128 nested groups, 32 macro levels, 4096
+expansion atom visits per field and 256 KiB of expanded bytes per field, in
+addition to the existing document/entry limits. All queries require a fresh snapshot.
+
+Parsed records are retained per document. `complete_citations(snapshot, prefix,
+limit)` returns sorted cached metadata for definitions and observed unresolved
+citations. `metadata.field("author")`, `field("title")`, and `field("year")` expose
+literal inspection values and exact expression spans usable with `source_text`.
+This preserves source text, including name separators and TeX syntax; it does not
+split authors, normalize years, or infer formatted titles.
+
+Replacement/removal refreshes citation keys in the changed document and cached
+keys whose visited direct/transitive macro dependencies intersect declarations in
+that document. Missing macro dependencies are retained for later repair. Other
+metadata results are reused; duplicate counts and field edits refresh even when
+definition availability stays unchanged. `metadata_cache_metrics(snapshot)` reports
+recomputed/reused/removed key counts. These are work counters, not an asymptotic
+performance claim: dependency selection scans cached metadata and resolving each
+dirty key inspects retained project records without rescanning source. Macro
+evaluation stops at its first error; dependencies beyond that error are discovered
+when an earlier dependency is repaired. Fresh rebuild equivalence is tested.
+
 Original, dependency-free Rust library for lexical LaTeX navigation and prefix
 completion. It accepts source strings from its caller and never reads project files,
 expands macros, invokes a compiler, resolves packages, or modifies a native UI.
