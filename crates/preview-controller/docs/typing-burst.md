@@ -114,3 +114,34 @@ writes and fragmented reads, checking every byte and frame order. Child failure
 polling does not interrupt an already-blocked helper read: its existing 15-second
 read deadline can elapse before the recorded sender error is surfaced. This is
 bounded eventual reporting, not an immediate child-exit wakeup.
+
+## Controlled separate-process pair
+
+`benchmarks/typing-burst-process-pair` preserves one current-only run followed by
+one explicitly historical run of the same 20 edits/50KB source, release helper and
+producer, and sender harness f240daec. Commands match apart from historical binding
+tokens, and initial/final sources and final compiler result match exactly. Each
+mode preserves original provenance plus compressed captures with original and
+compressed hashes. Local reviewers confirmed no concurrent heavy jobs; this is
+not an isolated-host or repeated statistical benchmark.
+
+| Observed quantity | Current only | Historical opt-in |
+| --- | ---: | ---: |
+| Maximum send lateness | 0.105ms | 0.092ms |
+| Maximum ACK arrival latency | 2.940ms | 39.268ms |
+| Historical frames during sending | 0 | 5 |
+| Total historical frames | 0 | 6 |
+| Final current preview after last send | 80.341ms | 141.404ms |
+
+Both runs acknowledged all20 edits, emitted only revision21 as current, and passed
+clean final compilation, exact durable reopen, old permanent-ID retries and
+conflicting-fingerprint refusal. Historical revisions2,5,9,12,18,20 retain original
+source/result identity and disabled source actions. Original producer processes
+were absent after cleanup. No further run was made.
+
+The low sender lateness removes the earlier threaded sender's large scheduling
+confound in this pair. The receiver still decodes frames in one process, so ACK
+arrival measurements include its handling of earlier frames. Neither the observed
+61ms final difference nor the ACK difference isolates a causal implementation cost.
+Native paint and current output during every keystroke remain unproven, and the
+historical feature remains off by default.
