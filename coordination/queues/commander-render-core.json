@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Assess existing hit-test index for exact current-source queries on actual bound helper candidates without native activation",
-      "objective": "Assess existing hit-test index for exact current-source queries on actual bound helper candidates without native activation",
+      "name": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
+      "objective": "Audit latest published native font and metric packaging against verified10pt12pt and math resource lookup without Swift changes",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Resolve GH34 licensed10pt metric asset coverage versus exact rooted producer lookup after current hit-query acceptance",
-      "objective": "Resolve GH34 licensed10pt metric asset coverage versus exact rooted producer lookup after current hit-query acceptance",
+      "name": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
+      "objective": "Distinguish packaged assets from external TeX fallback and identify only demonstrated default installation gaps",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Provide pinned ec-lmr10 metric setup to helper owner and independently verify separately labeled replay diagnostics without replacing recovered evidence",
-      "objective": "Provide pinned ec-lmr10 metric setup to helper owner and independently verify separately labeled replay diagnostics without replacing recovered evidence",
+      "name": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
+      "objective": "Publish exact asset hash lookup coverage and bounded native-owner handoff without native execution or parity claims",
       "owned_paths": [
         "crates/rendering-core"
       ],
