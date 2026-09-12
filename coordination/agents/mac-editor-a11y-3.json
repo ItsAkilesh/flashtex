@@ -1,0 +1,19 @@
+{
+  "agent_id": "mac-editor-a11y-3",
+  "allocation_id": "claude-mac20x-editor-a11y-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-editor-a11y-3/rotor-motion",
+  "capabilities": ["swift", "appkit", "swiftui", "accessibility"],
+  "code_revision": "82749c26",
+  "eta_minutes": {"likely": 75, "optimistic": 60, "pessimistic": 90},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "82749c26",
+  "next_action": "Coverage audit written; implementing editor rotor, reduce-motion flag, bounded selection announcement",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "working",
+  "summary": "Item 10 follow-ups: VoiceOver rotor on the editor text view, reduce-motion path for preview anchoring/scroll animation, bounded large-selection announcement measurement",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T12:50:00Z",
+  "usage": {"evidence": "none yet", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+}
