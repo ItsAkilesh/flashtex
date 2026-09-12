@@ -220,7 +220,9 @@ pub fn verify_checksums(data: &[u8]) -> Result<(), Error> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
     for i in 0..n {
         let rec = 12 + 16 * i;
-        let tag = &data[rec..rec + 4];
+        let tag = data
+            .get(rec..rec + 4)
+            .ok_or_else(|| Error::Malformed(format!("table record {i} overruns file")))?;
         let want = u32_at(data, rec + 4)?;
         let off = u32_at(data, rec + 8)? as usize;
         let len = u32_at(data, rec + 12)? as usize;

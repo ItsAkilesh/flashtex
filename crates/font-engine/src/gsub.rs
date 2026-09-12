@@ -86,7 +86,16 @@ impl GsubLigatures {
             let Some(ci) = sub.coverage.index(first.0) else {
                 continue;
             };
-            for (lig, rest) in &sub.sets[usize::from(ci)] {
+            // A format-2 (Ranges) coverage table's `startCoverageIndex` is a
+            // raw font-supplied field, not derived from `sets.len()`; a
+            // hostile font can declare one far past the subtable's actual
+            // ligature-set count. Treat an out-of-range index as "not
+            // covered" rather than indexing directly, matching every other
+            // coverage-index consumer in this crate (gpos.rs, math.rs).
+            let Some(set) = sub.sets.get(usize::from(ci)) else {
+                continue;
+            };
+            for (lig, rest) in set {
                 let len = rest.len() + 1;
                 if len <= glyphs.len()
                     && len >= 2
