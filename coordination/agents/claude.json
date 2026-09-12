@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T04:26:54Z",
-      "adaptation": "Accepted FT-002 revision 2 (stage 2: math) at input main 25a92a9, allocation openai-kabir-plus-ft002-stage2. Revision 1 shipped at 9f1033b: lexer with exact UTF-8 spans, finite-subset parser with recovery, layout, runtime-v1 JSONLines, 12 cargo tests, clippy and fmt clean, 21/21 independent binary checks. Stage 2 adds math within the same owned path and preserves runtime-v1 unchanged; math items reuse the existing text item shape and exact source spans so FT-003 source navigation keeps working.",
-      "main_sha": "09031efa9feca80d7a34e29b0b6fc41d43c509c4",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T05:15:58Z",
+      "adaptation": "Accepted FT-002 revision 3 (stage 3: dependency-aware invalidation and cached reuse) at input main 60ceb5c, allocation openai-kabir-plus-ft002-stage3. Groundwork already exists: a Session with byte-diff block reuse and ReuseStats was built on this machine during stage 2 and deliberately NOT merged, because its own equivalence test caught real drift between its private copy of the layout engine and the real one once math landed. Stage 3 makes that fix in scope: layout.rs will be refactored into a resumable cursor so there is one layout engine, then reuse drives it. Macro definitions are state, so a macro change must invalidate every dependent block - that is the dependency-aware part of this revision and goes beyond the earlier byte-diff prototype.",
+      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
+      "revision": 3
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "de1020cd0be7cede11be2691e00e7f5b15cb2224",
+  "code_revision": "01fb13cc65dc6e36f2989b3db06953a7559b0e6c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -33,10 +33,10 @@
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "FT-002 hardened with preamble handling and \\newcommand macro expansion; 37 tests pass. Corpus result moved from 0 to 7 cases status ok. Separately, user-assigned IDE interface design published as a six-artboard canvas with working files in docs/design/canvas.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:15:12Z",
+  "updated_utc": "2026-09-12T05:15:58Z",
   "usage": {
     "evidence": "cargo test 37 pass (27 lib, 10 acceptance); clippy -D warnings clean; cargo fmt clean; tests/tex-corpus 14/14 answered, 7 ok and 7 recovered, 9/9 visible_text expectations covered by exact byte spans",
     "status": "Four Codex worker runs on openai-kabir-plus-ft002-stage2; Codex weekly window was 5 percent at last reading"
