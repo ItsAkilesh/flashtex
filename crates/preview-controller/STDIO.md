@@ -118,3 +118,29 @@ query preprocessing. Results contain ordered UTF-8 byte ranges, `work_used` and
 explicit `termination`: `complete`, `match_limit`, or `work_limit`. Partial results
 must never be labeled exhaustive. Search is a bounded serialized operation; this
 initial helper route does not implement mid-query user cancellation or regex.
+
+`reload:{path,expected_revision,expected_sha256,expected_disk_sha256,user_approved:true}`
+explicitly imports a reviewed disk snapshot into the durable source. Both source
+identity and the freshly read disk hash must match. The helper takes the shared
+project lock while reading and saving the ledger; arbitrary external writers can
+still modify disk afterwards. The imported bytes are bounded UTF-8, and prior
+source remains in persistent undo history. This operation never writes disk.
+It returns document and separate preview status just like `edit`. A lost reply
+requires reading `document` before retry; the old revision will be refused after
+a successful reload. `user_approved` is a client responsibility, not proof of a
+human action. Native UI must show the changes before confirming replacement.
+
+`snapshot` additionally returns `membership_generation`. `open_document` and
+`detach_document` require `{path,source_versions,membership_generation}` matching
+that snapshot. Open imports an existing rooted UTF-8 file or restores its retained
+private ledger, and returns `document`, current versions/generation and separate
+preview status. Detach excludes a non-entry document for this session and returns
+those membership fields with `document:null`. It never deletes a disk file or
+ledger. Project restart restores all retained documents; persistent exclusions are
+not implemented. Each membership change invalidates pending previews and index
+snapshots. New includes are not yet discovered automatically after an edit.
+
+A reply blocked in the output writer for two seconds terminates the helper even
+when the output queue has not filled. The actor checks this deadline between
+operations; it does not interrupt a filesystem call. Recover durable source after
+uncertain delivery instead of assuming that the last operation was rejected.

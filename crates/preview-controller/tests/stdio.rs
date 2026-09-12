@@ -245,6 +245,15 @@ fn undo_retry_after_helper_kill_is_idempotent_and_redo_remains_available() {
 
 #[test]
 fn stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing() {
+    stalled_reader(40);
+}
+
+#[test]
+fn single_stalled_reply_times_out_without_filling_output_queue() {
+    stalled_reader(1);
+}
+
+fn stalled_reader(requests: usize) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store");
     {
@@ -280,7 +289,7 @@ fn stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing() 
     );
     // Keep stdout open but deliberately stop draining it. Each document reply is
     // larger than the OS pipe; bounded helper output admission must stop work.
-    for id in 0..40 {
+    for id in 0..requests {
         let line = json!({"protocol_version":1,"session_id":"session1","id":format!("r{id}"),"type":"document","payload":{"path":"main.tex"}});
         if writeln!(client.input.as_mut().unwrap(), "{line}").is_err() {
             break;
@@ -416,5 +425,36 @@ fn helper_exports_exact_source_and_refuses_conflicting_or_ambiguous_expectations
     assert_eq!(
         reopened.reply("get")["payload"]["document"]["text"],
         "saved β"
+    );
+}
+
+#[test]
+fn helper_reload_requires_approval_and_preserves_disk() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "initial").unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":root.path(),"private_ledger_root":private.path()});
+    let mut client = Client::configured(config_dir.path(), config);
+    client.send("get", "document", json!({"path":"main.tex"}));
+    let old = client.reply("get")["payload"]["document"].clone();
+    std::fs::write(root.path().join("main.tex"), "external").unwrap();
+    let hash = flashtex_project_files::sha256_hex(b"external");
+    let mut request = json!({"path":"main.tex","expected_revision":1,"expected_sha256":old["source_sha256"],"expected_disk_sha256":hash});
+    client.send("refused", "reload", request.clone());
+    assert_eq!(client.reply("refused")["type"], "error");
+    client.send("unchanged", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("unchanged")["payload"]["document"], old);
+    request["user_approved"] = json!(true);
+    client.send("reload", "reload", request.clone());
+    assert_eq!(
+        client.reply("reload")["payload"]["document"]["text"],
+        "external"
+    );
+    client.send("retry", "reload", request);
+    assert_eq!(client.reply("retry")["type"], "error");
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("main.tex")).unwrap(),
+        "external"
     );
 }

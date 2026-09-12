@@ -214,3 +214,20 @@ The probe used rational size 10,485,761/3 ticks and origin (1/2, 7/4). This veri
 decoding/placement only. OpenType selection, license binding, shaping, rasterization
 and native/PDF acceptance remain upstream or downstream gates. No font file is
 copied into the repository and no display-list wire primitive is activated.
+
+`mixed::MixedBatch` combines validated upstream traced primitives with explicitly
+selected immutable CFF replacements. It preserves quadratic/cubic/rule distinctions,
+paint order, stable primitive identity and attached source chains. Each primitive
+retains the exact intersection of page, caller and source clips. Repeated identities,
+stale project/revision/page context and attempted rule-to-glyph replacement fail.
+CFF glyph selection is explicit; this API does not perform shaping or infer that
+a replacement glyph represents the upstream logical text.
+
+Construction enforces total command count and a strict serialized-byte cap through
+a bounded writer, returning no partial batch on failure. `fixture_bytes()` uses
+`flashtex-internal-mixed-v1`, a separate opt-in consumer fixture format. Rational
+coordinates use decimal numerator/denominator strings so JSON consumers cannot
+round large integers. These limits bound encoded payload, not total process RSS or
+font-loader transient allocations. Legacy rendering wire and hinting flags remain
+unchanged. Tests combine explicit synthetic quadratic geometry with parsed original
+CFF fixture curves, plus exact byte-boundary, command-budget and culling checks.

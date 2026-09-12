@@ -177,3 +177,88 @@ fn export_refuses_parent_swapped_to_outside_symlink() {
         "victim"
     );
 }
+
+#[test]
+fn explicit_reload_checks_both_versions_and_keeps_dirty_source_in_undo() {
+    use flashtex_edit_ledger::history::HistoryMove;
+    use flashtex_preview_controller::HistoryAction;
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "original").unwrap();
+    let (files, mut controller) =
+        FileProject::open(root.path(), private.path(), "p", "main.tex").unwrap();
+    let old = controller.document("main.tex").unwrap().clone();
+    controller
+        .replace_document("main.tex", 1, &old.source_sha256, "unsaved α".into())
+        .unwrap();
+    let dirty = controller.document("main.tex").unwrap().clone();
+    std::fs::write(root.path().join("main.tex"), "external β").unwrap();
+    let hash = flashtex_project_files::sha256_hex("external β".as_bytes());
+    assert!(files
+        .reload_explicitly(&mut controller, "main.tex", 1, &old.source_sha256, &hash)
+        .is_err());
+    assert!(files
+        .reload_explicitly(
+            &mut controller,
+            "main.tex",
+            2,
+            &dirty.source_sha256,
+            &old.source_sha256
+        )
+        .is_err());
+    let result = files
+        .reload_explicitly(&mut controller, "main.tex", 2, &dirty.source_sha256, &hash)
+        .unwrap();
+    assert_eq!(result.document.text, "external β");
+    drop(controller);
+    let (_, mut controller) =
+        FileProject::open(root.path(), private.path(), "p", "main.tex").unwrap();
+    let result = controller
+        .apply_history(
+            "main.tex",
+            HistoryAction::Undo(HistoryMove {
+                command_id: "undo-reload".into(),
+                expected_revision: 3,
+                expected_sha256: hash,
+            }),
+        )
+        .unwrap();
+    assert_eq!(result.history.document.text, "unsaved α");
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("main.tex")).unwrap(),
+        "external β"
+    );
+}
+
+#[test]
+fn dynamic_open_detach_and_reopen_preserve_source_and_navigation() {
+    let root = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("main.tex"), "main").unwrap();
+    let (files, mut controller) =
+        FileProject::open(root.path(), private.path(), "p", "main.tex").unwrap();
+    std::fs::write(root.path().join("chapter.tex"), "\\label{chapter}").unwrap();
+    let initial = controller.index().snapshot();
+    files
+        .open_document(&mut controller, &initial, "chapter.tex")
+        .unwrap();
+    let added = controller.index().snapshot();
+    assert!(files
+        .open_document(&mut controller, &initial, "chapter.tex")
+        .is_err());
+    assert!(controller.detach_document(&added, "main.tex").is_err());
+    controller.detach_document(&added, "chapter.tex").unwrap();
+    assert!(controller.document("chapter.tex").is_err());
+    std::fs::remove_file(root.path().join("chapter.tex")).unwrap();
+    let removed = controller.index().snapshot();
+    files
+        .open_document(&mut controller, &removed, "chapter.tex")
+        .unwrap();
+    assert_eq!(
+        controller.document("chapter.tex").unwrap().text,
+        "\\label{chapter}"
+    );
+    assert!(controller.index().snapshot().generation > added.generation);
+    assert!(controller.index().symbols(&added).is_err());
+    assert!(!root.path().join("chapter.tex").exists());
+}

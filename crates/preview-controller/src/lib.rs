@@ -129,6 +129,84 @@ impl Controller {
             .map_err(|e| e.to_string())?
             .ok_or("uninitialized document".into())
     }
+    /// Add an initialized durable source to this live session. Membership checks
+    /// use the whole prior snapshot so stale UI requests cannot change the project.
+    pub fn attach_document(
+        &mut self,
+        expected: &VersionSnapshot,
+        store: Store,
+    ) -> Result<EditOutcome, String> {
+        if self.closed || expected != &self.index.snapshot() {
+            return Err("project closed or membership snapshot is stale".into());
+        }
+        if self.stores.len() >= 256 {
+            return Err("project exceeds 256 source stores".into());
+        }
+        let document = store
+            .document()
+            .map_err(|e| e.to_string())?
+            .ok_or("uninitialized document")?
+            .clone();
+        if document.project_id != self.project_id || self.stores.contains_key(&document.path) {
+            return Err("wrong project or document already attached".into());
+        }
+        let started = Instant::now();
+        let mut members = self.membership_documents(None)?;
+        members.push(document.clone());
+        self.replace_membership(expected, &members)?;
+        self.submitted = None;
+        self.stores.insert(document.path.clone(), store);
+        Ok(self.after_save(document, started))
+    }
+
+    fn membership_documents(&self, omitted: Option<&str>) -> Result<Vec<Document>, String> {
+        self.stores
+            .keys()
+            .filter(|path| omitted != Some(path.as_str()))
+            .map(|path| self.document(path).cloned())
+            .collect()
+    }
+    fn replace_membership(
+        &mut self,
+        expected: &VersionSnapshot,
+        documents: &[Document],
+    ) -> Result<(), String> {
+        let members: Vec<_> = documents
+            .iter()
+            .map(|doc| {
+                (
+                    doc.path.as_str(),
+                    doc.revision,
+                    doc.text.as_str(),
+                    flashtex_project_index::DocumentKind::Latex,
+                )
+            })
+            .collect();
+        self.index
+            .replace_membership(expected, &members)
+            .map_err(|e| e.to_string())
+    }
+    /// Exclude a source from this session, releasing its lock but never deleting
+    /// its ledger or disk file. Opening the project again restores retained sources.
+    pub fn detach_document(
+        &mut self,
+        expected: &VersionSnapshot,
+        path: &str,
+    ) -> Result<Option<String>, String> {
+        if self.closed || expected != &self.index.snapshot() {
+            return Err("project closed or membership snapshot is stale".into());
+        }
+        if path == self.entry_path {
+            return Err("cannot detach the entry document".into());
+        }
+        self.document(path)?;
+        let members = self.membership_documents(Some(path))?;
+        self.replace_membership(expected, &members)?;
+        self.submitted = None;
+        self.stores.remove(path);
+        Ok(self.compile_current().err())
+    }
+
     /// An Err means the save did not report success; on storage uncertainty reopen
     /// the authoritative ledger before retry. A compile error is an Ok outcome.
     pub fn replace_document(

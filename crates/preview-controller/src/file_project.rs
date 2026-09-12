@@ -29,6 +29,7 @@ pub enum DiskState {
 pub struct FileProject {
     root: PathBuf,
     capability: ProjectRoot,
+    ledger_root: PathBuf,
     project_id: String,
     diagnostics: Vec<String>,
 }
@@ -137,6 +138,7 @@ impl FileProject {
             Self {
                 root,
                 capability,
+                ledger_root,
                 project_id: project_id.into(),
                 diagnostics,
             },
@@ -174,6 +176,85 @@ impl FileProject {
             }),
         }
     }
+    /// Explicitly open another existing disk file, preferring a retained ledger.
+    /// Import creates private source only; it never creates or edits a disk file.
+    pub fn open_document(
+        &self,
+        controller: &mut Controller,
+        expected: &flashtex_project_index::VersionSnapshot,
+        path: &str,
+    ) -> Result<crate::EditOutcome, String> {
+        if expected != &controller.index().snapshot() || expected.project_id != self.project_id {
+            return Err("project membership snapshot is stale".into());
+        }
+        let normalized = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
+        if normalized.as_str() != path {
+            return Err("document path must be normalized".into());
+        }
+        if controller.document(path).is_ok() {
+            return Err("document already attached".into());
+        }
+        let slot = self.ledger_root.join(sha256_hex(path.as_bytes()));
+        if fs::symlink_metadata(&slot).is_ok_and(|meta| !meta.is_dir()) {
+            return Err("ledger slot is not a private directory".into());
+        }
+        let mut store = Store::open(slot).map_err(|e| e.to_string())?;
+        match store.document().map_err(|e| e.to_string())? {
+            Some(doc) if doc.project_id != self.project_id || doc.path != path => {
+                return Err("retained ledger identity differs from requested document".into());
+            }
+            Some(_) => {}
+            None => {
+                let file = self
+                    .capability
+                    .read(&normalized, flashtex_edit_ledger::MAX_DOCUMENT_BYTES as u64)
+                    .map_err(|e| e.to_string())?
+                    .ok_or("document is missing on disk")?;
+                let text = String::from_utf8(file.bytes).map_err(|_| "source must be UTF-8")?;
+                store
+                    .initialize(
+                        Document::new(self.project_id.clone(), path.into(), 1, text)
+                            .map_err(|e| e.to_string())?,
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        controller.attach_document(expected, store)
+    }
+
+    /// Explicitly accept a reviewed disk snapshot into durable source. The old
+    /// source remains in ledger undo history. No disk writes or automatic reload.
+    pub fn reload_explicitly(
+        &self,
+        controller: &mut Controller,
+        path: &str,
+        expected_revision: u64,
+        expected_source_sha256: &str,
+        expected_disk_sha256: &str,
+    ) -> Result<crate::EditOutcome, String> {
+        let source = controller.document(path)?;
+        if source.project_id != self.project_id
+            || source.revision != expected_revision
+            || source.source_sha256 != expected_source_sha256
+        {
+            return Err("reload source identity is stale or belongs to another project".into());
+        }
+        let expected =
+            sha256_from_hex(expected_disk_sha256).ok_or("invalid expected disk SHA-256")?;
+        let normalized = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
+        let _lock = self.capability.lock().map_err(|e| e.to_string())?;
+        let file = self
+            .capability
+            .read(&normalized, flashtex_edit_ledger::MAX_DOCUMENT_BYTES as u64)
+            .map_err(|e| e.to_string())?
+            .ok_or("reload target is missing")?;
+        if file.sha256 != expected {
+            return Err("disk changed since reload was reviewed".into());
+        }
+        let text = String::from_utf8(file.bytes).map_err(|_| "reload source must be UTF-8")?;
+        controller.replace_document(path, expected_revision, expected_source_sha256, text)
+    }
+
     /// None means the target must not exist. No force-overwrite option.
     /// A post-rename error may mean bytes changed: inspect before retrying.
     pub fn export(

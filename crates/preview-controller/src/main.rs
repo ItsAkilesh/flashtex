@@ -13,7 +13,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, SyncSender},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -112,9 +112,12 @@ fn run(config: Value) -> Result<(), String> {
     let output_stopped = stopped.clone();
     let output_done = Arc::new(AtomicBool::new(false));
     let writer_done = output_done.clone();
+    let writing_since = Arc::new(Mutex::new(None::<std::time::Instant>));
+    let writer_clock = writing_since.clone();
     thread::spawn(move || {
         let mut stdout = io::stdout().lock();
         for bytes in output_rx {
+            *writer_clock.lock().unwrap() = Some(std::time::Instant::now());
             if stdout
                 .write_all(&bytes)
                 .and_then(|_| stdout.flush())
@@ -123,7 +126,9 @@ fn run(config: Value) -> Result<(), String> {
                 output_stopped.store(true, Ordering::SeqCst);
                 break;
             }
+            *writer_clock.lock().unwrap() = None;
         }
+        *writer_clock.lock().unwrap() = None;
         writer_done.store(true, Ordering::SeqCst);
     });
     let reader_output = output_tx.clone();
@@ -178,6 +183,14 @@ fn run(config: Value) -> Result<(), String> {
     );
     let mut reviews: BTreeMap<String, PreparedEdit> = BTreeMap::new();
     while !stopped.load(Ordering::SeqCst) {
+        if writing_since
+            .lock()
+            .unwrap()
+            .is_some_and(|start| start.elapsed() >= Duration::from_secs(2))
+        {
+            stopped.store(true, Ordering::SeqCst);
+            break;
+        }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
             Ok(request) => {
                 let id = request["id"].clone();
@@ -266,7 +279,9 @@ fn handle(
         "document" => Ok(json!({"document":controller.document(string(p,"path")?)?})),
         "snapshot" => {
             let snapshot = controller.index().snapshot();
-            Ok(json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents}))
+            Ok(
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation}),
+            )
         }
         "search_literal" => {
             let snapshot = controller.index().snapshot();
@@ -347,6 +362,27 @@ fn handle(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
+        "open_document" | "detach_document" => {
+            let expected = controller.index().snapshot();
+            if p["source_versions"] != json!(expected.documents)
+                || p["membership_generation"].as_u64() != Some(expected.generation)
+            {
+                return Err("project membership snapshot is stale".into());
+            }
+            let path = string(p, "path")?;
+            let (document, preview_error) = if request["type"] == "open_document" {
+                let result = file_project
+                    .ok_or("helper was not opened from a file project")?
+                    .open_document(controller, &expected, path)?;
+                (Some(result.document), result.preview_error)
+            } else {
+                (None, controller.detach_document(&expected, path)?)
+            };
+            let current = controller.index().snapshot();
+            Ok(
+                json!({"document":document,"preview_error":preview_error,"source_versions":current.documents,"membership_generation":current.generation}),
+            )
+        }
         "file_status" => {
             let files = file_project.ok_or("helper was not opened from a file project")?;
             let state = match files.inspect(controller, string(p, "path")?)? {
@@ -364,6 +400,25 @@ fn handle(
             };
             Ok(
                 json!({"path":string(p,"path")?,"disk":state,"discovery_diagnostics":files.diagnostics(),"export_available":true}),
+            )
+        }
+        "reload" => {
+            if p["user_approved"] != true {
+                return Err("explicit reload approval required".into());
+            }
+            let result = file_project
+                .ok_or("helper was not opened from a file project")?
+                .reload_explicitly(
+                    controller,
+                    string(p, "path")?,
+                    p["expected_revision"]
+                        .as_u64()
+                        .ok_or("expected_revision required")?,
+                    string(p, "expected_sha256")?,
+                    string(p, "expected_disk_sha256")?,
+                )?;
+            Ok(
+                json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
         "export" => {

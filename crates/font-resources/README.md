@@ -273,3 +273,38 @@ Reject-policy results remain valid and unchanged in meaning. This proves bounded
 parser/geometry acceptance only, not outline equality against an oracle, hinted
 raster fidelity, Latin Modern coverage or PDF parity. Synthetic tests cover exact
 masks, malformed operands, all flex forms, decimal matrices and overflow.
+
+## Pinned CFF regression and immutable cache
+
+`fixtures/stix-cff.json` records the installed font/OFL hashes, exact CFF table
+range verified through the existing font-engine accessor, and a canonical exact
+geometry regression hash. No font/license bytes are vendored. Run the opt-in
+`cff_regression` test in release mode with `--ignored --nocapture`; optional
+FLASHTEX_STIX_FONT and FLASHTEX_STIX_LICENSE override paths, never expected hashes.
+Missing resources mean this gate remains pending, not that fidelity passed.
+The canonical v1 hash streams GID u16be, advance rationals (signed numerator and
+positive denominator i128be), command count u32be, then command tag 0/1/2/3 and
+point rationals for move/line/curve/close. It is an implementation regression
+baseline, not an independent visual oracle. Concrete hardening also rejects
+stroked PaintType in the filled-outline API; mask/subroutine/matrix overflow
+regressions run through the matrix-applied API.
+
+`CffOutlineCache::from_font_table(full_bytes, face0, validated_table_range, limits)`
+computes the full-font and CFF hashes, reparses immutable table bytes and retains
+an internal Cff value. The existing OpenType accessor remains range/selection
+authority. Keys include that fixed full identity, original GID and HintPolicy.
+`lookup` returns CacheOutcome { result: Result<Arc<MatrixOutline>>, status };
+status is Hit, Stored or BypassedOversize, including explicit negative results.
+LRU entry/byte limits are enforced, with 512 conservative bookkeeping bytes per
+entry plus actual retained Vec/String capacities and object sizes. The budget
+covers cache-owned references/payload, not external Arc holders or allocator-wide
+accounting. Source CFF storage has its separate 64MiB input cap. Oversized entries
+are returned without retention; identities and decoded state cannot mutate through
+the cache API. Max configured limits are 4096 entries and 256MiB.
+
+Measured replay evidence is in `fixtures/stix-cff-replay.json`, with tested source
+hashes. All 2221 STIX glyphs produce 55206 commands; cached/direct outputs match.
+One Linux release observation: direct decoding 103.106ms, cache cold 108.647ms,
+full warm replay 0.251ms, 20641359 charged retained bytes within a 32MiB budget.
+These measurements exclude native rendering and are not typing-visible latency
+or hinted/visual/PDF parity claims.

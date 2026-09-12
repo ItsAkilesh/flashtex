@@ -254,6 +254,51 @@ impl ProjectIndex {
         }
     }
 
+    /// Replace an explicitly reviewed full membership snapshot atomically.
+    /// Unlike incremental replacement, unchanged durable revisions may be reopened.
+    /// Removed revision watermarks survive; ordinary updates still reject them.
+    pub fn replace_membership(
+        &mut self,
+        expected: &VersionSnapshot,
+        documents: &[(&str, u64, &str, DocumentKind)],
+    ) -> Result<(), IndexError> {
+        self.check(expected)?;
+        let generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(IndexError::GenerationExhausted)?;
+        let mut next = Self::new(&self.project_id)?;
+        for &(path, revision, source, kind) in documents {
+            if next.documents.contains_key(path) {
+                return Err(IndexError::InvalidPath);
+            }
+            if let Some(&current) = self.last_revisions.get(path) {
+                if revision < current {
+                    return Err(IndexError::StaleDocument {
+                        current_revision: current,
+                        proposed_revision: revision,
+                    });
+                }
+            }
+            if let Some(old) = self.documents.get(path) {
+                if old.revision == revision && (old.source != source || old.kind != kind) {
+                    return Err(IndexError::StaleDocument {
+                        current_revision: old.revision,
+                        proposed_revision: revision,
+                    });
+                }
+            }
+            next.replace_source(path, revision, source, kind)?;
+        }
+        for (path, revision) in &self.last_revisions {
+            next.last_revisions.entry(path.clone()).or_insert(*revision);
+        }
+        next.generation = generation;
+        next.last_metrics = None;
+        *self = next;
+        Ok(())
+    }
+
     fn check(&self, snapshot: &VersionSnapshot) -> Result<(), IndexError> {
         if snapshot.project_id != self.project_id {
             return Err(IndexError::WrongProject);
