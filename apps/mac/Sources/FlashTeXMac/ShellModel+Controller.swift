@@ -256,6 +256,19 @@ extension ShellModel {
                 }
             } else if outputBoundHandleControllerUpdate(kind: kind, payload: payload) {
                 // `failed` for an oversized compiler reply: status names the bound, the held edit is released (ShellModel+OutputBounds.swift)
+            } else if kind == "failed" || kind == "cancelled" {
+                // The compiler session is gone (or the compile was cancelled): no
+                // preview follows for any admitted compile, ours included. An
+                // in-flight edit that is already durable would otherwise wait
+                // forever and every later keystroke would queue behind it. An
+                // edit not yet durable is released by its own reply's
+                // `preview_error` (applyDurableDocument).
+                let detail = (payload["reason"] as? String).map { ": \($0)" } ?? ""
+                log("controller \(kind) compile \(payload["request_id"] as? String ?? "-")\(detail)")
+                controllerStatus = "preview \(kind)\(detail)"
+                if let inFlight = controllerState.inFlight, inFlight.durableRevision != nil {
+                    controllerReleaseInFlight()
+                }
             } else {
                 log("controller update \(kind): \(payload.keys.sorted().joined(separator: ","))")
             }

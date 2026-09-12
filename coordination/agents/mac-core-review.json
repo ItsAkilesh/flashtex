@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-core-review",
+  "allocation_id": "claude-mac20x-core-review",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-core-review/pipeline",
+  "capabilities": ["swift", "appkit", "review", "python-fakes"],
+  "code_revision": "d1828e6a",
+  "eta_minutes": {"likely": 5, "optimistic": 3, "pessimistic": 15},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6fb77efd",
+  "next_action": "Parent reviews the three defect commits (fc89836b, a7fea28f, d1828e6a) and the reported-only list in coordination/mac-core-review.md; decides on finding 4 (helper-side compile_request_id) and 8 (pending edit vs marked text)",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 6fb77efd; reviewed ShellModel, ShellModel+Controller, PreviewControllerClient, WorkerClient, ControllerRelease, HistoricalPreview, DocumentFiles, ProjectDocuments, ProjectSearchPanel, EditHistoryPanel, SourceEditorView pending-edit path, DocumentKinds, TypingBench; three reproduced defects fixed with tests, seven reported with reproductions",
+      "reviewed_utc": "2026-09-12T10:35:00Z",
+      "sha": "6fb77efd"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Adversarial correctness review of the edit -> durable -> preview pipeline. Fixed (test + fix each): failed/cancelled helper compile left the edit in flight forever (typing stall); Cmd-S through a session-rooted helper wrote the temp copy and cleared the dirty flag (data loss); ProjectDocuments unowned model read after awaits (fatal unowned read). Reported only: stale-guard unit mismatch, save continuation leak on detach, completion-id collision after relaunch, search reconcile overwrite window, pending edit vs marked text, worker error drops the queued compile, TypingBench pattern.",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T10:35:00Z",
+  "usage": {"evidence": "ControllerPipelineReviewTests 3/3 with real helper + fake; controller/document/project suites green after each fix; full swift test result in coordination/mac-core-review.md", "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"}
+}

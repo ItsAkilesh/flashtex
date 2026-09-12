@@ -594,10 +594,12 @@ extension ShellModel {
             }
             return
         }
-        // With the durable helper attached the export goes through its rooted,
-        // locked save so the ledger text and the .tex never diverge; the
-        // result is reported asynchronously (never blocks the UI).
-        if controllerAttached, documentURL != nil {
+        // With the durable helper rooted in the open file's project the export
+        // goes through its rooted, locked save so the ledger text and the .tex
+        // never diverge; the result is reported asynchronously (never blocks
+        // the UI). A helper rooted elsewhere (a session copy of a buffer whose
+        // file is not named `main.tex`) would export that copy, not the file.
+        if controllerRoutesFiles {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 switch await controllerSave() {
