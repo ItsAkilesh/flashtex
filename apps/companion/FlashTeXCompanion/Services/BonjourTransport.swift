@@ -3,7 +3,7 @@ import Network
 import UIKit
 
 /// Discovers the FlashTeX Mac host via Bonjour and sends capture_submit payloads
-/// over a TCP JSON Lines connection. Falls back to stdout when disconnected.
+/// over a TCP JSON Lines connection.
 ///
 /// Service type: _flashtex._tcp  (Mac side must advertise this with NWListener)
 /// Protocol: runtime-v1 JSON Lines — one complete JSON object per line.
@@ -66,7 +66,7 @@ final class BonjourTransport {
         receiveBuffer = Data()
     }
 
-    /// Send a capture_submit envelope over the network connection (or stdout fallback).
+    /// Send a capture_submit envelope over the network when connected.
     /// Returns true if the payload was dispatched over the network.
     @discardableResult
     func send(_ jsonLine: String) -> Bool {
@@ -81,10 +81,7 @@ final class BonjourTransport {
             })
             return true
         }
-        // Stdout fallback (for testing without Mac)
-        print(jsonLine)
-        fflush(stdout)
-        return false // indicates not network-sent
+        return false
     }
 
     // MARK: - Private

@@ -53,16 +53,18 @@ final class CaptureStore {
             instructions: instructions
         )
 
-        // Prefer network transport; fall back to stdout (CaptureTransport)
+        // Prefer network transport. Only use the stdout transport when no Mac
+        // connection is available; sending through both duplicates capture_submit.
         var networkSent = false
         if let json = envelope.toJSONString() {
-            let sent = CaptureTransport.shared.send(envelope)
-            if !sent {
-                lastError = "Duplicate capture ID (already sent)"
-                return
-            }
-            // Also try network
             networkSent = BonjourTransport.shared.send(json)
+            if !networkSent {
+                let sent = CaptureTransport.shared.send(envelope)
+                if !sent {
+                    lastError = "Duplicate capture ID (already sent)"
+                    return
+                }
+            }
         }
 
         guard let json = envelope.toJSONString() else { return }
