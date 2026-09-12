@@ -53,18 +53,7 @@
 			isa = PBXGroup;
 			children = (
 				A5000002 /* FlashTeXCompanion */,
-				A5000006 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */,
-				A200000D /* ImageValidator.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		A5000005 /* Products */,
+				A5000005 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
@@ -76,9 +65,6 @@
 				A5000004 /* Models */,
 				A5000006 /* Services */,
 				A2000009 /* Assets.xcassets */,
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTransport.swift; sourceTree = "<group>"; };
 		A200000A /* Info.plist */,
 			);
 			path = FlashTeXCompanion;
@@ -92,7 +78,6 @@
 				A2000004 /* CameraCaptureView.swift */,
 				A2000007 /* PayloadPreviewView.swift */,
 				A2000008 /* CaptureHistoryView.swift */,
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
 		A200000C /* SettingsView.swift */,
 			);
 			path = Views;
@@ -110,8 +95,6 @@
 		A5000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A200000B /* CaptureTransport.swift */,
 				A200000D /* ImageValidator.swift */,
 			);
@@ -170,18 +153,7 @@
 				Base,
 			);
 			mainGroup = A5000001;
-			productRefGroup = A5000006 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				A200000D /* ImageValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageValidator.swift; sourceTree = "<group>"; };
-		A200000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		A200000B /* CaptureTransport.swift */,
-				A200000D /* ImageValidator.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		A5000005 /* Products */;
+			productRefGroup = A5000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -195,9 +167,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
-		A100000A /* CaptureTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000B; };
 		A1000009 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -217,10 +186,7 @@
 				A1000006 /* CaptureStore.swift in Sources */,
 				A1000007 /* PayloadPreviewView.swift in Sources */,
 				A1000008 /* CaptureHistoryView.swift in Sources */,
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
-		A100000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C; };
 		A100000A /* CaptureTransport.swift in Sources */,
-				A100000C /* ImageValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000D; };
 		A100000B /* SettingsView.swift in Sources */,
 				A100000C /* ImageValidator.swift in Sources */,
 			);
