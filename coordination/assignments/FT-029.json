@@ -9,15 +9,15 @@
   "branch": "agent/commander/assistant-context",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "dae486e9449f30a7050886d7d3a7306c212b97f4",
-  "objective": "Subprocess interleaving/cancel/expiry and no replay after terminal response",
+  "input_main_sha": "64c7b8965f5a1dd3ba7ccbb35780195edfd37bd6",
+  "objective": "Native helper context registry recovery contract and bounded resource diagnostics",
   "owned_paths": [
     "crates/assistant-context"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-029",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T07:57:30Z"
+  "updated_utc": "2026-09-12T08:02:58Z"
 }
