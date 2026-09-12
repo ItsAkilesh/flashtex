@@ -551,6 +551,9 @@ extension ShellModel {
     /// Dirty means the buffer differs from what was last opened/saved. A fresh
     /// fixture-seeded buffer (no file, never saved) counts as dirty only once edited.
     var isDirty: Bool {
+        // A non-entry document compares with the text it was opened with
+        // (ProjectDocuments); the entry with its saved text.
+        if activePath != project.entryPath { return project.isDirty(activePath) }
         if let savedText { return !savedText.sameBytes(as: activeText) }
         return documentURL == nil && editorRevision > 1 && !activeText.isEmpty
     }
@@ -576,6 +579,21 @@ extension ShellModel {
 
     /// Menu-driven save: on a conflict, asks the user how to resolve it.
     func saveTexInteractive() {
+        // A non-entry document saves to its own rooted file (never to the
+        // entry URL): ProjectDocuments.saveDocument, helper export or rooted
+        // compare-and-replace, conflicts reported the same way.
+        if activePath != project.entryPath {
+            let path = activePath
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch await project.saveDocument(path) {
+                case .saved(let p, _): captureNote = "Saved \(p)"
+                case .conflict(let c): captureNote = c.summary
+                case .failed(let why): captureNote = "Save of \(path) failed: \(why)"
+                }
+            }
+            return
+        }
         // With the durable helper attached the export goes through its rooted,
         // locked save so the ledger text and the .tex never diverge; the
         // result is reported asynchronously (never blocks the UI).
