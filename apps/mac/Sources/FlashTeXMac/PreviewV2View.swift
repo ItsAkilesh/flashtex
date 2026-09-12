@@ -681,25 +681,49 @@ struct PreviewV2Pane: View {
 
     @ViewBuilder
     private func diagnostics(_ frame: V2Frame) -> some View {
-        let diags = frame.list.diagnostics
-        if !diags.isEmpty {
-            Divider()
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Display list diagnostics (\(diags.count))").font(.caption.bold())
-                ForEach(Array(diags.enumerated()), id: \.offset) { _, d in
-                    HStack(alignment: .top) {
-                        Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(d.severity == .error ? .red : .orange)
-                        Text("[\(d.code)] \(d.message)").font(.caption)
-                        if let s = d.sources.first { Button("Go to source") { model.navigate(to: s) }.controlSize(.mini) }
-                    }
-                }
-            }
-            .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        }
+        // Equatable on the diagnostics array: a new frame with the same
+        // diagnostics (every keystroke of a document with 130 recovered errors)
+        // does not rebuild 130 rows; the list is lazy and bounded in height so
+        // the pages keep their room.
+        V2DiagnosticsList(diagnostics: frame.list.diagnostics) { model.navigate(to: $0) }.equatable()
     }
 
     private var header: some View { V2PaneHeader() }
+}
+
+/// The display list's diagnostics under the pages. Re-evaluated only when the
+/// diagnostics differ (`Equatable`); rows are lazy and the list scrolls within
+/// a bounded height (measured on HW1.tex, 130 recovered errors: the eager
+/// 130-row VStack rebuilt on every frame was the dominant paint cost).
+struct V2DiagnosticsList: View, Equatable {
+    let diagnostics: [RenderingV2.Diagnostic]
+    let onNavigate: (RenderingV2.SourceRange) -> Void
+
+    static func == (a: V2DiagnosticsList, b: V2DiagnosticsList) -> Bool { a.diagnostics == b.diagnostics }
+
+    var body: some View {
+        if !diagnostics.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Display list diagnostics (\(diagnostics.count))").font(.caption.bold())
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, d in
+                            HStack(alignment: .top) {
+                                Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                                    .foregroundStyle(d.severity == .error ? .red : .orange)
+                                Text("[\(d.code)] \(d.message)").font(.caption)
+                                if let s = d.sources.first { Button("Go to source") { onNavigate(s) }.controlSize(.mini) }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 160)
+            }
+            .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("v2-diagnostics")
+        }
+    }
 }
 
 /// The pane header is its own view: it reads the applied result, worker and
@@ -772,6 +796,7 @@ struct PreviewV2View: View {
             // for this revision; a frame that changed no page paints nothing new.
             let expectedDraws = V2RenderTracker.shared.changedPages(frame: frame)
             let _ = expectedDraws == 0 ? TypingBench.shared.willRender(revision: frame.list.revision, pages: 0) : ()
+            let _ = TypingBench.isBenchActive ? FlashTeXLog.write("preview-v2: pass revision \(frame.list.revision) \(stale ? "stale" : "loaded") changed \(expectedDraws) at \(MonotonicClock.nowNs())") : ()
             ScrollView([.vertical, .horizontal]) {
                 LazyVStack(spacing: 24) {
                     ForEach(Array(frame.prepared.enumerated()), id: \.element.number) { index, prepared in
@@ -865,12 +890,19 @@ private struct PageV2View: View, Equatable {
         let label = bitmap == nil ? "page \(page.number) · v2 · rasterizing…" : (stale ? "page \(page.number) · v2 · STALE" : "page \(page.number) · v2")
         let labelColor: Color = stale ? .orange : (dark ? Color(white: 0.7) : Color(white: 0.35))
         let pageBackground: Color = dark ? Color(white: 0.16) : .white
-        let canvas = PageV2Canvas(bitmap: bitmap, pageToken: pageToken, pageNumber: page.number, frameRevision: frameRevision, expectedDraws: expectedDraws,
-                                  size: size, scale: scale, caretMatches: caretMatches, hover: hover)
-            .equatable()
+        // The bitmap is the contents of a CALayer (PageBitmapLayer): CoreAnimation
+        // composites it on every later pass without any drawing on the main thread;
+        // a new bitmap is one `layer.contents` assignment. Caret/hover marks are a
+        // separate small overlay that exists only while there is something to mark.
+        let canvas = PageBitmapLayer(bitmap: bitmap, pageToken: pageToken, pageNumber: page.number, frameRevision: frameRevision,
+                                     expectedDraws: expectedDraws, background: dark ? CGColor(gray: 0.16, alpha: 1) : CGColor(gray: 1, alpha: 1))
             .frame(width: size.width, height: size.height)
-            .background(pageBackground)
-            .shadow(radius: 4)
+            .background(Rectangle().fill(pageBackground).shadow(radius: 4))
+            .overlay {
+                if !caretMatches.isEmpty || hover != nil {
+                    PageV2Marks(scale: scale, caretMatches: caretMatches, hover: hover).equatable().allowsHitTesting(false)
+                }
+            }
         canvas
             .overlay { if stale { Color.orange.opacity(0.08).allowsHitTesting(false) } }
             .contentShape(Rectangle())
@@ -898,22 +930,74 @@ private struct PageV2View: View, Equatable {
     }
 }
 
-/// The blit of one page bitmap plus caret/hover marks. Redraws only when the
-/// bitmap object, caret matches or hover change.
-private struct PageV2Canvas: View, Equatable {
+/// One page bitmap as CALayer contents. `updateNSView` runs in the SwiftUI
+/// render pass; the layer is touched only when the bitmap object changes
+/// (page content, scale or appearance), and that assignment is the v2 paint
+/// point for the typing bench (the CoreAnimation commit that follows the
+/// pass uploads the new contents; `finishPaint` runs on the next turn).
+private struct PageBitmapLayer: NSViewRepresentable {
     let bitmap: CGImage?
     let pageToken: String
     let pageNumber: Int
     var frameRevision = 0
     var expectedDraws = 1
-    let size: CGSize
+    let background: CGColor
+
+    func makeNSView(context: Context) -> PageBitmapView { PageBitmapView() }
+
+    func updateNSView(_ view: PageBitmapView, context: Context) {
+        view.show(bitmap, pageToken: pageToken, pageNumber: pageNumber, frameRevision: frameRevision, expectedDraws: expectedDraws, background: background)
+    }
+}
+
+/// The AppKit view behind `PageBitmapLayer` (test-visible: `shown`, `show`).
+final class PageBitmapView: NSView {
+    private(set) var shown: CGImage?
+    /// How many times a new bitmap was installed (tests).
+    private(set) var installs = 0
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        // The whole bitmap fills the layer: at the pane's pixels-per-point the
+        // bitmap's pixel size equals the layer's backing size (1:1, no resampling).
+        layer?.contentsGravity = .resize
+        layer?.magnificationFilter = .nearest
+        layer?.minificationFilter = .nearest
+        layer?.masksToBounds = true
+    }
+    required init?(coder: NSCoder) { nil }
+    override var isOpaque: Bool { true }
+    /// Mouse events belong to the SwiftUI page view around this layer
+    /// (hover geometry, tap navigation); the bitmap never takes them.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Installs `bitmap` as the layer contents when it is not the one shown.
+    /// Returns whether the contents changed.
+    @MainActor
+    @discardableResult
+    func show(_ bitmap: CGImage?, pageToken: String, pageNumber: Int, frameRevision: Int, expectedDraws: Int, background: CGColor) -> Bool {
+        layer?.backgroundColor = background
+        guard bitmap !== shown else { return false }
+        shown = bitmap
+        if bitmap != nil {
+            installs += 1
+            // Paint instrumentation (TypingBench.swift): the pass that installs a page
+            // bitmap of the frame's revision; pages still rasterizing do not count.
+            TypingBench.shared.willRender(revision: frameRevision, pages: expectedDraws)
+            TypingBench.shared.didDraw(page: pageNumber)
+            if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: blit page \(pageNumber) \(pageToken.prefix(24)) at \(MonotonicClock.nowNs())") }
+        }
+        layer?.contents = bitmap
+        return true
+    }
+}
+
+/// Caret and hover marks over a page, drawn only when there is something to mark.
+private struct PageV2Marks: View, Equatable {
     let scale: CGFloat
     let caretMatches: [V2Geometry.CaretMatch]
     let hover: V2Geometry.Hit?
-
-    static func == (a: PageV2Canvas, b: PageV2Canvas) -> Bool {
-        a.bitmap === b.bitmap && a.pageToken == b.pageToken && a.size == b.size && a.scale == b.scale && a.caretMatches == b.caretMatches && a.hover == b.hover
-    }
 
     private func viewRect(_ r: RenderingV2.Rect) -> CGRect {
         CGRect(x: RenderingV2.points(r.x) * scale, y: RenderingV2.points(r.top) * scale,
@@ -921,26 +1005,7 @@ private struct PageV2Canvas: View, Equatable {
     }
 
     var body: some View {
-        // Paint instrumentation (TypingBench.swift): the v2 paint point is the render
-        // pass that blits a page bitmap of the frame's revision; pages whose bitmap is
-        // still rasterizing do not count as drawn (finishPaint logs drew n/expected).
-        let _ = bitmap == nil ? () : TypingBench.shared.willRender(revision: frameRevision, pages: expectedDraws)
         Canvas(rendersAsynchronously: false) { context, _ in
-            if let bitmap {
-                TypingBench.shared.didDraw(page: pageNumber) // paint instrumentation
-                if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: blit page \(pageNumber) \(pageToken.prefix(24)) at \(MonotonicClock.nowNs())") }
-                // The off-main raster of this page, blitted 1:1 onto device
-                // pixels (no resampling): the same bitmap the parity check compares.
-                context.withCGContext { cg in
-                    // The canvas is y-down; CGImage drawing is y-up. Flip once.
-                    cg.saveGState()
-                    cg.translateBy(x: 0, y: size.height)
-                    cg.scaleBy(x: 1, y: -1)
-                    cg.interpolationQuality = .none
-                    cg.draw(bitmap, in: CGRect(origin: .zero, size: size))
-                    cg.restoreGState()
-                }
-            }
             // Caret highlight: exact caret bar when the compiler supplied one for
             // that byte, else the whole cluster's hit rectangles (documented fallback).
             for m in caretMatches {

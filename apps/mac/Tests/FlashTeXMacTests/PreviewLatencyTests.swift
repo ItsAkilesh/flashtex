@@ -222,6 +222,38 @@ final class PreviewLatencyTests: XCTestCase {
         XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("{\"protocol_version\":2,\"payload\":{\"pages\":[{\"number\":1,".utf8)) { _, _ in nil })
     }
 
+    @MainActor
+    func testPageBitmapLayerInstallsContentsOncePerBitmapAndRecordsThePaint() throws {
+        _ = try PreviewV2Tests.lmRoman10()
+        let frame = try V2Frame.prepare(data: try Data(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.json")), store: Self.store, cache: nil)
+        let bitmap = try XCTUnwrap(GlyphRunRenderer.rasterize(frame.prepared[0], scale: 1))
+        let view = PageBitmapView(frame: NSRect(x: 0, y: 0, width: 612, height: 792))
+        let bench = TypingBench.shared
+        bench.reset()
+        let revision = 1_000_000 + Int.random(in: 0..<1000)
+        // No bitmap yet: nothing installed, nothing recorded.
+        XCTAssertFalse(view.show(nil, pageToken: "t", pageNumber: 1, frameRevision: revision, expectedDraws: 1, background: CGColor(gray: 1, alpha: 1)))
+        XCTAssertNil(view.layer?.contents)
+        XCTAssertEqual(view.installs, 0)
+        // The bitmap: installed as layer contents once; the paint point is recorded on the next run-loop turn.
+        XCTAssertTrue(view.show(bitmap, pageToken: "t", pageNumber: 1, frameRevision: revision, expectedDraws: 1, background: CGColor(gray: 1, alpha: 1)))
+        XCTAssertTrue(view.layer?.contents as! CGImage === bitmap)
+        XCTAssertEqual(view.installs, 1)
+        XCTAssertFalse(view.show(bitmap, pageToken: "t", pageNumber: 1, frameRevision: revision, expectedDraws: 1, background: CGColor(gray: 0.16, alpha: 1)), "the same bitmap object is not re-installed")
+        XCTAssertEqual(view.installs, 1)
+        XCTAssertEqual(view.layer?.backgroundColor, CGColor(gray: 0.16, alpha: 1), "appearance still applies")
+        let deadline = Date().addingTimeInterval(5)
+        while bench.recorder.lastPaintedRevision < revision, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        XCTAssertEqual(bench.recorder.lastPaintedRevision, revision)
+        XCTAssertEqual(bench.recorder.paints.last?.redrawn, true)
+        // A different bitmap object (another scale) replaces the contents.
+        let other = try XCTUnwrap(GlyphRunRenderer.rasterize(frame.prepared[0], scale: 0.5))
+        XCTAssertTrue(view.show(other, pageToken: "t", pageNumber: 1, frameRevision: revision + 1, expectedDraws: 1, background: CGColor(gray: 1, alpha: 1)))
+        XCTAssertEqual(view.installs, 2)
+        XCTAssertTrue(view.layer?.contents as! CGImage === other)
+        bench.reset()
+    }
+
     func testCaretBoundsNeverExcludeAMatchingCluster() throws {
         _ = try PreviewV2Tests.lmRoman10()
         let frame = try V2Frame.prepare(data: try Data(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.json")), store: Self.store, cache: nil)
