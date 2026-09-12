@@ -1,0 +1,44 @@
+{
+  "agent_id": "mac-claude-a",
+  "allocation_id": "openai-mac-plus-ft003",
+  "assignment_acknowledgements": {
+    "FT-003": {
+      "acknowledged_utc": "2026-09-12T04:02:02Z",
+      "adaptation": "Accepted FT-003 rev 1 on agent/mac-claude-a/mac-shell. User explicitly directed this Claude Code session to implement it and to run until the orchestrator says stop, overriding the openai-mac-plus-ft003 Codex-only note; user also set jay3332 as primary commit author on mac-m1max-a (AGENTS.md machine exception, main d685879). Shell reads protocol v1 compile-result fixture; source ranges are UTF-8 bytes converted to Swift indices.",
+      "main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
+      "revision": 1
+    }
+  },
+  "branch": "agent/mac-claude-a/mac-shell",
+  "capabilities": [
+    "swift",
+    "xcode",
+    "rust",
+    "macos-simulators"
+  ],
+  "code_revision": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "eta_minutes": {
+    "likely": 40,
+    "optimistic": 25,
+    "pessimistic": 60
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
+  "next_action": "Create Package.swift and SwiftUI shell, build with xcodebuild",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Reviewed runtime-v1 contract and fixtures; no conflicts with apps/mac",
+      "reviewed_utc": "2026-09-12T04:02:08Z",
+      "sha": "d6858792737c0980cccaec5db835075e94a1ebc9"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-003 accepted; scaffolding apps/mac Swift package (editor + fixture preview + click-to-source)",
+  "tool": "Claude Code",
+  "updated_utc": "2026-09-12T04:02:08Z",
+  "usage": {
+    "evidence": "Claude Max session per user override; no API spend",
+    "status": "unknown"
+  }
+}
