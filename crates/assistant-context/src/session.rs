@@ -38,8 +38,17 @@ enum Action {
         request_id: String,
     },
     Sweep {},
+    Provider {
+        command: Value,
+    },
 }
-fn execute(registry: &mut ExplanationRegistry, action: Action) -> Result<Value, String> {
+struct Host {
+    registry: ExplanationRegistry,
+    #[cfg(feature = "grok")]
+    provider: Option<super::provider_session::ProviderHost>,
+}
+fn execute(host: &mut Host, action: Action) -> Result<Value, String> {
+    let registry = &mut host.registry;
     match action {
         Action::Submit { input, timeout_ms } => {
             if input.operation != "prepare"
@@ -81,11 +90,40 @@ fn execute(registry: &mut ExplanationRegistry, action: Action) -> Result<Value, 
         Action::Status { request_id } => Ok(
             json!({"type":"status","request_id":request_id,"state":registry.state(&request_id).map(|s| format!("{s:?}"))}),
         ),
+        Action::Provider { command } => {
+            #[cfg(feature = "grok")]
+            {
+                host.provider
+                    .as_mut()
+                    .ok_or("provider mode is disabled")?
+                    .execute(command)
+            }
+            #[cfg(not(feature = "grok"))]
+            {
+                let _ = command;
+                Err("provider mode is disabled".into())
+            }
+        }
         Action::Sweep {} => Ok(json!({"type":"expired","request_ids":registry.sweep()})),
     }
 }
 pub fn run(session: &str) -> Result<(), String> {
-    let mut registry = ExplanationRegistry::new(session.to_owned(), 8, 64)?;
+    serve(Host {
+        registry: ExplanationRegistry::new(session.to_owned(), 8, 64)?,
+        #[cfg(feature = "grok")]
+        provider: None,
+    })
+}
+#[cfg(feature = "grok")]
+pub fn run_provider(session: &str, model: &str, key: String) -> Result<(), String> {
+    serve(Host {
+        registry: ExplanationRegistry::new(session.to_owned(), 8, 64)?,
+        provider: Some(super::provider_session::ProviderHost::new(
+            session, model, key,
+        )?),
+    })
+}
+fn serve(mut host: Host) -> Result<(), String> {
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
     loop {
@@ -102,7 +140,7 @@ pub fn run(session: &str) -> Result<(), String> {
         let parsed = serde_json::from_slice::<Command>(&frame).map_err(|e| e.to_string());
         let (id, result) = match parsed {
             Ok(command) if !command.id.is_empty() && command.id.len() <= 128 => {
-                (Some(command.id), execute(&mut registry, command.action))
+                (Some(command.id), execute(&mut host, command.action))
             }
             Ok(_) => (None, Err("command id must contain1..128bytes".into())),
             Err(error) => (None, Err(error)),

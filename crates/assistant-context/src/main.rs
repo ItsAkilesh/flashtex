@@ -67,9 +67,22 @@ fn run() -> Result<Value, String> {
         _ => Err("operation must be prepare or validate".into()),
     }
 }
+#[cfg(feature = "grok")]
+mod provider_session;
 mod session;
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(feature = "grok")]
+    if args.first().map(String::as_str) == Some("--provider-session") && args.len() == 3 {
+        let result = std::env::var("FLASHTEX_GROK_API_KEY")
+            .map_err(|_| "explicit provider credential missing".to_owned())
+            .and_then(|key| session::run_provider(&args[1], &args[2], key));
+        if let Err(error) = result {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+        return;
+    }
     if args.first().map(String::as_str) == Some("--session") && args.len() == 2 {
         if let Err(error) = session::run(&args[1]) {
             eprintln!("{error}");

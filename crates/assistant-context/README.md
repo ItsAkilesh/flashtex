@@ -154,7 +154,7 @@ method to enforce cancellation/expiry too. No edit is applied. Blocking transpor
 cannot be interrupted through registry cancellation; the response is rejected and
 the configured HTTP timeout bounds the outstanding call. API availability, selected
 model access, actual provider schema behavior and live latency remain unverified.
-The existing JSON helper does not accept credentials or initiate network requests.
+The default JSON helper does not accept credentials or initiate network requests.
 
 Contract references checked September12,2026:
 [xAI Responses](https://docs.x.ai/developers/rest-api-reference/inference/responses),
@@ -194,7 +194,7 @@ returning a proposal. `cancel` does not release a running HTTP slot prematurely;
 and the record is released on consumption. Retire failed/cancelled records
 explicitly to reclaim retention. Shutdown prevents new work but cannot forcibly
 interrupt an already-running HTTP call; that call retains its configured timeout.
-The API is Rust-only pending native binding/integration, and no live provider call
+Native UI wiring remains pending, and no live provider call
 has been used in its tests.
 
 `ProviderQueue::snapshot()` exports bounded JSON-serializable job identities,
@@ -203,3 +203,26 @@ allocation labels and lowercase states plus queued/executing/retained counts.
 it is not a count of HTTP requests or billable calls. Provider billing remains
 explicitly unknown. Snapshots exclude source text, proposals, credentials and
 provider error bodies. Polling propagates expired requests to scheduler cancellation.
+
+With `--features grok`, native hosts can explicitly launch
+`--provider-session FRESH_SESSION_ID MODEL_ID` with `FLASHTEX_GROK_API_KEY` supplied
+in the child environment from their credential adapter. Never place keys in argv,
+JSON commands, logs, or project files. Default `--session` remains offline even if
+that environment variable exists. Provider startup builds a2worker/8queued/16retained
+queue and a90second HTTP client but performs no call until explicit admission.
+
+Use the same JSONL envelope with
+`action:{"operation":"provider","command":{...}}`. Provider commands:
+- `admit`: existing `input` prepare object, `timeout_ms`, `user_requested:true`,
+  and `allocation` audit label. Returns `provider_admitted` with request ID.
+- `poll`: request ID and complete `current_sources`; returns current status or
+  consumes a ready validated proposal (`applied:false`). Does not wait for HTTP.
+- `cancel` / `retire`: request ID, with running-slot retention as documented above.
+- `revoke_stale`: project ID and complete current sources.
+- `snapshot`: bounded queue status, no source/key/provider bodies.
+
+The native host must keep reading/writing off the UI thread, propagate source
+changes, poll/retire jobs, supervise helper lifetime, and request user review before
+applying proposals. Provider subprocess tests verify startup/admission gates and
+zero scheduled tasks; local HTTP and scheduler tests verify the lower-level
+workflow separately. A complete native→helper→liveGrok integration remains untested.

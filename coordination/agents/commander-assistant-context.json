@@ -14,7 +14,7 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "c10696b4c62495f3ceb9200edfef9f2bd30508d5",
+  "code_revision": "d1f0adf603a17ec7522c697bcdfb092565e4c3b8",
   "eta_minutes": {
     "likely": 30,
     "optimistic": 15,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "Explicit opt-in provider JSONL helper mode per commander; native Swift owned by Mac lane.",
+  "next_action": "Native Mac lane consumes helper; extend supervised client provider startup and full fake transport subprocess coverage.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Native-facing queue snapshot and terminal failure/stale revocation coverage pass; no source/key/error bodies exported.",
+  "state": "ready_for_integration",
+  "summary": "Explicit opt-in provider JSONL mode supports admit/poll/cancel/revoke/retire/snapshot.23 tests incl realcompiler and no-inference subprocess startup/admission gates; strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:16:55Z",
+  "updated_utc": "2026-09-12T08:20:54Z",
   "usage": {
-    "evidence": "3provider queue tests pass; strict allfeature/alltarget clippy passed",
-    "status": "Hosted OpenAI; user now authorizes7total local agents, commander manages staffing; no paid provider calls."
+    "evidence": "23allfeaturetests; strict allfeaturelint; defaultlint pass",
+    "status": "Hosted OpenAI; dummy credentials/local fixtures only; no paid provider calls."
   }
 }
