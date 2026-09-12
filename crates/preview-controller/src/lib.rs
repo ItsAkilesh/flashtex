@@ -452,19 +452,11 @@ impl Controller {
         if self.closed {
             return Err("project closed".into());
         }
-        let mut index = ProjectIndex::new(&self.project_id).map_err(|e| e.to_string())?;
-        for store in self.stores.values() {
-            let document = store
-                .document()
-                .map_err(|e| e.to_string())?
-                .ok_or("uninitialized document")?;
-            index
-                .replace_document(&document.path, document.revision, &document.text)
-                .map_err(|e| e.to_string())?;
-        }
+        let expected = self.index.snapshot();
+        let documents = self.membership_documents(None)?;
         let runtime = Session::spawn_command(command, limits)?;
+        self.replace_membership(&expected, &documents)?;
         self.runtime = Some(runtime);
-        self.index = index;
         self.submitted = None;
         self.compile_current()
     }

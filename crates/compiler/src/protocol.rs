@@ -7,8 +7,8 @@
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::incremental::Session;
 use crate::json::{self, str_, Value};
+use crate::layout::Font;
 use crate::layout::{LayoutConstraints, Page};
-use crate::metrics::Font;
 use crate::parser::SourceDocument;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
@@ -298,8 +298,10 @@ fn font_json(font: Font) -> Value {
         Font::TimesRoman => ("Times-Roman", "normal", "normal"),
         Font::TimesBold => ("Times-Bold", "bold", "normal"),
         Font::TimesItalic => ("Times-Italic", "normal", "italic"),
+        Font::TimesBoldItalic => ("Times-BoldItalic", "bold", "italic"),
         Font::Helvetica => ("Helvetica", "normal", "normal"),
         Font::Courier => ("Courier", "normal", "normal"),
+        Font::Symbol => ("Symbol", "normal", "normal"),
     };
     debug_assert!(!family.is_empty() && family.len() <= 128);
     debug_assert!(!family.chars().any(char::is_control));

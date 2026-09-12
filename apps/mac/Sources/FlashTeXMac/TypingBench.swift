@@ -251,8 +251,9 @@ final class TypingBench {
     /// True while a scripted bench run is typing: gates the extra timeline log
     /// lines (send/decode/deliver/apply) that would be noise in normal use.
     /// Read from any thread (set once on the main thread before typing starts).
-    nonisolated(unsafe) private(set) var isActive = false
-    func setActive(_ on: Bool) { isActive = on }
+    nonisolated(unsafe) private(set) static var isBenchActive = false
+    var isActive: Bool { Self.isBenchActive }
+    func setActive(_ on: Bool) { Self.isBenchActive = on }
 
     /// Clears recorded events and render state (bench start, tests).
     func reset() { recorder.reset(); renderingRevision = 0; expectedPages = 0; drawnPages = 0; paintHops = 0; drawEndNs = nil }

@@ -1,0 +1,69 @@
+{
+  "agent_id": "commander-assistant-context",
+  "archived_utc": "2026-09-12T07:47:39Z",
+  "assignment": {
+    "acceptance": [
+      "Exact source revision/digest and UTF8 range guards reject stale context",
+      "Bounded multi-document prompt and response proposals preserve explicit user intent",
+      "No credentials, model calls or automatic edits; meaningful tests and strict lint pass"
+    ],
+    "agent_id": "commander-assistant-context",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander/assistant-context",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+    "objective": "Implement bounded revision/digest-bound compiler diagnostic and user-instruction context for native Grok assistance, with UTF8 source snippets and validated explanatory proposals; no provider call or automatic source edit.",
+    "owned_paths": [
+      "crates/assistant-context"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-029",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T07:26:21.086531+00:00"
+  },
+  "report": {
+    "agent_id": "commander-assistant-context",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-029": {
+        "acknowledged_utc": "2026-09-12T07:30:01Z",
+        "adaptation": "Existing root slot moved to isolated assistant-context crate; exact request/source binding and bounded unexecuted proposals, no inference calls.",
+        "main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
+        "revision": 1
+      }
+    },
+    "branch": "agent/commander/assistant-context",
+    "capabilities": [
+      "rust",
+      "diagnostic-context"
+    ],
+    "code_revision": "cd6b9b1069ed06aa2e810015d5e9b2d54e399e9d",
+    "eta_minutes": null,
+    "machine": "linux-primary",
+    "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
+    "next_action": "Integrate bounded assistant helper into native provider flow via owning worker; retain explicit approval and cancellation.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Adversarial helper/source checks complete:10tests including real compiler, malformed/oversized process recovery, tampered hashes and outside-snippet edits pass; strict clippy pass.",
+    "tool": "Codex GPT-6 Astra",
+    "updated_utc": "2026-09-12T07:43:50Z",
+    "usage": {
+      "evidence": "unknown",
+      "status": "Same existing root hosted slot; no model/provider calls."
+    }
+  },
+  "report_age_seconds": 229,
+  "report_path": "coordination/agents/commander-assistant-context.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-029",
+  "worker_branch": "agent/commander/assistant-context",
+  "worker_report_sha": "94c76ee510e7bf043ef6e9a02ffc287581dd921e"
+}

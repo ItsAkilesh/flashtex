@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T06:48:21Z",
-      "adaptation": "Read current published mixed quadratic/cubic/rule assignment. Implementing only rendering-core opt-in exact batch and replay APIs; stable primitive/source identity, strict byte and command budgets, no legacy wire activation.",
-      "main_sha": "1b17778ba97f638b8e8e003e16e6f8ee77b68b20",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T07:21:50Z",
+      "adaptation": "Read exact revision3 geometry-diff assignment. Implemented bounded exact comparison of validated mixed/display inputs with stable IDs, raw hashes, mismatch categories and undecided equality on truncation/unsupported; no production/native activation.",
+      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
+      "revision": 3
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "410a5b102546397caf7b8a86151bfdcc74d285c9",
+  "code_revision": "4d1248237fc9883c5edc61dc2cf98a5c90d62eb8",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 30
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 25
   },
   "machine": "linux-primary",
-  "main_integrated_through": "410a5b102546397caf7b8a86151bfdcc74d285c9",
-  "next_action": "Implement exact mixed fixture replay and consumer conversion harness, then bounded residency/stale-source gates.",
+  "main_integrated_through": "cb19024b34762f82c1ed609ff740bb880040139a",
+  "next_action": "Next rendering-core product assignment after published replay checkpoint.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Mixed quadratic/cubic/rule batches implemented with stable traced identity, exact per-primitive clips and atomic command/serialized-byte budgets. 88 Rust tests pass.",
+  "summary": "Exact shaped-run replay and geometry-diff integration complete; malformed and stale fixtures reject.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:49:21Z",
+  "updated_utc": "2026-09-12T07:48:21Z",
   "usage": {
-    "evidence": "88 Rust tests and strict all-target clippy pass; byte limit tested at exact size and one byte under. FT023 actual revision2 ACKed from main1b17778.",
-    "status": "Hosted OpenAI authorized; no external provider calls or purchases."
+    "evidence": "123 Rust tests, strict all-target clippy and actual geometry-diff CLI pass. Pinned STIX replay 27951 bytes SHA 19d16580b3342bc1af03c44a4bc9046c529b3e74c29fb1fa0af9f5d46b320234; 11 verified warm hits and 100 identical replays. Debug sample cold placement 757121ns, warm 324294ns, 100 placement+serialization iterations 152082236ns; not paint latency. Font/source evidence boundaries remain explicit.",
+    "status": "Hosted OpenAI allocation only; no auxiliary paid calls or new agents."
   }
 }

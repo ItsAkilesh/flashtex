@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0512585539e5d492c3791bd58d5dbcd9aa338704",
-  "objective": "Within existing Kabir staffing, own standing compiler bottleneck repair: measure 5KB/50KB/500KB edits, remove superlinear hot paths, add safe dependency-aware reuse and prove incremental equals clean full output. Do not add workers or reference engines to production.",
+  "input_main_sha": "a526c7f0c784ce657d54ddcd9d8ea6f9e9b3473f",
+  "objective": "Extend pinned corpus breadth and repeated burst-edit/recovery performance gates; preserve exact source and capability identities. Publish unresolved byte/pixel parity separately from compiler latency.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 7,
+  "revision": 8,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T07:06:36Z"
+  "updated_utc": "2026-09-12T08:01:53Z"
 }

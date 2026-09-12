@@ -36,6 +36,7 @@ pub struct CffOutlineCache {
     entries: BTreeMap<(u16, HintPolicy), Entry>,
     bytes: usize,
     clock: u64,
+    names: std::sync::OnceLock<Result<Arc<super::CffGlyphNames>>>,
 }
 impl CffOutlineCache {
     /// Table range must come from the caller's validated OpenType accessor. This
@@ -73,7 +74,16 @@ impl CffOutlineCache {
             entries: BTreeMap::new(),
             bytes: 0,
             clock: 0,
+            names: std::sync::OnceLock::new(),
         })
+    }
+    pub fn glyph_count(&self) -> usize {
+        self.cff.glyph_count()
+    }
+    pub fn glyph_names(&self) -> Result<Arc<super::CffGlyphNames>> {
+        self.names
+            .get_or_init(|| self.cff.glyph_names().map(Arc::new))
+            .clone()
     }
     pub fn identity(&self) -> &CffIdentity {
         &self.identity
