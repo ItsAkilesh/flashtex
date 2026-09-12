@@ -105,13 +105,16 @@ fn a_manifest_with_thousands_of_files_instantiates_completely_without_hanging() 
     let files = (0..N)
         .map(|i| TemplateFile::new(format!("dir{}/file{i}.tex", i % 25), format!("content-{i}")))
         .collect();
-    let report = flashtex_project_templates::instantiate(&template(files), &root, &options("Bulk"))
-        .unwrap();
+    let report =
+        flashtex_project_templates::instantiate(&template(files), &root, &options("Bulk")).unwrap();
     assert_eq!(report.written_files.len(), N);
     assert_eq!(report.created.len(), N);
     for i in 0..N {
         let path = root.join(format!("dir{}/file{i}.tex", i % 25));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), format!("content-{i}"));
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            format!("content-{i}")
+        );
     }
     std::fs::remove_dir_all(&root).ok();
 }
@@ -130,7 +133,10 @@ fn a_single_enormous_file_is_written_completely_and_correctly() {
     let on_disk = std::fs::read(root.join("big.tex")).unwrap();
     assert_eq!(on_disk.len(), big.len());
     assert_eq!(report.created[0].bytes, big.len() as u64);
-    assert_eq!(report.created[0].sha256, flashtex_project_files::sha256(&on_disk));
+    assert_eq!(
+        report.created[0].sha256,
+        flashtex_project_files::sha256(&on_disk)
+    );
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -146,9 +152,15 @@ fn overwriting_a_pre_existing_file_larger_than_the_read_limit_is_a_typed_error_a
     let mut opts = options("X");
     opts.overwrite = true;
     let err = flashtex_project_templates::instantiate(&t, &root, &opts).unwrap_err();
-    assert!(matches!(err, InstantiateError::Rooted { .. }), "expected Rooted, got {err:?}");
+    assert!(
+        matches!(err, InstantiateError::Rooted { .. }),
+        "expected Rooted, got {err:?}"
+    );
     let after = std::fs::read(root.join("main.tex")).unwrap();
-    assert_eq!(after, huge, "an oversized pre-existing file must be left byte-identical");
+    assert_eq!(
+        after, huge,
+        "an oversized pre-existing file must be left byte-identical"
+    );
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -176,7 +188,10 @@ fn a_path_component_past_the_filesystem_name_limit_is_a_typed_error_and_writes_n
         matches!(err, InstantiateError::Rooted { ref rollback_incomplete, .. } if rollback_incomplete.is_empty()),
         "expected a clean Rooted refusal, got {err:?}"
     );
-    assert!(!root.join(&name).exists(), "the oversized-name file must never land on disk");
+    assert!(
+        !root.join(&name).exists(),
+        "the oversized-name file must never land on disk"
+    );
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -218,9 +233,15 @@ fn a_path_whose_parent_is_a_regular_file_is_a_typed_error_and_leaves_everything_
     ]);
     let before = snapshot(&root).unwrap();
     let err = flashtex_project_templates::instantiate(&t, &root, &options("X")).unwrap_err();
-    assert!(matches!(err, InstantiateError::Rooted { .. }), "expected Rooted, got {err:?}");
+    assert!(
+        matches!(err, InstantiateError::Rooted { .. }),
+        "expected Rooted, got {err:?}"
+    );
     let after = snapshot(&root).unwrap();
-    assert_eq!(before, after, "target tree must be byte-identical to its pre-call state");
+    assert_eq!(
+        before, after,
+        "target tree must be byte-identical to its pre-call state"
+    );
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -279,7 +300,10 @@ fn a_target_root_that_is_read_only_is_a_typed_error_and_nothing_is_written() {
     perms.set_mode(0o755);
     std::fs::set_permissions(&root, perms).unwrap();
 
-    assert!(matches!(err, InstantiateError::Rooted { .. }), "expected Rooted, got {err:?}");
+    assert!(
+        matches!(err, InstantiateError::Rooted { .. }),
+        "expected Rooted, got {err:?}"
+    );
     assert!(
         std::fs::read_dir(&root).unwrap().next().is_none(),
         "a read-only target root must end up with nothing written"
@@ -306,7 +330,10 @@ fn duplicate_declared_paths_is_a_typed_error_and_writes_nothing() {
         ),
         "expected InvalidTemplate/DuplicatePath, got {err:?}"
     );
-    assert!(!root.exists(), "validation runs before target_root is even created");
+    assert!(
+        !root.exists(),
+        "validation runs before target_root is even created"
+    );
 }
 
 #[test]
@@ -325,4 +352,144 @@ fn an_empty_declared_path_is_a_typed_error_and_writes_nothing() {
         "expected InvalidTemplate/Empty, got {err:?}"
     );
     assert!(!root.exists());
+}
+
+// ---------------------------------------------------------------------
+// Unicode: right-to-left override, non-NFC, replacement/noncharacters.
+// (Byte-level rejection is proven directly against path::validate in
+// src/path.rs's own unit tests; these prove the same guarantee holds
+// end-to-end through the public instantiate() entry point.)
+// ---------------------------------------------------------------------
+
+#[test]
+fn a_declared_path_containing_a_right_to_left_override_is_a_typed_error_and_writes_nothing() {
+    let root = temp_dir("rtl-override");
+    // Renders (in a bidi-aware viewer) as if the extension were reversed --
+    // the classic filename-spoofing trick.
+    let t = template(vec![TemplateFile::new("invoice\u{202E}fdp.exe", "pwned")]);
+    let err = flashtex_project_templates::instantiate(&t, &root, &options("X")).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            InstantiateError::InvalidTemplate(ManifestError::InvalidPath {
+                source: PathError::ForbiddenCharacter('\u{202E}'),
+                ..
+            })
+        ),
+        "expected InvalidTemplate/ForbiddenCharacter('\\u202E'), got {err:?}"
+    );
+    assert!(
+        !root.exists(),
+        "validation runs before target_root is even created"
+    );
+}
+
+#[test]
+fn a_declared_path_with_non_nfc_unicode_instantiates_with_the_exact_decomposed_bytes_preserved() {
+    let root = temp_dir("non-nfc-path");
+    // "é" spelled as `e` + COMBINING ACUTE ACCENT (NFD), not the precomposed
+    // U+00E9 (NFC). If anything silently normalized this, the resulting path
+    // would differ from what the template declared -- an implicit
+    // approximation this crate must never perform.
+    let name = "e\u{0301}tude.tex";
+    let t = template(vec![TemplateFile::new(name, "contenu")]);
+    let report = flashtex_project_templates::instantiate(&t, &root, &options("X")).unwrap();
+    assert_eq!(report.written_files, vec![root.join(name)]);
+    let entries: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".flashtex")
+        .collect();
+    assert_eq!(
+        entries,
+        vec![name.to_string()],
+        "on-disk file name must be byte-identical to the declared (decomposed) form"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_declared_path_with_a_replacement_character_instantiates_without_panicking() {
+    let root = temp_dir("replacement-char-path");
+    // Nearest real proxy for "a surrogate-derived sequence": Rust's `&str`
+    // cannot hold a lone UTF-16 surrogate half (no `char` value exists for
+    // one), but U+FFFD is what a lossy conversion of ill-formed UTF-16
+    // containing one turns it into.
+    let name = "bad\u{FFFD}encoding.tex";
+    let t = template(vec![TemplateFile::new(name, "x")]);
+    let report = flashtex_project_templates::instantiate(&t, &root, &options("X")).unwrap();
+    assert_eq!(report.written_files, vec![root.join(name)]);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ---------------------------------------------------------------------
+// project_name / author: free text, not a path -- separators and ".."
+// have no filesystem meaning here and must never be treated as one.
+// ---------------------------------------------------------------------
+
+#[test]
+fn a_project_name_containing_path_separators_and_dotdot_is_ordinary_text_not_a_path() {
+    let root = temp_dir("name-looks-like-path");
+    let t = template(vec![TemplateFile::new(
+        "main.tex",
+        "\\title{{{{project_name}}}}",
+    )]);
+    let hostile_name = "../../etc/passwd";
+    let report =
+        flashtex_project_templates::instantiate(&t, &root, &options(hostile_name)).unwrap();
+    assert_eq!(report.written_files, vec![root.join("main.tex")]);
+    let contents = std::fs::read_to_string(root.join("main.tex")).unwrap();
+    assert!(
+        contents.contains(hostile_name),
+        "the text must land verbatim in the title, not be interpreted as a path"
+    );
+    // Nothing was created anywhere except the one declared file (plus the
+    // crate's own `.flashtex` lock bookkeeping).
+    let entries: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".flashtex")
+        .collect();
+    assert_eq!(entries, vec!["main.tex".to_string()]);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn an_absurdly_long_project_name_instantiates_completely_without_hanging() {
+    let root = temp_dir("absurd-name-length");
+    let t = template(vec![TemplateFile::new(
+        "main.tex",
+        "\\title{{{{project_name}}}}",
+    )]);
+    let long_name = "A".repeat(1_000_000);
+    let report = flashtex_project_templates::instantiate(&t, &root, &options(&long_name)).unwrap();
+    assert_eq!(report.written_files, vec![root.join("main.tex")]);
+    let contents = std::fs::read_to_string(root.join("main.tex")).unwrap();
+    assert!(contents.contains(&long_name));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// ---------------------------------------------------------------------
+// DEFAULT_READ_LIMIT: exactly at the bound (succeeds), one byte past it
+// (a typed error, tested above in
+// `overwriting_a_pre_existing_file_larger_than_the_read_limit_is_a_typed_error_and_leaves_it_untouched`).
+// ---------------------------------------------------------------------
+
+#[test]
+fn overwriting_a_pre_existing_file_exactly_at_the_read_limit_succeeds() {
+    let root = temp_dir("at-read-limit");
+    std::fs::create_dir_all(&root).unwrap();
+    let at_limit = vec![b'x'; flashtex_project_files::DEFAULT_READ_LIMIT as usize];
+    std::fs::write(root.join("main.tex"), &at_limit).unwrap();
+
+    let t = template(vec![TemplateFile::new("main.tex", "new content")]);
+    let mut opts = options("X");
+    opts.overwrite = true;
+    let report = flashtex_project_templates::instantiate(&t, &root, &opts).unwrap();
+    assert_eq!(report.created.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(root.join("main.tex")).unwrap(),
+        "new content"
+    );
+    std::fs::remove_dir_all(&root).ok();
 }

@@ -48,6 +48,29 @@ impl fmt::Display for PathError {
 
 impl std::error::Error for PathError {}
 
+/// Unicode bidirectional-formatting control characters: marks, embeddings,
+/// overrides, and isolates. `char::is_control` does not cover these (they
+/// are Unicode category Cf, "format", not Cc, "control"), but a file name
+/// containing one — most notably U+202E RIGHT-TO-LEFT OVERRIDE — can make a
+/// path render with a visually reversed or reordered extension (the classic
+/// `"invoice\u{202E}fdp.exe"` trick, displayed as `"invoice...exe.pdf"`).
+/// Refused unconditionally rather than only in some positions: a template
+/// path has no legitimate reason to contain one.
+const BIDI_CONTROL_CHARS: [char; 12] = [
+    '\u{061C}', // ARABIC LETTER MARK
+    '\u{200E}', // LEFT-TO-RIGHT MARK
+    '\u{200F}', // RIGHT-TO-LEFT MARK
+    '\u{202A}', // LEFT-TO-RIGHT EMBEDDING
+    '\u{202B}', // RIGHT-TO-LEFT EMBEDDING
+    '\u{202C}', // POP DIRECTIONAL FORMATTING
+    '\u{202D}', // LEFT-TO-RIGHT OVERRIDE
+    '\u{202E}', // RIGHT-TO-LEFT OVERRIDE
+    '\u{2066}', // LEFT-TO-RIGHT ISOLATE
+    '\u{2067}', // RIGHT-TO-LEFT ISOLATE
+    '\u{2068}', // FIRST STRONG ISOLATE
+    '\u{2069}', // POP DIRECTIONAL ISOLATE
+];
+
 /// Validates `raw` as a template-relative file path and returns its
 /// slash-separated segments on success.
 ///
@@ -57,15 +80,22 @@ impl std::error::Error for PathError {}
 ///   prefix such as `C:`;
 /// - contains no `..` segment, anywhere;
 /// - contains no empty (`//`) or `.` segment;
-/// - contains no backslash, NUL, or other control character.
+/// - contains no backslash, NUL, other control character, or Unicode
+///   bidirectional-formatting control character (see
+///   [`BIDI_CONTROL_CHARS`]).
+///
+/// Ordinary non-ASCII text — including non-NFC (decomposed) Unicode, mixed
+/// scripts, and Unicode noncharacters/replacement characters — is accepted
+/// unchanged: this function performs no normalization of its own, so a
+/// segment's exact code points are preserved rather than silently
+/// canonicalized to some other, merely-equivalent form.
 pub fn validate(raw: &str) -> Result<Vec<&str>, PathError> {
     if raw.is_empty() {
         return Err(PathError::Empty);
     }
-    if let Some(c) = raw
-        .chars()
-        .find(|c| matches!(c, '\\' | ':' | '\0') || c.is_control())
-    {
+    if let Some(c) = raw.chars().find(|c| {
+        matches!(c, '\\' | ':' | '\0') || c.is_control() || BIDI_CONTROL_CHARS.contains(c)
+    }) {
         return Err(PathError::ForbiddenCharacter(c));
     }
     if raw.starts_with('/') || raw.starts_with('~') {
@@ -133,5 +163,66 @@ mod tests {
         assert_eq!(validate(""), Err(PathError::Empty));
         assert_eq!(validate("a//b.tex"), Err(PathError::EmptySegment));
         assert_eq!(validate("./a.tex"), Err(PathError::EmptySegment));
+    }
+
+    /// A right-to-left override (the classic extension-spoofing character,
+    /// e.g. `"invoice\u{202E}fdp.exe"` rendering as if it ended `.exe.pdf`)
+    /// must be refused outright, not silently written to disk.
+    #[test]
+    fn rejects_right_to_left_override_and_other_bidi_control_characters() {
+        assert_eq!(
+            validate("invoice\u{202E}fdp.exe"),
+            Err(PathError::ForbiddenCharacter('\u{202E}'))
+        );
+        for c in BIDI_CONTROL_CHARS {
+            assert_eq!(
+                validate(&format!("a{c}b.tex")),
+                Err(PathError::ForbiddenCharacter(c)),
+                "expected {c:?} (U+{:04X}) to be refused",
+                c as u32
+            );
+        }
+    }
+
+    /// Non-NFC (decomposed) Unicode is ordinary text to this function: it is
+    /// accepted, and — critically — the exact code points are preserved
+    /// rather than silently normalized to NFC or any other canonical form.
+    /// Silent normalization would be exactly the kind of implicit
+    /// approximation this crate must never perform on a caller-supplied
+    /// identity.
+    #[test]
+    fn accepts_non_nfc_unicode_without_normalizing_it() {
+        // "é" as `e` (U+0065) + COMBINING ACUTE ACCENT (U+0301), i.e. NFD,
+        // not the single precomposed U+00E9 codepoint (NFC).
+        let nfd = "e\u{0301}tude.tex";
+        assert!(
+            !nfd.contains('\u{00E9}'),
+            "sanity: this literal must not contain the precomposed form"
+        );
+        let segments = validate(nfd).unwrap();
+        assert_eq!(
+            segments,
+            vec![nfd],
+            "exact decomposed form must survive unchanged"
+        );
+    }
+
+    /// Rust's `&str` guarantees well-formed UTF-8, so a lone UTF-16
+    /// surrogate half (U+D800..=U+DFFF) can never actually appear in one —
+    /// there is no `char` value for it. The nearest real-world proxies are
+    /// exercised instead: the standalone replacement character (what a lossy
+    /// UTF-8 conversion of ill-formed UTF-16 containing an unpaired
+    /// surrogate turns it into) and a Unicode noncharacter. Neither is a
+    /// control or bidi character, so both are ordinary, accepted text; the
+    /// guarantee under test is simply that validation does not panic on
+    /// them.
+    #[test]
+    fn accepts_replacement_character_and_noncharacters_without_panicking() {
+        assert_eq!(
+            validate("bad\u{FFFD}encoding.tex").unwrap(),
+            vec!["bad\u{FFFD}encoding.tex"]
+        );
+        assert_eq!(validate("\u{FFFF}.tex").unwrap(), vec!["\u{FFFF}.tex"]);
+        assert_eq!(validate("\u{FDD0}.tex").unwrap(), vec!["\u{FDD0}.tex"]);
     }
 }

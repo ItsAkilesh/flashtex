@@ -727,7 +727,11 @@ mod tests {
         out
     }
 
-    fn snapshot_into(root: &Path, dir: &Path, out: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>) {
+    fn snapshot_into(
+        root: &Path,
+        dir: &Path,
+        out: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>,
+    ) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };
@@ -770,7 +774,9 @@ mod tests {
         let before = snapshot(root);
         let fail_at = move |i: usize| -> io::Result<()> {
             if i == fail_index {
-                Err(io::Error::other(format!("simulated failure at write index {i}")))
+                Err(io::Error::other(format!(
+                    "simulated failure at write index {i}"
+                )))
             } else {
                 Ok(())
             }
@@ -840,7 +846,8 @@ mod tests {
     }
 
     #[test]
-    fn failure_injected_at_the_middle_write_of_a_batch_of_overwrites_leaves_target_byte_identical() {
+    fn failure_injected_at_the_middle_write_of_a_batch_of_overwrites_leaves_target_byte_identical()
+    {
         let root = tempdir("inject-middle-overwrite");
         fs::create_dir_all(&root).unwrap();
         for (name, content) in [
@@ -931,6 +938,115 @@ mod tests {
             fs::read_to_string(root.join("b.tex")).unwrap(),
             "ORIGINAL B",
             "b.tex was never touched by the failed write"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    // -----------------------------------------------------------------
+    // Stale-identity acceptance: overwrite preflight captures each
+    // about-to-be-replaced file's content hash as the identity it is about
+    // to replace (`Expected::Hash`, see the write loop above). If that
+    // identity has gone stale by the time the write actually happens —
+    // something else modified or deleted the file in between — the rooted
+    // writer's own compare-and-swap must refuse the write with a typed
+    // conflict instead of silently overwriting whatever is there now. The
+    // matching "same identity is accepted" boundary is
+    // `overwrite_true_explicitly_permits_replacing_an_existing_file`
+    // (`tests/security.rs`): unmodified between preflight and write,
+    // succeeds.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn a_file_modified_externally_between_preflight_and_write_is_refused_not_silently_overwritten()
+    {
+        let root = tempdir("stale-identity-modified");
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("main.tex");
+        fs::write(&target, "ORIGINAL").unwrap();
+
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![TemplateFile::new("main.tex", "NEW CONTENT")],
+        };
+        let mut options = opts("X");
+        options.overwrite = true;
+
+        // Simulates a racing writer: right before our write for this file
+        // would happen, the file's identity changes out from under us,
+        // *without* going through this crate at all.
+        let racer_target = target.clone();
+        let race = move |_i: usize| -> io::Result<()> {
+            fs::write(&racer_target, "RACER CHANGED THIS").unwrap();
+            Ok(())
+        };
+        let hooks = Hooks {
+            before_write: Some(&race),
+        };
+
+        let err = instantiate_with_hooks(&t, &root, &options, &hooks).unwrap_err();
+        match &err {
+            InstantiateError::Rooted {
+                source: SaveError::Conflict(conflict),
+                rollback_incomplete,
+                ..
+            } => {
+                assert_eq!(conflict.kind, SaveConflictKind::ModifiedExternally);
+                assert!(rollback_incomplete.is_empty());
+            }
+            other => panic!("expected a typed ModifiedExternally conflict, got {other:?}"),
+        }
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "RACER CHANGED THIS",
+            "the stale write must never land; the racing writer's content is untouched"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_file_deleted_externally_between_preflight_and_write_is_refused_not_silently_recreated() {
+        let root = tempdir("stale-identity-deleted");
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("main.tex");
+        fs::write(&target, "ORIGINAL").unwrap();
+
+        let t = Template {
+            id: "t".into(),
+            title: "T".into(),
+            description: "d".into(),
+            packages: vec![],
+            files: vec![TemplateFile::new("main.tex", "NEW CONTENT")],
+        };
+        let mut options = opts("X");
+        options.overwrite = true;
+
+        let racer_target = target.clone();
+        let race = move |_i: usize| -> io::Result<()> {
+            fs::remove_file(&racer_target).unwrap();
+            Ok(())
+        };
+        let hooks = Hooks {
+            before_write: Some(&race),
+        };
+
+        let err = instantiate_with_hooks(&t, &root, &options, &hooks).unwrap_err();
+        match &err {
+            InstantiateError::Rooted {
+                source: SaveError::Conflict(conflict),
+                rollback_incomplete,
+                ..
+            } => {
+                assert_eq!(conflict.kind, SaveConflictKind::DeletedExternally);
+                assert!(rollback_incomplete.is_empty());
+            }
+            other => panic!("expected a typed DeletedExternally conflict, got {other:?}"),
+        }
+        assert!(
+            !target.exists(),
+            "the stale write must never recreate a file something else deleted"
         );
         fs::remove_dir_all(&root).ok();
     }

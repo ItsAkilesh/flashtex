@@ -194,8 +194,14 @@ fn a_receipt_from_one_instantiation_is_detectably_stale_against_a_later_one() {
     // Only the later receipt still matches what is on disk now; the earlier
     // one is stale evidence of a state the file no longer holds.
     let (actual_hash, actual_size) = actual_on_disk(&second_record.path);
-    assert_eq!(second_record.sha256, actual_hash, "the later receipt must match current disk state");
-    assert_eq!(second_record.bytes, actual_size, "the later receipt must match current disk state");
+    assert_eq!(
+        second_record.sha256, actual_hash,
+        "the later receipt must match current disk state"
+    );
+    assert_eq!(
+        second_record.bytes, actual_size,
+        "the later receipt must match current disk state"
+    );
     assert_ne!(
         first_record.sha256, actual_hash,
         "the earlier receipt must be detectably stale against current disk state"
