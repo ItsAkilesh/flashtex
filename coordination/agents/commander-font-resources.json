@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "6c3f55250fa9c92615ba88599a681894bc5c1938",
+  "code_revision": "569fe9c7a0f08194973d2993bec064e5a2739b60",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Define explicit unhinted hint-consumption policy and cubic consumer/FontMatrix contract before production activation; real Latin Modern oracle still pending.",
+  "next_action": "Rendering-core cubic consumer with explicit font/text-space and policy contract; real visual/hinted/Latin Modern oracle gates remain pending.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Staged CFF1 metadata and exact Type2 cubic decoder published; 68 tests/clippy pass. Real STIX CFF parsed: 16 glyphs accepted, 2205 explicit hint/mask unsupported.",
+  "summary": "Explicit Unhinted CFF masks/flex and exact rational FontMatrix published; 74 tests and clippy pass. Same pinned STIX font: 2221 accepted, zero unsupported/invalid under Unhinted.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:31:55Z",
+  "updated_utc": "2026-09-12T06:38:19Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
