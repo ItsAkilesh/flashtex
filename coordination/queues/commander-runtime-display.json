@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-runtime-display",
-  "next_index": 3,
+  "next_index": 1,
   "schema_version": 1,
   "steps": [
     {
@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Assess malformed raw metadata allocation and propose early bounded validation without arbitrary legacy restrictions",
-      "objective": "Assess malformed raw metadata allocation and propose early bounded validation without arbitrary legacy restrictions",
+      "name": "Inspect and deterministically verify cancellation and joined shutdown while raw decoder processes near-limit valid and malformed frames",
+      "objective": "Inspect and deterministically verify cancellation and joined shutdown while raw decoder processes near-limit valid and malformed frames",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Implement justified opt-in metadata bounds or request-aware validation with exact refusal and queue lifecycle tests",
-      "objective": "Implement justified opt-in metadata bounds or request-aware validation with exact refusal and queue lifecycle tests",
+      "name": "Measure bounded decoder shutdown latency and retained allocation with existing frame limits; propose correction only for demonstrated defects",
+      "objective": "Measure bounded decoder shutdown latency and retained allocation with existing frame limits; propose correction only for demonstrated defects",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Measure bounded metadata residency and preserve source identity, duplicate and finite-number policies",
-      "objective": "Measure bounded metadata residency and preserve source identity, duplicate and finite-number policies",
+      "name": "Verify any justified correction preserves raw finite/depth/source policies, one decoded permit and complete worker reaping",
+      "objective": "Verify any justified correction preserves raw finite/depth/source policies, one decoded permit and complete worker reaping",
       "owned_paths": [
         "crates/document-runtime"
       ],
