@@ -58,6 +58,16 @@ final class ShellModel {
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
+    /// How the current worker was launched, so an abnormal exit can relaunch
+    /// the same executable (bounded: `maxWorkerRelaunches` per minute).
+    @ObservationIgnored private var workerLaunch: (url: URL, arguments: [String])?
+    @ObservationIgnored private var workerRelaunchTimes: [Date] = []
+    @ObservationIgnored private var workerRelaunchWork: DispatchWorkItem?
+    static let maxWorkerRelaunches = 3
+    /// Relaunch delays after the 1st, 2nd, 3rd abnormal exit within a minute.
+    static let workerRelaunchDelays: [TimeInterval] = [0.2, 1.0, 3.0]
+    /// Number of automatic relaunches performed so far (for status/tests).
+    private(set) var workerRelaunchCount = 0
     /// Durable-source helper (`flashtex-preview-controller`), see ShellModel+Controller.swift.
     @ObservationIgnored var controller: PreviewControllerClient?
     @ObservationIgnored var controllerState = ControllerState()
@@ -432,10 +442,16 @@ final class ShellModel {
 
     func attachWorker(at url: URL, arguments: [String] = []) {
         detachWorker()
+        workerRelaunchTimes = []
+        launchWorker(at: url, arguments: arguments)
+    }
+
+    private func launchWorker(at url: URL, arguments: [String]) {
         do {
             worker = try WorkerClient(executable: url, arguments: arguments, transcript: transcript) { [weak self] event in
                 self?.handle(event)
             }
+            workerLaunch = (url, arguments)
             workerStatus = "attached: \(url.lastPathComponent)"
             PreviewFonts.producerFace = PreviewFonts.face(forProducer: url.lastPathComponent)
             log("launched \(url.path) (preview face: \(PreviewFonts.active.rawValue))")
@@ -446,6 +462,9 @@ final class ShellModel {
 
     func detachWorker() {
         debounce?.cancel()
+        workerRelaunchWork?.cancel()
+        workerRelaunchWork = nil
+        workerLaunch = nil
         worker?.terminate()
         worker = nil
         inFlightRequests.removeAll()
@@ -599,7 +618,38 @@ final class ShellModel {
             workerStatus = "worker exited (\(code))"
             log("worker exited with status \(code)")
             worker = nil
+            scheduleWorkerRelaunch(afterExit: code)
         }
+    }
+
+    /// An abnormal exit of a worker we launched relaunches the same executable
+    /// after a short backoff, at most `maxWorkerRelaunches` times per minute;
+    /// beyond that the exit is left visible for the user. A clean exit (0) or
+    /// an explicit detach never relaunches. The preview keeps the last result.
+    private func scheduleWorkerRelaunch(afterExit code: Int32) {
+        guard code != 0, let launch = workerLaunch else { return }
+        let now = Date()
+        workerRelaunchTimes = workerRelaunchTimes.filter { now.timeIntervalSince($0) < 60 }
+        guard workerRelaunchTimes.count < Self.maxWorkerRelaunches else {
+            workerStatus = "worker exited (\(code)); not relaunched: \(Self.maxWorkerRelaunches) relaunches in the last minute — File > Attach Built Compiler to retry"
+            log("worker relaunch limit reached")
+            return
+        }
+        let delay = Self.workerRelaunchDelays[min(workerRelaunchTimes.count, Self.workerRelaunchDelays.count - 1)]
+        workerRelaunchTimes.append(now)
+        workerStatus = String(format: "worker exited (%d); relaunching in %.1f s", code, delay)
+        log("relaunching \(launch.url.lastPathComponent) in \(delay) s (attempt \(workerRelaunchTimes.count))")
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.worker == nil, let launch = self.workerLaunch else { return }
+            self.launchWorker(at: launch.url, arguments: launch.arguments)
+            self.workerRelaunchCount += 1
+            if self.workerAttached {
+                self.log("relaunched \(launch.url.lastPathComponent)")
+                if self.autoCompile { self.compile() }
+            }
+        }
+        workerRelaunchWork = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     /// Documents (path → text) the current result was compiled from.
