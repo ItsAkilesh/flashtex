@@ -1751,3 +1751,47 @@ fn stalled_optional_display_write_triggers_watchdog_with_no_source_loss() {
         "α original"
     );
 }
+
+#[test]
+fn producer_reply_limit_is_applied_on_startup_and_restart() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let compiler = dir.path().join("record-cap.py");
+    std::fs::write(
+        &compiler,
+        r#"#!/usr/bin/python3
+import os, pathlib, sys
+with pathlib.Path(__file__).with_suffix('.log').open('a') as f:
+    f.write(os.environ['FLASHTEX_MAX_REPLY_BYTES'] + '\n')
+for line in sys.stdin:
+    pass
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    let expected = std::env::var("FLASHTEX_MAX_REPLY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .map_or(8 * 1024 * 1024 - 1, |v| v.min(8 * 1024 * 1024 - 1));
+    for count in 1..=2 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let log = std::fs::read_to_string(compiler.with_extension("log")).unwrap_or_default();
+            if log.lines().count() == count {
+                assert!(log.lines().all(|line| line == expected.to_string()));
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "child did not record launch cap"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        if count == 1 {
+            client.send("restart-cap", "restart", json!({}));
+            assert_eq!(client.reply("restart-cap")["type"], "result");
+        }
+    }
+}

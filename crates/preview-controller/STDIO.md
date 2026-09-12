@@ -193,3 +193,19 @@ They require the complete `source_versions` and `membership_generation` snapshot
 See [source-plans.md](docs/source-plans.md) for request fields, exact integer
 conversion, explicit bibliography declarations, and the review/application/retry
 contract. Native application is separate; multi-document application is not atomic.
+
+### Producer reply budget at launch
+
+The stdio helper sets `FLASHTEX_MAX_REPLY_BYTES` on the compiler child at both
+startup and restart to at most `compiler_max_frame_bytes - 1`, reserving the
+runtime frame's terminal newline. A stricter positive inherited value is
+preserved. Parsing follows the producer's Rust `usize` semantics: zero, invalid,
+non-UTF-8 and overflowing values use the helper ceiling; whitespace is not trimmed.
+The parent process environment is not modified.
+
+The existing render producer uses this budget to decline an oversized optional
+v2 sibling before promising it. This does not truncate output or raise runtime
+limits. Full v1 must still fit; a very small user budget can be too small even
+for a failure response. Other compilers may ignore this producer-specific setting,
+so runtime framing checks remain authoritative. Native latency is not established
+by the launch policy.

@@ -43,6 +43,31 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
     }
     Ok(limits)
 }
+// The producer counts JSON bytes; runtime framing also counts the newline.
+// Invalid inherited settings have the producer's default semantics. A stricter
+// positive setting remains authoritative even if too small for a useful reply.
+fn producer_command(path: &str, limits: &Limits) -> Command {
+    producer_command_with_limit(
+        path,
+        limits,
+        std::env::var_os("FLASHTEX_MAX_REPLY_BYTES").as_deref(),
+    )
+}
+fn producer_command_with_limit(
+    path: &str,
+    limits: &Limits,
+    inherited: Option<&std::ffi::OsStr>,
+) -> Command {
+    let ceiling = limits.max_frame.saturating_sub(1);
+    let cap = inherited
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .map_or(ceiling, |value| value.min(ceiling));
+    let mut command = Command::new(path);
+    command.env("FLASHTEX_MAX_REPLY_BYTES", cap.to_string());
+    command
+}
 fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
     v[name].as_str().ok_or(format!("missing string {name}"))
 }
@@ -140,9 +165,11 @@ fn run(config: Value) -> Result<(), String> {
     if raw_display {
         controller.select_raw_display_prototype()?;
     }
-    let compiler_error = compiler
-        .as_ref()
-        .and_then(|path| controller.restart(Command::new(path), limits.clone()).err());
+    let compiler_error = compiler.as_ref().and_then(|path| {
+        controller
+            .restart(producer_command(path, &limits), limits.clone())
+            .err()
+    });
     let (input_tx, input_rx) = mpsc::sync_channel::<Value>(16);
     let (output_tx, output_rx) = output_delivery::channel_with_diagnostics(8, diagnostic_timings);
     let stopped = Arc::new(AtomicBool::new(false));
@@ -842,7 +869,7 @@ fn handle(
         }
         "restart" => {
             controller.restart(
-                Command::new(compiler.ok_or("compiler not configured")?),
+                producer_command(compiler.ok_or("compiler not configured")?, limits),
                 limits.clone(),
             )?;
             Ok(json!({"submitted":true}))
@@ -1084,6 +1111,38 @@ mod configuration_tests {
         assert!(!stopped.load(Ordering::SeqCst));
     }
 
+    #[test]
+    fn producer_launch_bounds_reply_and_preserves_stricter_settings() {
+        let limits = compiler_limits(&json!({"compiler_max_frame_bytes":4096})).unwrap();
+        for (inherited, expected) in [
+            (None, "4095"),
+            (Some("8192"), "4095"),
+            (Some("2048"), "2048"),
+            (Some("1"), "1"),
+            (Some("0"), "4095"),
+            (Some("invalid"), "4095"),
+            (Some(" 7"), "4095"),
+            (Some("7 "), "4095"),
+            (Some("-1"), "4095"),
+            (Some("+7"), "7"),
+            (Some("0007"), "7"),
+            (Some("99999999999999999999999999999999999"), "4095"),
+        ] {
+            let mut command = producer_command_with_limit(
+                "/bin/sh",
+                &limits,
+                inherited.map(std::ffi::OsStr::new),
+            );
+            // Exercise the actual child environment without changing the test
+            // process environment or racing other test threads.
+            let output = command
+                .args(["-c", "printf '%s' \"$FLASHTEX_MAX_REPLY_BYTES\""])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+        }
+    }
     #[test]
     fn compiler_frame_configuration_preserves_helper_headroom() {
         assert_eq!(
