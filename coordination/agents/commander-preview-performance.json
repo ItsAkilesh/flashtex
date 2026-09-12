@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f2ea364efc4329512dc143ad9d7eab89d833604c",
+  "code_revision": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "f2ea364efc4329512dc143ad9d7eab89d833604c",
-  "next_action": "Commander integrate and request Jaysen real Mac bridge remeasurement; continue measured helper pacing followup.",
+  "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
+  "next_action": "Extend driver with lost-reply recovery scenario; await Mac same-input remeasurement.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 removes2nestedValue copies;40pairedexact-wire samples.10MBwrapping median221.452ms to0.006284ms,serialization still~28ms.35controller tests and strictlint pass; no native performance claim.",
+  "summary": "FT048 real-helper evidence:30/30exact-clean,4exactkill/reopens;50KBmedianpreview141.457\u219294.910ms,5KB17.851\u219212.566ms.Identicaldeps/compiler; sequentialLinuxwire,no native/burst/lostreplyclaim.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:00:32Z",
+  "updated_utc": "2026-09-12T09:05:39Z",
   "usage": {
     "status": "unknown"
   }
