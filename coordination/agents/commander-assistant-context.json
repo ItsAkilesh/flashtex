@@ -14,23 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "d89f07ba6ad6db3625626b4a503a074cd50a5a61",
+  "code_revision": "2c50e7d8030f1a6683d1dbeadc335783a8f0e282",
   "eta_minutes": {
-    "likely": 20,
-    "optimistic": 10,
-    "pessimistic": 35
+    "likely": 30,
+    "optimistic": 15,
+    "pessimistic": 50
   },
   "machine": "linux-primary",
   "main_integrated_through": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "next_action": "High-priority independent compiler scaling verification against commander-built4425d9d; no compiler edits.",
+  "next_action": "Commander to route GH21 total latency/output transport work; resume bounded assistant background provider integration.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Single-dispatch shared immutable Context leases and routed Grok replies implemented.19 tests incl real compiler/local HTTP success,cancel,expiry,stale and strict lint pass.",
+  "summary": "Independent4425 compiler scaling:all60explicit16MiB samples exactclean;500KB p95305.180ms. Default8MiB still rejects500KB result. Evidence committed under owned crate.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T08:07:18Z",
+  "updated_utc": "2026-09-12T08:11:15Z",
   "usage": {
-    "evidence": "19tests include-ignored allfeatures passed; strict allfeature alltarget clippy passed",
-    "status": "Hosted OpenAI; dummy HTTP only."
+    "evidence": "crates/assistant-context/evidence/compiler-scaling-4425; binary554c9e054f9159c01f8ec184d85dec86b83bcd5da7d69ea99a7bdb6416108322",
+    "status": "Hosted OpenAI; deterministic local compiler only."
   }
 }
