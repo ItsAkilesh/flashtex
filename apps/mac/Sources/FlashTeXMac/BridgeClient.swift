@@ -26,13 +26,17 @@ final class BridgeClient {
 
     /// `arguments` precede `--store <dir>` so a test double can be
     /// `python3 fake_bridge.py --store <dir>`.
+    /// `environment` nil inherits the app's; the shell passes
+    /// `GrokCredential.bridgeEnvironment` (secrets stripped, `XAI_API_KEY`
+    /// added only when a key resolved and `enableGrok` is on).
     init(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+         environment: [String: String]? = nil,
          queue: DispatchQueue = .main, events: @escaping (Event) -> Void = { _ in }) throws {
         self.storeDirectory = storeDirectory
         core = try LineProcessClient(
             executable: executable,
             arguments: arguments + ["--store", storeDirectory.path] + (enableGrok ? ["--enable-grok"] : []),
-            label: "bridge", queue: queue,
+            label: "bridge", queue: queue, environment: environment,
             classify: { line in
                 guard let header = try? JSONDecoder().decode(LenientHeader.self, from: line) else { return nil }
                 guard header.protocolVersion == RuntimeV1.protocolVersion else {

@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-ui-redesign",
+  "allocation_id": "claude-mac20x-ui-redesign",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-ui-redesign/shell",
+  "capabilities": [
+    "swift",
+    "swiftui",
+    "appkit",
+    "ui-design"
+  ],
+  "code_revision": "62170dff5216efd0d1c13629d27331a556d7d56f",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "e8bbc74098499c5b9090e8ad66a59ef726ab5d29",
+  "next_action": "Parent merges into mac-shell; mac-syntax-highlight owns SourceEditorView.swift hooks still wanted by the user: gutter markers per diagnostic, hover quick-info, cmd-click/context-menu go-to-definition (ShellModel.reveal(outlineItem:) and goToMatching are the callable targets).",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-ui-redesign/shell @ 62170dff (pushed, 5 commits on mac-shell e8bbc740): NavigationSplitView workspace (sidebar project/outline/problems, tabs, labelled toolbar, preview header, resizable scrolling Problems panel on DiagnosticsListView, status bar), View > Command Palette \u2318\u21e7P from the AccessibilityCommand table (README/FocusOrder parity), IntelliSense-style completion popup (icons, detail column, documentation pane). Full swift test on the final tree: see evidence line. SourceEditorView.swift untouched.",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T19:13:57Z",
+  "usage": {
+    "evidence": "docs/evidence/mac-ui-redesign-2026-09-12 (6 screenshots + README); full swift test d3feb0b7 767/22 skipped/0 failed, 2bdf7876 767/25/0, final tree 62170dff: Executed 768 tests, with 22 tests skipped and 0 failures (0 unexpected) in 227.995 (228.104) seconds",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

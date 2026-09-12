@@ -72,6 +72,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             NSApp.windows.first?.orderBack(nil)
         }
+        // Automation: place the main window at an explicit screen frame
+        // ("x,y,w,h" in screen points) so evidence captures by window id are
+        // not cropped by a restored off-screen frame.
+        if let spec = ProcessInfo.processInfo.environment["FLASHTEX_WINDOW_FRAME"] {
+            let p = spec.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+            if p.count == 4 {
+                // After SwiftUI restored the saved frame, so the hook wins.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    (NSApp.windows.first { $0.title == "FlashTeX" } ?? NSApp.windows.first)?
+                        .setFrame(NSRect(x: p[0], y: p[1], width: p[2], height: p[3]), display: true)
+                }
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -88,13 +101,33 @@ struct FlashTeXMacApp: App {
         WindowGroup("FlashTeX") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 900, minHeight: 560)
+                .frame(minWidth: 1200, minHeight: 640) // sidebar + editor + preview + Problems panel
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
+                    if ProcessInfo.processInfo.environment["FLASHTEX_SHOW_PALETTE"] == "1" { model.commandPaletteShown = true } // evidence captures of the command palette
+                    // Evidence captures of the completion list: place the caret after the
+                    // first occurrence of the given text and open the list (⌃Space) once
+                    // the window is up, exactly as a keystroke would.
+                    if let needle = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_COMPLETION"], !needle.isEmpty {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            guard let tv = TypingBenchDriver.findTextView(in: NSApp.windows.compactMap(\.contentView)) else { return }
+                            let r = (tv.string as NSString).range(of: needle)
+                            guard r.location != NSNotFound else { return }
+                            tv.window?.makeFirstResponder(tv)
+                            tv.setSelectedRange(NSRange(location: r.location + r.length, length: 0))
+                            tv.scrollRangeToVisible(tv.selectedRange())
+                            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                        windowNumber: tv.window?.windowNumber ?? 0, context: nil, characters: " ",
+                                                        charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49) {
+                                tv.keyDown(with: e)
+                            }
+                        }
+                    }
                     if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID, CitationRename.windowID].contains(id) { openWindow(id: id) }
                 }
         }
+        .defaultSize(width: 1500, height: 950) // first launch; the saved frame wins afterwards
         .commands {
             NavigationCommands(model: model) // Navigation.swift
             DiagnosticsCommands(model: model) // DiagnosticsPanel.swift: Edit > Copy Diagnostics as Text (⌘⌥C)
@@ -106,13 +139,22 @@ struct FlashTeXMacApp: App {
                     .disabled(!model.controllerAttached)
                     .help("Ask the attached preview controller to forward the producer's display-list-v2 sibling (untrusted; validated natively before paint). Status: \(model.displayCandidates.status)")
             }
+            CommandGroup(after: .sidebar) {
+                // View menu (mac-ui-redesign): the command palette lists every
+                // AccessibilityCommand with its shortcut (CommandPalette.swift);
+                // the Problems panel is the bottom diagnostics panel (ProblemsPanel.swift).
+                Button("Command Palette…") { model.commandPaletteShown.toggle() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Toggle Problems") { model.problemsVisible.toggle() }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }
             }
             CommandGroup(after: .pasteboard) {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
-                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                    .keyboardShortcut("p", modifiers: [.command, .option]) // ⌘⇧P is the command palette (View)
                 Button("Open Capture Proposal…") { model.openProposalPanel() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                 Button("Restore Discarded Buffer") { model.restoreDiscardedBuffer() }
