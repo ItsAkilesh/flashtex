@@ -475,3 +475,31 @@ graph; callers still own dependency reload detection. `require_current` checks
 registry/source state, not external VF file freshness. No real VF oracle or native
 wire integration is claimed. Resource cache charging includes the expanded CFF
 identity fields; caller-held frames/Arcs remain outside current cache residency.
+
+`registry_binding::math` consumes the existing original MATH parser through
+`BoundMathFont`; it adds no parser or layout algorithm. Bind a `MathLease` from a
+current rendering lease with explicit `UnhintedDesignUnits`, then request a
+`MathMetricsSnapshot` with source path/revision/range, exact font size and at most
+256 original GIDs. All56 constants retain raw values and a typed dimension:
+53 lengths scale exactly to canonical ticks, while3 percentages become independent
+dimensionless ratios. Italic corrections and optional top-accent attachments
+retain original design units alongside scaled values. Absent accents stay absent.
+
+Snapshots expose complete registry/style/declaration/license, raw font and engine
+face identities, MATH table SHA/length and parser source SHA. Replay also records
+the consumer source SHA and exact source snapshot identity. `verify_replay`
+compares all supplied values against current verified bound metrics and rejects
+duplicate/malformed/tampered or stale evidence. Retained snapshots stay immutable
+after replacement. Device adjustments, variants, math kerning and extended-shape
+coverage remain explicit unsupported capabilities in this stage.
+
+Synthetic acceptance covers signed lengths, unsigned minimum heights, percentages,
+glyph corrections, absent accents, exact scaling and stale font/source refusal.
+The separately run pinned `pinned_stix_math_metric_consumer_replay` test uses the
+installed STIXTwoMath resource SHA
+`3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c`
+and the already pinned OFL license. Its MATH table is27408 bytes, SHA
+`0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a`.
+It verifies56 constants,6 original GIDs and deterministic exact replay at a
+fractional size; this is consumer consistency, not a mathematical layout oracle
+or native painting claim.

@@ -559,3 +559,28 @@ read-only compile of rendering-core5c5e3f89dd51cc0c1517b915b95c9a65a654bd89 agai
 this candidate identified `tex_adapter.rs:602`, `graph_cache.rs:149` and
 `mixed.rs:380`. These consumer files were not edited; no integrated renderer
 compatibility claim is made until its owner publishes that adaptation.
+
+### Registry-bound MATH
+
+`math_adapter::BoundMathFont::from_registry` reuses font-engine's existing MATH
+parser, binding immutable registry generation, explicit style, full declaration
+(including project font path and license), original engine/full-font/face identity,
+and MATH table SHA/length. `constants` preserves all 56 exact integer fields;
+`glyphs` accepts at most 256 original GIDs and rejects out-of-range IDs.
+`MathPolicy::UnhintedDesignUnits` is mandatory. Device adjustments (including their
+validation), variants, math kerns and extended-shape coverage remain typed
+unsupported capabilities. Missing accent data stays `None`; italic absence uses
+the peer's zero default. No font selection fallback or new MATH parser is added.
+
+`scale_design_units` takes a positive exact rational size and returns exact lengths;
+`percent_ratio` treats percentage constants as dimensionless. Neither performs
+hinting, device rounding, TeX layout, or proves visual/PDF-byte parity.
+
+The opt-in `math_adapter` integration test pins installed STIXTwoMath-Regular.otf
+SHA `3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c`
+and its OFL license. Observed MATH table SHA
+`0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a`,
+27408 bytes: all 6760 GIDs agree exactly with the reused peer parser. This is
+adapter-equivalence evidence, not an independent layout oracle. Synthetic tests
+cover missing MATH, signed/unsigned metric boundaries, lookup bounds, stale
+registry generations, and exact scaling/overflow.

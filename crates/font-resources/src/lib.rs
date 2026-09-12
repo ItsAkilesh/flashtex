@@ -559,3 +559,5 @@ pub mod engine_adapter;
 
 /// Explicit project-scoped font registry using the rooted file layer.
 pub mod registry;
+
+pub mod math_adapter;

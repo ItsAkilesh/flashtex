@@ -1009,3 +1009,245 @@ fn mixed_ttf_cff_nested_packets_keep_exact_geometry_and_stale_registry_gates() {
         .is_err());
     assert_eq!(flat.batch().fixture_bytes(), frozen);
 }
+#[test]
+fn exact_math_units_glyphs_replay_and_stale_resource_gates() {
+    use flashtex_font_resources::math_adapter::{Capability, MathError, MathPolicy};
+    use flashtex_rendering_core::registry_binding::math::*;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let font = font_fixture::math_fixture(-333);
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![entry(&font, "math", "static-truetype", b"test")],
+    };
+    std::fs::write(dir.path().join("math.font"), &font).unwrap();
+    std::fs::write(dir.path().join("math.license"), b"test").unwrap();
+    save(dir.path(), &manifest);
+    let registry = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "math",
+        registry.clone(),
+        RegistryRenderLimits {
+            max_bindings: 2,
+            max_cache_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("math"), registry.generation())
+        .unwrap();
+    let math = renderer
+        .math(&lease, MathPolicy::UnhintedDesignUnits)
+        .unwrap();
+    let source = SourceSnapshot {
+        revision: 3,
+        text: "α".into(),
+    };
+    let query = |size| MathQuery {
+        source_path: "main.tex",
+        snapshot: &source,
+        source_range: 0..2,
+        font_size: size,
+        original_gids: &[0, 1, 2],
+    };
+    let metrics = renderer.math_metrics(&math, query(r(21, 2))).unwrap();
+    assert_eq!(metrics.constants().len(), 56);
+    let axis = metrics.constant(MathConstant::axis_height).unwrap();
+    assert_eq!(axis.raw, -333);
+    assert_eq!(axis.value, r(-6993, 2000));
+    assert_eq!(axis.dimension, MetricDimension::CanonicalTicks);
+    assert_eq!(
+        metrics
+            .constant(MathConstant::delimited_sub_formula_min_height)
+            .unwrap()
+            .raw,
+        65535
+    );
+    let percent = metrics
+        .constant(MathConstant::script_percent_scale_down)
+        .unwrap();
+    assert_eq!(percent.value, r(4, 5));
+    assert_eq!(percent.dimension, MetricDimension::DimensionlessRatio);
+    let twice = renderer.math_metrics(&math, query(r(21, 1))).unwrap();
+    assert_eq!(
+        twice.constant(MathConstant::axis_height).unwrap().value,
+        r(-6993, 1000)
+    );
+    assert_eq!(
+        twice
+            .constant(MathConstant::script_percent_scale_down)
+            .unwrap(),
+        percent
+    );
+    assert_eq!(metrics.glyphs()[1].italic_correction.ticks, r(2583, 2000));
+    assert_eq!(
+        metrics.glyphs()[1].top_accent_attachment.unwrap().ticks,
+        r(6741, 2000)
+    );
+    assert_eq!(metrics.glyphs()[0].top_accent_attachment, None);
+    for capability in [
+        Capability::DeviceAdjustments,
+        Capability::Variants,
+        Capability::MathKern,
+        Capability::ExtendedShapeCoverage,
+    ] {
+        assert!(
+            matches!(math.require(capability),Err(MathConsumerError::Metric(MathError::Unsupported(c)))if c==capability)
+        );
+    }
+    let bytes = metrics.replay_bytes(100000).unwrap();
+    metrics
+        .verify_replay(&renderer, "main.tex", &source, &bytes)
+        .unwrap();
+    let mut changed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    changed["constants"][0]["raw"] = serde_json::json!(1234);
+    assert!(metrics
+        .verify_replay(
+            &renderer,
+            "main.tex",
+            &source,
+            &serde_json::to_vec(&changed).unwrap()
+        )
+        .is_err());
+    let duplicate = String::from_utf8(bytes.clone()).unwrap().replacen(
+        "\"format\":",
+        "\"format\":\"duplicate\",\"format\":",
+        1,
+    );
+    assert!(metrics
+        .verify_replay(&renderer, "main.tex", &source, duplicate.as_bytes())
+        .is_err());
+    assert!(metrics.replay_bytes(100).is_err());
+    let stale = SourceSnapshot {
+        revision: 4,
+        ..source.clone()
+    };
+    assert!(metrics
+        .require_current(&renderer, "main.tex", &stale)
+        .is_err());
+    let mut bad = query(r(21, 2));
+    bad.source_range = 1..2;
+    assert!(renderer.math_metrics(&math, bad).is_err());
+    let mut bad = query(r(21, 2));
+    bad.original_gids = &[3];
+    assert!(renderer.math_metrics(&math, bad).is_err());
+    let replacement = font_fixture::math_fixture(444);
+    std::fs::write(dir.path().join("math.font"), &replacement).unwrap();
+    manifest.entries[0].resource.font.sha256 = digest(&replacement);
+    manifest.entries[0].resource.font.byte_length = replacement.len() as u64;
+    save(dir.path(), &manifest);
+    let updated = load(&root);
+    renderer.replace(updated.clone()).unwrap();
+    assert!(renderer.math_metrics(&math, query(r(21, 2))).is_err());
+    assert!(metrics
+        .require_current(&renderer, "main.tex", &source)
+        .is_err());
+    assert_eq!(metrics.replay_bytes(100000).unwrap(), bytes);
+    let newlease = renderer
+        .bind(&selection("math"), updated.generation())
+        .unwrap();
+    let newmath = renderer
+        .math(&newlease, MathPolicy::UnhintedDesignUnits)
+        .unwrap();
+    let newmetrics = renderer.math_metrics(&newmath, query(r(21, 2))).unwrap();
+    assert_eq!(
+        newmetrics.constant(MathConstant::axis_height).unwrap().raw,
+        444
+    );
+    assert_ne!(
+        newmath.identity().math_table_sha256,
+        math.identity().math_table_sha256
+    );
+}
+#[test]
+#[ignore = "requires pinned installed STIXMath and license; exact consumer replay, not layout oracle"]
+fn pinned_stix_math_metric_consumer_replay() {
+    use flashtex_font_resources::math_adapter::MathPolicy;
+    use flashtex_rendering_core::registry_binding::math::*;
+    let bytes = std::fs::read("/usr/share/fonts/stix-fonts/STIXTwoMath-Regular.otf").unwrap();
+    let license = std::fs::read("/usr/share/licenses/stix-fonts/OFL.txt").unwrap();
+    assert_eq!(
+        digest(&bytes),
+        "3a5f3f26f40d5698b3c62dd085d48d6663696a3f80825aab8b553d5097518e8c"
+    );
+    assert_eq!(
+        digest(&license),
+        "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a"
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![entry(&bytes, "math", "static-cff", &license)],
+    };
+    std::fs::write(dir.path().join("math.font"), &bytes).unwrap();
+    std::fs::write(dir.path().join("math.license"), &license).unwrap();
+    save(dir.path(), &manifest);
+    let registry = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "pinned-math",
+        registry.clone(),
+        RegistryRenderLimits {
+            max_bindings: 1,
+            max_cache_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("math"), registry.generation())
+        .unwrap();
+    let math = renderer
+        .math(&lease, MathPolicy::UnhintedDesignUnits)
+        .unwrap();
+    let source = SourceSnapshot {
+        revision: 5,
+        text: "\\alpha".into(),
+    };
+    let ids = [0, 1, 3, 100, 2000, 6759];
+    let query = || MathQuery {
+        source_path: "main.tex",
+        snapshot: &source,
+        source_range: 0..6,
+        font_size: r(10485761, 3),
+        original_gids: &ids,
+    };
+    let metrics = renderer.math_metrics(&math, query()).unwrap();
+    let face = TrueTypeFace::parse(bytes).unwrap();
+    let original = face.math().unwrap();
+    assert_eq!(
+        metrics.constant(MathConstant::axis_height).unwrap().raw,
+        original.constants.axis_height as i32
+    );
+    assert_eq!(
+        metrics.constant(MathConstant::axis_height).unwrap().value,
+        r(original.constants.axis_height as i128 * 10485761, 3000)
+    );
+    for metric in metrics.glyphs() {
+        let gid = flashtex_font_engine::GlyphId(metric.original_gid);
+        assert_eq!(
+            metric.italic_correction.design_units,
+            original.italics_correction(gid)
+        );
+        assert_eq!(
+            metric.top_accent_attachment.map(|v| v.design_units),
+            original.top_accent_attachment(gid)
+        );
+    }
+    assert_ne!(
+        math.identity().font.font_sha256,
+        math.identity().font.engine_font_id.content_hex()
+    );
+    let replay = metrics.replay_bytes(100000).unwrap();
+    metrics
+        .verify_replay(&renderer, "main.tex", &source, &replay)
+        .unwrap();
+    assert_eq!(
+        renderer
+            .math_metrics(&math, query())
+            .unwrap()
+            .replay_bytes(100000)
+            .unwrap(),
+        replay
+    );
+    println!("MATH consumer56 constants6 glyphs tableSHA={} tableBytes={} replayBytes={} replaySHA={} unhinted=true layout_performed=false",math.identity().math_table_sha256,math.identity().math_table_byte_length,replay.len(),digest(&replay));
+}

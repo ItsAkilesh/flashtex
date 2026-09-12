@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c5b894b975695edbd927b3aa5b7628ae1826ea47",
+  "code_revision": "89b4b864d9514da714340024524df7641093aafe",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Next rendering-core product assignment after this tested mixed VF checkpoint; font MATH adapter available separately.",
+  "next_action": "Next rendering-core product assignment after tested MATH checkpoint; additive variants fitter available separately.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "CFF physical VF dependency and exact mixed registry packet consumer implemented; source/encoding identities retained.",
+  "summary": "Registry-bound exact MATH constants and glyph metrics consumer implemented with source-aware replay.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:21:22Z",
+  "updated_utc": "2026-09-12T08:29:00Z",
   "usage": {
-    "evidence": "132 ordinary Rust tests and strict all-target clippy pass. Peer6404ea6 merged unchanged; exhaustive resource matches adapted. Synthetic sfnt/TFM/VF flat/nested mixedTTF-CFF exact geometry equal, fractional origin/1001-over2 advance retained, encodingSHA traces validated, missing bindings/stale registry/source reject. Retained frame bytes immutable. Graph dependency reload detection remains caller-owned; no realVF/native parity claim.",
-    "status": "Hosted OpenAI allocation only; no paid providers or descendants."
+    "evidence": "133 ordinary tests, strict clippy and both separately run pinned registry tests pass. MATH56 constants/6 original GIDs: table27408 bytes SHA0af4bf095e9d3a968b460b83d589b5c0a6dc58762fe1f3cb3dece03fd5344c4a; replay8944 bytes SHAd7f77e0e2ce27728e79e406648daf833fb19dd9a7675fd14181bcf8d742675d8. Exact signed scaling, dimensionless ratios, absent accents, tampered/duplicate replay and stale font/source gates tested. Peer51ecbd0 unchanged; no layout/native/device/variants claim.",
+    "status": "Hosted OpenAI only; no paid providers or descendants."
   }
 }

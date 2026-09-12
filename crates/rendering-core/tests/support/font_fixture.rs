@@ -145,3 +145,48 @@ pub fn cff_fixture() -> Vec<u8> {
     }
     bytes
 }
+
+#[allow(dead_code)]
+pub fn math_fixture(axis: i16) -> Vec<u8> {
+    let original = shaping_fixture();
+    let count = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    let end = 12 + count * 16;
+    let mut bytes = original[..end].to_vec();
+    bytes.extend([0; 16]);
+    bytes.extend_from_slice(&original[end..]);
+    be16(&mut bytes, 4, (count + 1) as u16);
+    for i in 0..count {
+        let at = 12 + i * 16 + 8;
+        let old = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+        be32(&mut bytes, at, old + 16);
+    }
+    let mut math = vec![0; 260];
+    be32(&mut math, 0, 0x00010000);
+    be16(&mut math, 4, 10);
+    be16(&mut math, 6, 224);
+    be16(&mut math, 10, 80);
+    be16(&mut math, 12, 60);
+    be16(&mut math, 14, u16::MAX);
+    be16(&mut math, 16, 90);
+    be16(&mut math, 22, axis as u16);
+    be16(&mut math, 222, 75);
+    be16(&mut math, 224, 8);
+    be16(&mut math, 226, 22);
+    for (offset, value) in [(232, 123), (246, 321)] {
+        be16(&mut math, offset, 8);
+        be16(&mut math, offset + 2, 1);
+        be16(&mut math, offset + 4, value);
+        be16(&mut math, offset + 8, 1);
+        be16(&mut math, offset + 10, 1);
+        be16(&mut math, offset + 12, 1);
+    }
+    while !bytes.len().is_multiple_of(4) {
+        bytes.push(0)
+    }
+    let offset = bytes.len();
+    bytes.extend(&math);
+    bytes[end..end + 4].copy_from_slice(b"MATH");
+    be32(&mut bytes, end + 8, offset as u32);
+    be32(&mut bytes, end + 12, math.len() as u32);
+    bytes
+}
