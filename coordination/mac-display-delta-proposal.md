@@ -67,9 +67,24 @@ Searched `origin/agent/mac-claude-a/mac-shell` (`apps/mac/Tests/FlashTeXMacTests
   worked request example updated. Delta wire shape unchanged; Appendix A vectors
   re-run for r2: identical (reconstruction == fresh: True).
 
+## Follow-up 2 (Commander 5646611117 → r3, same branch)
+
+- `display-list-v2-delta.md` r3: (1) `MAX_SNAPSHOT_BYTES` charges the RECONSTRUCTED
+  target via the `estimated_json_bytes()` constants, peak ≤ 2 × cap + one 16 MiB
+  line (+ producer texts); (2) stale refusal preserved — stale siblings are never
+  installed/acknowledged, no reconstruction cache; residency table is exactly
+  two rows per side; (3) digests prove reconstruction fidelity only — completeness
+  of diagnostics/omitted parts is the P2 fresh-full oracle's job, stated in §5.1,
+  §5.5, §10; (4) canon fixes −0.0 → +0.0 and refuses non-finite; Python reference
+  updated and checked (−0 hashes equal, NaN raises); vectors identical;
+  (5) §5.4a names the real entry points (`RenderingV2.validate` →
+  `V2FontStore.resolve` → `V2Frame.prepare`; rendering-core `PipelineCff::bind`
+  / `helper_candidate::bind`) and states that rendering-core binds ORIGINAL bytes,
+  so delta consumption is scoped to the Mac model-level path. §8 unchanged.
+
 ## Status
 
-r1 committed as c797c5cf; r2 + review committed after (see the log) and pushed to
+r1 committed as c797c5cf; r2 96e95628; r3 committed after (see the log); r2 + review committed after (see the log) and pushed to
 `origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
 in the lane's completion message; the 10-line summary is section 0 of the
 proposal. Lane complete; no further steps owned here. Limitations: no code, no

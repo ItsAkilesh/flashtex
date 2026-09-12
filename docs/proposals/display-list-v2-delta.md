@@ -1,11 +1,18 @@
 # Proposal: `display-list-v2-delta` — a bounded, opt-in delta sibling for `display-list-v2`
 
-Revision: **r2, 2026-09-12** — amended for the Commander's four requirements
-(issue #2 comment 5646477457): installed-base acknowledgement (§2, §3, §6.1),
-complete reconstruction with nothing inherited implicitly (§5.5), bounded
-old-plus-new residency with caps and eviction order (§6.2), and an honest full
-resync refusal (§8). r1 was c797c5cf. The wire shape of the delta line is
-unchanged from r1, so the Appendix A vectors are unchanged (re-run for r2).
+Revision: **r3, 2026-09-12** — amended for the Commander's r2 response
+(issue #2 comment 5646611117): residency charges the RECONSTRUCTED target and
+states the peak bound (§6.2); stale refusal is preserved — a stale sibling is
+never installed, no reconstruction cache (§6.1, §6.3); digests do not establish
+completeness of diagnostics or any omitted part — only the fresh-full oracle
+does (§5.1, §5.5, §10.1); canonical float rule fixed (−0.0 → +0.0, non-finite
+refused; §5.1, Appendix A); font/profile validation named by its actual entry
+points — Mac `RenderingV2.validate` → `V2FontStore.resolve` → `V2Frame.prepare`,
+rendering-core `PipelineCff::bind` / `helper_candidate::bind` — and the
+consequence that rendering-core binds ORIGINAL bytes (§5.4a, §10). r2 was
+96e95628 (installed-base acknowledgement, §5.5, §6, §8 — §8 accepted as is);
+r1 was c797c5cf. The delta wire shape is unchanged since r1; Appendix A vectors
+re-run for r3 are identical.
 
 Status: **PROPOSAL ONLY (producer side, mac-render-pipeline lane; written by the
 mac-display-delta-proposal lane on `agent/mac-render-pipeline/delta-proposal`
@@ -25,12 +32,12 @@ line and its decline fallback), `crates/preview-controller/docs/display-forwardi
 
 1. New sibling opt-in layout capability `display-list-v2-delta`; only meaningful next to `display-list-v2`; unknown to old producers, never sent by old consumers; declined → today's full `display_list` line or today's `display_list_declined` fallback, byte-for-byte unchanged.
 2. When accepted, the ONE sibling line after `compile_result` is `type: "display_list_delta"` (protocol_version 2) instead of `display_list`; the echoed capability list says which of the two the consumer must expect — a mismatch is a protocol violation.
-3. A delta names an INSTALLED base exactly (`request_id`, `project_id`, `revision`, `page_count`, `list_digest`): the snapshot the consumer acknowledged as installed in the request's `display_list_base` field (installed = validated + digested + paint decision taken + retained; a producer write is never installation), which must also be the producer's last emitted sibling; each side holds at most old + new (§6.2); any reply without a sibling, a restart or a session change clears both.
+3. A delta names an INSTALLED base exactly (`request_id`, `project_id`, `revision`, `page_count`, `list_digest`): the snapshot the consumer acknowledged as installed in the request's `display_list_base` field (installed = the frame currently published in the v2 pane after full validation and digesting; a stale sibling is never installed, a producer write is never installation), which must also be the producer's last emitted sibling; each side holds at most old + new (§6.2); any reply without a sibling, a stale sibling, a restart or a session change clears the chain (full resync).
 4. A delta carries the complete header (`documents`, `fonts` = the full resource closure, `diagnostics`, `required_features`), the full ordered `page_count`, a digest for EVERY page of the new list, the changed pages in full (exact page objects of the full reply), the explicit `removed_pages`, and per-document source relocations (`edit_start`, `edit_end`, `delta`) so unchanged pages' source spans are moved exactly as the producer's own block cache moves them.
-5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the 60-line Python reference in Appendix A, with test vectors.
+5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the ~65-line Python reference in Appendix A, with test vectors; digests prove the consumer rebuilt what the producer sent, never that the producer sent everything (that is the fresh-full oracle's job, §10.1 P2).
 6. Reconstruction yields COMPLETE new semantics — documents, fonts/resource closure, diagnostics, required_features and every page's full model are produced by the reconstruction (changed pages as sent, unchanged pages relocated), nothing inherited implicitly — then the normal full validation. Invariant: `to_json(reconstructed)` is byte-identical to a fresh full compile's `display_list` line (same id), including unchanged pages, resources, source spans and diagnostics — proven with the existing `tests/incremental.rs` gate shape (200 edits × 27 pages; 30 × 107).
 7. Refusals are typed: the producer never emits a delta without a snapshot of its own (no snapshot → the unchanged full line, `status` stays `ok`, no diagnostic); the consumer verifies the delta's `base` against the snapshot it holds and refuses `delta_base_mismatch`, `delta_page_count`, `delta_relocation_invalid`, `delta_digest_mismatch`, `delta_list_digest_mismatch`, `delta_oversize`, `delta_unsolicited` and resyncs by requesting without `-delta` (→ full).
-8. Bounded state: at most old + new snapshots per side, capped (`MAX_SNAPSHOT_PAGES` 1 024 per snapshot, `MAX_SNAPSHOT_BYTES` 16 MiB serialised-equivalent per snapshot, retained texts ≤ 8 MiB each / 32 MiB total), with a defined eviction order (§6.2); over a cap → no snapshot → full replies only.
+8. Bounded state: at most old + new snapshots per side, each charged by its RECONSTRUCTED serialised-equivalent size (`MAX_SNAPSHOT_PAGES` 1 024, `MAX_SNAPSHOT_BYTES` 16 MiB, retained texts ≤ 8 MiB each / 32 MiB total); peak per side ≤ 2 × `MAX_SNAPSHOT_BYTES` + one 16 MiB line, with a defined eviction order (§6.2); over a cap → not retained → full replies only.
 8b. The full resync path never truncates: when the full reply itself exceeds a limit, the reply is the existing typed refusal naming that limit (`display_list_declined` / `failed` / the runtime's `serialization_refused`), the consumer keeps its last installed frame marked stale and drops its base, and no page is ever omitted to fit (§8).
 9. Visibility page filtering is NOT this proposal: a filtered view is an incomplete view, never a complete compile, and never authorizes source actions outside its validated coverage; a reconstructed delta result IS a complete compile because it is verified equal to one.
 10. Acceptance is three separate gates — producer (cargo, byte identity + digests + refusals), consumer (Swift, reconstruction equality + typed refusals + V2Parity 0 px), transport (size/latency measured on the direct route and, after an FT-049 runtime change to accept the new sibling type, the helper route) — nothing about size or latency is claimed from this schema.
@@ -60,7 +67,7 @@ visibility (§9) is a different feature and is not proposed.
 | document/source | `documents[]` = `{path, revision, sha256, byte_length}` of EVERY request document (complete set, as in the full line) | raw UTF-8 SHA-256 and length of the request text this compile ran on; `revision` is the compile revision (runtime-v1), not an editor document version |
 | compile | envelope `id` = the compile request id; `project_id`, `revision` = the `compile_result`'s | the same rule 1 as the full sibling |
 | session | not on the wire (the full line has none and stays unchanged); bound by the consumer to the transport it owns: the worker process it spawned (direct route) or the helper `session_id` (helper route) | a restarted producer has no snapshot and answers full; a consumer drops its base on any restart/reattach/session change |
-| installed base | request `payload.display_list_base = {request_id, project_id, revision, page_count, list_digest}` (§3); delta `base` = the same five fields | the consumer's installed-base acknowledgement: the one snapshot it has decoded/reconstructed, validated with the full validator, digested, taken its paint decision on, and retained as its sole installed base. The producer emits a delta only against a base that is BOTH acknowledged installed by the request AND its own last emitted sibling on this stream; the consumer verifies the delta's `base` field-by-field against the snapshot it acknowledged |
+| installed base | request `payload.display_list_base = {request_id, project_id, revision, page_count, list_digest}` (§3); delta `base` = the same five fields | the consumer's installed-base acknowledgement: the one snapshot it has decoded/reconstructed, validated (§5.4a entry points), digested, PUBLISHED as the current v2 frame, and retained as its sole installed base. The producer emits a delta only against a base that is BOTH acknowledged installed by the request AND its own last emitted sibling on this stream; the consumer verifies the delta's `base` field-by-field against the snapshot it acknowledged |
 | new snapshot | `page_count`, `page_digests[1..N]`, `list_digest` | what the reconstructed list must hash to; becomes the next base on both sides |
 
 `list_digest` binds the header (including `project_id`/`revision`, documents,
@@ -81,9 +88,9 @@ with the same pages but different diagnostics or revision are different bases.
   but `-delta` is never accepted for it.
 - What the acknowledgement asserts (consumer obligation): the named snapshot is
   INSTALLED — the consumer decoded (or reconstructed) it, ran the unchanged full
-  validator on it, computed its `dl2-canon-1` digests, took its paint decision
-  (published it, or deliberately kept the previous frame — either is a decision),
-  and retains it as its sole installed base. Receipt, admission, a helper's
+  validator on it, computed its `dl2-canon-1` digests, published it as the
+  current v2 frame (a sibling that was stale by the time it validated is never
+  installed — §6.1), and retains it as its sole installed base. Receipt, admission, a helper's
   write, or a queued-but-unvalidated frame is NOT installation and must not be
   acknowledged.
 - What the producer may assume from it: only that the consumer can reconstruct
@@ -187,7 +194,15 @@ bytes (the consumer does not have the producer's JSON writer and must be able
 to verify a page it relocated itself). Encoding primitives: integers as 8-byte
 two's-complement little-endian (`i64`); counts as `i64`; strings as `i64` byte
 length then UTF-8 bytes; paint components as IEEE-754 binary64 little-endian
-bit patterns. Domain-separated prefixes:
+**raw bit patterns after normalising negative zero**: a value equal to zero is
+encoded as +0.0 (`0x0000000000000000`); NaN and ±infinity are not encodable —
+the encoder refuses them (they cannot appear on the JSON wire and the consumer
+validator rejects a non-finite or out-of-range paint before hashing), so no
+NaN bit pattern is ever hashed. This makes the digest consistent with the
+producer's model equality (`f64::eq`, which treats −0.0 == +0.0 and is what
+§5.2 classification uses): two pages equal under `PartialEq` hash equal, and a
+page whose only difference is the sign of a zero paint component is the same
+page on the wire. Domain-separated prefixes:
 
 - `page_digest(page) = SHA256("flashtex:dl2:page:1\0" ‖ number ‖ width ‖ height ‖ item_count ‖ items…)`
   - glyph run: `0x01 ‖ font_id ‖ font_size ‖ text ‖ glyph_count ‖ (gid, origin_x, baseline_y, advance_x, advance_y, cluster)… ‖ cluster_count ‖ per cluster (text_start_byte, text_end_byte, hit_rect_count, (x, top, width, height)…, caret_count, (text_byte, x, top, height)…, provenance) ‖ paint(r, g, b, a)`
@@ -198,7 +213,14 @@ bit patterns. Domain-separated prefixes:
 
 Every field of the wire model is covered (glyph runs, rules, clusters, hit
 rects, carets, source spans and synthetic reasons, paint, fonts, documents,
-diagnostics, features, identity). The reference implementation is Appendix A;
+diagnostics, features, identity). What a digest proves: that the list the
+consumer holds after reconstruction is, field for field, the list the producer
+computed digests over. What it cannot prove: that the producer's list is
+complete relative to a fresh full compile — a producer that dropped a
+diagnostic, a font or a page from both the delta and its digests would still
+verify. Completeness of diagnostics and of every omitted/relocated part is
+established only by the fresh-full oracle in the producer gate (§10.1 P2),
+never by digest agreement. The reference implementation is Appendix A;
 its test vectors are the worked example's digests (Appendix B). Both producer
 (Rust) and consumer (Swift) implementations must reproduce those vectors; a
 scheme change is a new name (`dl2-canon-2`), never a silent change.
@@ -230,10 +252,14 @@ one or several ranges), rule provenance, and — for the header — nothing
 (diagnostics are sent complete). Synthetic provenance and spans in documents
 without an entry are untouched. `a == b` is a pure insertion; `d < 0` a net
 deletion. The producer classifies a page as unchanged only when
-`relocate(base_page) == new_page` as a model (Rust `PartialEq` on `Page`) and
-the relocation is valid for every span on it; otherwise the page is sent in
-`changed_pages`. Because `to_json` is a pure function of the model, model
-equality is byte equality of the page's JSON.
+`relocate(base_page) == new_page` as a model (Rust `PartialEq` on `Page`,
+whose only floating fields are paint components) and the relocation is valid
+for every span on it; otherwise the page is sent in `changed_pages`. `to_json`
+is a pure function of the model, and for the ticks/offsets (integers) model
+equality is byte equality; for paint, `PartialEq` equates −0.0 and +0.0 while
+the writer could print them differently — the producer gate P2 compares
+bytes against the fresh compile and would surface any such case; the canon
+(§5.1) normalises the sign of zero so the digest side is unaffected.
 
 ### 5.3 When the producer must send full instead
 
@@ -255,13 +281,34 @@ for n in 1..=page_count:
     verify page_digest(page) == page_digests[n-1]    else delta_digest_mismatch(n)
 list = header fields from the delta + pages
 verify list_digest(list) == delta.list_digest        else delta_list_digest_mismatch
-run the UNCHANGED full validation on `list` (RenderingV2.validate / rendering-core validate_display)
+run the UNCHANGED full validation on `list` — the actual entry points, §5.4a
 ```
 
 Only then does `list` replace the base; painting uses the existing v2 pipeline
 (font resolution by content hash, page preparation off-main, identity recheck
 before paint) exactly as for a full frame. Nothing is rendered partially: any
 failure keeps the previous verified frame and the base is dropped (§7).
+
+#### 5.4a Validation entry points (named, not generic)
+
+| consumer | entry points on the reconstructed list | what they bind |
+|---|---|---|
+| Mac shell (model-level) | `RenderingV2.validate(_:)` (`apps/mac/Sources/FlashTeXProtocol/RenderingV2.swift`, structural: features, bounds, ticks, cluster partition, provenance vs `documents`, `face_index == 0`, format ∈ {`static-truetype`, `opentype-cff`} paintable / `core14-afm` metrics-only) → `V2FontStore.resolve(_:)` (`GlyphRunRenderer.swift:74`, raw-byte SHA-256 + `byte_length` + glyph count + units/em + PostScript name, bytes re-hashed at load, GH31) → `V2Frame.prepare(_:store:)` (`GlyphRunRenderer.swift:233`, page preparation) | all operate on the decoded/reconstructed MODEL, so a reconstructed list takes exactly the path a full frame takes |
+| rendering-core (Linux helper consumer / export) | `PipelineCff::bind(bytes, capabilities, documents: BTreeMap<String, SourceSnapshot>, resources: BTreeMap<String, Arc<CffFontResource>>)` (`crates/rendering-core/src/pipeline_cff.rs:24`) and the helper wrapper `helper_candidate::bind(event, result, current: &CurrentHelper, capabilities, resources)` (`helper_candidate.rs:64`); `validate_profile(capabilities, true)` runs inside `bind_list` (`pipeline_cff.rs:56`) | the ORIGINAL producer bytes (`PipelineCff` keeps `original: Vec<u8>`; `helper_candidate::bind` documents "Typed decoding still reads ORIGINAL bytes") plus the immutable CFF registry resources |
+
+Consequence stated plainly: a reconstructed list has no producer bytes. The
+rendering-core CFF binder therefore cannot bind a delta-reconstructed list
+without either a canonical re-serialisation (a second writer — NOT proposed
+here) or a model-level bind entry point (a rendering-core owner decision — NOT
+proposed here). This proposal scopes delta consumption to the Mac model-level
+path above; the rendering-core path keeps consuming full siblings only. The
+generic `validate_display` example / default static-TrueType profile is not a
+binding path for `opentype-cff` output and is not cited as one (the draft's
+L50–53 and `oracle-evidence.md` agree: the generic profile refuses the
+pipeline's format as emitted). On the producer side the byte-identity gate
+(§10.1 P2) feeds the producer's OWN `to_json` bytes of the reconstructed list
+to `PipelineCff::bind` — the producer has the writer, so no second parser or
+writer is involved.
 
 ### 5.5 Complete reconstruction — nothing inherited implicitly
 
@@ -280,15 +327,19 @@ by default:
 | page order and count | `page_count` and `1..N` | no |
 | per-page and list digests | recomputed by the consumer over the reconstructed models and compared with the delta's | no |
 
-Consequences the gates check: a font that only unchanged pages reference must
-still be in the delta's `fonts` (a delta whose `fonts` omit it fails the full
-validator: `font resource … is not declared in fonts`); a diagnostic that
-belonged to an unchanged page must still be in the delta's `diagnostics` with
-its relocated span (the list digest covers diagnostics, so omission is a
-`delta_list_digest_mismatch`); a document whose text did not change is still
-listed in `documents` with the same sha256 (the consumer checks it against
-its own text as for a full frame). There is no "same as base" marker anywhere
-in the delta by design.
+Consequences, and who checks them: a font that only unchanged pages reference
+must still be in the delta's `fonts` — a delta whose `fonts` omit it fails the
+consumer's full validator (`font resource … is not declared in fonts`), so this
+one IS consumer-detectable. A diagnostic that belonged to an unchanged page
+must still be in the delta's `diagnostics` with its relocated span — the
+consumer CANNOT detect its omission (the digest would be computed over the
+same incomplete list on both sides); only the producer gate's fresh-full
+oracle detects it (§10.1 P2 compares the reconstructed line with a fresh
+compile's line byte for byte, diagnostics included). A document whose text did
+not change is still listed in `documents` with the same sha256 (the consumer
+checks it against its own text as for a full frame). There is no "same as
+base" marker anywhere in the delta by design, and no claim is made that
+digest agreement establishes completeness of anything the producer omitted.
 
 ## 6. Installation, retained state, residency bounds
 
@@ -297,25 +348,40 @@ in the delta by design.
 A snapshot is **installed** on the consumer when, and only when, all of:
 
 1. its envelope was decoded (full line) or reconstructed (delta, §5.4);
-2. the unchanged full validator accepted it (`RenderingV2.validate` /
-   rendering-core `validate_display`), its fonts resolved by content hash;
+2. the unchanged full validation path accepted it (§5.4a: `RenderingV2.validate`
+   → `V2FontStore.resolve` → `V2Frame.prepare`);
 3. its `dl2-canon-1` page digests and `list_digest` were computed (and, for a
    delta, matched the wire values);
-4. the consumer took its paint decision — published it in the v2 pane, or
-   deliberately kept the previous frame (a stale-by-ticket result, a hidden
-   pane) — a decision, not necessarily a paint;
+4. it was PUBLISHED as the current v2 frame — its `compile_result` is the
+   applied one and its load ticket is current (`deliverDisplayListV2`,
+   `PreviewV2View.swift:287-292`); a sibling that is stale by the time it
+   validates (a newer result applied, a newer load ticketed, the pane reset) is
+   REFUSED exactly as today (`PreviewV2View.swift:216-221`) — it is never
+   installed and never acknowledged, and the chain is cleared (§6.3);
 5. it replaced the previously installed snapshot as the consumer's sole
-   installed base.
+   installed base in the same main-thread step as the publish.
+
+Decision (r3): stale refusal is preserved; there is no non-authoritative
+reconstruction cache. Rationale: the alternative (installing a stale
+reconstruction so the next acknowledgement can name it) would hold the painted
+frame A, a stale installed B and a candidate C at once, breaking the old+new
+accounting and lending a stale frame base authority that the helper contract
+denies ("retained old frames must not acquire new source authority"). What
+the preserved rule costs: a stale sibling breaks the chain, the next request
+carries no acknowledgement, and the producer answers in full — exactly the
+reply it would give under pipelining anyway (§3), so nothing is lost in the
+one-request-at-a-time typing loop where deltas are meant to occur.
 
 Receipt of a line, helper admission, a helper's successful write, a queued
 frame, or a frame still validating off-main is not installation. The consumer
-acknowledges (request `display_list_base`) only an installed snapshot and, after
-sending an acknowledgement, must keep that snapshot installed until the reply to
-that request has been processed (a newer sibling arriving meanwhile is
-validated as a candidate but the acknowledged base is not evicted before the
-outstanding reply is handled — with one request in flight this is always
-satisfiable within the residency bound below, because the outstanding reply IS
-the candidate).
+acknowledges (request `display_list_base`) only the installed snapshot and,
+after sending an acknowledgement, keeps that snapshot installed until the reply
+to that request has been processed: with one request in flight the outstanding
+reply IS the only candidate, so `installed` + `candidate` is the whole state;
+if the consumer sends another request before that reply (pipelining), the
+reply's sibling will be stale on arrival, is refused per item 4, and the chain
+is cleared — consistent with the producer answering the pipelined request in
+full (§3).
 
 On the producer, "installed" is a fact about the consumer that the producer
 learns only from the next request's acknowledgement. The producer's own record
@@ -350,13 +416,15 @@ are unaffected.
 Eviction order: (1) a clearing event (a `compile_result` without accepted
 `display-list-v2`; any §7 refusal; pane hidden; worker/helper restart,
 reattach or session change; project change) drops `candidate` first, then
-`installed`; (2) on successful validation + paint decision, `candidate`
-becomes `installed` and the old `installed` is dropped in the same main-thread
-step; (3) a newer sibling arriving while one is validating replaces the
-queued candidate (existing coalescing, `PreviewV2View.swift` `startDisplayListV2`)
-— at most one candidate is ever retained. The previous *painted* frame that the
-v2 pane keeps on screen while validating is the `installed` snapshot's frame,
-not a third snapshot.
+`installed`; (2) on successful validation AND publish as the current frame,
+`candidate` becomes `installed` and the old `installed` is dropped in the same
+main-thread step; a candidate that validated but is stale is dropped and the
+chain cleared (§6.1 item 4); (3) a newer sibling arriving while one is
+validating replaces the queued candidate (existing coalescing,
+`PreviewV2View.swift` `startDisplayListV2`) — at most one candidate is ever
+retained. The frame on screen while a candidate validates IS the `installed`
+snapshot's frame, never a third snapshot: the residency table has exactly two
+rows on each side at every instant.
 
 **Caps (per snapshot, both sides; over any cap → the snapshot is not retained
 → full replies only, no delta):**
@@ -364,7 +432,8 @@ not a third snapshot.
 | cap | value | why |
 |---|---|---|
 | `MAX_SNAPSHOT_PAGES` | 1 024 pages | rendering-core allows 10 000; 1 024 keeps digest recomputation and page relocation bounded at ~40× the measured 27-page document |
-| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size (`estimated_json_bytes()` on the producer; the received line length on the consumer) | a snapshot never exceeds what one full line may carry; residency is therefore ≤ 2 × 16 MiB of JSON-equivalent per side plus the in-memory model overhead, which is a §10.3 measurement, not a claim |
+| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size of the RECONSTRUCTED TARGET, charged before retaining: `estimated_json_bytes()` over the target model (`display.rs:296-311`; the same constants are the consumer's charge function, applied to the reconstructed model — never the received delta line length, which bounds nothing about the target) | a delta line is small by construction while its target can be up to the full-line limit or, if the document grew, beyond it; charging the target keeps every retained snapshot ≤ what one full line may carry. A target over the cap is still validated and painted if it is a complete verified list, but is NOT retained as a base (next request without `-delta` → full) |
+| **peak residency (per side)** | ≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent (`installed` + `candidate` on the consumer; `old` + `new` on the producer) + one wire line ≤ 16 MiB (the delta or full line being read/written) + retained texts (producer) | the in-memory model overhead factor over serialised-equivalent is a §10.3 measurement, not a claim; the estimator's over-approximation (≈ 8 % on the runtime's 26-page fixture, `producer-size-contract.md`) makes the charge conservative |
 | retained request texts (producer only) | ≤ 8 MiB per document (rendering-core document bound), ≤ 32 MiB total | needed for the relocation diff; over the cap → no snapshot |
 | documents / fonts per snapshot | 4 096 / 256 (the existing validator bounds) | unchanged |
 
@@ -373,11 +442,13 @@ not a third snapshot.
 - **Ordering under pipelining:** FIFO stream; see §3 — an acknowledgement can
   only name the last installed snapshot, so with a request in flight the
   producer answers in full. Nothing breaks; deltas simply do not occur.
-- **Stale siblings:** a sibling whose `compile_result` is no longer the applied
-  one is still validated as a candidate (cheap) and may be installed without
-  being painted (decision: keep the newer frame) — this is what lets the next
-  acknowledgement name it. This splits the existing "stale sibling is dropped"
-  rule (`PreviewV2View.swift:216-221`) into "not painted" vs "not installed".
+- **Stale siblings:** refused exactly as today (`PreviewV2View.swift:216-221`,
+  ticket gate `:287-292`): never validated into the chain, never installed,
+  never acknowledged. A refused-stale delta or full clears `candidate` and, if
+  the stale sibling was the reply to the request that carried the current
+  acknowledgement, the chain is broken: the next request omits `-delta` and
+  the producer answers in full (§8). A delta whose `base` is not the currently
+  installed (published) frame is `delta_base_mismatch` → full resync (§7).
 - **Reset/cancel:** runtime-v1 has no cancel; superseded requests are answered
   in order. A consumer that cannot validate a sibling (helper dropped it as
   oversize/busy per `display-forwarding.md`; decode or validation failure)
@@ -479,7 +550,12 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
 - P4 size: a delta over the line limit → full; a full over the limit → the
   existing decline bytes unchanged; policy factor honoured.
 - P5 vectors: Rust `dl2-canon-1` reproduces Appendix B's digests from the
-  Appendix B JSON.
+  Appendix B JSON, including the −0.0 → +0.0 rule (a paint component written
+  as `-0` and as `0` hash equal) and refusal of non-finite components; the
+  producer's `to_json` bytes of each reconstructed `R_i` are also fed to
+  rendering-core `PipelineCff::bind` with the gate's source snapshots and the
+  pinned LM registry resources (§5.4a) — the CFF binder, not the generic
+  static-TrueType profile.
 
 ### 10.2 Consumer gate (`apps/mac`, Swift tests; fake worker script + real `flashtex-render`)
 
@@ -491,17 +567,22 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   frame stays; base dropped; next request omits `-delta`; the following full
   re-establishes the base.
 - C3 installation and residency: a sibling is acknowledged only after
-  validation + paint decision (a frame still validating is never named in a
-  request); a stale-by-ticket sibling is installed but not painted; with one
-  request in flight the acknowledged base stays installed until that reply is
-  handled; at most `installed` + `candidate` exist at any time (assert in the
-  fake-worker test); both cleared on decline/failed/restart/session change/pane
-  hidden; the full-reply refusal (`display_list_declined`) leaves the last
-  installed frame on screen marked stale and clears both slots.
+  validation + publish as the current frame (a frame still validating is never
+  named in a request); a stale-by-ticket sibling is REFUSED, not installed, and
+  the next request carries no acknowledgement; with one request in flight the
+  acknowledged base stays installed until that reply is handled; at most
+  `installed` + `candidate` exist at any time and the charge of each is the
+  reconstructed target's `estimated_json_bytes()`-equivalent (assert both in
+  the fake-worker test, including a target that grows past the cap → painted,
+  not retained, next request full); both cleared on decline/failed/restart/
+  session change/pane hidden; the full-reply refusal (`display_list_declined`)
+  leaves the last installed frame on screen marked stale and clears both slots.
 - C4 real producer: `flashtex-render` in delta mode over an edit script; every
-  reconstructed frame passes the unchanged validator, resolves fonts by content
-  hash and reaches `V2Parity` with 0 differing pixels at 1 and 2 px/pt (the
-  existing parity gate) — parity is measured, never inferred from digests.
+  reconstructed frame passes `RenderingV2.validate` → `V2FontStore.resolve` →
+  `V2Frame.prepare` (§5.4a) and reaches `V2Parity` with 0 differing pixels at
+  1 and 2 px/pt (the existing parity gate) — parity is measured, never inferred
+  from digests; completeness of the reconstructed diagnostics is NOT a consumer
+  gate item (it is P2's fresh-full oracle).
 - C5 helper route: blocked until the runtime accepts sibling
   `type: "display_list_delta"` (`crates/document-runtime/src/display_candidate.rs`,
   `raw_display.rs` currently require `display_list`; FT-049 owner) and the
@@ -542,11 +623,14 @@ Swift implementations must agree with it on the vectors.
 
 ```python
 #!/usr/bin/env python3
-import hashlib, json, struct, sys
+import hashlib, json, math, struct, sys
 
 # ---- canonical encoding (dl2-canon-1) -------------------------------------
 def i64(n):  return struct.pack('<q', int(n))
-def f64(x):  return struct.pack('<d', float(x))
+def f64(x):
+    x = float(x)
+    if not math.isfinite(x): raise ValueError('non-finite paint component is not encodable')
+    return struct.pack('<d', 0.0 if x == 0.0 else x)   # -0.0 -> +0.0; raw IEEE-754 bits otherwise
 def s(t):
     b = t.encode('utf-8'); return i64(len(b)) + b
 def ranges(rs):
@@ -710,7 +794,10 @@ if __name__ == '__main__':
         print('reconstruction == fresh: True')
 ```
 
-Output on 2026-09-12 (Python 3, mac-m1max-a):
+Output on 2026-09-12 (Python 3, mac-m1max-a), re-run unchanged for r3 after the
+`f64` rule change (the example's paint components are 0 and 1, so the digests
+are unaffected; a separate check confirmed that `r: -0.0` hashes equal to
+`r: 0` and that a NaN component raises `ValueError` instead of hashing):
 
 ```
 T0 sha256 580f3c9f730136acf7979d99d8702b41220588ad2cf482a773b7a2b277db29f2 48
