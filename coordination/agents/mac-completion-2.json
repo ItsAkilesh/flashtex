@@ -8,29 +8,29 @@
     "appkit",
     "completion"
   ],
-  "code_revision": "cd58fc2e",
+  "code_revision": "0e44bdbf",
   "eta_minutes": {
-    "likely": 60,
-    "optimistic": 45,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005",
-  "next_action": "Coverage audit written; build best-of-N pickup/keyboard latency harness, measure, optimise popup update path, evidence",
+  "next_action": "Parent merges agent/mac-completion-2/latency into mac-shell (no parent-retained file diffs needed); rerun full swift test in a load < 15 window",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
-      "adaptation": "Started from cd58fc2e; existing CompletionTests/CompletionLiveHelperTests coverage listed in coordination/mac-completion-2.md",
-      "reviewed_utc": "2026-09-12T12:10:00Z",
+      "adaptation": "Started from cd58fc2e; kept the merged mac-completion lane's scheduler/popup/fetcher design and extended it (fast paths, snapshot kinds, Tab traversal); existing coverage listed in coordination/mac-completion-2.md",
+      "reviewed_utc": "2026-09-12T12:42:00Z",
       "sha": "cd58fc2e"
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Completion pickup/keyboard latency + stale-context cancellation (issue #2 item 7); audit done, harness next",
+  "state": "ready_for_integration",
+  "summary": "Completion (issue #2 item 7): best-of-N pickup/keyboard latency harness with per-stage breakdown (demo.tex pickup best 5.5 ms at load 13-17, scan 0.9 ms, rest AppKit panel show/draw), popup selection-only/no-reorder fast paths, document-switch stale refusal tests, real-helper cite pickup best 0.97 ms; follow-up 1 Tab/Shift-Tab traversal + command table/README/VoiceOver parity; follow-up 2 cite completion states helper-declared bibliography kinds from a bound snapshot, never inferred",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T12:10:00Z",
+  "updated_utc": "2026-09-12T12:42:00Z",
   "usage": {
-    "evidence": "none yet",
+    "evidence": "targeted swift test with real compiler/preview-controller: 176 tests, 0 failures, 6 skips (load-gated/env-gated) at load 20-36; CompletionTests 27, CompletionLatencyTests 4, CompletionLiveHelperTests 2, DocumentKindsTests 8, CommandTableTests 8; full suite not run (load >= 19 throughout); docs/evidence/completion-latency-2026-09-12.md",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
   }
 }

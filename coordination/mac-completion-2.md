@@ -1,6 +1,6 @@
 # mac-completion-2 handoff — completion pickup/keyboard latency, stale-context cancellation
 
-- Updated UTC: 2026-09-12T12:10Z
+- Updated UTC: 2026-09-12T12:42Z
 - Agent / parent / machine alias: `mac-completion-2` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task: Commander replenishment (issue #2 comment 5646989044) item 7,
@@ -9,15 +9,22 @@
   route; follow-up 1 = keyboard-only popup traversal (Tab/Shift-Tab/Esc/
   Return/arrows) with VoiceOver labels + command table/README parity;
   follow-up 2 = `\cite{` completion from declared bibliography kinds only.
-- Owned paths: `apps/mac/Sources/FlashTeXMac/Completion.swift`,
+- State: **all three delivered and pushed** (current task + follow-up 1 +
+  follow-up 2), ready for parent integration. No parent-retained file was
+  changed; no diff request is needed (the fetcher's extra `snapshot` query
+  goes through the parent's existing `completionFetcher.request` call).
+- Owned paths changed: `apps/mac/Sources/FlashTeXMac/Completion.swift`,
   `apps/mac/Tests/FlashTeXMacTests/CompletionTests.swift`, new
   `apps/mac/Tests/FlashTeXMacTests/CompletionLatencyTests.swift`,
-  `docs/evidence/completion-*`, this handoff, `coordination/agents/mac-completion-2.json`.
-  Parent-retained (diff requests only): `ShellModel.swift`,
-  `ShellModel+Controller.swift`, `ContentView.swift`, `PreviewView.swift`,
-  `FlashTeXMacApp.swift`, `SourceEditorView.swift`.
-- Branch: `agent/mac-completion-2/latency` from `origin/agent/mac-claude-a/mac-shell`
-  `cd58fc2e` (main `c11c005` merged there; `origin/main` at start `4b1850a1`, read, not merged).
+  `docs/evidence/completion-latency-2026-09-12.md`, this handoff,
+  `coordination/agents/mac-completion-2.json`. Finished-lane files edited
+  for the follow-ups: `apps/mac/Sources/FlashTeXAccessibility/{AccessibilityCommands,AccessibilityViews,CompletionAccessibility}.swift`,
+  `apps/mac/Tests/FlashTeXAccessibilityTests/CommandTableTests.swift`,
+  `apps/mac/README.md` (shortcut row + completion section),
+  `apps/mac/Sources/FlashTeXMac/DocumentKinds.swift` (one detach-race fix in `refresh`).
+- Branch / tip: `agent/mac-completion-2/latency` at `0e44bdbf` + evidence
+  commit (see git); base `origin/agent/mac-claude-a/mac-shell` `cd58fc2e`
+  (main `c11c005` merged there; `origin/main` `4b1850a1` fetched, not merged).
 
 ## Coverage audit (mandatory first step)
 
@@ -36,7 +43,8 @@ handoff `coordination/mac-completion.md`):
   `testMetadataBindsOnlyToItsRevisionAndMergesSameRevision`,
   `testProjectIndexReplyDecodesIsBoundedAndRefusesStaleVersions`.
 - Fetcher refusals (stale source versions, helper error, decode failure,
-  newer request discards): `CompletionTests.testFetcherQueriesThreeCategoriesAndRefusesStaleOrFailedReplies`.
+  newer request discards): `CompletionTests.testFetcherQueriesThreeCategoriesAndRefusesStaleOrFailedReplies`
+  (now `…ThreeCategoriesPlusKinds…`).
 - Keyboard functional behaviour (⌃Space/Esc open, ↑/↓ wrap, typing narrows,
   Delete widens, Return/Tab insert, Esc closes and a late outcome cannot
   reopen, ←/Home leave, ⌘-shortcuts close, mouse click/double-click):
@@ -56,31 +64,53 @@ handoff `coordination/mac-completion.md`):
   the `completion` entry "Esc / ⌃Space").
 - `tools/native-validation/mac-live/reports/20260912T110944Z.md`: no
   completion pickup/keyboard measurements (only typing-bench/historical rows
-  mention "completed"); `docs/evidence/` has no `completion-*` entry.
+  mention "completed"); `docs/evidence/` had no `completion-*` entry.
 
-NOT covered (this lane's scope):
+Was NOT covered, now added (this lane):
 
-1. End-to-end pickup latency: keystroke → list shown (first open) and
-   keystroke → list updated (narrowing), i.e. including off-main scan,
-   run-loop delivery and popup update. Only the main-thread enqueue cost and
-   the off-main compute were measured.
-2. Keyboard latency: ↓/↑ → selection updated in the popup; Return → text
-   inserted and list closed. Not measured.
-3. Document switch: a pending scan for the previous buffer/caret must never
-   open or mutate the list once the editor swapped documents (SourceEditorView
-   replaces `tv.string` on switch); a helper `complete` reply for a query
-   bound to a revision that File > Open replaced (`replaceProject` bumps
-   `editorRevision`) must be refused at bind. Not explicitly tested.
-4. Popup update cost: `selectCompletion` reloads the whole table on every
-   arrow key; `present` re-frames/re-orders the panel on every narrowing.
+1. End-to-end pickup latency (keystroke → list shown / narrowed, incl. off-main
+   scan, run-loop delivery, popup) and keyboard latency (↓ → selection,
+   Return → inserted), best-of-15 with per-stage breakdown:
+   `CompletionLatencyTests.testPickupNarrowArrowAndReturnLatencyBestOfN`,
+   `testArrowSelectionThroughTwelveRowsAvoidsTheTableReload`; real helper
+   route `\cite{` pickup best-of-10 inside the live test.
+2. Document switch: `testOutcomeForThePreviousDocumentNeverOpensOrMutatesTheList`,
+   `testHelperReplyAfterProjectReplacementIsRefusedAtBind`.
+3. Popup update cost: selection-only update, no re-frame/re-order while on
+   screen, panel prebuilt during the first scan.
+
+## Results (see `docs/evidence/completion-latency-2026-09-12.md`)
+
+demo.tex best of 15 at load 13–17 (bounds enforced, passed): pickup
+⌃Space→list 5.5–5.7 ms, narrow 5.1–5.6 ms, ↓→selection 0.16 ms,
+Return→inserted 1.2–3.0 ms; off-main scan 0.88 ms, queue wait 0.01 ms,
+delivery lag 0.02 ms, present 1.5–1.8 ms, panel display cycle ~1.3–2.7 ms
+(estimate). Baseline before the popup changes (load 34–38, under load):
+pickup 10.5 ms with a 4.5 ms delivery lag that was the editor's pending text
+layout (test artefact, now settled before timing). Real helper `\cite{`
+pickup best 0.97 ms (load 17.1); edit → bound index metadata best 26 ms.
+
+## Test evidence
+
+- `swift build --build-tests` clean (warnings only from an unrelated test file).
+- Targeted with real compiler + preview-controller built from this branch's
+  crates (`cargo build --release`): 176 tests, 0 failures, 6 skips (load-gated
+  timing bounds + env-gated others) across FlashTeXAccessibilityTests,
+  CompletionTests (27), CompletionLatencyTests (4), CompletionLiveHelperTests
+  (2), SourceEditorView, ShellModel, PreviewController, ProjectDocuments,
+  DocumentKinds (8), CitationRename, EditorPreferences, IMEComposition,
+  PanelAccessibility, TypingBench, EditorDiagnostics, Navigation — at load 20–36.
+- Full `swift test` not run: 1-minute load stayed ≥ 19 throughout (brief:
+  only below 15).
 
 ## Durable checkpoint
 
 - Branch `agent/mac-completion-2/latency`, worktree
-  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8e5d330dfc5852c1`.
-- Dirty files: none at this checkpoint.
-- Next commands: write `CompletionLatencyTests.swift` (best-of-N pickup/
-  keyboard harness), measure baseline, optimise popup update paths in
-  `Completion.swift`, re-measure, write `docs/evidence/completion-latency-2026-09-12.md`.
+  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8e5d330dfc5852c1`;
+  commits `35da3aac` (audit), `6dfd0bc0` (latency), `c50f8ac0` (follow-up 1),
+  `0e44bdbf` (follow-up 2), + evidence/handoff commit.
+- Dirty files: none after the evidence commit.
+- Next: parent merges the branch into mac-shell; if a quiet window (load < 15)
+  appears, rerun `swift test` with all helpers and append the numbers.
 - Consumed main SHA: `c11c005` (via mac-shell); `origin/main` `4b1850a1` fetched, not merged.
 - Staffing/billing: shared Claude Max 20x on mac-m1max-a via parent; no purchases.
