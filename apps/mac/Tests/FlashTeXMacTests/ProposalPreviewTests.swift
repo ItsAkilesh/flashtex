@@ -949,10 +949,31 @@ final class ProposalPreviewTests: XCTestCase {
             }
         }
         if let helper = ProposalPreview.ExplanationConfiguration.locateHelper() {
-            // The default (non-`grok`) build has no HTTP client and no endpoint string.
+            // The pinned scratch build (`scratchHelperPath`) has no HTTP client and no
+            // endpoint string. A checkout build made with `--features grok` for the live
+            // path (GrokLiveTests) carries both; even then the one-shot launches above
+            // are argv-empty and credential-free, and that build sends nothing unless
+            // started with `--provider-session` (crates/assistant-context README).
             let binary = try Data(contentsOf: helper)
-            XCTAssertNil(binary.range(of: Data("api.x.ai".utf8)), "pinned helper contains the provider endpoint")
-            XCTAssertNil(binary.range(of: Data("--provider-session".utf8)), "pinned helper was built with the grok feature")
+            // A grok build answers `--provider-session` (without a key) with
+            // "explicit provider credential missing"; the default build prints usage.
+            let probe = Process()
+            probe.executableURL = helper
+            probe.arguments = ["--provider-session", "feature-probe", "grok-4.6"]
+            probe.environment = ["PATH": "/usr/bin"]
+            let stderr = Pipe()
+            probe.standardInput = FileHandle.nullDevice; probe.standardOutput = FileHandle.nullDevice; probe.standardError = stderr
+            try probe.run()
+            let said = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            probe.waitUntilExit()
+            XCTAssertEqual(probe.terminationStatus, 2, said)
+            let grokBuild = said.contains("explicit provider credential missing")
+            if helper.path.hasSuffix(ProposalPreview.ExplanationConfiguration.scratchHelperPath) {
+                XCTAssertNil(binary.range(of: Data("api.x.ai".utf8)), "pinned helper contains the provider endpoint")
+                XCTAssertFalse(grokBuild, "pinned helper was built with the grok feature")
+            } else if !grokBuild {
+                XCTAssertNil(binary.range(of: Data("api.x.ai".utf8)), "non-grok helper contains the provider endpoint")
+            }
         }
         preview.close()
         try await waitUntil("worker terminated") { !preview.workerIsRunning }
