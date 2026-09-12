@@ -3,11 +3,15 @@
   "agent_id": "daniel-title",
   "machine": "mac-m5pro-dq222",
   "tool": "Claude Code on Claude Max 20x",
-  "capabilities": ["rust", "title-layout", "document-style"],
+  "capabilities": [
+    "rust",
+    "title-layout",
+    "document-style"
+  ],
   "branch": "agent/daniel-title/title-layout",
   "state": "ready_for_integration",
-  "summary": "FT-033 rev 2: added crates/title-layout/src/metrics.rs GlyphMetrics trait (caller-supplied exact advance widths + em, no font crate dependency added). layout_title_block_with_metrics computes title/date centering and multi-author side-by-side placement, rejecting missing metrics with typed MissingGlyphMetric/MissingEmMetric errors and page-bounds overflow with RowTooWide/AuthorGroupTooWide/BlockTallerThanPage, never clipping or fabricating a width. Report/Book/Letter still rejected explicitly as in rev 1. cargo test: 27 passed (26 + 1 doctest), 0 failed. cargo clippy --all-targets -- -D warnings: clean. cargo fmt --check: clean.",
-  "next_action": "Await Commander integration; no consumer wiring in this revision",
+  "summary": "FT-033 rev 3: adversarial bounds on the rev-2 metrics-bound title/author/date layout, plus exact identity regressions. Validated GlyphMetrics::advance_width/em values as finite and non-negative before they reach layout arithmetic (new TitleLayoutError::InvalidGlyphMetric/InvalidEmMetric); a NaN width previously compared false against every page-fit `>` check and could have silently produced a NaN baseline. Added TitleLayoutError::InvalidPageArea, checked once against sheet.page_layout().text_area before the existing BlockTallerThanPage comparison, reachable via Stylesheet::with_geometry (oversized margin or explicit zero/negative textwidth/textheight), not a hand-crafted internal state. tests/adversarial.rs (17 tests): enormous title (500k chars), 5000 authors, whitespace-only author line, mid-string None, non-finite/negative glyph and em metrics, degenerate page area, combining marks and zero-width text -- every case a typed error or a bounded Ok, never a panic or hang. tests/exact_identity.rs (3 tests): literal exact-equality pins (assert_eq!, no epsilon) of computed row font sizes, baselines, total heights, and horizontal extents for representative 10pt/12pt inputs. Consumer check: grep -rln 'flashtex_title_layout|flashtex-title-layout' crates outside crates/title-layout finds nothing -- no consumer exists yet; adapter contract documented in coordination/daniel-title.md rather than inventing one. cargo test: 46 tests + 1 doctest, all pass. cargo clippy --all-targets -- -D warnings: clean. cargo fmt --check: clean.",
+  "next_action": "Await Commander integration; no consumer wiring in this revision. A future consumer implementing GlyphMetrics must only return None or a finite, non-negative Pt.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -19,17 +23,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages"
   },
   "reviewed_peers": {
-    "origin/main": "2fc45df69f0d397706174117116777f19619dfe2"
+    "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
   },
   "assignment_acknowledgements": {
     "FT-033": {
-      "acknowledged_utc": "2026-09-12T09:22:12Z",
-      "revision": 2,
-      "main_sha": "2fc45df69f0d397706174117116777f19619dfe2",
-      "adaptation": "Read crates/font-engine's Face trait and crates/document-style before adding a metrics contract; Face requires a real loaded font (glyph ids, kerning, ligatures) so it does not fit a caller that only has exact numbers with no font backing, and document-style has no glyph-width concept at all. Defined a new minimal GlyphMetrics trait in-crate instead of forcing reuse of a mismatched contract, added no font-crate dependency, and kept layout_title_block (vertical-only) unchanged so all revision-1 tests still pass unmodified."
+      "acknowledged_utc": "2026-09-12T16:30:27Z",
+      "revision": 3,
+      "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+      "adaptation": "Read src/title.rs, src/error.rs, src/metrics.rs and both existing test files before changing anything. Validated advance_width/em outputs (finite, non-negative) at the point measure_line and the em-gap computation receive them, rather than trusting Some() to mean usable -- the sharp case the objective named. Added InvalidPageArea by reading document-style's Geometry/apply_geometry to confirm a degenerate text_area is reachable through the existing public Stylesheet API (with_geometry) instead of poking at private fields. Grepped the whole repo for any flashtex_title_layout/flashtex-title-layout consumer before writing the report: none found, so no consumer was invented and no other crate was edited, per the assignment's own acceptance criterion."
     }
   },
-  "updated_utc": "2026-09-12T09:24:37Z",
-  "code_revision": "3bd3372ab1f1a997fe59b2827eb3088af010296a",
-  "main_integrated_through": "2fc45df69f0d397706174117116777f19619dfe2"
+  "updated_utc": "2026-09-12T16:30:27Z",
+  "code_revision": "3356d659c0b56e7de41d9c30b35de75956834b55",
+  "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
 }
