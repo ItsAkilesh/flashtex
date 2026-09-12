@@ -128,7 +128,7 @@ final class NavigationTests: XCTestCase {
     }
 
     @MainActor
-    func testNextPreviousDiagnosticCyclesWrapsAndRefusesAfterOverlappingEdit() throws {
+    func testNextPreviousDiagnosticCyclesWrapsAndSkipsMarksUnderEditedText() throws {
         let model = ShellModel()
         model.loadFixtures(request: nil, result: try twoDiagnosticSample())
         XCTAssertNil(model.loadError)
@@ -139,14 +139,18 @@ final class NavigationTests: XCTestCase {
         model.caretUTF16 = 0
         model.goToDiagnostic(forward: true)
         XCTAssertEqual(ns.substring(with: model.selection!.nsRange), "naïve")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 1 of 2 (warning)") == true, model.navigationNote ?? "nil")
+        XCTAssertEqual(model.navigationNote, "Warning 1 of 2, line 4: Suspicious word. — no provisional rendering")
+        XCTAssertEqual(model.caretUTF16, model.selection!.nsRange.location)
+        XCTAssertEqual(model.caretLengthUTF16, "naïve".utf16.count)
         model.goToDiagnostic(forward: true)
         XCTAssertEqual(ns.substring(with: model.selection!.nsRange), "\\textbf{oops")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 2 of 2 (error)") == true, model.navigationNote ?? "nil")
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Error 2 of 2, line 8: ") == true, model.navigationNote ?? "nil")
         model.goToDiagnostic(forward: true) // wraps
         XCTAssertEqual(ns.substring(with: model.selection!.nsRange), "naïve")
+        XCTAssertTrue(model.navigationNote?.hasSuffix("(wrapped to start)") == true, model.navigationNote ?? "nil")
         model.goToDiagnostic(forward: false) // wraps backwards
         XCTAssertEqual(ns.substring(with: model.selection!.nsRange), "\\textbf{oops")
+        XCTAssertTrue(model.navigationNote?.hasSuffix("(wrapped to end)") == true, model.navigationNote ?? "nil")
         model.goToDiagnostic(forward: false)
         XCTAssertEqual(ns.substring(with: model.selection!.nsRange), "naïve")
 
@@ -157,20 +161,27 @@ final class NavigationTests: XCTestCase {
         // An edit before both spans shifts them.
         model.updateActiveText("% lead\n" + text)
         model.caretUTF16 = 0
+        model.currentDiagnosticID = nil
         model.goToDiagnostic(forward: true)
         XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "naïve")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 1 of 2") == true, model.navigationNote ?? "nil")
+        XCTAssertEqual(model.navigationNote, "Warning 1 of 2, line 5: Suspicious word. — no provisional rendering")
 
-        // An edit inside the error's span: navigation to it is refused, selection unchanged.
+        // An edit inside the error's span: its mark is withheld, so stepping skips it
+        // (wrapping onto the only remaining mark) and the note counts it.
         model.updateActiveText(text.replacingOccurrences(of: "{oops", with: "{o0ps"))
         model.caretUTF16 = ns.range(of: "naïve").location + 1
+        model.currentDiagnosticID = nil
+        model.goToDiagnostic(forward: true)
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "naïve")
+        XCTAssertEqual(model.navigationNote, "Warning 1 of 1, line 4: Suspicious word. — no provisional rendering (wrapped to start); 1 error under edited text not underlined until the next compile")
+        model.goToDiagnostic(forward: false)
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "naïve")
+        // Both marks withheld: nothing can be selected and the note says why.
+        model.updateActiveText(text.replacingOccurrences(of: "{oops", with: "{o0ps").replacingOccurrences(of: "naïve", with: "naive"))
         let before = model.selection
         model.goToDiagnostic(forward: true)
         XCTAssertEqual(model.selection, before)
-        XCTAssertTrue(model.navigationNote?.contains("recompile") == true, model.navigationNote ?? "nil")
-        // The other diagnostic is still reachable.
-        model.goToDiagnostic(forward: false)
-        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "naïve")
+        XCTAssertEqual(model.navigationNote, "No diagnostic can be selected: 1 error and 1 warning under edited text not underlined until the next compile.")
     }
 
     @MainActor
@@ -190,7 +201,7 @@ final class NavigationTests: XCTestCase {
             .init(severity: .error, message: "e", source: .init(path: "other.tex", startByte: 0, endByte: 1), recovery: nil),
         ], pdfPath: nil)
         model.goToDiagnostic(forward: false)
-        XCTAssertEqual(model.navigationNote, "None of the 2 diagnostics has a source in an open document (main.tex).")
+        XCTAssertEqual(model.navigationNote, "None of the 2 diagnostics has a source in main.tex.")
         model.result = RuntimeV1.CompileResult(projectId: "p", revision: model.editorRevision, status: .ok, pages: [], diagnostics: [], pdfPath: nil)
         model.goToDiagnostic(forward: true)
         XCTAssertTrue(model.navigationNote?.contains("no diagnostics") == true, model.navigationNote ?? "nil")
@@ -215,34 +226,6 @@ final class NavigationTests: XCTestCase {
         model.revealCaretInPreview()
         XCTAssertEqual(model.selection, before)
         XCTAssertTrue(model.navigationNote?.contains("inside no preview item") == true, model.navigationNote ?? "nil")
-    }
-
-    // MARK: pure helpers
-
-    func testStopsOrderAndWrap() {
-        let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .recovered, pages: [], diagnostics: [
-            .init(severity: .error, message: "late", source: .init(path: "a.tex", startByte: 20, endByte: 25), recovery: nil),
-            .init(severity: .warning, message: "none", source: nil, recovery: nil),
-            .init(severity: .error, message: "early", source: .init(path: "a.tex", startByte: 2, endByte: 5), recovery: nil),
-            .init(severity: .error, message: "other", source: .init(path: "b.tex", startByte: 0, endByte: 1), recovery: nil),
-        ], pdfPath: nil)
-        let stops = Navigation.stops(in: result, path: "a.tex", compiledText: nil, currentText: "")
-        XCTAssertEqual(stops.map(\.diagnostic.message), ["early", "late"])
-        XCTAssertEqual(Navigation.nextStop(stops, from: 0, forward: true)?.diagnostic.message, "early")
-        XCTAssertEqual(Navigation.nextStop(stops, from: 2, forward: true)?.diagnostic.message, "late")
-        XCTAssertEqual(Navigation.nextStop(stops, from: 20, forward: true)?.diagnostic.message, "early")
-        XCTAssertEqual(Navigation.nextStop(stops, from: 20, forward: false)?.diagnostic.message, "early")
-        XCTAssertEqual(Navigation.nextStop(stops, from: 2, forward: false)?.diagnostic.message, "late")
-        XCTAssertNil(Navigation.nextStop([], from: 0, forward: true))
-        // Rebased ordering: an insertion before "early" shifts it; the overlapped one keeps its offset.
-        let old = String(repeating: "x", count: 30)
-        var new = old; new.insert(contentsOf: "INS", at: new.index(new.startIndex, offsetBy: 1))
-        let shifted = Navigation.stops(in: result, path: "a.tex", compiledText: old, currentText: new)
-        XCTAssertEqual(shifted.map(\.currentStart), [5, 23])
-        var overlapped = old
-        overlapped.replaceSubrange(overlapped.index(overlapped.startIndex, offsetBy: 3)..<overlapped.index(overlapped.startIndex, offsetBy: 4), with: "Y")
-        let o = Navigation.stops(in: result, path: "a.tex", compiledText: old, currentText: overlapped)
-        XCTAssertEqual(o.map(\.currentStart), [2, 20])
     }
 }
 
@@ -571,65 +554,61 @@ final class NavigationExactnessTests: XCTestCase {
     @MainActor
     func testDiagnosticsCycleAcrossDocumentsInProjectOrder() throws {
         let model = try MultiFileFixture.loadedModel()
-        let result = try XCTUnwrap(model.result)
-        let stops = Navigation.stops(in: result, documents: model.documents, compiledDocuments: ["main.tex": MultiFileFixture.main, "chapter.tex": MultiFileFixture.chapter])
-        XCTAssertEqual(stops.map(\.source.path), ["main.tex", "chapter.tex"], "project order, not result order")
-        XCTAssertEqual(stops.map(\.index), [1, 0])
-
         model.caretUTF16 = 0
         model.goToDiagnostic(forward: true)
         XCTAssertEqual(model.activePath, "main.tex")
         XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\u{FB01}le")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 1 of 2 (warning) in main.tex: '\u{FB01}'") == true, model.navigationNote ?? "nil")
+        XCTAssertEqual(model.caretUTF16, model.selection!.nsRange.location)
+        XCTAssertEqual(model.caretLengthUTF16, 3)
+        XCTAssertTrue(model.navigationNote?.hasPrefix("Warning 1 of 1, line 4: '\u{FB01}' (U+FB01)") == true, model.navigationNote ?? "nil")
+        XCTAssertFalse(model.navigationNote?.contains("wrapped") == true, model.navigationNote ?? "nil")
+        // Past main.tex's only mark: the first mark of chapter.tex, switching documents.
         model.goToDiagnostic(forward: true)
         XCTAssertEqual(model.activePath, "chapter.tex")
+        XCTAssertEqual(model.selection?.path, "chapter.tex")
         XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "{")
         XCTAssertEqual(model.activeText.utf8ByteRange(of: model.selection!.nsRange)?.start, 59)
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 2 of 2 (error) in chapter.tex:") == true, model.navigationNote ?? "nil")
-        model.goToDiagnostic(forward: true) // wraps to main.tex
+        XCTAssertEqual(model.navigationNote, "Error 1 of 1, line 2: argument to \\textbf is missing its closing brace — recovery: closed the argument at end of input (in chapter.tex)")
+        // Past chapter.tex's only mark: back to main.tex (project order wraps).
+        model.goToDiagnostic(forward: true)
         XCTAssertEqual(model.activePath, "main.tex")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 1 of 2") == true, model.navigationNote ?? "nil")
-        model.goToDiagnostic(forward: false) // wraps backwards into chapter.tex
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\u{FB01}le")
+        XCTAssertTrue(model.navigationNote?.hasSuffix("(in main.tex)") == true, model.navigationNote ?? "nil")
+        // Backwards from main.tex's first mark: chapter.tex's last mark.
+        model.goToDiagnostic(forward: false)
         XCTAssertEqual(model.activePath, "chapter.tex")
-        XCTAssertTrue(model.navigationNote?.hasPrefix("Diagnostic 2 of 2") == true, model.navigationNote ?? "nil")
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "{")
         model.goToDiagnostic(forward: false)
         XCTAssertEqual(model.activePath, "main.tex")
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\u{FB01}le")
 
-        // Edit the byte the chapter error points at (its "{"): it is refused, the warning in main.tex still cycles.
+        // Edit the byte the chapter error points at (its "{"): the mark is withheld, so
+        // stepping from main.tex wraps within main.tex instead of switching.
         model.activePath = "chapter.tex"
         model.updateActiveText(MultiFileFixture.chapter.replacingOccurrences(of: "\\textbf{oops", with: "\\textbf[oops"))
         model.activePath = "main.tex"
         model.caretUTF16 = (MultiFileFixture.main as NSString).range(of: "office").location
-        let before = model.selection
+        model.currentDiagnosticID = nil
         model.goToDiagnostic(forward: true)
-        XCTAssertEqual(model.selection, before)
-        XCTAssertEqual(model.activePath, "main.tex", "a refused stop must not switch documents")
-        XCTAssertTrue(model.navigationNote?.contains("recompile to navigate") == true, model.navigationNote ?? "nil")
-        model.goToDiagnostic(forward: false)
+        XCTAssertEqual(model.activePath, "main.tex", "a withheld mark must not switch documents")
         XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\u{FB01}le")
-    }
-
-    func testNextStopAcrossDocumentsOrdersByDocumentThenByte() {
-        let docs = [RuntimeV1.Document(path: "a.tex", text: ""), .init(path: "b.tex", text: "")]
-        let result = RuntimeV1.CompileResult(projectId: "p", revision: 1, status: .recovered, pages: [], diagnostics: [
-            .init(severity: .error, message: "b10", source: .init(path: "b.tex", startByte: 10, endByte: 11), recovery: nil),
-            .init(severity: .error, message: "a20", source: .init(path: "a.tex", startByte: 20, endByte: 21), recovery: nil),
-            .init(severity: .error, message: "a5", source: .init(path: "a.tex", startByte: 5, endByte: 6), recovery: nil),
-            .init(severity: .error, message: "c0", source: .init(path: "c.tex", startByte: 0, endByte: 1), recovery: nil),
-        ], pdfPath: nil)
-        let stops = Navigation.stops(in: result, documents: docs, compiledDocuments: [:])
-        XCTAssertEqual(stops.map(\.diagnostic.message), ["a5", "a20", "b10"], "c.tex is not open")
-        func next(_ path: String, _ byte: Int, _ forward: Bool) -> String? {
-            Navigation.nextStop(stops, documents: docs, activePath: path, caretByte: byte, forward: forward)?.diagnostic.message
-        }
-        XCTAssertEqual(next("a.tex", 5, true), "a20")
-        XCTAssertEqual(next("a.tex", 20, true), "b10")
-        XCTAssertEqual(next("b.tex", 10, true), "a5")
-        XCTAssertEqual(next("b.tex", 0, true), "b10")
-        XCTAssertEqual(next("b.tex", 0, false), "a20")
-        XCTAssertEqual(next("a.tex", 0, false), "b10")
-        XCTAssertEqual(next("a.tex", 6, false), "a5")
-        XCTAssertNil(Navigation.nextStop([], documents: docs, activePath: "a.tex", caretByte: 0, forward: true))
+        XCTAssertTrue(model.navigationNote?.hasSuffix("(wrapped to start)") == true, model.navigationNote ?? "nil")
+        // In chapter.tex itself nothing is selectable and the note says why.
+        model.activePath = "chapter.tex"
+        model.caretUTF16 = 0
+        model.currentDiagnosticID = nil
+        let before = model.selection
+        model.goToDiagnostic(forward: false)
+        XCTAssertEqual(model.activePath, "main.tex", "steps into main.tex, whose mark is intact")
+        XCTAssertNotEqual(model.selection, before)
+        // Both documents withheld: explained, nothing selected, no switch.
+        model.activePath = "main.tex"
+        model.updateActiveText(MultiFileFixture.main.replacingOccurrences(of: "\u{FB01}le", with: "file"))
+        let before2 = model.selection
+        model.goToDiagnostic(forward: true)
+        XCTAssertEqual(model.selection, before2)
+        XCTAssertEqual(model.activePath, "main.tex")
+        XCTAssertEqual(model.navigationNote, "No diagnostic can be selected: 1 warning under edited text not underlined until the next compile.")
     }
 
     // MARK: caret → preview

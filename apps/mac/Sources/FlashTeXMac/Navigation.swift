@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import FlashTeXProtocol
+import FlashTeXAccessibility
 
 /// Source-aware navigation. The text functions are pure and return UTF-8 byte
 /// ranges into the current buffers (no compile result involved, so they are
@@ -194,74 +195,6 @@ enum Navigation {
         }
         return .selected(whole, widenedFrom: whole == ns ? nil : ns)
     }
-
-    // MARK: - diagnostics
-
-    /// Diagnostics with a source in `path`, ordered by their start offset in
-    /// the current buffer (rebased across edits when possible; a diagnostic
-    /// whose range overlaps an edit keeps its compiled offset for ordering and
-    /// is refused by `ShellModel.navigateExactly` when chosen).
-    struct Stop: Equatable {
-        let index: Int          // index into `result.diagnostics`
-        let diagnostic: RuntimeV1.Diagnostic
-        let source: RuntimeV1.SourceRange
-        let currentStart: Int   // best-known start byte in the current buffer
-    }
-
-    static func stops(in result: RuntimeV1.CompileResult, path: String,
-                      compiledText: String?, currentText: String) -> [Stop] {
-        var region: SourceMapping.ChangedRegion?
-        if let compiledText, !compiledText.sameBytes(as: currentText) {
-            region = SourceMapping.changedRegion(from: compiledText, to: currentText)
-        }
-        var out: [Stop] = []
-        for (i, d) in result.diagnostics.enumerated() {
-            guard let s = d.source, s.path == path else { continue }
-            var start = s.startByte
-            if let region, case .rebased(let mapped, _) = SourceMapping.rebase(start: s.startByte, end: s.endByte, across: region) {
-                start = mapped
-            }
-            out.append(Stop(index: i, diagnostic: d, source: s, currentStart: start))
-        }
-        return out.sorted { a, b in a.currentStart != b.currentStart ? a.currentStart < b.currentStart : a.index < b.index }
-    }
-
-    /// Next stop strictly after `caretByte`, wrapping to the first; `forward: false`
-    /// gives the previous one, wrapping to the last.
-    static func nextStop(_ stops: [Stop], from caretByte: Int, forward: Bool) -> Stop? {
-        guard !stops.isEmpty else { return nil }
-        if forward { return stops.first { $0.currentStart > caretByte } ?? stops[0] }
-        return stops.last { $0.currentStart < caretByte } ?? stops[stops.count - 1]
-    }
-
-    /// Stops across every open document, in project order (`documents`
-    /// order, then start offset). Diagnostics naming a path that is not open
-    /// are left out.
-    static func stops(in result: RuntimeV1.CompileResult, documents: [RuntimeV1.Document],
-                      compiledDocuments: [String: String]) -> [Stop] {
-        documents.flatMap { doc in
-            stops(in: result, path: doc.path, compiledText: compiledDocuments[doc.path], currentText: doc.text)
-        }
-    }
-
-    /// Next stop after the caret (`activePath`, `caretByte`) in project order,
-    /// wrapping; the stops must come from `stops(in:documents:compiledDocuments:)`.
-    static func nextStop(_ stops: [Stop], documents: [RuntimeV1.Document], activePath: String,
-                         caretByte: Int, forward: Bool) -> Stop? {
-        guard !stops.isEmpty else { return nil }
-        let order = Dictionary(documents.enumerated().map { ($1.path, $0) }, uniquingKeysWith: { first, _ in first })
-        let here = order[activePath] ?? -1
-        func isAfter(_ s: Stop) -> Bool {
-            let d = order[s.source.path] ?? -1
-            return d != here ? d > here : s.currentStart > caretByte
-        }
-        func isBefore(_ s: Stop) -> Bool {
-            let d = order[s.source.path] ?? -1
-            return d != here ? d < here : s.currentStart < caretByte
-        }
-        if forward { return stops.first(where: isAfter) ?? stops[0] }
-        return stops.last(where: isBefore) ?? stops[stops.count - 1]
-    }
 }
 
 // MARK: - model actions
@@ -367,33 +300,53 @@ extension ShellModel {
         }
     }
 
-    /// ⌘⇧] / ⌘⇧[: cycle through the result's diagnostics that have a source
-    /// in any open document, in project order. Uses `navigateExactly`, so an
-    /// edited span is refused with "recompile to navigate" and a diagnostic in
-    /// another document switches to it.
+    /// ⌘⇧] / ⌘⇧[: step through the underlined diagnostics (`editorMarkReport`,
+    /// exact mark identities, stale spans withheld) of the active document in
+    /// document order; past its last mark the step continues into the next
+    /// open document with marks (project order, wrapping), switching to it.
+    /// Diagnostics under edited text are skipped and counted in the note.
     func goToDiagnostic(forward: Bool) {
         guard let result else {
             navigationNote = "No compile result loaded; nothing to navigate to."
             return
         }
-        let stops = Navigation.stops(in: result, documents: documents, compiledDocuments: compiledDocuments)
-        let caret = CaretSync.byteOffset(ofCaretUTF16: caretUTF16, in: activeText) ?? 0
-        guard let stop = Navigation.nextStop(stops, documents: documents, activePath: activePath,
-                                             caretByte: caret, forward: forward) else {
+        let report = editorMarkReport
+        let here = EditorDiagnostics.step(report.marks, fromUTF16: caretUTF16, forward: forward,
+                                          currentID: currentDiagnosticID, in: activeText)
+        var chosen: (path: String, step: EditorDiagnosticNavigation.Step, report: EditorDiagnostics.Report)?
+        if let here, !here.wrapped || documents.count == 1 {
+            chosen = (activePath, here, report)
+        } else if let active = documents.firstIndex(where: { $0.path == activePath }), documents.count > 1 {
+            // Leaving the active document at either end: the first (or last)
+            // mark of the next open document that has one.
+            for offset in 1..<documents.count {
+                let doc = documents[(active + offset) % documents.count]
+                let other = EditorDiagnostics.report(for: result, resultID: resultID, path: doc.path,
+                                                     compiledText: compiledDocuments[doc.path], currentText: doc.text)
+                if let step = EditorDiagnostics.step(other.marks, fromUTF16: forward ? -1 : Int.max, forward: forward, in: doc.text) {
+                    chosen = (doc.path, step, other)
+                    break
+                }
+            }
+            if chosen == nil, let here { chosen = (activePath, here, report) }
+        }
+        guard let chosen else {
             let total = result.diagnostics.count
-            let open = documents.map(\.path).joined(separator: ", ")
-            navigationNote = total == 0
-                ? "Revision \(result.revision) has no diagnostics."
-                : "None of the \(total) diagnostic\(total == 1 ? "" : "s") has a source in an open document (\(open))."
+            let open = documents.count > 1 ? "an open document (\(documents.map(\.path).joined(separator: ", ")))" : activePath
+            navigationNote = total == 0 ? "Revision \(result.revision) has no diagnostics."
+                : report.staleNote.map { "No diagnostic can be selected: " + $0 + "." }
+                ?? "None of the \(total) diagnostic\(total == 1 ? "" : "s") has a source in \(open)."
             return
         }
-        let before = selection
-        navigateExactly(to: stop.source, expectedText: nil)
-        if let sel = selection, sel != before {
-            let position = stops.firstIndex(of: stop).map { $0 + 1 } ?? 0
-            let place = documents.count > 1 ? " in \(stop.source.path)" : ""
-            navigationNote = "Diagnostic \(position) of \(stops.count) (\(stop.diagnostic.severity.rawValue))\(place): \(stop.diagnostic.message)"
-        }
+        let switched = chosen.path != activePath
+        activePath = chosen.path
+        currentDiagnosticID = chosen.step.item.id
+        selection = .init(path: chosen.path, nsRange: chosen.step.item.nsRange, token: (selection?.token ?? 0) + 1)
+        caretUTF16 = chosen.step.item.nsRange.location
+        caretLengthUTF16 = chosen.step.item.nsRange.length
+        navigationNote = chosen.step.announcement
+            + (switched ? " (in \(chosen.path))" : "")
+            + (chosen.report.staleNote.map { "; " + $0 } ?? "")
     }
 
     /// ⌘⇧J: select the full source span of the preview item under the caret
