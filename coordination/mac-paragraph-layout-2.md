@@ -15,7 +15,8 @@ published as patches under `docs/handoffs/paragraph-layout-forced-break/`.
 | Consumed main | `origin/main` @ `d550d6b1` (crate tree `crates/paragraph-layout` = `d20d55ce`, last crate commit `e69165a8`; unchanged since `80b71cda` where the scratch copy was extracted) |
 | Scratch (untracked, never staged) | `.scratch/` — `crates/paragraph-layout` = `git archive origin/main`, `scratchrepo/` (throwaway git repo: baseline `2126d76` = tree `d20d55ce`; `fa7eef8` tests; `43d3a4a` fix), `vendored/` = render-pipeline's vendored copy with both patches applied, dump/compare logs |
 | Owned committed paths | `docs/handoffs/paragraph-layout-forced-break/`, `coordination/mac-paragraph-layout-2.md`, `coordination/agents/mac-paragraph-layout-2.json` |
-| Dirty files | none after the handoff commit |
+| Handoff commit | `793787c1` (pushed to `origin/agent/mac-claude-a/paragraph-layout-handoff`) |
+| Dirty files | none |
 | Next commands | `git push -u origin agent/mac-claude-a/paragraph-layout-handoff`; parent reviews, then the crate owner applies `git am docs/handoffs/paragraph-layout-forced-break/tests.patch fix.patch` on main and the render-pipeline owner re-pins the vendored copy |
 | Ownership boundaries | crates/paragraph-layout (Commander-controlled, unowned on main), render-pipeline call-site guard = text-gaps lane follow-up 1 (not done here), parent-retained Mac shell files untouched |
 | Staffing / billing | Claude Max 20x quota shared with parent mac-claude-a; no purchases; MacTeX not used in this lane |
