@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-fontmetrics"
+version = "0.1.0"
+edition = "2021"
+description = "Advance-width and vertical-metric tables for the PDF base-14 text faces, measured from macOS system fonts via CoreText and committed as Rust data so builds do not need macOS."
+publish = false
+
+[lib]
+name = "flashtex_fontmetrics"
+path = "src/lib.rs"
+
+[dependencies]
