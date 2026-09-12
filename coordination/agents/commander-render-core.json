@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "f2a839aa85a41de9388586743a36dfb1cd538a94",
+  "code_revision": "f2e09ba413f68c7f73436ab71b7c96bb6d2d01dd",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Publish residency checkpoint; continue next assigned product increment.",
+  "next_action": "Run pinned STIX named-glyph and synthetic TFM equivalence fixture replay; document reference gaps.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Bounded mixed page residency implemented with captured source/resource/configuration leases, stale completion rejection and immutable LRU frames. 100 Rust tests pass.",
+  "summary": "BoundCffTfmFont consumer integrated into exact cubic runs with independent TFM spacing and outline advances. 103 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:02:37Z",
+  "updated_utc": "2026-09-12T07:06:18Z",
   "usage": {
-    "evidence": "100 Rust tests and strict all-target clippy pass. Source/resource/config changes, revision rollback, UTF8 source gates, budget/conflict atomicity and external Arc survival covered.",
+    "evidence": "103 Rust tests and strict all-target clippy pass. Explicit slot/name/GID identity, fractional positions, signed kerns, wrong resource/.notdef/absent mappings and atomic budgets covered. Peer1fe2b47 merged unchanged.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

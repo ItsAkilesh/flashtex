@@ -240,3 +240,208 @@ fn oversize_cache_bypass_is_explicit_without_geometry_loss() {
     assert_eq!(placed.cache_status, CacheStatus::BypassedOversize);
     assert_eq!(placed.outline.commands.len(), 3);
 }
+fn encoded_tfm(kern: bool) -> flashtex_font_resources::tfm::Tfm {
+    let mut b = [
+        if kern { 18u16 } else { 16 },
+        2,
+        65,
+        66,
+        2,
+        1,
+        1,
+        1,
+        if kern { 1 } else { 0 },
+        if kern { 1 } else { 0 },
+        0,
+        1,
+    ]
+    .into_iter()
+    .flat_map(u16::to_be_bytes)
+    .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        if kern { 0x01000100 } else { 0x01000000 },
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+    ] {
+        b.extend(word.to_be_bytes());
+    }
+    if kern {
+        b.extend(0x80428000u32.to_be_bytes());
+        b.extend((-(1i32 << 18)).to_be_bytes());
+    }
+    b.extend(0u32.to_be_bytes());
+    flashtex_font_resources::tfm::Tfm::parse(&b).unwrap()
+}
+fn encoded_cache(extra: u8) -> flashtex_font_resources::cff::CffOutlineCache {
+    use flashtex_font_resources::cff::{CacheLimits, CffOutlineCache};
+    let mut full = b"OTTO".to_vec();
+    full.push(extra);
+    full.extend(fixture(&program(), false));
+    CffOutlineCache::from_font_table(
+        &full,
+        0,
+        5..full.len(),
+        CacheLimits {
+            max_entries: 8,
+            max_bytes: 100000,
+        },
+    )
+    .unwrap()
+}
+fn encoded_manifest(
+    tfm: &flashtex_font_resources::tfm::Tfm,
+    cache: &flashtex_font_resources::cff::CffOutlineCache,
+    b: &str,
+) -> flashtex_font_resources::cff::CffEncodingManifest {
+    use flashtex_font_resources::{cff::CffEncodingManifest, encoding::EncodingEntry};
+    let id = cache.identity();
+    CffEncodingManifest {
+        font_sha256: id.font_sha256.clone(),
+        cff_sha256: id.cff_sha256.clone(),
+        tfm_sha256: tfm.source_sha256.clone(),
+        face_index: 0,
+        encoding: vec![
+            EncodingEntry {
+                code: 65,
+                glyph_name: "space".into(),
+            },
+            EncodingEntry {
+                code: 66,
+                glyph_name: b.into(),
+            },
+        ],
+    }
+}
+#[test]
+fn cff_tfm_run_keeps_original_slot_gid_and_tfm_spacing_separate() {
+    use flashtex_font_resources::cff::BoundCffTfmFont;
+    use flashtex_rendering_core::{
+        cff_run::*,
+        tex_adapter::{InputInterval, MetricPolicy, RunScale},
+        Tick,
+    };
+    let tfm = encoded_tfm(false);
+    let cache = encoded_cache(0);
+    let binding =
+        BoundCffTfmFont::new(&tfm, &cache, &encoded_manifest(&tfm, &cache, "space")).unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let run = CffRun::prepare(
+        &binding,
+        &consumer,
+        b"AA",
+        RunPlacement {
+            scale: RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+            origin: OutlinePoint {
+                x: r(1, 3),
+                y: r(7, 4),
+            },
+            hints: HintPolicy::Unhinted,
+        },
+        RunLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(run.advance(), r(1, 1));
+    assert_eq!(run.command_count(), 6);
+    let CffRunItem::Glyph(g) = &run.items()[1] else {
+        panic!()
+    };
+    assert_eq!(
+        (g.tfm_code, g.original_gid, g.glyph_name.as_str()),
+        (65, 1, "space")
+    );
+    assert_eq!(g.pen_x, r(1, 2));
+    assert_eq!(g.tfm_advance, r(1, 2));
+    assert_eq!(g.outline.advance.x, r(0, 1));
+    assert_eq!(g.input, InputInterval { start: 1, end: 2 });
+    let CubicPathCommand::MoveTo(p) = g.outline.commands[0] else {
+        panic!()
+    };
+    assert_eq!(p.x, r(5, 6));
+    assert_eq!(run.tfm_sha256(), tfm.source_sha256);
+    assert_eq!(run.identity(), consumer.identity());
+    assert_eq!(run.encoding_sha256(), binding.encoding().encoding_sha256());
+}
+#[test]
+fn cff_tfm_signed_kern_uses_metrics_not_outline_advance() {
+    use flashtex_font_resources::cff::BoundCffTfmFont;
+    use flashtex_rendering_core::{
+        cff_run::*,
+        tex_adapter::{MetricPolicy, RunScale},
+        Tick,
+    };
+    let tfm = encoded_tfm(true);
+    let cache = encoded_cache(0);
+    let binding =
+        BoundCffTfmFont::new(&tfm, &cache, &encoded_manifest(&tfm, &cache, "space")).unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let run = CffRun::prepare(
+        &binding,
+        &consumer,
+        b"AB",
+        RunPlacement {
+            scale: RunScale::canonical(Tick(1000), MetricPolicy::ExactRationalNoTexRounding)
+                .unwrap(),
+            origin: origin(),
+            hints: HintPolicy::Unhinted,
+        },
+        RunLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(run.advance(), r(750, 1));
+    let CffRunItem::Kern { exact, .. } = &run.items()[1] else {
+        panic!()
+    };
+    assert_eq!(*exact, r(-250, 1));
+    let CffRunItem::Glyph(g) = &run.items()[2] else {
+        panic!()
+    };
+    assert_eq!(g.pen_x, r(250, 1));
+    assert_eq!((g.tfm_code, g.original_gid), (66, 1));
+}
+#[test]
+fn cff_tfm_missing_notdef_and_wrong_cache_fail_without_partial_run() {
+    use flashtex_font_resources::cff::BoundCffTfmFont;
+    use flashtex_rendering_core::{
+        cff_run::*,
+        tex_adapter::{MetricPolicy, RunScale},
+        Tick,
+    };
+    let tfm = encoded_tfm(false);
+    let cache = encoded_cache(0);
+    let binding =
+        BoundCffTfmFont::new(&tfm, &cache, &encoded_manifest(&tfm, &cache, ".notdef")).unwrap();
+    let consumer = CachedCffConsumer::new(cache);
+    let placement = RunPlacement {
+        scale: RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+        origin: origin(),
+        hints: HintPolicy::Unhinted,
+    };
+    assert!(matches!(
+        CffRun::prepare(&binding, &consumer, b"AB", placement, RunLimits::default()),
+        Err(RunError::Notdef { code: 66 })
+    ));
+    assert!(CffRun::prepare(&binding, &consumer, b"C", placement, RunLimits::default()).is_err());
+    let wrong = CachedCffConsumer::new(encoded_cache(1));
+    assert!(matches!(
+        CffRun::prepare(&binding, &wrong, b"A", placement, RunLimits::default()),
+        Err(RunError::Identity)
+    ));
+    assert!(CffRun::prepare(
+        &binding,
+        &consumer,
+        b"AA",
+        placement,
+        RunLimits {
+            max_commands: 5,
+            ..RunLimits::default()
+        }
+    )
+    .is_err());
+    assert!(CffRun::prepare(&binding, &consumer, b"AA", placement, RunLimits::default()).is_ok());
+}

@@ -308,3 +308,41 @@ One Linux release observation: direct decoding 103.106ms, cache cold 108.647ms,
 full warm replay 0.251ms, 20641359 charged retained bytes within a 32MiB budget.
 These measurements exclude native rendering and are not typing-visible latency
 or hinted/visual/PDF parity claims.
+
+## CFF names and exact TFM encoding bindings
+
+`Cff::glyph_names()` validates every glyph's charset SID against the 391 standard
+SID strings or the custom String INDEX, then rejects duplicate or absent names.
+The standard SID registry is format data transcribed from Adobe CFF Appendix A;
+no third-party name resolver implementation is imported. Glyph names are literal
+bounded ASCII PostScript names (127 bytes here), not Unicode or escape-decoded
+aliases. SID strings used only as other metadata are not treated as glyph names.
+GID0 resolves explicitly to Notdef. The immutable name index is shared by the CFF
+outline cache and has its own conservative 16MiB metadata budget, separate from
+decoded-outline retention.
+
+`BoundCffTfmFont::new(tfm, outline_cache, CffEncodingManifest)` resolves explicit
+TFM slot/name entries against actual CFF charset names, checking full-font/CFF/TFM
+hashes and face. It returns exact TFM metrics and original GIDs/Notdef through
+map_code/map_run, retaining input intervals. `validate_cache` checks the immutable
+identity before using another outline cache. No invented named-GID declaration
+is needed for CFF. Stroked/hinted/unsupported outline policies remain independent.
+
+Opt-in `cff_names` regression verifies every pinned STIX name round-trips to its
+original GID. The 2221-name canonical hash and resource hashes are recorded in
+`fixtures/stix-cff-names.json`; A is GID3 and the literal name fi is absent.
+A missing alias fails rather than being guessed. This is charset/name evidence,
+not TeX encoding correctness or visual/raster parity.
+
+`CffEncodingCache::new(&outline_cache, CacheLimits)` pins an immutable full-font,
+CFF table range and face identity. `lookup(tfm, manifest)` validates identity before
+reuse and returns `EncodingCacheOutcome { encoding: Arc<ResolvedCffEncoding>,
+status }`. Canonical sorted slot/name declarations share entries regardless of
+input order; different TFM hashes or declarations do not. Missing names and invalid
+identities are errors, not negative fallback entries. `BoundCffTfmFont::from_resolved`
+consumes the shared binding; `validate_cache` checks the eventual outline consumer.
+LRU retention permits at most 128 entries and 8MiB of conservatively charged entry
+payload/bookkeeping, with explicit oversize bypass and zero-budget operation.
+The shared name index has its separate 16MiB bound; caller-retained Arc references
+and allocator-wide memory are outside cache ownership. No shaping or native render
+performance claim follows from an encoding cache hit.

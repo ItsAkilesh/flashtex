@@ -274,3 +274,12 @@ while existing caller-held Arcs remain immutable. Encoded-byte and command limit
 do not claim to bound all allocator overhead, captured source snapshots or external
 Arcs. Source snapshots have their own 32 MiB input cap. A caller must capture its
 lease before compilation; a fresh lease cannot prove old output used new sources.
+
+`cff_run::CffRun` consumes the font loader's `BoundCffTfmFont` through the matching
+immutable full-font cache. It retains the original 8-bit code, resolved glyph name
+and original GID, TFM/encoding/full-font identities and input intervals. TFM widths
+and kerns alone advance the pen; the exact transformed charstring advance remains
+a separate field. Explicit scale/hint policies carry through rational cubic
+placement. Missing mappings, .notdef, wrong cache identity and total glyph/command
+overflow fail without returning a partial run. This is explicit encoding, not
+Unicode shaping or TeX scaled-point rounding.
