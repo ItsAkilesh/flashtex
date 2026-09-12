@@ -361,11 +361,25 @@ Bounded disconnect/reconnect (`NearbyReconnector`, actor):
   `noMatchingMac`/`browseFailed` (the Mac may be restarting; the Bonjour
   endpoint source re-browses by `fp` before every attempt, so a Mac that
   came back on another port is found).
+- Retryable with the Mac's receive caps (proposal §4): `too_many_in_flight`
+  and `inbox_full` keep the session — the retry first waits until this
+  connection has no request awaiting a reply (`waitUntilIdle`, bounded by
+  `requestTimeout`; event `waitingForAcks`), then backs off and re-sends the
+  same `capture_id` on the same connection; `too_many_sessions` closes — the
+  reconnector drops its own session, backs off (time for the owner to close
+  older connections) and reconnects. Both count against the same budget.
 - Terminal, never retried: `handshakeFailed` / `pair_mismatch` /
-  `pairing_expired` (`needsRepair` → re-pair), every other `error` reply,
-  `invalidInput`, `protocolViolation`, `overloaded`, `destinationChanged`,
-  and `attemptsExhausted` once the budget is spent; a cancelled task is
-  `cancelled`.
+  `pairing_expired` (`needsRepair` → re-pair); `image_too_large`,
+  `invalid_image`, `unsupported_image`, `revision_mismatch`,
+  `capture_id_conflict`, `bad_request` (`needsNewCapture` → build a new
+  capture); every other `error` reply, `invalidInput`, `protocolViolation`,
+  `overloaded`, `destinationChanged`, and `attemptsExhausted` once the
+  budget is spent; a cancelled task is `cancelled`. Before sending, the
+  client mirrors the Mac's cheap image checks (`NearbyWire.checkImage`:
+  ≤ 8 MiB, signature matches `mime_type`, valid base64, `base_revision` ≥ 0)
+  as `invalidInput`; structure stays the Mac's check (`validateImage: false`
+  reaches it). An identical retry on one session is acknowledged by the Mac
+  without re-delivery.
 - `submit(capture)` is at-least-once with the *same* `capture_id` and payload
   (the Mac de-duplicates; a bridge journals once). Before every delivery —
   first or retry — the capture's `destination_id`/`base_revision` is checked
@@ -385,32 +399,45 @@ Bounded disconnect/reconnect (`NearbyReconnector`, actor):
   **5 destination changed on the Mac, reselect and send again** · 64/65/66
   usage/not an image/unreadable file.
 
-Tests: `swift test` in `tools/nearby-client` (28: vectors, wire shapes, TXT
+Tests: `swift test` in `tools/nearby-client` (35: vectors, wire shapes, TXT
 validation, pair file, and a loopback-only `FakeMac` with fault injection —
 drop before ack → identical re-send, idle drop, refused key terminal, remote
 error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
 refused port fails fast, 9th in-flight request refused, oversized inbound line
-closes, request timeout, CLI exit codes 0/2/3/4/5). `swift test` here runs the
-same client against the real stack in `NearbyReferenceClientTests` (Bonjour
-pair → send → identical retry → conflict → status → forget; direct mode and
-listener refusals; listener dropped after the inbox stored a capture and
-restarted on the same port → duplicate delivery acknowledged, stored once;
-`NearbyState.forget` with a live session → one refused reconnect, terminal,
-CLI exit 3; `replaceProject`/re-pin → `destinationChanged` on reused and fresh
-connections, nothing in the inbox until rebuilt). Everything binds loopback
-only; Bonjour still resolves loopback-only services on this machine.
+closes, request timeout, CLI exit codes 0/2/3/4/5; backpressure retried on the
+same session after acks and budget-bounded, `too_many_sessions` retried after
+a reconnect, image/revision/conflict refusals terminal, local image checks,
+CLI hints per code). `swift test` here runs the same client against the real
+stack in `NearbyReferenceClientTests` (Bonjour pair → send → identical retry →
+conflict → status → forget; direct mode and listener refusals; listener
+dropped after the inbox stored a capture and restarted on the same port →
+duplicate delivery acknowledged, stored once; `NearbyState.forget` with a
+live session → one refused reconnect, terminal, CLI exit 3;
+`replaceProject`/re-pin → `destinationChanged` on reused and fresh
+connections, nothing in the inbox until rebuilt; with lowered
+`NearbyReceiveLimits`: `too_many_in_flight` and `inbox_full` while an
+acknowledgement is held → same-session re-send acknowledged ~0.09 s after the
+ack goes out, `too_many_sessions` with one session per pairing → older
+connection closed during the backoff → reconnect in 0.11 s, kept open →
+budget exhausted; `invalid_image` and `image_too_large` from the real
+validator terminal with the session kept; same-session duplicate acknowledged
+without redelivery, `revision_mismatch` and `capture_id_conflict` terminal).
+Everything binds loopback only; Bonjour still resolves loopback-only services
+on this machine.
 
 Measured native behavior (separate `nearby-client` process against a served
 `NearbyState`, loopback, M1 Max, macOS 26.3.1; reproduce with
 `python3 tools/nearby-client/scripts/measure-native.py --out <md>`), from
-[docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md](../../docs/evidence/nearby-client-recovery-2026-09-12T084502Z.md):
-pair via Bonjour 0.75 s process-to-process; send via Bonjour 1.04 s cold, then
-0.04 s; send direct 0.02–0.03 s; identical retry acknowledged again 0.02 s;
+[docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md](../../docs/evidence/nearby-client-recovery-2026-09-12T092814Z.md) (commit d1da72c; the earlier run at T084502Z matches):
+pair via Bonjour 0.76 s process-to-process; send via Bonjour 0.97 s cold, then
+0.03–0.05 s; send direct 0.02 s; identical retry acknowledged again 0.02 s;
 3 s listener outage with a new ephemeral port afterwards → one failed attempt,
-0.44 s backoff, re-browse finds the new port, same capture_id delivered,
-3.38 s total; forgotten pairing → refused handshake, no retry, exit 3 in
-0.48 s; Mac gone → 3 refused dials with backoff, exit 4 in 0.60 s (Bonjour:
-2 empty browses, 2.15 s). In-process (real listener): drop → duplicate ack
+~0.5 s backoff, re-browse finds the new port, same capture_id delivered,
+3.42 s total; forgotten pairing → refused handshake, no retry, exit 3 in
+0.28 s; Mac gone → 3 refused dials with backoff, exit 4 in 0.63 s (Bonjour:
+2 empty browses, 2.15 s). The receive-cap codes cannot be provoked by a single
+CLI process against default limits (one frame is far below the 24 MiB cap),
+so they are measured in-process with lowered limits (above). In-process (real listener): drop → duplicate ack
 0.21 s with a 0.2 s backoff; revoked pairing terminal 2–7 ms after the retry
 begins. The serve harness (`FLASHTEX_NEARBY_SERVE_INFO=<path>`) is loopback
 only unless `FLASHTEX_NEARBY_SERVE_LAN=1` is set by a human for a real iPad,
