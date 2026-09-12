@@ -23,7 +23,20 @@ pub enum Limitation {
     RadicalTooSmall { wanted: f64, used: f64 },
     /// The accent symbol is unknown; the base was laid out without it.
     MissingAccent(char),
+    /// `Nucleus::Fraction`'s `thickness` override was non-finite or past
+    /// TeX's own `\maxdimen` (see [`MAX_DIMEN`]); the style's default rule
+    /// thickness was used instead.
+    InvalidFractionThickness(f64),
 }
+
+/// TeX's `\maxdimen`: the largest dimension TeX itself ever produces,
+/// 16383.99998pt (`max_dimen`, tex.web §101, `07777777777` in scaled
+/// points). A caller-supplied dimension outside this range — such as
+/// `Nucleus::Fraction`'s `thickness` override — is not a value TeX could
+/// ever have computed, and unlike a font-derived metric there is nothing
+/// here to renormalize it against, so it is rejected outright rather than
+/// risking downstream arithmetic overflowing to NaN/±inf.
+pub const MAX_DIMEN: f64 = 16383.99998;
 
 /// A finished layout: the root box plus any limitations encountered.
 #[derive(Debug, Clone, PartialEq)]
@@ -463,7 +476,15 @@ impl Engine<'_> {
         style: Style,
     ) -> MathBox {
         let p = self.params(style);
-        let theta = thickness.unwrap_or(p.default_rule_thickness);
+        let theta = match thickness {
+            Some(t) if t.is_finite() && t.abs() <= MAX_DIMEN => t,
+            Some(t) => {
+                self.limitations
+                    .push(Limitation::InvalidFractionThickness(t));
+                p.default_rule_thickness
+            }
+            None => p.default_rule_thickness,
+        };
         let mut x = self.clean_box(num, style.num());
         let mut z = self.clean_box(den, style.denom());
         let (mut u, mut v) = if style.is_display() {
@@ -552,7 +573,15 @@ impl Engine<'_> {
             return Some(b);
         }
         if let Some(recipe) = extensible {
-            return Some(stack_extensible(&recipe, wanted));
+            let (b, achieved) = stack_extensible(&recipe, wanted);
+            // The explicit NaN checks (rather than relying on `achieved >=
+            // wanted` being false) catch a non-finite `wanted`/`achieved`
+            // too, so a broken target still gets reported instead of
+            // silently reading as "reached" (every NaN comparison is false).
+            if achieved < wanted || achieved.is_nan() || wanted.is_nan() {
+                self.limitations.push(on_missing(wanted, achieved));
+            }
+            return Some(b);
         }
         let chosen = sizes.last()?;
         self.limitations
@@ -800,17 +829,31 @@ fn overbar(b: MathBox, k: f64, t: f64) -> MathBox {
     }
 }
 
+/// A metrics provider's `rep` piece can be arbitrarily short relative to
+/// `wanted` (a hostile or simply broken font backend, not just a TeX-ish
+/// one), so the stacking loop below is capped at this many repetitions
+/// rather than looping until `w` reaches `wanted` — which, for a tiny `u`
+/// paired with a huge or infinite `wanted`, never happens in practice and
+/// hangs the process. This is far more repetitions than any real radical or
+/// delimiter needs (TeX itself never assembles more than a handful of
+/// pieces), so it only ever engages on exactly this kind of adversarial input.
+const MAX_EXTENSIBLE_PIECES: usize = 100_000;
+
 /// tex.web §713: stack `bot`, n×`rep`, `mid`, n×`rep`, `top` until the total
-/// reaches `wanted`. The box's baseline is the top piece's baseline
-/// (`height = h(top piece)`, `depth = total − height`), as TeX's vlist
-/// packing gives, so the caller's centring/raising arithmetic is unchanged.
-fn stack_extensible(r: &Extensible, wanted: f64) -> MathBox {
+/// reaches `wanted` (or [`MAX_EXTENSIBLE_PIECES`] is hit — see its doc).
+/// The box's baseline is the top piece's baseline (`height = h(top piece)`,
+/// `depth = total − height`), as TeX's vlist packing gives, so the caller's
+/// centring/raising arithmetic is unchanged. Returns the box plus the total
+/// height actually achieved, so the caller can tell whether `wanted` was met
+/// and report a [`Limitation`] when it was not (mirroring what happens when
+/// the discrete size list runs out).
+fn stack_extensible(r: &Extensible, wanted: f64) -> (MathBox, f64) {
     let hpd = |g: &Option<Glyph>| g.as_ref().map(Glyph::total_height).unwrap_or(0.0);
     let u = r.rep.total_height();
     let mut w = hpd(&r.bot) + hpd(&r.mid) + hpd(&r.top);
     let mut n = 0usize;
-    if u > 0.0 {
-        while w < wanted {
+    if u.is_finite() && u > 0.0 && wanted.is_finite() {
+        while w < wanted && n < MAX_EXTENSIBLE_PIECES {
             w += u;
             n += 1;
             if r.mid.is_some() {
@@ -842,10 +885,13 @@ fn stack_extensible(r: &Extensible, wanted: f64) -> MathBox {
         });
         y_top += g.total_height();
     }
-    MathBox {
-        width: r.rep.width + r.rep.italic,
-        height,
-        depth: w - height,
-        kind: BoxKind::VBox(children),
-    }
+    (
+        MathBox {
+            width: r.rep.width + r.rep.italic,
+            height,
+            depth: w - height,
+            kind: BoxKind::VBox(children),
+        },
+        w,
+    )
 }

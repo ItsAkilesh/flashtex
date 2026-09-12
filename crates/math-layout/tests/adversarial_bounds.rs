@@ -45,6 +45,7 @@
 //! the engine's own recursion depth is exactly what the enlarged stack
 //! exists to accommodate.
 
+use flashtex_math_layout::metrics::Extensible;
 use flashtex_math_layout::{
     Atom, AtomClass, BoxKind, CmMathMetrics, FontId, Glyph, Limitation, MathBox, MathFontMetrics,
     MathList, MathParams, Nucleus, SizeClass, Style, layout, layout_with_report, positioned_runs,
@@ -627,4 +628,130 @@ fn absurdly_long_text_op_string_completes_without_hanging() {
         "plain.tex upright text has a CM roman glyph for 'a'"
     );
     assert_eq!(glyphs, CHAR_COUNT);
+}
+
+/// Wraps a real metrics provider but reports an enormous
+/// `default_rule_thickness` (Rule 11's θ, which feeds directly into
+/// `make_sqrt`'s `wanted` height) and empties the radical size chain, with
+/// an extensible fallback recipe whose `rep` piece is a normal, tiny glyph.
+struct HugeRuleThicknessNoRadicalSizes(CmMathMetrics);
+
+impl MathFontMetrics for HugeRuleThicknessNoRadicalSizes {
+    fn params(&self, size: SizeClass) -> MathParams {
+        MathParams {
+            default_rule_thickness: f64::MAX,
+            ..self.0.params(size)
+        }
+    }
+    fn font_name(&self, font: FontId) -> String {
+        self.0.font_name(font)
+    }
+    fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        self.0.glyph(ch, size)
+    }
+    fn large_operator(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        self.0.large_operator(ch, size)
+    }
+    fn delimiter_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
+        self.0.delimiter_sizes(ch, size)
+    }
+    fn radical_sizes(&self, _size: SizeClass) -> Vec<Glyph> {
+        Vec::new()
+    }
+    fn accent_sizes(&self, ch: char, size: SizeClass) -> Vec<Glyph> {
+        self.0.accent_sizes(ch, size)
+    }
+    fn radical_extensible(&self, _size: SizeClass) -> Option<Extensible> {
+        Some(Extensible {
+            top: None,
+            mid: None,
+            bot: None,
+            rep: Glyph {
+                font_id: FontId(0),
+                gid: 0,
+                ch: '|',
+                size: 10.0,
+                width: 1.0,
+                height: 1.0,
+                depth: 0.0,
+                italic: 0.0,
+                skew: 0.0,
+            },
+        })
+    }
+}
+
+#[test]
+fn radical_with_huge_rule_thickness_and_tiny_extensible_piece_is_bounded_not_a_hang() {
+    // Regression test for a real hang found by randomized fuzzing:
+    // `make_sqrt`'s `wanted` height is dominated by `default_rule_thickness`,
+    // and when the discrete radical size list is empty, `var_delimiter`
+    // falls back to `stack_extensible`, which used to grow its stack of
+    // `rep` pieces one at a time in a `while w < wanted` loop with no bound
+    // on the iteration count. A tiny `rep` (height 1.0) next to an enormous
+    // `wanted` (driven by `default_rule_thickness: f64::MAX`) made that loop
+    // run for what is, for any real deadline, forever. It must now complete
+    // quickly and report a typed `Limitation::RadicalTooSmall` instead.
+    let hostile = HugeRuleThicknessNoRadicalSizes(CmMathMetrics::latex_10pt());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let list: MathList = Atom::sqrt(MathList::symbols("x")).into();
+        let report = layout_with_report(&list, Style::DISPLAY, &hostile);
+        let _ = tx.send(report);
+    });
+    let report = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("a radical sign must not hang trying to reach an unreachable wanted height");
+    assert_finite_box(&report.root);
+    assert!(
+        report
+            .limitations
+            .iter()
+            .any(|l| matches!(l, Limitation::RadicalTooSmall { .. })),
+        "an unreachable wanted height must be a typed Limitation, not a silently undersized box: {:?}",
+        report.limitations
+    );
+}
+
+#[test]
+fn fraction_thickness_override_past_max_dimen_is_a_typed_limitation_not_silent_nan_or_inf() {
+    // Regression test for a real silent-corruption bug found by randomized
+    // fuzzing: `Nucleus::Fraction`'s `thickness` field is public and can be
+    // set directly (unlike `Atom::frac`, which only ever sets `None`), so a
+    // caller can pass any f64, including values TeX itself could never
+    // produce. `make_fraction` used to plug an infinite/NaN/too-large
+    // `thickness` straight into unchecked arithmetic, which produced NaN or
+    // infinite glyph baselines with *no* limitation reported at all
+    // (`layout_with_report(...).limitations` was empty): silent numeric
+    // corruption, not a documented fallback.
+    let cm = CmMathMetrics::latex_10pt();
+    for thickness in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN, 1.0e30, -1.0e30] {
+        let list: MathList = Atom::new(
+            AtomClass::Ord,
+            Nucleus::Fraction {
+                numerator: MathList::symbols("a"),
+                denominator: MathList::symbols("b"),
+                thickness: Some(thickness),
+            },
+        )
+        .into();
+        let report = layout_with_report(&list, Style::TEXT, &cm);
+        assert_finite_box(&report.root);
+        assert!(
+            report
+                .limitations
+                .iter()
+                .any(|l| matches!(l, Limitation::InvalidFractionThickness(_))),
+            "thickness {thickness} must be reported as InvalidFractionThickness: {:?}",
+            report.limitations
+        );
+        let runs = positioned_runs(&report.root, (0.0, 0.0));
+        for g in &runs.glyphs {
+            assert!(
+                g.baseline_y.is_finite() && g.x.is_finite(),
+                "glyph {:?} must be finitely positioned for thickness {thickness}",
+                g.ch
+            );
+        }
+    }
 }
