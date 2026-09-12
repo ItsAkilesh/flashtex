@@ -733,11 +733,20 @@ final class ShellModel {
         case .displayList(let id, let line):
             receiveDisplayListV2(id: id, line: line) // negotiated live v2 frame (PreviewV2View.swift)
         case .error(let id, let message):
+            let wasLatest = latestRequestID == id
             inFlightRequests.removeValue(forKey: id)
             refreshInFlightRevision()
-            if inFlightRevision == nil { compileQueued = false }
             workerStatus = "worker error for \(id): \(message)"
             log("error \(id): \(message)")
+            // A keystroke coalesced behind the errored request still wants its
+            // preview: send the newest buffer once (a new revision, a new id).
+            // Nothing is re-sent when the buffer did not change.
+            if wasLatest, inFlightRevision == nil, compileQueued {
+                compileQueued = false
+                compile()
+            } else if inFlightRevision == nil {
+                compileQueued = false
+            }
         case .protocolViolation(let message):
             workerStatus = "protocol violation: \(message)"
             log("protocol violation: \(message)")
