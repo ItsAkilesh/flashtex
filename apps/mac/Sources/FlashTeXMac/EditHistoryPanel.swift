@@ -42,7 +42,43 @@ enum EditHistory {
 
     static func steps(_ n: Int) -> String { n == 1 ? "1 step" : "\(n) steps" }
 
-    /// `history_status` reply (`payload.history`).
+    /// Ledger retention limits. The helper on main ≥ 64829a0d reports the
+    /// actual constants in `history_status.limits`; older helpers omit them and
+    /// the built-in values (history.rs `MAX_HISTORY_*`) apply.
+    struct Limits: Equatable {
+        var entries = EditHistory.maxEntries
+        var bytes = EditHistory.maxBytes
+        var commandIDs = EditHistory.maxCommandIDs
+        /// True when the helper reported its own limits.
+        var reported = false
+
+        static func decode(_ limits: [String: Any]?) -> Limits {
+            guard let limits else { return Limits() }
+            var l = Limits(reported: true)
+            if let n = limits["history_entries"] as? Int, n > 0 { l.entries = n }
+            if let n = limits["history_bytes"] as? Int, n > 0 { l.bytes = n }
+            if let n = limits["permanent_command_ids"] as? Int, n > 0 { l.commandIDs = n }
+            return l
+        }
+    }
+
+    /// Durable identity without text (`history_status.document` on main ≥
+    /// 64829a0d): read on the same owner turn as the stacks, so a guarded move
+    /// can name exactly the revision the stacks describe.
+    struct Identity: Equatable {
+        var path: String
+        var revision: Int
+        var sha256: String
+
+        static func decode(_ doc: [String: Any]?) -> Identity? {
+            guard let doc, let path = doc["path"] as? String, let revision = doc["revision"] as? Int,
+                  let sha = doc["source_sha256"] as? String else { return nil }
+            return Identity(path: path, revision: revision, sha256: sha)
+        }
+    }
+
+    /// `history_status` reply: `history` (stacks + usage), optional `document`
+    /// identity and optional `limits`.
     struct Status: Equatable {
         /// Oldest → newest; the next step to undo is the LAST element.
         var undoLabels: [String]
@@ -50,22 +86,25 @@ enum EditHistory {
         var redoLabels: [String]
         var permanentCommandIDs: Int
         var historyBytes: Int
+        var limits = Limits()
+        var identity: Identity?
 
         var entries: Int { undoLabels.count + redoLabels.count }
-        var entryFraction: Double { Double(entries) / Double(EditHistory.maxEntries) }
-        var byteFraction: Double { Double(historyBytes) / Double(EditHistory.maxBytes) }
-        var commandIDFraction: Double { Double(permanentCommandIDs) / Double(EditHistory.maxCommandIDs) }
+        var entryFraction: Double { Double(entries) / Double(limits.entries) }
+        var byteFraction: Double { Double(historyBytes) / Double(limits.bytes) }
+        var commandIDFraction: Double { Double(permanentCommandIDs) / Double(limits.commandIDs) }
         /// The tightest of the three limits.
         var usage: Double { max(entryFraction, byteFraction, commandIDFraction) }
         /// The next recorded edit will be refused (`history_full`/`history_ids_full`).
+        /// Bytes are a lower bound: the cost of the next entry depends on the
+        /// before/after source, so an edit can be refused before this reads full.
         var isFull: Bool {
-            entries >= EditHistory.maxEntries || historyBytes >= EditHistory.maxBytes
-                || permanentCommandIDs >= EditHistory.maxCommandIDs
+            entries >= limits.entries || historyBytes >= limits.bytes || permanentCommandIDs >= limits.commandIDs
         }
         var nearCapacity: Bool { usage >= EditHistory.warningFraction }
 
         var retentionSummary: String {
-            "\(entries) of \(EditHistory.maxEntries) steps · \(Self.bytes(historyBytes)) of \(Self.bytes(EditHistory.maxBytes)) · \(permanentCommandIDs) of \(EditHistory.maxCommandIDs) command ids"
+            "\(entries) of \(limits.entries) steps · \(Self.bytes(historyBytes)) of \(Self.bytes(limits.bytes)) · \(permanentCommandIDs) of \(limits.commandIDs) command ids"
         }
 
         static func bytes(_ n: Int) -> String {
@@ -79,7 +118,9 @@ enum EditHistory {
                   let undo = h["undo_labels"] as? [Any], let redo = h["redo_labels"] as? [Any] else { return nil }
             return Status(undoLabels: undo.compactMap { $0 as? String }, redoLabels: redo.compactMap { $0 as? String },
                           permanentCommandIDs: h["permanent_command_ids"] as? Int ?? 0,
-                          historyBytes: h["history_bytes"] as? Int ?? 0)
+                          historyBytes: h["history_bytes"] as? Int ?? 0,
+                          limits: Limits.decode(payload["limits"] as? [String: Any]),
+                          identity: Identity.decode(payload["document"] as? [String: Any]))
         }
     }
 
@@ -460,6 +501,14 @@ final class EditHistoryClient {
             setNote("the buffer is not durable yet; wait for the helper's receipt"); return
         }
         guard let status, statusPath == model.activePath else { setNote("history not read yet"); refresh(); return }
+        // The stacks were read together with a durable identity (main ≥ 64829a0d):
+        // they describe exactly that revision. If the shell's durable snapshot has
+        // moved since, the rows on screen are stale — re-read instead of guessing.
+        if let identity = status.identity, identity.revision != durable.revision || identity.sha256 != durable.sha256 {
+            setNote("the stacks describe r\(identity.revision) but the durable document is r\(durable.revision); re-reading")
+            refresh()
+            return
+        }
         guard direction == .undo ? !status.undoLabels.isEmpty : !status.redoLabels.isEmpty else {
             setNote("nothing to \(direction.rawValue)"); return
         }

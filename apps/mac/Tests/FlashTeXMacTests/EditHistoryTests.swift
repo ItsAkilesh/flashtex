@@ -26,6 +26,21 @@ final class EditHistoryTests: XCTestCase {
         XCTAssertFalse(status.isFull)
         XCTAssertFalse(status.nearCapacity)
         XCTAssertNil(EditHistory.Status.decode(["history": ["undo_labels": []]]), "both stacks are required")
+        XCTAssertEqual(status.limits, .init(), "an older helper reports no limits: the built-in constants apply")
+        XCTAssertFalse(status.limits.reported)
+        XCTAssertNil(status.identity)
+
+        // main ≥ 64829a0d: same-turn document identity (no text) and the actual ledger limits.
+        let newer = try XCTUnwrap(EditHistory.Status.decode([
+            "history": ["history_bytes": 10, "permanent_command_ids": 0, "redo_labels": [], "undo_labels": ["Source edit"]],
+            "document": ["project_id": "demo", "path": "main.tex", "revision": 7, "source_sha256": "ff"],
+            "limits": ["history_bytes": 1024, "history_entries": 4, "permanent_command_ids": 8],
+        ]))
+        XCTAssertEqual(newer.identity, .init(path: "main.tex", revision: 7, sha256: "ff"))
+        XCTAssertEqual(newer.limits, .init(entries: 4, bytes: 1024, commandIDs: 8, reported: true))
+        XCTAssertEqual(newer.usage, 0.25, accuracy: 1e-9, "usage is measured against the reported limits")
+        XCTAssertEqual(newer.retentionSummary, "1 of 4 steps · 10 B of 1 KiB · 0 of 8 command ids")
+        XCTAssertFalse(newer.isFull)
 
         let result = try XCTUnwrap(EditHistory.Result.decode([
             "history": ["can_redo": true, "can_undo": false, "command_revision": 3, "replayed_command": true,
@@ -179,6 +194,16 @@ final class EditHistoryTests: XCTestCase {
         XCTAssertEqual(client.undoRows.map(\.title), ["Typing"])
         XCTAssertTrue(client.bufferIsDurable)
         XCTAssertTrue(client.canUndo)
+        if let identity = client.status?.identity {
+            // Helper from main ≥ 64829a0d: the stacks came with the identity they describe.
+            XCTAssertEqual(identity.revision, 2)
+            XCTAssertEqual(identity.sha256, model.controllerState.durable["main.tex"]?.sha256)
+            XCTAssertEqual(identity.path, "main.tex")
+            XCTAssertTrue(client.status!.limits.reported)
+            XCTAssertEqual(client.status!.limits, .init(entries: 256, bytes: 32 * 1024 * 1024, commandIDs: 4096, reported: true), "the helper reports the ledger constants")
+        } else {
+            print("history round-trip test: helper predates 64829a0d (no history_status document/limits)")
+        }
         XCTAssertFalse(client.canRedo)
         let editorBefore = model.editorRevision
 
@@ -262,12 +287,34 @@ final class EditHistoryTests: XCTestCase {
                                          expectedRevision: 9, expectedSHA256: SourceDigest.sha256Hex(buffer)))
         try await waitUntil { client.pending == nil }
         XCTAssertEqual(client.lastFailure, .documentConflict)
+        // Stacks read at r2, then another edit lands (r3) before any refresh: the
+        // rows on screen describe r2, so the move is refused locally (no request,
+        // no permanent id) and the stacks are re-read.
+        if client.status?.identity != nil {
+            try await waitUntil { client.status?.identity?.revision == 2 && !client.refreshing }
+            model.updateActiveText(buffer + "% another\n")
+            try await waitUntil { model.controllerState.durable["main.tex"]?.revision == 3 && model.controllerState.inFlight == nil }
+            XCTAssertEqual(client.status?.identity?.revision, 2, "no refresh happened yet")
+            client.undo()
+            XCTAssertNil(client.pending, "refused before sending")
+            XCTAssertTrue(client.note?.contains("describe r2 but the durable document is r3") == true, client.note ?? "-")
+            try await waitUntil { client.status?.identity?.revision == 3 && !client.refreshing }
+            XCTAssertEqual(client.status?.undoLabels.count, 2)
+            XCTAssertEqual(client.status?.permanentCommandIDs, 0)
+            client.undo()
+            try await waitUntil { client.pending == nil && client.lastResult?.document.revision == 4 }
+            XCTAssertTrue(model.activeText.sameBytes(as: buffer))
+            try await waitUntil { client.canUndo }
+        } else {
+            print("history stale test: helper predates 64829a0d (no identity guard)")
+        }
         // Then the real undo still works from the re-read snapshot.
         try await waitUntil { client.canUndo }
+        let before = try XCTUnwrap(model.controllerState.durable["main.tex"]?.revision)
         client.undo()
-        try await waitUntil { client.pending == nil && client.lastResult != nil }
+        try await waitUntil { client.pending == nil && client.lastResult?.document.revision == before + 1 }
         XCTAssertTrue(model.activeText.sameBytes(as: original))
-        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, 3)
+        XCTAssertEqual(model.controllerState.durable["main.tex"]?.revision, before + 1)
     }
 
     func testIdenticalRetryAfterALostReplyIsIdempotent() async throws {
