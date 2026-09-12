@@ -254,9 +254,11 @@ an entry replaces the partial token. Sources, in rank order, at most 12 entries:
 Commands trigger on `\` (empty prefix lists everything supported). Invalid
 carets (negative, past the end, inside a surrogate pair) and malformed input
 (`\begin{`, stray braces, runs of backslashes) yield no suggestions and never
-trap. Measured on a 1 000 069-byte buffer (`CompletionTests`, debug build,
-M1 Max): words 8.4 ms, commands 7.6 ms per call; scans jump between candidate
-bytes with `memchr` and decode only matches.
+trap. Measured on a 1 000 069-byte buffer (`CompletionTests`, M1 Max, 2026-09-12):
+release build words 1.9 ms, commands 0.8 ms per call (XCTest `measure` of one
+word + one command completion: 2.6 ms average, RSD 0.9%); debug build 8.4 ms /
+5.3 ms (`measure` 13.7 ms). Scans jump between candidate bytes with `memchr`
+and decode only matches, so the cost is proportional to candidates, not bytes.
 
 Navigation (`Navigation.swift`, `Navigate` menu):
 
