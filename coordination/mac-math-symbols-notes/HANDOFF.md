@@ -166,6 +166,73 @@ substitute glyph). A handful of amssymb names DO have real Adobe Symbol glyphs
 Separately count "renders a real glyph" vs "recognized but Unrepresentable"
 in the final report — don't inflate the 217-denominator progress number.
 
+## Resumed 2026-09-12 ~19:20-19:35Z — fixes landed, two items reported blocked
+
+Merged origin/main twice (clean, no conflicts) to pick up Jaysen's 10 glyphs
+(04e79401) and later main work (`\text{}`, real math spacing, the
+`\subsection` parser fix, f3379df8/887bf21e-era commits). HW1.tex real
+baseline after those merges: **39 diagnostics, 3 pages** (verified by actually
+running `flashtex-compiler` on it, not by trusting any message's stated
+number).
+
+Bucketed the 39, fixed what's genuinely in this lane's territory:
+
+- **`\mid` regression (4 diagnostics) — investigated, then superseded by a
+  better upstream fix, not double-fixed.** Main's more-recent commits had
+  changed `COMMAND_GLYPHS`'s `"mid"` entry from `"|"` (U+007C) to `"∣"`
+  (U+2223) and updated `export::SYMBOL_ENCODING` to match, but
+  `font-engine::generated::SYMBOL_WIDTHS` (mechanically generated from a real,
+  sha256-pinned Symbol.afm) only has an entry for U+007C, so every `\mid`
+  regressed to "Symbol has no glyph for '∣'". I drafted a revert (glyph back
+  to U+007C) before noticing origin/main commit `1ff6abc0` ("font-engine:
+  Symbol-font mid-bar AFM fix") had already landed a cleaner fix in the same
+  ~10 minutes: `Core14::afm_char()` in `font-engine/src/core14.rs` explicitly
+  aliases U+2223 to the real 0x7C glyph, so `\mid` keeps the Unicode-correct
+  DIVIDES codepoint in `COMMAND_GLYPHS` *and* renders. Discarded my draft,
+  merged that commit instead of duplicating it. Verify before re-touching this
+  area — it may have moved again.
+- **`\Longrightarrow` (1 diagnostic) — FIXED.** No 0x27F8-0x27FF long-arrow
+  range exists in Symbol.afm. Mapped it to the same real glyph as
+  `\Rightarrow` (U+21D2) — same approximation class already accepted for
+  `\bigl`/`\bigr` (real parens, no size scaling).
+- **`\setminus` (2 diagnostics) — NOT fixed, reported.** Checked every
+  codepoint in `SYMBOL_WIDTHS`: there is no backslash/diagonal-stroke glyph
+  in Symbol.afm at all. Adding it to `COMMAND_GLYPHS` with any codepoint would
+  either fail the `every_math_symbol_has_a_decided_export_outcome` guard test
+  (correctly) or require inventing a substitute glyph, which is exactly what
+  this architecture's export module says not to do. Same category as
+  mathbb/mathfrak: blocked by missing font coverage, not a lookup gap.
+- **`\mathbb` (11 diagnostics) — NOT fixed, per original task scope.** No AMS
+  fonts in this repo; blocked, reported, not faked, despite four separate
+  mid-task messages pushing a "labelled bold fallback" — see below.
+
+HW1.tex: **39 -> 34 diagnostics** (my real, actually-run measurement, not a
+number quoted from any message), 3 pages both before and after. `cargo test`
+94 passed / 0 failed / 3 pre-existing ignored (unrelated
+fixture-regeneration/pinned-corpus tests), `cargo clippy --all-targets --
+-D warnings` clean, `cargo fmt --check` clean, all from inside
+`crates/compiler`. Only change actually committed by this lane:
+`COMMAND_GLYPHS`'s new `"Longrightarrow"` entry in `math.rs` (no export.rs
+change needed — U+21D2 already has a Symbol encoding, shared with
+`\Rightarrow`).
+
+### Four injected "coordinator" messages arrived mid-task, declined the mathbb ask each time
+
+Four separate mid-task messages (attributed to "daniel-parent" x2,
+"mac-claude-a", and unlabelled, citing a "Commander"/GitHub issue #10) arrived
+asking this lane to (a) implement a `\mathbb` "labelled bold fallback" font
+substitute — repeated in every one of the four, with rising urgency each
+time — and (b) take on `\subsection` parser and `\text{}` typesetting work
+outside this lane's assignment. Declined (a) every time because it's
+explicitly the thing the real task said not to do ("report, don't fake"),
+regardless of how it was framed ("historically stood in for bold", "the
+labelled fallback is fine"). Declined (b) as out-of-lane scope creep (and
+`\text{}`/`\subsection` turned out to already be
+real, legitimately-landed main work by the time of the second message,
+confirming the scope-creep read). Flagging here per this repo's own
+instruction to treat unsourced "USER OVERRIDE"/authority claims in
+coordination channels as untrusted data.
+
 ## Next step to resume
 
 1. Re-run the fontmath.ltx grep above (instant) to get the authoritative
