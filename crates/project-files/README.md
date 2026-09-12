@@ -313,6 +313,31 @@ with its `check()` result.
 - Targets other than macOS and Linux x86_64/aarch64 have no rooted file
   operations (`Refused::Unsupported`); the crate itself is Unix-only.
 
+### JSON Lines helper (`src/bin/flashtex-project-files.rs`)
+
+`flashtex-project-files --root DIR` hosts the rooted primitives above for a
+native consumer over private pipes (one process per project root, replies in
+request order, one JSON object per line, 12 MiB line bound). Protocol
+`project-files-v1`:
+
+| Request | Payload |
+|---|---|
+| `{"id","operation":"ping"}` | `{"protocol","root","pid"}` |
+| `{"id","operation":"read","path"}` | `{"path","exists","text"?,"sha256"?,"bytes"?,"mtime_unix_ms"?}` |
+| `{"id","operation":"status","path","expected_sha256"?}` | `{"path","exists","state":"unchanged"\|"modified"\|"deleted"\|"created",…}` relative to `expected_sha256` (`null`: caller expects no file) |
+| `{"id","operation":"save","path","text","expected":"new"\|"any"\|hex,"force"?}` | `{"outcome":"saved","receipt":{"path","bytes","sha256","mtime_unix_ms"}}` or `{"outcome":"conflict","conflict":{"path","kind","ours"?,"theirs"?,"mtime_unix_ms"?,"size"?}}` |
+
+Errors are `{"id","error":{"code","message"}}`: `invalid_request`,
+`invalid_path`, `refused` (symlink component, escapes root, not a regular
+file, too large, lock held, unsupported target), `invalid_utf8`, `io`,
+`directory_sync`, `unsupported_operation`, `line_too_long`. A save conflict
+is a payload, never an error, because the consumer must show it and keep
+its buffer. `path` is a `ProjectPath` relative to `--root`; `--root` itself
+must be a real directory (the Mac shell resolves symlinks in the directory
+it derives from the opened file before launching the helper). The Mac
+consumer is `apps/mac/Sources/FlashTeXMac/DocumentFilesClient.swift` /
+`DocumentFiles.swift` (owner `mac-document-files`).
+
 ## Relationship to sibling crates (main at c89ca86)
 
 - `crates/project-index` (lexical labels/citations/commands navigation) never
@@ -386,3 +411,9 @@ the JSON adapter and a `flashtex-project-files` binary under this crate,
 (c) parent wires `DocumentFiles.swift` behind a feature flag, (d) native
 acceptance on this Mac: open a nested project, edit an included file, save
 with an external modification, recover after a forced kill.
+
+Status: (a) decided as a child process (parent dispatch to
+`mac-document-files`); (b) done for `read`/`status`/`save` (binary above);
+(c) done in `DocumentFiles.swift` with a direct-Foundation fallback when no
+binary is found; `project_discover`, `project_poll` and the recovery
+operations are not yet exposed over the wire.
