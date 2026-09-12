@@ -18,3 +18,12 @@ class CooldownTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, patch.object(m.subprocess,'check_output') as call:
             p=Path(d)/'journal';p.write_text('{"state":"pending"}')
             self.assertEqual(m.run(Path(d),{'resume_utc':'2026-09-12T08:21:08Z'},p,datetime(2026,9,12,9,tzinfo=timezone.utc))['state'],'pending');call.assert_not_called()
+    def test_authority_changed_no_delivery(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(m.subprocess,'check_output',side_effect=['','{"commander_id":"other","authority_state":"active"}','{"state":"running"}']), patch.object(m.subprocess,'run') as send:
+            r=m.run(Path(d),{'resume_utc':'2026-09-12T08:21:08Z','commander_id':'orchestrator-astra'},Path(d)/'journal',datetime(2026,9,12,9,tzinfo=timezone.utc))
+            self.assertEqual(r['state'],'blocked_authority_or_stop');send.assert_not_called()
+    def test_due_dispatch_once(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(m.subprocess,'check_output',side_effect=['','{"commander_id":"orchestrator-astra","authority_state":"active"}','{"state":"running"}','a'*40]), patch.object(m.subprocess,'run',return_value=type('Result',(),{'stdout':'https://example/receipt'})()) as send:
+            s={'resume_utc':'2026-09-12T08:21:08Z','commander_id':'orchestrator-astra','dispatch_issues':[2,23],'resume_prompt':'authorized dispatch'};p=Path(d)/'journal';now=datetime(2026,9,12,9,tzinfo=timezone.utc)
+            self.assertEqual(m.run(Path(d),s,p,now)['state'],'published_dispatch');self.assertEqual(send.call_count,2)
+            self.assertEqual(m.run(Path(d),s,p,now)['state'],'published_dispatch');self.assertEqual(send.call_count,2)
