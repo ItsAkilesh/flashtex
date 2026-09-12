@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "d1f2b356849e4b451e3fb5275d86523e57532e6d",
+  "code_revision": "767ea70a64f15b812ead9a3964d28c2450826f3b",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "63a93717865920014d15fa113102698572494976",
-  "next_action": "Ready next assigned product task; renderer can consume additive grid wrapper in separate cache keyed exact device context.",
+  "next_action": "Renderer handoff sent; current adapter+licensed equivalence/cache-identity followups complete. Ready next assigned product stage.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Published23209f7 explicit composite device-grid policy;88tests/clippy pass. Pinned LiberationSans16ppem2620glyphs accepted vs default1679+941unsupported. API preserves grid/tie/upem and original font/component provenance; non-dyadic final offsets explicitunsupported. Renderer API/cache-identity handoff sent. No hint/raster parity claim; provider capacity available.",
+  "state": "ready_for_integration",
+  "summary": "FT024r7 published767ea70 original font-engine adapter; exactpeer f418238 merged unchanged.89resource tests/all-targetclippy,8peer library tests,2pinned licensed font direct-equivalence replays pass. Raw/full-face engine identities, originalGIDs/exactmetrics/UTF8clusters and actual peer-source cache identity retained. STIXdefault liga unsupported lookup14type6; peer no-default all-target tests have optional-feature gating failure, library works.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:20:48Z",
+  "updated_utc": "2026-09-12T07:26:17Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
