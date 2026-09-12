@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "88c7d73a22149647782020a9876dd28853cb9a4e",
+  "code_revision": "bc73712632345dea800267561e7fec7135cfe465",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "4425d9d77b747db69c1f04c493b363bd3a467f4e",
-  "next_action": "Watcher armed for rev 18.",
+  "next_action": "Correcting FT-007 state to integrated with this evidence.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Did not apply the candidate patch. Verification showed its logical symbols vee and Rightarrow were already implemented on this branch from earlier symbol work, so applying it would have conflicted or duplicated. Instead I ran the authentic fixture, found the one real difference of seven braced-argument errors from unconsumed section stars, implemented that, and confirmed the diagnostic count then matched the reviewed evidence exactly.",
-      "reviewed_utc": "2026-09-12T15:42:09Z",
-      "sha": "84ed6a9dbad284e028d4ae2f4966c8f77ac99103"
+      "adaptation": "Verified before correcting rather than trusting the stale assigned state or the fs2 dependency at face value; both checked directly.",
+      "reviewed_utc": "2026-09-12T16:25:32Z",
+      "sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 rev 17 delivered: starred headings implemented, which was the last gap between my branch and the reviewed candidate. My branch now reproduces the handoff evidence EXACTLY on the immutable HW1 source: 77 diagnostics, 35 command-bound symbol spans, and zero braced-argument errors. 17 suites pass.",
+  "summary": "FT-007 verified on main: crates/bridge exists with grok.rs, context.rs, validation.rs and 10 passing tests, capture-ID dedup and revision-mismatch coverage present. The assignment file was never updated after integration and has read state:assigned for 11+ hours, which is stale bookkeeping, not a stalled task.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T15:42:09Z",
+  "updated_utc": "2026-09-12T16:25:32Z",
   "usage": {
-    "evidence": "Ran the authentic HW1 fixture, source sha256 f725e238 matching the handoff, through my compiler: 77 diagnostics against 77 expected; membership 12, universal 10, existential 6, disjunction 4, implication 3, all 35 spans slicing to their command; remaining unsupported exactly mid 4, setminus 2, Longrightarrow 1, mathbb 11, hfill 7, normalfont 7",
-    "status": "Written directly; no Codex worker"
+    "evidence": "cargo test in crates/bridge on origin/main: 10 passed 0 failed, covering exclusive-owner lock release, oversized-record rejection, stale-temp-file safety, corrupt-proposal rejection, wrong-identity-digest rejection, journal replay-once semantics",
+    "status": "none"
   }
 }
