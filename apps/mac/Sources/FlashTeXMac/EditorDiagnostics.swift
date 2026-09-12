@@ -308,15 +308,20 @@ extension EditorDiagnostics {
     /// Groups `result.diagnostics` by (severity, message). `documentOrder`
     /// orders occurrences across documents (unknown paths after known ones).
     static func groups(of result: RuntimeV1.CompileResult, documentOrder: [String] = []) -> [Group] {
+        groups(of: result.diagnostics, documentOrder: documentOrder)
+    }
+
+    /// `groups(of:)` over any diagnostics list (the panel shows the result's
+    /// diagnostics followed by the shell's own layout diagnostics).
+    static func groups(of diagnostics: [RuntimeV1.Diagnostic], documentOrder: [String] = []) -> [Group] {
         func rank(_ path: String) -> Int { documentOrder.firstIndex(of: path) ?? documentOrder.count }
         var order: [String] = []
         var members: [String: [Int]] = [:]
-        for (i, d) in result.diagnostics.enumerated() {
+        for (i, d) in diagnostics.enumerated() {
             let key = "\(d.severity.rawValue):\(d.message)"
             if members[key] == nil { order.append(key); members[key] = [] }
             members[key]!.append(i)
         }
-        let diagnostics = result.diagnostics
         func before(_ a: Int, _ b: Int) -> Bool {
             switch (diagnostics[a].source, diagnostics[b].source) {
             case (nil, nil): return a < b
@@ -340,8 +345,12 @@ extension EditorDiagnostics {
     /// The source of occurrence `k` (zero-based, document order) of `group`,
     /// nil when out of range or unsourced.
     static func occurrence(_ k: Int, of group: Group, in result: RuntimeV1.CompileResult) -> RuntimeV1.SourceRange? {
-        guard group.occurrences.indices.contains(k) else { return nil }
-        return result.diagnostics[group.occurrences[k]].source
+        occurrence(k, of: group, in: result.diagnostics)
+    }
+
+    static func occurrence(_ k: Int, of group: Group, in diagnostics: [RuntimeV1.Diagnostic]) -> RuntimeV1.SourceRange? {
+        guard group.occurrences.indices.contains(k), diagnostics.indices.contains(group.occurrences[k]) else { return nil }
+        return diagnostics[group.occurrences[k]].source
     }
 
     /// "3 of 12: main.tex line 41" (line from `texts[path]`, the compiled
@@ -349,8 +358,13 @@ extension EditorDiagnostics {
     /// unsourced. One label per menu item of the per-occurrence jump.
     static func occurrenceLabel(_ k: Int, of group: Group, in result: RuntimeV1.CompileResult,
                                 texts: [String: String] = [:]) -> String {
+        occurrenceLabel(k, of: group, in: result.diagnostics, texts: texts)
+    }
+
+    static func occurrenceLabel(_ k: Int, of group: Group, in diagnostics: [RuntimeV1.Diagnostic],
+                                texts: [String: String] = [:]) -> String {
         let prefix = "\(k + 1) of \(group.count): "
-        guard let s = occurrence(k, of: group, in: result) else { return prefix + "no source" }
+        guard let s = occurrence(k, of: group, in: diagnostics) else { return prefix + "no source" }
         if let text = texts[s.path], let line = lineNumber(ofByte: s.startByte, in: text) {
             return prefix + "\(s.path) line \(line)"
         }
