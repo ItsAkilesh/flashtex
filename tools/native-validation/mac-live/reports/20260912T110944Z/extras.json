@@ -1,0 +1,47 @@
+{
+ "pdf-exact": {
+  "built_ok": true,
+  "bytes": 1255392,
+  "crate": "crates/pdf",
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/pdf-exact/20e5277857b2cd37f102fb07acdd164f82bb49db/src/crates/pdf/target/release/flashtex-pdf-exact",
+  "ref": "origin/agent/mac-pdf/v2-adapter",
+  "scratch_dirty_status": [],
+  "scratch_head": "20e5277857b2cd37f102fb07acdd164f82bb49db",
+  "sha": "20e5277857b2cd37f102fb07acdd164f82bb49db",
+  "sha256": "c59547f5728a9a57aed110e3b9ed233605c0566a2b9ca409ce72c7474a8098cf",
+  "sha256_content": "4d6d9fa241831efea24c2fce2b7077ab12d1c6c1568cd8ef172f3fb9ecdfca20",
+  "sha256_unsigned": "1e0f548a7cfc12589950ba031e14986d89cc4b29aeb8cc0f1436131261104791",
+  "signature": "Signature=adhoc",
+  "subject": "coord: mac-pdf handoff for refill 3 (Type 1 subsetting, math-reference classification, pipeline tip)"
+ },
+ "project-files": {
+  "built_ok": true,
+  "bytes": 606544,
+  "crate": "crates/project-files",
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/project-files/7ccbd7e9d330479b3f35927bbf968316270b7495/src/crates/project-files/target/release/flashtex-project-files",
+  "ref": "7ccbd7e9d330479b3f35927bbf968316270b7495",
+  "scratch_dirty_status": [],
+  "scratch_head": "7ccbd7e9d330479b3f35927bbf968316270b7495",
+  "sha": "7ccbd7e9d330479b3f35927bbf968316270b7495",
+  "sha256": "1b34b6c5b39ba2eab931e188c2b8f6fc498966462777ab49b729ec65489d04b4",
+  "sha256_content": "7da04cb5c8929012b35a4267de03079271760158cea7bb0e8d956cc80406e0f5",
+  "sha256_unsigned": "398bf6af7727ce103d2b70d7b84749d0ed8b36132dfa08760096e9b1c9b6f683",
+  "signature": "Signature=adhoc",
+  "subject": "mac: integrate packaging lane (hardened-runtime signing/notarization paths, reproducible-build check, pid-only launch-check)"
+ },
+ "render": {
+  "built_ok": true,
+  "bytes": 1946752,
+  "crate": "crates/render-pipeline",
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/render/6e696616cca27a6bff19d88f7e0fd51e64458e81/src/crates/render-pipeline/target/release/flashtex-render",
+  "ref": "origin/agent/mac-render-pipeline/unified",
+  "scratch_dirty_status": [],
+  "scratch_head": "6e696616cca27a6bff19d88f7e0fd51e64458e81",
+  "sha": "6e696616cca27a6bff19d88f7e0fd51e64458e81",
+  "sha256": "ef3025c33fdbac94d57fa2e02f0447294fdd93cb9afb6f8eb72e60a1f5048ab2",
+  "sha256_content": "4040c6da70fd93c58a24cfc6359bbe8fc282f5a2fa4f8405d0f5e20c20f8fc9c",
+  "sha256_unsigned": "f10eef45356210acc6f9e5a125a7f94fbb2e802a025658326e1bde009040e602",
+  "signature": "Signature=adhoc",
+  "subject": "render-pipeline: evidence, README and handoff for incremental reuse"
+ }
+}

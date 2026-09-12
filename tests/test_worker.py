@@ -1,4 +1,5 @@
 """Worker loop checks use temporary Git repositories and never call a real model."""
+import contextlib
 import importlib.util
 import json
 from pathlib import Path
@@ -41,8 +42,14 @@ class WorkerTests(unittest.TestCase):
         self.result = dict(state='ready_for_integration', summary='Implemented fixture',
                            next_action='Integrate', eta_minutes=[0, 0, 0], tests=['fixture passed'],
                            reviewed_peers=[], adaptation='No changed peer interfaces')
-        self.execute = self.enterContext(patch.object(worker, 'execute', side_effect=self.model))
-        self.publish = self.enterContext(patch.object(coord, 'publish', side_effect=self.commit_checkpoint))
+        # `TestCase.enterContext` is Python 3.11+, but coord.py documents
+        # "Python 3.9+, standard library only" and the macOS system runtime is
+        # 3.9.6. An ExitStack closed through addCleanup gives identical
+        # enter-now / exit-at-teardown semantics on every supported version.
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        self.execute = stack.enter_context(patch.object(worker, 'execute', side_effect=self.model))
+        self.publish = stack.enter_context(patch.object(coord, 'publish', side_effect=self.commit_checkpoint))
 
     def test_user_paused_worker_never_spends_or_publishes(self):
         coord.write_json(self.root / 'coordination/control.json', {'schema_version': 1, 'state': 'running', 'paused_agents': ['tester']})

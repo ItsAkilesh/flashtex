@@ -1,0 +1,7 @@
+    PASS bundled compiler attached, first compile ok, typing bench started editing -- {": ok, ": 0.21, "bench: typing": 0.757}
+    PASS kill 1 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke — all within 5 s, app alive -- {"scheduled_after_s": 0.099, "relaunched_after_s": 0.291, "recompiled_after_s": 0.291, "new_child": ["15926"], "elapsed_s": 0.367}
+    PASS kill 2 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke — all within 5 s, app alive -- {"scheduled_after_s": 0.112, "relaunched_after_s": 1.146, "recompiled_after_s": 1.146, "new_child": ["15965"], "elapsed_s": 1.19}
+    PASS kill 3 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke — all within 5 s, app alive -- {"scheduled_after_s": 0.127, "relaunched_after_s": 3.056, "recompiled_after_s": 3.056, "new_child": ["16511"], "elapsed_s": 3.094}
+    PASS kill 4 within the same minute: 'worker relaunch limit reached' logged, no relaunch, app alive -- {"limit_after_s": 0.061, "child_after": [], "app_alive": true}
+    PASS app survived all four kills and the bench exited cleanly (unpainted keystrokes after the limit are expected) -- {"keystrokes": 1200, "painted": 178, "unpainted": 1022, "paints": 36, "compiles": 37, "producer": "flashtex-compiler"}
+worker-relaunch: 6 passed, 0 failed

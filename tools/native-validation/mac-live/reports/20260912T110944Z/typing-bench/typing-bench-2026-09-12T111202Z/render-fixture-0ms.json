@@ -1,0 +1,1864 @@
+{
+  "coalesced": 14,
+  "compile_ms": {
+    "count": 200,
+    "max_ms": 19.317984580993652,
+    "mean_ms": 8.514282703399658,
+    "min_ms": 0.6809234619140625,
+    "p50_ms": 6.25300407409668,
+    "p95_ms": 17.470955848693848,
+    "p99_ms": 18.97609233856201
+  },
+  "compiles": 200,
+  "debounce_ms": 0,
+  "document_bytes_after": 220,
+  "document_bytes_before": 16,
+  "elapsed_ms": 4990.621125,
+  "interval_ms": 0,
+  "keystroke_to_paint_ms": {
+    "count": 200,
+    "max_ms": 42.255042,
+    "mean_ms": 25.182073969999987,
+    "min_ms": 12.050708,
+    "p50_ms": 23.53475,
+    "p95_ms": 40.385625,
+    "p99_ms": 42.086875
+  },
+  "keystrokes": 200,
+  "load_affected": false,
+  "load_avg_after": 7.0,
+  "load_avg_before": 7.19,
+  "load_limit": 10.0,
+  "paint_point": "first main-queue turn after the run-loop iteration whose SwiftUI render pass evaluated PreviewView for the revision (Canvas draw closures of every page ran inside that pass); the CoreAnimation commit has completed, the display's next vsync scan-out is not observed",
+  "painted": 200,
+  "paints": 186,
+  "paints_without_redraw": 68,
+  "per_keystroke": [
+    {
+      "compile_ms": 6.252050399780273,
+      "delegate_ns": 87880042809875,
+      "keystroke_ns": 87880041970875,
+      "paint_ns": 87880068728583,
+      "painted_by_revision": 3,
+      "redrawn": false,
+      "revision": 3
+    },
+    {
+      "compile_ms": 16.490936279296875,
+      "delegate_ns": 87880097354708,
+      "keystroke_ns": 87880096890875,
+      "paint_ns": 87880125218958,
+      "painted_by_revision": 4,
+      "redrawn": false,
+      "revision": 4
+    },
+    {
+      "compile_ms": 6.558060646057129,
+      "delegate_ns": 87880125671416,
+      "keystroke_ns": 87880125258625,
+      "paint_ns": 87880143053041,
+      "painted_by_revision": 5,
+      "redrawn": false,
+      "revision": 5
+    },
+    {
+      "compile_ms": 6.759047508239746,
+      "delegate_ns": 87880155303125,
+      "keystroke_ns": 87880154938541,
+      "paint_ns": 87880177476208,
+      "painted_by_revision": 6,
+      "redrawn": false,
+      "revision": 6
+    },
+    {
+      "compile_ms": 14.368057250976562,
+      "delegate_ns": 87880181890041,
+      "keystroke_ns": 87880181449708,
+      "paint_ns": 87880218194625,
+      "painted_by_revision": 7,
+      "redrawn": true,
+      "revision": 7
+    },
+    {
+      "compile_ms": 14.497041702270508,
+      "delegate_ns": 87880218823541,
+      "keystroke_ns": 87880218464333,
+      "paint_ns": 87880254802916,
+      "painted_by_revision": 8,
+      "redrawn": true,
+      "revision": 8
+    },
+    {
+      "compile_ms": 15.567898750305176,
+      "delegate_ns": 87880255499625,
+      "keystroke_ns": 87880255122708,
+      "paint_ns": 87880295302125,
+      "painted_by_revision": 9,
+      "redrawn": true,
+      "revision": 9
+    },
+    {
+      "compile_ms": 16.31295680999756,
+      "delegate_ns": 87880296047541,
+      "keystroke_ns": 87880295663333,
+      "paint_ns": 87880334948166,
+      "painted_by_revision": 10,
+      "redrawn": true,
+      "revision": 10
+    },
+    {
+      "compile_ms": 11.846065521240234,
+      "delegate_ns": 87880335594166,
+      "keystroke_ns": 87880335232791,
+      "paint_ns": 87880366060750,
+      "painted_by_revision": 12,
+      "redrawn": false,
+      "revision": 11
+    },
+    {
+      "compile_ms": 11.846065521240234,
+      "delegate_ns": 87880342592875,
+      "keystroke_ns": 87880342246333,
+      "paint_ns": 87880366060750,
+      "painted_by_revision": 12,
+      "redrawn": false,
+      "revision": 12
+    },
+    {
+      "compile_ms": 0.7500648498535156,
+      "delegate_ns": 87880365600500,
+      "keystroke_ns": 87880365216500,
+      "paint_ns": 87880383056583,
+      "painted_by_revision": 13,
+      "redrawn": true,
+      "revision": 13
+    },
+    {
+      "compile_ms": 6.1550140380859375,
+      "delegate_ns": 87880384800625,
+      "keystroke_ns": 87880384426541,
+      "paint_ns": 87880412759083,
+      "painted_by_revision": 14,
+      "redrawn": true,
+      "revision": 14
+    },
+    {
+      "compile_ms": 15.307068824768066,
+      "delegate_ns": 87880413407291,
+      "keystroke_ns": 87880412956583,
+      "paint_ns": 87880450304250,
+      "painted_by_revision": 15,
+      "redrawn": true,
+      "revision": 15
+    },
+    {
+      "compile_ms": 5.742073059082031,
+      "delegate_ns": 87880450769541,
+      "keystroke_ns": 87880450396000,
+      "paint_ns": 87880467271041,
+      "painted_by_revision": 16,
+      "redrawn": false,
+      "revision": 16
+    },
+    {
+      "compile_ms": 5.774974822998047,
+      "delegate_ns": 87880467652708,
+      "keystroke_ns": 87880467295125,
+      "paint_ns": 87880490305833,
+      "painted_by_revision": 17,
+      "redrawn": true,
+      "revision": 17
+    },
+    {
+      "compile_ms": 6.283998489379883,
+      "delegate_ns": 87880490976375,
+      "keystroke_ns": 87880490474916,
+      "paint_ns": 87880514384250,
+      "painted_by_revision": 18,
+      "redrawn": true,
+      "revision": 18
+    },
+    {
+      "compile_ms": 14.863967895507812,
+      "delegate_ns": 87880514939583,
+      "keystroke_ns": 87880514533833,
+      "paint_ns": 87880551836625,
+      "painted_by_revision": 19,
+      "redrawn": true,
+      "revision": 19
+    },
+    {
+      "compile_ms": 11.70802116394043,
+      "delegate_ns": 87880552498958,
+      "keystroke_ns": 87880552138083,
+      "paint_ns": 87880582147000,
+      "painted_by_revision": 21,
+      "redrawn": false,
+      "revision": 20
+    },
+    {
+      "compile_ms": 11.70802116394043,
+      "delegate_ns": 87880559002458,
+      "keystroke_ns": 87880558596875,
+      "paint_ns": 87880582147000,
+      "painted_by_revision": 21,
+      "redrawn": false,
+      "revision": 21
+    },
+    {
+      "compile_ms": 0.7420778274536133,
+      "delegate_ns": 87880581696500,
+      "keystroke_ns": 87880581333375,
+      "paint_ns": 87880599467666,
+      "painted_by_revision": 22,
+      "redrawn": true,
+      "revision": 22
+    },
+    {
+      "compile_ms": 5.975961685180664,
+      "delegate_ns": 87880599962500,
+      "keystroke_ns": 87880599547625,
+      "paint_ns": 87880621573541,
+      "painted_by_revision": 23,
+      "redrawn": true,
+      "revision": 23
+    },
+    {
+      "compile_ms": 13.663053512573242,
+      "delegate_ns": 87880622102833,
+      "keystroke_ns": 87880621686750,
+      "paint_ns": 87880661594666,
+      "painted_by_revision": 24,
+      "redrawn": true,
+      "revision": 24
+    },
+    {
+      "compile_ms": 5.843997001647949,
+      "delegate_ns": 87880662444916,
+      "keystroke_ns": 87880661994958,
+      "paint_ns": 87880682371375,
+      "painted_by_revision": 25,
+      "redrawn": false,
+      "revision": 25
+    },
+    {
+      "compile_ms": 6.283044815063477,
+      "delegate_ns": 87880686641291,
+      "keystroke_ns": 87880686235250,
+      "paint_ns": 87880700723416,
+      "painted_by_revision": 26,
+      "redrawn": true,
+      "revision": 26
+    },
+    {
+      "compile_ms": 12.85099983215332,
+      "delegate_ns": 87880711394041,
+      "keystroke_ns": 87880710964916,
+      "paint_ns": 87880742332333,
+      "painted_by_revision": 28,
+      "redrawn": false,
+      "revision": 27
+    },
+    {
+      "compile_ms": 12.85099983215332,
+      "delegate_ns": 87880718162375,
+      "keystroke_ns": 87880717732291,
+      "paint_ns": 87880742332333,
+      "painted_by_revision": 28,
+      "redrawn": false,
+      "revision": 28
+    },
+    {
+      "compile_ms": 0.7610321044921875,
+      "delegate_ns": 87880741826916,
+      "keystroke_ns": 87880741389083,
+      "paint_ns": 87880758066583,
+      "painted_by_revision": 29,
+      "redrawn": true,
+      "revision": 29
+    },
+    {
+      "compile_ms": 0.6899833679199219,
+      "delegate_ns": 87880758705583,
+      "keystroke_ns": 87880758159166,
+      "paint_ns": 87880777091416,
+      "painted_by_revision": 30,
+      "redrawn": false,
+      "revision": 30
+    },
+    {
+      "compile_ms": 18.157958984375,
+      "delegate_ns": 87880777672625,
+      "keystroke_ns": 87880777294333,
+      "paint_ns": 87880817720333,
+      "painted_by_revision": 31,
+      "redrawn": true,
+      "revision": 31
+    },
+    {
+      "compile_ms": 6.275057792663574,
+      "delegate_ns": 87880818240583,
+      "keystroke_ns": 87880817831958,
+      "paint_ns": 87880834795958,
+      "painted_by_revision": 32,
+      "redrawn": false,
+      "revision": 32
+    },
+    {
+      "compile_ms": 5.702018737792969,
+      "delegate_ns": 87880835176375,
+      "keystroke_ns": 87880834819250,
+      "paint_ns": 87880857146875,
+      "painted_by_revision": 33,
+      "redrawn": true,
+      "revision": 33
+    },
+    {
+      "compile_ms": 6.114959716796875,
+      "delegate_ns": 87880857811083,
+      "keystroke_ns": 87880857325041,
+      "paint_ns": 87880880457458,
+      "painted_by_revision": 34,
+      "redrawn": true,
+      "revision": 34
+    },
+    {
+      "compile_ms": 14.729976654052734,
+      "delegate_ns": 87880881042208,
+      "keystroke_ns": 87880880602125,
+      "paint_ns": 87880917901750,
+      "painted_by_revision": 35,
+      "redrawn": true,
+      "revision": 35
+    },
+    {
+      "compile_ms": 5.7839155197143555,
+      "delegate_ns": 87880918412958,
+      "keystroke_ns": 87880918014416,
+      "paint_ns": 87880934283541,
+      "painted_by_revision": 36,
+      "redrawn": false,
+      "revision": 36
+    },
+    {
+      "compile_ms": 5.771994590759277,
+      "delegate_ns": 87880934695375,
+      "keystroke_ns": 87880934309125,
+      "paint_ns": 87880956644375,
+      "painted_by_revision": 37,
+      "redrawn": true,
+      "revision": 37
+    },
+    {
+      "compile_ms": 0.6809234619140625,
+      "delegate_ns": 87880957201666,
+      "keystroke_ns": 87880956764458,
+      "paint_ns": 87880973920583,
+      "painted_by_revision": 38,
+      "redrawn": true,
+      "revision": 38
+    },
+    {
+      "compile_ms": 0.7680654525756836,
+      "delegate_ns": 87880974429750,
+      "keystroke_ns": 87880973996375,
+      "paint_ns": 87880994253708,
+      "painted_by_revision": 39,
+      "redrawn": true,
+      "revision": 39
+    },
+    {
+      "compile_ms": 16.748905181884766,
+      "delegate_ns": 87880994730416,
+      "keystroke_ns": 87880994324833,
+      "paint_ns": 87881033227750,
+      "painted_by_revision": 40,
+      "redrawn": false,
+      "revision": 40
+    },
+    {
+      "compile_ms": 5.81204891204834,
+      "delegate_ns": 87881033787500,
+      "keystroke_ns": 87881033301458,
+      "paint_ns": 87881049797458,
+      "painted_by_revision": 41,
+      "redrawn": false,
+      "revision": 41
+    },
+    {
+      "compile_ms": 5.890011787414551,
+      "delegate_ns": 87881050215416,
+      "keystroke_ns": 87881049823166,
+      "paint_ns": 87881073404291,
+      "painted_by_revision": 42,
+      "redrawn": true,
+      "revision": 42
+    },
+    {
+      "compile_ms": 0.7420778274536133,
+      "delegate_ns": 87881074051500,
+      "keystroke_ns": 87881073554375,
+      "paint_ns": 87881091372416,
+      "painted_by_revision": 43,
+      "redrawn": true,
+      "revision": 43
+    },
+    {
+      "compile_ms": 0.7359981536865234,
+      "delegate_ns": 87881091984666,
+      "keystroke_ns": 87881091455041,
+      "paint_ns": 87881110504125,
+      "painted_by_revision": 44,
+      "redrawn": true,
+      "revision": 44
+    },
+    {
+      "compile_ms": 17.017006874084473,
+      "delegate_ns": 87881110993500,
+      "keystroke_ns": 87881110574708,
+      "paint_ns": 87881149675666,
+      "painted_by_revision": 45,
+      "redrawn": true,
+      "revision": 45
+    },
+    {
+      "compile_ms": 6.0939788818359375,
+      "delegate_ns": 87881150191208,
+      "keystroke_ns": 87881149768500,
+      "paint_ns": 87881167086041,
+      "painted_by_revision": 46,
+      "redrawn": false,
+      "revision": 46
+    },
+    {
+      "compile_ms": 6.017923355102539,
+      "delegate_ns": 87881167573916,
+      "keystroke_ns": 87881167112416,
+      "paint_ns": 87881190650041,
+      "painted_by_revision": 47,
+      "redrawn": true,
+      "revision": 47
+    },
+    {
+      "compile_ms": 5.881071090698242,
+      "delegate_ns": 87881191349333,
+      "keystroke_ns": 87881190802500,
+      "paint_ns": 87881213825750,
+      "painted_by_revision": 48,
+      "redrawn": true,
+      "revision": 48
+    },
+    {
+      "compile_ms": 14.74297046661377,
+      "delegate_ns": 87881214402666,
+      "keystroke_ns": 87881213949291,
+      "paint_ns": 87881251348083,
+      "painted_by_revision": 49,
+      "redrawn": true,
+      "revision": 49
+    },
+    {
+      "compile_ms": 12.429952621459961,
+      "delegate_ns": 87881252001541,
+      "keystroke_ns": 87881251603958,
+      "paint_ns": 87881282773750,
+      "painted_by_revision": 51,
+      "redrawn": false,
+      "revision": 50
+    },
+    {
+      "compile_ms": 12.429952621459961,
+      "delegate_ns": 87881258557208,
+      "keystroke_ns": 87881258178000,
+      "paint_ns": 87881282773750,
+      "painted_by_revision": 51,
+      "redrawn": false,
+      "revision": 51
+    },
+    {
+      "compile_ms": 0.7350444793701172,
+      "delegate_ns": 87881282283958,
+      "keystroke_ns": 87881281846625,
+      "paint_ns": 87881300316125,
+      "painted_by_revision": 52,
+      "redrawn": true,
+      "revision": 52
+    },
+    {
+      "compile_ms": 6.440997123718262,
+      "delegate_ns": 87881300934000,
+      "keystroke_ns": 87881300392166,
+      "paint_ns": 87881326992333,
+      "painted_by_revision": 53,
+      "redrawn": true,
+      "revision": 53
+    },
+    {
+      "compile_ms": 18.330931663513184,
+      "delegate_ns": 87881327635583,
+      "keystroke_ns": 87881327129250,
+      "paint_ns": 87881357873166,
+      "painted_by_revision": 54,
+      "redrawn": false,
+      "revision": 54
+    },
+    {
+      "compile_ms": 5.9680938720703125,
+      "delegate_ns": 87881358424083,
+      "keystroke_ns": 87881357900791,
+      "paint_ns": 87881374702250,
+      "painted_by_revision": 55,
+      "redrawn": false,
+      "revision": 55
+    },
+    {
+      "compile_ms": 6.255984306335449,
+      "delegate_ns": 87881375303958,
+      "keystroke_ns": 87881374729375,
+      "paint_ns": 87881403370041,
+      "painted_by_revision": 56,
+      "redrawn": true,
+      "revision": 56
+    },
+    {
+      "compile_ms": 14.438033103942871,
+      "delegate_ns": 87881404141375,
+      "keystroke_ns": 87881403706708,
+      "paint_ns": 87881441563000,
+      "painted_by_revision": 57,
+      "redrawn": true,
+      "revision": 57
+    },
+    {
+      "compile_ms": 6.025075912475586,
+      "delegate_ns": 87881442189291,
+      "keystroke_ns": 87881441681000,
+      "paint_ns": 87881458600250,
+      "painted_by_revision": 58,
+      "redrawn": false,
+      "revision": 58
+    },
+    {
+      "compile_ms": 5.903959274291992,
+      "delegate_ns": 87881459118166,
+      "keystroke_ns": 87881458631833,
+      "paint_ns": 87881482471291,
+      "painted_by_revision": 59,
+      "redrawn": true,
+      "revision": 59
+    },
+    {
+      "compile_ms": 6.193995475769043,
+      "delegate_ns": 87881483121125,
+      "keystroke_ns": 87881482593708,
+      "paint_ns": 87881509391125,
+      "painted_by_revision": 60,
+      "redrawn": true,
+      "revision": 60
+    },
+    {
+      "compile_ms": 18.513917922973633,
+      "delegate_ns": 87881510027875,
+      "keystroke_ns": 87881509512333,
+      "paint_ns": 87881550905625,
+      "painted_by_revision": 61,
+      "redrawn": true,
+      "revision": 61
+    },
+    {
+      "compile_ms": 6.139993667602539,
+      "delegate_ns": 87881551472875,
+      "keystroke_ns": 87881551010291,
+      "paint_ns": 87881568707458,
+      "painted_by_revision": 62,
+      "redrawn": false,
+      "revision": 62
+    },
+    {
+      "compile_ms": 6.5010786056518555,
+      "delegate_ns": 87881569158333,
+      "keystroke_ns": 87881568732916,
+      "paint_ns": 87881593844500,
+      "painted_by_revision": 63,
+      "redrawn": true,
+      "revision": 63
+    },
+    {
+      "compile_ms": 17.691969871520996,
+      "delegate_ns": 87881594485291,
+      "keystroke_ns": 87881593971833,
+      "paint_ns": 87881634367250,
+      "painted_by_revision": 64,
+      "redrawn": true,
+      "revision": 64
+    },
+    {
+      "compile_ms": 5.976080894470215,
+      "delegate_ns": 87881634911041,
+      "keystroke_ns": 87881634461166,
+      "paint_ns": 87881651645291,
+      "painted_by_revision": 65,
+      "redrawn": false,
+      "revision": 65
+    },
+    {
+      "compile_ms": 6.644010543823242,
+      "delegate_ns": 87881652105666,
+      "keystroke_ns": 87881651670291,
+      "paint_ns": 87881676186583,
+      "painted_by_revision": 66,
+      "redrawn": true,
+      "revision": 66
+    },
+    {
+      "compile_ms": 19.307971000671387,
+      "delegate_ns": 87881676877166,
+      "keystroke_ns": 87881676386291,
+      "paint_ns": 87881717256708,
+      "painted_by_revision": 67,
+      "redrawn": true,
+      "revision": 67
+    },
+    {
+      "compile_ms": 5.702972412109375,
+      "delegate_ns": 87881717817833,
+      "keystroke_ns": 87881717367291,
+      "paint_ns": 87881733149958,
+      "painted_by_revision": 68,
+      "redrawn": false,
+      "revision": 68
+    },
+    {
+      "compile_ms": 5.89299201965332,
+      "delegate_ns": 87881733591458,
+      "keystroke_ns": 87881733173375,
+      "paint_ns": 87881755650541,
+      "painted_by_revision": 69,
+      "redrawn": true,
+      "revision": 69
+    },
+    {
+      "compile_ms": 15.050053596496582,
+      "delegate_ns": 87881756297500,
+      "keystroke_ns": 87881755789750,
+      "paint_ns": 87881796345875,
+      "painted_by_revision": 70,
+      "redrawn": true,
+      "revision": 70
+    },
+    {
+      "compile_ms": 6.332993507385254,
+      "delegate_ns": 87881797315166,
+      "keystroke_ns": 87881796784416,
+      "paint_ns": 87881818270000,
+      "painted_by_revision": 71,
+      "redrawn": false,
+      "revision": 71
+    },
+    {
+      "compile_ms": 6.453037261962891,
+      "delegate_ns": 87881822671250,
+      "keystroke_ns": 87881822117166,
+      "paint_ns": 87881836917291,
+      "painted_by_revision": 72,
+      "redrawn": true,
+      "revision": 72
+    },
+    {
+      "compile_ms": 5.807995796203613,
+      "delegate_ns": 87881848094000,
+      "keystroke_ns": 87881847573041,
+      "paint_ns": 87881861174375,
+      "painted_by_revision": 73,
+      "redrawn": true,
+      "revision": 73
+    },
+    {
+      "compile_ms": 6.345987319946289,
+      "delegate_ns": 87881868122125,
+      "keystroke_ns": 87881867568000,
+      "paint_ns": 87881884587333,
+      "painted_by_revision": 74,
+      "redrawn": false,
+      "revision": 74
+    },
+    {
+      "compile_ms": 6.056070327758789,
+      "delegate_ns": 87881885035041,
+      "keystroke_ns": 87881884610833,
+      "paint_ns": 87881907628958,
+      "painted_by_revision": 75,
+      "redrawn": true,
+      "revision": 75
+    },
+    {
+      "compile_ms": 6.291031837463379,
+      "delegate_ns": 87881908271000,
+      "keystroke_ns": 87881907764541,
+      "paint_ns": 87881930120333,
+      "painted_by_revision": 76,
+      "redrawn": true,
+      "revision": 76
+    },
+    {
+      "compile_ms": 14.368057250976562,
+      "delegate_ns": 87881930735166,
+      "keystroke_ns": 87881930226000,
+      "paint_ns": 87881966813750,
+      "painted_by_revision": 77,
+      "redrawn": true,
+      "revision": 77
+    },
+    {
+      "compile_ms": 5.918979644775391,
+      "delegate_ns": 87881967375041,
+      "keystroke_ns": 87881966913250,
+      "paint_ns": 87881983898625,
+      "painted_by_revision": 78,
+      "redrawn": false,
+      "revision": 78
+    },
+    {
+      "compile_ms": 5.695939064025879,
+      "delegate_ns": 87881984356500,
+      "keystroke_ns": 87881983922500,
+      "paint_ns": 87882009520666,
+      "painted_by_revision": 79,
+      "redrawn": true,
+      "revision": 79
+    },
+    {
+      "compile_ms": 18.797993659973145,
+      "delegate_ns": 87882010200458,
+      "keystroke_ns": 87882009663500,
+      "paint_ns": 87882051684750,
+      "painted_by_revision": 80,
+      "redrawn": true,
+      "revision": 80
+    },
+    {
+      "compile_ms": 11.833906173706055,
+      "delegate_ns": 87882052405000,
+      "keystroke_ns": 87882051961916,
+      "paint_ns": 87882082935125,
+      "painted_by_revision": 82,
+      "redrawn": false,
+      "revision": 81
+    },
+    {
+      "compile_ms": 11.833906173706055,
+      "delegate_ns": 87882059215291,
+      "keystroke_ns": 87882058746541,
+      "paint_ns": 87882082935125,
+      "painted_by_revision": 82,
+      "redrawn": false,
+      "revision": 82
+    },
+    {
+      "compile_ms": 0.7690191268920898,
+      "delegate_ns": 87882082466208,
+      "keystroke_ns": 87882082031708,
+      "paint_ns": 87882100668625,
+      "painted_by_revision": 83,
+      "redrawn": true,
+      "revision": 83
+    },
+    {
+      "compile_ms": 14.393925666809082,
+      "delegate_ns": 87882101313500,
+      "keystroke_ns": 87882100746791,
+      "paint_ns": 87882137493875,
+      "painted_by_revision": 84,
+      "redrawn": true,
+      "revision": 84
+    },
+    {
+      "compile_ms": 6.57200813293457,
+      "delegate_ns": 87882138291750,
+      "keystroke_ns": 87882137803500,
+      "paint_ns": 87882152981500,
+      "painted_by_revision": 85,
+      "redrawn": true,
+      "revision": 85
+    },
+    {
+      "compile_ms": 6.232976913452148,
+      "delegate_ns": 87882164810375,
+      "keystroke_ns": 87882164309083,
+      "paint_ns": 87882178548166,
+      "painted_by_revision": 86,
+      "redrawn": true,
+      "revision": 86
+    },
+    {
+      "compile_ms": 6.047964096069336,
+      "delegate_ns": 87882189161500,
+      "keystroke_ns": 87882188611125,
+      "paint_ns": 87882202275416,
+      "painted_by_revision": 87,
+      "redrawn": true,
+      "revision": 87
+    },
+    {
+      "compile_ms": 5.976080894470215,
+      "delegate_ns": 87882209597083,
+      "keystroke_ns": 87882209100833,
+      "paint_ns": 87882225762750,
+      "painted_by_revision": 88,
+      "redrawn": false,
+      "revision": 88
+    },
+    {
+      "compile_ms": 5.752921104431152,
+      "delegate_ns": 87882226257666,
+      "keystroke_ns": 87882225786708,
+      "paint_ns": 87882247635041,
+      "painted_by_revision": 89,
+      "redrawn": true,
+      "revision": 89
+    },
+    {
+      "compile_ms": 14.35089111328125,
+      "delegate_ns": 87882248283208,
+      "keystroke_ns": 87882247763250,
+      "paint_ns": 87882274902250,
+      "painted_by_revision": 90,
+      "redrawn": false,
+      "revision": 90
+    },
+    {
+      "compile_ms": 0.8339881896972656,
+      "delegate_ns": 87882275450583,
+      "keystroke_ns": 87882274932458,
+      "paint_ns": 87882286983166,
+      "painted_by_revision": 91,
+      "redrawn": false,
+      "revision": 91
+    },
+    {
+      "compile_ms": 6.676912307739258,
+      "delegate_ns": 87882287494583,
+      "keystroke_ns": 87882287024000,
+      "paint_ns": 87882316600000,
+      "painted_by_revision": 92,
+      "redrawn": true,
+      "revision": 92
+    },
+    {
+      "compile_ms": 6.261944770812988,
+      "delegate_ns": 87882317249208,
+      "keystroke_ns": 87882316760666,
+      "paint_ns": 87882342483750,
+      "painted_by_revision": 93,
+      "redrawn": true,
+      "revision": 93
+    },
+    {
+      "compile_ms": 18.97609233856201,
+      "delegate_ns": 87882343208833,
+      "keystroke_ns": 87882342619541,
+      "paint_ns": 87882384706416,
+      "painted_by_revision": 94,
+      "redrawn": true,
+      "revision": 94
+    },
+    {
+      "compile_ms": 11.082053184509277,
+      "delegate_ns": 87882385459666,
+      "keystroke_ns": 87882385016333,
+      "paint_ns": 87882414707375,
+      "painted_by_revision": 96,
+      "redrawn": false,
+      "revision": 95
+    },
+    {
+      "compile_ms": 11.082053184509277,
+      "delegate_ns": 87882392195958,
+      "keystroke_ns": 87882391719291,
+      "paint_ns": 87882414707375,
+      "painted_by_revision": 96,
+      "redrawn": false,
+      "revision": 96
+    },
+    {
+      "compile_ms": 5.87308406829834,
+      "delegate_ns": 87882414193750,
+      "keystroke_ns": 87882413735583,
+      "paint_ns": 87882436124375,
+      "painted_by_revision": 97,
+      "redrawn": true,
+      "revision": 97
+    },
+    {
+      "compile_ms": 14.413952827453613,
+      "delegate_ns": 87882436763750,
+      "keystroke_ns": 87882436311541,
+      "paint_ns": 87882472132916,
+      "painted_by_revision": 98,
+      "redrawn": true,
+      "revision": 98
+    },
+    {
+      "compile_ms": 6.25300407409668,
+      "delegate_ns": 87882472955625,
+      "keystroke_ns": 87882472488708,
+      "paint_ns": 87882487752291,
+      "painted_by_revision": 99,
+      "redrawn": true,
+      "revision": 99
+    },
+    {
+      "compile_ms": 6.096959114074707,
+      "delegate_ns": 87882498806083,
+      "keystroke_ns": 87882498231875,
+      "paint_ns": 87882512780833,
+      "painted_by_revision": 100,
+      "redrawn": true,
+      "revision": 100
+    },
+    {
+      "compile_ms": 6.302952766418457,
+      "delegate_ns": 87882524368916,
+      "keystroke_ns": 87882523793375,
+      "paint_ns": 87882538248250,
+      "painted_by_revision": 101,
+      "redrawn": true,
+      "revision": 101
+    },
+    {
+      "compile_ms": 5.887031555175781,
+      "delegate_ns": 87882549704125,
+      "keystroke_ns": 87882549136833,
+      "paint_ns": 87882563048250,
+      "painted_by_revision": 102,
+      "redrawn": true,
+      "revision": 102
+    },
+    {
+      "compile_ms": 5.884051322937012,
+      "delegate_ns": 87882573642916,
+      "keystroke_ns": 87882573102333,
+      "paint_ns": 87882592552166,
+      "painted_by_revision": 103,
+      "redrawn": false,
+      "revision": 103
+    },
+    {
+      "compile_ms": 5.815982818603516,
+      "delegate_ns": 87882593066583,
+      "keystroke_ns": 87882592594666,
+      "paint_ns": 87882609797041,
+      "painted_by_revision": 104,
+      "redrawn": false,
+      "revision": 104
+    },
+    {
+      "compile_ms": 5.870938301086426,
+      "delegate_ns": 87882610439791,
+      "keystroke_ns": 87882609932541,
+      "paint_ns": 87882632856750,
+      "painted_by_revision": 105,
+      "redrawn": true,
+      "revision": 105
+    },
+    {
+      "compile_ms": 6.085991859436035,
+      "delegate_ns": 87882633418916,
+      "keystroke_ns": 87882632966083,
+      "paint_ns": 87882655312250,
+      "painted_by_revision": 106,
+      "redrawn": true,
+      "revision": 106
+    },
+    {
+      "compile_ms": 15.038013458251953,
+      "delegate_ns": 87882655933208,
+      "keystroke_ns": 87882655433250,
+      "paint_ns": 87882695234250,
+      "painted_by_revision": 107,
+      "redrawn": true,
+      "revision": 107
+    },
+    {
+      "compile_ms": 5.722999572753906,
+      "delegate_ns": 87882696007750,
+      "keystroke_ns": 87882695543000,
+      "paint_ns": 87882709364041,
+      "painted_by_revision": 108,
+      "redrawn": true,
+      "revision": 108
+    },
+    {
+      "compile_ms": 6.77800178527832,
+      "delegate_ns": 87882719820375,
+      "keystroke_ns": 87882719275583,
+      "paint_ns": 87882740786416,
+      "painted_by_revision": 109,
+      "redrawn": false,
+      "revision": 109
+    },
+    {
+      "compile_ms": 5.979061126708984,
+      "delegate_ns": 87882745192708,
+      "keystroke_ns": 87882744608083,
+      "paint_ns": 87882759056500,
+      "painted_by_revision": 110,
+      "redrawn": true,
+      "revision": 110
+    },
+    {
+      "compile_ms": 6.683945655822754,
+      "delegate_ns": 87882770323083,
+      "keystroke_ns": 87882769709708,
+      "paint_ns": 87882784392750,
+      "painted_by_revision": 111,
+      "redrawn": true,
+      "revision": 111
+    },
+    {
+      "compile_ms": 5.865931510925293,
+      "delegate_ns": 87882795425500,
+      "keystroke_ns": 87882794900416,
+      "paint_ns": 87882814692500,
+      "painted_by_revision": 112,
+      "redrawn": false,
+      "revision": 112
+    },
+    {
+      "compile_ms": 11.053919792175293,
+      "delegate_ns": 87882818601041,
+      "keystroke_ns": 87882818062958,
+      "paint_ns": 87882846738500,
+      "painted_by_revision": 114,
+      "redrawn": false,
+      "revision": 113
+    },
+    {
+      "compile_ms": 11.053919792175293,
+      "delegate_ns": 87882825192791,
+      "keystroke_ns": 87882824741166,
+      "paint_ns": 87882846738500,
+      "painted_by_revision": 114,
+      "redrawn": false,
+      "revision": 114
+    },
+    {
+      "compile_ms": 0.8989572525024414,
+      "delegate_ns": 87882846152250,
+      "keystroke_ns": 87882845712041,
+      "paint_ns": 87882863616208,
+      "painted_by_revision": 115,
+      "redrawn": true,
+      "revision": 115
+    },
+    {
+      "compile_ms": 14.047026634216309,
+      "delegate_ns": 87882864139791,
+      "keystroke_ns": 87882863689250,
+      "paint_ns": 87882900343916,
+      "painted_by_revision": 116,
+      "redrawn": true,
+      "revision": 116
+    },
+    {
+      "compile_ms": 6.275057792663574,
+      "delegate_ns": 87882901003791,
+      "keystroke_ns": 87882900457916,
+      "paint_ns": 87882918966291,
+      "painted_by_revision": 117,
+      "redrawn": false,
+      "revision": 117
+    },
+    {
+      "compile_ms": 6.229996681213379,
+      "delegate_ns": 87882919463375,
+      "keystroke_ns": 87882918992333,
+      "paint_ns": 87882942470833,
+      "painted_by_revision": 118,
+      "redrawn": true,
+      "revision": 118
+    },
+    {
+      "compile_ms": 13.51010799407959,
+      "delegate_ns": 87882943205500,
+      "keystroke_ns": 87882942617500,
+      "paint_ns": 87882979326916,
+      "painted_by_revision": 119,
+      "redrawn": true,
+      "revision": 119
+    },
+    {
+      "compile_ms": 5.729079246520996,
+      "delegate_ns": 87882980097333,
+      "keystroke_ns": 87882979623791,
+      "paint_ns": 87882999667791,
+      "painted_by_revision": 120,
+      "redrawn": false,
+      "revision": 120
+    },
+    {
+      "compile_ms": 5.68699836730957,
+      "delegate_ns": 87883000199416,
+      "keystroke_ns": 87882999704083,
+      "paint_ns": 87883016291125,
+      "painted_by_revision": 121,
+      "redrawn": false,
+      "revision": 121
+    },
+    {
+      "compile_ms": 5.77998161315918,
+      "delegate_ns": 87883016844791,
+      "keystroke_ns": 87883016391333,
+      "paint_ns": 87883038501791,
+      "painted_by_revision": 122,
+      "redrawn": true,
+      "revision": 122
+    },
+    {
+      "compile_ms": 14.3280029296875,
+      "delegate_ns": 87883039208750,
+      "keystroke_ns": 87883038708375,
+      "paint_ns": 87883077678000,
+      "painted_by_revision": 123,
+      "redrawn": true,
+      "revision": 123
+    },
+    {
+      "compile_ms": 11.31904125213623,
+      "delegate_ns": 87883078490041,
+      "keystroke_ns": 87883077977708,
+      "paint_ns": 87883107672833,
+      "painted_by_revision": 125,
+      "redrawn": false,
+      "revision": 124
+    },
+    {
+      "compile_ms": 11.31904125213623,
+      "delegate_ns": 87883084993083,
+      "keystroke_ns": 87883084570375,
+      "paint_ns": 87883107672833,
+      "painted_by_revision": 125,
+      "redrawn": false,
+      "revision": 125
+    },
+    {
+      "compile_ms": 6.226062774658203,
+      "delegate_ns": 87883107125958,
+      "keystroke_ns": 87883106615333,
+      "paint_ns": 87883130549541,
+      "painted_by_revision": 126,
+      "redrawn": true,
+      "revision": 126
+    },
+    {
+      "compile_ms": 15.175938606262207,
+      "delegate_ns": 87883131239750,
+      "keystroke_ns": 87883130745166,
+      "paint_ns": 87883168246708,
+      "painted_by_revision": 127,
+      "redrawn": true,
+      "revision": 127
+    },
+    {
+      "compile_ms": 11.819005012512207,
+      "delegate_ns": 87883169091041,
+      "keystroke_ns": 87883168571250,
+      "paint_ns": 87883199081750,
+      "painted_by_revision": 129,
+      "redrawn": false,
+      "revision": 128
+    },
+    {
+      "compile_ms": 11.819005012512207,
+      "delegate_ns": 87883176086583,
+      "keystroke_ns": 87883175614958,
+      "paint_ns": 87883199081750,
+      "painted_by_revision": 129,
+      "redrawn": false,
+      "revision": 129
+    },
+    {
+      "compile_ms": 6.129026412963867,
+      "delegate_ns": 87883198565833,
+      "keystroke_ns": 87883198119583,
+      "paint_ns": 87883222954041,
+      "painted_by_revision": 130,
+      "redrawn": true,
+      "revision": 130
+    },
+    {
+      "compile_ms": 14.47606086730957,
+      "delegate_ns": 87883223658041,
+      "keystroke_ns": 87883223089708,
+      "paint_ns": 87883249849833,
+      "painted_by_revision": 131,
+      "redrawn": false,
+      "revision": 131
+    },
+    {
+      "compile_ms": 6.065964698791504,
+      "delegate_ns": 87883250376416,
+      "keystroke_ns": 87883249882083,
+      "paint_ns": 87883266592750,
+      "painted_by_revision": 132,
+      "redrawn": false,
+      "revision": 132
+    },
+    {
+      "compile_ms": 5.7059526443481445,
+      "delegate_ns": 87883267122458,
+      "keystroke_ns": 87883266621416,
+      "paint_ns": 87883294800583,
+      "painted_by_revision": 133,
+      "redrawn": true,
+      "revision": 133
+    },
+    {
+      "compile_ms": 16.24298095703125,
+      "delegate_ns": 87883295657166,
+      "keystroke_ns": 87883295163750,
+      "paint_ns": 87883334679833,
+      "painted_by_revision": 134,
+      "redrawn": true,
+      "revision": 134
+    },
+    {
+      "compile_ms": 12.138009071350098,
+      "delegate_ns": 87883335402708,
+      "keystroke_ns": 87883334941708,
+      "paint_ns": 87883366009500,
+      "painted_by_revision": 136,
+      "redrawn": false,
+      "revision": 135
+    },
+    {
+      "compile_ms": 12.138009071350098,
+      "delegate_ns": 87883341925750,
+      "keystroke_ns": 87883341531083,
+      "paint_ns": 87883366009500,
+      "painted_by_revision": 136,
+      "redrawn": false,
+      "revision": 136
+    },
+    {
+      "compile_ms": 6.502985954284668,
+      "delegate_ns": 87883365471958,
+      "keystroke_ns": 87883364993666,
+      "paint_ns": 87883388528416,
+      "painted_by_revision": 137,
+      "redrawn": true,
+      "revision": 137
+    },
+    {
+      "compile_ms": 15.159964561462402,
+      "delegate_ns": 87883389262416,
+      "keystroke_ns": 87883388664333,
+      "paint_ns": 87883416242041,
+      "painted_by_revision": 138,
+      "redrawn": false,
+      "revision": 138
+    },
+    {
+      "compile_ms": 6.791949272155762,
+      "delegate_ns": 87883416815875,
+      "keystroke_ns": 87883416271375,
+      "paint_ns": 87883434485625,
+      "painted_by_revision": 139,
+      "redrawn": false,
+      "revision": 139
+    },
+    {
+      "compile_ms": 5.944013595581055,
+      "delegate_ns": 87883435015041,
+      "keystroke_ns": 87883434507750,
+      "paint_ns": 87883462197583,
+      "painted_by_revision": 140,
+      "redrawn": true,
+      "revision": 140
+    },
+    {
+      "compile_ms": 15.413999557495117,
+      "delegate_ns": 87883463067916,
+      "keystroke_ns": 87883462579916,
+      "paint_ns": 87883499861958,
+      "painted_by_revision": 141,
+      "redrawn": true,
+      "revision": 141
+    },
+    {
+      "compile_ms": 5.732059478759766,
+      "delegate_ns": 87883500499083,
+      "keystroke_ns": 87883499976375,
+      "paint_ns": 87883517009291,
+      "painted_by_revision": 142,
+      "redrawn": false,
+      "revision": 142
+    },
+    {
+      "compile_ms": 5.667924880981445,
+      "delegate_ns": 87883517592166,
+      "keystroke_ns": 87883517040666,
+      "paint_ns": 87883541879250,
+      "painted_by_revision": 143,
+      "redrawn": true,
+      "revision": 143
+    },
+    {
+      "compile_ms": 19.317984580993652,
+      "delegate_ns": 87883542635208,
+      "keystroke_ns": 87883542017333,
+      "paint_ns": 87883583467666,
+      "painted_by_revision": 144,
+      "redrawn": false,
+      "revision": 144
+    },
+    {
+      "compile_ms": 5.668044090270996,
+      "delegate_ns": 87883584129166,
+      "keystroke_ns": 87883583575958,
+      "paint_ns": 87883600138583,
+      "painted_by_revision": 145,
+      "redrawn": false,
+      "revision": 145
+    },
+    {
+      "compile_ms": 5.550026893615723,
+      "delegate_ns": 87883600652083,
+      "keystroke_ns": 87883600161583,
+      "paint_ns": 87883622711833,
+      "painted_by_revision": 146,
+      "redrawn": true,
+      "revision": 146
+    },
+    {
+      "compile_ms": 13.743042945861816,
+      "delegate_ns": 87883623380666,
+      "keystroke_ns": 87883622828750,
+      "paint_ns": 87883660695083,
+      "painted_by_revision": 147,
+      "redrawn": true,
+      "revision": 147
+    },
+    {
+      "compile_ms": 11.898994445800781,
+      "delegate_ns": 87883661529833,
+      "keystroke_ns": 87883661007000,
+      "paint_ns": 87883692622208,
+      "painted_by_revision": 149,
+      "redrawn": false,
+      "revision": 148
+    },
+    {
+      "compile_ms": 11.898994445800781,
+      "delegate_ns": 87883668270083,
+      "keystroke_ns": 87883667830166,
+      "paint_ns": 87883692622208,
+      "painted_by_revision": 149,
+      "redrawn": false,
+      "revision": 149
+    },
+    {
+      "compile_ms": 6.608009338378906,
+      "delegate_ns": 87883692076041,
+      "keystroke_ns": 87883691519500,
+      "paint_ns": 87883717380750,
+      "painted_by_revision": 150,
+      "redrawn": true,
+      "revision": 150
+    },
+    {
+      "compile_ms": 14.301061630249023,
+      "delegate_ns": 87883718078166,
+      "keystroke_ns": 87883717580916,
+      "paint_ns": 87883753993958,
+      "painted_by_revision": 151,
+      "redrawn": true,
+      "revision": 151
+    },
+    {
+      "compile_ms": 5.609035491943359,
+      "delegate_ns": 87883754972666,
+      "keystroke_ns": 87883754384125,
+      "paint_ns": 87883768870375,
+      "painted_by_revision": 152,
+      "redrawn": true,
+      "revision": 152
+    },
+    {
+      "compile_ms": 6.821036338806152,
+      "delegate_ns": 87883781335541,
+      "keystroke_ns": 87883780658125,
+      "paint_ns": 87883796737708,
+      "painted_by_revision": 153,
+      "redrawn": true,
+      "revision": 153
+    },
+    {
+      "compile_ms": 6.165027618408203,
+      "delegate_ns": 87883807385333,
+      "keystroke_ns": 87883806768166,
+      "paint_ns": 87883821719083,
+      "painted_by_revision": 154,
+      "redrawn": true,
+      "revision": 154
+    },
+    {
+      "compile_ms": 11.616945266723633,
+      "delegate_ns": 87883834353791,
+      "keystroke_ns": 87883833749958,
+      "paint_ns": 87883865547916,
+      "painted_by_revision": 156,
+      "redrawn": false,
+      "revision": 155
+    },
+    {
+      "compile_ms": 11.616945266723633,
+      "delegate_ns": 87883842429500,
+      "keystroke_ns": 87883841694250,
+      "paint_ns": 87883865547916,
+      "painted_by_revision": 156,
+      "redrawn": false,
+      "revision": 156
+    },
+    {
+      "compile_ms": 6.09898567199707,
+      "delegate_ns": 87883864975708,
+      "keystroke_ns": 87883864491666,
+      "paint_ns": 87883886829833,
+      "painted_by_revision": 157,
+      "redrawn": true,
+      "revision": 157
+    },
+    {
+      "compile_ms": 17.470955848693848,
+      "delegate_ns": 87883887512166,
+      "keystroke_ns": 87883886961125,
+      "paint_ns": 87883916379166,
+      "painted_by_revision": 158,
+      "redrawn": false,
+      "revision": 158
+    },
+    {
+      "compile_ms": 5.793929100036621,
+      "delegate_ns": 87883916913666,
+      "keystroke_ns": 87883916406416,
+      "paint_ns": 87883933788500,
+      "painted_by_revision": 159,
+      "redrawn": false,
+      "revision": 159
+    },
+    {
+      "compile_ms": 5.9479475021362305,
+      "delegate_ns": 87883934314875,
+      "keystroke_ns": 87883933810125,
+      "paint_ns": 87883962472791,
+      "painted_by_revision": 160,
+      "redrawn": true,
+      "revision": 160
+    },
+    {
+      "compile_ms": 15.563011169433594,
+      "delegate_ns": 87883963457083,
+      "keystroke_ns": 87883962863541,
+      "paint_ns": 87884001048125,
+      "painted_by_revision": 161,
+      "redrawn": true,
+      "revision": 161
+    },
+    {
+      "compile_ms": 5.905032157897949,
+      "delegate_ns": 87884001637250,
+      "keystroke_ns": 87884001138333,
+      "paint_ns": 87884018033958,
+      "painted_by_revision": 162,
+      "redrawn": false,
+      "revision": 162
+    },
+    {
+      "compile_ms": 5.900979042053223,
+      "delegate_ns": 87884018523541,
+      "keystroke_ns": 87884018057875,
+      "paint_ns": 87884043384666,
+      "painted_by_revision": 163,
+      "redrawn": true,
+      "revision": 163
+    },
+    {
+      "compile_ms": 18.77903938293457,
+      "delegate_ns": 87884044102208,
+      "keystroke_ns": 87884043518833,
+      "paint_ns": 87884074812541,
+      "painted_by_revision": 164,
+      "redrawn": false,
+      "revision": 164
+    },
+    {
+      "compile_ms": 6.635069847106934,
+      "delegate_ns": 87884075452583,
+      "keystroke_ns": 87884074843083,
+      "paint_ns": 87884093520541,
+      "painted_by_revision": 165,
+      "redrawn": false,
+      "revision": 165
+    },
+    {
+      "compile_ms": 5.558967590332031,
+      "delegate_ns": 87884094049750,
+      "keystroke_ns": 87884093546083,
+      "paint_ns": 87884120427541,
+      "painted_by_revision": 166,
+      "redrawn": true,
+      "revision": 166
+    },
+    {
+      "compile_ms": 14.805078506469727,
+      "delegate_ns": 87884121320083,
+      "keystroke_ns": 87884120817458,
+      "paint_ns": 87884161203083,
+      "painted_by_revision": 167,
+      "redrawn": true,
+      "revision": 167
+    },
+    {
+      "compile_ms": 6.152033805847168,
+      "delegate_ns": 87884161993000,
+      "keystroke_ns": 87884161490000,
+      "paint_ns": 87884176432625,
+      "painted_by_revision": 168,
+      "redrawn": true,
+      "revision": 168
+    },
+    {
+      "compile_ms": 6.10196590423584,
+      "delegate_ns": 87884183844250,
+      "keystroke_ns": 87884183340416,
+      "paint_ns": 87884200519833,
+      "painted_by_revision": 169,
+      "redrawn": false,
+      "revision": 169
+    },
+    {
+      "compile_ms": 6.564021110534668,
+      "delegate_ns": 87884201134583,
+      "keystroke_ns": 87884200547958,
+      "paint_ns": 87884226956666,
+      "painted_by_revision": 170,
+      "redrawn": true,
+      "revision": 170
+    },
+    {
+      "compile_ms": 18.11206340789795,
+      "delegate_ns": 87884227641708,
+      "keystroke_ns": 87884227076291,
+      "paint_ns": 87884258424250,
+      "painted_by_revision": 171,
+      "redrawn": false,
+      "revision": 171
+    },
+    {
+      "compile_ms": 6.2770843505859375,
+      "delegate_ns": 87884259060083,
+      "keystroke_ns": 87884258455541,
+      "paint_ns": 87884275546541,
+      "painted_by_revision": 172,
+      "redrawn": false,
+      "revision": 172
+    },
+    {
+      "compile_ms": 6.004929542541504,
+      "delegate_ns": 87884276141583,
+      "keystroke_ns": 87884275571375,
+      "paint_ns": 87884302893750,
+      "painted_by_revision": 173,
+      "redrawn": true,
+      "revision": 173
+    },
+    {
+      "compile_ms": 15.413045883178711,
+      "delegate_ns": 87884303743250,
+      "keystroke_ns": 87884303243708,
+      "paint_ns": 87884345422958,
+      "painted_by_revision": 174,
+      "redrawn": true,
+      "revision": 174
+    },
+    {
+      "compile_ms": 6.0089826583862305,
+      "delegate_ns": 87884346357583,
+      "keystroke_ns": 87884345794625,
+      "paint_ns": 87884360484875,
+      "painted_by_revision": 175,
+      "redrawn": true,
+      "revision": 175
+    },
+    {
+      "compile_ms": 5.823016166687012,
+      "delegate_ns": 87884367887750,
+      "keystroke_ns": 87884367385041,
+      "paint_ns": 87884383950291,
+      "painted_by_revision": 176,
+      "redrawn": false,
+      "revision": 176
+    },
+    {
+      "compile_ms": 6.305932998657227,
+      "delegate_ns": 87884384452916,
+      "keystroke_ns": 87884383975291,
+      "paint_ns": 87884407357041,
+      "painted_by_revision": 177,
+      "redrawn": true,
+      "revision": 177
+    },
+    {
+      "compile_ms": 6.659984588623047,
+      "delegate_ns": 87884408307250,
+      "keystroke_ns": 87884407532416,
+      "paint_ns": 87884430508458,
+      "painted_by_revision": 178,
+      "redrawn": false,
+      "revision": 178
+    },
+    {
+      "compile_ms": 15.092015266418457,
+      "delegate_ns": 87884431186708,
+      "keystroke_ns": 87884430653833,
+      "paint_ns": 87884468762875,
+      "painted_by_revision": 179,
+      "redrawn": true,
+      "revision": 179
+    },
+    {
+      "compile_ms": 11.751055717468262,
+      "delegate_ns": 87884469641708,
+      "keystroke_ns": 87884469137125,
+      "paint_ns": 87884500388958,
+      "painted_by_revision": 181,
+      "redrawn": false,
+      "revision": 180
+    },
+    {
+      "compile_ms": 11.751055717468262,
+      "delegate_ns": 87884476531041,
+      "keystroke_ns": 87884476008000,
+      "paint_ns": 87884500388958,
+      "painted_by_revision": 181,
+      "redrawn": false,
+      "revision": 181
+    },
+    {
+      "compile_ms": 6.1539411544799805,
+      "delegate_ns": 87884499820791,
+      "keystroke_ns": 87884499249000,
+      "paint_ns": 87884521971750,
+      "painted_by_revision": 182,
+      "redrawn": true,
+      "revision": 182
+    },
+    {
+      "compile_ms": 14.068007469177246,
+      "delegate_ns": 87884522698083,
+      "keystroke_ns": 87884522166958,
+      "paint_ns": 87884561202083,
+      "painted_by_revision": 183,
+      "redrawn": true,
+      "revision": 183
+    },
+    {
+      "compile_ms": 5.955934524536133,
+      "delegate_ns": 87884562117958,
+      "keystroke_ns": 87884561564541,
+      "paint_ns": 87884576095166,
+      "painted_by_revision": 184,
+      "redrawn": true,
+      "revision": 184
+    },
+    {
+      "compile_ms": 5.87308406829834,
+      "delegate_ns": 87884583453875,
+      "keystroke_ns": 87884582922000,
+      "paint_ns": 87884600068166,
+      "painted_by_revision": 185,
+      "redrawn": false,
+      "revision": 185
+    },
+    {
+      "compile_ms": 6.436944007873535,
+      "delegate_ns": 87884600597166,
+      "keystroke_ns": 87884600093708,
+      "paint_ns": 87884622721833,
+      "painted_by_revision": 186,
+      "redrawn": true,
+      "revision": 186
+    },
+    {
+      "compile_ms": 14.198064804077148,
+      "delegate_ns": 87884623445250,
+      "keystroke_ns": 87884622854333,
+      "paint_ns": 87884649686083,
+      "painted_by_revision": 187,
+      "redrawn": false,
+      "revision": 187
+    },
+    {
+      "compile_ms": 6.57200813293457,
+      "delegate_ns": 87884650275125,
+      "keystroke_ns": 87884649715375,
+      "paint_ns": 87884668077250,
+      "painted_by_revision": 188,
+      "redrawn": false,
+      "revision": 188
+    },
+    {
+      "compile_ms": 6.2209367752075195,
+      "delegate_ns": 87884668617833,
+      "keystroke_ns": 87884668103000,
+      "paint_ns": 87884697297458,
+      "painted_by_revision": 189,
+      "redrawn": true,
+      "revision": 189
+    },
+    {
+      "compile_ms": 14.437079429626465,
+      "delegate_ns": 87884698228125,
+      "keystroke_ns": 87884697720083,
+      "paint_ns": 87884734752416,
+      "painted_by_revision": 190,
+      "redrawn": true,
+      "revision": 190
+    },
+    {
+      "compile_ms": 11.765003204345703,
+      "delegate_ns": 87884735671208,
+      "keystroke_ns": 87884735123166,
+      "paint_ns": 87884767221125,
+      "painted_by_revision": 192,
+      "redrawn": false,
+      "revision": 191
+    },
+    {
+      "compile_ms": 11.765003204345703,
+      "delegate_ns": 87884743124750,
+      "keystroke_ns": 87884742572916,
+      "paint_ns": 87884767221125,
+      "painted_by_revision": 192,
+      "redrawn": false,
+      "revision": 192
+    },
+    {
+      "compile_ms": 0.9969472885131836,
+      "delegate_ns": 87884766495041,
+      "keystroke_ns": 87884765992333,
+      "paint_ns": 87884786467041,
+      "painted_by_revision": 193,
+      "redrawn": true,
+      "revision": 193
+    },
+    {
+      "compile_ms": 15.11693000793457,
+      "delegate_ns": 87884787207000,
+      "keystroke_ns": 87884786639083,
+      "paint_ns": 87884828894125,
+      "painted_by_revision": 194,
+      "redrawn": true,
+      "revision": 194
+    },
+    {
+      "compile_ms": 6.140947341918945,
+      "delegate_ns": 87884829882625,
+      "keystroke_ns": 87884829264291,
+      "paint_ns": 87884844991791,
+      "painted_by_revision": 195,
+      "redrawn": true,
+      "revision": 195
+    },
+    {
+      "compile_ms": 6.241917610168457,
+      "delegate_ns": 87884857242083,
+      "keystroke_ns": 87884856664750,
+      "paint_ns": 87884871071458,
+      "painted_by_revision": 196,
+      "redrawn": true,
+      "revision": 196
+    },
+    {
+      "compile_ms": 6.092071533203125,
+      "delegate_ns": 87884882315041,
+      "keystroke_ns": 87884881685333,
+      "paint_ns": 87884902164000,
+      "painted_by_revision": 197,
+      "redrawn": false,
+      "revision": 197
+    },
+    {
+      "compile_ms": 6.13093376159668,
+      "delegate_ns": 87884906240833,
+      "keystroke_ns": 87884905631125,
+      "paint_ns": 87884919360916,
+      "painted_by_revision": 198,
+      "redrawn": true,
+      "revision": 198
+    },
+    {
+      "compile_ms": 5.692958831787109,
+      "delegate_ns": 87884926840708,
+      "keystroke_ns": 87884926286000,
+      "paint_ns": 87884943487458,
+      "painted_by_revision": 199,
+      "redrawn": false,
+      "revision": 199
+    },
+    {
+      "compile_ms": 6.5430402755737305,
+      "delegate_ns": 87884944057750,
+      "keystroke_ns": 87884943514166,
+      "paint_ns": 87884967647833,
+      "painted_by_revision": 200,
+      "redrawn": true,
+      "revision": 200
+    },
+    {
+      "compile_ms": 14.603018760681152,
+      "delegate_ns": 87884968348333,
+      "keystroke_ns": 87884967765958,
+      "paint_ns": 87885005225041,
+      "painted_by_revision": 201,
+      "redrawn": true,
+      "revision": 201
+    },
+    {
+      "compile_ms": 6.4879655838012695,
+      "delegate_ns": 87885006100166,
+      "keystroke_ns": 87885005569708,
+      "paint_ns": 87885027430916,
+      "painted_by_revision": 202,
+      "redrawn": false,
+      "revision": 202
+    }
+  ],
+  "producer": "flashtex-render",
+  "render_pass_ms": {
+    "count": 118,
+    "max_ms": 13.933792,
+    "mean_ms": 10.371324855932203,
+    "min_ms": 3.184375,
+    "p50_ms": 11.2165,
+    "p95_ms": 13.52925,
+    "p99_ms": 13.915
+  },
+  "result_to_paint_ms": {
+    "count": 186,
+    "max_ms": 26.451875,
+    "mean_ms": 15.45210170430108,
+    "min_ms": 6.844375,
+    "p50_ms": 15.709792,
+    "p95_ms": 23.444875,
+    "p99_ms": 26.146917
+  },
+  "route": "render",
+  "script": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/tools/typing-bench/typed-200.txt",
+  "script_keystrokes": 200,
+  "started_at": "2026-09-12T11:14:02Z",
+  "typed": 200,
+  "typing_budget_exhausted": false,
+  "unpainted": 0
+}

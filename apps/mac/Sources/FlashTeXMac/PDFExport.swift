@@ -79,6 +79,7 @@ extension ShellModel {
     /// `File > Export PDF…`: writes the current preview via `PDFExport.render`.
     /// Reports the saved path (or failure) in `captureNote`.
     func exportPDF() {
+        if let why = historicalRefusal(of: "export") { captureNote = why; return }
         guard let result else {
             captureNote = "Nothing to export: no compile result loaded."
             return

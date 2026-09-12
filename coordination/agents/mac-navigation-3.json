@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-navigation-3",
+  "allocation_id": "claude-mac20x-navigation-3",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-navigation-3/unopened-math",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rendering-v2-consumer"
+  ],
+  "code_revision": "cc473ca2",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9ba9851c",
+  "next_action": "None: branch pushed at cc473ca2 for parent mac-claude-a to merge into mac-shell",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged forward cleanly (a29c82de); only docs/evidence/tools changed, no overlap with the navigation files",
+      "reviewed_utc": "2026-09-12T18:30:00Z",
+      "sha": "9ba9851c"
+    }
+  },
+  "schema_version": 1,
+  "state": "done",
+  "summary": "Navigation item 8 follow-ups done: unopened-document navigation (typed verdicts, helper exact snapshot, durable-vs-compiled check + declared sha256), caret-in-math formula box, no-glyph refusal naming the source span with v1 fallback offered; 10 new tests + 36 neighbouring tests pass on the real helper + flashtex-render 9aaec57a (docs/evidence/mac-navigation-3-tests-20260912T1836Z.log); producer reproduction filed in coordination/mac-navigation-3.md",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T18:40:00Z",
+  "usage": {
+    "evidence": "swift build clean; 46 tests / 1 skipped / 0 failures on real binaries; full swift test not run (load 50-317)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; one quota cut at ~17:25Z, resumed 18:25Z"
+  }
+}

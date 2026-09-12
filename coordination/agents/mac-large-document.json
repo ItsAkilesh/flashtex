@@ -1,0 +1,28 @@
+{
+  "agent_id": "mac-large-document",
+  "allocation_id": "claude-mac20x-large-document",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-large-document/large-document",
+  "capabilities": ["swift", "appkit", "preview-controller-client"],
+  "code_revision": "a109e254",
+  "eta_minutes": {"likely": 0, "optimistic": 0, "pessimistic": 10},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d",
+  "next_action": "Parent applies docs/evidence/mac-output-bounds-hooks-2026-09-12.diff (ShellModel+Controller 6 one-liners, ShellModel 2, ContentView banner + toolbar, FlashTeXMacApp ⌘B) and merges the branch",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based on 1630fdbc; reuses PasteRecoveryTests' load/uptime helpers and fixture shape; no overlap with preview-anchoring or paste-recovery files",
+      "reviewed_utc": "2026-09-12T17:20:00Z",
+      "sha": "1630fdbc"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Oversized helper output: measured what the real helper sends for a 560 KB prose document (one update kind:failed per pending compile, compiler session killed, later edits ACKed with preview_error until restart; 15 MiB opt-in delivers a 15.64 MB preview; direct route trips WorkerClient's partial-buffer check). New ShellModel+OutputBounds.swift: status/banner naming the bound and the document size, last preview kept stale, held edit released, retry only on shrink or ⌘B, relaunch auto-compile blocked; OutputBoundsTests 6/6 with real helper+compiler; hooks as diff.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T17:20:00Z",
+  "usage": {
+    "evidence": "swift build ok; OutputBoundsTests 6/6 unhooked (load 11.7) and 24/24 with PasteRecovery/ControllerRelease/WorkerClient on the -applied branch (load 9.2), real helper + compiler; measured numbers in coordination/mac-large-document.md",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

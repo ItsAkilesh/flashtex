@@ -1,0 +1,112 @@
+diff --git a/apps/mac/Sources/FlashTeXMac/ContentView.swift b/apps/mac/Sources/FlashTeXMac/ContentView.swift
+index 314f8e6b..67a8d7a9 100644
+--- a/apps/mac/Sources/FlashTeXMac/ContentView.swift
++++ b/apps/mac/Sources/FlashTeXMac/ContentView.swift
+@@ -34,7 +34,7 @@ struct ContentView: View {
+             ToolbarItem { HStack(spacing: 4) { Text("v2 preview").font(.caption); Toggle("v2 preview", isOn: $model.previewV2).toggleStyle(.switch).labelsHidden() }.help("Experimental display-list-v2 preview (File > Open Display List (v2)…)") }
+             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
+             ToolbarItem {
+-                Button("Compile", systemImage: "hammer") { model.compile() }
++                Button("Compile", systemImage: "hammer") { if !model.outputBoundExplicitRetry() { model.compile() } }
+                     .disabled(!model.workerAttached)
+                     .help("Send the current buffers to the attached worker (⌘B)")
+             }
+@@ -87,9 +87,10 @@ private struct StatusBanner: View {
+                     Text(historical.label).foregroundStyle(.purple).bold()
+                         .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
+                 } else if model.previewIsStale {
+-                    Text(model.workerAttached
++                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
++                         ?? (model.workerAttached
+                          ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
+-                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
++                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)"))
+                         .foregroundStyle(.orange)
+                 }
+             } else if let err = model.loadError {
+diff --git a/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift b/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
+index 7b7238ae..ebb53a19 100644
+--- a/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
++++ b/apps/mac/Sources/FlashTeXMac/FlashTeXMacApp.swift
+@@ -158,7 +158,7 @@ struct FlashTeXMacApp: App {
+                     .help("Attach flashtex-render (crates/render-pipeline) — the producer whose metrics are Latin Modern, so the preview shows Computer Modern-style text")
+                 Button("Attach Worker Executable…") { model.attachWorkerPanel() }
+                     .keyboardShortcut("k")
+-                Button("Compile") { model.compile() }
++                Button("Compile") { if !model.outputBoundExplicitRetry() { model.compile() } }
+                     .keyboardShortcut("b")
+                     .disabled(!model.workerAttached)
+                 Button("Detach Worker") { model.detachWorker() }
+diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
+index c5e1b4a2..a3314656 100644
+--- a/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
++++ b/apps/mac/Sources/FlashTeXMac/ShellModel+Controller.swift
+@@ -163,6 +163,7 @@ extension ShellModel {
+     /// Explicit compile (⌘B): submits pending text first, else asks for a compile.
+     func controllerCompile() {
+         guard let controller, controller.isRunning, controllerState.ready else { return }
++        if outputBoundExplicitRetry() { return } // ⌘B after an overflow: restart the compiler regardless of size
+         if let durable = controllerState.durable[activePath],
+            !(controllerState.textByDurable[activePath]?[durable.revision]?.sameBytes(as: activeText) ?? false) {
+             controllerSubmitEdit()
+@@ -179,6 +180,7 @@ extension ShellModel {
+         case .ready(let compilerError, let maxFrame, let maxOut):
+             controllerState.ready = true
+             controllerState.compilerError = compilerError
++            outputBoundNoteReady(compilerMaxFrameBytes: maxFrame, helperMaxOutputBytes: maxOut) // ShellModel+OutputBounds.swift
+             controllerStatus = "ready: compiler frames ≤ \(maxFrame / 1024 / 1024) MiB, helper output ≤ \(maxOut / 1024 / 1024) MiB"
+                 + (compilerError.map { "; compiler unavailable: \($0)" } ?? "")
+             log("controller " + controllerStatus)
+@@ -214,6 +216,7 @@ extension ShellModel {
+                 log("completion metadata refused: \(why)")
+                 break
+             }
++            if outputBoundHandleControllerError(id: id, message: message) { break } // oversized required reply (ShellModel+OutputBounds.swift)
+             if let inFlight = controllerState.inFlight, inFlight.id == id {
+                 controllerState.inFlight = nil
+                 inFlightRevision = nil
+@@ -242,6 +245,8 @@ extension ShellModel {
+                     log("controller \(kind) preview for durable r\(rev) (in flight r\(want))")
+                     controllerReleaseInFlight()
+                 }
++            } else if outputBoundHandleControllerUpdate(kind: kind, payload: payload) {
++                // `failed` for an oversized compiler reply: status names the bound, the held edit is released (ShellModel+OutputBounds.swift)
+             } else {
+                 log("controller update \(kind): \(payload.keys.sorted().joined(separator: ","))")
+             }
+@@ -324,6 +329,7 @@ extension ShellModel {
+                 controllerState.inFlight = nil
+                 controllerStatus = "durable r\(revision); preview error: \(e)"
+                 log("controller preview_error: \(e)")
++                outputBoundHandlePreviewError(e) // restarts the compiler once the document shrank after an overflow
+             } else {
+                 controllerState.inFlight?.durableRevision = revision
+                 if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
+@@ -459,6 +465,7 @@ extension ShellModel {
+         result = incoming
+         resultID = update.result.id
+         previewSource = .worker("flashtex-preview-controller")
++        outputBoundNotePreviewApplied()
+         historicalNoteCurrentPreview(compileRevision: update.compileRevision)
+         bindLayout(of: incoming, requested: requested)
+         if !update.missingLayoutCapabilities.isEmpty {
+diff --git a/apps/mac/Sources/FlashTeXMac/ShellModel.swift b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
+index 4d878483..412f0dce 100644
+--- a/apps/mac/Sources/FlashTeXMac/ShellModel.swift
++++ b/apps/mac/Sources/FlashTeXMac/ShellModel.swift
+@@ -598,6 +598,7 @@ final class ShellModel {
+             workerStatus = "no worker attached"
+             return
+         }
++        if outputBoundBlocksCompile { return } // the document still exceeds the worker line limit (ShellModel+OutputBounds.swift)
+         debounce?.cancel()
+         let capabilities = requestedLayoutCapabilities
+         if let latestID = latestRequestID, let latest = inFlightRequests[latestID] {
+@@ -724,6 +725,7 @@ final class ShellModel {
+         case .protocolViolation(let message):
+             workerStatus = "protocol violation: \(message)"
+             log("protocol violation: \(message)")
++            outputBoundHandleWorkerViolation(message) // an oversized compile_result: name the bound and the document size
+         case .stderr(let text):
+             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
+         case .exited(let code):

@@ -1,0 +1,11 @@
+{
+  "status": "incomplete_stalled",
+  "elapsed_seconds_approximately": 250,
+  "stop": "SIGTERM sent only to exact owned xctest PID63296; swift-test exited1",
+  "last_started_test": "DisplayListDeltaTests.testAcknowledgingAnOlderSnapshotYieldsFull",
+  "passed_test_lines": 163,
+  "reported_failed_test_lines": 0,
+  "full_suite_pass_claim": false,
+  "scope": "parent shell broad regression; no ShellModel modifications in this continuation",
+  "sample_stack": "DisplayListDeltaTests.session -> Worker.readLine(timeout:) line42"
+}

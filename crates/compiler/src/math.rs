@@ -344,6 +344,16 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("infty", "∞"),
     ("sum", "∑"),
     ("int", "∫"),
+    ("in", "∈"),
+    ("forall", "∀"),
+    ("exists", "∃"),
+    ("vee", "∨"),
+    ("Rightarrow", "⇒"),
+    ("mid", "|"),
+    ("qquad", " "),
+    ("quad", " "),
+    ("bigl", "("),
+    ("bigr", ")"),
 ];
 
 /// The rule character used to draw fraction bars.

@@ -1,0 +1,28 @@
+==> building FlashTeXMac (release)
+Build complete! (0.25s)
+    seed demo       5909 bytes
+    seed body60k   63899 bytes
+    seed fixture      16 bytes
+==> run compiler-fixture-30ms
+    2026-09-12T09:06:52Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 0, p50 10.324875 ms
+==> run compiler-fixture-0ms
+    2026-09-12T09:06:56Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 3, p50 14.552417 ms
+==> run compiler-demo-30ms
+    2026-09-12T09:07:04Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 4, p50 28.469209 ms
+==> run compiler-demo-0ms
+    2026-09-12T09:07:11Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 14, p50 29.444792 ms
+==> run compiler-body60k-30ms
+    2026-09-12T09:07:29Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 56, p50 229.854625 ms
+==> run compiler-body60k-0ms
+    2026-09-12T09:07:47Z	bench: done (all keystrokes painted); keystrokes 200, painted 200, coalesced 122, p50 354.219792 ms
+==> writing /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T090452Z/typing-bench/typing-bench.md
+# Typing bench: keystroke → paint latency (2026-09-12T090644Z)
+
+Branch `HEAD` @ `d8baed6`; Apple M1 Max; macOS 26.3.1; release build of `FlashTeXMac` (`swift build -c release`).
+Script: `tools/typing-bench/run.sh`; raw JSON summaries in `typing-bench-2026-09-12T090644Z/`.
+| flashtex-compiler | body60k | 64103 | 0ms | 200 | 78 | 122 | 354 | 628 | 794 | 906 | 174 | 375 | 31 | 46 | 0 |
+| flashtex-compiler | body60k | 64103 | 30ms | 200 | 144 | 56 | 230 | 394 | 439 | 463 | 105 | 214 | 24 | 35 | 0 |
+| flashtex-compiler | demo | 6113 | 0ms | 200 | 186 | 14 | 29 | 47 | 51 | 59 | 10.0 | 22 | 12 | 15 | 0 |
+| flashtex-compiler | demo | 6113 | 30ms | 200 | 196 | 4 | 28 | 46 | 48 | 55 | 9.7 | 21 | 13 | 15 | 0 |
+| flashtex-compiler | fixture | 220 | 0ms | 200 | 197 | 3 | 15 | 28 | 37 | 39 | 0.7 | 11 | 10 | 14 | 0 |
+| flashtex-compiler | fixture | 220 | 30ms | 200 | 200 | 0 | 10 | 21 | 38 | 41 | 0.7 | 6.6 | 2.1 | 10 | 0 |

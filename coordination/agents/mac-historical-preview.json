@@ -1,0 +1,45 @@
+{
+  "agent_id": "mac-historical-preview",
+  "allocation_id": "claude-mac20x-historical-preview",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-historical-preview/hybrid",
+  "capabilities": [
+    "swift",
+    "macos"
+  ],
+  "code_revision": "7d08c2e3958a11f3f9636f11a2310d0f4327dd52",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 30
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent re-applies 414e4d1 into mac-shell if it wants the opt-in; a quiet-machine repeat of the 20 cells before any absolute claim; helper owner: skip superseded queued compiles",
+  "reviewed_peers": {
+    "origin/agent/commander-preview-performance/preview-performance": {
+      "adaptation": "Helper branch read through 397bff7: no change to the negotiated wire after ab945e6 (diagnostic timings, frame bounds, undo payloads only), so the ab945e6 build remains the tested helper; mac-shell b898cfc merged cleanly (multi-file + LM Math font), no interface change to adopt; main read, nothing to adopt",
+      "reviewed_utc": "2026-09-12T10:19:37Z",
+      "sha": "397bff766d04d9dc1ec543a7eaba71c9e8239a8e"
+    },
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "mac-shell dbcf9c3 merged cleanly (completion snippets, ai-review, multi-file transitive, live v2); nothing in ShellModel+Controller or HistoricalPreview to reconcile; main eed1847 read, the measured helper is crates/preview-controller 2f2605d (main 60c40c1 build)",
+      "reviewed_utc": "2026-09-12T10:55:18Z",
+      "sha": "dbcf9c3eff78420404c7a1b07e8e4e606d186d21"
+    },
+    "origin/main": {
+      "adaptation": "mac-shell dbcf9c3 merged cleanly (completion snippets, ai-review, multi-file transitive, live v2); nothing in ShellModel+Controller or HistoricalPreview to reconcile; main eed1847 read, the measured helper is crates/preview-controller 2f2605d (main 60c40c1 build)",
+      "reviewed_utc": "2026-09-12T10:55:18Z",
+      "sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Refill on agent/mac-historical-preview/hybrid (base mac-shell 6f4ee94, merged dbcf9c3): opt-in hybrid release policy FLASHTEX_CONTROLLER_RELEASE=hybrid (ControllerRelease.swift; default hold unchanged, historical OFF): hold for the preview but release a durable in-flight edit once in flight >= clamp(2x last edit->preview latency, 40, 250) ms; parent diff isolated in 414e4d1. ControllerReleaseTests 5/5 (policy, bound, decision table, fake-helper hold vs hybrid vs hybrid+historical). Full suite with real workers + main 60c40c1 helper: 486 tests, 10 skipped (env-gated), 0 failures. Evidence docs/evidence/hybrid-release-2026-09-12T1040Z.md (20 cells, load 32-67, all load-affected): hybrid at 2x released 0-4 times/200 keystrokes and matched hold (durable ACKs per keystroke unchanged: 60 KB 30 ms 0.30 hold / 0.24 hybrid / 0.18 hybrid+hist; first paint p50 173/233/299 ms; demo 30 ms 53/72/56 ms, ACKs 0.99/0.90/0.97); factor 1 released 13-18 times and starved previews on 60 KB 0 ms (5 paints, p50 780 ms). Reopen check 20/20 OK (relaunched helper returns the exact final text; last durable receipt bound to the last keystroke). Reading: 2x is a safe tail guard, not an ACK-rate lever; keep the default; the lever is helper-side (skip superseded queued compiles).",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:55:18Z",
+  "usage": {
+    "evidence": "docs/evidence/hybrid-release-2026-09-12T1040Z.md; docs/evidence/historical-preview-2026-09-12T1010Z.md",
+    "status": "shared Claude Max 20x quota with parent mac-claude-a; no purchases; totals unknown"
+  }
+}

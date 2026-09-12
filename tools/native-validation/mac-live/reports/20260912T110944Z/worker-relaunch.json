@@ -1,0 +1,152 @@
+{
+ "app_exit": 0,
+ "bench": {
+  "compiles": 37,
+  "keystrokes": 1200,
+  "painted": 178,
+  "paints": 36,
+  "producer": "flashtex-compiler",
+  "unpainted": 1022
+ },
+ "checks": [
+  {
+   "detail": "{\": ok, \": 0.21, \"bench: typing\": 0.757}",
+   "name": "bundled compiler attached, first compile ok, typing bench started editing",
+   "ok": true
+  },
+  {
+   "detail": "{\"scheduled_after_s\": 0.099, \"relaunched_after_s\": 0.291, \"recompiled_after_s\": 0.291, \"new_child\": [\"15926\"], \"elapsed_s\": 0.367}",
+   "name": "kill 1 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke \u2014 all within 5 s, app alive",
+   "ok": true
+  },
+  {
+   "detail": "{\"scheduled_after_s\": 0.112, \"relaunched_after_s\": 1.146, \"recompiled_after_s\": 1.146, \"new_child\": [\"15965\"], \"elapsed_s\": 1.19}",
+   "name": "kill 2 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke \u2014 all within 5 s, app alive",
+   "ok": true
+  },
+  {
+   "detail": "{\"scheduled_after_s\": 0.127, \"relaunched_after_s\": 3.056, \"recompiled_after_s\": 3.056, \"new_child\": [\"16511\"], \"elapsed_s\": 3.094}",
+   "name": "kill 3 (SIGKILL compiler child): relaunch scheduled, relaunched (new child pid), recompiled a later keystroke \u2014 all within 5 s, app alive",
+   "ok": true
+  },
+  {
+   "detail": "{\"limit_after_s\": 0.061, \"child_after\": [], \"app_alive\": true}",
+   "name": "kill 4 within the same minute: 'worker relaunch limit reached' logged, no relaunch, app alive",
+   "ok": true
+  },
+  {
+   "detail": "{\"keystrokes\": 1200, \"painted\": 178, \"unpainted\": 1022, \"paints\": 36, \"compiles\": 37, \"producer\": \"flashtex-compiler\"}",
+   "name": "app survived all four kills and the bench exited cleanly (unpainted keystrokes after the limit are expected)",
+   "ok": true
+  }
+ ],
+ "compiler": {
+  "bytes": 968112,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-compiler",
+  "sha256": "73e8753e7e773a9201a8d1e41f45b63deceac7a5d880c1f34ef810a6d6833398",
+  "sha256_content": "36d4d3a732e6181a3f58b7c43ddf9870299ab00c9f3f08c0d515494a3239897c",
+  "sha256_unsigned": "b2c096d8cf612789bf030283d83ebd272910a3d2f8074454aadda7339e4fdbb3",
+  "signature": "Signature=adhoc"
+ },
+ "failed": 0,
+ "kills": [
+  {
+   "app_alive": true,
+   "attempt": 1,
+   "child_before": [
+    "15375"
+   ],
+   "elapsed_s": 0.367,
+   "killed_pid": 15375,
+   "new_child": [
+    "15926"
+   ],
+   "recompiled_after_s": 0.291,
+   "relaunched_after_s": 0.291,
+   "scheduled_after_s": 0.099
+  },
+  {
+   "app_alive": true,
+   "attempt": 2,
+   "child_before": [
+    "15926"
+   ],
+   "elapsed_s": 1.19,
+   "killed_pid": 15926,
+   "new_child": [
+    "15965"
+   ],
+   "recompiled_after_s": 1.146,
+   "relaunched_after_s": 1.146,
+   "scheduled_after_s": 0.112
+  },
+  {
+   "app_alive": true,
+   "attempt": 3,
+   "child_before": [
+    "15965"
+   ],
+   "elapsed_s": 3.094,
+   "killed_pid": 15965,
+   "new_child": [
+    "16511"
+   ],
+   "recompiled_after_s": 3.056,
+   "relaunched_after_s": 3.056,
+   "scheduled_after_s": 0.127
+  },
+  {
+   "app_alive": true,
+   "attempt": 4,
+   "child_after": [],
+   "child_before": [
+    "16511"
+   ],
+   "killed_pid": 16511,
+   "limit_after_s": 0.061
+  }
+ ],
+ "log_counts": {
+  "attached": 4,
+  "limit": 1,
+  "ok": 38,
+  "relaunched": 3
+ },
+ "log_excerpt": [
+  "2026-09-12T11:17:34Z\tstatus: no worker attached",
+  "2026-09-12T11:17:34Z\tstatus: attached: flashtex-compiler",
+  "2026-09-12T11:17:35Z\tbench: waiting for attach + first paint (1200 keystrokes, 30.0 ms)",
+  "2026-09-12T11:17:35Z\tbench: typing 1200 keystrokes at UTF-16 offset 5879 every 30.0 ms",
+  "2026-09-12T11:17:35Z\tbridge: attached: flashtex-bridge",
+  "2026-09-12T11:17:35Z\tbridge: attached: flashtex-bridge",
+  "2026-09-12T11:17:35Z\tbridge: attached: flashtex-bridge \u00b7 durable document diverged from the editor (store at revision 2, edit based on 6); reattach to reconcile",
+  "2026-09-12T11:17:35Z\tbridge: attached: flashtex-bridge \u00b7 durable document diverged from the editor (store at revision 2, edit based on 6); reattach to reconcile",
+  "2026-09-12T11:17:35Z\tbridge: attached: flashtex-bridge \u00b7 main.tex open at revision 8 \u00b7 durable document diverged from the editor (store at revision 2, edit based on 6); reattach to reconcile",
+  "2026-09-12T11:17:36Z\tstatus: worker exited (9)",
+  "2026-09-12T11:17:36Z\tworker exited with status 9",
+  "2026-09-12T11:17:36Z\tstatus: worker exited (9); relaunching in 0.2 s",
+  "2026-09-12T11:17:36Z\trelaunching flashtex-compiler in 0.2 s (attempt 1)",
+  "2026-09-12T11:17:36Z\tstatus: attached: flashtex-compiler",
+  "2026-09-12T11:17:36Z\trelaunched flashtex-compiler",
+  "2026-09-12T11:17:36Z\tstatus: worker exited (9)",
+  "2026-09-12T11:17:36Z\tworker exited with status 9",
+  "2026-09-12T11:17:36Z\tstatus: worker exited (9); relaunching in 1.0 s",
+  "2026-09-12T11:17:36Z\trelaunching flashtex-compiler in 1.0 s (attempt 2)",
+  "2026-09-12T11:17:37Z\tstatus: attached: flashtex-compiler",
+  "2026-09-12T11:17:37Z\trelaunched flashtex-compiler",
+  "2026-09-12T11:17:37Z\tstatus: worker exited (9)",
+  "2026-09-12T11:17:37Z\tworker exited with status 9",
+  "2026-09-12T11:17:37Z\tstatus: worker exited (9); relaunching in 3.0 s",
+  "2026-09-12T11:17:37Z\trelaunching flashtex-compiler in 3.0 s (attempt 3)",
+  "2026-09-12T11:17:40Z\tstatus: attached: flashtex-compiler",
+  "2026-09-12T11:17:40Z\trelaunched flashtex-compiler",
+  "2026-09-12T11:17:41Z\tstatus: worker exited (9)",
+  "2026-09-12T11:17:41Z\tworker exited with status 9",
+  "2026-09-12T11:17:41Z\tstatus: worker exited (9); not relaunched: 3 relaunches in the last minute \u2014 File > Attach Built Compiler to retry",
+  "2026-09-12T11:17:41Z\tworker relaunch limit reached",
+  "2026-09-12T11:18:15Z\tbench: done (settle timeout); keystrokes 1200, painted 178, coalesced 142, p50 732.561125 ms"
+ ],
+ "passed": 6,
+ "pid": 15370,
+ "seed": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/7ccbd7e9d330479b3f35927bbf968316270b7495/apps/mac/build/FlashTeX.app/Contents/Resources/Samples/demo.tex"
+}

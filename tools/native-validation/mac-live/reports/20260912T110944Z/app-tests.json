@@ -1,0 +1,187 @@
+{
+ "cases": {
+  "DocumentFilesControllerTests/testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource": {
+   "result": "passed",
+   "seconds": 0.661
+  },
+  "DocumentFilesTests/testDirectFallbackIsReportedAndStillDetectsConflicts": {
+   "result": "passed",
+   "seconds": 0.007
+  },
+  "DocumentFilesTests/testGarbageReplyIsAProtocolFailureNotASave": {
+   "result": "passed",
+   "seconds": 0.703
+  },
+  "DocumentFilesTests/testHangingHelperKeepsTheDirtyBufferAndIsRestartedNextTime": {
+   "result": "passed",
+   "seconds": 1.118
+  },
+  "DocumentFilesTests/testHelperExitingMidRequestKeepsTheDirtyBuffer": {
+   "result": "passed",
+   "seconds": 0.474
+  },
+  "DocumentFilesTests/testHelperRefusesSymlinksAndNeverWritesOutsideTheRoot": {
+   "result": "passed",
+   "seconds": 0.017
+  },
+  "DocumentFilesTests/testHelperSaveRefusesExternalChangesUntilOverwriteOrReload": {
+   "result": "passed",
+   "seconds": 0.06
+  },
+  "DocumentFilesTests/testLateSaveReceiptIsReconciledWithoutLosingLaterEdits": {
+   "result": "passed",
+   "seconds": 6.142
+  },
+  "DocumentFilesTests/testLineChangeSummaryCountsAddedAndRemovedLines": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "DocumentFilesTests/testMultiFileOpenDetachReopenAcrossProjectRoots": {
+   "result": "passed",
+   "seconds": 0.176
+  },
+  "DocumentFilesTests/testReloadIsReviewedAndPinnedToTheReviewedSnapshot": {
+   "result": "passed",
+   "seconds": 0.083
+  },
+  "HistoricalPreviewTests/testCloseAndReattachInvalidateNegotiationAndFloor": {
+   "result": "passed",
+   "seconds": 0.357
+  },
+  "HistoricalPreviewTests/testDecodesCompletedSnapshotAndRefusesMalformedOnes": {
+   "result": "passed",
+   "seconds": 0.005
+  },
+  "HistoricalPreviewTests/testFramesWithForeignTokenOrProjectAreRefusedAndWrongSessionIsAViolation": {
+   "result": "passed",
+   "seconds": 0.773
+  },
+  "HistoricalPreviewTests/testHistoricalDisplayLabel": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "HistoricalPreviewTests/testHistoricalFrameAfterCurrentIsDropped": {
+   "result": "passed",
+   "seconds": 0.258
+  },
+  "HistoricalPreviewTests/testHistoricalFrameBeforeCurrentIsPaintedLabelledGatedThenReplaced": {
+   "result": "passed",
+   "seconds": 0.274
+  },
+  "HistoricalPreviewTests/testMalformedClaimsOfCurrencyAreViolationsNotFrames": {
+   "result": "passed",
+   "seconds": 0.504
+  },
+  "HistoricalPreviewTests/testNegotiationPayloadMatchesHelperWire": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "HistoricalPreviewTests/testNoEmissionAndNoTokenWithoutNegotiation": {
+   "result": "passed",
+   "seconds": 0.195
+  },
+  "HistoricalPreviewTests/testRealHelperNegotiatesEchoesTokensAndPaintsHistoryDuringABurst": {
+   "result": "passed",
+   "seconds": 0.666
+  },
+  "HistoricalPreviewTests/testReplaceProjectClearsTheFlag": {
+   "result": "passed",
+   "seconds": 0.125
+  },
+  "HistoricalPreviewTests/testStateKeepsOnePendingFrameHonoursTheFloorAndInvalidatesOnSwitch": {
+   "result": "passed",
+   "seconds": 0.001
+  },
+  "HistoricalPreviewTests/testTokenRoundTripAndForeignTokensRefused": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ProjectDocumentsTests/testClosureDepthIsBounded": {
+   "result": "passed",
+   "seconds": 0.023
+  },
+  "ProjectDocumentsTests/testClosureIsDepthFirstRefusesCyclesAndListsDiamondsOnce": {
+   "result": "passed",
+   "seconds": 0.021
+  },
+  "ProjectDocumentsTests/testClosureRefusesSelfInclude": {
+   "result": "passed",
+   "seconds": 0.012
+  },
+  "ProjectDocumentsTests/testDirectModeNeedsAProjectRoot": {
+   "result": "passed",
+   "seconds": 0.002
+  },
+  "ProjectDocumentsTests/testDirectModeOpensIncludesSwitchesAndDetaches": {
+   "result": "passed",
+   "seconds": 0.017
+  },
+  "ProjectDocumentsTests/testDirectModeRefusesEscapesSymlinksAndMissingFiles": {
+   "result": "passed",
+   "seconds": 0.017
+  },
+  "ProjectDocumentsTests/testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk": {
+   "result": "passed",
+   "seconds": 0.028
+  },
+  "ProjectDocumentsTests/testHelperRouteOpensWithExactSnapshotAndDetaches": {
+   "result": "passed",
+   "seconds": 0.146
+  },
+  "ProjectDocumentsTests/testHelperRouteSavesThroughExportAndFlushesOnSwitch": {
+   "result": "passed",
+   "seconds": 0.197
+  },
+  "ProjectDocumentsTests/testHelperSyncAttachesDocumentsOpenedBeforeTheController": {
+   "result": "passed",
+   "seconds": 0.094
+  },
+  "ProjectDocumentsTests/testNavigationSwitchRecordsTheOutgoingCaret": {
+   "result": "passed",
+   "seconds": 0.002
+  },
+  "ProjectDocumentsTests/testRootedPathNormalizationMirrorsProjectFiles": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ProjectDocumentsTests/testSaveCommandWritesOnlyTheActiveNonEntryDocumentDirectly": {
+   "result": "passed",
+   "seconds": 0.051
+  },
+  "ProjectDocumentsTests/testSaveCommandWritesOnlyTheActiveNonEntryDocumentThroughTheHelper": {
+   "result": "passed",
+   "seconds": 0.198
+  },
+  "ProjectDocumentsTests/testScanFindsInputAndIncludeWithByteSpans": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ProjectDocumentsTests/testScanIsBounded": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ProjectDocumentsTests/testScanSkipsCommentsVerbVerbatimAndCommandPrefixes": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ProjectDocumentsTests/testScanSpansAreBytesNotCharacters": {
+   "result": "passed",
+   "seconds": 0.0
+  },
+  "ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff": {
+   "result": "passed",
+   "seconds": 5.085
+  }
+ },
+ "exit_code": 0,
+ "failed": 0,
+ "passed": 43,
+ "skipped": 0,
+ "totals": {
+  "executed": 43,
+  "failures": 0,
+  "seconds": 18.492,
+  "skipped": 0,
+  "unexpected": 0
+ }
+}

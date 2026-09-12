@@ -1,0 +1,39 @@
+{
+  "agent_id": "mac-navigation-2",
+  "allocation_id": "claude-mac20x-navigation-2",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5646989044-navigation-item-8": "acknowledged 2026-09-12T16:05Z; current task implemented, follow-ups 1 and 2 not started (bound)"
+  },
+  "branch": "agent/mac-navigation-2/multifile-nav",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rendering-v2-consumer"
+  ],
+  "code_revision": "c4523085ee7774c611892b727e942798c67779b3",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 10
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent reviews and merges the branch; producer owner reads the flashtex-render finding (missing-glyph scalar inside a word yields a cluster with no glyph); follow-ups 1 (preview→source into a not-open document) and 2 (caret in math) remain queued",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Built on cd58fc2e (main c11c005 merged): navigateV2 (mac-preview-v2 lane) now rebases through the recorded compile text; the display-candidate gate (mac-display-candidates) and V2ConformanceTests gate test (mac-v2-conformance) corrected for the helper's index-generation semantics; no parent-retained file changed",
+      "reviewed_utc": "2026-09-12T16:32:07Z",
+      "sha": "cd58fc2e790f29bff50a5af7b4127027e841078a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-navigation-2/multifile-nav: coverage audit in coordination/mac-navigation-2.md; NavigationMultiFileV2Tests (2, real flashtex-preview-controller + flashtex-render 9aaec57a, skip otherwise) verify every v2 cluster of a main.tex + \\input{chapter} project (ff/fi/fl/ffi/ffl in both files, é ï — e+U+0301, text after dropped emoji) selects exactly its source bytes switching documents, stale frames rebase across the recorded edit or refuse, and the next revision navigates exactly; three measured bugs fixed on the way: (1) the first candidate of a multi-file project was refused 'no durable text retained for chapter.tex r1' (now read from the helper once, held pending), (2) every candidate after the first keystroke was refused 'membership generation N+1 is not the project's current generation N' once an include was opened (the helper's generation is the project-index generation, advanced by edits; gate now refuses only older generations), (3) v2 clicks on a stale frame always refused (now rebase through the recorded compile text, refused on overlap); navigateExactly falls back to the applied preview's durable text for includes read after the preview applied",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:32:07Z",
+  "usage": {
+    "evidence": "swift build --build-tests OK; NavigationMultiFileV2Tests 2/2 passed against the real helper + flashtex-render (0.2 s / 0.7 s once the frames arrived; earlier runs skipped on 40 s waits at 1-min load 37-68); touched suites Navigation*/CaretSync/PreviewV2/DisplayCandidate/V2Conformance/NavigationMultiFileV2 45/45 (0 failures, 0-2 load skips) with real compiler/helper/render at load 24-42; full swift test not run (1-min load never < 15 during the lane)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

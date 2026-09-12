@@ -31,9 +31,10 @@ struct ContentView: View {
                         .disabled(!model.workerAttached)
                 }
             }
+            ToolbarItem { HStack(spacing: 4) { Text("v2 preview").font(.caption); Toggle("v2 preview", isOn: $model.previewV2).toggleStyle(.switch).labelsHidden() }.help("Experimental display-list-v2 preview (File > Open Display List (v2)…)") }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
             ToolbarItem {
-                Button("Compile", systemImage: "hammer") { model.compile() }
+                Button("Compile", systemImage: "hammer") { if !model.outputBoundExplicitRetry() { model.compile() } }
                     .disabled(!model.workerAttached)
                     .help("Send the current buffers to the attached worker (⌘B)")
             }
@@ -82,10 +83,14 @@ private struct StatusBanner: View {
                     Text(String(format: "latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if model.previewIsStale {
-                    Text(model.workerAttached
+                if let historical = model.historicalPreview {
+                    Text(historical.label).foregroundStyle(.purple).bold()
+                        .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
+                } else if model.previewIsStale {
+                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
+                         ?? (model.workerAttached
                          ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
-                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
+                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)"))
                         .foregroundStyle(.orange)
                 }
             } else if let err = model.loadError {
@@ -104,7 +109,7 @@ private struct StatusBanner: View {
         let (label, color): (String, Color) = switch model.previewSource {
         case .none: ("NONE", .gray)
         case .fixture: ("FIXTURE", .orange)
-        case .worker: ("WORKER", .green)
+        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
         }
         return Text(label)
             .font(.caption.bold())
@@ -132,14 +137,24 @@ private struct EditorPane: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             HStack {
-                Picker("Document", selection: $model.activePath) {
-                    ForEach(model.documents, id: \.path) { Text($0.path).tag($0.path) }
+                // Switching goes through ProjectDocuments so each document's
+                // caret/selection is kept and a pending insertion is never
+                // applied to the wrong buffer (ProjectDocuments.swift).
+                Picker("Document", selection: Binding(get: { model.activePath },
+                                                      set: { model.project.switchDocument(to: $0) })) {
+                    ForEach(model.project.listing) { doc in
+                        Text(doc.path + (doc.isDirty ? " •" : "") + (doc.durableRevision.map { " r\($0)" } ?? "")).tag(doc.path)
+                    }
                 }
-                .labelsHidden().frame(maxWidth: 220)
+                .labelsHidden().frame(maxWidth: 260)
+                ProjectMenu()
+                DocumentKindIndicator() // DocumentKinds.swift: helper-reported bibliography kind, read-only
                 if let url = model.documentURL {
-                    Text(url.lastPathComponent + (model.isDirty ? " — edited" : ""))
-                        .font(.caption).foregroundStyle(model.isDirty ? .orange : .secondary)
-                        .help(url.path)
+                    let dirty = model.project.isDirty(model.activePath)
+                    let name = model.activePath == model.project.entryPath ? url.lastPathComponent : model.activePath
+                    Text(name + (dirty ? " — edited" : ""))
+                        .font(.caption).foregroundStyle(dirty ? .orange : .secondary)
+                        .help(model.activePath == model.project.entryPath ? url.path : url.deletingLastPathComponent().appendingPathComponent(model.activePath).path)
                 } else {
                     Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
                 }
@@ -154,13 +169,77 @@ private struct EditorPane: View {
                 pendingEdit: model.pendingEdit,
                 marks: model.editorMarks,
                 result: model.result,
+                editorRevision: model.editorRevision,
+                projectIndexMetadata: model.completionMetadata,
                 onCaretChange: { model.caretUTF16 = $0 },
                 onSelectionChange: { model.caretLengthUTF16 = $0.length },
-                onEditApplied: { model.editApplied($0, newText: $1) }
+                onEditApplied: { model.editApplied($0, newText: $1) },
+                onEditRefused: { model.editRefused($0, reason: $1) },
+                autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : [] // EditorPreferences.swift gates the braces lane set
             )
             CaptureBar()
             BridgeBar()
         }
+    }
+}
+
+/// Project membership: open the entry document's `\input`/`\include`
+/// targets, save or detach the active non-entry document. Discovery runs
+/// when the menu opens (bounded lexical scan, ProjectDocuments.swift).
+private struct ProjectMenu: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
+        Menu {
+            // The transitive closure (chapter → section → …), depth-first in
+            // source order, indented by depth; cycles and missing files are
+            // listed with their reason. Bounded: 8 levels, 256 documents.
+            let closure = model.project.discoverClosure()
+            if closure.nodes.isEmpty {
+                Text("No \\input or \\include in \(model.project.entryPath)")
+            }
+            ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
+                let indent = String(repeating: "    ", count: max(0, n.depth))
+                let name = n.resolvedPath ?? n.reference.argument
+                switch n.state {
+                case .available:
+                    Button(indent + "Open \(name)") { Task { await model.project.openDocument(name, role: .included(from: n.from)) } }
+                case .open:
+                    Button(indent + "Show \(name)") { model.project.switchDocument(to: name) }
+                case .unresolvable(let why):
+                    Text(indent + "\\\(n.reference.kind.rawValue){\(n.reference.argument)}: \(why)")
+                }
+            }
+            if closure.truncated { Text("closure truncated at \(ProjectDocuments.maxClosureDocuments) documents") }
+            if closure.nodes.contains(where: { $0.state == .available }) {
+                Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
+                    .help("Opens the whole include closure in this order; unresolvable references are reported in the footer note")
+            }
+            if let report = model.project.lastOpenReport, !report.unresolvable.isEmpty {
+                Divider()
+                Text("Open All: \(report.unresolvable.count) unresolvable")
+                ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
+            }
+            if model.activePath != model.project.entryPath {
+                Divider()
+                Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
+                    .disabled(model.documentURL == nil)
+                Button("Detach \(model.activePath) (this session)") {
+                    Task {
+                        switch await model.project.detachDocument(model.activePath) {
+                        case .refused(let why): model.captureNote = why
+                        case .detached(let path): model.captureNote = "Detached \(path) — " + ProjectDocuments.detachScopeNote
+                        }
+                    }
+                }
+                .help("Session only: " + ProjectDocuments.detachScopeNote)
+            }
+            DocumentKindsMenuSection() // DocumentKinds.swift: declare/undeclare bibliography sources
+        } label: {
+            Label("Project", systemImage: "doc.on.doc")
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .help(model.project.status)
     }
 }
 
@@ -228,7 +307,9 @@ private struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let result = model.result {
+            if model.previewV2 {
+                PreviewV2Pane() // experimental v2 path (PreviewV2View.swift); v1 below stays the default
+            } else if let result = model.result {
                 PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems) { source, text in
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)
@@ -243,36 +324,33 @@ private struct PreviewPane: View {
                                        description: Text("Use File > Open Compile Result Fixture…"))
             }
         }
+        .sheet(isPresented: Binding(get: { model.quickFix != nil }, set: { if !$0 { model.quickFix = nil } })) {
+            if let p = model.quickFix {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Suggested fix").font(.headline)
+                    Text(p.summary).font(.caption).foregroundStyle(.secondary)
+                    Text("Before").font(.caption.bold())
+                    Text(p.before).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("After").font(.caption.bold())
+                    Text(p.after).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("Heuristic suggestion from the explanation catalogue; applied as one undoable edit only when you choose Apply.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                    HStack {
+                        Spacer()
+                        Button("Cancel") { model.quickFix = nil }.keyboardShortcut(.cancelAction)
+                        Button("Apply") { model.applyQuickFix() }.keyboardShortcut(.defaultAction)
+                    }
+                }
+                .padding(16).frame(minWidth: 480)
+                .accessibilityElement(children: .contain).accessibilityLabel("Suggested fix preview")
+            }
+        }
     }
 
     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Diagnostics (\(diags.count)) — the preview above is still shown; errors are not hidden")
-                .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
-            List(Array(diags.enumerated()), id: \.offset) { i, d in
-                HStack(alignment: .top) {
-                    Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(d.severity == .error ? .red : .orange)
-                    VStack(alignment: .leading) {
-                        Text(d.message)
-                        if let rec = d.recovery {
-                            Text("↳ recovery: \(rec)").font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Text("↳ no provisional rendering").font(.caption).foregroundStyle(.tertiary)
-                        }
-                        if let src = d.source {
-                            Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
-                        } else {
-                            Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
-                        }
-                    }
-                    Spacer()
-                    if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
-                }
-                .accessibleDiagnostic(d, index: i, total: diags.count) { model.navigate(to: d.source) } // FlashTeXAccessibility
-            }
-            .frame(minHeight: 80, maxHeight: 180)
-        }
+        // Grouped rows with a selection, Return / Esc / ⌘C and the spoken group
+        // count/occurrence (DiagnosticsPanel.swift, mac-diagnostics-3).
+        DiagnosticsListView(diagnostics: diags)
     }
 }
 
@@ -281,10 +359,19 @@ private struct Footer: View {
 
     var body: some View {
         HStack {
-            Text(model.navigationNote ?? "Click text in the preview to select its source range.")
+            Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus
+                 ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
-            if let note = model.captureNote {
+            if case .running(let pid, _) = model.exportSession.state { // ShellModel+ExportSession.swift
+                ProgressView().controlSize(.small)
+                Text("Exporting exact PDF (flashtex-pdf-exact pid \(pid))…")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Button("Cancel") { model.cancelExactExport() }
+                    .controlSize(.small)
+                    .help("Terminate flashtex-pdf-exact; nothing is written to the destination")
+                    .accessibilityIdentifier("export.cancel")
+            } else if let note = model.captureNote {
                 Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
@@ -356,6 +443,9 @@ private struct ProposalReviewSheet: View {
         .onChange(of: latex) { _, new in preview.update(from: model, latex: new) }
         .onChange(of: model.editorRevision) { _, _ in preview.update(from: model, latex: latex) }
         .onChange(of: model.anchor) { _, _ in preview.update(from: model, latex: latex) }
+        // A reviewer-approved assistant amendment replaces the DRAFT only;
+        // insertion still requires "Approve and insert" (mac-ai-review).
+        .onChange(of: preview.amendedProposalLatex) { _, new in if let new { latex = new } }
         .onDisappear { preview.close() }
     }
 }

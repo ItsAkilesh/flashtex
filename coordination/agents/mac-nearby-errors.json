@@ -1,0 +1,38 @@
+{
+  "agent_id": "mac-nearby-errors",
+  "allocation_id": "claude-mac20x-nearby-errors",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-errors/nearby-errors",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "network-framework",
+    "transfer-v1",
+    "nearby-v1"
+  ],
+  "code_revision": "27dafe90df72b8fe4d4468ec34fbf61abb25213a",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d",
+  "next_action": "Parent reviews and merges agent/mac-nearby-errors/nearby-errors into mac-shell (no parent-retained file diffs needed); optional follow-up: BridgeRecoveryTests case for relaunch with an invalid pin",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from 1630fdbc; NearbyDestination.swift is new, BridgeSession/ShellModel+Bridge/ShellModel+Nearby edits are additive; CaptureAcceptanceTests stale-anchor test updated from the capture-acceptance lane's finding to the announced behaviour",
+      "reviewed_utc": "2026-09-12T14:16:12Z",
+      "sha": "1630fdbc"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Capture-acceptance follow-ups: companion classifies bridge pass-through refusals (destination_reselection_required, revision_conflict, instructions_too_large, invalid_id) as needsNewCapture (+ needsNewDestination); shell mirrors the bridge's edit anchor rule (DestinationTracking) so an overlapped pin is listed invalid, announced as destination:null to companions and to the user, never re-pinned; prepare maps proposal_missing to .received. NearbyErrorsTests 5 + rewritten stale-anchor acceptance test + client classification test; doc \u00a74 code list.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:16:12Z",
+  "usage": {
+    "evidence": "swift build --build-tests clean; with real FLASHTEX_BRIDGE+FLASHTEX_EDIT_LEDGER: CaptureAcceptanceTests|NearbyErrorsTests 9/9 (1 env skip) after the rewrite, bridge/nearby classes 58 executed (2 env skips) before it; nearby-client package 35/35 x3 (one earlier unattributed failure at 1-min load ~33); full swift test not run (1-min load 14-65 > 15)",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

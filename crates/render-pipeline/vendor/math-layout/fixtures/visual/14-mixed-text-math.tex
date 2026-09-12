@@ -1,0 +1,19 @@
+% FlashTeX math visual corpus fixture (crates/math-layout, FT-020 rev 3).
+% The preamble is the structural oracle's: 12pt article with the real Computer
+% Modern fonts (OT1 cmr12/cmmi12/cmsy10/cmex10 — the metrics this crate
+% embeds), geometry margin=1in, uncompressed streams so tools/structural_gate.py
+% can read glyph and rule origins. tests/visual-corpus/harness replaces
+% everything before \begin{document} with its own engine preambles (times/lm
+% variants, whose text and Latin Modern fonts differ from CM in some glyph
+% heights and italic corrections). Only the body is the declared fixture
+% content; the corpus compiler (flashtex-math-corpus) recognises it verbatim.
+\pdfcompresslevel=0
+\pdfobjcompresslevel=0
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\setcounter{secnumdepth}{0}
+\pagestyle{empty}
+\begin{document}
+\noindent Let $x^2+y^2=z^2$ hold.
+\end{document}

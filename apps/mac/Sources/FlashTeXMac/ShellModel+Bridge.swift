@@ -76,6 +76,24 @@ extension ShellModel {
             guard let self, let session, self.bridge === session else { return }
             self.adoptDurableDocument(text, session: session)
         }
+        // Relaunch after an abnormal helper exit (mac-bridge-recovery): the
+        // reconciled ledger may raise the revision floor; the user is told.
+        session.onRevisionFloor = { [weak self, weak session] revision in
+            guard let self, let session, self.bridge === session else { return }
+            self.advanceEditorRevision(atLeast: revision)
+        }
+        session.onRelaunched = { [weak self, weak session] child, summary in
+            guard let self, let session, self.bridge === session else { return }
+            self.captureNote = "\(child == .bridge ? "Bridge" : "Edit ledger") relaunched after an abnormal exit: \(summary)"
+        }
+        // An ordinary edit overlapped the pin (mac-nearby-errors): the bridge
+        // would refuse captures at it, so the pin is listed "(invalid)", the
+        // companion is told `destination: null`, and the user is asked to pin
+        // again. The shell never re-pins on the user's behalf.
+        session.onDestinationDropped = { [weak self, weak session] destinationId in
+            guard let self, let session, self.bridge === session else { return }
+            self.captureNote = "Pinned insertion point \(destinationId) was dropped by an edit that overlapped it; pin again (Edit > Pin Insertion Point) before the next capture."
+        }
         // Durable ledger first: the helper's document is the authoritative source.
         if let ledger {
             let store = ledgerStore ?? EditLedgerClient.storeDirectory(under: storeDirectory, documentURL: documentURL)
@@ -129,7 +147,7 @@ extension ShellModel {
         guard bridge === session, text != activeText else { return }
         session.expectAdoption(of: text)
         let whole = NSRange(location: 0, length: (activeText as NSString).length)
-        pendingEdit = .init(path: activePath, nsRange: whole, text: text, token: (pendingEdit?.token ?? 0) + 1)
+        pendingEdit = .init(path: activePath, nsRange: whole, text: text, token: nextEditToken())
     }
 
     /// Re-runs restart reconciliation for entries a transport failure left
@@ -164,7 +182,7 @@ extension ShellModel {
     // MARK: document synchronization
 
     func bridgeTextChanged(path: String, old: String, new: String, base: Int, revision: Int) {
-        guard let bridge, bridge.running else { return }
+        guard let bridge, !bridge.detached, bridge.running || bridge.ledgerUsable else { return } // ledger keeps following typing while the bridge relaunches
         if let expected = bridge.expectedApplication, expected.edit.path == path {
             if new == expected.afterText {
                 // Contract step 4: the editor adopted the durable document; export, receipt. No document_edit.
@@ -217,7 +235,7 @@ extension ShellModel {
     /// `capture_submit` bound to the pinned destination.
     func submitSampleCapturePanel() {
         guard bridgeAttached else { captureNote = "Attach the capture bridge first (Edit > Attach Capture Bridge)."; return }
-        guard bridgeDestination != nil else { captureNote = "Pin an insertion point first (⌘⇧P) so the capture has a destination."; return }
+        guard bridgeDestination?.valid == true else { captureNote = "Pin an insertion point first (⌘⇧P) so the capture has a destination."; return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg]
         panel.message = "Choose a PNG or JPEG capture to submit through the bridge"
@@ -239,6 +257,9 @@ extension ShellModel {
     func submitCapture(image: RuntimeV1.CaptureImage, captureId: String? = nil, instructions: String) async -> TransferV1.CaptureReceived? {
         guard let bridge, bridge.running else { captureNote = "No bridge attached."; return nil }
         guard let destination = bridgeDestination else { captureNote = "Pin an insertion point first (⌘⇧P)."; return nil }
+        // A pin an edit overlapped is listed "(invalid)"; the bridge would refuse it
+        // (`destination_reselection_required`), so say so instead of sending.
+        guard destination.valid else { captureNote = "Pinned insertion point \(destination.destinationId) was dropped by an edit; pin again (⌘⇧P) first."; return nil }
         guard RuntimeV1.acceptedCaptureMimeTypes.contains(image.mimeType) else { captureNote = "Only PNG and JPEG captures are accepted."; return nil }
         let id = captureId ?? "mac-capture-\(UUID().uuidString.lowercased())"
         let submit = RuntimeV1.CaptureSubmit(captureId: id, destinationId: destination.destinationId,
@@ -354,10 +375,10 @@ extension ShellModel {
             activePath = edit.path
             if applied.document.text == afterText,
                let ns = text.nsRange(utf8Bytes: .init(path: edit.path, startByte: edit.startByte, endByte: edit.endByte)) {
-                pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: (pendingEdit?.token ?? 0) + 1)
+                pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: nextEditToken())
             } else {
                 let whole = NSRange(location: 0, length: (text as NSString).length)
-                pendingEdit = .init(path: edit.path, nsRange: whole, text: applied.document.text, token: (pendingEdit?.token ?? 0) + 1)
+                pendingEdit = .init(path: edit.path, nsRange: whole, text: applied.document.text, token: nextEditToken())
             }
             proposals.removeAll { $0.captureId == proposal.captureId }
             reviewing = proposals.first

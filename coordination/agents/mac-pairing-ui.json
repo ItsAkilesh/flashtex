@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-pairing-ui",
+  "allocation_id": "claude-mac20x-pairing-ui",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-pairing-ui/events-consumer",
+  "capabilities": [
+    "swift",
+    "swiftui",
+    "xctest"
+  ],
+  "code_revision": "40d53b784876d128b7d54f5a10438c71d7b1b756",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 20
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "277a0910811fdb27bd156ecd92b92b50f277c750",
+  "next_action": "Parent review; integrate agent/mac-pairing-ui/events-consumer into mac-shell",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "consumed onEvent/receiving/closeConnection/beginPairing(resuming:expiresAt:generation:) and PairRecord.generation; dropped placeholder observeProgress and status/lastCaptureId string subscriptions",
+      "reviewed_utc": "2026-09-12T10:02:15Z",
+      "sha": "271a3663789222b134151ece31b90dc8a56d23bf"
+    },
+    "origin/main": {
+      "adaptation": "merged cleanly; no apps/mac Nearby/Pairing changes on main; no adaptation needed",
+      "reviewed_utc": "2026-09-12T08:54:00Z",
+      "sha": "254f662f11d792630191bf36dc1f46c32496aec5"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Events consumer: pairing flow driven by NearbyState.onEvent (verifying, peer gone, receiving n bytes, refused), Cancel closes the session, Resume via beginPairing(resuming:) with journal generations, persisted-generation stale defence; 11 loopback controller tests + 30 machine tests; real-app window evidence over loopback",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T10:02:15Z",
+  "usage": {
+    "evidence": "swift test (worker binaries) 385 tests 0 failures 12 skipped on mac-shell 40d53b7 base; docs/evidence/nearby-pairing-2026-09-12/nearby-app-{1..6}-*.png from the real app with FLASHTEX_OPEN_WINDOW=nearby FLASHTEX_NO_ACTIVATE=1",
+    "status": "unknown (subagent cannot read Max plan usage); no purchases"
+  }
+}

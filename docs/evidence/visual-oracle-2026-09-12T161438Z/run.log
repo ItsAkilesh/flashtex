@@ -1,0 +1,17 @@
+article-twocolumn
+  render article-twocolumn: no_reply exit 101 0.035s; from-v2 exit None
+cv
+  render cv: no_reply exit 101 0.032s; from-v2 exit None
+hw1
+  render hw1: recovered exit 0 0.051s; from-v2 exit 0
+input-bibliography
+  render input-bibliography: recovered exit 0 0.041s; from-v2 exit 0
+lecture-notes
+  render lecture-notes: recovered exit 0 0.04s; from-v2 exit 0
+letter
+  render letter: recovered exit 0 0.013s; from-v2 exit 0
+math-sheet
+  render math-sheet: recovered exit 0 0.051s; from-v2 exit 0
+unicode-accents
+  render unicode-accents: recovered exit 0 0.021s; from-v2 exit 0
+report: /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a06da88731895435d/docs/evidence/visual-oracle-2026-09-12T161438Z/report.md

@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-math-symbols",
+  "allocation_id": "claude-mac20x-math-symbols",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-render-pipeline/math-symbols",
+  "capabilities": [
+    "rust",
+    "cargo",
+    "tex-math-metrics",
+    "pdflatex-oracle"
+  ],
+  "code_revision": "73217526",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 15
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "9aaec57a",
+  "next_action": "Parent review; compiler owner to take coordination/mac-math-symbols.md request list (\\mathbb, \\mid, \\setminus, \\bigl/\\bigr, \\quad/\\qquad, \\text adoption, array, \\Longrightarrow); re-pin vendor/compiler again when those land",
+  "reviewed_peers": {
+    "origin/agent/claude/compiler-foundation": {
+      "adaptation": "vendor/compiler re-pinned 745f327 -> 49e6eb43; \\left/\\right fences re-derived from source bytes because the compiler emits the delimiters as plain symbols; \\neq/\\notin expanded to \\not+relation composites; \\cdot reclassed Bin; \\perp added as cmsy 3F",
+      "reviewed_utc": "2026-09-12T18:05:00Z",
+      "sha": "49e6eb43808ac8fccb08d620b23667403fcb8667"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "render-pipeline: compiler pin 49e6eb43; every COMMAND_GLYPHS symbol typeset through TeX metrics + Latin Modern Math (oracle: trailing word within 0.01 bp on all 8 symbol families; \\angle is the one typed limitation); \\left/\\right sized via lmex; HW1 diagnostics 130 -> 86, p1 median dy -50.5 -> -14.3 bp; 62 tests pass",
+  "tool": "Claude Code subagent mac-math-symbols (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T18:45:00Z",
+  "usage": {
+    "evidence": "cargo test --release: 62 passed, 1 ignored (unchanged); fixtures/math-symbols visual-oracle report in crates/render-pipeline/docs/evidence/math-symbols; HW1 rank before/after in docs/evidence/hw1-math-symbols",
+    "status": "unknown"
+  }
+}

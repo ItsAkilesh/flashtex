@@ -1,0 +1,25 @@
+{
+  "agent_id": "mac-core-review",
+  "allocation_id": "claude-mac20x-core-review",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-core-review/pipeline",
+  "capabilities": ["swift", "appkit", "review", "python-fakes"],
+  "code_revision": "fc7a3841",
+  "eta_minutes": {"likely": 0, "optimistic": 0, "pessimistic": 5},
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3162b89a",
+  "next_action": "Parent reviews pass-2 commits e32852b7 (pending edit vs IME composition, refusal path, monotonic tokens; touches SourceEditorView/ContentView/ShellModel/ShellModel+Bridge), e0cd128d (worker error recompile), 59a3c78d (completion ids across relaunch; detach resumes waiters). #7 (search reconcile overwrite window) remains reported-only with its reproduction; #4 relayed to the Commander; lane stops at the quota bound.",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged 3162b89a (fast-forward; includes the parent's conflict resolution: oversized failed -> OutputBoundNotice first, other failed/cancelled -> durable in-flight release). Re-checked findings 5-9 against that tip; the display-candidate negotiation adds one ready-time request (document is pc-2, first edit pc-8), which the #6 test derives from the observed numbering.",
+      "reviewed_utc": "2026-09-12T14:52:00Z",
+      "sha": "3162b89a"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Adversarial correctness review of the edit -> durable -> preview pipeline. Pass 1 (integrated at 3162b89a): failed/cancelled compile left the edit in flight forever; Cmd-S via a session-rooted helper wrote the temp copy; ProjectDocuments unowned model read after awaits. Pass 2: capture approved during IME composition misplaced/duplicated (+ token collision skipping a second capture); worker error dropped the queued recompile; completion ids swallowed the relaunched helper's document reply; explicit detach hung awaiting saves. Reported only: stale-guard unit mismatch (#4, relayed), search reconcile overwrite window (#7), TypingBench pattern (#10).",
+  "tool": "Claude Code subagent (parent mac-claude-a, Fable)",
+  "updated_utc": "2026-09-12T14:52:00Z",
+  "usage": {"evidence": "ControllerPipelineReviewTests 7/7 with real helper + fake + IMEHarness; pass-2 tests verified failing with fixes reverted; filtered 78/78 (review, PreviewController, Completion, WorkerClient, ShellModel, DocumentFiles, SourceEditorView, IMEComposition); full swift test at fc7a3841: 642 / 13 env-gated skips / 0 failures", "status": "Shared Claude Max quota with parent mac-claude-a (41% of the 5 h window at wrap-up, allocation to 60%); no purchases"}
+}

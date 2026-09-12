@@ -1,0 +1,28 @@
+Test Suite 'Selected tests' started at 2026-09-12 09:37:57.677.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 09:37:57.678.
+Test Suite 'IMECompositionTests' started at 2026-09-12 09:37:57.678.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testCancelledCompositionLeavesTheHelperAndLedgerUntouched]' started.
+/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a80d46209ad26a522/apps/mac/Tests/FlashTeXMacTests/IMECompositionTests.swift:344: error: -[FlashTeXMacTests.IMECompositionTests testCancelledCompositionLeavesTheHelperAndLedgerUntouched] : XCTAssertEqual failed: ("Optional(true)") is not equal to ("Optional(false)") - a cancelled composition is not an undo step
+Test Case '-[FlashTeXMacTests.IMECompositionTests testCancelledCompositionLeavesTheHelperAndLedgerUntouched]' failed (0.876 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testHelperKilledMidCompositionKeepsTheCompositionAndTheCommitIsDurableOnceAfterReattach]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testHelperKilledMidCompositionKeepsTheCompositionAndTheCommitIsDurableOnceAfterReattach]' passed (0.948 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testMarkedTextIsNeverDurableAndTheCommitIsOneDurableEditAndOneUndoStep]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testMarkedTextIsNeverDurableAndTheCommitIsOneDurableEditAndOneUndoStep]' passed (0.432 seconds).
+Test Case '-[FlashTeXMacTests.IMECompositionTests testPreviewArrivingMidCompositionLeavesTheMarkedRangeCaretAndCompositionIntact]' started.
+Test Case '-[FlashTeXMacTests.IMECompositionTests testPreviewArrivingMidCompositionLeavesTheMarkedRangeCaretAndCompositionIntact]' passed (0.693 seconds).
+Test Suite 'IMECompositionTests' failed at 2026-09-12 09:38:00.627.
+	 Executed 4 tests, with 1 failure (0 unexpected) in 2.948 (2.949) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' failed at 2026-09-12 09:38:00.627.
+	 Executed 4 tests, with 1 failure (0 unexpected) in 2.948 (2.949) seconds
+Test Suite 'Selected tests' failed at 2026-09-12 09:38:00.627.
+	 Executed 4 tests, with 1 failure (0 unexpected) in 2.948 (2.950) seconds
+IME test uptime: 9:37  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+IME restart test: killed pid 83239, relaunched pid 83243, commit durable once as r2; 9:37  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+IME test uptime: 9:37  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+IME durable test: r1..r4 verified; 9:37  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+IME test uptime: 9:37  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+IME preview test: preview r2 landed under marked 한; commit r3; 9:38  up 1 day,  8:30, 2 users, load averages: 25.34 42.65 28.12
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

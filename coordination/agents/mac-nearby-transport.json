@@ -1,0 +1,35 @@
+{
+  "agent_id": "mac-nearby-transport",
+  "allocation_id": "claude-mac20x-nearby-transport",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-nearby-transport/generation-api",
+  "capabilities": [
+    "swift",
+    "network-framework"
+  ],
+  "code_revision": "6bcc612297915258d321d64a1fe77d0f5a1b38f1",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "3ac69c3ed109fa0902af39f4e2187d572a61c075",
+  "next_action": "Parent review/integration; mac-pairing-ui consumes beginPairing(generation:) and activity",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Merged mac-shell 5222b86 (pairs.json v2 with generation, multifile evidence); pairs.json v2 fields consumed; suite re-run green",
+      "reviewed_utc": "2026-09-12T11:00:48Z",
+      "sha": "7c11d6535cfd0dead20cb9dfb70ca719b6eacf02"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Generation-api refill on agent/mac-nearby-transport/generation-api: NearbyState.beginPairing(generation:), confirmPairing reads persisted PairRecord.generation (older/equal attempts refused, newer re-pairs), pairs.json v2 bounded activity summary (capture_count/last_capture_at/last_capture_id) via PairStore.recordCapture <- PairingConfirmer.noteCapture, NearbyState.activity for the UI; dedup moved before image validation.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T11:00:48Z",
+  "usage": {
+    "evidence": "apps/mac Nearby|Pairing filter 96 pass; full swift test with all helper binaries after merging mac-shell 5222b86: 489 tests, 0 failures, 11 env-gated skips",
+    "status": "Claude Max 20x shared quota; subagent cannot read usage"
+  }
+}

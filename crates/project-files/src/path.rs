@@ -8,9 +8,54 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use unicode_normalization::UnicodeNormalization;
+
 /// A normalized project-relative path such as `chapters/intro.tex`.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProjectPath(String);
+///
+/// Equality, ordering and hashing compare the Unicode NFC-normalized form
+/// (`key`), not the raw stored bytes (`raw`): two different normalizations
+/// of the same on-disk name (e.g. `"café.tex"` with `'é'` precomposed vs.
+/// `'e'` + a combining acute accent) are the *same* project-relative
+/// identity on a normalization-insensitive filesystem, and must dedupe,
+/// cycle-detect and revision-track as one file, not two (issue #45 finding
+/// 3). `raw` is what's displayed and used to build OS paths, so filesystem
+/// access for any single reference is unaffected by this normalization —
+/// only how two different-spelled references compare changes.
+#[derive(Clone)]
+pub struct ProjectPath {
+    raw: String,
+    key: String,
+}
+
+impl ProjectPath {
+    fn from_raw(raw: String) -> Self {
+        let key = raw.nfc().collect();
+        ProjectPath { raw, key }
+    }
+}
+
+impl PartialEq for ProjectPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+impl Eq for ProjectPath {}
+
+impl PartialOrd for ProjectPath {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for ProjectPath {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+impl std::hash::Hash for ProjectPath {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.key.hash(state);
+    }
+}
 
 /// Why a raw path was rejected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,26 +121,26 @@ impl ProjectPath {
         if segments.is_empty() {
             return Err(PathError::Empty);
         }
-        Ok(ProjectPath(segments.join("/")))
+        Ok(ProjectPath::from_raw(segments.join("/")))
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.raw
     }
 
     /// The directory part (`""` for a root-level file).
     pub fn parent_dir(&self) -> &str {
-        match self.0.rfind('/') {
-            Some(i) => &self.0[..i],
+        match self.raw.rfind('/') {
+            Some(i) => &self.raw[..i],
             None => "",
         }
     }
 
     /// The last segment.
     pub fn file_name(&self) -> &str {
-        match self.0.rfind('/') {
-            Some(i) => &self.0[i + 1..],
-            None => &self.0,
+        match self.raw.rfind('/') {
+            Some(i) => &self.raw[i + 1..],
+            None => &self.raw,
         }
     }
 
@@ -112,13 +157,13 @@ impl ProjectPath {
 
     /// Returns a path with `ext` appended (`foo` -> `foo.tex`).
     pub fn with_appended_extension(&self, ext: &str) -> ProjectPath {
-        ProjectPath(format!("{}.{}", self.0, ext))
+        ProjectPath::from_raw(format!("{}.{}", self.raw, ext))
     }
 
     /// Joins onto an OS root directory.
     pub fn to_os_path(&self, root: &Path) -> PathBuf {
         let mut p = root.to_path_buf();
-        for seg in self.0.split('/') {
+        for seg in self.raw.split('/') {
             p.push(seg);
         }
         p
@@ -127,19 +172,19 @@ impl ProjectPath {
 
 impl fmt::Display for ProjectPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.raw)
     }
 }
 
 impl fmt::Debug for ProjectPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ProjectPath({:?})", self.0)
+        write!(f, "ProjectPath({:?})", self.raw)
     }
 }
 
 impl AsRef<str> for ProjectPath {
     fn as_ref(&self) -> &str {
-        &self.0
+        &self.raw
     }
 }
 
@@ -198,5 +243,40 @@ mod tests {
         assert_eq!(p.extension(), Some("tex"));
         assert_eq!(ProjectPath::normalize(".hidden").unwrap().extension(), None);
         assert_eq!(p.to_os_path(Path::new("/r")), PathBuf::from("/r/a/b/c.tex"));
+    }
+
+    /// Issue #45 finding 3: 'é' as a single precomposed codepoint (NFC) and
+    /// 'e' + combining acute accent (NFD) are different byte sequences that
+    /// name the same file on a normalization-insensitive filesystem. Two
+    /// references using different normalizations of the same on-disk name
+    /// must be the *same* `ProjectPath` identity — equal, equally ordered,
+    /// and equally hashed — or graph dedup, cycle detection, and the
+    /// revision tracker (all keyed by `ProjectPath`) double-count a single
+    /// physical file. The raw bytes must stay distinguishable for display
+    /// and for building OS paths (filesystem access for a single reference
+    /// is unaffected by this).
+    #[test]
+    fn nfc_and_nfd_spellings_of_the_same_name_share_one_identity() {
+        let nfc = ProjectPath::normalize("caf\u{e9}.tex").unwrap();
+        let nfd = ProjectPath::normalize("cafe\u{301}.tex").unwrap();
+        assert_ne!(
+            nfc.as_str(),
+            nfd.as_str(),
+            "raw bytes are still distinct spellings"
+        );
+        assert_eq!(nfc, nfd, "identity must be normalization-insensitive");
+        assert_eq!(nfc.cmp(&nfd), std::cmp::Ordering::Equal);
+
+        let mut set = std::collections::BTreeSet::new();
+        set.insert(nfc.clone());
+        set.insert(nfd.clone());
+        assert_eq!(set.len(), 1, "BTreeSet must treat them as one entry");
+
+        use std::hash::{Hash, Hasher};
+        let mut ha = std::collections::hash_map::DefaultHasher::new();
+        let mut hb = std::collections::hash_map::DefaultHasher::new();
+        nfc.hash(&mut ha);
+        nfd.hash(&mut hb);
+        assert_eq!(ha.finish(), hb.finish(), "hash must agree too");
     }
 }

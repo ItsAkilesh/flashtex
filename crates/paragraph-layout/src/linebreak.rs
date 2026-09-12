@@ -25,6 +25,7 @@
 
 use std::ops::Range;
 
+use crate::adapter::LayoutError;
 use crate::items::{FORCED_BREAK, Glue, GlueOrder, GlyphRun, INFINITE_PENALTY, Item};
 use crate::metrics::FontId;
 
@@ -699,7 +700,28 @@ fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measu
 /// `items` must end with a forced break (see
 /// [`crate::items::ParagraphBuilder::finish`]); if it does not, one is
 /// appended internally so no content is ever dropped.
-pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
+///
+/// ## Authoritative validation
+///
+/// This function — not [`crate::adapter::try_layout_paragraph`] — is where
+/// "is this input valid" is decided: it rejects a non-finite or
+/// [`MAX_DIMEN_PT`](crate::adapter::MAX_DIMEN_PT)-overflowing dimension, and
+/// an oversized item list, exactly the way [`try_layout_paragraph`] already
+/// documented doing. Before this fix, that validation lived only in
+/// `try_layout_paragraph`, so calling this raw entry point directly (as the
+/// crate's own doc comments always showed as a legitimate, supported way to
+/// use the crate — see [`crate::items::ParagraphBuilder`]'s docs) silently
+/// fed NaN or overflowing dimensions straight into the breaker's `f64`
+/// arithmetic, producing garbage geometry (or, depending on the exact
+/// values, an internal panic) instead of a typed rejection. Silently
+/// computing layout from NaN/overflowing input is never useful output, so
+/// this raw entry point is made to reject it the same way the checked one
+/// always did, and `try_layout_paragraph` now simply delegates to this
+/// validation instead of duplicating it — one validation path, so the two
+/// entry points cannot disagree about what counts as valid input.
+pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Lines, LayoutError> {
+    crate::adapter::validate_params(params)?;
+    crate::adapter::validate_items(items)?;
     let owned;
     let items: &[Item] = if matches!(items.last(), Some(Item::Penalty(p)) if p.value <= FORCED_BREAK)
     {
@@ -813,12 +835,12 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         lines.push(line);
     }
     let height = lines.last().map_or(0.0, |l| l.baseline_y + l.depth);
-    Lines {
+    Ok(Lines {
         lines,
         breaks: chosen.breaks,
         stats,
         height,
-    }
+    })
 }
 
 fn set_line(

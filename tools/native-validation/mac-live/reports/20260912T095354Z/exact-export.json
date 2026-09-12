@@ -1,0 +1,94 @@
+{
+ "argv": [
+  "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-pdf-exact",
+  "from-v2",
+  "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json",
+  "--out",
+  "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf",
+  "--font-dir",
+  "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/Fonts"
+ ],
+ "checks": [
+  {
+   "detail": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-pdf-exact",
+   "name": "bundled flashtex-pdf-exact present",
+   "ok": true
+  },
+  {
+   "detail": "advance), 0 rule(s), 103985 bytes -> /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf\n",
+   "name": "flashtex-pdf-exact from-v2 exit 0",
+   "ok": true
+  },
+  {
+   "detail": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf",
+   "name": "PDF written",
+   "ok": true
+  },
+  {
+   "detail": 1,
+   "name": "PDFKit page count == fixture pages (1)",
+   "ok": true
+  },
+  {
+   "detail": "Office fixtures The A V office fixed the fi ligature: office, bold, and caf\u00e9. ",
+   "name": "PDFKit text contains 'Office fixtures'",
+   "ok": true
+  },
+  {
+   "detail": "Office fixtures The A V office fixed the fi ligature: office, bold, and caf\u00e9. ",
+   "name": "PDFKit text contains 'office'",
+   "ok": true
+  },
+  {
+   "detail": "Office fixtures The A V office fixed the fi ligature: office, bold, and caf\u00e9. ",
+   "name": "PDFKit text contains 'bold'",
+   "ok": true
+  },
+  {
+   "detail": "Office fixtures The A V office fixed the fi ligature: office, bold, and caf\u00e9. ",
+   "name": "PDFKit text contains 'caf'",
+   "ok": true
+  }
+ ],
+ "exit": 0,
+ "failed": 0,
+ "fixture": {
+  "bytes": 25170,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json",
+  "sha256": "1ab27cc6d884f0722df94dfe1a363d98ddc7b0a2e8f6c2d36e49f0a49ed364b0",
+  "sha256_content": null,
+  "sha256_unsigned": "1ab27cc6d884f0722df94dfe1a363d98ddc7b0a2e8f6c2d36e49f0a49ed364b0",
+  "signature": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json: code object is not signed at all"
+ },
+ "font_dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/Fonts",
+ "ms": 18.586,
+ "passed": 8,
+ "pdf": {
+  "bytes": 103985,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf",
+  "sha256": "81dac410e96c7ae0088271eeb157380a57c573f6f68e3dc2659b265eecc8779f",
+  "sha256_content": null,
+  "sha256_unsigned": "81dac410e96c7ae0088271eeb157380a57c573f6f68e3dc2659b265eecc8779f",
+  "signature": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf: code object is not signed at all"
+ },
+ "pdfkit": {
+  "bytes": 103985,
+  "page_size_pt": [
+   612,
+   792
+  ],
+  "pages": 1,
+  "text": "Office fixtures\nThe A V office fixed the fi ligature: office, bold, and caf\u00e9.\n"
+ },
+ "pdfkit_text": "Office fixtures The A V office fixed the fi ligature: office, bold, and caf\u00e9. ",
+ "stderr_tail": ": sha256 matched SHA-256(bytes || face_index), font-engine's content hash, not SHA-256(bytes) as rendering-core's validator requires (render-pipeline deviation)\nnote: font LMRoman12-Bold: sha256 matched SHA-256(bytes || face_index), font-engine's content hash, not SHA-256(bytes) as rendering-core's validator requires (render-pipeline deviation)\nnote: font LMRoman10-Bold: sha256 matched SHA-256(bytes || face_index), font-engine's content hash, not SHA-256(bytes) as rendering-core's validator requires (render-pipeline deviation)\nnote: 1 page(s), 15 glyph run(s), 55 glyph(s) (0 continued by hmtx advance), 0 rule(s), 103985 bytes -> /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T095354Z/exact-export/exact-export.pdf\n",
+ "stdout_tail": "",
+ "tool": {
+  "bytes": 1141792,
+  "path": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/35b4e121df7fafd509ec51ce949343f5c8fa320a/apps/mac/build/FlashTeX.app/Contents/MacOS/flashtex-pdf-exact",
+  "sha256": "761760f208222d06c4c82c034a770a8c47b5b1033b5dd4008bee8f1c3db3acb2",
+  "sha256_content": "4127ce768ae9e8257d57423fdded25c81e9285972ae13a639267abe2908b8a5a",
+  "sha256_unsigned": "f7250d245094b5505708762b0d29b167c6dc2181006dbf79e57b5180e3d6e2fc",
+  "signature": "Signature=adhoc"
+ }
+}

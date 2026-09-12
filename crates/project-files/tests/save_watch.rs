@@ -211,3 +211,30 @@ fn revision_tracker_follows_graph_and_saves() {
     assert_eq!(fr.revision, 2);
     assert_eq!(tracker.project_revision(), 3);
 }
+
+/// Issue #45 finding 3, the revision-tracker angle: a single physical file
+/// referenced under two Unicode normalizations of its name (NFC vs NFD)
+/// must not inflate `RevisionTracker`'s counts. Before the fix, this
+/// produced 3 tracked files (main.tex plus *two* café.tex entries) for 2
+/// physical files, and `project_revision` counted the duplicate as a
+/// separate content change.
+#[test]
+fn revision_tracker_does_not_double_count_nfc_nfd_duplicate() {
+    let t = TempDir::new("rev-nfc-nfd");
+    let nfc_stem = "caf\u{e9}"; // "café", 'é' precomposed (NFC)
+    let nfd_stem = "cafe\u{301}"; // "café", 'e' + combining acute (NFD)
+    t.write(&format!("{nfc_stem}.tex"), "Cafe content.");
+    t.write(
+        "main.tex",
+        &format!("\\input{{{nfc_stem}}} \\input{{{nfd_stem}}}"),
+    );
+    let g = flashtex_project_files::ProjectGraph::discover(t.root(), &pp("main.tex")).unwrap();
+    let mut tracker = RevisionTracker::new();
+    let changed = tracker.observe_graph(&g);
+    assert_eq!(
+        changed.len(),
+        2,
+        "2 physical files (main.tex, café.tex) must be 2 tracked files, got {changed:?}"
+    );
+    assert_eq!(tracker.project_revision(), 2);
+}

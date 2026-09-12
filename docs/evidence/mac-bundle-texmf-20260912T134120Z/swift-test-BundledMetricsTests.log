@@ -1,0 +1,26 @@
+ 9:42  up 1 day,  8:34, 2 users, load averages: 21.27 25.57 23.96
+Test Suite 'Selected tests' started at 2026-09-12 09:42:44.493.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 09:42:44.494.
+Test Suite 'BundledMetricsTests' started at 2026-09-12 09:42:44.494.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testDefaultDiscoveryFindsTheRepositoryCopyFromASwiftBuildProduct]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testDefaultDiscoveryFindsTheRepositoryCopyFromASwiftBuildProduct]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testPrependingKeepsExplicitEntriesInOrderAfterTheBundledDirectory]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testPrependingKeepsExplicitEntriesInOrderAfterTheBundledDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentIsUntouchedWithoutABundledDirectory]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentIsUntouchedWithoutABundledDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentPrependsAndPassesEverythingElseThrough]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentPrependsAndPassesEverythingElseThrough]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testRealProducerHasNoMissingMetricsThroughTheEnvRouteWithHostTeXExcluded]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testRealProducerHasNoMissingMetricsThroughTheEnvRouteWithHostTeXExcluded]' passed (0.459 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testTFMDirectoryPrefersFirstRootThatExists]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testTFMDirectoryPrefersFirstRootThatExists]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testVendoredTreeMatchesPinnedManifest]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testVendoredTreeMatchesPinnedManifest]' passed (0.001 seconds).
+Test Suite 'BundledMetricsTests' passed at 2026-09-12 09:42:44.959.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.464 (0.464) seconds
+Test Suite 'FlashTeXMacPackageTests.xctest' passed at 2026-09-12 09:42:44.959.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.464 (0.465) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 09:42:44.959.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.464 (0.466) seconds
+exit 0
+ 9:42  up 1 day,  8:35, 2 users, load averages: 26.79 26.66 24.41
