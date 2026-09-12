@@ -82,9 +82,12 @@ impl Unit {
     /// Convert an exact decimal value `numerator / denominator` (`denominator
     /// > 0`) in this unit to scaled points, truncating toward zero exactly as
     /// TeX does. Returns a typed overflow error if the magnitude exceeds
-    /// [`MAX_DIMEN_SP`].
+    /// [`MAX_DIMEN_SP`], and a typed [`CalcError::DivisionByZero`] if
+    /// `denominator` is not positive.
     pub fn to_sp(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
-        debug_assert!(denominator > 0);
+        if denominator <= 0 {
+            return Err(CalcError::DivisionByZero);
+        }
         let (mag_num, sign): (i128, i128) = if numerator < 0 {
             (-numerator, -1)
         } else {
@@ -175,8 +178,17 @@ impl Sp {
     }
 
     /// Multiply by an exact dimensionless scalar `numerator/denominator`.
+    /// `denominator` must be positive; a non-positive one is a typed
+    /// [`CalcError::DivisionByZero`], never a panic -- see the module-level
+    /// finding in `Unit::to_sp` for why this can't just be a `debug_assert!`:
+    /// the parser never emits a non-positive denominator, but the public
+    /// `Expr::Scalar` constructor is not restricted to what the parser would
+    /// produce, so a caller building an `Expr` directly can reach this with
+    /// `denominator <= 0`.
     pub fn checked_mul_scalar(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
-        debug_assert!(denominator > 0);
+        if denominator <= 0 {
+            return Err(CalcError::DivisionByZero);
+        }
         // `self.0 * numerator` can overflow i128 for a scalar literal large
         // enough (this dimension is already bounded to +/-MAX_DIMEN_SP, but
         // the scalar operand is not bounded at all before this multiply) --
@@ -198,9 +210,18 @@ impl Sp {
     }
 
     /// Divide by an exact dimensionless scalar `numerator/denominator`,
-    /// truncating toward zero. A zero scalar is a typed error, never a panic.
+    /// truncating toward zero. A zero scalar dividend (`numerator == 0`) is a
+    /// typed error, never a panic; so is a non-positive `denominator` --
+    /// unlike `numerator == 0`, that case does not happen to reach a literal
+    /// division in this function (`denominator` is only ever a multiplicand
+    /// below), so left unchecked it would silently produce a wrong `Ok`
+    /// value instead of panicking or erroring. Same reachability note as
+    /// [`Sp::checked_mul_scalar`]: the parser never emits a non-positive
+    /// denominator, but a caller building an `Expr::Scalar` directly can.
     pub fn checked_div_scalar(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
-        debug_assert!(denominator > 0);
+        if denominator <= 0 {
+            return Err(CalcError::DivisionByZero);
+        }
         if numerator == 0 {
             return Err(CalcError::DivisionByZero);
         }
@@ -483,6 +504,61 @@ mod tests {
     fn div_by_zero_is_typed_not_panic() {
         assert_eq!(
             Sp(65536).checked_div_scalar(0, 1),
+            Err(CalcError::DivisionByZero)
+        );
+    }
+
+    // Regression tests for a panic reachable through the public `Expr` AST:
+    // the string parser never emits a non-positive denominator, but
+    // `Expr::Dim`/`Expr::Scalar` are public tuple variants a caller can
+    // construct directly, bypassing the parser entirely. Before the fix,
+    // each of these three sites guarded `denominator > 0` with only a
+    // `debug_assert!`, which compiles out in release -- exactly the profile
+    // where the resulting unconditional divide-by-zero actually crashes the
+    // process. These call the `sp` module functions directly (see the
+    // `zero_denominator_*` tests in `lib.rs` for the same bugs driven through
+    // the public `eval` entry point instead).
+
+    #[test]
+    fn to_sp_zero_denominator_is_typed_error_not_panic() {
+        assert_eq!(Unit::Pt.to_sp(1, 0), Err(CalcError::DivisionByZero));
+        assert_eq!(Unit::Sp.to_sp(1, 0), Err(CalcError::DivisionByZero));
+    }
+
+    #[test]
+    fn to_sp_negative_denominator_is_typed_error_not_wrong_value() {
+        // Not itself panic-reachable (no branch of `to_sp` divides by a
+        // negative denominator), but the parser only ever emits a positive
+        // one, and treating a negative denominator as if it were valid would
+        // silently apply the numerator's sign twice.
+        assert_eq!(Unit::Pt.to_sp(1, -1), Err(CalcError::DivisionByZero));
+    }
+
+    #[test]
+    fn checked_mul_scalar_zero_denominator_is_typed_error_not_panic() {
+        assert_eq!(
+            Sp(65536).checked_mul_scalar(1, 0),
+            Err(CalcError::DivisionByZero)
+        );
+    }
+
+    #[test]
+    fn checked_div_scalar_zero_denominator_is_typed_error_not_silently_wrong() {
+        // Unlike `checked_mul_scalar`, `denominator` here is only ever a
+        // multiplicand, never a literal divisor -- so pre-fix this did not
+        // panic even in debug's un-asserted path; it silently returned a
+        // wrong `Ok` value. See `checked_div_scalar_negative_denominator_is_typed_error`
+        // and the `lib.rs` regression test for the fully worked-out example.
+        assert_eq!(
+            Sp(65536).checked_div_scalar(5, 0),
+            Err(CalcError::DivisionByZero)
+        );
+    }
+
+    #[test]
+    fn checked_div_scalar_negative_denominator_is_typed_error() {
+        assert_eq!(
+            Sp(65536).checked_div_scalar(5, -1),
             Err(CalcError::DivisionByZero)
         );
     }

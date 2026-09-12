@@ -634,4 +634,41 @@ mod tests {
         assert_eq!(evaluate("8191.5pt * 2").unwrap(), Sp(16383 * 65536));
         assert_eq!(evaluate("16383pt / 1").unwrap(), Sp(16383 * 65536));
     }
+
+    // Regression tests for a panic reachable through the public `Expr` AST,
+    // bypassing the parser (which itself never emits a non-positive
+    // denominator): see the matching tests in `sp::tests` for detail on each
+    // site. These exercise the same bug through the public `eval` entry
+    // point that an external caller building `Expr` values directly would
+    // actually go through.
+
+    #[test]
+    fn zero_denominator_dim_literal_is_a_typed_error_not_a_panic() {
+        let expr = crate::ast::Expr::Dim(1, 0, crate::sp::Unit::Pt);
+        assert_eq!(crate::eval::eval(&expr), Err(CalcError::DivisionByZero));
+    }
+
+    #[test]
+    fn zero_denominator_scalar_mul_operand_is_a_typed_error_not_a_panic() {
+        use crate::ast::Expr;
+        use crate::sp::Unit;
+        let expr = Expr::Mul(
+            Box::new(Expr::Dim(1, 1, Unit::Pt)),
+            Box::new(Expr::Scalar(1, 0)),
+        );
+        assert_eq!(crate::eval::eval(&expr), Err(CalcError::DivisionByZero));
+    }
+
+    #[test]
+    fn zero_denominator_scalar_div_operand_is_a_typed_error_not_a_silent_wrong_value() {
+        use crate::ast::Expr;
+        use crate::sp::Unit;
+        // 1pt / (5/0): 5/0 is not a valid scalar at all. Before the fix this
+        // silently evaluated to `Ok(Sp(0))` in release instead of erroring.
+        let expr = Expr::Div(
+            Box::new(Expr::Dim(1, 1, Unit::Pt)),
+            Box::new(Expr::Scalar(5, 0)),
+        );
+        assert_eq!(crate::eval::eval(&expr), Err(CalcError::DivisionByZero));
+    }
 }
