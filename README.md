@@ -17,3 +17,12 @@ Start each agent with:
 See the [product and engineering master plan](latex-master-plan.md) for product
 requirements. Active agents publish their own handoffs under `coordination/` on
 their task branches; those updates can be read before they merge into main.
+
+Use [the shared knowledge index](docs/INDEX.md) to recover context after a restart
+or compaction. Check [project deadlines](coordination/PROJECT.md) and
+[resource permissions](coordination/RESOURCES.md) before paid delegation. Personal
+Claude usage is prohibited; unverified funding must never fall back to it.
+
+Claude Code imports the shared instructions through `CLAUDE.md`; Cursor has a
+small always-applied rule under `.cursor/rules/`. These are discovery aids, not a
+replacement for an external supervisor or provider-side spending controls.

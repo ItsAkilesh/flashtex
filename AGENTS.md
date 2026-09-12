@@ -5,6 +5,64 @@ and sessions. Read this file before planning or editing. Follow it throughout th
 task, including after context compaction or resuming a session. User instructions
 and higher-priority platform instructions take precedence.
 
+## Resource, deadline, and recovery rules — read first
+
+Read `docs/INDEX.md`, `coordination/PROJECT.md`, and `coordination/RESOURCES.md`
+at startup and after compaction. Read `docs/agent-operations.md` before delegating,
+using a paid CLI/API, changing resource allocations, or making commits.
+
+- Never use the user's protected personal Claude subscription allowance or incur
+  unapproved charges. An existing Claude login is not authorization. New Claude work
+  is blocked until a separate approved funding source and allocation are verified.
+- The £75 identified by the user is Pro/Max extra-usage credit. Their included
+  plan allowance must remain untouched. No extra-credit-only execution route has
+  been verified, so do not run Claude tasks through that subscription.
+- Subscription prices, usage multipliers, API balances, and different currencies
+  are separate resources. Do not add them together or invent remaining balances.
+- Every agent and child agent inherits the same deadline and spending restrictions.
+  Child allocations come out of the parent's allocation; they are not extra money.
+- Update your handoff with measured progress, next acceptance gate, remaining-time
+  estimate/range, blockers, resource pool/allocation, usage evidence, and next step.
+- Use bounded experiments with a stated expected benefit and a time/cost limit.
+  Persist through setbacks by changing tactics; do not repeat failed attempts
+  indefinitely, hide blockers, or relabel incomplete requirements as completed.
+- Preserve 20% of confirmed remaining time and allocatable budget for integration
+  and verification unless the user specifies another reserve. No funded allocations
+  are active until the actual available resources are confirmed.
+- Before compaction or handoff, save a concise resumption packet with branch/SHA,
+  dirty files, exact next commands, tests, decisions, dependencies, and resource
+  state. After resuming, verify it against Git rather than trusting stale notes.
+- Use the absolute deadline and fixed final-verification window in
+  `coordination/PROJECT.md`; never restart the clock after compaction. Unconfirmed
+  account totals must remain unknown.
+
+### Commit identity and truthful provenance
+
+New agent-generated commits use the project automation identity:
+`Cursor <cursor@flashtex.invalid>`. This is a project label with a deliberately
+non-deliverable address, not a verified Cursor employee or vendor account.
+Use repository-local configuration or per-command identity; do not change global
+Git identity or rewrite existing commits.
+
+Record the actual contributors using truthful trailers, for example:
+
+```text
+Implementation-Agent: Codex
+Commit-Executor: git via Codex
+```
+
+The user explicitly requires Cursor CLI itself to execute every new agent commit;
+setting the Git author alone does not satisfy this. Hold commits while
+Cursor login/funding is unavailable. Record its actual review/execution accurately.
+Never claim Cursor wrote or reviewed changes merely because the Git author is
+Cursor. Implementation may be performed by other agents.
+
+Git author metadata does not guarantee a GitHub vendor-app badge or association
+with Cursor's official account. Do not claim those without verifying them.
+
+Merge/squash commits created by agents must follow the same identity policy;
+configure the integration method accordingly. Preserve truthful provenance.
+
 ## Product constraints
 
 Read `latex-master-plan.md` before product or architecture work. The compiler must
