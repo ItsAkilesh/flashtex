@@ -62,6 +62,43 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{221A}', 0xD6), // radical
 ];
 
+/// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.
+///
+/// This block is where WinAnsi puts typographic punctuation: em and en dashes,
+/// curly quotes, the ellipsis and the bullet. Treating WinAnsi as plain Latin-1
+/// wrongly reports all of them as unexportable, and they are among the most
+/// common non-ASCII characters in ordinary prose — an em dash in a sentence
+/// would have warned the author that their PDF was lossy when it was not.
+const WINANSI_HIGH: &[(char, u8)] = &[
+    ('\u{20AC}', 0x80), // Euro
+    ('\u{201A}', 0x82), // single low quote
+    ('\u{192}', 0x83),  // florin
+    ('\u{201E}', 0x84), // double low quote
+    ('\u{2026}', 0x85), // ellipsis
+    ('\u{2020}', 0x86), // dagger
+    ('\u{2021}', 0x87), // double dagger
+    ('\u{2C6}', 0x88),  // circumflex
+    ('\u{2030}', 0x89), // per mille
+    ('\u{160}', 0x8A),  // S caron
+    ('\u{2039}', 0x8B), // single left guillemet
+    ('\u{152}', 0x8C),  // OE
+    ('\u{17D}', 0x8E),  // Z caron
+    ('\u{2018}', 0x91), // left single quote
+    ('\u{2019}', 0x92), // right single quote
+    ('\u{201C}', 0x93), // left double quote
+    ('\u{201D}', 0x94), // right double quote
+    ('\u{2022}', 0x95), // bullet
+    ('\u{2013}', 0x96), // en dash
+    ('\u{2014}', 0x97), // em dash
+    ('\u{2DC}', 0x98),  // small tilde
+    ('\u{2122}', 0x99), // trademark
+    ('\u{161}', 0x9A),  // s caron
+    ('\u{203A}', 0x9B), // single right guillemet
+    ('\u{153}', 0x9C),  // oe
+    ('\u{17E}', 0x9E),  // z caron
+    ('\u{178}', 0x9F),  // Y dieresis
+];
+
 /// How a single character would be exported.
 pub fn map_char(c: char) -> Glyph {
     if c == FRACTION_RULE_CHAR {
@@ -76,8 +113,17 @@ pub fn map_char(c: char) -> Glyph {
             code: *code,
         };
     }
-    // WinAnsiEncoding agrees with Latin-1 over the range the text path uses.
-    if (c as u32) < 0x100 && c != '\u{7F}' && (c as u32) >= 0x20 {
+    if let Some((_, code)) = WINANSI_HIGH.iter().find(|(ch, _)| *ch == c) {
+        return Glyph::Encodable {
+            font: ExportFont::Text,
+            code: *code,
+        };
+    }
+    // Below U+0100 WinAnsi agrees with Latin-1, EXCEPT the 0x80..0x9F block
+    // handled above, which Latin-1 leaves as control codes.
+    if (c as u32) < 0x100 && c != '\u{7F}' && (c as u32) >= 0xA0
+        || (0x20..0x7F).contains(&(c as u32))
+    {
         return Glyph::Encodable {
             font: ExportFont::Text,
             code: c as u32 as u8,
@@ -170,5 +216,47 @@ mod tests {
     fn unrepresentable_lists_each_offender_once() {
         let text = format!("a{0}b{0}c日日", FRACTION_RULE_CHAR);
         assert_eq!(unrepresentable(&text), vec![FRACTION_RULE_CHAR, '日']);
+    }
+}
+
+#[cfg(test)]
+mod winansi_tests {
+    use super::*;
+
+    #[test]
+    fn typographic_punctuation_is_exportable() {
+        // These live in WinAnsi's 0x80..0x9F block, not in Latin-1. Reporting an
+        // em dash as unexportable would tell an author their PDF is lossy when
+        // it is not.
+        for (c, expected) in [
+            ('\u{2014}', 0x97u8), // em dash
+            ('\u{2013}', 0x96),   // en dash
+            ('\u{2018}', 0x91),   // left single quote
+            ('\u{2019}', 0x92),   // right single quote
+            ('\u{201C}', 0x93),   // left double quote
+            ('\u{201D}', 0x94),   // right double quote
+            ('\u{2026}', 0x85),   // ellipsis
+            ('\u{2022}', 0x95),   // bullet
+        ] {
+            assert_eq!(
+                map_char(c),
+                Glyph::Encodable {
+                    font: ExportFont::Text,
+                    code: expected
+                },
+                "{c:?} should encode as WinAnsi 0x{expected:02X}"
+            );
+        }
+    }
+
+    #[test]
+    fn characters_with_genuinely_no_base14_glyph_still_report() {
+        // CJK has no glyph in any base-14 face. This must stay honest.
+        for c in ['東', '京', '\u{1F600}'] {
+            assert!(
+                matches!(map_char(c), Glyph::Unrepresentable { .. }),
+                "{c:?} has no base-14 glyph and must be reported"
+            );
+        }
     }
 }

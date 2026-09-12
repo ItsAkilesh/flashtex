@@ -1,3 +1,19 @@
+# Resource-selected standby Commander
+
+Latest user instruction supersedes the fixed Jaysen designation below. Keep linux-primary
+as Commander while usable. Run `python3 scripts/select_successor.py evidence.json`
+on independently verified, at most five-minute-old machine evidence. Each row requires
+registered, working_verified, billing_authorized, orchestration_capable and
+usable_capacity_verified booleans, an observed_utc timestamp and session_evidence.
+Remaining numeric capacity requires a comparison_profile that identifies identical
+provider/plan/window units; do not label unlike resources alike. Unknown balances
+and incomparable profiles cannot establish a winner. Daniel is eligible only after
+actual registration and live session evidence. Equal capacity breaks ties by machine ID.
+Selection returns claim_authorized=false: it does not weaken any terminal, journal,
+publisher-stop or non-force authority gate. Before claim rerun with fresh evidence;
+name the selected machine’s actual unique orchestrator ID. The former Jaysen standby
+remains read-only unless selected. No new model calls are needed for polling.
+
 # Jaysen Opus standby Commander
 
 The user explicitly requested one NEW Opus standby on Jaysen's Mac. This is the
@@ -44,7 +60,7 @@ heartbeat age, an idle turn and an inaccessible Linux machine are insufficient.
 
 ## Revival prompt for orchestrator-jaysen-opus
 
-> You are the designated standby successor on mac-m1max-a. Remain read-only while
+> You are a candidate standby; the fresh resource selector chooses the successor. Remain read-only while
 > orchestrator-astra is active. Fetch main and read AGENTS.md, ORCHESTRATION.md,
 > coordination/authority.json, control.json, RESOURCES.md, COMMANDER-RESUME.md,
 > docs/INDEX.md and docs/evidence/astra-integration-2026-09-12.md. Review all exact
@@ -58,7 +74,7 @@ heartbeat age, an idle turn and an inaccessible Linux machine are insufficient.
 > Positive evidence must come from the actual host/runtime, not a heartbeat timer.
 >
 > After verified quiescence, prepare ONE authority-only claim from exact fetched
-> main, naming orchestrator-jaysen-opus and the evidence SHA/identity. Use truthful
+> main, naming the selected actual orchestrator ID and the evidence SHA/identity. Use truthful
 > local primary author jay3332 and actual executor trailers. Push non-force. If
 > main changes, discard the unpublished claim and rebuild after rereading authority;
 > if another successor already claimed, remain quiesced. Reread your successful
@@ -86,3 +102,24 @@ match process pin and observed main to the current authority/config, and indepen
 confirm the host witness is the configured monitor. A receipt is not a blanket
 permission to take over a different/restarted session. If main/authority changed,
 reconcile before any claim. No claim runner has been installed on the Mac yet.
+
+## Autonomous claim executor (explicitly authorized, no sleeping-user prompt)
+
+`scripts/claim_commander.py` now implements the one-shot non-force authority claim.
+The parent monitor must independently review the exact witness branch commit and
+supply `--reviewed-witness SHA`, plus fresh capacity evidence, actual successor
+machine/unique ID, truthful local executor/coauthor, and a private journal path.
+It checks the configured witness author/executor/direct parent, exact process pin,
+main SHA, <=120-second terminal receipt, every stopped service, no pending jobs,
+current project/authority and resource selection before creating any claim. The
+claim changes only authority.json; any competing main push rejects without merge
+or retry. A pending journal requires reconciliation, including uncertain delivery.
+The isolated bare-remote test exercises a real claim and duplicate/competing refusal.
+
+This executor calls no model and requires no extra confirmation beyond the existing
+user authorization. It must NOT run while Astra lives. Install/route the existing
+remote monitor to this command only after its host can validate the actual witness
+and resource evidence. A script being published does not prove that remote hookup
+or a quota-to-terminal host adapter works. After successful claim, the selected
+parent invokes its already-authorized orchestrator session and resumes queues;
+first reread authority. Re-pin the new host witness before future succession.

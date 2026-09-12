@@ -66,6 +66,7 @@ impl GposKerning {
             if lk.lookup_type != 2 {
                 out.unsupported.push(Unsupported {
                     table: "GPOS",
+                    feature: "kern",
                     detail: format!(
                         "kern lookup {} is type {} (only PairPos type 2 is applied)",
                         lk.index, lk.lookup_type
@@ -78,6 +79,7 @@ impl GposKerning {
                     Ok(sub) => out.subtables.push(sub),
                     Err(Error::Unsupported(detail)) => out.unsupported.push(Unsupported {
                         table: "GPOS",
+                        feature: "kern",
                         detail,
                     }),
                     Err(e) => return Err(e),
@@ -223,6 +225,7 @@ impl MarkAttachment {
             if lk.lookup_type != 4 {
                 out.unsupported.push(Unsupported {
                     table: "GPOS",
+                    feature: "mark",
                     detail: format!(
                         "mark lookup {} is type {} (only MarkToBase type 4 is applied)",
                         lk.index, lk.lookup_type

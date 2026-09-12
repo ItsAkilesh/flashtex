@@ -3,10 +3,10 @@
   "allocation_id": "claude-mac20x-font-engine",
   "assignment_acknowledgements": {
     "FT-018": {
-      "acknowledged_utc": "2026-09-12T06:06:29Z",
-      "adaptation": "Accepted rev 2: pinned Latin Modern manifest (descriptor fields aligned with crates/font-resources; CFF is outside its static-truetype profile so font-engine validates the same fields itself), explicit ordered fallback with per-cluster FontId, GPOS MarkToBase, CoreText render + PDFKit extraction checks under tools/, reproducible subset+ToUnicode test, CIDFontType0C subtype.",
-      "main_sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T06:29:09Z",
+      "adaptation": "Accepted rev 3: adapters module (paragraph-layout FontMetricsSource, pdf Program conversion, math-layout MathFontMetrics from OpenType MATH), face_metrics.json export + tools/preview_positions_check.swift over the visual corpus, docs/consumers.md deltas, explicit errors for unsupported lookup types in requested features.",
+      "main_sha": "4d2ec1c0947e5a9e4c5668a6bf18de8ce3ed1287",
+      "revision": 3
     }
   },
   "branch": "agent/mac-font-engine/tex-fonts",
@@ -14,27 +14,27 @@
     "rust",
     "fonts"
   ],
-  "code_revision": "4c29b3ac6d89cf9c27347078e429d793c76ab329",
+  "code_revision": "e73df3807518ecc75b6b3e77fad4afebde7ea76c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "36e501e18bf173e116390c5f33182596e6124064",
-  "next_action": "Await Commander ABI review; follow-ups: CFF subsetting, MathVariants",
+  "main_integrated_through": "4d2ec1c0947e5a9e4c5668a6bf18de8ce3ed1287",
+  "next_action": "Await Commander review; consumer adoption belongs to compiler, Mac shell and pdf owners",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "rendering-v2-proposal.md font identity/original gids/clusters/missing-font rules match the crate design; no change needed",
-      "reviewed_utc": "2026-09-12T06:03:32Z",
-      "sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521"
+      "adaptation": "main advanced (coordination/dispatch commits); paragraph-layout, math-layout and pdf crates unchanged since the adapters were written, so the path dependencies remain valid",
+      "reviewed_utc": "2026-09-12T06:38:56Z",
+      "sha": "1654e8ac0ecf5aff20ac17316a6e698bf3bda119"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "font-engine crate complete for FT-018 rev 1: TrueType+OTTO parsing, Core14 tables, GPOS/kern/GSUB shaping with source clusters, subsetting, ToUnicode, MATH; 45 tests; CoreText-exact",
+  "state": "ready_for_integration",
+  "summary": "FT-018 rev 3 complete: adapters for paragraph-layout (FontMetricsSource + glyph_run), pdf (EmbeddedSubset), math-layout (MathFontMetrics from MATH), preview JSON export + Swift check; corpus evidence in docs/consumers.md (paragraph shaped/PDF/CoreText 0.0000 pt, 0 px on 8 lines; compiler Times table gap quantified); explicit UnsupportedFeature errors; 63 tests",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:06:29Z",
+  "updated_utc": "2026-09-12T06:38:56Z",
   "usage": {
     "evidence": "Shared Max quota not observable from subagent",
     "status": "unknown"

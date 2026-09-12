@@ -1,3 +1,4 @@
+mod arithmetic;
 use super::{byte, integer, number, unsupported, Cff};
 use crate::{invalid, Coordinate, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,7 @@ pub struct CubicOutline {
 }
 struct Decoder<'a> {
     cff: &'a Cff,
+    transient: [Option<Coordinate>; 32],
     operands: Vec<Coordinate>,
     point: CubicPoint,
     open: bool,
@@ -77,6 +79,7 @@ impl Cff {
         let zero = Coordinate::from_integer(0);
         let mut d = Decoder {
             cff: self,
+            transient: [None; 32],
             operands: Vec::new(),
             point: CubicPoint { x: zero, y: zero },
             open: false,
@@ -494,9 +497,7 @@ impl Decoder<'_> {
                     if (34..=37).contains(&escaped) {
                         self.flex(escaped)?;
                     } else {
-                        return Err(unsupported(&format!(
-                            "Type2 escaped operator {escaped} unsupported"
-                        )));
+                        self.arithmetic(escaped)?;
                     }
                 }
                 _ => return Err(invalid("Type2 reserved/unsupported operator")),
