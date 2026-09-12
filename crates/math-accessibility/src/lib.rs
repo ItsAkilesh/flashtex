@@ -7,25 +7,36 @@
 //! - `readable`: a structured, screen-reader-style spoken rendering.
 //! - `mathml`: a standalone `<math>` document, correctly XML-escaped, that
 //!   always preserves the exact source glyph identity of every symbol.
+//! - `nodes`: every emitted description element, each carrying a [`NodeId`]
+//!   that is an exact, stable identity for the source node it came from —
+//!   derived purely from structural position in the input tree, never from
+//!   memory addresses or traversal order, so it is reproducible across a
+//!   rebuild of the same input (see the `identity_is_stable_across_rebuild`
+//!   test).
 //! - `unsupported`: an explicit, typed list of every node this adapter could
 //!   not give a semantic name to. Nothing is silently skipped, and nothing is
 //!   guessed: an unnamed symbol never gets a plausible-looking spoken word it
 //!   was not actually given.
 //!
-//! Recursion over nested math (groups, fractions, radicals, accents,
-//! delimited bodies, sub/superscripts) is bounded by [`MathAccessibility::with_max_depth`]
-//! ([`DEFAULT_MAX_DEPTH`] by default); exceeding it is a typed
-//! [`AccessibilityError`], never a stack overflow.
+//! Traversal is bounded two ways, both typed errors rather than a stack
+//! overflow or unbounded memory use:
+//! - nesting depth, via [`MathAccessibility::with_max_depth`]
+//!   ([`DEFAULT_MAX_DEPTH`] by default) — bounds a deep-but-narrow tree;
+//! - total node count, via [`MathAccessibility::with_max_nodes`]
+//!   ([`DEFAULT_MAX_NODES`] by default) — bounds a wide-but-shallow tree.
 
-use flashtex_math_layout::{Atom, MathList, Nucleus};
+use flashtex_math_layout::{Atom, MathList, Nucleus, StyleLevel};
 
 /// Default bound on math-list nesting depth (see [`MathAccessibility::with_max_depth`]).
 pub const DEFAULT_MAX_DEPTH: usize = 64;
 
-/// One step of the path from the root [`MathList`] to a node, used to locate
-/// entries in [`Description::unsupported`] and the site of a
-/// [`AccessibilityError::RecursionLimitExceeded`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Default bound on total nodes visited across the whole tree (see
+/// [`MathAccessibility::with_max_nodes`]).
+pub const DEFAULT_MAX_NODES: usize = 100_000;
+
+/// One step of the path from the root [`MathList`] to a node. This is the
+/// raw structural coordinate; [`NodeId`] is the identity built from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PathStep {
     /// The `n`th atom of the enclosing list.
     Atom(usize),
@@ -41,6 +52,8 @@ pub enum PathStep {
     Denominator,
     /// Into a radical's radicand.
     Radicand,
+    /// Into a radical's optional degree (`\sqrt[degree]{...}`).
+    Degree,
     /// Into an accent's base.
     AccentBase,
     /// The accent glyph itself (not the base).
@@ -51,10 +64,69 @@ pub enum PathStep {
     LeftDelimiter,
     /// The right delimiter glyph.
     RightDelimiter,
+    /// Into an `\overline{...}` body.
+    OverlineBody,
+    /// Into an `\underline{...}` body.
+    UnderlineBody,
+    /// Into a style-override (`{\displaystyle ...}`) body.
+    StyledBody,
 }
 
 /// A path from the root list to a specific node.
 pub type NodePath = Vec<PathStep>;
+
+/// The exact, stable identity of one source node.
+///
+/// It is built solely from the node's structural position in the input tree
+/// (which atom index, which child slot at each level down from the root) —
+/// never from memory addresses, insertion order, or any other incidental
+/// detail of one particular run. Describing two structurally identical
+/// inputs, built from scratch independently, always yields identical
+/// `NodeId`s for corresponding nodes; see `identity_is_stable_across_rebuild`.
+///
+/// This is the value a consumer keeps to map a piece of speech or MathML
+/// back to the exact node in the caller's own copy of the source tree.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NodeId(NodePath);
+
+impl NodeId {
+    /// The raw structural path this identity was built from.
+    pub fn path(&self) -> &[PathStep] {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.is_empty() {
+            return write!(f, "root");
+        }
+        for (i, step) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, "/")?;
+            }
+            match step {
+                PathStep::Atom(n) => write!(f, "atom{n}")?,
+                PathStep::Group => write!(f, "group")?,
+                PathStep::Superscript => write!(f, "superscript")?,
+                PathStep::Subscript => write!(f, "subscript")?,
+                PathStep::Numerator => write!(f, "numerator")?,
+                PathStep::Denominator => write!(f, "denominator")?,
+                PathStep::Radicand => write!(f, "radicand")?,
+                PathStep::Degree => write!(f, "degree")?,
+                PathStep::AccentBase => write!(f, "accent-base")?,
+                PathStep::AccentGlyph => write!(f, "accent-glyph")?,
+                PathStep::DelimitedBody => write!(f, "delimited-body")?,
+                PathStep::LeftDelimiter => write!(f, "left-delimiter")?,
+                PathStep::RightDelimiter => write!(f, "right-delimiter")?,
+                PathStep::OverlineBody => write!(f, "overline-body")?,
+                PathStep::UnderlineBody => write!(f, "underline-body")?,
+                PathStep::StyledBody => write!(f, "styled-body")?,
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Why a node could not be given a semantic reading. The character itself is
 /// always kept, so the caller can see exactly what was not understood.
@@ -72,30 +144,46 @@ pub enum UnsupportedReason {
 /// One node this adapter explicitly declined to approximate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unsupported {
-    pub path: NodePath,
+    pub id: NodeId,
     pub reason: UnsupportedReason,
 }
 
-/// A typed failure. Recursion is the only fallible condition: everything else
-/// degrades to an explicit [`Unsupported`] marker instead of failing outright.
+/// A typed failure. Every failure is a bounded-traversal condition:
+/// everything else degrades to an explicit [`Unsupported`] marker instead of
+/// failing outright.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessibilityError {
-    /// Math-list nesting exceeded the configured bound.
-    RecursionLimitExceeded { max_depth: usize, path: NodePath },
+    /// Math-list nesting exceeded the configured depth bound.
+    RecursionLimitExceeded { max_depth: usize, id: NodeId },
+    /// The total number of nodes visited exceeded the configured bound
+    /// (guards a wide-but-shallow tree, which a depth bound alone cannot).
+    NodeCountExceeded { max_nodes: usize, id: NodeId },
 }
 
 impl std::fmt::Display for AccessibilityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AccessibilityError::RecursionLimitExceeded { max_depth, path } => write!(
+            AccessibilityError::RecursionLimitExceeded { max_depth, id } => write!(
                 f,
-                "math list nesting exceeded the bound of {max_depth} level(s) at {path:?}"
+                "math list nesting exceeded the bound of {max_depth} level(s) at {id}"
+            ),
+            AccessibilityError::NodeCountExceeded { max_nodes, id } => write!(
+                f,
+                "math list node count exceeded the bound of {max_nodes} node(s) at {id}"
             ),
         }
     }
 }
 
 impl std::error::Error for AccessibilityError {}
+
+/// One emitted description element: the readable text produced for exactly
+/// one source node, paired with that node's exact identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DescribedNode {
+    pub id: NodeId,
+    pub readable: String,
+}
 
 /// The result of describing a [`MathList`].
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +192,9 @@ pub struct Description {
     pub readable: String,
     /// A standalone, XML-escaped `<math>...</math>` document.
     pub mathml: String,
+    /// Every emitted node, in traversal (pre-order) order, each carrying the
+    /// exact identity of the source node it came from.
+    pub nodes: Vec<DescribedNode>,
     /// Every node that could not be given a semantic name, in traversal order.
     pub unsupported: Vec<Unsupported>,
 }
@@ -115,10 +206,11 @@ impl Description {
     }
 }
 
-/// A semantic math-accessibility adapter, configured with a recursion bound.
+/// A semantic math-accessibility adapter, configured with traversal bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MathAccessibility {
     max_depth: usize,
+    max_nodes: usize,
 }
 
 impl Default for MathAccessibility {
@@ -128,24 +220,50 @@ impl Default for MathAccessibility {
 }
 
 impl MathAccessibility {
-    /// A new adapter with [`DEFAULT_MAX_DEPTH`] as its nesting bound.
+    /// A new adapter with [`DEFAULT_MAX_DEPTH`] and [`DEFAULT_MAX_NODES`].
     pub fn new() -> Self {
         MathAccessibility {
             max_depth: DEFAULT_MAX_DEPTH,
+            max_nodes: DEFAULT_MAX_NODES,
         }
     }
 
-    /// A new adapter with an explicit nesting bound.
+    /// A new adapter with an explicit nesting-depth bound and the default
+    /// node-count bound.
     pub fn with_max_depth(max_depth: usize) -> Self {
-        MathAccessibility { max_depth }
+        MathAccessibility {
+            max_depth,
+            max_nodes: DEFAULT_MAX_NODES,
+        }
     }
 
-    /// Describes `list`, returning structured readable text and MathML, or a
-    /// typed error if the list nests deeper than this adapter's bound.
+    /// A new adapter with an explicit total-node-count bound and the default
+    /// depth bound.
+    pub fn with_max_nodes(max_nodes: usize) -> Self {
+        MathAccessibility {
+            max_depth: DEFAULT_MAX_DEPTH,
+            max_nodes,
+        }
+    }
+
+    /// A new adapter with both bounds set explicitly.
+    pub fn with_bounds(max_depth: usize, max_nodes: usize) -> Self {
+        MathAccessibility {
+            max_depth,
+            max_nodes,
+        }
+    }
+
+    /// Describes `list`, returning structured readable text, MathML, per-node
+    /// identities, and explicit unsupported markers — or a typed error if the
+    /// list exceeds this adapter's depth or node-count bound.
     pub fn describe(&self, list: &MathList) -> Result<Description, AccessibilityError> {
         let mut renderer = Renderer {
             max_depth: self.max_depth,
+            max_nodes: self.max_nodes,
+            nodes_visited: 0,
             unsupported: Vec::new(),
+            nodes: Vec::new(),
         };
         let mut path = Vec::new();
         let rendered = renderer.render_list(list, 0, &mut path)?;
@@ -155,6 +273,7 @@ impl MathAccessibility {
                 "<math xmlns=\"http://www.w3.org/1998/Math/MathML\">{}</math>",
                 rendered.mathml
             ),
+            nodes: renderer.nodes,
             unsupported: renderer.unsupported,
         })
     }
@@ -168,7 +287,10 @@ struct Rendered {
 
 struct Renderer {
     max_depth: usize,
+    max_nodes: usize,
+    nodes_visited: usize,
     unsupported: Vec<Unsupported>,
+    nodes: Vec<DescribedNode>,
 }
 
 impl Renderer {
@@ -176,11 +298,34 @@ impl Renderer {
         if depth > self.max_depth {
             Err(AccessibilityError::RecursionLimitExceeded {
                 max_depth: self.max_depth,
-                path: path.to_vec(),
+                id: NodeId(path.to_vec()),
             })
         } else {
             Ok(())
         }
+    }
+
+    /// Records that one more node has been visited, bounding total node
+    /// count independently of nesting depth so a wide-but-shallow tree
+    /// cannot blow up even at `depth == 1`.
+    fn check_node_count(&mut self, path: &[PathStep]) -> Result<(), AccessibilityError> {
+        self.nodes_visited += 1;
+        if self.nodes_visited > self.max_nodes {
+            Err(AccessibilityError::NodeCountExceeded {
+                max_nodes: self.max_nodes,
+                id: NodeId(path.to_vec()),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Records an emitted description element for the node at `path`.
+    fn record(&mut self, path: &[PathStep], readable: &str) {
+        self.nodes.push(DescribedNode {
+            id: NodeId(path.to_vec()),
+            readable: readable.to_string(),
+        });
     }
 
     fn render_list(
@@ -200,6 +345,10 @@ impl Renderer {
         let mut mathml_parts = Vec::with_capacity(list.atoms.len());
         for (i, atom) in list.atoms.iter().enumerate() {
             path.push(PathStep::Atom(i));
+            if let Err(err) = self.check_node_count(path) {
+                path.pop();
+                return Err(err);
+            }
             let rendered = self.render_atom(atom, depth, path)?;
             path.pop();
             if !rendered.readable.is_empty() {
@@ -225,6 +374,7 @@ impl Renderer {
             (Some(sup), None) => {
                 path.push(PathStep::Superscript);
                 let sup = self.render_list(sup, depth + 1, path)?;
+                self.record(path, &sup.readable);
                 path.pop();
                 Ok(Rendered {
                     readable: format!("{} superscript {}", nucleus.readable, sup.readable),
@@ -234,6 +384,7 @@ impl Renderer {
             (None, Some(sub)) => {
                 path.push(PathStep::Subscript);
                 let sub = self.render_list(sub, depth + 1, path)?;
+                self.record(path, &sub.readable);
                 path.pop();
                 Ok(Rendered {
                     readable: format!("{} subscript {}", nucleus.readable, sub.readable),
@@ -243,9 +394,11 @@ impl Renderer {
             (Some(sup), Some(sub)) => {
                 path.push(PathStep::Subscript);
                 let sub = self.render_list(sub, depth + 1, path)?;
+                self.record(path, &sub.readable);
                 path.pop();
                 path.push(PathStep::Superscript);
                 let sup = self.render_list(sup, depth + 1, path)?;
+                self.record(path, &sup.readable);
                 path.pop();
                 Ok(Rendered {
                     readable: format!(
@@ -268,13 +421,13 @@ impl Renderer {
         depth: usize,
         path: &mut Vec<PathStep>,
     ) -> Result<Rendered, AccessibilityError> {
-        match nucleus {
-            Nucleus::Symbol(ch) => Ok(self.render_symbol(*ch, path)),
+        let rendered = match nucleus {
+            Nucleus::Symbol(ch) => self.render_symbol(*ch, path),
             Nucleus::List(list) => {
                 path.push(PathStep::Group);
                 let rendered = self.render_list(list, depth + 1, path)?;
                 path.pop();
-                Ok(rendered)
+                rendered
             }
             Nucleus::Fraction {
                 numerator,
@@ -296,25 +449,77 @@ impl Renderer {
                     ),
                     None => format!("<mfrac>{}{}</mfrac>", num.mathml, den.mathml),
                 };
-                Ok(Rendered {
+                Rendered {
                     readable: format!(
                         "start fraction, {}, over, {}, end fraction",
                         num.readable, den.readable
                     ),
                     mathml,
-                })
+                }
             }
-            Nucleus::Radical(radicand) => {
+            Nucleus::Radical { radicand, degree } => {
                 path.push(PathStep::Radicand);
                 let radicand = self.render_list(radicand, depth + 1, path)?;
                 path.pop();
-                Ok(Rendered {
-                    readable: format!(
-                        "start square root of {}, end square root",
-                        radicand.readable
+                match degree {
+                    None => Rendered {
+                        readable: format!(
+                            "start square root of {}, end square root",
+                            radicand.readable
+                        ),
+                        mathml: format!("<msqrt>{}</msqrt>", radicand.mathml),
+                    },
+                    Some(degree) => {
+                        path.push(PathStep::Degree);
+                        let degree = self.render_list(degree, depth + 1, path)?;
+                        path.pop();
+                        Rendered {
+                            readable: format!(
+                                "start root, index {}, {}, end root",
+                                degree.readable, radicand.readable
+                            ),
+                            // MathML mroot child order is (radicand, index).
+                            mathml: format!("<mroot>{}{}</mroot>", radicand.mathml, degree.mathml),
+                        }
+                    }
+                }
+            }
+            Nucleus::Text(text) => self.render_text(text, path),
+            Nucleus::Overline(body) => {
+                path.push(PathStep::OverlineBody);
+                let body = self.render_list(body, depth + 1, path)?;
+                path.pop();
+                Rendered {
+                    readable: format!("start overline, {}, end overline", body.readable),
+                    mathml: format!(
+                        "<mover accent=\"true\">{}<mo>\u{00AF}</mo></mover>",
+                        body.mathml
                     ),
-                    mathml: format!("<msqrt>{}</msqrt>", radicand.mathml),
-                })
+                }
+            }
+            Nucleus::Underline(body) => {
+                path.push(PathStep::UnderlineBody);
+                let body = self.render_list(body, depth + 1, path)?;
+                path.pop();
+                Rendered {
+                    readable: format!("start underline, {}, end underline", body.readable),
+                    mathml: format!("<munder accent=\"true\">{}<mo>_</mo></munder>", body.mathml),
+                }
+            }
+            Nucleus::Styled { style, body } => {
+                path.push(PathStep::StyledBody);
+                let body = self.render_list(body, depth + 1, path)?;
+                path.pop();
+                // The style's exact level is carried verbatim as MathML's
+                // `displaystyle` attribute rather than dropped or guessed at.
+                let displaystyle = style.level == StyleLevel::Display;
+                Rendered {
+                    readable: body.readable,
+                    mathml: format!(
+                        "<mstyle displaystyle=\"{displaystyle}\">{}</mstyle>",
+                        body.mathml
+                    ),
+                }
             }
             Nucleus::Accent { accent, base } => {
                 path.push(PathStep::AccentBase);
@@ -323,13 +528,13 @@ impl Renderer {
                 path.push(PathStep::AccentGlyph);
                 let (accent_word, accent_mathml) = self.render_accent_glyph(*accent, path);
                 path.pop();
-                Ok(Rendered {
+                Rendered {
                     readable: format!("{} with {} accent", base.readable, accent_word),
                     mathml: format!(
                         "<mover accent=\"true\">{}{}</mover>",
                         base.mathml, accent_mathml
                     ),
-                })
+                }
             }
             Nucleus::Delimited { left, right, body } => {
                 let left = self.render_delimiter(*left, PathStep::LeftDelimiter, path);
@@ -342,19 +547,21 @@ impl Renderer {
                     .filter(|part| !part.is_empty())
                     .collect::<Vec<_>>()
                     .join(" ");
-                Ok(Rendered {
+                Rendered {
                     readable,
                     mathml: format!(
                         "<mrow>{}{}{}</mrow>",
                         left.mathml, body.mathml, right.mathml
                     ),
-                })
+                }
             }
-            Nucleus::Empty => Ok(Rendered {
+            Nucleus::Empty => Rendered {
                 readable: String::new(),
                 mathml: "<mrow></mrow>".to_string(),
-            }),
-        }
+            },
+        };
+        self.record(path, &rendered.readable);
+        Ok(rendered)
     }
 
     /// Renders a single symbol character. Never guesses: a character with no
@@ -365,7 +572,7 @@ impl Renderer {
     fn render_symbol(&mut self, ch: char, path: &[PathStep]) -> Rendered {
         if ch.is_control() {
             self.unsupported.push(Unsupported {
-                path: path.to_vec(),
+                id: NodeId(path.to_vec()),
                 reason: UnsupportedReason::ControlCharacter(ch),
             });
             let note = format!("unsupported control character U+{:04X}", ch as u32);
@@ -382,7 +589,7 @@ impl Renderer {
             name.to_string()
         } else {
             self.unsupported.push(Unsupported {
-                path: path.to_vec(),
+                id: NodeId(path.to_vec()),
                 reason: UnsupportedReason::UnknownSymbolName(ch),
             });
             format!("[unsupported symbol U+{:04X}]", ch as u32)
@@ -390,10 +597,32 @@ impl Renderer {
         Rendered { readable, mathml }
     }
 
+    /// Renders `\lim`, `\sin`, and similar upright-text nuclei. The text is
+    /// spoken exactly as given (it is already a name, not a symbol we would
+    /// have to guess a name for); a control character embedded in it is
+    /// still reported explicitly rather than emitted as a raw byte.
+    fn render_text(&mut self, text: &str, path: &[PathStep]) -> Rendered {
+        if let Some(bad) = text.chars().find(|c| c.is_control()) {
+            self.unsupported.push(Unsupported {
+                id: NodeId(path.to_vec()),
+                reason: UnsupportedReason::ControlCharacter(bad),
+            });
+            let note = format!("unsupported control character U+{:04X}", bad as u32);
+            return Rendered {
+                readable: format!("[{note}]"),
+                mathml: format!("<merror><mtext>{note}</mtext></merror>"),
+            };
+        }
+        Rendered {
+            readable: text.to_string(),
+            mathml: format!("<mtext>{}</mtext>", escape_xml_text(text)),
+        }
+    }
+
     fn render_accent_glyph(&mut self, accent: char, path: &[PathStep]) -> (String, String) {
         if accent.is_control() {
             self.unsupported.push(Unsupported {
-                path: path.to_vec(),
+                id: NodeId(path.to_vec()),
                 reason: UnsupportedReason::ControlCharacter(accent),
             });
             let note = format!("unsupported control character U+{:04X}", accent as u32);
@@ -409,7 +638,7 @@ impl Renderer {
             Some(name) => (name.to_string(), mathml),
             None => {
                 self.unsupported.push(Unsupported {
-                    path: path.to_vec(),
+                    id: NodeId(path.to_vec()),
                     reason: UnsupportedReason::UnknownAccentName(accent),
                 });
                 (
@@ -603,7 +832,7 @@ fn accent_name(ch: char) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flashtex_math_layout::MathList;
+    use flashtex_math_layout::{MathList, Style};
 
     #[test]
     fn simple_relation_is_read_and_rendered_exactly() {
@@ -657,6 +886,55 @@ mod tests {
             "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><msqrt><mrow><mn>2</mn></mrow></msqrt></mrow></math>"
         );
         assert!(desc.is_fully_supported());
+    }
+
+    #[test]
+    fn nth_root_with_degree_is_read_and_rendered_exactly() {
+        let list = MathList::from(Atom::root(MathList::symbols("3"), MathList::symbols("8")));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_eq!(desc.readable, "start root, index 3, 8, end root");
+        assert_eq!(
+            desc.mathml,
+            "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mroot><mrow><mn>8</mn></mrow><mrow><mn>3</mn></mrow></mroot></mrow></math>"
+        );
+        assert!(desc.is_fully_supported());
+    }
+
+    #[test]
+    fn text_operator_is_spoken_as_given_not_guessed() {
+        let list = MathList::from(Atom::text_op("lim"));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_eq!(desc.readable, "lim");
+        assert_eq!(
+            desc.mathml,
+            "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mtext>lim</mtext></mrow></math>"
+        );
+        assert!(desc.is_fully_supported());
+    }
+
+    #[test]
+    fn overline_and_underline_are_read_and_rendered_exactly() {
+        let over = MathList::from(Atom::overline(MathList::symbols("x")));
+        let desc = MathAccessibility::new().describe(&over).unwrap();
+        assert_eq!(desc.readable, "start overline, x, end overline");
+        assert!(desc.mathml.contains("<mover accent=\"true\">"));
+
+        let under = MathList::from(Atom::underline(MathList::symbols("x")));
+        let desc = MathAccessibility::new().describe(&under).unwrap();
+        assert_eq!(desc.readable, "start underline, x, end underline");
+        assert!(desc.mathml.contains("<munder accent=\"true\">"));
+    }
+
+    #[test]
+    fn styled_body_carries_displaystyle_verbatim_and_reads_transparently() {
+        let list = MathList::from(Atom::styled(Style::DISPLAY, MathList::symbols("x")));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert_eq!(desc.readable, "x");
+        assert!(desc.mathml.contains("<mstyle displaystyle=\"true\">"));
+
+        let list = MathList::from(Atom::styled(Style::TEXT, MathList::symbols("x")));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        assert!(desc.mathml.contains("<mstyle displaystyle=\"false\">"));
     }
 
     #[test]
@@ -746,12 +1024,11 @@ mod tests {
             desc.mathml,
             "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><mo>\u{1F600}</mo></mrow></math>"
         );
+        assert_eq!(desc.unsupported.len(), 1);
+        assert_eq!(desc.unsupported[0].id.path(), &[PathStep::Atom(0)]);
         assert_eq!(
-            desc.unsupported,
-            vec![Unsupported {
-                path: vec![PathStep::Atom(0)],
-                reason: UnsupportedReason::UnknownSymbolName('\u{1F600}'),
-            }]
+            desc.unsupported[0].reason,
+            UnsupportedReason::UnknownSymbolName('\u{1F600}')
         );
         assert!(!desc.is_fully_supported());
     }
@@ -766,12 +1043,11 @@ mod tests {
             desc.mathml,
             "<math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mrow><merror><mtext>unsupported control character U+0007</mtext></merror></mrow></math>"
         );
+        assert_eq!(desc.unsupported.len(), 1);
+        assert_eq!(desc.unsupported[0].id.path(), &[PathStep::Atom(0)]);
         assert_eq!(
-            desc.unsupported,
-            vec![Unsupported {
-                path: vec![PathStep::Atom(0)],
-                reason: UnsupportedReason::ControlCharacter('\u{0007}'),
-            }]
+            desc.unsupported[0].reason,
+            UnsupportedReason::ControlCharacter('\u{0007}')
         );
         assert!(!desc.mathml.chars().any(|c| c.is_control()));
     }
@@ -855,6 +1131,31 @@ mod tests {
     }
 
     #[test]
+    fn wide_shallow_list_fails_on_node_count_not_depth() {
+        // 200 atoms in one flat list: depth stays at 1 throughout, so only a
+        // total-node-count bound (not the depth bound) can catch this.
+        let list = MathList::symbols(&"x".repeat(200));
+        let result = MathAccessibility::with_max_nodes(100).describe(&list);
+        match result {
+            Err(AccessibilityError::NodeCountExceeded { max_nodes, id }) => {
+                assert_eq!(max_nodes, 100);
+                // The 101st atom (index 100) is exactly where the bound trips.
+                assert_eq!(id.path(), &[PathStep::Atom(100)]);
+            }
+            other => panic!("expected NodeCountExceeded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wide_shallow_list_within_the_node_bound_still_succeeds() {
+        let list = MathList::symbols(&"x".repeat(50));
+        let desc = MathAccessibility::with_max_nodes(100)
+            .describe(&list)
+            .unwrap();
+        assert_eq!(desc.readable, vec!["x"; 50].join(" "));
+    }
+
+    #[test]
     fn empty_list_and_empty_nucleus_produce_no_text_and_a_bare_mrow() {
         let empty_list = MathList::new(vec![]);
         let desc = MathAccessibility::new().describe(&empty_list).unwrap();
@@ -876,5 +1177,63 @@ mod tests {
     fn escape_xml_text_escapes_only_the_three_reserved_characters() {
         assert_eq!(escape_xml_text("a<b&c>d"), "a&lt;b&amp;c&gt;d");
         assert_eq!(escape_xml_text("\u{03C0}"), "\u{03C0}");
+    }
+
+    /// Builds a moderately nested, mixed-content fixture from scratch. Called
+    /// twice independently in `identity_is_stable_across_rebuild` to prove
+    /// `NodeId`s are structural, not tied to one particular allocation.
+    fn build_fixture() -> MathList {
+        let frac = Atom::frac(
+            MathList::from(Atom::ord('\u{1F600}')), // unsupported: forces an id into `unsupported`
+            MathList::symbols("2"),
+        );
+        let root = Atom::accent('^', MathList::from(frac));
+        MathList::new(vec![Atom::ord('x'), root.with_sup(MathList::symbols("n"))])
+    }
+
+    #[test]
+    fn identity_is_stable_across_rebuild() {
+        // Two independently constructed trees with the same structure and
+        // content — not the same allocation, not the same `Vec`/`String`
+        // instances.
+        let tree_a = build_fixture();
+        let tree_b = build_fixture();
+        assert_ne!(
+            tree_a.atoms.as_ptr(),
+            tree_b.atoms.as_ptr(),
+            "fixture must actually be rebuilt, not reused, for this test to prove anything"
+        );
+
+        let desc_a = MathAccessibility::new().describe(&tree_a).unwrap();
+        let desc_b = MathAccessibility::new().describe(&tree_b).unwrap();
+
+        // Same emitted nodes, in the same order, with identical ids and text.
+        assert_eq!(desc_a.nodes.len(), desc_b.nodes.len());
+        assert!(!desc_a.nodes.is_empty());
+        for (a, b) in desc_a.nodes.iter().zip(desc_b.nodes.iter()) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.readable, b.readable);
+            assert_eq!(a.id.to_string(), b.id.to_string());
+        }
+
+        // Same unsupported markers, at the same identity.
+        assert_eq!(desc_a.unsupported, desc_b.unsupported);
+        assert!(!desc_a.unsupported.is_empty());
+
+        assert_eq!(desc_a.readable, desc_b.readable);
+        assert_eq!(desc_a.mathml, desc_b.mathml);
+    }
+
+    #[test]
+    fn node_id_display_is_a_stable_readable_path() {
+        let list = MathList::from(Atom::frac(MathList::symbols("1"), MathList::symbols("2")));
+        let desc = MathAccessibility::new().describe(&list).unwrap();
+        // The numerator "1" atom lives at atom0/numerator/atom0.
+        let numerator_leaf = desc
+            .nodes
+            .iter()
+            .find(|n| n.id.to_string() == "atom0/numerator/atom0")
+            .expect("numerator leaf node must be recorded with this exact id");
+        assert_eq!(numerator_leaf.readable, "1");
     }
 }
