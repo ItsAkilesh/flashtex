@@ -371,11 +371,16 @@ bench_pass() {
 CONTROLLER_BIN="$(helper_path preview-controller)"
 [[ $SKIP_CONTROLLER == 0 && -x "$CONTROLLER_BIN" ]] || CONTROLLER_BIN=""
 if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
+  # The bench finds flashtex-render and flashtex-preview-controller at their
+  # "this checkout" paths (copied into the pinned app clone above). They are
+  # deliberately NOT exported as FLASHTEX_RENDER / FLASHTEX_PREVIEW_CONTROLLER:
+  # the bench passes its whole environment to every cell, and an exported
+  # FLASHTEX_PREVIEW_CONTROLLER makes the app attach the helper in the direct
+  # worker cells too (observed: every "compiler" cell reported the controller).
   PRODUCERS="compiler"
-  [[ -n "$EXTRA_RENDER" ]] && { export FLASHTEX_RENDER="$EXTRA_RENDER"; PRODUCERS="$PRODUCERS render"; }
-  [[ -n "$CONTROLLER_BIN" ]] && { export FLASHTEX_PREVIEW_CONTROLLER="$CONTROLLER_BIN"; PRODUCERS="$PRODUCERS controller"; }
+  [[ -n "$EXTRA_RENDER" ]] && PRODUCERS="$PRODUCERS render"
+  [[ -n "$CONTROLLER_BIN" ]] && PRODUCERS="$PRODUCERS controller"
   step "typing bench ($SEEDS × $INTERVALS ms; producers $PRODUCERS; quiet-load $QUIET_LOAD, wait up to $QUIET_WAIT s per cell)"
-  printf '[typing-bench] FLASHTEX_RENDER=%q FLASHTEX_PREVIEW_CONTROLLER=%q\n' "${FLASHTEX_RENDER:-}" "${FLASHTEX_PREVIEW_CONTROLLER:-}" >> "$COMMANDS"
   bench_pass typing-bench "$RUN_DIR/typing-bench" "$PRODUCERS"
   if [[ -n "$CONTROLLER_BIN" ]]; then
     # Helper route again with historical previews (completed-snapshots-v1):
@@ -383,7 +388,7 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
     # completed_snapshot frames are painted labelled; classified afterwards.
     step "typing bench via flashtex-preview-controller with FLASHTEX_COMPLETED_SNAPSHOTS=1"
     export FLASHTEX_COMPLETED_SNAPSHOTS=1
-    printf '[typing-bench-historical] FLASHTEX_COMPLETED_SNAPSHOTS=1 FLASHTEX_PREVIEW_CONTROLLER=%q\n' "$FLASHTEX_PREVIEW_CONTROLLER" >> "$COMMANDS"
+    printf '[typing-bench-historical] FLASHTEX_COMPLETED_SNAPSHOTS=1 (controller from %q)\n' "$CONTROLLER_BIN" >> "$COMMANDS"
     bench_pass typing-bench-historical "$RUN_DIR/typing-bench-historical" "controller"
     unset FLASHTEX_COMPLETED_SNAPSHOTS
     ANALYZE="$APP_SRC/docs/evidence/historical-preview-2026-09-12T1010Z/analyze.py"
@@ -393,12 +398,12 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
       for raw in "$RUN_DIR"/typing-bench/typing-bench-*/ "$RUN_DIR"/typing-bench/retry/typing-bench-*/; do
         [[ -d "$raw" ]] || continue
         d="$HD/baseline/$(basename "$raw")"; mkdir -p "$d"
-        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && cp "$f" "${f%.json}.log" "$d/" 2>/dev/null; done
+        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && { cp "$f" "$d/"; cp "${f%.json}.log" "$HD/baseline/" 2>/dev/null; }; done
       done
       for raw in "$RUN_DIR"/typing-bench-historical/typing-bench-*/ "$RUN_DIR"/typing-bench-historical/retry/typing-bench-*/; do
         [[ -d "$raw" ]] || continue
         d="$HD/historical/$(basename "$raw")"; mkdir -p "$d"
-        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && cp "$f" "${f%.json}.log" "$d/" 2>/dev/null; done
+        for f in "$raw"/controller-*.json; do [[ -f "$f" && ! -f "$d/$(basename "$f")" ]] && { cp "$f" "$d/"; cp "${f%.json}.log" "$HD/historical/" 2>/dev/null; }; done
       done
       cmd historical-analyze python3 "$ANALYZE" "$HD/baseline" "$HD/historical"
       cp "$LOGS/historical-analyze.log" "$HD/analysis.txt"
@@ -407,7 +412,6 @@ if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
       note "analyze.py not found at $ANALYZE; historical classification skipped"
     fi
   fi
-  unset FLASHTEX_RENDER FLASHTEX_PREVIEW_CONTROLLER
 else
   step "typing bench skipped (skip=$SKIP_BENCH app_ok=$APP_OK helpers_ok=$HELPERS_OK)"
 fi
@@ -550,7 +554,7 @@ fi
 # ShellModel/ProjectDocuments/DocumentFiles paths, here against the real
 # helpers built above (no fakes for the helper-route cases).
 if [[ $SKIP_TESTS == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
-  step "swift test (ProjectDocumentsTests, DocumentFilesTests, HistoricalPreviewTests, ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff) with the real helpers"
+  step "swift test (ProjectDocumentsTests, DocumentFilesTests, DocumentFilesControllerTests, HistoricalPreviewTests, ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff) with the real helpers"
   export FLASHTEX_COMPILER="$(helper_path compiler)" FLASHTEX_PDF="$(helper_path pdf)" FLASHTEX_BRIDGE="$(helper_path bridge)" \
          FLASHTEX_EDIT_LEDGER="$(helper_path edit-ledger)" FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)"
   [[ -n "$EXTRA_PROJECT_FILES" ]] && export FLASHTEX_PROJECT_FILES="$EXTRA_PROJECT_FILES"
@@ -558,7 +562,7 @@ if [[ $SKIP_TESTS == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   [[ -n "$EXTRA_PDF_EXACT" ]] && export FLASHTEX_PDF_EXACT="$EXTRA_PDF_EXACT"
   printf '[app-tests] FLASHTEX_COMPILER=%q FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_PROJECT_FILES=%q FLASHTEX_EDIT_LEDGER=%q FLASHTEX_BRIDGE=%q FLASHTEX_PDF=%q\n' \
       "$FLASHTEX_COMPILER" "$FLASHTEX_PREVIEW_CONTROLLER" "${FLASHTEX_PROJECT_FILES:-}" "$FLASHTEX_EDIT_LEDGER" "$FLASHTEX_BRIDGE" "$FLASHTEX_PDF" >> "$COMMANDS"
-  cmd app-tests swift test --package-path "$MAC" --filter 'ProjectDocumentsTests|DocumentFilesTests|HistoricalPreviewTests|ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'
+  cmd app-tests swift test --package-path "$MAC" --filter 'ProjectDocumentsTests|DocumentFilesTests|DocumentFilesControllerTests|HistoricalPreviewTests|ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff'
   python3 "$LIB/xctest_summary.py" --log "$LOGS/app-tests.log" --exit "$CMD_STATUS" --out "$RUN_DIR/app-tests.json"
   unset FLASHTEX_COMPILER FLASHTEX_PDF FLASHTEX_BRIDGE FLASHTEX_EDIT_LEDGER FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_PROJECT_FILES FLASHTEX_RENDER FLASHTEX_PDF_EXACT
 fi

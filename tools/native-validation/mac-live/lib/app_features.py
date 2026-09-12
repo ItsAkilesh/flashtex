@@ -247,8 +247,9 @@ def worker_relaunch(a):
     rec = {"compiler": describe(os.path.join(macos, "flashtex-compiler")), "seed": seed if os.path.isfile(seed) else None, "kills": [], "checks": []}
     p = launch(a.app, env)
     rec["pid"] = p.pid
-    seen = wait_for(log, ["revision 1: ok", "bench: typing"], a.timeout)
-    rec["checks"].append({"name": "bundled compiler attached, painted revision 1, typing bench started editing", "ok": seen["revision 1: ok"] is not None and seen["bench: typing"] is not None, "detail": json.dumps(seen)})
+    # With a seed file the first compile is revision 2 (the seed replaces the fixture project).
+    seen = wait_for(log, [": ok, ", "bench: typing"], a.timeout)
+    rec["checks"].append({"name": "bundled compiler attached, first compile ok, typing bench started editing", "ok": seen[": ok, "] is not None and seen["bench: typing"] is not None, "detail": json.dumps(seen)})
 
     def child():
         return subprocess.run(["pgrep", "-P", str(p.pid), "-x", "flashtex-compiler"], capture_output=True, text=True).stdout.split()

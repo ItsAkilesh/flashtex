@@ -11,7 +11,7 @@ import re
 CASE = re.compile(r"Test Case '-\[(\S+) (\S+)\]' (passed|failed|skipped)(?: \((\d+\.\d+) seconds\))?")
 SKIP = re.compile(r"(\S+\.swift):(\d+): -\[(\S+) (\S+)\] : Test skipped(?: - (.*))?")
 FAIL = re.compile(r"(\S+\.swift):(\d+): error: -\[(\S+) (\S+)\] : (.*)")
-TOTAL = re.compile(r"Executed (\d+) tests?, with (\d+) tests? skipped and (\d+) failures? \((\d+) unexpected\) in ([\d.]+)")
+TOTAL = re.compile(r"Executed (\d+) tests?, with (?:(\d+) tests? skipped and )?(\d+) failures? \((\d+) unexpected\) in ([\d.]+)")
 
 
 def main():
@@ -37,7 +37,7 @@ def main():
             continue
         m = TOTAL.search(line)
         if m:
-            total = {"executed": int(m.group(1)), "skipped": int(m.group(2)), "failures": int(m.group(3)), "unexpected": int(m.group(4)), "seconds": float(m.group(5))}
+            total = {"executed": int(m.group(1)), "skipped": int(m.group(2) or 0), "failures": int(m.group(3)), "unexpected": int(m.group(4)), "seconds": float(m.group(5))}
     for k, v in cases.items():
         if k in skips:
             v["skip_reason"] = skips[k]

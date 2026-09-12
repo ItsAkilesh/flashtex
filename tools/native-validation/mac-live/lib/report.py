@@ -97,14 +97,16 @@ def main():
         main_short = (env.get("sources", {}).get("main_sha") or "")[:7]
         branch_short = (env.get("sources", {}).get("branch_sha") or "")[:7]
         bad = []
+        def same(short, full):  # make-app.sh uses git's auto-length short SHA (7+ chars)
+            return bool(short) and bool(full) and len(short) >= 7 and full.startswith(short)
         for key in ("compiler", "pdf", "bridge", "edit_ledger"):
-            if (comp.get(key) or {}).get("git_sha") != main_short:
+            if not same((comp.get(key) or {}).get("git_sha"), env.get("sources", {}).get("main_sha")):
                 bad.append("%s=%s" % (key, (comp.get(key) or {}).get("git_sha")))
-        if (comp.get("app") or {}).get("git_sha") != branch_short:
+        if not same((comp.get("app") or {}).get("git_sha"), env.get("sources", {}).get("branch_sha")):
             bad.append("app=%s" % (comp.get("app") or {}).get("git_sha"))
         for key, name in (("render", "render"), ("pdf_exact", "pdf-exact")):
             e = extras.get(name) or {}
-            if e.get("built_ok") and (comp.get(key) or {}).get("git_sha") != (e.get("sha") or "")[:7]:
+            if e.get("built_ok") and not same((comp.get(key) or {}).get("git_sha"), e.get("sha")):
                 bad.append("%s=%s (expected %s)" % (key, (comp.get(key) or {}).get("git_sha"), (e.get("sha") or "")[:7]))
         gate(sec, "bundle components.json git SHAs: helpers == %s (main), app == %s (branch), render/pdf_exact == their branch SHAs" % (main_short, branch_short), not bad, "; ".join(bad) or "all match")
     for name, label in (("render", "flashtex-render"), ("pdf-exact", "flashtex-pdf-exact")):

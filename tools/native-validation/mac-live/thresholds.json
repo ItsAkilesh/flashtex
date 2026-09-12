@@ -168,8 +168,8 @@
         "ProjectDocumentsTests/testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk",
         "DocumentFilesTests/testHelperSaveRefusesExternalChangesUntilOverwriteOrReload",
         "DocumentFilesTests/testReloadIsReviewedAndPinnedToTheReviewedSnapshot",
-        "DocumentFilesTests/testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource",
-        "ShellModelTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff"
+        "DocumentFilesControllerTests/testControllerReloadIsReviewedPinnedAndImportedIntoTheDurableSource",
+        "ShellModelWorkerTests/testCrashedWorkerIsRelaunchedWithBoundedBackoff"
       ]
     }
   },
