@@ -28,7 +28,9 @@ fn percentile(samples: &mut [Duration], percentile: f64) -> Duration {
     samples[index]
 }
 
-fn summary(name: &str, mut samples: Vec<Duration>) {
+/// Prints the summary and returns the p95 in milliseconds, so the caller can
+/// state the remaining budget without recomputing it.
+fn summary(name: &str, mut samples: Vec<Duration>) -> f64 {
     let median = percentile(&mut samples.clone(), 0.50);
     let p95 = percentile(&mut samples, 0.95);
     println!(
@@ -36,6 +38,7 @@ fn summary(name: &str, mut samples: Vec<Duration>) {
         milliseconds(median),
         milliseconds(p95)
     );
+    milliseconds(p95)
 }
 
 fn main() {
@@ -86,14 +89,31 @@ fn main() {
         macro_edit.push(start.elapsed());
         representative_macro_edit = Some(result.stats);
     }
-    summary("cold", cold);
-    summary("warm unchanged", warm);
-    summary("one-word edit", edit);
+    let _ = summary("cold", cold);
+    let _ = summary("warm unchanged", warm);
+    let edit_p95 = summary("one-word edit", edit);
     println!("edit stats: {:?}", representative_edit.expect("sample"));
-    summary("global macro edit", macro_edit);
+    let _ = summary("global macro edit", macro_edit);
     println!(
         "macro edit stats: {:?}",
         representative_macro_edit.expect("sample")
     );
-    println!("target: <200 ms ordinary warm edit (compiler-only measurement)");
+    // FT-002 rev 6 acceptance: warm edit timing includes compiler work and leaves
+    // the native paint gate EXPLICIT. The product requirement is keystroke to
+    // visible matching output. Everything measured above stops at the compiler's
+    // reply; no estimate of the rest is folded in, because a folded-in guess
+    // would read as a product number and it is not one.
+    println!();
+    println!("--- what these numbers are, and are not ---");
+    println!("measured here:     compiler work only, from request line to reply line");
+    println!("compiler warm-edit p95 (NOT PRODUCT NUMBER): {edit_p95:.3} ms");
+    println!(
+        "remaining compiler-only budget against 200 ms (NOT PRODUCT NUMBER): {:.3} ms",
+        200.0 - edit_p95
+    );
+    println!("NOT measured here: UI paint, scheduling, IPC transport, PDF writing,");
+    println!("                   and the native shell's own work. Those are outside");
+    println!("                   this crate and are gated by FT-003 and FT-008.");
+    println!("PRODUCT TARGET:    <200 ms keystroke-to-visible-output remains UNPROVEN.");
+    println!("                   It can only be established by measuring the real app.");
 }

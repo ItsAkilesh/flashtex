@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T06:34:14Z",
-      "adaptation": "Accepted FT-002 revision 5 at input main ac17097 under allocation openai-kabir-plus-ft002-stage5: harden incremental restart/recovery and run a pinned-corpus non-regression gate, recording supported, failed, unsupported and unverified behaviour honestly. Note that crates/compiler is now integrated on main, so this branch is finally building on integrated work. Running rules-v1 and font-hints-v1 negotiation in parallel in a separate worktree, because the layout-capabilities contract published at a949f5b is what finally allows issue #9 to be closed properly: the fraction bar can become a real rule primitive instead of a box-drawing stand-in.",
-      "main_sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
-      "revision": 5
+      "acknowledged_utc": "2026-09-12T06:53:17Z",
+      "adaptation": "Accepted FT-002 revision 6 at input main 38155b1 under allocation openai-kabir-plus-ft002-stage6. Revs 1-5 are delivered and issues #8 and #9 are closed. Rev 6 connects the compiler to the negotiated font/layout crates built in parallel by FT-018, FT-019 and FT-020, and requires pinned fixture evidence that reports every mismatch without normalisation, plus warm-edit timing that keeps the native paint gate explicit rather than folded into a compiler number.",
+      "main_sha": "70e4aabc579bb7783187cb397b81857200a4de53",
+      "revision": 6
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "0fd0b4571bebdc1ab5b613e77dbc8507f8d3a5d5",
+  "code_revision": "70e4aabc579bb7783187cb397b81857200a4de53",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
-  "next_action": "Close issue #9 and notify FT-009 that the producer side of migration gate 1 is done. Available for the next dispatch.",
+  "main_integrated_through": "70e4aabc579bb7783187cb397b81857200a4de53",
+  "next_action": "Available for dispatch. Cluster-level ligature shaping remains outstanding.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Verified the contract trap myself rather than trusting the worker: sessions are keyed by project and path, not by capability set, so a cached result could have been returned to a request with a different set. It is bound correctly. Also confirmed rule geometry is top-left with the numerator above and denominator below, dimensions positive and within the magnitude cap, and the source range naming the generating \\\\frac command.",
-      "reviewed_utc": "2026-09-12T06:46:58Z",
-      "sha": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3"
+      "adaptation": "Correcting my own earlier attribution: the font-engine adoption came from Codex partial interrupted run, not from the merge as I first reported. Two corpus pins moved ok to recovered because font-engine now reports missing CJK glyphs that the old hand-typed metrics table silently laid out with placeholder widths; that is new knowledge, not lost capability, and the text is still typeset.",
+      "reviewed_utc": "2026-09-12T07:04:12Z",
+      "sha": "70e4aabc579bb7783187cb397b81857200a4de53"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "rules-v1 and font-hints-v1 negotiation implemented, closing the compiler half of issue #9. Fraction bars are now real rule primitives when negotiated; the legacy text-bar route and its export warning are unchanged for clients that do not request the capability. 83 tests across 12 suites.",
+  "summary": "FT-002 rev 6 delivered: compiler now measures through crates/font-engine with real kerning, metrics.rs deleted, pinned byte-exact fixture evidence in both capability modes, and benchmark output that keeps the native paint gate explicit. 13 suites pass. Found and fixed a real export bug and a flaw in my own corpus gate.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T06:46:58Z",
+  "updated_utc": "2026-09-12T07:04:12Z",
   "usage": {
-    "evidence": "cargo test 83 pass; clippy -D warnings clean; fmt clean; legacy harness 21/21 unchanged; corpus 9 ok unchanged; one-word edit p95 30.715 ms so no latency regression; capability cache binding verified independently by compiling the same document with rules-v1, then without on the same session, then with again, and confirming the rule primitive does not leak to the request that did not ask for it",
-    "status": "Codex used for the implementation; verification and merge done directly"
+    "evidence": "cargo test 13 suites pass; clippy -D warnings clean; fmt clean; harness 21/21; 16 pinned fixtures byte-compared across legacy and negotiated modes; bench reports warm edit p95 28.197 ms with 171.803 ms of budget and states the product target is unproven",
+    "status": "Codex hit its usage limit twice mid-task; it completed the font-engine adoption before dying and I completed the rest directly"
   }
 }

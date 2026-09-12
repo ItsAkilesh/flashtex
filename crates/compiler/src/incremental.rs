@@ -87,6 +87,7 @@ struct CachedBlock {
     prepared_state: FlowState,
     end_state: FlowState,
     placed: Vec<PlacedItem>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone)]
@@ -239,6 +240,7 @@ impl Session {
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
             let prepared_state = cursor.prepare_block(block);
+            let diagnostics_start = cursor.diagnostics_len();
             let candidate = if can_reuse {
                 self.previous.as_ref().and_then(|previous| {
                     previous
@@ -258,7 +260,10 @@ impl Session {
                 if prepared_state.same_geometry(cached.prepared_state) {
                     let shifted = shift_placed(&cached.placed, &changes, &deltas)
                         .expect("candidate spans were already validated");
-                    cursor.append_reused(&shifted, cached.end_state);
+                    let shifted_diagnostics =
+                        shift_diagnostics(&cached.diagnostics, &changes, &deltas)
+                            .expect("candidate diagnostic spans were already validated");
+                    cursor.append_reused(&shifted, &shifted_diagnostics, cached.end_state);
                     stats.blocks_reused += 1;
                     shifted
                 } else {
@@ -270,19 +275,24 @@ impl Session {
                 cursor.render_prepared_block(block)
             };
             let end_state = cursor.state();
+            let block_diagnostics = cursor.diagnostics_since(diagnostics_start).to_vec();
             cache.push(CachedBlock {
                 block: block.clone(),
                 dependencies,
                 prepared_state,
                 end_state,
                 placed,
+                diagnostics: block_diagnostics,
             });
         }
 
+        let (pages, mut layout_diagnostics) = cursor.into_pages_and_diagnostics();
+        let mut diagnostics = parsed.diagnostics;
+        diagnostics.append(&mut layout_diagnostics);
         let output = CompileOutput {
             blocks: parsed.blocks,
-            diagnostics: parsed.diagnostics,
-            pages: cursor.into_pages(),
+            diagnostics,
+            pages,
         };
         self.previous = Some(Revision {
             documents: snapshot,
@@ -470,6 +480,27 @@ fn shift_placed(
                     font: placed.item.font,
                     rule: placed.item.rule,
                 },
+            })
+        })
+        .collect()
+}
+
+fn shift_diagnostics(
+    diagnostics: &[Diagnostic],
+    changes: &[ChangedBytes],
+    deltas: &[isize],
+) -> Option<Vec<Diagnostic>> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            Some(Diagnostic {
+                severity: diagnostic.severity,
+                message: diagnostic.message.clone(),
+                span: match diagnostic.span {
+                    Some(span) => Some(mapped_span(span, changes, deltas)?),
+                    None => None,
+                },
+                recovery: diagnostic.recovery.clone(),
             })
         })
         .collect()
