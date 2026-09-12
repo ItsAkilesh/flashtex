@@ -78,7 +78,7 @@ candidate line was mis-measured with `start > brk` (details in the README).
 
 ## Limitations
 
-- Not run: the corpus reproduction through a rebuilt `flashtex-render`
+- Done as evidence only (README § vendored copy): the minimal corpus reproduction through a rebuilt `flashtex-render` — unpatched exit 101 at `linebreak.rs:988`, patched exit 0 with the control placement and one extra line pitch before a following paragraph. Not run: the full corpus fixtures (`cv`, `article-twocolumn`)
   (render-pipeline is not this lane's crate; the parent re-pins the vendored
   copy after review). The crate-level reproduction is exact for the reported
   item shape (`\\` then paragraph end).

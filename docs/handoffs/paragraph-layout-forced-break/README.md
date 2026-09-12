@@ -206,6 +206,23 @@ and page assignment on both variants), 2 `oracle_wrap_sample`, 4
 diagnostics will now print `Underfull \hbox (badness 10000) in paragraph` for
 the empty line, as pdflatex does.
 
+End-to-end check (evidence only; nothing in render-pipeline is changed by this
+handoff): `flashtex-render` built with `cargo build --release --offline` from a
+`git archive` of `crates/render-pipeline` at `9aaec57a` (the corpus lane's
+binary revision), fed one `compile` request on stdin with `FLASHTEX_NO_ACTIVATE=1`:
+
+| Source body | unpatched vendored copy | vendored copy + both patches |
+|---|---|---|
+| `Hello` (control) | exit 0, `Hello` at (148.712, 134.765) bp | identical |
+| `Hello \\` + blank line | **exit 101**, `panicked at vendor/paragraph-layout/src/linebreak.rs:988:21: slice index starts at 6 but ends at 5` | exit 0, status `ok`, 1 page, `Hello` at (148.712, 134.765) — same as control |
+| `Hello \\ world` | exit 0 | exit 0, `Hello` (148.712, 134.765), `world` (133.768, 146.72) |
+| `Hello \\` + blank + `Next` | exit 101 | exit 0, `Next` at (148.712, **158.675**) vs 146.72 in the `Hello` + `Next` control: one extra line pitch (11.955 bp = 12 pt), which is the blank line pdflatex sets |
+| `Hello \\\\` + blank line | exit 101 | exit 0, `Hello` at the control position |
+
+The helper emits no diagnostic for the underfull empty line (its diagnostics
+policy is the pipeline owner's; the vendored crate's own `Lines.diagnostics`
+does carry the `Underfull \hbox (badness 10000)` entry).
+
 The render-pipeline call-site guard (not panicking the whole helper on a
 layout error) belongs to the text-gaps lane's follow-up 1 and is not part of
 this handoff. Consumers of `Lines` should expect lines with `runs.is_empty()`
@@ -310,10 +327,10 @@ load 26–61 during the run (no timing tests involved).
 
 ## Limitations
 
-- The end-to-end corpus reproduction through a rebuilt `flashtex-render` was
-  not run (render-pipeline is not this lane's crate and its owner re-pins the
-  vendored copy after review). The crate-level reproduction uses the exact
-  item shape the builder emits for `Hello \\` + blank line.
+- The end-to-end check above covers the minimal reproduction only; the full
+  corpus fixtures (`cv`, `article-twocolumn`, tabular rows ending in `\\`)
+  were not re-run through the harness (render-pipeline is not this lane's
+  crate and its owner re-pins the vendored copy after review).
 - No pdflatex run in this lane: the TeX behaviour cited is from the TeX
   program sections named above and the LaTeX kernel's `\\`; the existing
   oracle tests are the regression evidence.

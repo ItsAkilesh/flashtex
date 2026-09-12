@@ -108,5 +108,17 @@
     "non_panicking_identical": 17775,
     "dump_before_sha256": "64c4a5f130cba08037bb56a616a9d9410c24c0631f38b662a6f8535d005a5913",
     "dump_after_sha256": "e3c68f359497d260c95cbc830214812eece47fb4f6d41b3e74196e71b7168737"
+  },
+  "end_to_end_flashtex_render": {
+    "binary": "flashtex-render built from git archive origin/agent/mac-render-pipeline/unified (9aaec57a019c6a0073419eeb3ec90f922f5b367c) crates/render-pipeline, cargo build --release --offline; render-pipeline itself unchanged",
+    "request": "one JSON compile request on stdin (protocol_version 1, documents [main.tex]), FLASHTEX_NO_ACTIVATE=1",
+    "unpatched": {
+      "source": "Hello \\\\ + blank line",
+      "exit": 101,
+      "stderr": "thread 'main' (12292802) panicked at vendor/paragraph-layout/src/linebreak.rs:988:21:"
+    },
+    "patched_vendored_copy": "control Hello -> (0, 'ok', [('Hello', 148.712, 134.765)], [])\nHello \\\\ + blank line -> (0, 'ok', [('Hello', 148.712, 134.765)], [])\nHello \\\\ world -> (0, 'ok', [('Hello', 148.712, 134.765), ('world', 133.768, 146.72)], [])\nHello \\\\ + blank + Next para -> (0, 'ok', [('Hello', 148.712, 134.765), ('Next', 148.712, 158.675)], [])\ncontrol Hello + Next para -> (0, 'ok', [('Hello', 148.712, 134.765), ('Next', 148.712, 146.72)], [])\nHello \\\\\\\\ + blank -> (0, 'ok', [('Hello', 148.712, 134.765)], [])\n",
+    "vendored_diagnostics_probe": "layout_paragraph on `Hello ` + line_break + finish with article_12pt_letter_1in: 2 lines; diagnostics = [Underfull \\hbox (badness 10000) in paragraph, line 2 (kind Underfull { badness: 10000 }, line 1)]",
+    "e2e_log_sha256": "388c4b64a00f50be13aee37feedcd70325928c2ed2c180768bbaed84f25d472f"
   }
 }
