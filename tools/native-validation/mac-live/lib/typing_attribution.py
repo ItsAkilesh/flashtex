@@ -143,23 +143,33 @@ RE_DECODED = re.compile(r"worker: line (\d+) B decoded in ([\d.]+) ms at (\d+)")
 RE_MAIN = re.compile(r"worker: event on main at (\d+)")
 RE_APPLIED = re.compile(r"compile: applied revision (\d+) at (\d+)")
 RE_DURABLE = re.compile(r"durable: r(\d+) for revision (\d+) at (\d+)")
-RE_PREPARING = re.compile(r"preview-v2: preparing (\S+) \(revision (\d+)\) ticket (\d+) at (\d+)")
-RE_PREPARED = re.compile(r"preview-v2: prepared (\S+) \(revision (\d+)\) in ([\d.]+) ms, prerastered (\d+) page\(s\) in ([\d.]+) ms, delivered ([\d.]+) ms later")
-RE_PUBLISHED = re.compile(r"preview-v2: published (\S+) \(revision (\d+)\) revision (\d+) at (\d+)")
-RE_COALESCED = re.compile(r"preview-v2: coalesced")
+RE_PREPARING = re.compile(r"preview-v2: preparing (.+?) \(revision (\d+)\) ticket (\d+) at (\d+)")
+RE_PREPARED = re.compile(r"preview-v2: prepared (.+?) \(revision (\d+)\) in ([\d.]+) ms, prerastered (\d+) page\(s\) in ([\d.]+) ms, delivered ([\d.]+) ms later")
+RE_PUBLISHED = re.compile(r"preview-v2: published (.+?) \(revision (\d+)\) revision (\d+) at (\d+)")
+RE_COALESCED = re.compile(r"preview-v2: coalesced (.+?) \(revision (\d+)\) behind")
 RE_PAINT = re.compile(r"paint: revision (\d+) at (\d+) \(covers (\d+) keystrokes, redrawn (\w+)\)")
 RE_STATUS = re.compile(r"status: revision (\d+): ok, (\d+) diagnostics in (\d+) ms")
 
 
 def attribute(log_path):
     """Per painted revision: stage durations in ms (None when a stage did not
-    appear for that revision). Requests are matched to their decoded lines in
-    order: the shell keeps at most one compile in flight on the direct route."""
+    appear for that revision). Decoded lines carry no revision, so they are
+    matched to the consumer event that follows them on the main thread: the
+    oldest pending decoded line belongs to the next "compile: applied revision
+    r" (v1 result line) or the next "preview-v2: preparing/coalesced (revision
+    r)" (v2 sibling line). The shell sends the next request as soon as the v1
+    result is applied, before the sibling is decoded, so send order alone
+    would misattribute the sibling."""
     keys, sends, applied, durable, paints = {}, {}, {}, {}, {}
     preparing, prepared, published = {}, {}, {}
-    requests = []  # [revision, send_ns, [decoded (bytes, ms, ns)], main_ns]
-    open_req = None
+    lines = {}     # revision -> {"v1": [bytes, decode_ms, decoded_ns, main_ns], "v2": ...}
+    pending = []   # decoded lines not yet claimed
     coalesced_v2 = 0
+
+    def claim(r, kind):
+        if pending:
+            lines.setdefault(r, {})[kind] = pending.pop(0)
+
     for raw in open(log_path, encoding="utf-8", errors="replace"):
         line = raw.rstrip("\n")
         m = RE_KEY.search(line)
@@ -167,44 +177,40 @@ def attribute(log_path):
             keys[int(m.group(1))] = int(m.group(2)); continue
         m = RE_SEND.search(line)
         if m:
-            r, ns = int(m.group(1)), int(m.group(2))
-            sends[r] = ns
-            open_req = [r, ns, [], None]
-            requests.append(open_req)
-            continue
+            sends[int(m.group(1))] = int(m.group(2)); continue
         m = RE_DECODED.search(line)
-        if m and open_req is not None:
-            open_req[2].append((int(m.group(1)), float(m.group(2)), int(m.group(3)))); continue
+        if m:
+            pending.append([int(m.group(1)), float(m.group(2)), int(m.group(3)), None]); continue
         m = RE_MAIN.search(line)
-        if m and open_req is not None:
-            # the main hop of the last decoded line (v2 sends two lines: v1
-            # result then sibling; each gets its own hop — keep the last)
-            open_req[3] = int(m.group(1)); continue
+        if m:
+            for p in pending:
+                if p[3] is None:
+                    p[3] = int(m.group(1)); break
+            continue
         m = RE_APPLIED.search(line)
         if m:
-            applied[int(m.group(1))] = int(m.group(2)); continue
+            r = int(m.group(1)); applied[r] = int(m.group(2)); claim(r, "v1"); continue
         m = RE_DURABLE.search(line)
         if m:
             durable[int(m.group(2))] = int(m.group(3)); continue
         m = RE_PREPARING.search(line)
         if m:
-            preparing[int(m.group(2))] = int(m.group(4)); continue
+            r = int(m.group(2)); preparing[r] = int(m.group(4)); claim(r, "v2"); continue
         m = RE_PREPARED.search(line)
         if m:
             prepared[int(m.group(2))] = (float(m.group(3)), int(m.group(4)), float(m.group(5)), float(m.group(6))); continue
         m = RE_PUBLISHED.search(line)
         if m:
             published[int(m.group(3))] = int(m.group(4)); continue
-        if RE_COALESCED.search(line):
-            coalesced_v2 += 1; continue
+        m = RE_COALESCED.search(line)
+        if m:
+            coalesced_v2 += 1; claim(int(m.group(2)), "v2"); continue
         m = RE_PAINT.search(line)
         if m:
             paints[int(m.group(1))] = (int(m.group(2)), int(m.group(3)), m.group(4) == "true"); continue
-    by_rev = {req[0]: req for req in requests}
     rows = []
     for r, (paint_ns, covered, redrawn) in sorted(paints.items()):
         key_ns = keys.get(r)
-        req = by_rev.get(r)
         row = {"revision": r, "covers": covered, "redrawn": redrawn}
         if key_ns is None:
             rows.append(row); continue
@@ -212,16 +218,18 @@ def attribute(log_path):
         send_ns = sends.get(r)
         if send_ns is not None:
             row["key_to_send_ms"] = (send_ns - key_ns) / NS
-        if req and req[2]:
-            last_decoded_ns = req[2][-1][2]
-            decode_ms = sum(d[1] for d in req[2])
-            row["lines"] = len(req[2]); row["line_bytes"] = [d[0] for d in req[2]]
-            row["producer_ms"] = (last_decoded_ns - req[1]) / NS - decode_ms
+        got = lines.get(r, {})
+        if send_ns is not None and got:
+            last = got.get("v2") or got.get("v1")
+            decode_ms = sum(v[1] for v in got.values())
+            row["lines"] = len(got); row["line_bytes"] = [v[0] for v in got.values()]
+            row["producer_ms"] = (last[2] - send_ns) / NS - decode_ms
             row["decode_ms"] = decode_ms
-            if req[3] is not None:
-                row["to_main_ms"] = (req[3] - last_decoded_ns) / NS
-                if r in applied:
-                    row["apply_ms"] = (applied[r] - req[3]) / NS
+            if last[3] is not None:
+                row["to_main_ms"] = (last[3] - last[2]) / NS
+            v1 = got.get("v1")
+            if v1 and v1[3] is not None and r in applied:
+                row["apply_ms"] = (applied[r] - v1[3]) / NS
         elif send_ns is not None and r in applied:
             # helper route: PreviewControllerClient logs no decode/main-hop
             # lines, so the helper's whole answer (its compiler + transport +
@@ -229,20 +237,23 @@ def attribute(log_path):
             row["helper_roundtrip_ms"] = (applied[r] - send_ns) / NS
             if r in durable:
                 row["durable_to_apply_ms"] = (applied[r] - durable[r]) / NS
-        if r in applied:
-            end = applied[r]
-            if r in preparing:
-                row["v2_wait_ms"] = (preparing[r] - applied[r]) / NS
-                if r in prepared:
-                    p = prepared[r]
-                    row["v2_prepare_ms"], row["v2_pages"], row["v2_preraster_ms"], row["v2_deliver_ms"] = p
-                if r in published:
-                    row["v2_publish_ms"] = (published[r] - preparing[r]) / NS - sum(prepared.get(r, (0, 0, 0, 0))[i] for i in (0, 2, 3))
-                    end = published[r]
+        end = applied.get(r)
+        if r in preparing:
+            v2 = got.get("v2")
+            base = v2[3] if v2 and v2[3] is not None else applied.get(r)
+            if base is not None:
+                row["v2_wait_ms"] = (preparing[r] - base) / NS
+            if r in prepared:
+                p = prepared[r]
+                row["v2_prepare_ms"], row["v2_pages"], row["v2_preraster_ms"], row["v2_deliver_ms"] = p
+            if r in published:
+                row["v2_publish_ms"] = (published[r] - preparing[r]) / NS - sum(prepared.get(r, (0, 0, 0, 0))[i] for i in (0, 2, 3))
+                end = published[r]
+        if end is not None:
             row["paint_ms"] = (paint_ns - end) / NS
         rows.append(row)
     return rows, {"keystrokes_logged": len(keys), "sends": len(sends), "paints": len(paints), "applied": len(applied),
-                  "durable": len(durable), "v2_coalesced": coalesced_v2, "requests_with_lines": sum(1 for q in requests if q[2])}
+                  "durable": len(durable), "v2_coalesced": coalesced_v2, "requests_with_lines": len(lines), "unclaimed_lines": len(pending)}
 
 
 STAGES = ["key_to_send_ms", "producer_ms", "decode_ms", "to_main_ms", "apply_ms", "helper_roundtrip_ms", "durable_to_apply_ms",
