@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "3a0c8e90c28ede52a8f80962656ebec784f3d9ab",
+  "code_revision": "4db4a7a94a06f9873c1bb2148f567054fce12b3c",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "7956d37b7be6c5dc2ba28dfcc8ad56b60e5c9b4c",
-  "next_action": "Commander integrate output-bound fix; request native helper remeasurement and continue measured pipeline improvement.",
+  "next_action": "Commander route50KBturnaroundgap tocompiler owners; continue measured helper work afterintegration/nativefeedback.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT048 fixes16MiB JSONL newline overrun and oversized-error allocation retention; boundedrequestedbuffer growth.37suite tests plus new fallbackallocation test pass(38totalcoverage),strictalltargetlint.",
+  "summary": "FT048 burstdriver3cases60durableACKs,3exactcleanfinals/reopens.5KB30ms20previews;50KB30ms1preview(11stale8superseded),final91ms.Continuouspreview requirement stillfails50KBfasttyping despitecorrectcoalescing.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:09:53Z",
+  "updated_utc": "2026-09-12T09:13:50Z",
   "usage": {
     "status": "unknown"
   }
