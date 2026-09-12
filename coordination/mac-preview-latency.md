@@ -23,27 +23,38 @@
 
 ## Durable checkpoint
 
-- Updated: 2026-09-12T16:10Z. Worktree
-  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2`.
-- HEAD: (see git) on `agent/mac-preview-latency/profile`; dirty: none after the
-  registration commit.
-- Helpers: compiler / preview-controller / pdf built in this tree
-  (`crates/*/target/release`, 42 s); producer `flashtex-render` from
-  `origin/agent/mac-render-pipeline/unified` 9aaec57a at
-  `<scratchpad>/render-9aaec57a/crates/render-pipeline/target/release/flashtex-render`
-  (sha256 ed729b02…); prior helper c95a26a3… in worktree agent-ae7ddcfb739815fac.
-- Seeds/siblings for in-process measurement: `<scratchpad>/latency/seeds/`
-  (p3: 4 pages 3,887,809 B; pmax: 8 pages 7,793,557 B; p3-typed: pages 1–3
-  byte-identical to p3, page 4 differs).
-- Pre-optimization attribution from the parent's 2026-09-12T142134Z logs
-  (helper-v2-p3-30ms, 43 painted revisions, p50 ms): key->send 14,
-  send->v1 82, v1->sibling received 64, admission 0.2, validate 28,
-  preraster 4, deliver 1.5, publish->paint 27; key->paint (last covered
-  keystroke) 238. pmax: 13 / 108 / 99 / 0.2 / 46 / 8 / 4 / 28; 307.
-- Next: (1) instrumentation commit (worker display_list receipt stamp,
-  timeline.py, in-process stage bench test); (2) evidence dir with the table;
-  (3) per-page reuse keyed by sha256(page bytes)+size+fonts-manifest digest,
-  per-page bitmap identity, caret lookup bounded by page source ranges;
-  (4) re-measure helper + direct routes in a quiet window (`uptime` recorded).
-- Staffing/billing: shared Claude Max 20x quota with the parent; stop when the
-  parent says the 5-hour meter reached 85%.
+- Updated: 2026-09-12T18:34Z (resumed after the 17:25Z quota cut). Worktree
+  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a96ab6bafe259bfb2`,
+  branch `agent/mac-preview-latency/profile`, pushed through 68d4ded4.
+- Commits: f7b86584 registration; 1c07cf93 instrumentation + before table;
+  95a75546 page reuse by raw-byte identity + per-page bitmaps/views;
+  247e1cdb layer-backed page blit + equatable/lazy diagnostics list + evidence
+  rounds (raw/, raw-after2/, raw-hw1/); 68d4ded4 merge of
+  origin/agent/mac-claude-a/mac-shell 9ba9851c (clean).
+- Dirty (uncommitted): PreviewV2View.swift — `PreviewV2Pane.shownFrame`, the
+  pages/diagnostics at ONE structural position for loaded and stale frames
+  (each loaded<->stale toggle rebuilt the scroll view, page views and bitmap
+  layers: 374 blits of an unchanged page over 187 revisions on p3, 346 on HW1);
+  its test `testPaneShowsTheLoadedFrameAndThePreviousFrameStaleFromOnePosition`
+  in PreviewLatencyTests.swift; this handoff + agents JSON.
+- HW1 attribution (raw-hw1/after3-direct-v2-hw1-30ms.log, revision 60): the
+  three main-thread hops recv->val 15.9, deliver 14.8, publish->pass 19.6 ms
+  dominate (main busy with the v1 apply of 130 diagnostics + a full-window
+  SwiftUI pass, 3 passes per keystroke); the v2 pane's own eager 130-row
+  diagnostics VStack was the dominant paint cost before 247e1cdb
+  (pub->paint 455 -> 38 ms). Page 3 (the edited page, offscreen in the
+  LazyVStack) is never blitted in the bench; the recorded paint is the
+  re-install of visible pages 1/2 caused by the structural toggle above.
+- Running (background, pids launched by this lane): `<scratchpad>/latency/
+  build-test.sh` (release build 4 of the merged tree at 68d4ded4, then the
+  v2/preview/latency `swift test` filter; log build-test.log, test-filter.log);
+  `<scratchpad>/latency/copytest.log` (control cell: after3 binary copied out
+  of .build on HW1 — tests whether the after1/after2 HW1 no-paint cells were a
+  copied-binary artifact). Load 20-80 (other agents building).
+- Next: release build 5 with the dirty fix; bench direct-v2 hw1/p3 + helper-v2
+  p3 at 30 ms (before-app 1c07cf93 vs build 5), summary.md, commit, full/filtered
+  swift test with helpers (`source <scratchpad>/helpers.env`, FLASHTEX_RENDER
+  = <scratchpad>/render-9aaec57a/.../flashtex-render, FLASHTEX_REVIEW_HISTORY_DIR=off),
+  final report to the parent.
+- Staffing/billing: shared Claude Max 20x quota with the parent; ~90-minute
+  heavier-model window from 18:20Z; bounded to ~60 minutes of work.

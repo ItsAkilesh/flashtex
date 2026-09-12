@@ -222,6 +222,23 @@ final class PreviewLatencyTests: XCTestCase {
         XCTAssertThrowsError(try RenderingV2Fast.envelope(Data("{\"protocol_version\":2,\"payload\":{\"pages\":[{\"number\":1,".utf8)) { _, _ in nil })
     }
 
+    func testPaneShowsTheLoadedFrameAndThePreviousFrameStaleFromOnePosition() throws {
+        _ = try PreviewV2Tests.lmRoman10()
+        let frame = try V2Frame.prepare(data: try Data(contentsOf: Self.fixtures.appendingPathComponent("display-list-v2-text.json")), store: Self.store, cache: nil)
+        let source = V2Source.worker(requestID: "r1", projectId: frame.list.projectId, revision: frame.list.revision, line: Data())
+        let loaded = try XCTUnwrap(PreviewV2Pane.shownFrame(.loaded(frame, source)))
+        XCTAssertEqual(loaded.frame.pageTokens, frame.pageTokens)
+        XCTAssertFalse(loaded.stale)
+        // A load in flight keeps the previous frame on screen, marked stale.
+        let stale = try XCTUnwrap(PreviewV2Pane.shownFrame(.loading(source, ticket: 2, previous: frame)))
+        XCTAssertEqual(stale.frame.pageTokens, frame.pageTokens)
+        XCTAssertTrue(stale.stale)
+        // Nothing to show: first load, a refusal, no list.
+        XCTAssertNil(PreviewV2Pane.shownFrame(.loading(source, ticket: 1, previous: nil)))
+        XCTAssertNil(PreviewV2Pane.shownFrame(.failed(RenderingV2.ValidationError(code: "x", message: "y"), source)))
+        XCTAssertNil(PreviewV2Pane.shownFrame(nil))
+    }
+
     @MainActor
     func testPageBitmapLayerInstallsContentsOncePerBitmapAndRecordsThePaint() throws {
         _ = try PreviewV2Tests.lmRoman10()

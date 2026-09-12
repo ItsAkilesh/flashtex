@@ -649,17 +649,23 @@ struct PreviewV2Pane: View {
         VStack(spacing: 0) {
             header
             Divider()
-            switch model.displayListV2 {
-            case .loaded(let frame, _):
-                pages(frame, stale: false)
-                diagnostics(frame)
-            case .loading(_, _, let previous, _, _):
-                if let previous {
-                    pages(previous, stale: true)
-                } else {
+            // The pages sit at ONE structural position whether the frame is the
+            // loaded one or the previous one shown stale while a load is in
+            // flight. Under typing the state toggles loaded -> stale -> loaded
+            // for every keystroke; as separate `switch` branches each toggle
+            // tore down and rebuilt the scroll view, every page view and its
+            // bitmap layer (measured: every visible page re-blitted twice per
+            // keystroke, 374 blits of an unchanged page over 187 revisions).
+            if let shown = Self.shownFrame(model.displayListV2) {
+                pages(shown.frame, stale: shown.stale)
+                diagnostics(shown.frame)
+            } else {
+                switch model.displayListV2 {
+                case .loaded, .loading(_, _, .some, _, _):
+                    EmptyView() // shown above
+                case .loading(_, _, nil, _, _):
                     ContentUnavailableView("Loading display list…", systemImage: "hourglass")
-                }
-            case .failed(let error, let source):
+                case .failed(let error, let source):
                 ContentUnavailableView {
                     Label("Display list refused — nothing rendered", systemImage: "xmark.octagon")
                 } description: {
@@ -667,11 +673,12 @@ struct PreviewV2Pane: View {
                         .textSelection(.enabled)
                 }
                 .accessibilityIdentifier("v2-refusal")
-            case nil:
-                ContentUnavailableView("No v2 display list yet", systemImage: "doc.richtext",
-                                       description: Text(model.workerAttached
-                                                         ? "Requesting display-list-v2 from the attached worker (\(model.liveV2Accepted ? "accepted" : "not accepted yet")); or use File > Open Display List (v2)…"
-                                                         : "Attach a producer that accepts display-list-v2, or use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
+                case nil:
+                    ContentUnavailableView("No v2 display list yet", systemImage: "doc.richtext",
+                                           description: Text(model.workerAttached
+                                                             ? "Requesting display-list-v2 from the attached worker (\(model.liveV2Accepted ? "accepted" : "not accepted yet")); or use File > Open Display List (v2)…"
+                                                             : "Attach a producer that accepts display-list-v2, or use File > Open Display List (v2)… with a flashtex-render --v2 JSON file."))
+                }
             }
         }
         .onAppear {
@@ -683,6 +690,17 @@ struct PreviewV2Pane: View {
             }
         }
         .onDisappear { model.setLiveV2(false) }
+    }
+
+    /// The frame the pane shows and whether it is stale: the loaded frame, or
+    /// the previous frame retained while a load is in flight. Nil when there
+    /// is nothing to show (first load, a refusal, no list yet).
+    static func shownFrame(_ state: V2PreviewState?) -> (frame: V2Frame, stale: Bool)? {
+        switch state {
+        case .loaded(let frame, _): (frame, false)
+        case .loading(_, _, let previous?, _, _): (previous, true)
+        case .loading(_, _, nil, _, _), .failed, nil: nil
+        }
     }
 
     private func pages(_ frame: V2Frame, stale: Bool) -> some View {

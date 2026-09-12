@@ -12,7 +12,7 @@
     "rust-build",
     "latency-measurement"
   ],
-  "code_revision": "cd58fc2e790f29bff50a5af7b4127027e841078a",
+  "code_revision": "68d4ded4",
   "eta_minutes": {
     "likely": 150,
     "optimistic": 90,
@@ -20,13 +20,13 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
-  "next_action": "Publish the pre-optimization attribution table (docs/evidence/preview-latency-<UTC>/), then per-page reuse + tests, re-measure",
+  "next_action": "Release build 5 (pages at one structural position) + v2 test filter; after4 bench round (before-app vs build 5: direct hw1/p3, helper p3); commit; full swift test with helpers; final report",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "active",
-  "summary": "Instrumenting the v2 route (helper + direct) per stage before optimizing; page-level reuse keyed by raw-byte sha256+size next",
+  "summary": "HW1 direct v2 600 -> 98 ms p50 (equatable/lazy diagnostics list + layer-backed blit, 247e1cdb); parent mac-shell 9ba9851c merged clean (68d4ded4); structural loaded<->stale toggle rebuilt every page view twice per keystroke \u2014 fix in progress",
   "tool": "Claude Code subagent (Fable), parent mac-claude-a",
-  "updated_utc": "2026-09-12T16:09:08Z",
+  "updated_utc": "2026-09-12T18:36:00Z",
   "usage": {
     "status": "unknown"
   }
