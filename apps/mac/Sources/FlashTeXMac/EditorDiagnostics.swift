@@ -23,14 +23,18 @@ enum EditorDiagnostics {
     ///   - currentText: the current editor buffer; marks are `NSRange`s into it.
     static func marks(for result: RuntimeV1.CompileResult, path: String,
                       compiledText: String?, currentText: String) -> [Mark] {
-        result.diagnostics.compactMap { diagnostic in
+        // One byte diff of compiled vs current text for every diagnostic.
+        let region: SourceMapping.ChangedRegion? = {
+            guard let compiledText, !compiledText.sameBytes(as: currentText) else { return nil }
+            return SourceMapping.changedRegion(from: compiledText, to: currentText)
+        }()
+        return result.diagnostics.compactMap { diagnostic in
             guard let source = diagnostic.source, source.path == path else { return nil }
             var range = source
-            if let compiledText, compiledText != currentText {
-                guard let rebased = SourceMapping.rebase(source, from: compiledText, to: currentText,
-                                                         expectedText: nil)
+            if let region {
+                guard case .rebased(let s, let e) = SourceMapping.rebase(start: source.startByte, end: source.endByte, across: region)
                 else { return nil }
-                range = rebased
+                range = RuntimeV1.SourceRange(path: source.path, startByte: s, endByte: e)
             }
             guard let ns = currentText.nsRange(utf8Bytes: range) else { return nil }
             return Mark(nsRange: ns, severity: diagnostic.severity,

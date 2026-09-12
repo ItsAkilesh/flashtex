@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-022": {
-      "acknowledged_utc": "2026-09-12T06:25:28Z",
-      "adaptation": "Reviewed exact r3 main assignment. Existing bridge adapter completed at296f16e; ongoing explicit orchestrator task adds durable review inbox and filtered navigation, preserving controller exact-edit approval boundary. No CLI/core writes.",
-      "main_sha": "3730c236086204a603de7c55ecc77584c5999080",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T08:23:17Z",
+      "adaptation": "Reviewed r5 exact assignment: durable expiry, bounded recovered selection, sticky context revocation and actual bridge restart regression. Scheduler and source approval APIs preserved.",
+      "main_sha": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+      "revision": 5
     }
   },
   "branch": "agent/bridge-context/conversion-jobs",
@@ -15,22 +15,22 @@
     "conversion-jobs",
     "bridge-journal"
   ],
-  "code_revision": "c1d403b021648bf8010f27bdf9937809c50be0c3",
+  "code_revision": "f239351ae849c476414aa76cd8410ef5edb606ae",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "fed1739a3b415b772eeea048166b3ff3ced0f94e",
-  "next_action": "Integrate exact code revision. Controller must validate ReviewIntentHandoff against actual current context then separately obtain approval for exact PreparedEdit; inbox never prepares/applies source.",
+  "main_integrated_through": "c655cb29c71e04750db855764d42ab4a75b9c70c",
+  "next_action": "Integrate f239351 following 5854be5. Native host runs helper off UI thread with bounded queue/deadline; reconcile ambiguous outcomes by stable decision ID. No source approval or provider execution.",
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Durable bounded review inbox, explicit accept-for-preparation/reject decisions, revocable handoffs, project filtering/navigation and bounded events complete. Root controller exact PreparedEdit approval remains separate.",
+  "summary": "Native JSONL review helper complete with explicit caller clocks/context identities, bounded framing, subprocess recovery tests and background I/O/deadline contract.",
   "tool": "Codex Astra hosted /root/bridge_context",
-  "updated_utc": "2026-09-12T06:27:06.468455+00:00",
+  "updated_utc": "2026-09-12T08:29:40.712427+00:00",
   "usage": {
-    "evidence": "39 all-feature/all-target tests, strict Clippy, fmt passed. Includes native durable-proposal admission, reopened decisions, corruption/storage failure, cancellation, stale context and event backpressure. No provider calls.",
+    "evidence": "47 all-feature/all-target tests and strict Clippy/fmt pass; four real subprocess tests cover restart, expiry, stale handoff, corrupt journal, oversized/malformed input and EOF. Scheduler API unchanged.",
     "status": "Hosted OpenAI quota unknown; no paid provider calls or Cursor retry. Direct Git fallback authorized."
   }
 }

@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T07:20:48Z",
-      "adaptation": "Reviewed current adapter assignment; consuming exact published font-engine f418238 unchanged, preserving distinct engine and raw-font identities and source clusters. No shaper duplication.",
-      "main_sha": "2fd302675040308c2b07d346c07389a051518979",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T08:50:11Z",
+      "adaptation": "Reviewed r10 objective and unchanged owned crate. Measure repeated pinned STIX kern/device/fit queries, retain only bounded exact-identity cache with demonstrated parse reduction.",
+      "main_sha": "e0887bcfd71749d35f4a1aa8c42d059599d5f88d",
+      "revision": 10
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "9335f3de0fdbb02e766390472ac45f1497fcc6c5",
+  "code_revision": "7812318964aa575406da88818e99a2bd9b480639",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "4b4647e399349c46d5cd0f146f5c0997cd111ac2",
-  "next_action": "Renderer handoff sent; registry CFF and mixedgeneration/cache invalidation followup complete. Ready next assigned product task.",
+  "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
+  "next_action": "Current task complete; consumer API and exact evidence handoff. Branch/worktree remain font-resources only; report commits preserve ACKr10 and resume state. No providers/descendants or pending tool sessions. Await next assigned correctness followup.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published9335f3d rooted CFF registry extension.92tests/clippy and pinned mixedSTIX/Liberation registry replay pass. Typed backend resources preserve fullfont/CFFtable/face/license identity via existing engine/CFF parser; generation invalidates license-provenance changes and heldgeometry survives externalfont edits unchanged. No peer edits/fonts vendored/visualparity claim.",
+  "summary": "FT024r10 MATH cache implemented after measurement:113 ordinary tests/clippy+STIX paired query replay pass.100 identical queries reduce100 kern parses to1/99hits;56.27ms versus0.618ms observed locally, no threshold/native claim. Full identity/ppem/fit keys, bounded retention, negative/stale/eviction tests.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T07:46:22Z",
+  "updated_utc": "2026-09-12T08:55:39Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

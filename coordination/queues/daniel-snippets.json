@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Bounded UTF8-safe editor snippet expansion with numbered placeholders, linked edits and guarded tab navigation; no automatic source mutation. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Guarded snippet insertion: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Guarded snippet insertion: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/editor-snippets"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Bounded UTF8-safe editor snippet expansion with numbered placeholders, linked edits and guarded tab navigation; no automatic source mutation. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Guarded snippet insertion: actual existing consumer fixture and exact measured limitations",
+      "objective": "Guarded snippet insertion: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/editor-snippets"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

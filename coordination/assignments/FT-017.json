@@ -9,16 +9,16 @@
   "branch": "agent/mac-visual-oracle/reference-raster",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "59a49ab895df3598b3f5d895b593b4fbd3dd7972",
-  "objective": "Gate exact native preview/export raster equality and separate raw PDF byte identity against pinned reference profile. Diagnostic tolerances or registration never count as acceptance.",
+  "input_main_sha": "dd75e15f32e5a0616939e3d32078b4434db8a2d7",
+  "objective": "Exact PDF raw-byte identity analysis separate from zero-pixel gate",
   "owned_paths": [
     "tests/visual-corpus/harness",
     "tests/visual-corpus/evidence"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-017",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T08:21:08Z"
+  "updated_utc": "2026-09-12T09:12:36Z"
 }

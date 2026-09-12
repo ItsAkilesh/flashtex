@@ -80,6 +80,19 @@ fn mixed_registry_identity_generation_and_immutable_cff() {
     let load = || ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default());
     let first = load().unwrap();
     assert_eq!(first.files_read(), 5);
+    let export = first.export_json(1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &export).unwrap();
+    assert_eq!(load().unwrap().export_json(1024 * 1024).unwrap(), export);
+    let page = first
+        .enumerate(first.generation(), MetadataFilter::default(), 0, 64)
+        .unwrap();
+    assert_eq!(
+        page.entries
+            .iter()
+            .filter(|e| e.cff_table.is_some())
+            .count(),
+        1
+    );
     let stix = manifest.entries[0].binding.clone();
     let RegistryResource::Cff(held) = first.resource(&stix).unwrap() else {
         panic!("CFF backend")
