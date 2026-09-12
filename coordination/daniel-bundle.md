@@ -2,20 +2,156 @@
 
 Agent / task / branch: daniel-bundle (FlashTeX agent) / FT-043 "project export
 bundle" / `agent/daniel-bundle/project-bundle`
-State: ready for integration, revision 3 (batch-recoverable `apply_import`,
-new adversarial bounds, and a stale-identity acceptance suite, on top of rev
-2's bounded import preview + no-clobber apply over `flashtex-project-files`'
-rooted reader; zero consumers yet).
+State: ready for integration, revision 4 (contract-drift repair, three real
+defect fixes carried over from today's work on this branch, and a switch to
+Unicode-normalization-based `AmbiguousPath` detection, on top of rev 3's
+batch-recoverable `apply_import` and rev 2's bounded import preview +
+no-clobber apply over `flashtex-project-files`' rooted reader; zero
+consumers yet).
 Owned paths: `crates/project-bundle/**`, `coordination/daniel-bundle.md`,
 `coordination/agents/daniel-bundle.json`
-Main integrated through: `abbe88a5275b89d99357815846de3cbe76a91810` (fetched
-and merged `--no-edit` this revision per the rev 3 instructions; the merge
-was clean with zero conflicts, and touched nothing under
-`crates/project-bundle` — verified with `git diff --stat <merge-base>
-origin/main -- crates/project-bundle` before merging, empty output). No
-other crate touched; no workspace root `Cargo.toml` created (each crate
-here builds standalone, matching existing siblings such as
-`crates/project-files`).
+Main integrated through: `abbe88a5275b89d99357815846de3cbe76a91810` (unchanged
+this revision — no new `origin/main` fetch/merge was performed; see rev 3
+below for the last one).
+
+## Revision 4 — contract-drift repair, three defect fixes, Unicode-normalization detection
+
+Objective: an independent contract audit found the published typed contract
+in this file quoting an API that does not exist in `crates/project-bundle/src/`
+(wrong method name and return type, an omission in the error-variant list,
+and one leftover stale identifier), plus three real defects fixed in the
+crate today whose behavior the contract did not yet describe, plus a
+correction to the stated reason `AmbiguousPath` detection was built the way
+it was.
+
+### What the audit found wrong, and the fix
+
+1. **`ProjectRoot::resolve(relative: &str) -> Result<PathBuf, BundleError>`
+   was quoted but does not exist.** The real, currently-existing method is
+   `ProjectRoot::normalize(relative: &str) -> Result<ProjectPath, BundleError>`
+   — different in both name and return type. Code written against the
+   fictitious signature would not compile. See "Typed contract" below,
+   rebuilt from source rather than patched.
+2. **The `BundleError` variant list omitted `ReservedPath` and
+   `PreviewBundleMismatch`**, both live and actively constructed in
+   `apply_import`, while the surrounding prose explicitly claimed to be the
+   corrected "current full variant list" after fixing an earlier stale one.
+   Both are fixes landed on this branch today (`e32796cd`, `d18fa51f`; see
+   below) — the contract simply had never been updated for them.
+3. **One sentence still said `SymlinkEscapesRoot`**, renamed to
+   `SymlinkRefused` in rev 2.
+
+The full "Typed contract" section below was rebuilt from the current
+`crates/project-bundle/src/` rather than edited line-by-line, per this
+revision's task instructions — editing prose in place is exactly how (2)
+and (3) were introduced (a real change landed in the crate; the paragraph
+describing the API surface was not revisited). It also replaced an entire
+"Rooting" subsection that had been describing rev 1's own `resolve`/
+`canonicalize` implementation and its now-renamed test — dead since rev 2,
+never updated in two revisions.
+
+### Three real defects fixed in this crate today
+
+- `e32796cd` — importing a bundle entry named `.flashtex/project.lock`
+  overwrote the project's own lock file mid-batch, letting a second writer
+  acquire "the lock" while the original holder still believed it held it.
+  **Security-relevant.** Now a typed `BundleError::ReservedPath`, checked
+  for the whole batch before any write.
+- `d18fa51f` — `apply_import` hit an `expect()` and panicked mid-batch when
+  the supplied preview named a path the supplied bundle did not contain
+  (e.g. the caller rebuilt the bundle after computing the preview); the
+  panic unwound past the rollback that exists precisely for a mid-batch
+  failure, leaving a partial import standing on disk. Now a typed
+  `BundleError::PreviewBundleMismatch`, checked up front.
+- `4809630b` — importing into a not-yet-existing subdirectory (e.g.
+  `chapters/intro.tex` into a target with no `chapters/` yet) returned a raw
+  `Io` error instead of classifying the entry as absent/new, even though
+  `apply_import`'s own writer creates missing parent directories.
+
+Full detail, reasoning, and the exact test each is proven by are in the
+"Fixed today" subsection under "Typed contract" below, next to the exact
+signatures and variants they touch.
+
+### Correction: the "crates.io unreachable" rationale for `AmbiguousPath` detection was false
+
+Rev 3's "Incomplete behavior" section recorded that `AmbiguousPath`
+detection used `fs::canonicalize` identity instead of a `unicode-normalization`-based
+check because "network access to crates.io was blocked in this
+environment." That claim was checked today and is **false** on this
+machine: `curl -s -o /dev/null -w '%{http_code}' https://index.crates.io/config.json`
+returns `200`, the crate's own index entry
+(`https://index.crates.io/un/ic/unicode-normalization`) resolves and lists
+current published versions up to `0.1.25`, and `cargo build` after adding
+`unicode-normalization = "0.1.25"` to `Cargo.toml` fetches and compiles it
+cleanly. The record is corrected here so it stops justifying a design
+choice on a false premise; see the next section for what was done about it
+on the merits.
+
+### Assessment: is `unicode-normalization` the better implementation for `AmbiguousPath`?
+
+Judged on the merits, independent of the (now-corrected) reachability
+claim: **yes, switched.** Reasoning:
+
+- `AmbiguousPath`'s own documented contract is a *Unicode-normalization*
+  hazard (precomposed vs. combining-mark-decomposed forms of one visual
+  name) — not general filesystem identity. Comparing each declared path's
+  NFC-normalized form directly is a more precise fit for that stated
+  contract than probing the filesystem for *any* kind of identity collision
+  (which also happened to catch e.g. case-folding on a case-insensitive
+  volume — an incidental side effect the old contract's own "Incomplete
+  behavior" section already flagged as "a reasonable bonus, not a claim of
+  Unicode correctness," so losing it is not a loss of anything documented).
+- `fs::canonicalize` requires its argument to already exist on disk. That
+  makes the old check structurally unable to fire for the import-preview
+  case: validating a bundle for this hazard before any of its files have
+  been read or, on the target side, before anything has been written yet.
+  A purely syntactic, string-only check has no such requirement.
+- It closes a real gap, not just a theoretical one, and closes it inside
+  the existing call site: `build_bundle_with_limits` previously ran the
+  identity check *after* successfully reading each entry, so if the
+  *second* of two colliding paths had no backing file at all, its own read
+  failed with `NotFound` first — masking the collision instead of reporting
+  it. The new check runs before the read (matching how `DuplicatePath` was
+  already checked, by name, before any read), so this case is now
+  `AmbiguousPath`, proven by
+  `tests/malformed_and_unicode.rs::unicode_normalization_collision_is_detected_before_the_second_path_is_ever_read`.
+- Deliberate behavior change, flagged rather than buried: detection is now
+  **filesystem-independent**. It fires for any two Unicode-canonically
+  equivalent declared paths on every platform, not only where the host
+  filesystem actually folds the two spellings together (the old, narrower
+  behavior). This is a stricter, more conservative default, and it matches
+  how every other check in this crate already works — syntactic and
+  host-independent wherever possible (see `ProjectRoot::normalize`'s own
+  `..`/absolute-path checks, which fire "regardless of whether anything
+  exists outside the root"). For a bundle whose whole purpose is moving a
+  project between machines, rejecting an ambiguity that is safe on the
+  build machine but unsafe on the target machine is the safer failure mode.
+- The one capability actually given up — catching a collision that is
+  real filesystem identity but *not* Unicode-normalization (e.g. two case
+  variants on a case-insensitive volume) — was never part of
+  `AmbiguousPath`'s documented contract to begin with (see above), so
+  nothing promised to a consumer is lost.
+
+Implementation: `ProjectRoot::canonical_identity(&self, relative: &str) -> Option<PathBuf>`
+(`fs::canonicalize` on the resolved OS path) was replaced by
+`ProjectRoot::normalized_identity(relative: &str) -> Option<String>` (no
+`&self`, no I/O): validates `relative` syntactically via
+`ProjectRoot::normalize`, then returns its NFC-normalized form. Added
+`unicode-normalization = "0.1.25"` as a dependency (the current published
+version as of today; fetched and built clean from crates.io on this
+machine, confirmed above). `BundleError::AmbiguousPath` itself, and its
+public contract, are unchanged — this is a detection-mechanism swap behind
+an already-typed error, not an API change.
+
+The pre-existing test for this behavior remains green without modification,
+including the part of it that depends on this machine's actual filesystem
+folding NFC/NFD together
+(`unicode_normalization_collision_is_rejected_not_silently_admitted`) —
+switching mechanisms did not need to touch it. One new test was added,
+proving the detection now works without the second (colliding) path
+existing on disk at all — see above. All 63 previously-passing tests in the
+crate remain green; the new test makes 64 total (63 integration + 1
+doctest) — see "Test counts" and "Validation" below.
 
 ## Revision 3 — batch recovery, adversarial bounds, stale-identity acceptance
 
@@ -233,54 +369,256 @@ the exact same implementation.
 
 ## Typed contract (`flashtex-project-bundle`, edition 2024)
 
-Public API (`src/lib.rs` re-exports):
-- `ProjectRoot::new(path) -> Result<ProjectRoot, BundleError>` — canonicalizes
-  `path`; fails unless it exists and is a directory.
-- `ProjectRoot::resolve(relative: &str) -> Result<PathBuf, BundleError>` /
-  `ProjectRoot::read_rooted(relative: &str) -> Result<Vec<u8>, BundleError>` —
-  the single chokepoint every read goes through.
+**Rebuilt from the current source** (`crates/project-bundle/src/{lib,root,bundle,preview,apply,error}.rs`,
+tested SHA `4523011dc55492acc3fcaa32a1748da53a46b888`, verified below) rather
+than edited from the previous copy — see "Corrections made to this section"
+at the end for exactly what was wrong and how it was found. Every signature
+below was copied verbatim from source and re-checked to still exist with
+this exact shape (name, arity, ownership, return type) as of the tested SHA.
+
+### `root.rs` — `ProjectRoot`
+
+- `ProjectRoot::new(path: impl AsRef<Path>) -> Result<Self, BundleError>` —
+  opens `path` as a bundle root via `flashtex_project_files::ProjectRoot::open`
+  (`openat(O_DIRECTORY|O_NOFOLLOW)`); fails as `InvalidRoot` unless `path`
+  exists, is a directory, and is not itself a symlink. Bounds individual
+  reads at `DEFAULT_FILE_LIMIT` (64 MiB). **Does not canonicalize `path`** —
+  the previous copy of this contract claimed it did; that was never true of
+  the rev-2-and-later implementation.
+- `ProjectRoot::with_file_limit(path: impl AsRef<Path>, file_limit: u64) -> Result<Self, BundleError>`
+  — like `new`, with a caller-chosen per-file read limit instead of the default.
+- `ProjectRoot::as_path(&self) -> &Path` — the root path as opened.
+- `ProjectRoot::normalize(relative: &str) -> Result<ProjectPath, BundleError>`
+  — **the actual chokepoint. There is no method named `resolve`, on
+  `ProjectRoot` or anywhere else in this crate** (see "Corrections" below).
+  A `pub fn`, callable without an instance (`ProjectRoot::normalize(...)`,
+  not `root.normalize(...)`). Pure syntactic validation and normalization,
+  delegating to `flashtex_project_files::ProjectPath::normalize`; touches no
+  filesystem. Rejects an empty path (`EmptyPath`), a leading `/` or `~`
+  (`AbsolutePath`), a `..` that would leave the root (`PathTraversal`), and a
+  forbidden character (`MalformedPath`) — all before any I/O, and identically
+  whether or not anything exists at the escaped-to location.
+- `ProjectRoot::read_rooted_optional(&self, relative: &str) -> Result<Option<RootedFile>, BundleError>`
+  — reads `relative`'s bytes/size/SHA-256, rooted and bounded at this root's
+  file limit. `Ok(None)` when `relative` is absent under the root — this
+  covers both a missing *leaf* and a missing intermediate *directory* (fixed
+  today, see below; previously only the leaf case was `Ok(None)`).
+- `ProjectRoot::read_rooted(&self, relative: &str) -> Result<Vec<u8>, BundleError>`
+  — like `read_rooted_optional`, but a missing file is `BundleError::NotFound`
+  rather than `Ok(None)`.
+- `RootedFile { pub bytes: Vec<u8>, pub sha256: Digest, pub size: u64 }` —
+  `Debug + Clone + PartialEq + Eq`.
+- `DEFAULT_FILE_LIMIT: u64` — 64 MiB (`flashtex_project_files::DEFAULT_READ_LIMIT`).
 - `validate_relative_path(path: &str) -> Result<(), BundleError>` — the pure,
-  I/O-free syntactic half of that check, exposed standalone.
-- `BundleEntry::new(path: impl Into<String>)` — the entire input contract:
-  one caller-declared path relative to the root.
+  I/O-free syntactic half, exposed standalone (`ProjectRoot::normalize(path).map(|_| ())`).
+
+### `bundle.rs` — building a bundle
+
+- `BundleEntry::new(path: impl Into<String>) -> Self`; `BundleEntry { pub path: String }`
+  — the entire input contract: one caller-declared path relative to the root.
+- `BundleFile { pub path: String, pub sha256: Digest, pub size: u64, pub contents: Vec<u8> }`
+- `Bundle { pub files: Vec<BundleFile> }` with:
+  - `Bundle::manifest_bytes(&self) -> Vec<u8>`
+  - `Bundle::manifest_sha256(&self) -> Digest`
+  - `Bundle::manifest_hex(&self) -> String`
+  - `Bundle::file(&self, path: &str) -> Option<&BundleFile>`
+- `BundleLimits { pub max_entries: usize, pub max_total_bytes: u64 }` —
+  `Default` is `DEFAULT_MAX_ENTRIES` (100,000) / `DEFAULT_MAX_TOTAL_BYTES`
+  (512 MiB).
 - `build_bundle(root: &ProjectRoot, entries: &[BundleEntry]) -> Result<Bundle, BundleError>`
-  — resolves, reads and hashes exactly the given entries.
-- `Bundle { files: Vec<BundleFile> }` with `BundleFile { path, sha256: [u8;
-  32], size: u64, contents: Vec<u8> }`, plus `Bundle::manifest_bytes()`,
-  `Bundle::manifest_sha256()`, `Bundle::manifest_hex()`.
-- `BundleError` (current full variant list as of rev 3; the rev 1 list
-  printed here previously was stale — `SymlinkEscapesRoot` was renamed to
-  `SymlinkRefused` in rev 2 and several variants were added since, none of
-  which had been reflected here until now): `InvalidRoot`, `EmptyPath`,
-  `AbsolutePath`, `PathTraversal`, `MalformedPath`, `DuplicatePath`,
-  `AmbiguousPath` (new, rev 3), `SymlinkRefused`, `NotFound`, `NotAFile`,
-  `FileTooLarge`, `TooManyEntries`, `TotalBytesExceeded`,
-  `OverwriteNotDecided`, `ConcurrentModification`, `RollbackIncomplete`
-  (new, rev 3), `Io` — each carries the offending caller-declared path (or
-  message), `Debug + Clone + PartialEq + Eq + Display + std::error::Error`.
+  — `build_bundle_with_limits(root, entries, &BundleLimits::default())`.
+- `build_bundle_with_limits(root: &ProjectRoot, entries: &[BundleEntry], limits: &BundleLimits) -> Result<Bundle, BundleError>`
+  — resolves, reads and hashes exactly the given entries; the one both call.
 
-### Rooting (security core of this lane)
+### `preview.rs` — computing an import preview
 
-`ProjectRoot::resolve` runs, in order:
-1. `validate_relative_path` — pure, no filesystem access: rejects an empty
-   path, a leading `/` (`AbsolutePath`), any `..` component
-   (`PathTraversal`), and any other malformed shape (`.` component, empty
-   component from `//` or a trailing `/`, embedded NUL) as `MalformedPath`.
-   This fires identically whether or not a matching file exists outside the
-   root — traversal and absolute paths are rejected on syntax alone.
-2. Join onto the canonical root, then `fs::canonicalize` the joined path
-   (which follows symlinks) and require the result to still `starts_with`
-   the canonical root — otherwise `SymlinkEscapesRoot`.
-3. Require the resolved item to be a regular file — otherwise `NotAFile`.
-   The crate never reads a directory's contents at any point.
+- `FileOutcome` — `New`, `Unchanged { sha256: Digest }`,
+  `Conflict { ours: Digest, theirs: Digest, theirs_size: u64 }`;
+  `FileOutcome::is_conflict(&self) -> bool`.
+- `FilePreview { pub path: String, pub outcome: FileOutcome }`
+- `ImportPreview { pub files: Vec<FilePreview> }` with `new_paths(&self)`,
+  `unchanged_paths(&self)` (both `impl Iterator<Item = &str>`),
+  `conflicts(&self) -> impl Iterator<Item = &FilePreview>`,
+  `has_conflicts(&self) -> bool`.
+- `preview_import(bundle: &Bundle, target: &ProjectRoot) -> Result<ImportPreview, BundleError>`
+  — read-only; structurally never takes the project lock and never calls
+  `save`/`remove`.
 
-Proven in `tests/rooted.rs`: `dot_dot_traversal_is_rejected` (`..` to a file
-that genuinely exists outside root) and
-`dot_dot_traversal_is_rejected_even_when_target_does_not_exist` (syntactic,
-not existence-dependent); `absolute_path_is_rejected` (absolute path to a
-file that *is* inside the root, still rejected); `symlink_escaping_root_is_rejected`
-(real `symlink` via `std::os::unix::fs::symlink` to an outside temp dir) vs.
-`symlink_staying_inside_root_is_allowed` (control case).
+### `apply.rs` — applying an import
+
+- `ImportDecision` — `Skip`, `Write` (`Copy`).
+- `ImportAction` — `Written { sha256: Digest, bytes: u64 }`, `Skipped`.
+- `ImportOutcome { pub path: String, pub action: ImportAction }`
+- `apply_import(bundle: &Bundle, preview: &ImportPreview, target: &ProjectRoot, decisions: &HashMap<String, ImportDecision>) -> Result<Vec<ImportOutcome>, BundleError>`
+  — see "Fixed today" below for the two new typed rejections this function
+  can now return, both checked for the whole batch before the project lock
+  is taken and before any file is written.
+
+### `error.rs` — `BundleError`, enumerated directly from the enum definition
+
+19 variants (`Debug + Clone + PartialEq + Eq + Display + std::error::Error`
+on the whole enum; each carries the offending caller-declared path, or a
+message, or both):
+
+1. `InvalidRoot(String)`
+2. `EmptyPath`
+3. `AbsolutePath(String)`
+4. `PathTraversal(String)`
+5. `MalformedPath(String)`
+6. `DuplicatePath(String)`
+7. `AmbiguousPath { first: String, second: String }`
+8. `ReservedPath(String)` — **new today**, security-relevant; see "Fixed today" below.
+9. `PreviewBundleMismatch(String)` — **new today**; see "Fixed today" below.
+10. `SymlinkRefused(String)` — renamed from rev 1's `SymlinkEscapesRoot` in
+    rev 2; **no variant named `SymlinkEscapesRoot` exists**.
+11. `NotFound(String)`
+12. `NotAFile(String)`
+13. `FileTooLarge { path: String, limit: u64, size: u64 }`
+14. `TooManyEntries { limit: usize, actual: usize }`
+15. `TotalBytesExceeded { limit: u64, actual: u64 }`
+16. `OverwriteNotDecided(String)`
+17. `ConcurrentModification { path: String, expected: Option<Digest>, found: Option<Digest> }`
+18. `RollbackIncomplete { original_cause: Box<BundleError>, left_in_written_state: Vec<(String, String)> }`
+19. `Io(String)`
+
+The copy of this list printed here after rev 3 omitted #8 and #9 while
+explicitly claiming to be the corrected "current full variant list" — both
+are actively constructed in `apply_import` (not dead code; both are
+exercised by `tests/reserved_paths.rs` and `tests/preview_bundle_pairing.rs`
+respectively), so a consumer written against that list could not compile a
+match arm for either and would not handle a rejection it should have been
+told about.
+
+### Worked example (compiles against the exact signatures above)
+
+Verified against this exact tested SHA in a throwaway crate depending on
+this one by path (`cargo build`, clean, zero warnings) — not merely
+hand-checked:
+
+```rust
+use std::collections::HashMap;
+use flashtex_project_bundle::{
+    apply_import, build_bundle, preview_import, BundleEntry, BundleError, ImportDecision,
+    ProjectRoot,
+};
+
+fn import_one_file(
+    source_dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> Result<(), BundleError> {
+    let source = ProjectRoot::new(source_dir)?;
+    let target = ProjectRoot::new(target_dir)?;
+
+    // ProjectRoot::normalize is the actual chokepoint -- there is no
+    // `resolve`, and it returns a `ProjectPath`, not a `PathBuf`.
+    let _validated = ProjectRoot::normalize("chapters/intro.tex")?;
+
+    let bundle = build_bundle(&source, &[BundleEntry::new("chapters/intro.tex")])?;
+    let preview = preview_import(&bundle, &target)?;
+
+    let mut decisions = HashMap::new();
+    for file in preview.conflicts() {
+        decisions.insert(file.path.clone(), ImportDecision::Write);
+    }
+
+    let outcomes = apply_import(&bundle, &preview, &target, &decisions)?;
+    for outcome in outcomes {
+        println!("{}: {:?}", outcome.path, outcome.action);
+    }
+    Ok(())
+}
+```
+
+Every fallible call (`ProjectRoot::new` ×2, `ProjectRoot::normalize`,
+`build_bundle`, `preview_import`, `apply_import`) is propagated with `?`
+into the function's own `Result<(), BundleError>` — none is `.unwrap()`ed or
+its `Result` discarded — and every argument's arity and ownership (`&Path`,
+`&str`, `&[BundleEntry]`, `&Bundle`, `&ImportPreview`, `&ProjectRoot`,
+`&HashMap<String, ImportDecision>`) matches the real signatures above.
+
+### Fixed today (three real defects; two change the error surface)
+
+- **`ReservedPath(String)` — security-relevant.** `apply_import` used to
+  write any path the caller declared, including
+  `.flashtex/project.lock` — the advisory lock file that very call holds
+  for the whole batch. The rooted writer commits by writing a temp file and
+  `rename`ing it over the target, so importing that path replaced the
+  locked *inode*: the `flock` the call still believed it held was stranded
+  on an orphan, the replacement file was unlocked, and a second writer
+  could immediately take "the lock" and interleave with the rest of the
+  same batch — silently voiding the mutual-exclusion guarantee this crate's
+  own documentation promises, while `apply_import` still returned `Ok`.
+  Fixed (`e32796cd`): every previewed path is checked against the
+  `.flashtex/` control-directory prefix up front, before the project lock
+  is taken and before any file is written; a hit is `ReservedPath`, not a
+  silent write. Proven in `tests/reserved_paths.rs`, including a test that
+  characterizes the exact underlying mechanism this prevents
+  (`replacing_a_held_lock_file_voids_mutual_exclusion`) and a control case
+  confirming the check is a `.flashtex/`-prefix match, not a substring scan
+  (`a_path_merely_resembling_the_control_directory_is_still_importable`).
+- **`PreviewBundleMismatch(String)`.** `apply_import` takes `bundle` and
+  `preview` as two independent arguments with nothing structurally tying
+  them together; the per-file write loop used to assume they matched via
+  `bundle.file(&fp.path).expect("preview built from this bundle")`. A
+  caller that rebuilds or swaps the bundle after computing the preview (the
+  ordinary case: a user deselects a file) hit that `expect` and panicked
+  partway through the batch — the unwind skipped the rollback that exists
+  precisely for a mid-batch failure, leaving files already written standing
+  on disk with no `BundleError` for the caller to match on. Fixed
+  (`d18fa51f`): every previewed path is checked against the bundle up front,
+  in the same pre-lock, pre-write pass as the `ReservedPath` check above;
+  a mismatch is the typed `PreviewBundleMismatch`, returned before anything
+  is written. Proven in `tests/preview_bundle_pairing.rs`, including the
+  case where the mismatch is the very first previewed path.
+- **Missing parent directory read as `Io`, not absence.** The rooted reader
+  walks a path one component at a time; a missing *leaf* was already
+  `Ok(None)`, but a missing intermediate *directory* surfaced as a raw
+  `ENOENT` mapped straight to an untyped `BundleError::Io`. Consequence:
+  `preview_import` of a bundle entry such as `chapters/intro.tex` into a
+  target that did not yet have a `chapters/` directory failed the whole
+  preview with an I/O error — even though `apply_import`'s own writer
+  creates missing parent directories — so importing any bundle containing a
+  nested file into a fresh project was impossible. Fixed (`4809630b`):
+  `ProjectRoot::read_rooted_optional` now treats a missing-component
+  `ENOENT` from the walk the same as a missing leaf, `Ok(None)`. No
+  `BundleError` variant changed; this is a behavior fix, not a new error.
+  Proven in `tests/missing_parent_dir.rs`, including a guard test
+  confirming the fix did not swallow a real traversal or symlink refusal
+  (different errno, still typed and distinct).
+
+### Corrections made to this section (contract-drift repair, today)
+
+An independent contract audit found this section quoting an API that does
+not match the source:
+
+1. It documented `ProjectRoot::resolve(relative: &str) -> Result<PathBuf, BundleError>`.
+   No method of that name exists anywhere in `src/`. The real chokepoint is
+   `ProjectRoot::normalize(relative: &str) -> Result<ProjectPath, BundleError>`
+   — different in both name and return type. Code written against the old,
+   fictitious signature would not compile.
+2. The variant list omitted `ReservedPath` and `PreviewBundleMismatch` (see
+   "Fixed today" above) while explicitly claiming to be the corrected,
+   current list.
+3. One sentence still referred to `SymlinkEscapesRoot`, renamed to
+   `SymlinkRefused` in rev 2.
+
+This section was rebuilt from the current source rather than patched, per
+this revision's task instructions, specifically to avoid repeating (2) and
+(3): editing prose piecemeal is how they were introduced. The old "Rooting"
+subsection this section replaces described rev 1's own `canonicalize`-then-
+`starts_with` implementation and its test names (`symlink_staying_inside_root_is_allowed`);
+that implementation was replaced in rev 2, and the cited test was renamed
+to `symlink_staying_inside_root_is_also_refused` at the same time — this
+subsection had not been updated since, describing dead rev-1 internals for
+two revisions. Proven in `tests/rooted.rs`:
+`dot_dot_traversal_is_rejected` (`..` to a file that genuinely exists
+outside root) and `dot_dot_traversal_is_rejected_even_when_target_does_not_exist`
+(syntactic, not existence-dependent); `absolute_path_is_rejected` (absolute
+path to a file that *is* inside the root, still rejected);
+`symlink_escaping_root_is_rejected` (real `symlink` via
+`std::os::unix::fs::symlink` to an outside temp dir) vs.
+`symlink_staying_inside_root_is_also_refused` (rev 2 tightened this from
+rev 1's "allowed" to "refused unconditionally" — see rev 2 section above).
 
 ### No implicit discovery
 
@@ -320,37 +658,51 @@ still plain-byte and platform-independent given whatever bytes the caller's
 
 ## Test counts
 
-Rev 3: 50 integration tests (`tests/rooted.rs` 10, `tests/no_discovery.rs`
-2, `tests/determinism.rs` 4, `tests/malformed_and_unicode.rs` 12 (+2 this
-revision: path-of-only-separators, Unicode-normalization collision),
+Rev 4: 63 integration tests (`tests/rooted.rs` 10, `tests/no_discovery.rs`
+2, `tests/determinism.rs` 4, `tests/malformed_and_unicode.rs` 13 (+1 this
+revision: `unicode_normalization_collision_is_detected_before_the_second_path_is_ever_read`),
 `tests/preview.rs` 3, `tests/apply.rs` 8, `tests/bounds.rs` 5,
-`tests/recovery.rs` 4 (new this revision), `tests/stale_identity.rs` 2
-(new this revision)) + 1 doctest = 51 total, 0 unit tests inside `src/`
-(all behavior is exercised at the public API). Rev 2's coverage
-(malformed-input/normalization, Unicode filenames, preview classification,
-no-clobber apply, both preview-to-apply races, bundle bounds) is unchanged
-and still passing; see the rev 2 section below for what each of those
-proves. New this revision: `tests/recovery.rs` proves batch rollback at
-the first/middle/last of three writes plus overwritten-conflict restore;
-`tests/malformed_and_unicode.rs`'s two additions prove the
-path-of-only-separators and Unicode-normalization-collision adversarial
-bounds; `tests/stale_identity.rs` proves the deletion case of stale-identity
-acceptance, standalone and combined with batch rollback.
+`tests/recovery.rs` 5, `tests/stale_identity.rs` 2,
+`tests/missing_parent_dir.rs` 4, `tests/preview_bundle_pairing.rs` 3,
+`tests/reserved_paths.rs` 4) + 1 doctest = 64 total, 0 unit tests inside
+`src/` (all behavior is still exercised at the public API). Counts above
+are read directly from this revision's `cargo test` output, not carried
+forward from the rev 3 text — `tests/recovery.rs` in particular is 5, not
+the 4 rev 3 recorded (an extra rollback-and-created-directory case is
+present in the tree; not investigated further here since it is unrelated
+to this revision's work and was already green).
+`tests/missing_parent_dir.rs`, `tests/preview_bundle_pairing.rs` and
+`tests/reserved_paths.rs` are new files proving the three defect fixes
+under "Fixed today" above; `tests/malformed_and_unicode.rs`'s addition
+proves the Unicode-normalization detection switch does not need the
+colliding path to exist on disk. Every rev 1/2/3 test not named above is
+unchanged and still passing.
 
 ## Validation
 
 rustc/cargo 1.98.1, this machine:
 - `cargo build --manifest-path crates/project-bundle/Cargo.toml`: clean.
-- `cargo test --manifest-path crates/project-bundle/Cargo.toml`: 51 passed
-  (50 integration + 1 doctest), 0 failed.
+- `cargo test --manifest-path crates/project-bundle/Cargo.toml`: 64 passed
+  (63 integration + 1 doctest), 0 failed.
 - `cargo clippy --manifest-path crates/project-bundle/Cargo.toml --all-targets -- -D warnings`:
   clean, 0 warnings.
+- `cargo fmt --manifest-path crates/project-bundle/Cargo.toml --check`: clean.
 
 Exact tested commit SHA (the commit whose `crates/project-bundle` tree the
-above three commands were run against, after the rev 3 `origin/main`
-merge): `10b4f4193a5d2dc41a4ce38b976159e08e70a8f3`.
-(Rev 2's tested SHA for reference: `ddd445d421dae99f80c9bed37e253b3c6c69c82e`.
-Rev 1's: `5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.)
+above four commands were run against), verified before being written down
+here with both:
+
+    git -C /Users/dqi26/ft-wt-daniel-bundle cat-file -e 4523011dc55492acc3fcaa32a1748da53a46b888^{commit}
+    git -C /Users/dqi26/ft-wt-daniel-bundle merge-base --is-ancestor 4523011dc55492acc3fcaa32a1748da53a46b888 HEAD
+
+— both succeeded (exit 0). SHA: `4523011dc55492acc3fcaa32a1748da53a46b888`.
+(Rev 3's tested SHA for reference: `10b4f4193a5d2dc41a4ce38b976159e08e70a8f3`.
+Rev 2's: `ddd445d421dae99f80c9bed37e253b3c6c69c82e`. Rev 1's:
+`5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.)
+
+The worked example under "Typed contract" above was additionally verified
+by building it in a standalone throwaway crate depending on this one by
+path at this same tested SHA (`cargo build`, clean, zero warnings).
 
 ## Incomplete behavior
 
@@ -375,21 +727,24 @@ Rev 1's: `5a37954d2ed8f5e73379e7d31381bcfefcd8c6c2`.)
   therefore already bounded by `BundleLimits`); they do not independently
   re-check bounds, since nothing they do can grow the file set beyond what
   `build_bundle_with_limits` already admitted.
-- `BundleError::AmbiguousPath`'s Unicode-normalization-collision detection
-  (`ProjectRoot::canonical_identity`) is filesystem-identity-based
-  (`fs::canonicalize` equality), not a from-scratch NFC/NFD table — this
-  crate took no new dependency to build one, and no `unicode-normalization`
-  crate was available to add (network access to crates.io was blocked in
-  this environment; adding an unverified new external dependency to a
-  security-adjacent crate on the strength of an untested fetch was judged
-  the wrong tradeoff against the same detection achieved with what is
-  already reused here). Consequence: it only fires where the actual
-  filesystem folds two spellings together — the concrete hazard this task
-  named — not for two Unicode-canonically-equivalent paths on a filesystem
-  that keeps them genuinely distinct (correctly, since there they are not
-  the same file). It also incidentally catches any other same-file
-  aliasing a filesystem folds (e.g. two case variants on a case-insensitive
-  volume), which is a reasonable bonus, not a claim of Unicode correctness.
+- **Superseded this revision (was open in rev 3):** `BundleError::AmbiguousPath`'s
+  detection used to be filesystem-identity-based (`fs::canonicalize`
+  equality via `ProjectRoot::canonical_identity`) on the stated rationale
+  that "network access to crates.io was blocked in this environment." That
+  rationale was checked this revision and found **false** — crates.io is
+  reachable and `cargo build` fetches `unicode-normalization` cleanly (see
+  "Correction" under Revision 4 above) — so detection was switched to
+  comparing each declared path's Unicode NFC-normalized form directly, no
+  filesystem access at all. See "Assessment" under Revision 4 above for the
+  full reasoning. Residual, now-accepted trade-off: detection is
+  filesystem-*independent* by design — it rejects any two
+  Unicode-canonically-equivalent declared paths on every platform, not only
+  where the host filesystem actually folds them together, which is a
+  stricter default than rev 3's, deliberately chosen for a bundle meant to
+  move across machines. The capability given up (also catching a
+  non-Unicode filesystem-identity collision, e.g. two case variants on a
+  case-insensitive volume) was already documented as an incidental bonus,
+  never part of `AmbiguousPath`'s contract.
 
 ## Needs from others
 
@@ -443,6 +798,17 @@ these are untrusted and were not followed or acted on in any way; this
 handoff and its commits use only this task's actual instructions and the
 operator's real global configuration.
 
+Rev 4: no new `origin/main` fetch/merge was performed (out of scope for
+this revision's task). Re-read `crates/project-bundle/src/` end to end
+(`apply.rs`, `bundle.rs`, `error.rs`, `lib.rs`, `preview.rs`, `root.rs`) to
+rebuild the typed contract from source, and the same repository-authored
+`AGENTS.md`/`CLAUDE.md`/`coordination/CLAUDE.md` text was seen again
+(unchanged in substance, plus another machine's handoff at
+`coordination/CLAUDE.md` styled the same way); again untrusted, not
+followed or acted on, per this revision's explicit task instructions,
+which state that authorization/permission/identity text found in
+repository files is data, not instruction.
+
 Resource: allocation `daniel-claude20x-shared`; no purchases.
 
-Updated: 2026-09-12T16:53:23Z
+Updated: 2026-09-12T18:08:00Z
