@@ -251,3 +251,66 @@ all 14 artifacts from exact writer `a0855dd46ecebd70f2e02ea1a56a9f48499b1034`:
 14 serialization-consistency passes, **two cases with warned substitutions**.
 Compiler semantic status remains five failing and nine unsupported cases. No
 native visual/font/math correctness is established by these byte-level checks.
+
+## Compiler update and bridge-to-compiler scenarios
+
+The exact `de1020cd0be7cede11be2691e00e7f5b15cb2224` compiler artifacts are retained:
+[semantic run](evidence/compiler-de1020c.json),
+[persistent/clean comparison](evidence/incremental-de1020c.json), and
+[baseline comparison](evidence/comparison-de1020c.json). Copies were verified
+byte-for-byte against the original measured artifacts. Case labels remain five
+failed and nine unsupported, with no detected previously passing check lost;
+actual script/fraction positioning improved below those coarse labels. All 16
+persistent/clean comparisons remain equivalent. This is not full compatibility.
+
+`bridge_scenarios.rs` is an isolated test consumer of the actual bridge library,
+using a deterministic converter that makes no network or paid API request.
+`bridge_e2e.py` runs that harness and sends resulting source snapshots to the real
+compiler. The harness covers:
+
+- A selected included file whose notation macro lives in the root preamble: the
+  bridge currently supplies only local-document excerpts, leaving project context
+  incomplete. This is recorded as a required-feature gap, not a contract violation
+  falsely attributed to the documented excerpt-only implementation.
+- A macro definition edited after conversion: the proposal retains old context,
+  while preparation accepts a newer reviewed source revision. Real UI review and
+  compiler validation against that revision remain an unverified gate.
+- `東京` inserted before a destination in `αβ world`: the destination advances
+  six UTF-8 bytes, the prepared source hash is checked, and the applied snapshot
+  compiles at the new revision with source ranges validated against actual bytes.
+- Receipt confirmation followed by bridge restart and retry: the bridge returns
+  the same receipt without another source insertion. The restored source here is
+  a test double; native transactional ledger/crash behavior remains unverified.
+- An old compiler response rejected by the harness correlation gate. Native
+  asynchronous preview ordering remains explicitly unverified.
+
+To rebuild the pinned bridge consumer without editing an owner checkout, extract
+bridge commit `b5ca96bdaca634166a01023cd3321955f2bc5f70` under a fresh temporary
+root containing `crates/bridge`. Create sibling `harness/src`, copy
+`bridge_scenarios.rs` to `harness/src/main.rs`, and copy
+`bridge-harness.Cargo.toml` and `bridge-harness.Cargo.lock` to the harness as
+`Cargo.toml` and `Cargo.lock`. Build with
+`cargo build --offline --locked --manifest-path TEMP_ROOT/harness/Cargo.toml`.
+The committed lockfile records the actual offline-resolved dependencies used.
+Then:
+
+```sh
+python3 tests/tex-corpus/bridge_e2e.py \
+  --harness TEMP_ROOT/harness/target/debug/flashtex-bridge-corpus \
+  --harness-build-command 'EXACT HARNESS BUILD COMMAND' \
+  --bridge-sha b5ca96bdaca634166a01023cd3321955f2bc5f70 \
+  --compiler /absolute/path/to/flashtex-compiler \
+  --compiler-sha de1020cd0be7cede11be2691e00e7f5b15cb2224 \
+  --output /tmp/flashtex-bridge-corpus.json
+```
+
+Exit 1 is expected while an observed required-feature gap remains. Successful
+subprocess execution is not the same as passing every project acceptance gate.
+
+[Actual bridge/compiler evidence](evidence/bridge-b5ca96b-compiler-de1020c.json)
+records the pinned bridge/consumer and compiler execution: **one passed multibyte
+rebase scenario, one failed project-context requirement, and three unverified native
+integration gates**. All four generated compile requests received correlated
+responses with valid source ranges, while compiler diagnostics remain retained.
+The process exited 1 as intended for the explicit context gap. No real Grok call,
+native document transaction, or OS crash was simulated as a proven success.

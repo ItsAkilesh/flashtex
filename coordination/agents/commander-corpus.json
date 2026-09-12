@@ -13,7 +13,7 @@
   "capabilities": [
     "compiler-fixtures"
   ],
-  "code_revision": "5ed30c2b9946015556015fbe88f9e2ed3d6c8141",
+  "code_revision": "7bb67f758d9c21eb31cd5fe39777dd90d484317a",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,12 +21,17 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "5ed30c2b9946015556015fbe88f9e2ed3d6c8141",
-  "next_action": "Commander merge current main and publish accumulated FT-011 checkpoint through actual Cursor; no additional corpus edits until that checkpoint is captured.",
+  "next_action": "Commander/Cursor review and merge current main; worktree remains on7bb67f7 because main diverged and ff-only refused safely. No further edits until checkpoint capture.",
   "reviewed_peers": {
     "origin/agent/claude/compiler-foundation": {
       "adaptation": "Fetched branch still9f1033b. Incremental checker compares exact edited request results against fresh processes; does not conflate equivalent unsupported output with semantic support or cache reuse. No compiler internals changed.",
       "reviewed_utc": "2026-09-12T04:36:32Z",
       "sha": "9f1033ba75176236bc5fc66b5e64b8ebbfc15a37"
+    },
+    "origin/agent/commander/capture-bridge": {
+      "adaptation": "Bridgeb5ca96b exact source used; retry binding fix present. Scenarios distinguish project context absence/stale conversion metadata from native approval guarantees, verify\u6771\u4eac six-byte shift and real receipt retry, and leave native crash/stalepreview gates unverified.",
+      "reviewed_utc": "2026-09-12T05:05:55Z",
+      "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
     },
     "origin/agent/mac-pdf/pdf-output": {
       "adaptation": "Fetched/reviewed PDF tip remains a0855dd; encoding.rs confirms WinAnsi plus explicit substitutions. Serialization consistency never upgrades underlying5failed/9unsupported semantic corpus. All owner implementations untouched.",
@@ -36,11 +41,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-011 sixth increment: PDF literal byte/runtime consistency and explicit page/item/codepoint substitution warning checks.40 tests pass;14 actual artifacts consistent,2 contain warned text substitutions; semantic failures preserved.",
+  "summary": "FT-011 seventh increment: de1020 measured artifacts plus real b5ca96b bridge-library to compiler scenarios using fake conversion.46tests pass; actual outcomes1pass/1context-gap fail/3native gates unverified,4compiled snapshots source-valid.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:47:03Z",
+  "updated_utc": "2026-09-12T05:05:55Z",
   "usage": {
-    "evidence": "40tests pass; pdf_consistency.py actual evidence shows14pass/0fail/2substitution cases. evidence/pdf-consistency-a0855dd.json links exact compiler/PDF evidence hashes and item source provenance. Tests cover escaping,WinAnsi,CJK/emoji/controls,wrong warnings,dropped/duplicated items,bounds,multiline/multipage.",
+    "evidence": "Offline locked isolated bridge harness build passed. evidence/bridge-b5ca96b-compiler-de1020c.json retains raw library output and4compiler replies.46Python tests pass. New compiler baseline/comparison copied byte-for-byte and candidate hash verified. No provider calls.",
     "status": "unknown"
   }
 }
