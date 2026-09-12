@@ -1,7 +1,7 @@
 //! Persistent original-compiler transport. Poll from an application worker, not
 //! the UI thread. Results are never substituted across revisions.
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{BufRead, BufReader, Read, Write},
@@ -402,7 +402,33 @@ fn encode(r: &Request, limit: usize) -> Result<Vec<u8>, String> {
     if !paths.contains_key(&r.entry_path) {
         return Err("entry snapshot missing".into());
     }
-    let mut bytes=serde_json::to_vec(&json!({"protocol_version":1,"id":r.id,"type":"compile","payload":{"project_id":r.project_id,"revision":r.revision,"entry_path":r.entry_path,"documents":r.documents}})).map_err(|e|e.to_string())?;
+    #[derive(Serialize)]
+    struct Payload<'a> {
+        project_id: &'a str,
+        revision: u64,
+        entry_path: &'a str,
+        documents: &'a [Document],
+    }
+    #[derive(Serialize)]
+    struct Envelope<'a> {
+        protocol_version: u8,
+        id: &'a str,
+        #[serde(rename = "type")]
+        kind: &'static str,
+        payload: Payload<'a>,
+    }
+    let envelope = Envelope {
+        protocol_version: 1,
+        id: &r.id,
+        kind: "compile",
+        payload: Payload {
+            project_id: &r.project_id,
+            revision: r.revision,
+            entry_path: &r.entry_path,
+            documents: &r.documents,
+        },
+    };
+    let mut bytes = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     if bytes.len() > limit {
         return Err("request frame too large".into());
@@ -426,16 +452,17 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
     {
         return Err("invalid compiler result shape".into());
     }
+    let documents: BTreeMap<&str, &str> = r
+        .documents
+        .iter()
+        .map(|document| (document.path.as_str(), document.text.as_str()))
+        .collect();
     let span = |source: &Value| -> Result<(), String> {
         if source.is_null() {
             return Ok(());
         }
         let path = source["path"].as_str().ok_or("missing source path")?;
-        let document = r
-            .documents
-            .iter()
-            .find(|d| d.path == path)
-            .ok_or("unknown source snapshot")?;
+        let text = documents.get(path).ok_or("unknown source snapshot")?;
         let start = source["start_byte"]
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
@@ -445,9 +472,9 @@ fn validate_reply(bytes: &[u8], r: &Request) -> Result<Value, String> {
             .and_then(|n| usize::try_from(n).ok())
             .ok_or("invalid source end")?;
         if start > end
-            || end > document.text.len()
-            || !document.text.is_char_boundary(start)
-            || !document.text.is_char_boundary(end)
+            || end > text.len()
+            || !text.is_char_boundary(start)
+            || !text.is_char_boundary(end)
         {
             return Err("invalid UTF-8 source range".into());
         }
