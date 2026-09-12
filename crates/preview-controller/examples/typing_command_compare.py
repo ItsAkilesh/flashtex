@@ -22,10 +22,16 @@ def run(args, mode, source, replacement_source, start):
         root = Path(temp)
         (root/'project').mkdir(); (root/'private').mkdir()
         (root/'project/main.tex').write_text(source)
+        producer_path = str(Path(args.producer).resolve())
+        if args.capture_producer:
+            capture_root = (out/'producer').resolve(); capture_root.mkdir()
+            os.environ['FLASHTEX_CAPTURE_DIRECTORY'] = str(capture_root)
+            os.environ['FLASHTEX_CAPTURE_PRODUCER'] = producer_path
+            producer_path = str(Path(__file__).with_name('producer_capture_proxy.py').resolve())
         config = root/'config.json'
         config.write_text(json.dumps(dict(session_id='benchmark',project_id='p',entry_path='main.tex',
             project_root=str(root/'project'),private_ledger_root=str(root/'private'),
-            compiler_path=str(Path(args.producer).resolve()),diagnostic_timings=True)))
+            compiler_path=producer_path,diagnostic_timings=True)))
         client = Client(args.helper, config, capture_diagnostics=True, capture_wire=True)
         try:
             initial = snapshot_after_initial_preview(client)
@@ -88,6 +94,8 @@ def run(args, mode, source, replacement_source, start):
         return dict(mode=mode,request_bytes=len(wire),ack_bytes=(out/'ack.jsonl').stat().st_size,
             ack_received_ms=ack_ms,preview_received_ms=preview_ms,
             save_and_submit_ms=ack['payload']['save_and_submit_ms'],
+            runtime_total_ms=preview['runtime_total_ms'],controller_total_ms=preview['controller_total_ms'],
+            after_controller_to_frame_ms=preview_ms-preview['controller_total_ms'],
             result=preview['result'],source_sha256=durable['source_sha256'],
             reopened_revision=durable['revision'])
 
@@ -96,6 +104,7 @@ def main():
     parser=argparse.ArgumentParser()
     for key in ['helper','producer','producer-evidence','output']:
         parser.add_argument('--'+key,required=True)
+    parser.add_argument('--capture-producer',action='store_true')
     args=parser.parse_args()
     evidence=json.loads(Path(args.producer_evidence).read_text())
     assert sha(Path(args.producer).read_bytes())==evidence['binary_sha256']
@@ -120,8 +129,8 @@ def main():
     for case in cases: del case['result']
     summary=dict(helper_sha256=sha(Path(args.helper).read_bytes()),producer_sha256=evidence['binary_sha256'],
         assets=evidence['assets'],source_bytes=50000,edit=dict(start_byte=start,end_byte=start+1,removed='O',replacement='A'),
-        cases=cases,scope='one sequential pair, exact same actual final preview and durable source; timings include helper/producer/transport and host scheduling, not native paint or calibrated superiority',
-        scripts={p.name:sha(p.read_bytes()) for p in [Path(__file__),Path(__file__).with_name('helper_replay.py')]},
+        capture_proxy=args.capture_producer, cases=cases,scope='one sequential pair, exact same actual final preview and durable source; timings include helper/producer/transport and host scheduling, not native paint or calibrated superiority',
+        scripts={p.name:sha(p.read_bytes()) for p in [Path(__file__),Path(__file__).with_name('helper_replay.py'),Path(__file__).with_name('producer_capture_proxy.py')]},
         artifacts={str(p.relative_to(out)):sha(p.read_bytes()) for p in out.rglob('*') if p.is_file()})
     (out/'provenance.json').write_text(json.dumps(summary,indent=2)+'\n')
     print(json.dumps(cases))
