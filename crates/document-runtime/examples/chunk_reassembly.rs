@@ -8,6 +8,13 @@ use std::{
     io::{self, Read},
     time::{Duration, Instant},
 };
+#[derive(serde::Serialize)]
+struct BorrowedPage<'a> {
+    id: &'a str,
+    project_id: &'a str,
+    revision: u64,
+    page: &'a Value,
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args()
         .nth(1)
@@ -73,6 +80,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "chunks":sequence,"largest_chunk_bytes":largest,"pages":pages,"pack_reassemble_validate_ms":reassembly_ms,
         "production_transport":false,"native_paint_measured":false,"peak_memory_measured":false})
     );
+    // Build only the header metadata; avoid cloning all page items for it.
+    let mut header = serde_json::Map::new();
+    for (key, value) in full.as_object().ok_or("envelope")? {
+        if key == "payload" {
+            let mut payload = serde_json::Map::new();
+            for (name, value) in value.as_object().ok_or("payload")? {
+                payload.insert(
+                    name.clone(),
+                    if name == "pages" {
+                        json!([])
+                    } else {
+                        value.clone()
+                    },
+                );
+            }
+            header.insert(key.clone(), Value::Object(payload));
+        } else {
+            header.insert(key.clone(), value.clone());
+        }
+    }
+    let header = serde_json::to_vec(&Value::Object(header))?;
+    let mut typed = flashtex_document_runtime::experimental_chunks::PageAssembly::new(
+        request.clone(),
+        vec![],
+        &header,
+        pages,
+        1024 * 1024,
+        Duration::from_secs(60),
+    )?;
+    let typed_start = Instant::now();
+    let mut typed_wire = header.len();
+    let mut typed_largest = header.len();
+    for page in full["payload"]["pages"].as_array().ok_or("pages")? {
+        let frame = serde_json::to_vec(&BorrowedPage {
+            id: &request.id,
+            project_id: &request.project_id,
+            revision,
+            page,
+        })?;
+        typed_wire += frame.len();
+        typed_largest = typed_largest.max(frame.len());
+        typed.push(&frame, revision)?;
+    }
+    let typed_result = typed.finish(revision)?;
+    let typed_ms = typed_start.elapsed().as_secs_f64() * 1000.0;
+    let typed_equal = typed_result == full;
+    println!(
+        "{}",
+        json!({"mode":"typed_pages","pages":pages,"wire_bytes":typed_wire,
+        "largest_chunk_bytes":typed_largest,"pack_reassemble_validate_ms":typed_ms,"exact_json_equal":typed_equal,
+        "production_transport":false,"peak_memory_measured":false,"native_paint_measured":false})
+    );
+    if !typed_equal {
+        return Err("typed page mismatch".into());
+    }
     if !equal {
         return Err("reassembly mismatch".into());
     }

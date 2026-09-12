@@ -71,3 +71,42 @@ fn stale_duplicate_oversize_and_cancel_are_terminal() {
     cancelled.cancel();
     assert!(cancelled.push(&frame(0, &text), 1).is_err());
 }
+
+#[test]
+fn typed_pages_preserve_all_fields_and_reject_incomplete_or_invalid_geometry() {
+    use flashtex_document_runtime::experimental_chunks::{PageAssembly, PageChunk};
+    let header = result();
+    let bytes = serde_json::to_vec(&header).unwrap();
+    let page = json!({"number":1,"width_pt":612,"height_pt":792,"items":[],"extension":{"α":true}});
+    let chunk = serde_json::to_vec(&PageChunk {
+        id: "r".into(),
+        project_id: "p".into(),
+        revision: 1,
+        page: page.clone(),
+    })
+    .unwrap();
+    let mut a =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    a.push(&chunk, 1).unwrap();
+    let mut expected = header.clone();
+    expected["payload"]["pages"] = json!([page]);
+    assert_eq!(a.finish(1).unwrap(), expected);
+    let incomplete =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    assert!(incomplete.finish(1).is_err());
+    let mut invalid =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    let frame = serde_json::to_vec(&PageChunk {
+        id: "r".into(),
+        project_id: "p".into(),
+        revision: 1,
+        page: json!({"number":1,"width_pt":-1,"height_pt":792,"items":[]}),
+    })
+    .unwrap();
+    invalid.push(&frame, 1).unwrap();
+    assert!(invalid.finish(1).is_err());
+    let mut stale =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    assert!(stale.push(&chunk, 2).is_err());
+    assert!(stale.push(&chunk, 1).is_err());
+}

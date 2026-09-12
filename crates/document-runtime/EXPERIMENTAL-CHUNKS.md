@@ -44,3 +44,22 @@ compression, deltas, earlier paint, or lower latency. Next design comparison sho
 use typed page/item chunks and/or immutable page references to avoid JSON-string
 escaping and permit bounded page staging with atomic final publication. Exact
 reassembly and stale suppression remain mandatory acceptance gates.
+
+## Typed page alternative
+
+`PageAssembly` accepts an exact envelope header with an empty pages array, then
+one `PageChunk` object per page. It checks identity, sequential page number,
+announced count, serialized per-frame1MiB limit and cumulative64MiB wire budget.
+All page objects remain private until finish applies the same production validator
+directly to the assembled JSON value. Unknown fields are preserved. Stale input,
+invalid order or oversize terminally clears the assembly. A single page larger
+than1MiB is explicitly rejected; item subdivision remains future work.
+
+On the same301-page fixture the typed alternative uses10,155,174wire bytes and
+34,000bytes for its largest message. Borrowed page serialization avoids copying
+all page values while packing. One paired release run measured101.08ms typed
+packing/reassembly/validation versus117.44ms escaped-string chunks, both exactly
+equal to the original. These are offline prototype measurements, not a native
+latency improvement claim. Both retain the entire completed page set; the typed
+consumer avoids the extra full JSON byte-buffer/parse on completion. Peak RSS,
+producer streaming and final native acceptance remain unmeasured/unimplemented.

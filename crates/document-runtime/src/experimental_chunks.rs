@@ -118,3 +118,114 @@ impl Assembly {
         Ok(value)
     }
 }
+
+/// Alternative prototype: one bounded complete page per message, without JSON
+/// string escaping. Oversized individual pages remain explicitly unsupported.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageChunk {
+    pub id: String,
+    pub project_id: String,
+    pub revision: u64,
+    pub page: Value,
+}
+pub struct PageAssembly {
+    request: Request,
+    capabilities: Vec<String>,
+    result: Value,
+    expected_pages: usize,
+    received: usize,
+    wire_bytes: usize,
+    max_chunk_bytes: usize,
+    deadline: Instant,
+    failed: bool,
+}
+impl PageAssembly {
+    /// Header is the exact compile_result envelope with an empty pages array.
+    pub fn new(
+        request: Request,
+        capabilities: Vec<String>,
+        header: &[u8],
+        expected_pages: usize,
+        max_chunk_bytes: usize,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        if !(128..=1024 * 1024).contains(&max_chunk_bytes)
+            || header.len() > max_chunk_bytes
+            || expected_pages > 10000
+            || timeout.is_zero()
+            || timeout > Duration::from_secs(60)
+        {
+            return Err("invalid page assembly limits".into());
+        }
+        validate_layout_capabilities(&capabilities)?;
+        let result = validate_reply(header, &request, &capabilities)?;
+        if !result["payload"]["pages"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        {
+            return Err("page assembly header must contain empty pages".into());
+        }
+        Ok(Self {
+            request,
+            capabilities,
+            result,
+            expected_pages,
+            received: 0,
+            wire_bytes: header.len(),
+            max_chunk_bytes,
+            deadline: Instant::now() + timeout,
+            failed: false,
+        })
+    }
+    pub fn cancel(&mut self) {
+        self.failed = true;
+        self.result = Value::Null;
+    }
+    pub fn push(&mut self, frame: &[u8], current_revision: u64) -> Result<(), String> {
+        let result = self.push_checked(frame, current_revision);
+        if result.is_err() {
+            self.cancel();
+        }
+        result
+    }
+    fn push_checked(&mut self, frame: &[u8], current_revision: u64) -> Result<(), String> {
+        if self.failed
+            || current_revision != self.request.revision
+            || Instant::now() >= self.deadline
+        {
+            return Err("cancelled, stale or expired page assembly".into());
+        }
+        if frame.len() > self.max_chunk_bytes
+            || self.wire_bytes.saturating_add(frame.len()) > 64 * 1024 * 1024
+        {
+            return Err("page chunk or total wire budget exceeded".into());
+        }
+        let chunk: PageChunk = serde_json::from_slice(frame).map_err(|_| "invalid page chunk")?;
+        if chunk.id != self.request.id
+            || chunk.project_id != self.request.project_id
+            || chunk.revision != self.request.revision
+            || self.received >= self.expected_pages
+            || chunk.page["number"].as_u64() != Some(self.received as u64 + 1)
+        {
+            return Err("page identity, order or count invalid".into());
+        }
+        self.result["payload"]["pages"]
+            .as_array_mut()
+            .unwrap()
+            .push(chunk.page);
+        self.received += 1;
+        self.wire_bytes += frame.len();
+        Ok(())
+    }
+    pub fn finish(self, current_revision: u64) -> Result<Value, String> {
+        if self.failed
+            || current_revision != self.request.revision
+            || Instant::now() >= self.deadline
+            || self.received != self.expected_pages
+        {
+            return Err("incomplete, stale or expired page assembly".into());
+        }
+        crate::validate_reply_value(self.result, &self.request, &self.capabilities)
+    }
+}
