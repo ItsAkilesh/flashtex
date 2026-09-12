@@ -1,36 +1,36 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-bundle",
-  "task_id": "FT-043",
-  "next_index": 0,
+  "next_index": 1,
+  "schema_version": 1,
   "steps": [
     {
+      "acceptance": [
+        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+      ],
+      "allocation_id": "daniel-claude20x-shared",
       "name": "Bounded project bundle recovery: bounded adversarial and stale-identity acceptance tests",
       "objective": "Bounded project bundle recovery: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/project-bundle"
       ],
+      "timebox_minutes": 30
+    },
+    {
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 30
-    },
-    {
       "name": "Bounded project bundle recovery: actual existing consumer fixture and exact measured limitations",
       "objective": "Bounded project bundle recovery: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/project-bundle"
       ],
-      "acceptance": [
-        "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
-        "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
-      ],
-      "allocation_id": "daniel-claude20x-shared",
       "timebox_minutes": 30
     }
-  ]
+  ],
+  "task_id": "FT-043"
 }
