@@ -1,0 +1,33 @@
+{
+  "agent_id": "mac-preview-latency",
+  "allocation_id": "claude-mac20x-preview-latency",
+  "assignment_acknowledgements": {
+    "issue-2-comment-5646989044": "acknowledged 2026-09-12T16:09Z (parent relay): items 2+3 - profile and reduce v2 preview typing-to-paint latency; bounded immutable resource identity for fonts/prepared text"
+  },
+  "branch": "agent/mac-preview-latency/profile",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui",
+    "rust-build",
+    "latency-measurement"
+  ],
+  "code_revision": "cd58fc2e790f29bff50a5af7b4127027e841078a",
+  "eta_minutes": {
+    "likely": 150,
+    "optimistic": 90,
+    "pessimistic": 240
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Publish the pre-optimization attribution table (docs/evidence/preview-latency-<UTC>/), then per-page reuse + tests, re-measure",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "active",
+  "summary": "Instrumenting the v2 route (helper + direct) per stage before optimizing; page-level reuse keyed by raw-byte sha256+size next",
+  "tool": "Claude Code subagent (Fable), parent mac-claude-a",
+  "updated_utc": "2026-09-12T16:09:08Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
