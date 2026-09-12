@@ -48,7 +48,7 @@ publication checkpoint.
 
 ## Three established fixtures (v2 runner)
 
-Add `--fixture plain`, `--fixture inline-math`, `--fixture display-math`, or
+Add `--fixture plain`, `--fixture inline-math`, `--fixture display-math`, `--fixture wrapping`, or
 `--fixture all`. Default remains plain. `replay-fixtures.json` pins each actual
 source, request, reference PDF/engine metadata, font and license; its own digest
 is pinned in the runner. Metrics remain separately pinned. Consumer baseline is
@@ -81,3 +81,8 @@ pixel differences and true/true/false text equality. `next-gap.json` selects onl
 existing02-wrapping-paragraph from the pinned Mac closure matrix for the next
 investigation; its different rasterizer evidence is not compared numerically as
 though it were this Linux run.
+
+The added `wrapping` selection replays existing02 with the same resources. Its
+actual report has13 matching line memberships/210 words, equal text, and979
+differing pixels. `all` now includes this fourth established fixture; historical
+three-fixture reports retain their original scope and runner hashes.

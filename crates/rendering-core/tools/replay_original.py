@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinned three-fixture acceptance; uses existing producer, exporter and Poppler.
+"""Pinned established-fixture acceptance; uses existing producer, exporter and Poppler.
 Exit 0=fixture acceptance, 2=refused input/configuration, 3=observed mismatch,
 4=unknown (missing tool/version/timeout), 1=execution error. Always writes report.
 No downloads, installs, source repair, new font parser or rasterizer.
@@ -17,7 +17,7 @@ import tempfile
 
 PRODUCER = "65dbe7da7a182e99322070e2c9763cc3b69a342b"
 CONSUMER = "83d4a0e"
-FIXTURE_MANIFEST_SHA256 = "161133c0f673c29ba9bce28764df9c162d744a80c23b75df2514cf1a5f21eb73"
+FIXTURE_MANIFEST_SHA256 = "fdc89f62305409925767c4d7d12f431043bae77386ff2441556e04a867b7628c"
 ASSETS = {
     "fonts/tfm/public/lm/ec-lmr12.tfm": "299021120f0a29ef61278a2363903bd8defbb8faaade458eb79067342aecb56f",
     "fonts/tfm/public/lm/rm-lmr12.tfm": "9d4e3d8e39a41b93d91f79c1c47d2297efb7b1af220b94860693c08361f227aa",
@@ -203,7 +203,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--metrics-root",type=Path,required=True)
     parser.add_argument("--report",type=Path,required=True)
-    parser.add_argument("--fixture", choices=("plain","inline-math","display-math","all"), default="plain")
+    parser.add_argument("--fixture", choices=("plain","inline-math","display-math","wrapping","all"), default="plain")
     args=parser.parse_args()
     report={"format":"flashtex-original-reference-replay-v2","status":"unknown"}
     code=0

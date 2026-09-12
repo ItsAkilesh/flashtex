@@ -121,6 +121,43 @@
         "limitation": "Reference F53 LMMathExtension10 code88 lacks ToUnicode mapping; Poppler extracts X for summation. Original \u2211 must not be rewritten.",
         "verification": "pinned tests/math_reference.rs checks actual reference CMap using existing PDF reader"
       }
+    },
+    "wrapping": {
+      "files": {
+        "source.tex": {
+          "path": "tests/fixtures/wrapping-reference/source.tex",
+          "sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624"
+        },
+        "request.jsonl": {
+          "path": "tests/fixtures/wrapping-reference/request.jsonl",
+          "sha256": "d516e635200db8497ade26711eab2883db3a605e4e82ba36f3c7844041139f48"
+        },
+        "reference.pdf": {
+          "path": "tests/fixtures/wrapping-reference/reference.pdf",
+          "sha256": "c7e4cfd2513fb43e90c21ce905b0c4f8756ff3dfcc9b7b1ad45ab2c395c0d7cc"
+        },
+        "reference-engine.json": {
+          "path": "tests/fixtures/wrapping-reference/reference-engine.json",
+          "sha256": "61b5cc166cde89da3f7cedcce6dd8ddafe46fc20bf972061ae1bf9bde49d9dc5"
+        },
+        "lmroman12-regular.otf": {
+          "path": "tests/fixtures/original-reference/lmroman12-regular.otf",
+          "sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870"
+        },
+        "GUST-FONT-LICENSE.TXT": {
+          "path": "tests/fixtures/math-reference/GUST-FONT-LICENSE.TXT",
+          "sha256": "49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050"
+        }
+      },
+      "font_files": [
+        "lmroman12-regular.otf"
+      ],
+      "text_comparison_validity": {
+        "status": "limited_linear_text",
+        "scope": "Observed linear Unicode extraction only; no mathematical structure or accessibility proof.",
+        "limitation": null,
+        "verification": "pinned reference and fixture text evidence; not an exhaustive Unicode coverage claim"
+      }
     }
   }
 }

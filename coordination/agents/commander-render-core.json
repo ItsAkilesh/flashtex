@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "83d4a0e0331fd7a305d2af8add0239d4155cc177",
+  "code_revision": "7ac845f9c2066799dc5885392dc6ea5fdee868f0",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 2,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
-  "next_action": "Publish runner and exact tool/resource evidence; selected existing02-wrapping-paragraph from Mac closure matrix for next bounded investigation.",
+  "next_action": "Publish actual wrapping replay/evidence; next eligible bounded fixture18-ligatures selected for explicit mapping/kerning investigation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Three-fixture pinned replay runner completed: one producer build, independent zero/602/1244 pixel results, text equality and reference mapping validity separate.",
+  "summary": "Existing02 wrapping measured: zero diagnostics,13 matching lines/210 words, equal text,979pixel mismatch. Exact first h/quick positioning differences retained; producer ticks reach PDF unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:54:46Z",
+  "updated_utc": "2026-09-12T11:00:04Z",
   "usage": {
-    "evidence": "6 Python decision/setup tests pass. Actual --fixture all exits3 with plain accepted/math mismatches; missing assets exits2; real restored source-drift preflight exits4 before build. Prior159 Rust tests unaffected.",
-    "status": "Hosted OpenAI only; no paid providers or descendants; no quota telemetry."
+    "evidence": "Fresh pinned runner --fixture wrapping reproduces exact original PDF and979pixels, exits3. Focused reference-width/tick test,6 Python gates and strict all-target Clippy pass. No speculative geometry patch/native claim.",
+    "status": "Hosted OpenAI only, no providers/descendants; quota telemetry unavailable."
   }
 }
