@@ -133,6 +133,7 @@ const BUILT_INS: &[&str] = &[
     "par",
     "documentclass",
     "usepackage",
+    "setlist",
     "newcommand",
     "renewcommand",
     "input",
@@ -281,7 +282,8 @@ struct P<'a> {
     figure_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
-    list_stack: Vec<(String, u32)>,
+    /// Environment name, item count, and an enumitem label template if given.
+    list_stack: Vec<(String, u32, Option<String>)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
 }
@@ -405,6 +407,7 @@ impl P<'_> {
         match name {
             "documentclass" => self.document_class(span),
             "usepackage" => self.use_package(span),
+            "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
@@ -503,10 +506,13 @@ impl P<'_> {
             "item" => {
                 self.flush_paragraph(blocks, para);
                 match self.list_stack.last_mut() {
-                    Some((kind, count)) => {
+                    Some((kind, count, template)) => {
                         *count += 1;
                         let marker = if kind == "enumerate" {
-                            format!("{}.", count)
+                            match template {
+                                Some(template) => enumitem_label(template, *count),
+                                None => format!("{}.", count),
+                            }
                         } else {
                             "•".to_string()
                         };
@@ -655,8 +661,21 @@ impl P<'_> {
         }
     }
 
+    fn set_list(&mut self, span: Span) {
+        let _ = self.optional_bracket_argument();
+        let (_, argument_span) = self.required_group("setlist", span);
+        self.diags.push(Diagnostic::warning(
+            "\\setlist list spacing is recognised but not implemented",
+            Some(span.merge(argument_span)),
+            Some("lists use the compiler's default spacing".into()),
+        ));
+    }
+
     fn use_package(&mut self, span: Span) {
-        let _options = self.optional_bracket_argument();
+        let options = self
+            .optional_bracket_argument()
+            .map(|(options, _)| options)
+            .unwrap_or_default();
         let (tokens, argument_span) = self.required_group("usepackage", span);
         let packages: Vec<String> = token_text(&tokens)
             .split(',')
@@ -673,6 +692,13 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        let packages: Vec<String> = packages
+            .into_iter()
+            .filter(|package| !package_matches_layout(package, &options))
+            .collect();
+        if packages.is_empty() {
+            return;
+        }
         self.diags.push(Diagnostic::warning(
             format!(
                 "packages {} are recognised but not implemented",
@@ -917,7 +943,8 @@ impl P<'_> {
                 self.paragraph_styles.push(style);
             } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
                 self.flush_paragraph(blocks, para);
-                self.list_stack.push((environment.clone(), 0));
+                let template = self.optional_bracket_argument().map(|(options, _)| options);
+                self.list_stack.push((environment.clone(), 0, template));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1622,6 +1649,124 @@ impl P<'_> {
             Some("skipped the command; any braced argument was typeset as plain text".into()),
         ));
     }
+}
+
+/// True when loading `package` with `options` changes nothing about the output,
+/// because the fixed layout already behaves that way.
+fn package_matches_layout(package: &str, options: &str) -> bool {
+    let options: Vec<&str> = options
+        .split(',')
+        .map(str::trim)
+        .filter(|option| !option.is_empty())
+        .collect();
+    match package {
+        // Source text is decoded as UTF-8 already.
+        "inputenc" => options.iter().all(|option| *option == "utf8"),
+        // Text glyphs are mapped from Unicode, which is what T1 approximates.
+        "fontenc" => options.iter().all(|option| *option == "T1"),
+        // Enumerate label templates are implemented; \setlist reports its own gap.
+        "enumitem" => options.iter().all(|option| *option == "shortlabels"),
+        "geometry" => {
+            !options.is_empty()
+                && options.iter().all(|option| match option.split_once('=') {
+                    Some(("margin", value)) => length_pt(value)
+                        .is_some_and(|pt| (pt - crate::layout::MARGIN_PT).abs() < 0.01),
+                    None => *option == "letterpaper",
+                    _ => false,
+                })
+        }
+        _ => false,
+    }
+}
+
+fn length_pt(value: &str) -> Option<f64> {
+    let value = value.trim();
+    let split = value
+        .find(|c: char| c.is_ascii_alphabetic())
+        .unwrap_or(value.len());
+    let number: f64 = value[..split].trim().parse().ok()?;
+    let per_unit = match value[split..].trim() {
+        "in" => 72.0,
+        "pt" => 72.0 / 72.27,
+        "bp" => 1.0,
+        "cm" => 72.0 / 2.54,
+        "mm" => 72.0 / 25.4,
+        _ => return None,
+    };
+    Some(number * per_unit)
+}
+
+/// Formats an enumitem label: a `label=` key using `\alph*`-style counters,
+/// or a shortlabels template whose first `a A i I 1` is the counter.
+fn enumitem_label(template: &str, count: u32) -> String {
+    let counter = |style: char| match style {
+        'a' => alphabetic(count, b'a'),
+        'A' => alphabetic(count, b'A'),
+        'i' => roman(count),
+        'I' => roman(count).to_uppercase(),
+        _ => count.to_string(),
+    };
+    if template.contains('=') {
+        let Some(label) = template
+            .split(',')
+            .find_map(|key| key.trim().strip_prefix("label="))
+        else {
+            return format!("{}.", count);
+        };
+        return [
+            ("\\alph*", 'a'),
+            ("\\Alph*", 'A'),
+            ("\\roman*", 'i'),
+            ("\\Roman*", 'I'),
+            ("\\arabic*", '1'),
+        ]
+        .iter()
+        .fold(label.trim().to_string(), |text, (command, style)| {
+            text.replace(command, &counter(*style))
+        });
+    }
+    match template.char_indices().find(|(_, c)| "aAiI1".contains(*c)) {
+        Some((index, style)) => format!(
+            "{}{}{}",
+            &template[..index],
+            counter(style),
+            &template[index + style.len_utf8()..]
+        ),
+        None => template.to_string(),
+    }
+}
+
+fn alphabetic(count: u32, base: u8) -> String {
+    match count {
+        1..=26 => char::from(base + (count - 1) as u8).to_string(),
+        _ => count.to_string(),
+    }
+}
+
+fn roman(mut count: u32) -> String {
+    const NUMERALS: &[(u32, &str)] = &[
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ];
+    let mut text = String::new();
+    for (value, numeral) in NUMERALS {
+        while count >= *value {
+            text.push_str(numeral);
+            count -= value;
+        }
+    }
+    text
 }
 
 fn mapped_word(word: &str, span: Span, depth: usize) -> InputToken {
