@@ -6,9 +6,10 @@ import FlashTeXProtocol
 /// plus the edit-ledger adoption addendum): receipt only after the helper's
 /// durable commit (and the .tex export when file-backed), a corrupt/unreadable
 /// durable store disables application, transient status failures keep
-/// evidence, bridge writes never block the main thread, and a detached session
-/// cannot overwrite its successor. Runs against `Fixtures/fake_bridge.py` and
-/// `Fixtures/fake_edit_ledger.py`.
+/// evidence, bridge writes never block the main thread, a detached session
+/// cannot overwrite its successor, and (section 6) a crashed bridge or helper
+/// is relaunched with bounded backoff and reconciled exactly once. Runs
+/// against `Fixtures/fake_bridge.py` and `Fixtures/fake_edit_ledger.py`.
 @MainActor
 final class BridgeRecoveryTests: XCTestCase {
     typealias T = ShellModelBridgeTests

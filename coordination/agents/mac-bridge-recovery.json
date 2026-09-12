@@ -1,0 +1,24 @@
+{
+  "agent_id": "mac-bridge-recovery",
+  "allocation_id": "claude-mac20x-bridge-recovery",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-bridge-recovery/relaunch",
+  "capabilities": [
+    "swift",
+    "process-recovery"
+  ],
+  "code_revision": "03579d825af4eac73eb7a446c4efdcfa4d8cc8a5",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "780f1458c125d9702b994ab9df377aed96a1113f",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:54:20Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
