@@ -227,6 +227,14 @@ impl Tfm {
             .and_then(|i| self.parameters.get(i).copied())
     }
     pub fn pair_action(&self, left: u8, right: u8) -> Result<Option<PairAction>> {
+        self.pair_action_budget(left, right, &mut 65536)
+    }
+    fn pair_action_budget(
+        &self,
+        left: u8,
+        right: u8,
+        budget: &mut usize,
+    ) -> Result<Option<PairAction>> {
         let ch = self
             .char_metrics(left)
             .ok_or_else(|| invalid("TFM left character missing"))?;
@@ -236,13 +244,30 @@ impl Tfm {
         if ch.tag != 1 {
             return Ok(None);
         }
-        let mut index = ch.remainder as usize;
-        let first = self.program[index];
-        if first[0] > 128 {
+        self.program_action(ch.remainder as usize, right, true, budget)
+    }
+    fn program_action(
+        &self,
+        mut index: usize,
+        right: u8,
+        restart: bool,
+        budget: &mut usize,
+    ) -> Result<Option<PairAction>> {
+        let first = *self
+            .program
+            .get(index)
+            .ok_or_else(|| invalid("TFM program entry outside table"))?;
+        if restart && first[0] > 128 {
             index = first[2] as usize * 256 + first[3] as usize;
         }
         for _ in 0..self.program.len() {
-            let [skip, next, op, rem] = self.program[index];
+            *budget = budget
+                .checked_sub(1)
+                .ok_or_else(|| invalid("TFM ligature execution step budget"))?;
+            let [skip, next, op, rem] = *self
+                .program
+                .get(index)
+                .ok_or_else(|| invalid("TFM program index outside table"))?;
             if skip > 128 {
                 return Ok(None);
             }
@@ -278,41 +303,113 @@ pub enum TfmItem {
     Glyph(EncodedGlyph),
     Kern(FixWord),
 }
+/// Caller controls explicit run-boundary suppression (for example no-boundary).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoundaryOptions {
+    pub left: bool,
+    pub right: bool,
+}
+impl Default for BoundaryOptions {
+    fn default() -> Self {
+        Self {
+            left: true,
+            right: true,
+        }
+    }
+}
 impl Tfm {
-    /// Bounded non-boundary ligature/kern program execution on already encoded bytes.
+    /// Bounded execution on an explicit same-font encoded run. Implicit boundary
+    /// sentinels never become glyph codes or output items.
     pub fn apply_ligatures_kerns(&self, input: &[u8]) -> Result<Vec<TfmItem>> {
+        self.apply_ligatures_kerns_with_boundaries(input, BoundaryOptions::default())
+    }
+    pub fn apply_ligatures_kerns_with_boundaries(
+        &self,
+        input: &[u8],
+        boundaries: BoundaryOptions,
+    ) -> Result<Vec<TfmItem>> {
         if input.len() > 4096 {
             return Err(invalid("TFM input budget"));
         }
-        if self.boundary_character.is_some() || self.left_boundary_program.is_some() {
-            return Err(crate::Error::UnsupportedFont(
-                "TFM boundary-program run interpretation unsupported".into(),
-            ));
+        if input.is_empty() {
+            return Ok(Vec::new());
         }
-        let mut out = Vec::with_capacity(input.len());
+        #[derive(Clone, Copy)]
+        enum Item {
+            Glyph(EncodedGlyph),
+            Left,
+            Right(u8),
+            Kern(FixWord),
+        }
+        let mut out = Vec::with_capacity(input.len() + 2);
+        if boundaries.left && self.left_boundary_program.is_some() {
+            out.push(Item::Left);
+        }
         for (i, &code) in input.iter().enumerate() {
             if self.char_metrics(code).is_none() {
                 return Err(invalid("TFM input character missing"));
             }
-            out.push(TfmItem::Glyph(EncodedGlyph {
+            out.push(Item::Glyph(EncodedGlyph {
                 code,
                 input_start: i,
                 input_end: i + 1,
             }));
         }
-        let mut at = 0;
-        for _ in 0..65536 {
-            if at + 1 >= out.len() {
-                return Ok(out);
+        if boundaries.right {
+            if let Some(code) = self.boundary_character {
+                out.push(Item::Right(code));
             }
-            let (TfmItem::Glyph(left), TfmItem::Glyph(right)) = (out[at], out[at + 1]) else {
-                at += 1;
-                continue;
+        }
+        let span = |item: Item| match item {
+            Item::Glyph(g) => (g.input_start, g.input_end),
+            Item::Left => (0, 0),
+            Item::Right(_) => (input.len(), input.len()),
+            Item::Kern(_) => unreachable!(),
+        };
+        let mut at = 0;
+        let mut budget = 65536usize;
+        for _ in 0..65536 {
+            budget = budget
+                .checked_sub(1)
+                .ok_or_else(|| invalid("TFM ligature execution step budget"))?;
+            if at + 1 >= out.len() {
+                return Ok(out
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        Item::Glyph(g) => Some(TfmItem::Glyph(g)),
+                        Item::Kern(k) => Some(TfmItem::Kern(k)),
+                        _ => None,
+                    })
+                    .collect());
+            }
+            let left = out[at];
+            let right = out[at + 1];
+            let right_code = match right {
+                Item::Glyph(g) => g.code,
+                Item::Right(code) => code,
+                _ => {
+                    at += 1;
+                    continue;
+                }
             };
-            match self.pair_action(left.code, right.code)? {
+            let action = match left {
+                Item::Glyph(g) => self.pair_action_budget(g.code, right_code, &mut budget)?,
+                Item::Left => self.program_action(
+                    self.left_boundary_program
+                        .ok_or_else(|| invalid("TFM missing boundary entry"))?,
+                    right_code,
+                    false,
+                    &mut budget,
+                )?,
+                _ => {
+                    at += 1;
+                    continue;
+                }
+            };
+            match action {
                 None => at += 1,
                 Some(PairAction::Kern(amount)) => {
-                    out.insert(at + 1, TfmItem::Kern(amount));
+                    out.insert(at + 1, Item::Kern(amount));
                     at += 2;
                 }
                 Some(PairAction::Ligature {
@@ -321,19 +418,21 @@ impl Tfm {
                     retain_right,
                     advance,
                 }) => {
-                    let mut replacement_items = Vec::with_capacity(3);
+                    let (ls, le) = span(left);
+                    let (rs, re) = span(right);
+                    let mut replacements = Vec::with_capacity(3);
                     if retain_left {
-                        replacement_items.push(TfmItem::Glyph(left));
+                        replacements.push(left);
                     }
-                    replacement_items.push(TfmItem::Glyph(EncodedGlyph {
+                    replacements.push(Item::Glyph(EncodedGlyph {
                         code: replacement,
-                        input_start: left.input_start.min(right.input_start),
-                        input_end: left.input_end.max(right.input_end),
+                        input_start: ls.min(rs),
+                        input_end: le.max(re),
                     }));
                     if retain_right {
-                        replacement_items.push(TfmItem::Glyph(right));
+                        replacements.push(right);
                     }
-                    out.splice(at..at + 2, replacement_items);
+                    out.splice(at..at + 2, replacements);
                     at += advance as usize;
                 }
             }
@@ -369,6 +468,112 @@ mod tests {
             b.extend(word.to_be_bytes());
         }
         b
+    }
+    fn boundary_fixture(program: &[[u8; 4]], a_start: u8) -> Vec<u8> {
+        let mut bytes = fixture();
+        bytes.splice(60..64, program.iter().flatten().copied());
+        bytes[0..2].copy_from_slice(&(17u16 + program.len() as u16 - 1).to_be_bytes());
+        bytes[16..18].copy_from_slice(&(program.len() as u16).to_be_bytes());
+        bytes[35] = a_start;
+        bytes
+    }
+    #[test]
+    fn implicit_boundaries_kern_and_suppression_preserve_input() {
+        let bytes = boundary_fixture(
+            &[
+                [255, 250, 0, 0],
+                [128, 250, 128, 0],
+                [128, 65, 128, 0],
+                [255, 0, 0, 2],
+            ],
+            1,
+        );
+        let t = Tfm::parse(&bytes).unwrap();
+        let a = TfmItem::Glyph(EncodedGlyph {
+            code: 65,
+            input_start: 0,
+            input_end: 1,
+        });
+        let k = TfmItem::Kern(FixWord(-131072));
+        assert_eq!(t.apply_ligatures_kerns(b"A").unwrap(), vec![k, a, k]);
+        assert_eq!(
+            t.apply_ligatures_kerns_with_boundaries(
+                b"A",
+                BoundaryOptions {
+                    left: false,
+                    right: true
+                }
+            )
+            .unwrap(),
+            vec![a, k]
+        );
+        assert_eq!(
+            t.apply_ligatures_kerns_with_boundaries(
+                b"A",
+                BoundaryOptions {
+                    left: true,
+                    right: false
+                }
+            )
+            .unwrap(),
+            vec![k, a]
+        );
+        assert_eq!(t.apply_ligatures_kerns(b"").unwrap(), vec![]);
+        assert!(t.apply_ligatures_kerns(&[250]).is_err());
+    }
+    #[test]
+    fn boundary_ligatures_keep_actual_byte_intervals() {
+        let left = Tfm::parse(&boundary_fixture(&[[128, 65, 0, 66], [255, 0, 0, 0]], 0)).unwrap();
+        let right =
+            Tfm::parse(&boundary_fixture(&[[255, 250, 0, 0], [128, 250, 0, 66]], 1)).unwrap();
+        let expected = vec![TfmItem::Glyph(EncodedGlyph {
+            code: 66,
+            input_start: 0,
+            input_end: 1,
+        })];
+        assert_eq!(left.apply_ligatures_kerns(b"A").unwrap(), expected);
+        assert_eq!(right.apply_ligatures_kerns(b"A").unwrap(), expected);
+        let retained =
+            Tfm::parse(&boundary_fixture(&[[255, 250, 0, 0], [128, 250, 6, 66]], 1)).unwrap();
+        assert_eq!(retained.apply_ligatures_kerns(b"A").unwrap().len(), 2);
+        // A real glyph with boundary's code remains a real glyph, not a sentinel.
+        let actual =
+            Tfm::parse(&boundary_fixture(&[[255, 66, 0, 0], [128, 66, 128, 0]], 1)).unwrap();
+        assert_eq!(actual.apply_ligatures_kerns(b"AB").unwrap().len(), 3);
+    }
+    #[test]
+    fn boundary_program_cycles_and_malformed_entries_fail_bounded() {
+        let cycle = Tfm::parse(&boundary_fixture(&[[128, 65, 2, 65], [255, 0, 0, 0]], 0)).unwrap();
+        assert!(cycle
+            .apply_ligatures_kerns(b"A")
+            .unwrap_err()
+            .to_string()
+            .contains("step budget"));
+        assert!(Tfm::parse(&boundary_fixture(&[[128, 65, 0, 66], [255, 0, 0, 9]], 0)).is_err());
+        assert!(Tfm::parse(&boundary_fixture(&[[128, 65, 0, 90], [255, 0, 0, 0]], 0)).is_err());
+    }
+    #[test]
+    fn pinned_ec_lmr10_metrics_and_boundary_run() {
+        let bytes = include_bytes!("../../font-engine/fixtures/tfm/ec-lmr10.tfm");
+        assert_eq!(
+            crate::sha256(bytes),
+            "cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5"
+        );
+        let t = Tfm::parse(bytes).unwrap();
+        let fi = t.apply_ligatures_kerns(b"fi").unwrap();
+        assert!(fi.contains(&TfmItem::Glyph(EncodedGlyph {
+            code: 28,
+            input_start: 0,
+            input_end: 2
+        })));
+        assert!(t
+            .apply_ligatures_kerns(b"AV")
+            .unwrap()
+            .contains(&TfmItem::Kern(FixWord(-116509))));
+        eprintln!(
+            "TFM boundary character={:?} leftprogram={:?} fi={:?}",
+            t.boundary_character, t.left_boundary_program, fi
+        );
     }
     #[test]
     fn run_kern_and_ligature_input_provenance() {
@@ -423,10 +628,7 @@ mod tests {
         bytes[62] = 0;
         bytes[63] = 0;
         let t = Tfm::parse(&bytes).unwrap();
-        assert!(matches!(
-            t.apply_ligatures_kerns(b"AB"),
-            Err(crate::Error::UnsupportedFont(_))
-        ));
+        assert_eq!(t.apply_ligatures_kerns(b"AB").unwrap().len(), 2);
     }
     #[test]
     fn exact_metrics_and_signed_kern() {
