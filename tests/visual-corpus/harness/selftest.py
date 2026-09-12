@@ -147,6 +147,53 @@ def main():
         ok &= check(e_times.get("available") is False and "fixture changed" in e_times.get("reason", ""),
                     "changed fixture SHA-256 is NOT reused (reference unavailable, reason names the SHAs)")
 
+    # 6. gate split (GH-24): self-regression, established-engine bytes/pixels, native/export parity are separate.
+    with tempfile.TemporaryDirectory() as td:
+        def raster(prefix, g):
+            open(prefix + ".rgba", "wb").write(b"".join(bytes([v, v, v, 255]) for v in g.data))
+            json.dump({"width": g.w, "height": g.h}, open(prefix + ".rgba.json", "w"))
+        refd, fxd, ev = os.path.join(td, "ref"), os.path.join(td, "fx"), os.path.join(td, "ev")
+        same, other = synthetic_page(), synthetic_page(shift=(3, 0))
+        oracle_pdf = b"%PDF-1.5 oracle bytes\n"
+        prof = {"entries": {}}
+        for name, cand_raster, cand_pdf in (("aa-equal", same, oracle_pdf), ("bb-differs", other, b"%PDF-1.5 candidate bytes\n")):
+            r = os.path.join(refd, name, "pdflatex"); os.makedirs(r)
+            open(os.path.join(r, "main.pdf"), "wb").write(oracle_pdf)
+            json.dump({"engine": "pdflatex", "available": True, "exit": 0, "fixture_sha256": "f" * 64}, open(os.path.join(r, "engine.json"), "w"))
+            raster(os.path.join(r, "page-p1"), same)
+            c = os.path.join(fxd, name, "cand"); os.makedirs(c)
+            open(os.path.join(c, "flashtex.pdf"), "wb").write(cand_pdf)
+            json.dump({"status": "ok"}, open(os.path.join(c, "build.json"), "w"))
+            raster(os.path.join(c, "export-p1"), cand_raster)
+            raster(os.path.join(c, "preview-p1"), same)
+            prof["entries"][f"{name}/pdflatex"] = {"pdf_sha256": hashlib.sha256(oracle_pdf).hexdigest(), "fixture_sha256": "f" * 64}
+        json.dump(prof, open(os.path.join(td, "oracle.json"), "w"))
+        json.dump({"pdf_sha256": {"aa-equal/cand": hashlib.sha256(b"something else").hexdigest()}}, open(os.path.join(td, "self.json"), "w"))
+        json.dump({"generated_utc": "selftest", "fixtures": [], "compilers": [{"label": "cand", "sha": "0" * 40, "ref": "cand", "note": ""}], "engines": {"pdflatex": {"version": "selftest"}}},
+                  open(os.path.join(td, "prov.json"), "w"))
+        r = subprocess.run([sys.executable, os.path.join(HERE, "diff.py"), "--reference", refd, "--flashtex", fxd, "--evidence", ev, "--dpi", "72",
+                            "--provenance", os.path.join(td, "prov.json"), "--oracle-profile", os.path.join(td, "oracle.json"),
+                            "--profile", os.path.join(td, "self.json"), "--images-for-engines", "none"], capture_output=True, text=True)
+        ok &= check(r.returncode == 0, f"diff.py on synthetic tree exits 0 ({r.stderr.strip()[-160:]})")
+        if r.returncode == 0:
+            m = json.load(open(os.path.join(ev, "metrics.json")))
+            g = {x["fixture"]: x for x in m["gates"]}
+            a, b = g["aa-equal"], g["bb-differs"]
+            oa, ob = a["oracle"]["pdflatex"], b["oracle"]["pdflatex"]
+            ok &= check(oa["raw_bytes_vs_pinned_oracle"] is True and oa["raw_bytes_vs_live_oracle"] is True and oa["pass_pixels"],
+                        "candidate identical to oracle: bytes EQUAL (pinned and live), zero-pixel EQUAL")
+            ok &= check(ob["raw_bytes_vs_pinned_oracle"] is False and ob["pass_pixels"] is False and ob["zero_pixel"][0]["differing_pixels"] > 0,
+                        f"candidate differing from oracle: bytes DIFFERENT, {ob['zero_pixel'][0]['differing_pixels']} px differ")
+            ok &= check(a["self_regression"]["result"] is False and b["self_regression"]["result"] == "unpinned",
+                        "self-regression judged only against the pinned PRIOR FLASHTEX sha (DIFFERENT / unpinned), independent of oracle result")
+            ok &= check(a["pass_export_preview_equivalent"] is True and b["pass_export_preview_equivalent"] is False and a["export_vs_native_preview"] == "unavailable",
+                        "native/export parity gate independent: preview EQUAL/DIFFERENT, native unavailable")
+            ok &= check(oa["oracle_live_equals_pin"] is True and m["gate_summary"]["oracle_pins_live"] == 2,
+                        "oracle pin liveness: live oracle bytes == pinned bytes")
+            rep = open(os.path.join(ev, "report.md")).read()
+            ok &= check("Gate 2 — candidate vs established engine" in rep and "Gate 1 — FlashTeX self-regression" in rep and "Gate 3 — native/export parity" in rep
+                        and "parity is NOT claimed" in rep, "report has the three separate gate sections and the plain no-parity statement")
+
     print("selftest:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

@@ -8,6 +8,15 @@
 #                            [--engine pdflatex --engine xelatex ...]
 #                            [--reference-from <evidence dir> ...]
 #
+# Reproducible bytes: every engine runs with SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1 (pdfTeX,
+# XeTeX/xdvipdfmx and LuaTeX then write fixed CreationDate/ModDate and, for pdfTeX/xdvipdfmx,
+# a deterministic trailer /ID); lualatex additionally gets `\pdfvariable trailerid{...}` in front
+# of \documentclass because LuaTeX's /ID is otherwise random. With this, rendering the same
+# fixture twice gives byte-identical PDFs (verified on this machine for all three engines), so
+# the established-engine byte pin in harness/oracle-profile.json is a real pin of oracle
+# output, not of a normalised copy. The environment and the extra line are recorded in
+# engine.json and in the pin.
+#
 # Missing engines: when an engine binary is not installed, each fixture/variant is
 # looked up (newest --reference-from dir first) in <dir>/references/<fixture>/<label>/
 # {main.pdf,engine.json}; the stored PDF is reused ONLY when its recorded fixture
@@ -89,6 +98,9 @@ PRE_FONTSPEC_LM="\\documentclass[12pt]{article}
 \\pagestyle{empty}
 "
 FLAGS=(-interaction=batchmode -halt-on-error -file-line-error)
+ENGINE_ENV=(SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1)
+LUA_TRAILER='\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}
+'
 
 # Engine availability and versions, recorded honestly.
 REF_FROM_ARG="$(IFS=:; echo "${REF_FROM[*]:-}")"
@@ -154,6 +166,7 @@ for tex in "$FIXTURES"/*.tex; do
       *-times) pre="$PRE_FONTSPEC" ;;
       *) pre="$PRE_FONTSPEC_LM" ;;
     esac
+    [[ "$engine" == lualatex ]] && pre="$LUA_TRAILER$pre"
     if [[ ! -x "$bin" ]]; then
       # Reuse a stored reference PDF (newest store first) when fixture SHA and preamble match.
       reused="$(python3 - "$tex" "$dir" "$engine" "$variant" "$label" "$pre" "$REF_FROM_ARG" <<'PY'
@@ -182,7 +195,7 @@ for store in [x for x in ref_from.split(":") if x]:
     out = {"engine": label, "variant": variant, "available": True, "reused": True,
            "reused_from": {"run": e.get("rendered_in_run"), "dir": store, "engine_version": e.get("engine_version"),
                            "path": e.get("path"), "flags": e.get("flags"), "seconds": e.get("seconds")},
-           "path": None, "exit": 0, "seconds": 0.0, "flags": e.get("flags"), "preamble": pre,
+           "path": None, "exit": 0, "seconds": 0.0, "flags": e.get("flags"), "env": e.get("env"), "preamble": pre,
            "errors": e.get("errors", []), "warnings": e.get("warnings", []), "fontspec_fonts": e.get("fontspec_fonts", []),
            "fixture_sha256": fx_sha, "pdf_sha256": e.get("pdf_sha256"), "pdf": True,
            "note": "engine binary not installed this run; PDF reused from run %s (%s) after fixture SHA-256 and preamble check" % (e.get("rendered_in_run"), e.get("engine_version"))}
@@ -213,7 +226,7 @@ open(sys.argv[2], "w", encoding="utf-8").write(sys.argv[3] + body)
 PY
     t0=$(python3 -c 'import time;print(time.time())')
     set +e
-    ( cd "$dir" && "$bin" "${FLAGS[@]}" main.tex >/dev/null 2>&1 )
+    ( cd "$dir" && env "${ENGINE_ENV[@]}" "$bin" "${FLAGS[@]}" main.tex >/dev/null 2>&1 )
     rc=$?
     set -e
     secs=$(python3 -c "import time;print(round(time.time()-$t0,3))")
@@ -221,18 +234,20 @@ PY
       "$RASTERIZE" pdf "$dir/main.pdf" "$dir/page" --dpi "$DPI" > "$dir/raster.json"
       "$RASTERIZE" word-boxes "$dir/main.pdf" > "$dir/words.json"
     fi
-    python3 - "$dir" "$label" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" "$variant" "$tex" <<'PY'
+    python3 - "$dir" "$label" "$bin" "$rc" "$secs" "${FLAGS[*]}" "$pre" "$variant" "$tex" "${ENGINE_ENV[*]}" <<'PY'
 import json, re, sys, os
 d, engine, path, rc, secs, flags, pre, variant = sys.argv[1:9]
+engine_env = sys.argv[10].split()
 log = open(os.path.join(d, "main.log"), encoding="latin-1").read() if os.path.exists(os.path.join(d, "main.log")) else ""
-fonts = sorted(set(re.findall(r"(?:Font|font)\s+([A-Za-z0-9\-]+(?:/[A-Za-z0-9\-\[\]]+)?)", log)))[:20]
+fonts = sorted(set(re.findall(r"[\w/.+\-]+\.(?:pfb|otf|ttf|ttc|pfa)", log.replace("\n", ""))))[:40]  # font files the engine reported loading
 errors = [l for l in log.splitlines() if l.startswith("!")][:5]
 warns = [l for l in log.splitlines() if "Warning" in l][:10]
 fontspec_font = re.findall(r"Font\s+'([^']+)'\s+\(([^)]+)\)", log)
 import hashlib
 pdfp = os.path.join(d, "main.pdf")
 json.dump({"engine": engine, "variant": variant, "available": True, "reused": False, "path": path, "exit": int(rc), "seconds": float(secs),
-           "flags": flags.split(), "preamble": pre, "errors": errors, "warnings": warns,
+           "flags": flags.split(), "env": engine_env, "preamble": pre, "errors": errors, "warnings": warns,
+           "fonts_in_log": fonts,
            "fontspec_fonts": fontspec_font[:6], "pdf": os.path.exists(pdfp),
            "fixture_sha256": hashlib.sha256(open(sys.argv[9], "rb").read()).hexdigest(),
            "pdf_sha256": hashlib.sha256(open(pdfp, "rb").read()).hexdigest() if os.path.exists(pdfp) else None},

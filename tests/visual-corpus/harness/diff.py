@@ -730,7 +730,7 @@ def fmt(v, nd=4):
     return str(v)
 
 
-def build_report(entries, prov, evidence, thresholds_result, regress_result, args, gates=()):
+def build_report(entries, prov, evidence, thresholds_result, regress_result, args, gates=(), gate_summary=None, oracle_self=None):
     L = []
     L.append("# FlashTeX visual corpus: reference-render and raster-diff evidence\n")
     L.append(f"Generated {prov.get('generated_utc')} on {prov.get('machine', 'mac-m1max-a')} by `tests/visual-corpus/harness/run.sh`.\n")
@@ -738,38 +738,84 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
              "They never claim general pixel perfection, LaTeX compatibility, or parity outside these fixtures, "
              "these engines, this font, this page size, this DPI and these builds. The reference engines are "
              "test oracles only; FlashTeX never invokes them and remains an original Rust implementation.\n")
-    L.append("**Acceptance vs diagnostics.** The only acceptance signals in this report are the exact-equality gates below "
-             "(zero pixel difference between FlashTeX's export raster and its preview rasters, and raw PDF byte identity against "
-             "the pinned profile). Every tolerance, threshold, SSIM, registration shift or regression comparison further down is a "
-             "diagnostic to explain *why* something differs; none of them ever counts as acceptance.\n")
-    L.append("## Exact-equality gates (acceptance)\n")
+    L.append("**Acceptance vs diagnostics.** The only acceptance signals in this report are the exact-equality gates below. "
+             "They are three different questions and are never merged: (1) does FlashTeX reproduce its OWN pinned prior output "
+             "(self-regression); (2) does the candidate match the ESTABLISHED ENGINE — raw, unmodified PDF bytes against the pinned "
+             "MacTeX oracle PDF, and zero-pixel raster equality against the oracle raster; (3) does the export raster match the app's "
+             "preview rasters (native/export parity). Every tolerance, threshold, SSIM, registration shift or regression comparison "
+             "further down is a diagnostic to explain *why* something differs; none of them ever counts as acceptance. Nothing is "
+             "normalised for acceptance: not IDs, not timestamps, not offsets.\n")
+    gs = gate_summary or {}
+    if gates:
+        ob, op, on = gs.get("oracle_bytes_equal_pairs", 0), gs.get("oracle_pixels_equal_pairs", 0), gs.get("oracle_pairs", 0)
+        L.append(f"**Plain statement.** Established-engine parity is {'NOT ' if (ob < on or op < on) else ''}claimed: "
+                 f"raw PDF bytes equal the pinned oracle in {ob}/{on} candidate×oracle pairs and rasters are zero-pixel equal in {op}/{on}. "
+                 f"FlashTeX self-regression (bytes equal to its own pinned prior output) holds for {gs.get('self_regression_equal', 0)}/{gs.get('candidates', 0)} "
+                 f"candidates — that is reproducibility of FlashTeX against itself, not LaTeX parity. Export = preview-equivalent for "
+                 f"{gs.get('export_preview_equal', 0)}/{gs.get('candidates', 0)}; export = native capture for {gs.get('export_native_equal', 0)}/"
+                 f"{gs.get('export_native_available', 0)} available captures ({gs.get('candidates', 0) - gs.get('export_native_available', 0)} unavailable). "
+                 f"Oracle pins live this run: {gs.get('oracle_pins_live', 0)}/{gs.get('oracle_pins_total', 0)} pinned oracle PDFs were re-rendered "
+                 f"byte-identically by the installed engine.\n")
+
+    def cell(v):
+        if v == "unavailable":
+            return "unavailable"
+        if isinstance(v, list):
+            bad = [x for x in v if not x.get("equal")]
+            if not bad:
+                return f"**EQUAL** ({len(v)} page{'s' if len(v) != 1 else ''})"
+            b = bad[0]
+            return f"DIFFERENT: {b.get('differing_pixels', '?')}/{b.get('pixels', '?')} px" + (f", max |Δ| {b['max_abs_diff']}" if "max_abs_diff" in b else f" ({b.get('reason')})")
+        return str(v)
+
+    def bcell(v):
+        return {True: "**EQUAL**", False: "DIFFERENT", "unpinned": "unpinned", "unavailable": "unavailable", None: "-"}.get(v, str(v))
+
+    L.append("## Gate 2 — candidate vs established engine (acceptance)\n")
     if not gates:
         L.append("No FlashTeX outputs were available to gate.\n")
     else:
-        L.append("| Fixture | Compiler | export = preview-equivalent | export = native preview capture | PDF bytes = pinned | PDF SHA-256 |")
-        L.append("|---|---|---|---|---|---|")
-        def cell(v):
-            if v == "unavailable":
-                return "unavailable"
-            if isinstance(v, list):
-                bad = [x for x in v if not x.get("equal")]
-                if not bad:
-                    return f"**EQUAL** ({len(v)} page{'s' if len(v) != 1 else ''})"
-                b = bad[0]
-                return f"DIFFERENT: {b.get('differing_pixels', '?')}/{b.get('pixels', '?')} px" + (f", max |Δ| {b['max_abs_diff']}" if "max_abs_diff" in b else f" ({b.get('reason')})")
-            return str(v)
+        L.append("Oracle: MacTeX/TeX Live pdflatex (see Provenance for distribution, version, fonts, preamble, flags and the pinned "
+                 "render environment). Raw bytes: SHA-256 of the candidate `flashtex.pdf` vs the pinned oracle PDF from "
+                 f"`{os.path.basename(args.oracle_profile) if args.oracle_profile else 'no oracle profile'}` and vs this run's live oracle render, "
+                 "unmodified. Pixels: the export raster vs the oracle raster, same rasterizer, same DPI, page by page, zero tolerance; "
+                 "a page-count mismatch is DIFFERENT. Times-font oracles (`pdflatex`) match the current compiler's metrics; the "
+                 "Latin Modern oracles (`pdflatex-lm`) are LaTeX's default look. xelatex/lualatex variants are in `metrics.json` → `gates[].oracle`.\n")
+        shown = [e for e in ("pdflatex", "pdflatex-lm") if e in (gs.get("oracle_labels") or [])] or (gs.get("oracle_labels") or [])[:2]
+        L.append("| Fixture | Compiler | Oracle | raw PDF bytes = pinned oracle | raw PDF bytes = live oracle | oracle live = pin | zero-pixel raster = oracle |")
+        L.append("|---|---|---|---|---|---|---|")
         for g in gates:
-            pdfc = {True: "**EQUAL**", False: "DIFFERENT", "unpinned": "unpinned (no reference profile entry)",
-                    "baseline": "baseline pinned in this run (not a pass)"}[g["pdf_byte_identity"]]
-            L.append(f"| {g['fixture']} | {g['compiler']} | {cell(g['export_vs_preview_equivalent'])} | {cell(g['export_vs_native_preview'])} | {pdfc} | `{(g['pdf_sha256'] or '')[:16]}…` |")
+            for eng in shown:
+                o = g.get("oracle", {}).get(eng)
+                if not o:
+                    continue
+                L.append(f"| {g['fixture']} | {g['compiler']} | {eng} | {bcell(o['raw_bytes_vs_pinned_oracle'])} | {bcell(o['raw_bytes_vs_live_oracle'])} | "
+                         f"{bcell(o['oracle_live_equals_pin'])}{' (reused PDF)' if o.get('oracle_reused') else ''} | {cell(o['zero_pixel'])} |")
         L.append("")
-        L.append(f"- Reference profile: `{os.path.basename(args.profile) if args.profile else 'none'}`"
-                 + (" — **pinned/re-baselined in this run** (explicit `--pin-profile`)." if args.pin_profile else "."))
+        L.append("## Gate 1 — FlashTeX self-regression (byte identity with its own pinned prior output)\n")
+        L.append(f"Pinned in `{os.path.basename(args.profile) if args.profile else 'none'}`: the SHA-256 of FlashTeX's own `flashtex.pdf` "
+                 "(writer + compiler at pin time). EQUAL means the candidate reproduces the earlier FlashTeX output byte for byte; it is a "
+                 "reproducibility/regression signal only and says nothing about LaTeX."
+                 + (" **Re-baselined in this run** (explicit `--pin-profile`): every row is a baseline, not a pass." if args.pin_profile else "") + "\n")
+        L.append("| Fixture | Compiler | candidate SHA-256 | pinned prior FlashTeX SHA-256 | self-regression |")
+        L.append("|---|---|---|---|---|")
+        for g in gates:
+            sr = g.get("self_regression", {})
+            res = {True: "**EQUAL** (reproduces prior FlashTeX output)", False: "DIFFERENT from prior FlashTeX output", "unpinned": "unpinned",
+                   "baseline": "baseline pinned this run (not a pass)"}.get(sr.get("result"), str(sr.get("result")))
+            L.append(f"| {g['fixture']} | {g['compiler']} | `{(g['pdf_sha256'] or '')[:16]}…` | `{(sr.get('pinned_prior_flashtex_sha256') or '-')[:16]}{'…' if sr.get('pinned_prior_flashtex_sha256') else ''}` | {res} |")
+        L.append("")
+        L.append("## Gate 3 — native/export parity (acceptance)\n")
+        L.append("| Fixture | Compiler | export = preview-equivalent | export = native preview capture |")
+        L.append("|---|---|---|---|")
+        for g in gates:
+            L.append(f"| {g['fixture']} | {g['compiler']} | {cell(g['export_vs_preview_equivalent'])} | {cell(g['export_vs_native_preview'])} |")
+        L.append("")
         L.append("- Classification of native-preview differences: the native capture comes from a screen capture at the display's "
                  "backing scale, resampled to the raster size, so a DIFFERENT result there is expected to be dominated by "
                  "resampling and text rasterization (CoreText on screen vs CoreGraphics PDF rendering); it is reported as-is, "
                  "without normalisation. Preview-equivalent vs export differences isolate the drawing path (CoreText glyph "
-                 "run vs the PDF writer's text operators) from any capture effects.")
+                 "run vs the PDF writer's text operators) from any capture effects. 'unavailable' means no capture was made this run.")
         L.append("")
     L.append("## Provenance\n")
     for k in ("suite_branch", "suite_sha", "input_main_sha", "machine", "os", "swift", "cargo", "python", "pillow"):
@@ -832,6 +878,11 @@ def build_report(entries, prov, evidence, thresholds_result, regress_result, arg
     pk = prov.get("packages") or {}
     if pk.get("distribution"):
         L.append(f"\nTeX distribution this run: **{pk['distribution']}**, texbin → `{pk.get('texbin_realpath', '?')}`, {pk.get('tlmgr', 'tlmgr version unknown')}.")
+    if prov.get("engine_env"):
+        L.append(f"\nPinned render environment for every oracle: `{' '.join(prov['engine_env'])}` (pdfTeX/XeTeX/LuaTeX write fixed dates and a "
+                 "deterministic trailer /ID; lualatex additionally receives an explicit `\\pdfvariable trailerid` line, visible in its preamble above). "
+                 "Under this environment the same fixture renders to byte-identical PDFs run after run, which is what makes the raw-byte oracle pin "
+                 "meaningful; nothing is normalised after rendering.")
     L.append(f"\nEngine flags: `{' '.join(prov.get('engine_flags', []))}`. Page size: US letter 612×792 pt for every producer "
              "(checked per page from the MediaBox). LaTeX package versions: see `provenance.json` → `packages`.\n")
     L.append("### FlashTeX builds under test\n")
@@ -1020,6 +1071,7 @@ def main():
     ap.add_argument("--native", default=None, help="dir with <fixture>/<compiler>/native-p1.rgba captures")
     ap.add_argument("--profile", default=None, help="pinned reference profile JSON (raw PDF SHA-256 per fixture/compiler)")
     ap.add_argument("--pin-profile", action="store_true", help="write the current PDF SHA-256s into --profile (explicit re-baseline)")
+    ap.add_argument("--oracle-profile", default=None, help="pinned ESTABLISHED-ENGINE profile JSON (oracle PDF SHA-256 per fixture/oracle, harness/oracle-profile.json)")
     ap.add_argument("--gate", action="store_true", help="exit 5 when any exact-equality gate fails")
     ap.add_argument("--rasterize", default=None, help="rasterize binary; enables provenance footers burned into overlay/heatmap PNGs")
     ap.add_argument("--images-for-sides", default="export,native",
@@ -1037,7 +1089,7 @@ def main():
         entries, gates = m["entries"], m.get("gates", [])
         tr = [e for e in entries if e.get("thresholds", {}).get("failures")] if thresholds is not None else None
         open(os.path.join(args.evidence, "report.md"), "w", encoding="utf-8").write(
-            build_report(entries, prov, args.evidence, tr, m.get("regress"), args, gates))
+            build_report(entries, prov, args.evidence, tr, m.get("regress"), args, gates, m.get("gate_summary"), m.get("oracle_self")))
         return 0
     fixtures = sorted(d for d in os.listdir(args.reference) if os.path.isdir(os.path.join(args.reference, d)))
     entries = []
@@ -1103,10 +1155,32 @@ def main():
                     entries.append(entry)
 
     # Exact-equality gates (acceptance): no tolerance, no registration, no normalisation.
+    # Three separate things are gated and never conflated (GH-24):
+    #   (1) FlashTeX self-regression: candidate PDF bytes == the PINNED PRIOR FLASHTEX OUTPUT (reference-profile.json).
+    #       This is reproducibility of FlashTeX against itself; it says nothing about LaTeX.
+    #   (2) candidate vs ESTABLISHED ENGINE, per oracle variant: raw PDF bytes == the pinned oracle PDF bytes
+    #       (oracle-profile.json, rendered by MacTeX under a pinned environment) and == this run's oracle render;
+    #       and zero-pixel raster equality of the export raster against the oracle raster, page by page.
+    #   (3) native/export parity: export raster == preview-equivalent raster, export raster == native capture.
     gates = []
     profile = json.load(open(args.profile)) if args.profile and os.path.exists(args.profile) else {"pdf_sha256": {}}
     new_profile = {"pdf_sha256": {}, "pinned_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                   "meaning": "SHA-256 of FlashTeX's OWN flashtex.pdf per fixture/compiler at pin time: a self-regression baseline, NOT established-LaTeX bytes",
                    "pdf_writer": prov.get("pdf_writer"), "compilers": prov.get("compilers"), "fixtures": {f["name"]: f["sha256"] for f in prov.get("fixtures", [])}}
+    oracle_profile = json.load(open(args.oracle_profile)) if args.oracle_profile and os.path.exists(args.oracle_profile) else {"entries": {}}
+    oracle_labels = sorted({e for fx in fixtures for e in os.listdir(os.path.join(args.reference, fx)) if os.path.isdir(os.path.join(args.reference, fx, e))})
+    oracle_self = {}  # this run's oracle bytes vs the pinned oracle bytes (is the pin live/reproducible?)
+    for fx in fixtures:
+        for eng in oracle_labels:
+            rdir = os.path.join(args.reference, fx, eng)
+            key = f"{fx}/{eng}"
+            pin = oracle_profile.get("entries", {}).get(key)
+            live = sha256_file(os.path.join(rdir, "main.pdf")) if os.path.exists(os.path.join(rdir, "main.pdf")) else None
+            einfo = json.load(open(os.path.join(rdir, "engine.json"))) if os.path.exists(os.path.join(rdir, "engine.json")) else {}
+            oracle_self[key] = {"live_sha256": live, "pinned_sha256": (pin or {}).get("pdf_sha256"),
+                                "fixture_pinned": (pin or {}).get("fixture_sha256") == einfo.get("fixture_sha256") if pin else None,
+                                "reused": bool(einfo.get("reused")),
+                                "live_equals_pin": (live == pin["pdf_sha256"]) if (pin and live) else None}
 
     def allequal(v):
         return isinstance(v, list) and bool(v) and all(x.get("equal") for x in v)
@@ -1116,22 +1190,60 @@ def main():
             g = {"fixture": fx, "compiler": comp}
             exp, pre = page_prefixes(fdir, "export"), page_prefixes(fdir, "preview")
             nat = page_prefixes(os.path.join(args.native, fx, comp), "native") if args.native and os.path.isdir(os.path.join(args.native, fx, comp)) else []
+            # (3) native/export parity
             g["export_vs_preview_equivalent"] = ([exact_compare(a, b) for a, b in zip(exp, pre)] if exp and pre else "unavailable")
             g["export_vs_native_preview"] = ([exact_compare(a, b) for a, b in zip(exp, nat)] if exp and nat else "unavailable")
+            # (1) FlashTeX self-regression
             sha = sha256_file(os.path.join(fdir, "flashtex.pdf"))
             key = f"{fx}/{comp}"
             new_profile["pdf_sha256"][key] = sha
             pinned = profile.get("pdf_sha256", {}).get(key)
             g["pdf_sha256"] = sha
-            g["pdf_pinned_sha256"] = pinned
-            g["pdf_byte_identity"] = ("baseline" if args.pin_profile else "unpinned" if pinned is None else (sha == pinned))
+            g["self_regression"] = {"pinned_prior_flashtex_sha256": pinned,
+                                    "result": ("baseline" if args.pin_profile else "unpinned" if pinned is None else (sha == pinned))}
+            # (2) candidate vs established engine, every oracle variant
+            g["oracle"] = {}
+            for eng in oracle_labels:
+                rdir = os.path.join(args.reference, fx, eng)
+                osf = oracle_self.get(f"{fx}/{eng}", {})
+                ref = page_prefixes(rdir, "page")
+                o = {"raw_bytes_vs_pinned_oracle": (sha == osf["pinned_sha256"]) if osf.get("pinned_sha256") else "unpinned",
+                     "raw_bytes_vs_live_oracle": (sha == osf["live_sha256"]) if osf.get("live_sha256") else "unavailable",
+                     "oracle_live_equals_pin": osf.get("live_equals_pin"), "oracle_reused": osf.get("reused"),
+                     "pinned_oracle_sha256": osf.get("pinned_sha256"), "live_oracle_sha256": osf.get("live_sha256")}
+                if ref and exp:
+                    if len(ref) != len(exp):
+                        o["zero_pixel"] = [{"equal": False, "reason": f"page count {len(exp)} vs oracle {len(ref)}"}]
+                    else:
+                        o["zero_pixel"] = [exact_compare(r, e) for r, e in zip(ref, exp)]
+                else:
+                    o["zero_pixel"] = "unavailable"
+                o["pass_bytes"] = o["raw_bytes_vs_pinned_oracle"] is True
+                o["pass_pixels"] = allequal(o["zero_pixel"])
+                g["oracle"][eng] = o
+            g["pass_self_regression"] = g["self_regression"]["result"] is True
             g["pass_export_preview_equivalent"] = allequal(g["export_vs_preview_equivalent"])
             g["pass_export_native"] = allequal(g["export_vs_native_preview"])
-            g["pass_pdf_bytes"] = g["pdf_byte_identity"] is True
+            g["pass_oracle_bytes_any"] = any(o["pass_bytes"] for o in g["oracle"].values())
+            g["pass_oracle_pixels_any"] = any(o["pass_pixels"] for o in g["oracle"].values())
             gates.append(g)
     if args.pin_profile and args.profile:
         json.dump(new_profile, open(args.profile, "w"), indent=1)
-    gate_failures = [g for g in gates if not (g["pass_export_preview_equivalent"] and g["pass_export_native"] and g["pass_pdf_bytes"])]
+    gate_failures = [g for g in gates if not (g["pass_export_preview_equivalent"] and g["pass_export_native"] and g["pass_self_regression"]
+                                              and all(o["pass_bytes"] and o["pass_pixels"] for o in g["oracle"].values()))]
+    gate_summary = {
+        "candidates": len(gates),
+        "oracle_labels": oracle_labels,
+        "self_regression_equal": sum(1 for g in gates if g["pass_self_regression"]),
+        "oracle_bytes_equal_pairs": sum(1 for g in gates for o in g["oracle"].values() if o["pass_bytes"]),
+        "oracle_pixels_equal_pairs": sum(1 for g in gates for o in g["oracle"].values() if o["pass_pixels"]),
+        "oracle_pairs": sum(len(g["oracle"]) for g in gates),
+        "oracle_pins_live": sum(1 for v in oracle_self.values() if v.get("live_equals_pin") is True),
+        "oracle_pins_total": sum(1 for v in oracle_self.values() if v.get("pinned_sha256")),
+        "export_preview_equal": sum(1 for g in gates if g["pass_export_preview_equivalent"]),
+        "export_native_equal": sum(1 for g in gates if g["pass_export_native"]),
+        "export_native_available": sum(1 for g in gates if g["export_vs_native_preview"] != "unavailable"),
+    }
 
     regress_result = None
     if args.regress:
@@ -1143,11 +1255,12 @@ def main():
         thresholds_result = [e for e in entries if e.get("thresholds", {}).get("failures")]
     metrics = {"generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "dpi": args.dpi,
                "threshold": args.threshold, "pillow": HAVE_PIL, "entries": entries, "gates": gates,
+               "gate_summary": gate_summary, "oracle_self": oracle_self,
                "gate_failures": [f"{g['fixture']}/{g['compiler']}" for g in gate_failures],
                "regress": regress_result, "threshold_failures": [f"{e['fixture']}/{e['engine']}/{e['compiler']}/{e['side']}" for e in (thresholds_result or [])]}
     json.dump(metrics, open(os.path.join(args.evidence, "metrics.json"), "w"), indent=1)
     open(os.path.join(args.evidence, "report.md"), "w", encoding="utf-8").write(
-        build_report(entries, prov, args.evidence, thresholds_result, regress_result, args, gates))
+        build_report(entries, prov, args.evidence, thresholds_result, regress_result, args, gates, gate_summary, oracle_self))
     rc = 0
     if args.gate and gate_failures:
         sys.stderr.write(f"exact-equality gate failures: {len(gate_failures)}\n")

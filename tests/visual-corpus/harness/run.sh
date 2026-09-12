@@ -20,6 +20,11 @@
 #          [--profile <json>] pinned raw-PDF SHA-256 profile (default harness/reference-profile.json)
 #          [--pin-profile]    explicitly re-baseline the profile from this run's PDFs
 #          [--gate]           exit 5 when an exact-equality gate fails (default: report only)
+#          [--oracle-profile <json>] pinned ESTABLISHED-ENGINE profile (default harness/oracle-profile.json):
+#                             SHA-256 of the oracle PDF per fixture/oracle with engine version, distribution,
+#                             fonts, preamble, flags and render environment. Candidate bytes are compared to it raw.
+#          [--pin-oracle]     write that profile from THIS run's fresh oracle renders (never from reused PDFs);
+#                             a pin run is a baseline for the oracle-bytes gate, not a pass
 #          [--reference-from <evidence dir>|auto|none]  stored oracle renders to reuse when an engine
 #                             is not installed (default auto: every evidence dir that has
 #                             references/manifest.json, newest first). A run that renders
@@ -32,6 +37,7 @@ COMPILER_REFS=(); PDF_REF="5b5f7b5"; DPI=144; THRESHOLD=32
 SCRATCH="${TMPDIR:-/tmp}/flashtex-visual-corpus"; EVROOT="$REPO/tests/visual-corpus/evidence"
 ENGINES=(); THRESHOLDS="$HERE/thresholds.json"; REGRESS=""; NATIVE=""; SKIP_BUILD=0; APP=""
 PROFILE="$HERE/reference-profile.json"; PIN=0; GATE=0; REF_FROM=()
+ORACLE_PROFILE="$HERE/oracle-profile.json"; PIN_ORACLE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --compiler-ref) COMPILER_REFS+=("$2"); shift 2 ;;
@@ -50,6 +56,8 @@ while [[ $# -gt 0 ]]; do
     --pin-profile) PIN=1; shift ;;
     --gate) GATE=1; shift ;;
     --reference-from) REF_FROM+=("$2"); shift 2 ;;
+    --oracle-profile) ORACLE_PROFILE="$2"; shift 2 ;;
+    --pin-oracle) PIN_ORACLE=1; shift ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -176,6 +184,11 @@ if [[ -n "$APP" ]]; then
     "${COMPILER_ARGS[@]}" --dpi "$DPI" || echo "native capture failed (continuing without it)"
 fi
 
+# --- established-engine pin (explicit; from fresh renders only)
+if [[ $PIN_ORACLE -eq 1 ]]; then
+  python3 "$HERE/pin_oracle.py" "$WORK/reference" "$ORACLE_PROFILE" "$STAMP" "$HERE/fixtures"
+fi
+
 # --- provenance
 python3 - "$WORK" "$EVIDENCE" "$REPO" "$HERE" "$COMPILER_JSON" "$PDF_REF" "$pdf_sha" "$PDF_BIN" "$DPI" "$NATIVE" <<'PY'
 import hashlib, json, os, platform, subprocess, sys
@@ -210,7 +223,7 @@ for fx in sorted(os.listdir(os.path.join(work, "reference"))):
             references["fresh"].append(key)
         else:
             references["unavailable"].append({"key": key, "reason": j.get("reason") or f"engine exit {j.get('exit')}"})
-pre, flags = {}, []
+pre, flags, engine_env = {}, [], []
 for fx in sorted(os.listdir(os.path.join(work, "reference"))):
     d = os.path.join(work, "reference", fx)
     if not os.path.isdir(d): continue
@@ -218,7 +231,7 @@ for fx in sorted(os.listdir(os.path.join(work, "reference"))):
         ej = os.path.join(d, e, "engine.json")
         if os.path.exists(ej):
             j = json.load(open(ej))
-            if j.get("preamble"): pre[e] = j["preamble"]; flags = j.get("flags", flags)
+            if j.get("preamble"): pre[e] = j["preamble"]; flags = j.get("flags", flags); engine_env = j.get("env") or engine_env
 try:
     import PIL; pillow = PIL.__version__
 except Exception:
@@ -242,7 +255,7 @@ prov = {
     "engines": {k: v for k, v in engines.items() if not k.startswith("_")},
     "references": references,
     "packages": engines.get("_packages", {}), "system_fonts": engines.get("_system_fonts", {}),
-    "preambles": pre, "engine_flags": flags,
+    "preambles": pre, "engine_flags": flags, "engine_env": engine_env,
     "compilers": json.loads(compilers),
     "pdf_writer": {"ref": pdf_ref, "sha": pdf_sha, "path": pdf_bin, "embed": True, "embed_font": embed},
     "dpi": float(dpi), "color_space": "sRGB IEC61966-2.1", "pixel_format": "RGBA8, white opaque background",
@@ -270,6 +283,7 @@ DIFF_ARGS=(--reference "$WORK/reference" --flashtex "$WORK/flashtex" --evidence 
   --threshold "$THRESHOLD" --provenance "$EVIDENCE/provenance.json" --rasterize "$WORK/rasterize")
 [[ -f "$THRESHOLDS" ]] && DIFF_ARGS+=(--thresholds "$THRESHOLDS")
 DIFF_ARGS+=(--profile "$PROFILE")
+[[ -f "$ORACLE_PROFILE" ]] && DIFF_ARGS+=(--oracle-profile "$ORACLE_PROFILE")
 [[ $PIN -eq 1 ]] && DIFF_ARGS+=(--pin-profile)
 [[ $GATE -eq 1 ]] && DIFF_ARGS+=(--gate)
 [[ -n "$NATIVE" ]] && DIFF_ARGS+=(--native "$NATIVE")
@@ -283,5 +297,6 @@ rc=$?
 set -e
 cp "$THRESHOLDS" "$EVIDENCE/thresholds.used.json" 2>/dev/null || true
 cp "$PROFILE" "$EVIDENCE/reference-profile.used.json" 2>/dev/null || true
+cp "$ORACLE_PROFILE" "$EVIDENCE/oracle-profile.used.json" 2>/dev/null || true
 echo "report: $EVIDENCE/report.md (diff exit $rc)"
 exit $rc

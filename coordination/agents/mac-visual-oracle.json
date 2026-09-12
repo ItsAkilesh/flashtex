@@ -1,12 +1,12 @@
 {
   "agent_id": "mac-visual-oracle",
-  "allocation_id": "claude-mac20x-visual-oracle-stage2",
+  "allocation_id": "claude-mac20x-visual-oracle-stage3",
   "assignment_acknowledgements": {
     "FT-017": {
-      "acknowledged_utc": "2026-09-12T06:30:11Z",
-      "adaptation": "Accepted rev 2 (input 41c4616): expanding corpus to 18 fixtures, projection-based page registration with registration vs post-registration rendering error in every table, region metrics (text area/header/footer/display boxes), SHA footers + PNG tEXt in overlays/heatmaps via rasterize annotate, tolerant pipeline build reporting. Merged origin/main a949f5b.",
-      "main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
-      "revision": 2
+      "acknowledged_utc": "2026-09-12T08:32:11Z",
+      "adaptation": "Accepted rev 3 (input 59a49ab; GH-24): split acceptance into (1) FlashTeX self-regression vs pinned prior FlashTeX bytes, (2) candidate vs established engine \u2014 raw unmodified PDF bytes vs pinned MacTeX oracle PDF (oracle-profile.json, pinned render environment SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1 + LuaTeX trailerid, verified byte-reproducible 108/108) and zero-pixel raster equality per page, (3) native/export parity; plain no-parity statement while comparisons differ. Merged origin/main ddc5bc6.",
+      "main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+      "revision": 3
     }
   },
   "branch": "agent/mac-visual-oracle/reference-raster",
@@ -14,15 +14,15 @@
     "xcode",
     "tex-oracle"
   ],
-  "code_revision": "c462e254d5146d9eb4b9165a4226c2cc82d6690f",
+  "code_revision": "6e9d14c2cf4d355ef6de939119c91117ad51c044",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 45,
+    "optimistic": 30,
+    "pessimistic": 90
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
-  "next_action": "Await Commander review; re-pin reference-profile.json to 18 fixtures and pin pipeline SHA if requested; merge origin/main at next clean checkpoint",
+  "main_integrated_through": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
+  "next_action": "Finish the corpus run, commit evidence + oracle-profile.json, update handoff; then native-capture-vs-export exact mismatch evidence.",
   "reviewed_peers": {
     "origin/agent/mac-render-pipeline/unified": {
       "adaptation": "Reviewed c000dad (secnumdepth parsing): crates/render-pipeline builds via git archive of crates/; added as pipeline label; finding: matches LM oracle word sequence on 17-apostrophes (|dx| 0.02 pt), display-math boxes weakest region.",
@@ -30,16 +30,16 @@
       "sha": "c000dadcb637293ac1963decc2387b323b0cefe4"
     },
     "origin/main": {
-      "adaptation": "Built and compared origin/main as label `main` (462fb27 then 5f9f4ec during this session); crates/compiler changed in 17 files since integrated base a949f5b, runtime-v1 compile_result and U+2500 rule convention unchanged; merge of main into the branch deferred to next clean checkpoint.",
-      "reviewed_utc": "2026-09-12T07:42:12Z",
-      "sha": "7fea005b0611e2cc565ec38b9a705eff7cc4532c"
+      "adaptation": "Merged origin/main (ddc5bc6) into the branch: no changes under tests/visual-corpus or coordination/mac-visual-oracle*; rev 3 assignment + GH-24 read and acked.",
+      "reviewed_utc": "2026-09-12T08:32:11Z",
+      "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440"
     }
   },
   "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "FT-017 rev 2 delivered on agent/mac-visual-oracle/reference-raster: 18 declared fixtures (incl. apostrophe/quoteright regression, ligatures, nested lists, dense inline math, 3-page doc); registration (guarded ink-projection correlation, confidence-labelled) reported separately from post-registration rendering error; region metrics (text area, header/footer bands, display boxes); overlays/heatmaps with burned-in provenance footer + XMP + PNG tEXt (fixture+component SHAs, engine/version/font, DPI/colour, run). Reference reuse when no engine is installed (--reference-from; 'reference unavailable' never fails). Evidence: 20260912T065946Z (all 108 references reused from BasicTeX run 064032Z) and 20260912T072838Z (MacTeX 2026 full live oracles, 108/108 exit 0; live rasters pixel-identical to recorded ones, PDF bytes differ in timestamps/IDs only). pipeline build auto-added (c000dad builds). selftest.py 18 checks green.",
+  "state": "in_progress",
+  "summary": "FT-017 rev 3 in progress: GH-24 gate split implemented and self-tested (25 checks); oracle profile pinned from a live MacTeX render pass; corpus re-run with live verification of the pin in progress.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T07:42:12Z",
+  "updated_utc": "2026-09-12T08:32:11Z",
   "usage": {
     "evidence": "Claude Max 20x shared quota on mac-m1max-a; no programmatic readout; this session only",
     "status": "unknown"
