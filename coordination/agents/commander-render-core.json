@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "9b5b9f414fc615cb644cc9a49d6d1d11d53652a2",
+  "code_revision": "7306fdb5a2c20d721450d45fb3e035a608723492",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d69d6ed0b2a3300fb3fd5351af150707f062824",
-  "next_action": "Implement nested resource graph packet-to-run adapter through same exact internal path API.",
+  "next_action": "Publish nested consumer checkpoint; continue next assigned product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact rational font scales/origins now emit internal path batches; fractional VF rules and exact half-open clips preserved. 75 Rust tests and all-target strict clippy pass.",
+  "summary": "Nested graph packet-to-run consumer implemented with exact rational geometry, original input intervals, source-chain sidecar and physical encoding identity checks. 78 Rust tests pass.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:34:04Z",
+  "updated_utc": "2026-09-12T06:36:25Z",
   "usage": {
-    "evidence": "75 Rust tests, strict all-target clippy, fractional placement/clip/rule and signed kern acceptance tests. Wire/schema unchanged; no native paint or TeX rounding parity claim.",
+    "evidence": "78 Rust tests and strict all-target clippy pass. Flat versus two-level virtual equivalence uses synthetic licensed fixtures; no runtime activation/native or TeX oracle parity claim.",
     "status": "Hosted OpenAI authorized; no external provider calls or purchases."
   }
 }

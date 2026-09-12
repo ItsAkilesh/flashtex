@@ -17,6 +17,7 @@ pub enum AdapterError {
     Resource(String),
     UnsupportedFont(String),
     UnsupportedPath(crate::glyph_cache::PathFailure),
+    GraphFailure(crate::graph_cache::Failure),
     Arithmetic(String),
     UnsupportedNotdef { code: u8 },
     NonIntegralTicks,
@@ -567,4 +568,155 @@ impl EncodedRun<'_> {
             visible_clip,
         })
     }
+}
+
+/// Each source chain corresponds exactly to the operation at the same index in
+/// `run.operations`; retain this sidecar alongside run-to-batch conversion.
+#[derive(Debug)]
+pub struct NestedRun<'a> {
+    pub run: EncodedRun<'a>,
+    pub source_chains: Vec<Vec<flashtex_font_resources::vf_graph::SourceStep>>,
+}
+/// Expand through one immutable graph cache, then bind every physical placement
+/// to an explicit font/TFM/encoding resource before exposing any partial run.
+pub fn nested_run<'a>(
+    cache: &mut crate::graph_cache::GraphCache<'_, '_>,
+    root: &flashtex_font_resources::vf_graph::ResourceKey,
+    tfm: &Tfm,
+    physical: &BTreeMap<flashtex_font_resources::vf_graph::ResourceKey, &BoundTfmFont<'a>>,
+    input: &[u8],
+    scale: RunScale,
+) -> Result<NestedRun<'a>> {
+    use crate::graph_cache::Outcome;
+    use flashtex_font_resources::vf_graph::{NestedPlacement, ResourceKey};
+    let (root_tfm, vf_sha256) = match root {
+        ResourceKey::Physical { tfm_sha256, .. } => (tfm_sha256, None),
+        ResourceKey::Virtual {
+            tfm_sha256,
+            vf_sha256,
+        } => (tfm_sha256, Some(vf_sha256.clone())),
+    };
+    if root_tfm != &tfm.source_sha256 {
+        return Err(AdapterError::Resource(
+            "nested root metric identity mismatch".into(),
+        ));
+    }
+    if input.len() > LIMIT {
+        return Err(AdapterError::Budget);
+    }
+    let mut x = ExactTicks::integer(Tick(0))?;
+    let mut operations = Vec::new();
+    let mut source_chains = Vec::new();
+    for item in tfm.apply_ligatures_kerns(input).map_err(resource)? {
+        let glyph = match item {
+            TfmItem::Kern(kern) => {
+                x = x.add(scale.metric(kern)?)?;
+                continue;
+            }
+            TfmItem::Glyph(glyph) => glyph,
+        };
+        let packet = match cache.lookup(root, glyph.code)?.outcome {
+            Outcome::Ready(packet) => packet,
+            Outcome::Unavailable(reason) => {
+                return Err(AdapterError::GraphFailure((*reason).clone()))
+            }
+        };
+        let metrics = tfm
+            .char_metrics(glyph.code)
+            .ok_or_else(|| AdapterError::Resource("nested root metrics missing".into()))?;
+        if packet.resource != *root
+            || packet.character != glyph.code
+            || packet.width != metrics.width
+        {
+            return Err(AdapterError::Resource(
+                "nested packet identity mismatch".into(),
+            ));
+        }
+        let interval = InputInterval {
+            start: glyph.input_start,
+            end: glyph.input_end,
+        };
+        let convert = |v: flashtex_font_resources::Coordinate| {
+            scale.size.multiply(v.numerator(), 1u128 << v.shift())
+        };
+        for placement in &packet.placements {
+            if operations.len() >= LIMIT {
+                return Err(AdapterError::Budget);
+            }
+            match placement {
+                NestedPlacement::Glyph {
+                    resource: key,
+                    glyph_id,
+                    tfm_code,
+                    x: px,
+                    y,
+                    scale: local_scale,
+                    source,
+                } => {
+                    let binding = physical.get(key).ok_or_else(|| {
+                        AdapterError::Resource("nested physical font binding missing".into())
+                    })?;
+                    let ResourceKey::Physical {
+                        font_sha256,
+                        tfm_sha256,
+                        face_index,
+                    } = key
+                    else {
+                        return Err(AdapterError::Resource(
+                            "nested glyph has virtual resource identity".into(),
+                        ));
+                    };
+                    let (identity, metrics) = binding.map_code(*tfm_code).map_err(resource)?;
+                    if binding.font().descriptor().sha256 != *font_sha256
+                        || binding.font().descriptor().face_index != *face_index
+                        || binding.tfm().source_sha256 != *tfm_sha256
+                        || original(*tfm_code, identity)? != *glyph_id
+                    {
+                        return Err(AdapterError::Resource(
+                            "nested glyph binding identity mismatch".into(),
+                        ));
+                    }
+                    operations.push(Operation::Glyph(PhysicalGlyph {
+                        font: binding.font(),
+                        tfm_sha256: tfm_sha256.clone(),
+                        code: *tfm_code,
+                        original_gid: *glyph_id,
+                        x: x.add(convert(*px)?)?,
+                        baseline_y: convert(*y)?,
+                        size: convert(*local_scale)?,
+                        input: interval.clone(),
+                        metrics,
+                    }));
+                    source_chains.push(source.clone());
+                }
+                NestedPlacement::Rule {
+                    x: px,
+                    y,
+                    width,
+                    height,
+                    source,
+                } => {
+                    let height = convert(*height)?;
+                    operations.push(Operation::Rule {
+                        x: x.add(convert(*px)?)?,
+                        top: convert(*y)?.add(height.multiply(-1, 1)?)?,
+                        width: convert(*width)?,
+                        height,
+                        input: interval.clone(),
+                    });
+                    source_chains.push(source.clone());
+                }
+            }
+        }
+        x = x.add(scale.metric(packet.width)?)?;
+    }
+    Ok(NestedRun {
+        run: EncodedRun {
+            operations,
+            advance: x,
+            policy: scale.policy,
+            vf_sha256,
+        },
+        source_chains,
+    })
 }

@@ -576,3 +576,136 @@ fn fractional_virtual_rule_emits_exact_internal_geometry() {
         OutlineCoordinate::from_fraction(1, 1).unwrap()
     );
 }
+#[test]
+fn nested_graph_run_matches_flat_fractional_positions_and_retains_source_chain() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::GraphCache;
+    let f = font(true);
+    let t = tfm();
+    let m = manifest(&f, &t);
+    let b = BoundTfmFont::new(&t, &f, &m).unwrap();
+    let child = vf(&[65]);
+    let root_vf = vf(&[138, 65]);
+    let mut graph = ResourceGraph::new();
+    let pk = graph.insert(Resource::Physical(&b)).unwrap();
+    let ck = graph
+        .insert(Resource::Virtual {
+            vf: &child,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, pk.clone())]),
+        })
+        .unwrap();
+    let root = graph
+        .insert(Resource::Virtual {
+            vf: &root_vf,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, ck)]),
+        })
+        .unwrap();
+    let physical = BTreeMap::from([(pk, &b)]);
+    let mut cache = GraphCache::new(&graph, 8, 100000).unwrap();
+    let scale = RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap();
+    let nested = nested_run(&mut cache, &root, &t, &physical, b"AA", scale).unwrap();
+    let flat = physical_run(&b, b"AA", scale).unwrap();
+    assert_eq!(nested.run.advance, flat.advance);
+    assert_eq!(nested.source_chains.len(), 2);
+    assert_eq!(nested.source_chains[0].len(), 3);
+    assert_eq!(nested.source_chains[0][0].command_index, Some(1));
+    for (a, b) in nested.run.operations.iter().zip(&flat.operations) {
+        let (Operation::Glyph(a), Operation::Glyph(b)) = (a, b) else {
+            panic!()
+        };
+        assert_eq!(
+            (a.x, a.baseline_y, a.size, a.original_gid, &a.input),
+            (b.x, b.baseline_y, b.size, b.original_gid, &b.input)
+        );
+    }
+    assert_eq!(cache.stats().expansions, 1);
+    assert_eq!(cache.stats().hits, 1);
+}
+#[test]
+fn nested_consumer_rejects_differing_encoding_or_missing_physical_binding() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::GraphCache;
+    let f = font(false);
+    let t = tfm();
+    let mut m = manifest(&f, &t);
+    let original = BoundTfmFont::new(&t, &f, &m).unwrap();
+    m.declared_glyphs[0].glyph_id = 2;
+    let wrong = BoundTfmFont::new(&t, &f, &m).unwrap();
+    let mut graph = ResourceGraph::new();
+    let root = graph.insert(Resource::Physical(&original)).unwrap();
+    let mut cache = GraphCache::new(&graph, 4, 100000).unwrap();
+    assert!(matches!(
+        nested_run(&mut cache, &root, &t, &BTreeMap::new(), b"A", scale()),
+        Err(AdapterError::Resource(_))
+    ));
+    assert!(matches!(
+        nested_run(
+            &mut cache,
+            &root,
+            &t,
+            &BTreeMap::from([(root.clone(), &wrong)]),
+            b"A",
+            scale()
+        ),
+        Err(AdapterError::Resource(_))
+    ));
+    let mut changed = t.clone();
+    changed.source_sha256 = "0".repeat(64);
+    assert!(nested_run(&mut cache, &root, &changed, &BTreeMap::new(), b"A", scale()).is_err());
+}
+#[test]
+fn nested_graph_rules_preserve_fractional_geometry_and_input_interval() {
+    use flashtex_font_resources::vf_graph::*;
+    use flashtex_rendering_core::graph_cache::GraphCache;
+    let f = font(false);
+    let t = tfm();
+    let b = BoundTfmFont::new(&t, &f, &manifest(&f, &t)).unwrap();
+    let mut commands = vec![137];
+    commands.extend((1i32 << 19).to_be_bytes());
+    commands.extend((1i32 << 18).to_be_bytes());
+    let child = vf(&commands);
+    let parent = vf(&[138, 65]);
+    let mut graph = ResourceGraph::new();
+    let pk = graph.insert(Resource::Physical(&b)).unwrap();
+    let ck = graph
+        .insert(Resource::Virtual {
+            vf: &child,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, pk.clone())]),
+        })
+        .unwrap();
+    let root = graph
+        .insert(Resource::Virtual {
+            vf: &parent,
+            tfm: &t,
+            fonts: BTreeMap::from([(0, ck)]),
+        })
+        .unwrap();
+    let mut cache = GraphCache::new(&graph, 8, 100000).unwrap();
+    let result = nested_run(
+        &mut cache,
+        &root,
+        &t,
+        &BTreeMap::from([(pk, &b)]),
+        b"A",
+        RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+    )
+    .unwrap();
+    let Operation::Rule {
+        top,
+        width,
+        height,
+        input,
+        ..
+    } = &result.run.operations[0]
+    else {
+        panic!()
+    };
+    assert_eq!((top.numerator(), top.denominator()), (-1, 2));
+    assert_eq!((width.numerator(), width.denominator()), (1, 4));
+    assert_eq!((height.numerator(), height.denominator()), (1, 2));
+    assert_eq!(input, &InputInterval { start: 0, end: 1 });
+    assert_eq!(result.source_chains[0].len(), 2);
+}

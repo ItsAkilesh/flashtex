@@ -176,3 +176,12 @@ intersection and half-open membership; `batch_with_exact_clip` returns an
 unflattened, and the original integer wire schema is unchanged. Overflow is an
 explicit error. Tests cover fractional glyph origins/scales, VF rule bounds, clips,
 precision exhaustion and integral-path equivalence.
+
+`tex_adapter::nested_run` consumes cached nested graph packets and verifies every
+physical placement against a supplied font/TFM/encoding binding. It produces the
+same exact `EncodedRun` API, retaining encoded input intervals and rational nested
+scale/offset/rule geometry. `NestedRun::source_chains` is indexed by the original
+run operation index; retain that sidecar when converting to batches (which may
+cull rules). Missing or conflicting bindings fail before any partial run is
+returned. Synthetic tests compare flat and two-level virtual glyph/rule runs and
+verify that differing encoding declarations cannot be substituted at this boundary.
