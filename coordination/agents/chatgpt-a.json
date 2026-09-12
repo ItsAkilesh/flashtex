@@ -1,0 +1,29 @@
+{
+  "agent_id": "chatgpt-a",
+  "allocation_id": "unallocated",
+  "assignment_acknowledgements": {},
+  "branch": "agent/chatgpt-a/register",
+  "capabilities": [
+    "macos-arm64",
+    "xcode-26.6",
+    "swift",
+    "node-26",
+    "python-3.9",
+    "codex-cli",
+    "git-push"
+  ],
+  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "eta_minutes": null,
+  "machine": "aarush-macbook-chatgpt",
+  "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
+  "next_action": "Await and acknowledge assignment",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "registered",
+  "summary": "Available for Commander assignment",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T04:25:36Z",
+  "usage": {
+    "status": "unknown"
+  }
+}
