@@ -1,0 +1,35 @@
+{
+  "agent_id": "mac-bibliography",
+  "allocation_id": "claude-mac20x-bibliography",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-bibliography/bibtex",
+  "capabilities": [
+    "rust",
+    "cargo"
+  ],
+  "code_revision": "d9dd2d2f9731353acb6afd8d653542970aadbd72",
+  "eta_minutes": {
+    "likely": 35,
+    "optimistic": 20,
+    "pessimistic": 60
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "d9dd2d2f9731353acb6afd8d653542970aadbd72",
+  "next_action": "README (accent table, provenance, unsupported), then adapter proposal after owner agreement",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Reviewed 1dd26c5..d9dd2d2: new crates (project-index, rendering-core, fonts), no change to compiler diagnostics or runtime-v1; no bibliography assignment file yet; no adaptation needed",
+      "reviewed_utc": "2026-09-12T06:01:15Z",
+      "sha": "d9dd2d2f9731353acb6afd8d653542970aadbd72"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "flashtex-bibliography crate: parser, model, names, resolution, plain/alpha layout data; 43 tests, clippy/fmt clean",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T06:01:15Z",
+  "usage": {
+    "evidence": "cargo test 43 pass; clippy -D warnings clean; fmt clean",
+    "status": "unknown"
+  }
+}
