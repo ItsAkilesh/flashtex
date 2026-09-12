@@ -1,5 +1,6 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
 pub mod completed_protocol;
+mod display;
 pub mod experimental_delivery;
 pub mod file_project;
 mod historical;
@@ -63,6 +64,7 @@ pub enum Update {
 
 pub struct Controller {
     historical: historical::HistoricalState,
+    display_enabled: bool,
     project_id: String,
     entry_path: String,
     stores: BTreeMap<String, Store>,
@@ -93,6 +95,20 @@ impl Controller {
         entry_path: String,
         stores: Vec<Store>,
     ) -> Result<Self, String> {
+        Self::open_with_bibliography(project_id, entry_path, stores, &[])
+    }
+    /// Explicit source kinds at construction; declarations must be supplied again
+    /// on reopen. Extensions never infer bibliography semantics.
+    pub fn open_with_bibliography(
+        project_id: String,
+        entry_path: String,
+        stores: Vec<Store>,
+        bibliography_paths: &[String],
+    ) -> Result<Self, String> {
+        let kinds: std::collections::BTreeSet<_> = bibliography_paths.iter().collect();
+        if kinds.len() != bibliography_paths.len() || kinds.contains(&entry_path) {
+            return Err("entry or duplicate bibliography declaration".into());
+        }
         let mut by_path = BTreeMap::new();
         let mut index = ProjectIndex::new(&project_id).map_err(|e| e.to_string())?;
         for store in stores {
@@ -103,16 +119,27 @@ impl Controller {
             if document.project_id != project_id || by_path.contains_key(&document.path) {
                 return Err("wrong project or duplicate document store".into());
             }
-            index
-                .replace_document(&document.path, document.revision, &document.text)
-                .map_err(|e| e.to_string())?;
+            let result = if kinds.contains(&document.path) {
+                index.replace_bibliography_document(
+                    &document.path,
+                    document.revision,
+                    &document.text,
+                )
+            } else {
+                index.replace_document(&document.path, document.revision, &document.text)
+            };
+            result.map_err(|e| e.to_string())?;
             by_path.insert(document.path.clone(), store);
+        }
+        if kinds.iter().any(|path| !by_path.contains_key(*path)) {
+            return Err("unknown bibliography source".into());
         }
         if !by_path.contains_key(&entry_path) {
             return Err("entry store missing".into());
         }
         Ok(Self {
             historical: historical::HistoricalState::default(),
+            display_enabled: false,
             project_id,
             entry_path,
             stores: by_path,
@@ -142,6 +169,16 @@ impl Controller {
         expected: &VersionSnapshot,
         store: Store,
     ) -> Result<EditOutcome, String> {
+        self.attach_document_with_kind(expected, store, flashtex_project_index::DocumentKind::Latex)
+    }
+    /// Attach with an explicitly selected lexical kind. Surviving document kinds
+    /// are preserved by the same atomic membership update.
+    pub fn attach_document_with_kind(
+        &mut self,
+        expected: &VersionSnapshot,
+        store: Store,
+        kind: flashtex_project_index::DocumentKind,
+    ) -> Result<EditOutcome, String> {
         if self.closed || expected != &self.index.snapshot() {
             return Err("project closed or membership snapshot is stale".into());
         }
@@ -159,7 +196,7 @@ impl Controller {
         let started = Instant::now();
         let mut members = self.membership_documents(None)?;
         members.push(document.clone());
-        self.replace_membership(expected, &members)?;
+        self.replace_membership(expected, &members, Some((&document.path, kind)))?;
         self.submitted = None;
         self.stores.insert(document.path.clone(), store);
         Ok(self.after_save(document, started))
@@ -176,6 +213,7 @@ impl Controller {
         &mut self,
         expected: &VersionSnapshot,
         documents: &[Document],
+        added_kind: Option<(&str, flashtex_project_index::DocumentKind)>,
     ) -> Result<(), String> {
         let members: Vec<_> = documents
             .iter()
@@ -184,7 +222,14 @@ impl Controller {
                     doc.path.as_str(),
                     doc.revision,
                     doc.text.as_str(),
-                    flashtex_project_index::DocumentKind::Latex,
+                    added_kind
+                        .filter(|(path, _)| *path == doc.path)
+                        .map(|(_, kind)| kind)
+                        .unwrap_or_else(|| {
+                            self.index
+                                .document_kind(expected, &doc.path)
+                                .unwrap_or(flashtex_project_index::DocumentKind::Latex)
+                        }),
                 )
             })
             .collect();
@@ -209,7 +254,7 @@ impl Controller {
         }
         self.document(path)?;
         let members = self.membership_documents(Some(path))?;
-        self.replace_membership(expected, &members)?;
+        self.replace_membership(expected, &members, None)?;
         self.submitted = None;
         self.stores.remove(path);
         Ok(self.compile_current().err())
@@ -243,10 +288,20 @@ impl Controller {
             if self.index.snapshot().documents.get(&document.path) == Some(&document.revision) {
                 Ok(())
             } else {
-                self.index
-                    .replace_document(&document.path, document.revision, &document.text)
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
+                let kind = self
+                    .index
+                    .document_kind(&self.index.snapshot(), &document.path);
+                let result = if kind == Ok(flashtex_project_index::DocumentKind::Bibliography) {
+                    self.index.replace_bibliography_document(
+                        &document.path,
+                        document.revision,
+                        &document.text,
+                    )
+                } else {
+                    self.index
+                        .replace_document(&document.path, document.revision, &document.text)
+                };
+                result.map(|_| ()).map_err(|e| e.to_string())
             };
         let preview_error = match indexed {
             Ok(()) => self.compile_current().err(),
@@ -336,6 +391,9 @@ impl Controller {
             return Err("project closed".into());
         }
         flashtex_document_runtime::validate_layout_capabilities(&capabilities)?;
+        if capabilities.iter().any(|cap| cap == "display-list-v2") && !self.display_enabled {
+            return Err("display candidates must be enabled before requesting their layout".into());
+        }
         self.historical.invalidate();
         self.layout_capabilities = capabilities;
         self.submitted = None;
@@ -402,6 +460,11 @@ impl Controller {
     pub fn configure_completed_snapshots(&mut self, enabled: bool) -> Result<(), String> {
         if self.closed {
             return Err("project closed".into());
+        }
+        if enabled && self.display_enabled {
+            return Err(
+                "display candidates and historical snapshots are mutually exclusive".into(),
+            );
         }
         self.historical.configure(enabled)?;
         if let Some(runtime) = self.runtime.as_mut() {
@@ -510,8 +573,11 @@ impl Controller {
         let expected = self.index.snapshot();
         let documents = self.membership_documents(None)?;
         let mut runtime = Session::spawn_command(command, limits)?;
+        self.display_enabled = false;
+        self.layout_capabilities
+            .retain(|cap| cap != "display-list-v2");
         runtime.set_completed_snapshots_enabled(self.historical.enabled)?;
-        self.replace_membership(&expected, &documents)?;
+        self.replace_membership(&expected, &documents, None)?;
         self.runtime = Some(runtime);
         self.submitted = None;
         self.compile_current()
@@ -521,6 +587,7 @@ impl Controller {
             runtime.close_project(&self.project_id)?;
         }
         self.historical.invalidate();
+        self.display_enabled = false;
         self.closed = true;
         self.submitted = None;
         Ok(())
