@@ -133,6 +133,11 @@ pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
     pub family: TextFamily,
+    /// The active `\tiny`..`\Huge` declaration, if any (`None` is
+    /// `\normalsize`, the body size). Resolved to an actual point size in
+    /// `layout::size_declaration_pt`, against the layout's own body size
+    /// rather than here, since that is the one authoritative value.
+    pub size: Option<FontSizeLevel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -143,11 +148,33 @@ pub enum TextFamily {
     Mono,
 }
 
+/// One `\tiny`..`\Huge` declaration level. Scoped on `TextStyle` exactly like
+/// bold/italic/family, via the same group/environment style stack, rather
+/// than a parallel size stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FontSizeLevel {
+    Tiny,
+    ScriptSize,
+    FootnoteSize,
+    Small,
+    /// `\large`.
+    Large1,
+    /// `\Large`.
+    Large2,
+    /// `\LARGE`.
+    Large3,
+    /// `\huge`.
+    Huge1,
+    /// `\Huge`.
+    Huge2,
+}
+
 impl TextStyle {
     pub const BOLD: TextStyle = TextStyle {
         bold: true,
         italic: false,
         family: TextFamily::Roman,
+        size: None,
     };
 }
 
@@ -168,7 +195,11 @@ fn style_command(name: &str) -> bool {
     )
 }
 
-/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`).
+/// Group-scoped style declarations (`\bfseries`, `{\bf ...}`). `\tiny`..
+/// `\Huge` are declarations too, not argument-taking commands: `\Large{...}`
+/// (a common `\textbf{...}`-style misuse) is deliberately handled the same
+/// way as `{\Large ...}` — its size stays active past the immediate group,
+/// matching real LaTeX (the group only undoes assignments made *inside* it).
 fn style_declaration(name: &str) -> bool {
     matches!(
         name,
@@ -188,6 +219,16 @@ fn style_declaration(name: &str) -> bool {
             | "tt"
             | "rm"
             | "sf"
+            | "tiny"
+            | "scriptsize"
+            | "footnotesize"
+            | "small"
+            | "normalsize"
+            | "large"
+            | "Large"
+            | "LARGE"
+            | "huge"
+            | "Huge"
     )
 }
 
@@ -214,6 +255,16 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
             }
         }
         "tt" | "rm" | "sf" => next = apply_style(TextStyle::default(), &format!("{name}family")),
+        "tiny" => next.size = Some(FontSizeLevel::Tiny),
+        "scriptsize" => next.size = Some(FontSizeLevel::ScriptSize),
+        "footnotesize" => next.size = Some(FontSizeLevel::FootnoteSize),
+        "small" => next.size = Some(FontSizeLevel::Small),
+        "normalsize" => next.size = None,
+        "large" => next.size = Some(FontSizeLevel::Large1),
+        "Large" => next.size = Some(FontSizeLevel::Large2),
+        "LARGE" => next.size = Some(FontSizeLevel::Large3),
+        "huge" => next.size = Some(FontSizeLevel::Huge1),
+        "Huge" => next.size = Some(FontSizeLevel::Huge2),
         _ => {}
     }
     next
@@ -863,11 +914,6 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
-            // Font-size declarations: this layout has no per-run size
-            // scaling for body text, so honestly doing nothing is preferred
-            // over fabricating a size change the renderer cannot represent.
-            "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large"
-            | "LARGE" | "huge" | "Huge" => {}
             // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
             // in math mode (`src/math.rs`); this arm covers the same commands
             // used directly in running text, 1em/2em of the body text size.
@@ -3165,6 +3211,167 @@ mod tests {
         ] {
             assert_eq!(font_of(&items, text), font, "{text}");
         }
+    }
+
+    fn size_of(items: &[crate::layout::TextItem], text: &str) -> f64 {
+        items
+            .iter()
+            .find(|item| item.text == text)
+            .unwrap_or_else(|| panic!("no item {text:?}"))
+            .font_size_pt
+    }
+
+    #[test]
+    fn size_declarations_scale_relative_to_normalsize() {
+        // No `\documentclass`, so the body size defaults to the 12pt class's
+        // own table.
+        let source = r"\tiny a \scriptsize b \footnotesize c \small d \normalsize e \large f \Large g \LARGE h \huge i \Huge j";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for (text, size) in [
+            ("a", 6.0),
+            ("b", 8.0),
+            ("c", 10.0),
+            ("d", 10.95),
+            ("e", 12.0),
+            ("f", 14.4),
+            ("g", 17.28),
+            ("h", 20.74),
+            ("i", 24.88),
+            ("j", 24.88),
+        ] {
+            assert_eq!(size_of(&items, text), size, "{text}");
+        }
+    }
+
+    #[test]
+    fn large_scales_text_until_its_group_closes() {
+        let (parsed, items) = items(r"Normal {\Large Big text} After");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "Normal"), crate::layout::BODY_SIZE_PT);
+        assert_eq!(size_of(&items, "Big"), 17.28);
+        assert_eq!(size_of(&items, "text"), 17.28);
+        assert_eq!(size_of(&items, "After"), crate::layout::BODY_SIZE_PT);
+    }
+
+    #[test]
+    fn bare_size_declaration_followed_by_a_group_is_not_scoped_to_it() {
+        // `\Large{...}` is a common `\textbf{...}`-style misuse: unlike an
+        // argument-taking command, `\Large` is a declaration, so it takes
+        // effect in whatever scope it appears and stays active past the
+        // following group — exactly like real LaTeX, where a group only
+        // undoes assignments made *inside* it.
+        let (parsed, items) = items(r"\Large{Big} still big");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(size_of(&items, "Big"), 17.28);
+        assert_eq!(size_of(&items, "still"), 17.28);
+        assert_eq!(size_of(&items, "big"), 17.28);
+    }
+
+    #[test]
+    fn size_declarations_use_the_active_documentclass_option_table() {
+        // The three real LaTeX class tables are not a uniform scale of one
+        // another: e.g. `\large` is the same absolute size as `\Large` in
+        // the 10pt/11pt classes, but the 12pt class's own
+        // `\normalsize`-plus-one-step.
+        const LEVELS: [&str; 9] = [
+            "tiny",
+            "scriptsize",
+            "footnotesize",
+            "small",
+            "large",
+            "Large",
+            "LARGE",
+            "huge",
+            "Huge",
+        ];
+        for (class_option, expected_pt) in [
+            (
+                "10pt",
+                [5.0, 7.0, 8.0, 9.0, 12.0, 14.4, 17.28, 20.74, 24.88],
+            ),
+            (
+                "11pt",
+                [6.0, 8.0, 9.0, 10.0, 12.0, 14.4, 17.28, 20.74, 24.88],
+            ),
+            (
+                "12pt",
+                [6.0, 8.0, 10.0, 10.95, 14.4, 17.28, 20.74, 24.88, 24.88],
+            ),
+        ] {
+            let body: String = LEVELS
+                .iter()
+                .enumerate()
+                .map(|(i, level)| format!("\\{level} w{i} "))
+                .collect();
+            let source = format!(
+                "\\documentclass[{class_option}]{{article}}\\begin{{document}}{body}\\end{{document}}"
+            );
+            let parsed = parse(&source);
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{class_option}: {:?}",
+                parsed.diagnostics
+            );
+            let output =
+                crate::incremental::compile_full(&source, layout::LayoutConstraints::default());
+            for (i, level) in LEVELS.iter().enumerate() {
+                let word = format!("w{i}");
+                let size = output
+                    .pages
+                    .iter()
+                    .flat_map(|page| &page.items)
+                    .find(|item| item.text == word)
+                    .unwrap_or_else(|| panic!("{class_option} \\{level}: no item {word:?}"))
+                    .font_size_pt;
+                assert_eq!(size, expected_pt[i], "{class_option} \\{level}");
+            }
+        }
+    }
+
+    #[test]
+    fn normalsize_is_exactly_the_documentclass_body_size_even_at_11pt() {
+        // This compiler's `\documentclass[11pt]` body size is a literal
+        // 11pt, not real LaTeX's 10.95pt `\normalsize` (see `class_size_pt`).
+        // `\normalsize` must match that approximation exactly, not the real
+        // class table value, so text with no size declaration in effect
+        // renders identically to before this feature existed.
+        let source = r"\documentclass[11pt]{article}\begin{document}Body {\small Small} \normalsize Reset\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let output = crate::incremental::compile_full(source, layout::LayoutConstraints::default());
+        let size_of = |text: &str| {
+            output
+                .pages
+                .iter()
+                .flat_map(|page| &page.items)
+                .find(|item| item.text == text)
+                .unwrap_or_else(|| panic!("no item {text:?}"))
+                .font_size_pt
+        };
+        assert_eq!(size_of("Body"), 11.0);
+        assert_eq!(size_of("Small"), 10.0);
+        assert_eq!(size_of("Reset"), 11.0);
+    }
+
+    #[test]
+    fn size_declarations_grow_the_line_height_so_larger_lines_do_not_overlap() {
+        let (parsed, items) = items(r"{\Large Big}\\Small line");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let big = items.iter().find(|i| i.text == "Big").unwrap();
+        let small = items.iter().find(|i| i.text == "Small").unwrap();
+        assert!(small.baseline_y_pt > big.baseline_y_pt);
+        let gap = small.baseline_y_pt - big.baseline_y_pt;
+        // Without this feature `\Large` renders at the plain body size, so
+        // the two lines would sit exactly `BODY_SIZE_PT * LINE_SPACING` apart
+        // (14.4pt) regardless of the declared size. The real `\Large` line is
+        // taller, so the gap to the next line must be strictly larger than
+        // that, or the two lines would overlap.
+        let old_buggy_gap = crate::layout::BODY_SIZE_PT * crate::layout::LINE_SPACING;
+        assert!(
+            gap > old_buggy_gap,
+            "gap = {gap}, old_buggy_gap = {old_buggy_gap}"
+        );
     }
 
     #[test]

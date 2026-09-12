@@ -146,7 +146,9 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\textnormal`, the group- and environment-scoped declarations `\bfseries`,
 `\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
 `\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
-`\sl`, `\tt`, `\rm`, `\sf`,
+`\sl`, `\tt`, `\rm`, `\sf`, the group- and environment-scoped size
+declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
+`\normalsize`, `\large`, `\Large`, `\LARGE`, `\huge`, and `\Huge`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
 starred or not; `multline` numbers only its last line), `\item`, `\par`,
@@ -163,6 +165,22 @@ package version banners, and this compiler has no log stream to write them to,
 so silently doing nothing is the honest behaviour rather than a fabricated log.
 `\noindent` is likewise always a no-op: no paragraph in this layout model is
 ever given a first-line indent, so there is no indent for it to suppress.
+
+`\tiny` through `\Huge` scale text relative to `\normalsize` using the real
+LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),
+selected by the active `10pt`/`11pt`/`12pt` class option (default 12pt); the
+three tables are not a uniform scale of each other (e.g. `\large` is the same
+absolute size as `\Large` in the 10pt/11pt classes, but the 12pt class's own
+`\normalsize`-plus-one-step). `\normalsize` always resolves to exactly the
+active body size rather than the class table's own value, so text with no
+size declaration in effect is unaffected by this feature existing at all,
+including for the 11pt class, where this compiler's body size is a literal
+11pt rather than real LaTeX's 10.95pt `\normalsize`. Like `\bfseries` and
+friends, a size
+declaration stays in effect until its enclosing group or environment closes;
+`\Large{...}` (a common `\textbf{...}`-style misuse) is a declaration, not an
+argument-taking command, so its size stays active past the immediate group,
+matching real LaTeX.
 
 `\hfill`/`\hfil` are real infinite-stretch horizontal glue: they push the rest
 of the current line to the right margin, and multiple fills on one line share
