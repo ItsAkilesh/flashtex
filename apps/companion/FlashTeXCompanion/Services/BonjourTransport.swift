@@ -46,6 +46,7 @@ final class BonjourTransport {
 
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             guard let self else { return }
+            guard case .browsing = self.state else { return }
             if let result = results.first {
                 self.connect(to: result.endpoint)
             }
