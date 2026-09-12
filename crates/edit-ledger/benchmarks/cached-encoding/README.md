@@ -30,3 +30,21 @@ thresholds. Prior history checkpoint's timeouts remain in its own evidence.
 Run `cargo test --release paired_cached_history_encoding -- --ignored --nocapture`
 in this crate. The standalone stored-file rewrite and filesystem sync costs are
 unchanged; actual-helper/native measurements remain required after integration.
+
+## Actual-helper follow-up
+
+Release helper2f2605d, same pinned e75741e compiler, unchanged521792-byte source,
+20edits targeting30ms intervals, explicit15MiB compiler frame allowance:
+
+| Policy | Final after last send | Last ACK lag | Total request handling | Last edit handling |
+| --- | --- | --- | --- | --- |
+| Default strict current | 866.97ms | 356.12ms | 393.07ms | 32.32ms |
+| Negotiated historical | 754.36ms | 262.91ms | 438.89ms | 34.26ms |
+
+Both runs retain40/40acknowledged source versions overall, two exact independent
+clean final results and two exact killed-helper source reopens. Each delivered
+one final current preview and no historical frames during typing. These are
+separate single samples; they do not establish a stable causal speedup against
+earlier host runs. They are below earlier measured delays but still above200ms.
+Native painting is unmeasured. Cached JSON reduces repeated serialization work;
+complete state persistence and compiler reply processing remain substantial.
