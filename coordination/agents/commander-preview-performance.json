@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "e764d2a622ad3660e3041878b3a50aaf6890b160",
+  "code_revision": "e5a894bcb0685380f8feb0e8253dca579e411b5f",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
-  "next_action": "Verify candidate optional-output oversize/stall boundaries and coordinate native helper-route consumer measurement.",
+  "next_action": "Use FT049 real65dbe7d producer replay inputs to verify actual helper forwarding and native consumer contract; full-sized optional oversize/stall remains a separate gate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Added actual helper stale-sibling and corrupt-hash recovery tests. New edit ACK occurs while producer paused between v1/sibling; only fresh candidate escapes. Corrupt candidate fails preview but later durable edit survives helper reopen. Three display subprocess tests and strict Clippy pass.",
+  "summary": "Shared optional frame admission with sourcefree outcome/timing diagnostics. Compact JSON numeric expansion refuses oversized optional output without partial frame or lost required ACK.63 helper tests all real compiler gates and strictlint pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:04:01Z",
+  "updated_utc": "2026-09-12T11:06:43Z",
   "usage": {
     "status": "unknown"
   }

@@ -90,3 +90,15 @@ and verify only the newer source hash/version reaches optional output. A corrupt
 sibling hash triggers preview failure without exposing a candidate; a subsequent
 edit still persists and survives helper kill/reopen. These checks exercise the real
 helper/runtime boundary with a transport fixture, not a real renderer.
+
+Both optional routes use the same complete-frame serializer/admission boundary.
+Its tests include compact JSON numbers that expand on reserialization: exceeding
+the output budget publishes no partial optional bytes and leaves the following
+required ACK intact. Exact newline-inclusive limits and obsolete epochs are also
+checked. These are boundary tests, not a full-sized native output stress test.
+
+With existing `diagnostic_timings:true`, stderr includes `phase:optional_output`,
+`kind`, `outcome` (`admitted`, `busy_or_obsolete`, or `serialization_refused`) and
+`serialization_ms`. These diagnostics contain no source text or payload data.
+Admission is queue acceptance, not proof of native receipt or paint. As with other
+phase diagnostics, clients must drain stderr while enabled.
