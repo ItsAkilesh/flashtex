@@ -1,3 +1,11 @@
+> LATEST COOLDOWN: until 2026-09-12T08:21:08Z Jaysen heavy work is suspended;
+> Daniel may take exact fenced handoffs after registration/ACK. Jaysen small tasks
+> may use his existing remaining usage credits, explicitly authorized for this
+> machine only. At that time both machines receive independent full queues,
+> subject to verified usable routes/reset; no purchases or duplicate ownership.
+> Commander remains linux-primary while usable; fallback is dynamically selected
+> from fresh verified comparable remaining capacity, never fixed to Jaysen.
+
 > ADDITIONAL USER AUTHORIZATION: Daniel's new Claude20x machine is allocated16
 > engineering lanes FT030–045 (registration pending), without reducing other
 > staffing. This is the explicit Daniel-only remote expansion exception. Existing
@@ -34,7 +42,7 @@ Read `docs/autonomous-workers.md` for the executable startup and task loop.
 ## Designated standby exception
 
 The user additionally authorized ONE NEW Opus standby on Jaysen mac-m1max-a,
-`orchestrator-jaysen-opus`, solely for eventual Commander takeover after verified
+`orchestrator-jaysen-opus`, as a candidate for eventual Commander takeover after verified
 termination and stopped publishers. It stays read-only while Astra is active;
 this does not increase engineering staffing or revive paused agents. Read
 [the exact revival prompt and operational gaps](docs/commander-failover.md).
