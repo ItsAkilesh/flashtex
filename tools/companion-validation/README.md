@@ -29,6 +29,8 @@ The report also checks that the stdout transport has an atomic capture-ID regist
 and explicitly rejects duplicates.
 It separately detects the cross-transport failure mode where `CaptureTransport`
 prints a capture and disconnected `BonjourTransport` prints the same JSON again.
+For the queued companion-to-Mac interop gate, it also flags plaintext/unpaired
+Bonjour delivery and missing physical-device local-network privacy declarations.
 
 Run the harness unit tests with:
 

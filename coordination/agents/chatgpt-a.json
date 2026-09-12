@@ -15,7 +15,7 @@
     "swift",
     "python"
   ],
-  "code_revision": "555d5f94b643828191b94a196ea03374b5e8abc1",
+  "code_revision": "ab9df5ecfbcd54c82e06682dacf29adeec075703",
   "eta_minutes": {
     "likely": 45,
     "optimistic": 25,
@@ -23,7 +23,7 @@
   },
   "machine": "aarush-macbook-chatgpt",
   "main_integrated_through": "11dc30f8f33caa39c60a49548892b8af6a2d2b89",
-  "next_action": "Add deterministic cancellation/retry coverage and validate the repaired candidate including its XCTest target; execute tests if a simulator runtime becomes available.",
+  "next_action": "Publish nearby transport gate, then validate bridge/Mac receiver revision inputs when their exact integration SHA is published.",
   "reviewed_peers": {
     "origin/main": {
       "adaptation": "No new assignment or owned-path change; final report adds immutable refs and disposable patch-application evidence.",
@@ -33,11 +33,11 @@
   },
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT-014 revision 2 acknowledged; extending the isolated harness against the published repaired companion candidate.",
+  "summary": "FT-014 harness now validates the queued companion-to-Mac interop security and privacy gate against pinned source revisions.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:31:19Z",
+  "updated_utc": "2026-09-12T07:37:00Z",
   "usage": {
-    "evidence": "Xcode 26.6 is installed; no iOS simulator runtime is installed. d764d54 passes unsigned Debug simulator-SDK builds for app and test targets; runtime XCTest execution is currently not available. No external API calls, purchases, or Claude use.",
+    "evidence": "13/13 harness tests pass. Xcode 26.6 is installed but no simulator runtime exists on this host. The harness flags plaintext TCP, absent TLS-PSK pairing/proof, and absent physical-device local-network/Bonjour declarations in candidate d764d54. No external API calls, purchases, or Claude use.",
     "status": "unknown"
   }
 }

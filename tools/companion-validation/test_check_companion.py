@@ -86,6 +86,31 @@ class CompanionValidationTests(unittest.TestCase):
                 "capture is sent to stdout before Bonjour fallback, so a disconnected capture is emitted twice"
             ],
         )
+
+    def test_gates_plaintext_unpaired_nearby_transport(self):
+        findings = check_companion.nearby_transport_findings(
+            "import Network\nlet parameters = NWParameters.tcp\nlet hello = role",
+            "<plist></plist>",
+        )
+        self.assertEqual(
+            findings,
+            [
+                "Bonjour transport uses plaintext TCP; nearby delivery requires paired TLS-PSK",
+                "Bonjour transport has no TLS-PSK pairing implementation",
+                "hello payload lacks pair_id/proof required by nearby-v1",
+                "Info.plist lacks NSLocalNetworkUsageDescription for physical-device browsing",
+                "Info.plist lacks _flashtex._tcp Bonjour service declaration",
+            ],
+        )
+
+    def test_accepts_paired_nearby_transport_markers(self):
+        self.assertEqual(
+            check_companion.nearby_transport_findings(
+                "import CryptoKit\nadd_pre_shared_key\npair_id\nproof",
+                "NSLocalNetworkUsageDescription NSBonjourServices _flashtex._tcp",
+            ),
+            [],
+        )
         self.assertEqual(
             check_companion.cross_transport_findings(
                 "BonjourTransport.shared.send(json)", "print(jsonLine)\nfflush(stdout)"

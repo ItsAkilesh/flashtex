@@ -28,6 +28,7 @@ VALIDATOR = Path("apps/companion/FlashTeXCompanion/Services/ImageValidator.swift
 STORE = Path("apps/companion/FlashTeXCompanion/Models/CaptureStore.swift")
 TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/CaptureTransport.swift")
 BONJOUR_TRANSPORT = Path("apps/companion/FlashTeXCompanion/Services/BonjourTransport.swift")
+INFO_PLIST = Path("apps/companion/FlashTeXCompanion/Info.plist")
 CAPTURE_FIXTURE = Path("protocol/fixtures/capture-submission.json")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
@@ -165,6 +166,22 @@ def cross_transport_findings(store_source: str, bonjour_source: str) -> list[str
     return findings
 
 
+def nearby_transport_findings(bonjour_source: str, info_plist: str) -> list[str]:
+    """Gate the companion against the published nearby transport security boundary."""
+    findings: list[str] = []
+    if "NWParameters.tcp" in bonjour_source:
+        findings.append("Bonjour transport uses plaintext TCP; nearby delivery requires paired TLS-PSK")
+    if "CryptoKit" not in bonjour_source or "add_pre_shared_key" not in bonjour_source:
+        findings.append("Bonjour transport has no TLS-PSK pairing implementation")
+    if "pair_id" not in bonjour_source or "proof" not in bonjour_source:
+        findings.append("hello payload lacks pair_id/proof required by nearby-v1")
+    if "NSLocalNetworkUsageDescription" not in info_plist:
+        findings.append("Info.plist lacks NSLocalNetworkUsageDescription for physical-device browsing")
+    if "NSBonjourServices" not in info_plist or "_flashtex._tcp" not in info_plist:
+        findings.append("Info.plist lacks _flashtex._tcp Bonjour service declaration")
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -188,6 +205,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
     store = source / STORE
     transport = source / TRANSPORT
     bonjour_transport = source / BONJOUR_TRANSPORT
+    info_plist = source / INFO_PLIST
     result: dict[str, Any] = {
         "project": str(PROJECT),
         "destination": "sdk: iphonesimulator (direct SDK build; no named simulator required)",
@@ -197,6 +215,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "delivery_findings": [],
         "deduplication_findings": [],
         "cross_transport_findings": [],
+        "nearby_transport_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
     }
@@ -221,12 +240,18 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
             result["cross_transport_findings"] = cross_transport_findings(
                 store.read_text(encoding="utf-8"), bonjour_transport.read_text(encoding="utf-8")
             )
+            result["nearby_transport_findings"] = nearby_transport_findings(
+                bonjour_transport.read_text(encoding="utf-8"),
+                info_plist.read_text(encoding="utf-8") if info_plist.exists() else "",
+            )
         else:
             result["cross_transport_findings"] = ["Bonjour transport source missing"]
+            result["nearby_transport_findings"] = ["Bonjour transport source missing"]
     else:
         result["delivery_findings"] = ["capture delivery sources missing"]
         result["deduplication_findings"] = ["capture delivery sources missing"]
         result["cross_transport_findings"] = ["capture delivery sources missing"]
+        result["nearby_transport_findings"] = ["capture delivery sources missing"]
     fixture = source / CAPTURE_FIXTURE
     if fixture.exists():
         result["fixture_mime_findings"] = fixture_mime_findings(fixture)
