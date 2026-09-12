@@ -230,9 +230,18 @@ final class PairingFlowController: ObservableObject {
 
     private func scheduleExpiry(_ a: PairingFlow.Attempt) {
         expiry?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.apply(.codeExpired(generation: a.generation)) }
+        let item = DispatchWorkItem { [weak self] in self?.expired(a) }
         expiry = item
         DispatchQueue.main.asyncAfter(deadline: .now() + a.remaining(at: Date()) + 0.25, execute: item)
+    }
+
+    /// The transport expires its own codes (and restarts without the key); a
+    /// resumed attempt lives only in the coordinator, so drop it here too.
+    private func expired(_ a: PairingFlow.Attempt) {
+        apply(.codeExpired(generation: a.generation))
+        guard let nearby, nearby.pairingCode == nil, nearby.coordinator.current?.code == a.code else { return }
+        nearby.coordinator.cancel()
+        if nearby.isAdvertising { nearby.startAdvertising() }
     }
 }
 
@@ -386,18 +395,27 @@ struct NearbyFlowView: View {
     /// One line that always names the state precisely (advertising, code
     /// shown, verifying, paired, receiving n/m bytes, interrupted, error).
     private var statusRow: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { ctx in
-            let phase = controller.phase
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(phase.title).font(.subheadline.weight(.semibold))
-                    .foregroundStyle(statusColor(phase))
-                Text(phase.detail(now: ctx.date)).font(.caption).foregroundStyle(.secondary)
+        Group {
+            if controller.machine.attempt != nil {
+                // Only the phases with a countdown need a clock.
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in statusLine(now: ctx.date) }
+            } else {
+                statusLine(now: Date())
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Pairing state: \(phase.title)")
-            .accessibilityValue(phase.accessibilityValue(now: ctx.date))
-            .accessibilityIdentifier("nearby.pairing.state")
         }
+    }
+
+    private func statusLine(now: Date) -> some View {
+        let phase = controller.phase
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(phase.title).font(.subheadline.weight(.semibold))
+                .foregroundStyle(statusColor(phase))
+            Text(phase.detail(now: now)).font(.caption).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Pairing state: \(phase.title)")
+        .accessibilityValue(phase.accessibilityValue(now: now))
+        .accessibilityIdentifier("nearby.pairing.state")
     }
 
     private func byteProgress(_ r: PairingFlow.Receiving) -> String {

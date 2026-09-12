@@ -1,6 +1,6 @@
 # mac-pairing-ui handoff
 
-- Updated UTC: 2026-09-12T08:50Z
+- Updated UTC: 2026-09-12T08:53Z
 - Agent / parent / machine alias: `mac-pairing-ui` (Claude Code subagent) /
   `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: lane "Native pairing state recovery and
@@ -17,8 +17,9 @@
   `FlashTeXMacApp.swift`, transferred crates.
 - Branch / code revision / main integrated through:
   `agent/mac-pairing-ui/recovery` from `origin/agent/mac-claude-a/mac-shell`
-  6b43a3a (worktree `.claude/worktrees/agent-a4c2724311989ec2b`). Main not yet
-  merged into this branch (base branch is ahead of main for apps/mac).
+  6b43a3a, merged up to 71675cd (worktree
+  `.claude/worktrees/agent-a4c2724311989ec2b`); that base already carries
+  `origin/main` through 2fd3026.
 - State: in progress (lane + both follow-ups implemented and tested; see
   incomplete list for what still needs transport-owner APIs)
 
@@ -72,8 +73,14 @@ end; listener events → verifying/peer gone/receiving/error); evidence run
 `FLASHTEX_NEARBY_SCREENSHOT_DIR=docs/evidence/nearby-pairing-2026-09-12 swift
 test --filter NearbyViewScreenshotTests` → 8 PNGs (real `NearbyFlowView` hosted
 in an NSWindow of the test process, `screencapture -x -o -l <windowNumber>`, no
-activation, no Accessibility permission). Full suite: see JSON `usage.evidence`
-after the next run.
+activation, no Accessibility permission). Full suite after merging
+`origin/agent/mac-claude-a/mac-shell` 71675cd: `swift test` with
+`FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER` set to the release worker binaries →
+251 tests, 0 failures, 2 skipped (this lane's opt-in screenshot test and a
+pre-existing skip). One earlier run had `CompletionTests.
+testCompletionOnOneMegabyteBufferIsFast` at 41 ms vs its 20 ms wall-clock limit
+with load average 15 from other agents; it passes in isolation (0.7 s) and in
+the repeated full run — a timing test outside this lane, not a regression.
 
 ## Incomplete behavior / blockers / needs from others
 

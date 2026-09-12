@@ -229,6 +229,7 @@ final class NearbyViewControllerTests: XCTestCase {
         XCTAssertEqual(c.phase, .failed(reason: "The pairing code expired before a companion paired.", generation: 1))
         XCTAssertNil(c.journal.pending)
         XCTAssertNil(state.coordinator.bootstrapEntry, "an expired bootstrap key is no longer offered")
+        XCTAssertNil(state.coordinator.current, "the resumed attempt is dropped from the coordinator on expiry")
         XCTAssertTrue(c.phase.canDismiss())
         c.dismiss()
         XCTAssertEqual(c.phase, .advertising)
