@@ -12,18 +12,29 @@
     "codex-cli",
     "git-push"
   ],
-  "code_revision": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "eta_minutes": null,
+  "code_revision": "1d34323809624f6b8389069fc04e21ea707480cf",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
+  },
   "machine": "aarush-macbook-chatgpt",
   "main_integrated_through": "25a92a9c591a92a3d49071e536ecf8f129112c24",
-  "next_action": "Await and acknowledge assignment",
-  "reviewed_peers": {},
+  "next_action": "Poll for a Commander-issued task and acknowledge its exact revision before editing product paths.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Main advanced through staged worker completions without assigning chatgpt-a; remain on registration branch and do not self-assign.",
+      "reviewed_utc": "2026-09-12T04:36:16Z",
+      "sha": "2e619e41b5698f64bb2c4559e8826d546a03b3f2"
+    }
+  },
   "schema_version": 1,
   "state": "registered",
-  "summary": "Available for Commander assignment",
+  "summary": "Registration remains active; reviewed current dispatch updates and no assignment targets chatgpt-a.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:25:36Z",
+  "updated_utc": "2026-09-12T04:36:16Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "Fetched and reviewed current origin/main; control.json remains running; assignment scan found no chatgpt-a task.",
+    "status": "No external API calls or paid-tool calls; allocation remains unassigned."
   }
 }
