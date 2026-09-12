@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2bdee9e7d9ec9d7283f75c05bb1bd7f63e30e6d5",
-  "objective": "Inspect and deterministically verify timeout close and joined shutdown when child stops reading admitted request stdin",
+  "input_main_sha": "0b8577a129d4546b5730e00e4a5c2bcdb9ab06ae",
+  "objective": "Verify near-limit request writer and child processes are reaped without false preview success or unbounded retained buffers",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 15,
+  "revision": 16,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:34:42.495086+00:00"
+  "updated_utc": "2026-09-12T12:39:53Z"
 }
