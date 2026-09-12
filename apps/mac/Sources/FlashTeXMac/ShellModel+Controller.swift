@@ -163,6 +163,7 @@ extension ShellModel {
     /// Explicit compile (⌘B): submits pending text first, else asks for a compile.
     func controllerCompile() {
         guard let controller, controller.isRunning, controllerState.ready else { return }
+        if outputBoundExplicitRetry() { return } // ⌘B after an overflow: restart the compiler regardless of size
         if let durable = controllerState.durable[activePath],
            !(controllerState.textByDurable[activePath]?[durable.revision]?.sameBytes(as: activeText) ?? false) {
             controllerSubmitEdit()
@@ -179,6 +180,7 @@ extension ShellModel {
         case .ready(let compilerError, let maxFrame, let maxOut):
             controllerState.ready = true
             controllerState.compilerError = compilerError
+            outputBoundNoteReady(compilerMaxFrameBytes: maxFrame, helperMaxOutputBytes: maxOut) // ShellModel+OutputBounds.swift
             controllerStatus = "ready: compiler frames ≤ \(maxFrame / 1024 / 1024) MiB, helper output ≤ \(maxOut / 1024 / 1024) MiB"
                 + (compilerError.map { "; compiler unavailable: \($0)" } ?? "")
             log("controller " + controllerStatus)
@@ -214,6 +216,7 @@ extension ShellModel {
                 log("completion metadata refused: \(why)")
                 break
             }
+            if outputBoundHandleControllerError(id: id, message: message) { break } // oversized required reply (ShellModel+OutputBounds.swift)
             if let inFlight = controllerState.inFlight, inFlight.id == id {
                 controllerState.inFlight = nil
                 inFlightRevision = nil
@@ -242,6 +245,8 @@ extension ShellModel {
                     log("controller \(kind) preview for durable r\(rev) (in flight r\(want))")
                     controllerReleaseInFlight()
                 }
+            } else if outputBoundHandleControllerUpdate(kind: kind, payload: payload) {
+                // `failed` for an oversized compiler reply: status names the bound, the held edit is released (ShellModel+OutputBounds.swift)
             } else {
                 log("controller update \(kind): \(payload.keys.sorted().joined(separator: ","))")
             }
@@ -324,6 +329,7 @@ extension ShellModel {
                 controllerState.inFlight = nil
                 controllerStatus = "durable r\(revision); preview error: \(e)"
                 log("controller preview_error: \(e)")
+                outputBoundHandlePreviewError(e) // restarts the compiler once the document shrank after an overflow
             } else {
                 controllerState.inFlight?.durableRevision = revision
                 if let ms = payload["save_and_submit_ms"] as? Double { controllerStatus = String(format: "durable r%d in %.1f ms", revision, ms) }
@@ -459,6 +465,7 @@ extension ShellModel {
         result = incoming
         resultID = update.result.id
         previewSource = .worker("flashtex-preview-controller")
+        outputBoundNotePreviewApplied()
         historicalNoteCurrentPreview(compileRevision: update.compileRevision)
         bindLayout(of: incoming, requested: requested)
         if !update.missingLayoutCapabilities.isEmpty {

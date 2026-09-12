@@ -34,7 +34,7 @@ struct ContentView: View {
             ToolbarItem { HStack(spacing: 4) { Text("v2 preview").font(.caption); Toggle("v2 preview", isOn: $model.previewV2).toggleStyle(.switch).labelsHidden() }.help("Experimental display-list-v2 preview (File > Open Display List (v2)…)") }
             ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
             ToolbarItem {
-                Button("Compile", systemImage: "hammer") { model.compile() }
+                Button("Compile", systemImage: "hammer") { if !model.outputBoundExplicitRetry() { model.compile() } }
                     .disabled(!model.workerAttached)
                     .help("Send the current buffers to the attached worker (⌘B)")
             }
@@ -87,9 +87,10 @@ private struct StatusBanner: View {
                     Text(historical.label).foregroundStyle(.purple).bold()
                         .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
                 } else if model.previewIsStale {
-                    Text(model.workerAttached
+                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
+                         ?? (model.workerAttached
                          ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
-                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)")
+                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)"))
                         .foregroundStyle(.orange)
                 }
             } else if let err = model.loadError {

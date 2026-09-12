@@ -598,6 +598,7 @@ final class ShellModel {
             workerStatus = "no worker attached"
             return
         }
+        if outputBoundBlocksCompile { return } // the document still exceeds the worker line limit (ShellModel+OutputBounds.swift)
         debounce?.cancel()
         let capabilities = requestedLayoutCapabilities
         if let latestID = latestRequestID, let latest = inFlightRequests[latestID] {
@@ -724,6 +725,7 @@ final class ShellModel {
         case .protocolViolation(let message):
             workerStatus = "protocol violation: \(message)"
             log("protocol violation: \(message)")
+            outputBoundHandleWorkerViolation(message) // an oversized compile_result: name the bound and the document size
         case .stderr(let text):
             log(text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
