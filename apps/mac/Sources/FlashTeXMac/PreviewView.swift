@@ -69,12 +69,14 @@ private struct HitTestCanvas: View {
     var caretItems: Set<Int> = []
     let onSelect: (RuntimeV1.SourceRange?, String?) -> Void
 
-    @State private var hitRects: [(CGRect, RuntimeV1.SourceRange?, String)] = []
+    /// Hit rects keyed by `page.items` index so hover, click, and caret
+    /// highlights agree even when non-text items are interleaved.
+    @State private var hitRects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String)] = []
     @State private var hover: Int?
 
     var body: some View {
         Canvas { context, _ in
-            var rects: [(CGRect, RuntimeV1.SourceRange?, String)] = []
+            var rects: [(index: Int, rect: CGRect, source: RuntimeV1.SourceRange?, text: String)] = []
             for (index, item) in page.items.enumerated() {
                 guard case .text(let t) = item else { continue }
                 let font = Font.system(size: t.fontSizePt * scale, design: .serif)
@@ -100,20 +102,20 @@ private struct HitTestCanvas: View {
                                  with: .color(Color.accentColor.opacity(0.25)))
                 }
                 context.draw(resolved, at: origin, anchor: .topLeading)
-                rects.append((rect, t.source, t.text))
+                rects.append((index, rect, t.source, t.text))
             }
             DispatchQueue.main.async { hitRects = rects }
         }
         .contentShape(Rectangle())
         .onContinuousHover { phase in
             switch phase {
-            case .active(let p): hover = hitRects.firstIndex { $0.0.contains(p) }
+            case .active(let p): hover = hitRects.first { $0.rect.contains(p) }?.index
             case .ended: hover = nil
             }
         }
         .onTapGesture { location in
-            if let hit = hitRects.first(where: { $0.0.contains(location) }) {
-                onSelect(hit.1, hit.2)
+            if let hit = hitRects.first(where: { $0.rect.contains(location) }) {
+                onSelect(hit.source, hit.text)
             }
         }
     }
