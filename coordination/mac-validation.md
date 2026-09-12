@@ -45,6 +45,10 @@ Ready behavior:
   non-regression vs the 04:31 run: only swift test count changed (34 -> 75, new tests).
   `run_all.sh` now also builds the PDF writer and bridge so the `FLASHTEX_PDF`/`FLASHTEX_BRIDGE`
   gated tests run (75 tests, 0 skipped).
+- Follow-ups: `probe_devices.sh` (report only; 2 paired devices both unavailable,
+  11 simulators, one booted by another session) -> `reports/devices-20260912T053622Z.md`;
+  `latency_repeat.sh` (3 x 20 over demo.tex: medians 1.435/1.380/1.380 ms, CV 1.9%,
+  cold first request 190 ms) -> `reports/latency-20260912T053730Z.md`.
 - Evidence: `tools/native-validation/reports/report-20260912T043142Z.md`
   against mac-shell `1c3ff13` (app code `fd2a26e`) and compiler-foundation
   `9f1033b`: cargo build/test PASS, swift build PASS, swift test PASS (34 tests,

@@ -16,6 +16,7 @@ failures in those are written up in `reports/` for their owners.
 | `oracle_compare.sh` / `oracle_compare.py` / `oracle_extract.swift` | Reference-oracle comparison (issue #10): pdflatex is run **only as a measuring stick, never by the product**. For each `oracle-samples/*.tex` and each oracle variant: pdflatex (`-interaction=batchmode`, temp dir) -> oracle PDF; FlashTeX compiler (preamble stripped) -> `compile_result` -> `flashtex-pdf --verify` -> our PDF; PDFKit word boxes for both (`oracle_extract.swift`, no third-party packages); page count / MediaBox equality, word-sequence equality after normalisation, per-word x/y deltas (mean/max, 10 largest), line-start agreement. Writes `reports/oracle-<UTC>.md` and a compact `.json` with every per-word delta. Exit 1 only when a tool fails; layout disagreement is a finding, not a failure. | findings |
 | `e2e_native.sh` + `e2e_latency.py`, `e2e_bridge.py`, `e2e_nonregression.py`, `window_probe.swift` | Native end-to-end (issue #2): builds Mac shell + its `crates/compiler`, PDF writer and bridge from refs; (1) launches `FlashTeXMac` with `FLASHTEX_AUTOATTACH=1 FLASHTEX_SEED_FILE=oracle-samples/wrap-sample.tex` and observes process, `flashtex-compiler` child (`pgrep -P`), window (`CGWindowListCopyWindowInfo`, no Accessibility needed) and a screenshot by window id, then runs the CLI-equivalent `flashtex-compiler -> flashtex-pdf --verify -> PDFKit` for the same input; (2) 20x CLI round trip over `Samples/demo.tex` while attached + `swift test --filter RealCompilerTests` REAL-COMPILER LATENCY; (3) SIGKILL compiler child (app must survive 5 s), relaunch re-attaches, SIGKILL app, relaunch shows a window within 5 s; (4) re-runs `run_all.sh` and `oracle_compare.sh --only fixture-hello` and diffs headline numbers against the newest previous reports; (5) bridge receipt path against the real `flashtex-bridge`. Only its own app instance (PID from `$!`) is ever signalled. Writes `reports/e2e-<UTC>.md` + PNGs <= 300 KB. | yes (exit 1 on FAIL; findings and diffs are INFO/FINDING) |
 | `probe_devices.sh` | Report-only: paired physical devices (`xcrun devicectl list devices --json-output`: model, identifier, connection/pairing state, OS), available simulators, `xctrace` device list, Wi-Fi interface. Names/hostnames redacted. Writes `reports/devices-<UTC>.md`. | no |
+| `latency_repeat.sh` | Repeated compiler-latency non-regression: builds the compiler from a ref, runs `e2e_latency.py` R times (fresh worker each) x N requests over `Samples/demo.tex`, reports per-run min/median/max, spread/SD/CV of the medians, cold first-request times, and compares the median-of-medians with the newest previous `reports/latency-*.md` (2x band). | no (flags only) |
 | `expectations.md` | Human checklist for what automation cannot verify here: visual click-to-source, Unicode selection, stale-preview banner, dark preview vs export, capture review. | manual |
 
 ## Running
@@ -251,3 +252,11 @@ iPhone 17 Pro (iOS 26.4) and iPad Air 11-inch M4 (iPadOS 26.4.1). Eleven iOS 26.
 one (iPad Pro 13-inch M5) was already booted by someone else on this Mac. Nothing was paired,
 booted or installed; no nearby-transfer channel was exercised. Real-device FT-004 evidence
 still needs a person to connect a device.
+
+## Repeated latency — run 2026-09-12T05:37:30Z (`reports/latency-20260912T053730Z.md`)
+
+Compiler origin/main at run time, `Samples/demo.tex` (5909 bytes, 3 pages), 3 runs x 20 requests:
+medians 1.435 / 1.380 / 1.380 ms (median of medians **1.380 ms**, spread 0.055 ms, CV 1.9%);
+across 60 samples min 1.329 / median 1.393 / p95 2.603 / max 190.5 ms. The 190 ms outlier is the
+first request of run 1 against a freshly built binary (cold start); runs 2-3 first requests were
+3.7 and 3.6 ms. Later runs compare against this file automatically.
