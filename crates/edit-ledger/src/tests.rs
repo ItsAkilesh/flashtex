@@ -1,6 +1,6 @@
 use super::*;
 
-fn doc(text: &str) -> Document {
+pub(crate) fn doc(text: &str) -> Document {
     Document::new("demo".into(), "main.tex".into(), 1, text.into()).unwrap()
 }
 fn edit(document: &Document) -> PreparedEdit {
@@ -17,7 +17,7 @@ fn edit(document: &Document) -> PreparedEdit {
         document_before_sha256: document.source_sha256.clone(),
     }
 }
-fn setup() -> (tempfile::TempDir, Store, PreparedEdit) {
+pub(crate) fn setup() -> (tempfile::TempDir, Store, PreparedEdit) {
     let dir = tempfile::tempdir().unwrap();
     let mut store = Store::open(dir.path()).unwrap();
     let document = doc("aé😀z");

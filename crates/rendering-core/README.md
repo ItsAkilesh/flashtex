@@ -25,8 +25,9 @@ may refer to one cluster; consumers must not repeat its text once per glyph.
 font byte maps and a `FontValidator` adapter. It verifies SHA256/length before calling
 the separately owned font loader, compares units/GID count, and checks source UTF-8
 boundaries against the exact document revision. The hook intentionally avoids a
-second competing font parser. The `font-resources` crate's
-`inspect_static_truetype` API can implement this adapter once integrated.
+second competing font parser. `font_adapter::StaticTrueTypeLoader` now calls the original `font-resources`
+crate's `inspect_static_truetype` API. `validate_with_collection` additionally
+requires exact descriptors from a loader-owned immutable, license-bound collection.
 
 All resource evidence retains `paintable: false`: source/font identity checks are
 not proof that a consumer safely paints those outlines, that shaping is correct,
@@ -49,3 +50,31 @@ fixed-point rectangles clipped to page bounds, and resolve overlaps in paint ord
 Caret selection uses only supplied caret positions; absent carets return a whole
 logical cluster. TeX source ranges and synthetic provenance remain unchanged. Shared
 cluster metadata avoids copying caret/source arrays for every rectangle.
+
+`cache::DisplayCache` accepts an authoritative `RenderIdentity` before work starts.
+The identity includes project revision, source digests/revisions, font manifests
+and a compiler/configuration digest. A `RenderTicket` binds that expectation to a
+cache generation. Source/font/config changes invalidate prior tickets immediately;
+late frames cannot replace a newer expectation. Installation verifies exact source
+and font bytes, keeps immutable font bytes alongside the complete display list,
+and rejects conflicting geometry for one immutable identity. It never combines
+pages from different revisions. Identical completed installs reuse one `Arc`.
+
+Callers must obtain the current frame through its ticket before painting or querying
+its index. Previously borrowed Arcs remain readable but are no longer current after
+invalidation. Cache accounting limits retained serialized payload/font bytes;
+allocator/index overhead and Arcs retained externally are additional memory.
+
+
+Real resource integration probe (no rendering or glyph-shaping claim):
+
+```sh
+cargo run --manifest-path crates/rendering-core/Cargo.toml --example resource_probe -- /path/to/font.ttf
+```
+
+Verified locally with installed LiberationSans-Regular.ttf, SHA256
+`76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8`,
+2048 units per em and 2620 glyphs. The probe uses a synthetic positioned-text
+fixture and keeps `paintable: false`; the font itself is not copied into this crate.
+Font license/embedding permission remains explicit loader metadata and is never
+inferred from successful parsing or converted from unknown to allowed.

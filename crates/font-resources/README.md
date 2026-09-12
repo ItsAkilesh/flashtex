@@ -46,3 +46,19 @@ and glyph-ID bounds; adapt its FontValidator using `inspect_static_truetype` and
 return units_per_em/glyph_count. No dependency on rendering-core exists here.
 Visual identity, PDF byte identity and typing-to-visible latency remain separate,
 unmeasured integration gates. No reference LaTeX engine is used in this crate.
+
+Unicode access: `glyph_id(char)` returns the original GID or `None` for .notdef.
+It deterministically prefers Unicode format 12 over format 4, then first record
+in directory order; unsupported-only cmaps return an explicit error. It checks
+all selected subtable groups/segments and resulting GIDs before answering. Each
+lookup is bounded but currently rescans the selected table (no shaping cache).
+`horizontal_metrics(gid)` returns original unsigned advance and signed bearing,
+including the repeated final advance for trailing hmtx bearings.
+
+Composite validation runs during metadata inspection and resource loading. It
+bounds component record arguments/transforms/instruction extents, rejects absent
+child GIDs and graph cycles, and caps dependency depth at 32 edges and aggregate
+component references at 1,000,000. Shared acyclic subgraphs are permitted; cached
+subtree heights cannot hide an over-depth ancestor chain. These are explicit
+experimental resource limits, not a claim to accept every valid TrueType font.
+Simple-outline point data and glyph instructions are still not interpreted.

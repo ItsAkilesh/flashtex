@@ -88,6 +88,32 @@ terminate the helper. Request operations:
 | `apply` | `edit: PreparedEdit` | durable `receipt`, current `document` |
 | `replace_document` | `expected_revision`, `expected_sha256`, `text` | `document` |
 | `confirm` | `receipt: {capture_id,edit_id,new_revision}` | `confirmed` |
+| `recovery_export` | none | `snapshot_token`, `current_document`, `pending_receipts` |
+| `recovery_import` | `recovery: {snapshot_token,observations}` | `actions`, fresh `recovery` export |
+| `compact` | `policy: {snapshot_token,acknowledge_permanent_id_retention,acknowledged_through_revision,keep_latest_confirmed}` | compaction counts, sizes and fresh token |
+
+Recovery export/import is a ledger-local API; it does not add bridge wire fields.
+After export, query the bridge for each pending capture. Import observations
+tagged `status: applied` with the exact `receipt`, `status: prepared` with the
+exact `edit`, or `status: unavailable` with `capture_id` and a bounded `reason`.
+An applied observation durably confirms that receipt. A prepared observation
+returns a `replay_receipt` action with original source and receipt; it does not
+reapply or replace the current document. Unavailable observations return a retry
+action and retain all recovery evidence. Any conflict rejects the entire batch.
+If source or ledger changed during the bridge round trip, the snapshot token is
+stale and import is refused. Re-export and query again. Imported data never
+contains document text to overwrite the authoritative source.
+
+Compaction is explicit and only removes full prepared-edit payloads already
+acknowledged by the bridge, at or below the supplied revision cutoff, after
+preserving the requested number of latest confirmed payloads. The acknowledgement
+flag must be true and the snapshot token must still match. Every edit/capture ID,
+original receipt, and SHA-256 binding of all prepared fields remains permanent.
+An identical replay still returns the original receipt after compaction and undo;
+a changed payload remains a conflict. Pending receipt snapshots are never
+compacted. Compacted files use schema 2 so an older schema-1 reader refuses them
+instead of ignoring retained IDs. This is payload compaction, never ID garbage
+collection; the 4096-ID bound remains explicit and non-evicting.
 
 `pending_receipts` entries include prepared edit, receipt, original document,
 after-source hash and confirmation flag. They retain original source until the
@@ -97,7 +123,7 @@ because a network request fails.
 Bounds: document 8 MiB, replacement 64 KiB, store 128 MiB, 4096 applied IDs.
 The ledger fails explicitly when full; it never silently evicts IDs. Unconfirmed
 edits retain a complete original document, so timely receipt reconciliation
-matters for storage size. No history compaction, encryption, native FFI, document
+matters for storage size. No ID garbage collection, encryption, native FFI, document
 export UI or automatic bridge reconciliation is implemented here.
 
 Resumption: branch `agent/mac-contract-review/edit-ledger`, worktree
