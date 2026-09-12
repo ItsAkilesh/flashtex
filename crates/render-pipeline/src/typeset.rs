@@ -102,7 +102,9 @@ impl MathRec {
     /// run's own shaped glyph (the text face's cmap id, 0 for its interword
     /// space) or the math provider's mapping.
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
-        if g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+        // `OTF_FALLBACK_FONT` is `u32::MAX`, above the `\text` run ids: it
+        // must be answered by the provider, not looked up as a run.
+        if g.font_id != crate::mathtex::OTF_FALLBACK_FONT && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
             let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
             let glyph = run.glyph_at(g.font_id, g.gid)?;
             return Some((run.face.clone(), glyph.gid.0));
@@ -114,6 +116,7 @@ impl MathRec {
     /// [`TexMathMetrics::extension_box`].
     pub fn extension_box(&self, g: &ml::PositionedGlyph) -> Option<(f64, f64)> {
         if g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+            // Includes `OTF_FALLBACK_FONT`: no TFM box for those glyphs.
             return None;
         }
         match &self.metrics {
