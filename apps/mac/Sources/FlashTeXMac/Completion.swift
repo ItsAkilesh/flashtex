@@ -1005,6 +1005,11 @@ final class ProjectIndexCompletionFetcher {
         return .pending
     }
 
+    /// The helper is gone (exit, detach): its outstanding ids mean nothing on
+    /// the next client, whose ids restart at `pc-1`; forget the query so a
+    /// colliding id cannot claim an unrelated reply.
+    func discard() { query = nil }
+
     /// An `error` frame for one of the query's ids discards the query.
     func handle(errorID id: String?, message: String) -> Outcome {
         guard let id, let q = query, q.outstanding[id] != nil else { return .notMine }
