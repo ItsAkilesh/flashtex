@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "f959fb52a4911a2ac517a983cd1b6032496a0745",
+  "code_revision": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "89629b712a30f9afe82115e923c47ce05d2be1fe",
-  "next_action": "Renderer may adopt additive BoundMathVariants::fit; source document and baseline placement remain consumer responsibility. Await next font-resource task.",
+  "next_action": "Renderer may adopt additive BoundMathFont::kerns for exact script-corner metrics; no general script layout or parity claim. Await next font-resource task.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Exact bounded MATH fitter complete:106 ordinary tests/clippy pass; pinned STIXMath5000.5 target66/69 accepted,3 horizontal budget refusals preserved.5000-unit parentheses/brackets/integral accepted. Explicit proportional connector flexibility strategy; exact rational overlaps and bound identity.",
+  "summary": "Original MathKernInfo extension complete:108 ordinary tests/clippy pass; pinned STIXMath219 corner tables217 heights0 device records, all exact boundary and half-unit-below queries pass. Full immutable identity and signed metrics preserved; no device-body evaluation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:27:28Z",
+  "updated_utc": "2026-09-12T08:32:02Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
