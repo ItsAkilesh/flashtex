@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
-      "objective": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
+      "name": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+      "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
       "owned_paths": [
         "crates/font-resources"
       ],
@@ -17,8 +17,8 @@
       "timebox_minutes": 30
     },
     {
-      "name": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
-      "objective": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
+      "name": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
+      "objective": "Preserve exact source/resource/provenance replay and explicit missing-resource gates after consumer feedback",
       "owned_paths": [
         "crates/font-resources"
       ],
