@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8a445525ec9d5b465ad08416a7047e461cd29fc3",
-  "objective": "Expose source-bound history metadata and consume the separately owned runtime display-list-v2 candidate interface through bounded opt-in helper forwarding",
+  "input_main_sha": "34e8a913525c9b48d5a2a79daa774862ed6c5b04",
+  "objective": "Consume published runtime display profile in opt-in helper diagnostics, then attribute a bounded actual helper replay before choosing further concurrency changes",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 6,
+  "revision": 7,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
+  "updated_utc": "2026-09-12T11:24:27.008614+00:00"
 }
