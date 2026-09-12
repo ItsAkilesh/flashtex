@@ -72,3 +72,42 @@ misrooted12pt and changed license stages each refused. The temporary stages were
 removed afterward; this is no native installation/execution evidence. Nine focused
 Python tests additionally cover unsafe paths, duplicate/changed manifests,
 symlink files/directories and a FIFO without blocking.
+
+## Candidate patches (not owner-applied)
+
+`packaging.patch` targets exactly af155e59f218cc3e88e19d15b1d042223d0ee298
+`apps/mac/scripts/make-app.sh`. It requires the packaging-time
+`FLASHTEX_BUNDLE_TEXMF_ROOT` to name an explicitly supplied official2.004 root,
+stages only the existing manifest's rooted metric/license entries, and calls the
+same pinned verifier before signing. It does not download anything or infer files
+from host TeX. The existing OTF copy stays in place and is checked by the verifier.
+The patch requires verifier product8e6d2787 and its pinned manifest in the owner
+checkout; the packaging source by itself predates that dependency.
+
+`producer-discovery.patch` targets exactly
+f762f82a7307dc3d6522078364af79e09a51ad06 `crates/render-pipeline/src/fonts.rs`.
+It adds `../Resources/texmf/fonts/tfm/public/lm` relative to the actual producer
+executable, which the packaging script places in Contents/MacOS. Explicit
+`FLASHTEX_TFM_DIRS` entries remain first and are never replaced. The existing font
+and host discovery paths remain afterward. Both direct and helper-launched bundled
+producer paths use the same executable location; no Swift environment mutation
+or separate resource loader is introduced. Owners must rebuild the producer from
+the patched source and verify its packaged binary identity.
+
+`patch-manifest.json` pins both patch bytes and bases. `patch-check-evidence.json`
+records `git apply --check` against both exact files in disposable scratch,
+`bash -n` of the resulting packaging script, structural override ordering, and
+execution of only the new staging block using existing official assets. Nine
+resources verified; missing source10pt metrics refused before signing. No Rust
+producer or native application was executed by these checks.
+
+The bounded check can be repeated from the repository root with:
+
+```sh
+python3 crates/rendering-core/docs/handoffs/native-assets/check_candidate_patches.py
+```
+
+It needs the previously acquired official assets at the recorded local path;
+missing assets are a setup failure, not a download trigger. These patches are
+reviewable candidates only. The Mac owners still own applying/rebasing them and
+the app-only/nohostTeX acceptance gate above.
