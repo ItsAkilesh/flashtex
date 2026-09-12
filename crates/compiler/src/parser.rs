@@ -1423,6 +1423,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
                     _ => false,
                 })
         }
+        // amsmath/amssymb/amsthm (math typesetting: \mathbb, \forall, gather,
+        // align, ...) and microtype (character protrusion/expansion kerning)
+        // are genuinely unimplemented and change real output; they must keep
+        // warning rather than being silently matched here.
         _ => false,
     }
 }
