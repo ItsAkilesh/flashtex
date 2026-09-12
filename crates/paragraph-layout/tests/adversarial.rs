@@ -37,7 +37,7 @@ fn build(
 ) -> Vec<Item> {
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(font, 12.0, text, 0);
+    b.text(font, 12.0, text, 0).unwrap();
     b.finish(Glue::fil())
 }
 

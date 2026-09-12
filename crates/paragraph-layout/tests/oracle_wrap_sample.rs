@@ -144,7 +144,7 @@ fn build(segs: &[Seg]) -> Vec<Item> {
     let mut b = ParagraphBuilder::new(&h);
     let mut off = 0;
     for Seg(font, size, text) in segs {
-        b.text(font, *size, text, off);
+        b.text(font, *size, text, off).unwrap();
         off += text.len();
     }
     b.finish(Glue::fil())
@@ -195,7 +195,7 @@ fn run(algorithm: Algorithm) -> (Vec<Placed>, Vec<Lines>) {
     let mut blocks = Vec::new();
     let mut all_lines = Vec::new();
     for (i, items) in paras.iter().enumerate() {
-        let lines = layout_paragraph(items, &params);
+        let lines = layout_paragraph(items, &params).unwrap();
         all_lines.push(lines.clone());
         blocks.push(if i == 0 {
             ParagraphBlock::section_heading_12pt(lines)

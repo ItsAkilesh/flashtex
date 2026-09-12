@@ -1,7 +1,12 @@
-//! Bounded, typed adapter over [`layout_paragraph`]: validates every input
-//! dimension and the total item count before the breaker ever runs, and
-//! converts a residual internal panic into a typed error instead of letting
-//! it propagate. FT-030 rev 3.
+//! Bounded, typed adapter over [`layout_paragraph`]. The dimension and
+//! item-count checks are defined in this module ([`check_dimen`],
+//! [`validate_items`], [`validate_params`]) but are invoked directly by
+//! [`layout_paragraph`] itself, before the breaker ever runs — see that
+//! function's doc for why validation lives there rather than only in this
+//! wrapper. What this module adds on top is narrower: it converts a
+//! residual internal panic (a breaker bug, not invalid input — that is
+//! already a typed rejection by the time this wrapper runs) into a typed
+//! error instead of letting it propagate. FT-030 rev 3.
 //!
 //! ## Why this checks dimensions instead of switching to integer scaled points
 //!
@@ -108,7 +113,7 @@ fn check_glue(g: &Glue, context: &'static str) -> Result<(), LayoutError> {
     check_dimen(g.shrink, context)
 }
 
-fn validate_items(items: &[Item]) -> Result<(), LayoutError> {
+pub(crate) fn validate_items(items: &[Item]) -> Result<(), LayoutError> {
     if items.len() > MAX_ITEMS {
         return Err(LayoutError::TooManyItems {
             count: items.len(),
@@ -138,7 +143,7 @@ fn validate_items(items: &[Item]) -> Result<(), LayoutError> {
     Ok(())
 }
 
-fn validate_params(params: &LineBreakParams) -> Result<(), LayoutError> {
+pub(crate) fn validate_params(params: &LineBreakParams) -> Result<(), LayoutError> {
     check_dimen(params.line_width, "params.line_width")?;
     check_dimen(params.parindent, "params.parindent")?;
     check_dimen(params.baselineskip, "params.baselineskip")?;
@@ -149,27 +154,16 @@ fn validate_params(params: &LineBreakParams) -> Result<(), LayoutError> {
     check_glue(&params.right_skip, "params.right_skip")
 }
 
-fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
-    if let Some(s) = payload.downcast_ref::<&str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "non-string panic payload".to_string()
-    }
-}
-
 /// Fallible, bounded wrapper over [`layout_paragraph`].
 ///
-/// Before running the breaker, validates every dimension reachable from
-/// `items` and `params` against [`MAX_DIMEN_PT`] and rejects non-finite
-/// values, and rejects an item count over [`MAX_ITEMS`] — both as typed
-/// [`LayoutError`]s, both checked in `O(items)` time with no allocation
-/// beyond what `items` already owns, so a call either does a bounded amount
-/// of work or is rejected before the breaker's own (unbounded-by-this-crate)
-/// work would start. As a second line of defense, any panic from the
-/// breaker itself is caught and reported as [`LayoutError::Internal`] rather
-/// than unwinding into the caller.
+/// The dimension/item-count validation this doc used to describe as living
+/// here now lives in [`layout_paragraph`] itself — see that function's doc
+/// for why the raw entry point is the authoritative, single place that
+/// decides what counts as valid input. This wrapper's own job is narrower:
+/// catch a panic from the breaker (a bug, not a validation failure — real
+/// invalid input is now rejected as a typed [`LayoutError`] before the
+/// breaker's own algorithm runs) and report it as [`LayoutError::Internal`]
+/// instead of unwinding into the caller.
 ///
 /// ```
 /// use flashtex_paragraph_layout::adapter::{try_layout_paragraph, MAX_DIMEN_PT, LayoutError};
@@ -180,7 +174,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 ///
 /// let h = NoHyphenation;
 /// let mut b = ParagraphBuilder::new(&h);
-/// b.text(&Core14Times::ROMAN, 12.0, "A short paragraph of plain text.", 0);
+/// b.text(&Core14Times::ROMAN, 12.0, "A short paragraph of plain text.", 0).unwrap();
 /// let items = b.finish(Glue::fil());
 /// let params = LineBreakParams::article_12pt_letter_1in().with_width(200.0);
 /// let lines = try_layout_paragraph(&items, &params).expect("well-formed input");
@@ -200,11 +194,9 @@ pub fn try_layout_paragraph(
     items: &[Item],
     params: &LineBreakParams,
 ) -> Result<Lines, LayoutError> {
-    validate_params(params)?;
-    validate_items(items)?;
     match panic::catch_unwind(AssertUnwindSafe(|| layout_paragraph(items, params))) {
-        Ok(lines) => Ok(lines),
-        Err(payload) => Err(LayoutError::Internal(panic_message(&*payload))),
+        Ok(result) => result,
+        Err(payload) => Err(LayoutError::Internal(crate::panic_message(&*payload))),
     }
 }
 
@@ -219,7 +211,7 @@ mod tests {
     fn ok_items() -> Vec<Item> {
         let h = NoHyphenation;
         let mut b = ParagraphBuilder::new(&h);
-        b.text(&Core14Times::ROMAN, 12.0, "hello world", 0);
+        b.text(&Core14Times::ROMAN, 12.0, "hello world", 0).unwrap();
         b.finish(Glue::fil())
     }
 
@@ -337,5 +329,36 @@ mod tests {
         // happens next is the breaker's business, not this typed rejection.
         let items: Vec<Item> = (0..MAX_ITEMS).map(|_| Item::kern(0.0)).collect();
         assert!(validate_items(&items).is_ok());
+    }
+
+    /// Regression: the raw [`layout_paragraph`] entry point used to have no
+    /// validation of its own, so it silently accepted a NaN dimension that
+    /// [`try_layout_paragraph`] correctly rejected — two entry points
+    /// disagreeing about what counts as valid input. Both now share the same
+    /// validation (this function calls it directly), so a NaN line width is
+    /// rejected identically through either entry point instead of being fed
+    /// to the breaker's `f64` arithmetic, which produced unspecified geometry
+    /// rather than a documented error.
+    #[test]
+    fn raw_layout_paragraph_rejects_nan_the_same_way_the_checked_entry_point_does() {
+        let items = ok_items();
+        let mut params = LineBreakParams::article_12pt_letter_1in().with_width(200.0);
+        params.line_width = f64::NAN;
+
+        // NaN != NaN, so compare by pattern rather than by `assert_eq!`.
+        assert!(matches!(
+            crate::linebreak::layout_paragraph(&items, &params),
+            Err(LayoutError::NonFiniteDimension {
+                context: "params.line_width",
+                ..
+            })
+        ));
+        assert!(matches!(
+            try_layout_paragraph(&items, &params),
+            Err(LayoutError::NonFiniteDimension {
+                context: "params.line_width",
+                ..
+            })
+        ));
     }
 }

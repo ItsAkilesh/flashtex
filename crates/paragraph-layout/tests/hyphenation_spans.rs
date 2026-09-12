@@ -108,7 +108,7 @@ fn explicit_discretionary_halves_slice_back_to_the_original_word() {
 
     let h = ExplicitDiscretionary;
     let mut b = ParagraphBuilder::new(&h);
-    b.word(&Core14Times::ROMAN, 12.0, word, word_start);
+    b.word(&Core14Times::ROMAN, 12.0, word, word_start).unwrap();
     let items = b.items().to_vec();
     let (boxes, penalties) = boxes_and_penalties(&items);
 
@@ -178,7 +178,7 @@ fn automatic_hyphenation_point_leaves_a_hyphen_with_no_source_span() {
         offset: break_offset_in_word,
     };
     let mut b = ParagraphBuilder::new(&h);
-    b.word(&Core14Times::ROMAN, 12.0, word, word_start);
+    b.word(&Core14Times::ROMAN, 12.0, word, word_start).unwrap();
     let items = b.items().to_vec();
     let (boxes, penalties) = boxes_and_penalties(&items);
 
@@ -250,7 +250,7 @@ fn automatic_hyphenation_span_honesty_holds_through_the_real_font_engine_callbac
         offset: break_offset_in_word,
     };
     let mut b = ParagraphBuilder::new(&h);
-    b.word(&metrics, 12.0, word, word_start);
+    b.word(&metrics, 12.0, word, word_start).unwrap();
     let items = b.items().to_vec();
     let (boxes, penalties) = boxes_and_penalties(&items);
 

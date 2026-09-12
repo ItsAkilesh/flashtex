@@ -19,13 +19,15 @@ use flashtex_paragraph_layout::core14::Core14Times;
 // 1. Items: boxes, glue, penalties, kerns.
 let hyph = ExplicitDiscretionary;            // honours `\-`; NoHyphenation also shipped
 let mut b = ParagraphBuilder::new(&hyph);
-b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0);
-b.text(&Core14Times::BOLD, 12.0, "expects", 28);
+b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0)?;
+b.text(&Core14Times::BOLD, 12.0, "expects", 28)?;
 let items: Vec<Item> = b.finish(Glue::fil());   // strips trailing glue, adds \parfillskip + forced break
 
-// 2. Lines.
+// 2. Lines. `layout_paragraph` validates dimensions/item count itself (NaN,
+// overflow, oversized input) and returns a typed error for bad input, same
+// as `try_layout_paragraph` below.
 let params = LineBreakParams::article_12pt_letter_1in();   // 469.755pt measure, TeX defaults
-let lines: Lines = layout_paragraph(&items, &params);
+let lines: Lines = layout_paragraph(&items, &params)?;
 for line in &lines.lines {
     for run in &line.runs {
         // run.x, run.baseline_y (paragraph frame), run.font (FontId), run.size,

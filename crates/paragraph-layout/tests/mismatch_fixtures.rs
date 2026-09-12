@@ -81,10 +81,10 @@ fn mine_layout(text: &str) -> Lines {
     let m = FaceMetrics::new(&times);
     let h = NoHyphenation;
     let mut b = ParagraphBuilder::new(&h);
-    b.text(&m, BODY_SIZE_PT, text, 0);
+    b.text(&m, BODY_SIZE_PT, text, 0).unwrap();
     let items = b.finish(Glue::fil());
     let params = LineBreakParams::article_12pt_letter_1in().with_width(MEASURE_PT);
-    layout_paragraph(&items, &params)
+    layout_paragraph(&items, &params).unwrap()
 }
 
 fn mine_line_starts(text: &str) -> Vec<usize> {
