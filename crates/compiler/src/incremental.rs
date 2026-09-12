@@ -96,6 +96,7 @@ struct Revision {
     constraints: LayoutConstraints,
     preamble_source: String,
     incremental_safe: bool,
+    document_global_state: bool,
     output: CompileOutput,
     blocks: Vec<CachedBlock>,
 }
@@ -160,6 +161,8 @@ impl Session {
                 && parsed.incremental_safe
                 && previous.constraints == constraints
                 && previous.preamble_source == parsed.preamble_source
+                && !previous.document_global_state
+                && !parsed.document_global_state
         });
         let changes: Vec<ChangedBytes> = self.previous.as_ref().map_or_else(Vec::new, |previous| {
             previous
@@ -185,6 +188,31 @@ impl Session {
             full_recompile: !can_reuse,
             ..ReuseStats::default()
         };
+
+        if parsed.document_global_state {
+            let (pages, mut layout_diagnostics) =
+                layout::layout_converged(&parsed.blocks, constraints);
+            let mut diagnostics = parsed.diagnostics;
+            diagnostics.append(&mut layout_diagnostics);
+            stats.full_recompile = true;
+            stats.blocks_recomputed = parsed.blocks.len();
+            let output = CompileOutput {
+                blocks: parsed.blocks,
+                diagnostics,
+                pages,
+            };
+            self.previous = Some(Revision {
+                documents: snapshot,
+                entry_path: entry_path.to_string(),
+                constraints,
+                preamble_source: parsed.preamble_source,
+                incremental_safe: parsed.incremental_safe,
+                document_global_state: true,
+                output: output.clone(),
+                blocks: Vec::new(),
+            });
+            return IncrementalResult { output, stats };
+        }
 
         for (index, block) in parsed.blocks.iter().enumerate() {
             let dependencies = parsed.block_dependencies[index].clone();
@@ -236,6 +264,7 @@ impl Session {
             constraints,
             preamble_source: parsed.preamble_source,
             incremental_safe: parsed.incremental_safe,
+            document_global_state: false,
             output: output.clone(),
             blocks: cache,
         });
@@ -255,10 +284,12 @@ pub fn compile_full_project(
     constraints: LayoutConstraints,
 ) -> CompileOutput {
     let parsed = parser::parse_project(documents, entry_path);
-    let pages = layout::layout_with_constraints(&parsed.blocks, constraints);
+    let (pages, mut layout_diagnostics) = layout::layout_converged(&parsed.blocks, constraints);
+    let mut diagnostics = parsed.diagnostics;
+    diagnostics.append(&mut layout_diagnostics);
     CompileOutput {
         blocks: parsed.blocks,
-        diagnostics: parsed.diagnostics,
+        diagnostics,
         pages,
     }
 }
@@ -290,8 +321,18 @@ fn shift_span(span: Span, delta: isize) -> Span {
 fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Option<Block> {
     Some(match block {
         Block::Paragraph(inlines) => Block::Paragraph(shift_inlines(inlines, changes, deltas)?),
-        Block::Heading { level, content } => Block::Heading {
+        Block::Heading {
+            level,
+            number,
+            number_span,
+            content,
+        } => Block::Heading {
             level: *level,
+            number: number.clone(),
+            number_span: mapped_span(*number_span, changes, deltas)?,
+            content: shift_inlines(content, changes, deltas)?,
+        },
+        Block::FigureCaption { content } => Block::FigureCaption {
             content: shift_inlines(content, changes, deltas)?,
         },
     })
@@ -315,10 +356,27 @@ fn shift_inlines(
             Inline::Math {
                 list,
                 display,
+                number,
+                number_span,
                 span,
             } => Some(Inline::Math {
                 list: shift_math_list(list, changes, deltas)?,
                 display: *display,
+                number: number.clone(),
+                number_span: match number_span {
+                    Some(span) => Some(mapped_span(*span, changes, deltas)?),
+                    None => None,
+                },
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Label { key, value, span } => Some(Inline::Label {
+                key: key.clone(),
+                value: value.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Reference { key, page, span } => Some(Inline::Reference {
+                key: key.clone(),
+                page: *page,
                 span: mapped_span(*span, changes, deltas)?,
             }),
         })

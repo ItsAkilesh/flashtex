@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T05:15:58Z",
-      "adaptation": "Accepted FT-002 revision 3 (stage 3: dependency-aware invalidation and cached reuse) at input main 60ceb5c, allocation openai-kabir-plus-ft002-stage3. Groundwork already exists: a Session with byte-diff block reuse and ReuseStats was built on this machine during stage 2 and deliberately NOT merged, because its own equivalence test caught real drift between its private copy of the layout engine and the real one once math landed. Stage 3 makes that fix in scope: layout.rs will be refactored into a resumable cursor so there is one layout engine, then reuse drives it. Macro definitions are state, so a macro change must invalidate every dependent block - that is the dependency-aware part of this revision and goes beyond the earlier byte-diff prototype.",
-      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T06:05:25Z",
+      "adaptation": "Accepted FT-002 revision 4 at input main 81f02dc under allocation openai-kabir-plus-ft002-stage4. Three of the four child streams named in the objective are already delivered on this branch: reusable incremental state (6b13034), scoped macro expansion and preamble handling (01fb13c), project-relative multifile dependencies with per-file source identity (3ae7d9b), and independent equivalence and performance evidence (benchmark plus byte-identical-to-clean-build assertions, rerun by me). Issue #8 reproductions should already pass and will be verified against its exact JSON lines. Issue #9 is the real remaining work: the compiler emits fraction bars as box-drawing text and Greek/radical as Unicode, which crates/pdf cannot encode in base-14 and silently turns into question marks. Rev 4 forbids silent glyph substitution, so this needs a shared representation or a tested adapter; crates/pdf belongs to FT-009 and will not be edited from here.",
+      "main_sha": "1befb923fb8c248a704a1ff5148d77b5f581130f",
+      "revision": 4
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "dfd66984201acff4e2b9de2501345a3b91ec18d5",
+  "code_revision": "3ae7d9b76e6503fcb60f33cb2258b78250baf8bc",
   "eta_minutes": {
-    "likely": 0,
-    "optimistic": 0,
-    "pessimistic": 0
+    "likely": 40,
+    "optimistic": 25,
+    "pessimistic": 60
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Commander decision needed on expansion provenance, see below. Otherwise available for dispatch.",
+  "next_action": "Execute the issue #9 plan: delete the duplicate src/pdf.rs, add the tested glyph adapter, add a lossy-export diagnostic. Then verify issue #8 reproductions and reply.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Open question for the corpus owner: the included-file case expects visible_text at main.tex 49..70, the \\input invocation range. This implementation attributes included text to the INCLUDED file instead, so that expectation is now uncovered (8/9 rather than 9/9). The corpus README calls expansion provenance an open contract design decision and forbids fabricating per-glyph provenance, so I did not bend either way. My reasoning: clicking Included cafe in the preview should open parts/section.tex at those bytes, not jump to the \\input line in main.tex. If the corpus owner wants invocation-site attribution instead, say so and I will change it.",
-      "reviewed_utc": "2026-09-12T05:56:32Z",
-      "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
+      "adaptation": "Resolved a span-invariant conflict the worker correctly refused to decide alone. The old assertion required every item to equal its literal source slice, which was too strong: generated numbers and substituted glyphs have no corresponding source text. Restated as three categories, all of which must point at bytes the author typed, with slicing asserted for every item without exception and exact matching still required for literal text. The invariant was made precise, not weakened.",
+      "reviewed_utc": "2026-09-12T06:21:31Z",
+      "sha": "1befb923fb8c248a704a1ff5148d77b5f581130f"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Multi-file project support complete: \\input and \\include resolve against the supplied documents, with caller-scope semantics, cycle detection and per-file source attribution. Corpus moved from 7 to 9 cases ok. 59 tests pass. Finished the work myself after the Codex allocation hit its usage limit mid-task and left the tree not compiling.",
+  "summary": "Numbering, cross-references with real convergence, figures and lists implemented. 68 tests pass. Forward references verified end to end: a \\ref before its \\label resolves to the correct number, undefined refs render ?? with a warning naming the key. FT-002 rev 4 acknowledged; issue #9 analysed and answered on GitHub with two contract asks escalated.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T05:56:32Z",
+  "updated_utc": "2026-09-12T06:21:31Z",
   "usage": {
-    "evidence": "cargo test 59 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered, up from 7/7; verified by hand that included items report parts/section.tex with offsets slicing that file, including multi-byte cafe. at 9..15",
-    "status": "Codex hit its ChatGPT Plus usage limit mid-task (resets 04:18 local). Remaining work completed directly without Codex."
+    "evidence": "cargo test 68 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered; forward-reference document rendered See Section 2 and Figure 1 with correct numbering and one undefined-reference warning",
+    "status": "Codex reset applied by the user and used for this task; gh now authenticated so coord.py publish works normally"
   }
 }

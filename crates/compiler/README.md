@@ -40,6 +40,17 @@ Implemented and tested:
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
   nested fractions, square roots, superscripts, and subscripts.
+- Numbered `\section{...}` and `\subsection{...}` headings, numbered display
+  equations (`$$...$$`, `\[...\]`, and `\begin{equation}...\end{equation}`),
+  and LaTeX-style subsection reset when a section advances.
+- `\label{key}`, `\ref{key}`, and `\pageref{key}` with forward-reference and
+  page-number convergence (at most five layout passes). Undefined references
+  render `??`; duplicate labels warn and the later definition wins.
+- `\begin{figure}...\caption{...}\label{key}...\end{figure}` with centred,
+  numbered `Figure N: ...` captions. Figure bodies may contain supported text
+  and math, but this milestone does not load images or place floating objects.
+- `\begin{itemize}...\item...\end{itemize}` and
+  `\begin{enumerate}...\item...\end{enumerate}` with bullet and decimal markers.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -54,9 +65,12 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
   `\left`/`\right` delimiter sizing, real math-font parameters, and operator
   spacing classes are not implemented.
 - Package declarations are recognised but packages are not loaded: package
-  commands, TikZ, bibliography support, and cross-references remain missing.
-- Environments generally are not implemented. Only `document` controls the
-  preamble/body boundary; other environments warn and typeset as plain text.
+  commands, TikZ, bibliographies, and `\cite` remain missing.
+- Image loading (`\includegraphics`), tables, and float placement remain
+  missing. `\includegraphics` emits an explicit unsupported diagnostic; a
+  `figure` is laid out in source order and is not a real LaTeX float.
+- Environments other than `document`, `equation`, `figure`, `itemize`, and
+  `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
 - Only the entry document is compiled. Multi-document projects produce a warning
   rather than silently compiling part of the project.
@@ -68,9 +82,10 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\documentclass[options]{class}`, `\usepackage[options]{a,b,c}`,
 `\newcommand{\name}{body}`, `\newcommand{\name}[n]{body}`,
 `\renewcommand{\name}{body}`, `\renewcommand{\name}[n]{body}`,
-`\section`, `\subsection`, `\textbf`, `\emph`, `\textit`,
-`\begin`/`\end` (only `document` controls rendering; other environments
-warn and typeset their body as plain text), `\par`, and `\\`. Macro
+`\section{...}`, `\subsection{...}`, `\label{key}`, `\ref{key}`,
+`\pageref{key}`, `\caption{...}`, `\textbf`, `\emph`, `\textit`,
+`\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
+`enumerate`, `\item`, `\par`, and `\\`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -131,10 +146,12 @@ when the contract gains one, and the Commander owns that revision.
 
 **Substituted glyphs span their source command.** `\alpha` emits an item whose
 text is the Greek letter but whose span covers `\alpha` in the source, six bytes.
-So for these items the span does not slice back to the item's text, unlike
-ordinary words. That is deliberate: source navigation must land on the command
-the author typed. The ordinary-text invariant — every word item's span slices
-back to exactly that word — is unchanged and still asserted by the test suite.
+Generated section, equation, figure, and list numbers follow the same rule: their
+spans cover the `\section`, display delimiter/`\begin`, `\caption`, or `\item`
+command that produced them. For these items the span does not slice back to the
+item's text, unlike ordinary words. That is deliberate: source navigation must
+land on the command the author typed. The ordinary-text invariant — every
+ordinary word item's span slices back to exactly that word — is unchanged.
 
 ## Recovery behaviour
 
@@ -162,6 +179,13 @@ routines, external effects, and future constructs are not modeled and therefore
 must also force a full rebuild if introduced. An exactly unchanged snapshot may
 return its already-produced output, including diagnostics, because no execution
 or layout result can differ.
+
+Counters are embedded in parsed counter-bearing blocks, so changed incoming
+counter values invalidate those blocks and geometry invalidates affected suffixes.
+Labels and references are more global: any changed snapshot containing either is
+laid out conservatively from scratch and passed through the bounded convergence
+loop. This intentionally sacrifices reuse to keep every incremental result
+byte-identical to a clean build.
 
 ## Measured incremental latency
 
