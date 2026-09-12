@@ -6,15 +6,36 @@ use serde_json::json;
 use std::time::Instant;
 
 fn main() {
+    let group = match std::env::args().nth(1).as_deref() {
+        None => false,
+        Some("--group") => true,
+        _ => panic!("expected optional --group"),
+    };
     let document = Document::new("p".into(), "main.tex".into(), 2, "α".repeat(250_000)).unwrap();
-    let full = json!({"protocol_version":1,"session_id":"benchmark","id":"save","type":"result",
+    let mut full = json!({"protocol_version":1,"session_id":"benchmark","id":"save","type":"result",
         "payload":{"document":document,"preview_error":null,"save_and_submit_ms":0.0}});
+    if group {
+        let doc = full["payload"]
+            .as_object_mut()
+            .unwrap()
+            .remove("document")
+            .unwrap();
+        full["payload"]["history"] = json!({"document":doc,"command_revision":2,
+            "replayed_command":false,"can_undo":true,"can_redo":false});
+    }
     let mut metadata = full.clone();
-    metadata["payload"]["document"]
-        .as_object_mut()
+    let pointer = if group {
+        "/payload/history/document"
+    } else {
+        "/payload/document"
+    };
+    let fields = metadata
+        .pointer_mut(pointer)
         .unwrap()
-        .remove("text");
-    metadata["payload"]["document"]["byte_length"] = json!(500_000);
+        .as_object_mut()
+        .unwrap();
+    fields.remove("text");
+    fields.insert("byte_length".into(), json!(500_000));
     metadata["payload"]["response_mode"] = json!("metadata");
     let mut observations = Vec::new();
     let mut sizes = [0, 0];
@@ -34,7 +55,7 @@ fn main() {
     }
     println!(
         "{}",
-        json!({"source_bytes":500_000,"source_sha256":document.source_sha256,
+        json!({"ack_kind":if group {"apply_group"} else {"edit"},"source_bytes":500_000,"source_sha256":document.source_sha256,
         "full_frame_bytes":sizes[0],"metadata_frame_bytes":sizes[1],"observations":observations,
         "scope":"synthetic wire encoding with same500KB Unicode source; no ledger/native timing"})
     );

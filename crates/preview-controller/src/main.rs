@@ -49,6 +49,14 @@ fn string<'a>(v: &'a Value, name: &str) -> Result<&'a str, String> {
 fn number(v: &Value, name: &str) -> Result<u64, String> {
     v[name].as_u64().ok_or(format!("missing integer {name}"))
 }
+fn metadata_response_mode(payload: &Value) -> Result<bool, String> {
+    match payload.get("response_mode") {
+        None => Ok(false),
+        Some(Value::String(mode)) if mode == "full" => Ok(false),
+        Some(Value::String(mode)) if mode == "metadata" => Ok(true),
+        _ => Err("response_mode must be full or metadata".into()),
+    }
+}
 fn emit(tx: &output_delivery::Sender, stopped: &AtomicBool, value: Value) {
     emit_with_limit(tx, stopped, value, MAX_OUTPUT_BYTES);
 }
@@ -572,12 +580,7 @@ fn handle(
         }
 
         "edit" => {
-            let metadata_only = match p.get("response_mode") {
-                None => false,
-                Some(Value::String(mode)) if mode == "full" => false,
-                Some(Value::String(mode)) if mode == "metadata" => true,
-                _ => return Err("response_mode must be full or metadata".into()),
-            };
+            let metadata_only = metadata_response_mode(p)?;
             if metadata_only {
                 let result = controller.replace_document_metadata(
                     string(p, "path")?,
@@ -725,6 +728,13 @@ fn handle(
                     "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
         }
         "apply_group" | "undo" | "redo" => {
+            if request["type"] == "apply_group" && metadata_response_mode(p)? {
+                let group =
+                    serde_json::from_value(p["command"].clone()).map_err(|e| e.to_string())?;
+                let result = controller.apply_group_metadata(string(p, "path")?, group)?;
+                return Ok(json!({"response_mode":"metadata","history":result.history,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
+            }
             let command = p["command"].clone();
             let action = match request["type"].as_str().unwrap() {
                 "apply_group" => HistoryAction::Group(

@@ -17,7 +17,63 @@ pub struct MetadataEditOutcome {
     pub preview_error: Option<String>,
     pub save_and_submit_ms: f64,
 }
+impl From<&flashtex_edit_ledger::Document> for DocumentMetadata {
+    fn from(saved: &flashtex_edit_ledger::Document) -> Self {
+        Self {
+            project_id: saved.project_id.clone(),
+            path: saved.path.clone(),
+            revision: saved.revision,
+            source_sha256: saved.source_sha256.clone(),
+            byte_length: saved.text.len(),
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+pub struct MetadataHistory {
+    pub document: DocumentMetadata,
+    pub command_revision: u64,
+    pub replayed_command: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+}
+#[derive(Debug, Serialize)]
+pub struct MetadataGroupOutcome {
+    pub history: MetadataHistory,
+    pub preview_error: Option<String>,
+    pub save_and_submit_ms: f64,
+}
 impl Controller {
+    pub fn apply_group_metadata(
+        &mut self,
+        path: &str,
+        group: flashtex_edit_ledger::history::GroupedEdit,
+    ) -> Result<MetadataGroupOutcome, String> {
+        if self.closed {
+            return Err("project closed".into());
+        }
+        let started = Instant::now();
+        self.submitted = None;
+        let result = self
+            .stores
+            .get_mut(path)
+            .ok_or("unknown document")?
+            .apply_group(group)
+            .map_err(|e| e.to_string())?;
+        let history = MetadataHistory {
+            document: DocumentMetadata::from(&result.document),
+            command_revision: result.command_revision,
+            replayed_command: result.replayed_command,
+            can_undo: result.can_undo,
+            can_redo: result.can_redo,
+        };
+        let indexed = Self::index_saved_document(&mut self.index, &result.document);
+        let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
+        Ok(MetadataGroupOutcome {
+            history,
+            preview_error,
+            save_and_submit_ms,
+        })
+    }
     pub fn replace_document_metadata(
         &mut self,
         path: &str,
@@ -38,13 +94,7 @@ impl Controller {
             .document()
             .map_err(|e| e.to_string())?
             .ok_or("saved source missing")?;
-        let document = DocumentMetadata {
-            project_id: saved.project_id.clone(),
-            path: saved.path.clone(),
-            revision: saved.revision,
-            source_sha256: saved.source_sha256.clone(),
-            byte_length: saved.text.len(),
-        };
+        let document = DocumentMetadata::from(saved);
         let indexed = Self::index_saved_document(&mut self.index, saved);
         let (preview_error, save_and_submit_ms) = self.finish_saved_index(indexed, started);
         Ok(MetadataEditOutcome {

@@ -13,6 +13,97 @@ struct Client {
     output: Receiver<Value>,
 }
 #[test]
+fn metadata_group_ack_recovers_unread_reply_and_preserves_command_and_undo_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = "α".repeat(250_000);
+    let original = Document::new("p".into(), "main.tex".into(), 1, source.clone()).unwrap();
+    {
+        let mut store = Store::open(dir.path().join("store")).unwrap();
+        store.initialize(original.clone()).unwrap();
+    }
+    let mut client = Client::start(dir.path());
+    let command = json!({"command_id":"unicode-group", "expected_revision":1,
+        "expected_sha256":original.source_sha256,"label":"Two Unicode edits",
+        "edits":[{"start_byte":0,"end_byte":2,"removed_text":"α","replacement":"β"},
+        {"start_byte":499998,"end_byte":500000,"removed_text":"α","replacement":"γ"}]});
+    let mut request = json!({"path":"main.tex","command":command,"response_mode":"bogus"});
+    client.send("bad", "apply_group", request.clone());
+    assert_eq!(client.reply("bad")["type"], "error");
+    client.send("check", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("check")["payload"]["document"]["revision"], 1);
+    request["response_mode"] = json!("metadata");
+    client.send("group", "apply_group", request.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 2 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    drop(client); // Application never consumed the first grouped-edit ACK.
+    let mut client = Client::start(dir.path());
+    client.send("group", "apply_group", request.clone());
+    let compact = client.reply("group");
+    assert_eq!(compact["type"], "result");
+    assert!(serde_json::to_vec(&compact).unwrap().len() < 1024);
+    let history = &compact["payload"]["history"];
+    assert_eq!(history["replayed_command"], true);
+    assert_eq!(history["command_revision"], 2);
+    assert_eq!(history["document"]["revision"], 2);
+    assert_eq!(history["document"]["byte_length"], 500000);
+    assert!(history["document"].get("text").is_none());
+    let mut full_request = request.clone();
+    full_request
+        .as_object_mut()
+        .unwrap()
+        .remove("response_mode");
+    client.send("full", "apply_group", full_request);
+    let full = client.reply("full");
+    let full_history = &full["payload"]["history"];
+    for field in [
+        "command_revision",
+        "replayed_command",
+        "can_undo",
+        "can_redo",
+    ] {
+        assert_eq!(history[field], full_history[field]);
+    }
+    assert_eq!(
+        history["document"]["source_sha256"],
+        full_history["document"]["source_sha256"]
+    );
+    assert_eq!(
+        full_history["document"]["text"],
+        format!("β{}γ", "α".repeat(249_998))
+    );
+    let mut conflict = request.clone();
+    conflict["command"]["label"] = json!("Different command");
+    client.send("conflict", "apply_group", conflict);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    client.send(
+        "undo",
+        "undo",
+        json!({"path":"main.tex","command":{"command_id":"undo-group",
+        "expected_revision":2,"expected_sha256":history["document"]["source_sha256"]}}),
+    );
+    let undo = client.reply("undo");
+    assert_eq!(undo["payload"]["history"]["document"]["text"], source);
+    client.send("group", "apply_group", request);
+    let after = client.reply("group");
+    assert_eq!(after["payload"]["history"]["command_revision"], 2);
+    assert_eq!(after["payload"]["history"]["document"]["revision"], 3);
+    assert_eq!(
+        after["payload"]["history"]["document"]["source_sha256"],
+        original.source_sha256
+    );
+    assert_eq!(after["payload"]["history"]["replayed_command"], true);
+    assert_eq!(after["payload"]["history"]["can_redo"], true);
+}
+#[test]
 fn metadata_edit_ack_preserves_large_source_recovery_and_default_response() {
     let dir = tempfile::tempdir().unwrap();
     let mut client = Client::start(dir.path());
@@ -72,8 +163,12 @@ fn unread_metadata_ack_reopens_source_and_stale_retry_does_not_apply_twice() {
     client.send("unread", "edit", request.clone());
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     loop {
-        let persisted: Value = serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap()).unwrap();
-        if persisted["document"]["revision"] == 2 { break; }
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 2 {
+            break;
+        }
         assert!(std::time::Instant::now() < deadline);
         thread::sleep(Duration::from_millis(2));
     }
@@ -279,21 +374,30 @@ fn helper_streams_original_compiler_result_for_latest_durable_edit() {
         let source = "Actual streamed compiler preview";
         let mut request = json!({"path":"main.tex","expected_revision":1,
             "expected_sha256":doc["source_sha256"],"text":source});
-        if metadata_only { request["response_mode"] = json!("metadata"); }
+        if metadata_only {
+            request["response_mode"] = json!("metadata");
+        }
         client.send("edit", "edit", request);
         let ack = client.reply("edit");
         assert!(ack["payload"]["preview_error"].is_null());
         assert_eq!(ack["payload"]["document"]["revision"], 2);
-        assert_eq!(ack["payload"]["document"]["source_sha256"], flashtex_project_files::sha256_hex(source.as_bytes()));
+        assert_eq!(
+            ack["payload"]["document"]["source_sha256"],
+            flashtex_project_files::sha256_hex(source.as_bytes())
+        );
         if metadata_only {
             assert_eq!(ack["payload"]["response_mode"], "metadata");
             assert!(ack["payload"]["document"].get("text").is_none());
             assert_eq!(ack["payload"]["document"]["byte_length"], source.len());
-        } else { assert_eq!(ack["payload"]["document"]["text"], source); }
+        } else {
+            assert_eq!(ack["payload"]["document"]["text"], source);
+        }
         loop {
             let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
-            if event["type"] == "update" && event["payload"]["kind"] == "preview"
-                && event["payload"]["source_versions"]["main.tex"] == 2 {
+            if event["type"] == "update"
+                && event["payload"]["kind"] == "preview"
+                && event["payload"]["source_versions"]["main.tex"] == 2
+            {
                 assert_eq!(event["payload"]["result"]["payload"]["status"], "ok");
                 break;
             }
