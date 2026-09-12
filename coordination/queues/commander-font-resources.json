@@ -1,32 +1,32 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 1,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
-      "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
-      "objective": "Bounded immutable CFF outline cache keyed resource identity, glyph and HintPolicy",
+      "name": "Validate licensed-font shaped cluster/GID/resource equivalence",
+      "objective": "Validate licensed-font shaped cluster/GID/resource equivalence",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "acceptance": [
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
+      ],
+      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     },
     {
-      "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
-      ],
-      "allocation_id": "hosted-openai-product",
-      "name": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
-      "objective": "Measure cached original outline replay and explicitly inventory unsupported CFF behavior",
+      "name": "Cache adapter results by full font/face/variation/source identity with strict bounds",
+      "objective": "Cache adapter results by full font/face/variation/source identity with strict bounds",
       "owned_paths": [
         "crates/font-resources"
       ],
+      "acceptance": [
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
+      ],
+      "allocation_id": "hosted-openai-product",
       "timebox_minutes": 30
     }
   ],

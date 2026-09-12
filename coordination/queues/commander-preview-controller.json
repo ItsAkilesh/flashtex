@@ -4,32 +4,34 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Guarded external-file reconciliation and reload without overwriting dirty durable source",
-      "objective": "Guarded external-file reconciliation and reload without overwriting dirty durable source",
+      "name": "Measure first-page readiness and complete-result equality on pinned scaling fixtures",
+      "objective": "Measure first-page readiness and complete-result equality on pinned scaling fixtures",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime"
+        "crates/document-runtime",
+        "crates/project-index"
       ],
       "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     },
     {
-      "name": "Measure multi-document helper latency and retain exact revision gating under burst edits",
-      "objective": "Measure multi-document helper latency and retain exact revision gating under burst edits",
+      "name": "Prototype negotiated native chunk consumption only after compiler/native contract agreement",
+      "objective": "Prototype negotiated native chunk consumption only after compiler/native contract agreement",
       "owned_paths": [
         "crates/preview-controller",
-        "crates/document-runtime"
+        "crates/document-runtime",
+        "crates/project-index"
       ],
       "acceptance": [
-        "Focused regression tests and strict lint pass",
-        "Publish exact tested source revision and honest consumer limitations"
+        "Meaningful bounded behavior tests and strict lint pass",
+        "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
-      "timebox_minutes": 30,
-      "allocation_id": "hosted-openai-product"
+      "allocation_id": "hosted-openai-product",
+      "timebox_minutes": 30
     }
   ],
   "task_id": "FT-027"

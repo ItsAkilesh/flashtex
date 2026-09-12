@@ -3,9 +3,9 @@
   "task_id": "FT-023",
   "agent_id": "commander-render-core",
   "branch": "agent/commander-render-core/rendering-core",
-  "revision": 2,
+  "revision": 3,
   "state": "assigned",
-  "objective": "Add opt-in exact mixed quadratic/cubic/rule batches with stable primitive and source-chain identity",
+  "objective": "Bounded exact geometry-diff API and CLI with stable identities and explicit mismatch categories",
   "owned_paths": [
     "crates/rendering-core"
   ],
@@ -19,5 +19,5 @@
   "timebox_minutes": 30,
   "deadline_utc": null,
   "input_main_sha": "cab39a20278914747f92ee703f6da40a26b72a93",
-  "updated_utc": "2026-09-12T06:46:32Z"
+  "updated_utc": "2026-09-12T07:19:21.938673+00:00"
 }
