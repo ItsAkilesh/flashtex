@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T11:10:50Z",
-      "adaptation": "Reviewed exact r3 and helper42425a5/8876279 optional admission and actual producer evidence. Runtime-only cancellation/deferred candidate replay with pinned65dbe7d; no peer mutations or rendering validation claim.",
-      "main_sha": "1884986fe54ba3ff8f602b1e7711c9cee324cd25",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T11:17:19Z",
+      "adaptation": "Read exact r4. Adapt runtime-owned bounded fresh/persistent actual producer replay; wait for Commander build window clearance before untouched6e69661 archive build. No peer writes or benchmark sweep.",
+      "main_sha": "527ae54100de636b264fbbc2a2ac30e2f5a02388",
+      "revision": 4
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "9e4117fba15ca27cc25a23249871fe06e5ec6897",
+  "code_revision": "2f2a78e780034a3b386608c5d37b942f78da02ea",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "c47139ffbbf49be640a7e7033abcbce0d9c3b60e",
-  "next_action": "Integrate published runtime-only checkpoints and continue concrete helper/native feedback when dispatched. No peer modifications, new providers or native latency/parity claim.",
+  "next_action": "Commander authorized additive scalar last_display_profile observability next, exact request/epoch and clear-on-invalidation tests. No sources in timings or renderer validation claim; no peer edits/providers.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r3: reviewed helper42425a5/8876279. c47139ff separately repairs parallel test observation assumptions; production timing unchanged. Actual pinned65dbe7d lifecycle replay passes cancellation, delayed single take, epoch-toggle refusal, v1 fallback2/3/5, exact source hashes and actual revision4 coalescing. Full parallel suite and strict lint pass; both ignored actual probes explicitly executed. Moved candidate cannot be revoked: downstream epoch checks remain required.",
+  "summary": "FT049r4: unchanged6e69661 binary860d4ff90bd1945cd4676b945b0ceb73e48e2c98138138740920bb6dcb9935c9; six edits fresh/persistent runtime equal, direct requested144806bytes/bounded9867bytes exactly equal. UTF8 source relocation hashes accepted. Style11pt explicitly warns missing ec-lmr10 and OTF advance fallback; bounded case fails. Initial disk quota failure recovered by own-target cleanup/debug-off build only. Full suite/strict lint and three actual probes pass.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:16:08Z",
+  "updated_utc": "2026-09-12T11:21:31Z",
   "usage": {
     "status": "unknown"
   }
