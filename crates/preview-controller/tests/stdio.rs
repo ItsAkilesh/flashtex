@@ -236,3 +236,73 @@ fn undo_retry_after_helper_kill_is_idempotent_and_redo_remains_available() {
         "typed"
     );
 }
+
+#[test]
+fn stalled_output_reader_causes_bounded_failure_instead_of_unlimited_queueing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store");
+    {
+        let mut store = Store::open(&path).unwrap();
+        store
+            .initialize(
+                Document::new("p".into(), "main.tex".into(), 1, "x".repeat(1024 * 1024)).unwrap(),
+            )
+            .unwrap();
+    }
+    let config = dir.path().join("config.json");
+    std::fs::write(&config,serde_json::to_vec(&json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":[path]})).unwrap()).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flashtex-preview-controller"))
+        .arg(config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut unread_output = BufReader::new(child.stdout.take().unwrap());
+    let input = child.stdin.take();
+    let (_sender, output) = mpsc::channel();
+    let mut client = Client {
+        child,
+        input,
+        output,
+    };
+    let mut ready = String::new();
+    unread_output.read_line(&mut ready).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&ready).unwrap()["type"],
+        "ready"
+    );
+    // Keep stdout open but deliberately stop draining it. Each document reply is
+    // larger than the OS pipe; bounded helper output admission must stop work.
+    for id in 0..40 {
+        let line = json!({"protocol_version":1,"session_id":"session1","id":format!("r{id}"),"type":"document","payload":{"path":"main.tex"}});
+        if writeln!(client.input.as_mut().unwrap(), "{line}").is_err() {
+            break;
+        }
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(status) = client.child.try_wait().unwrap() {
+            assert!(!status.success());
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "helper did not stop on output backpressure"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn wrong_session_cannot_edit_authoritative_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    writeln!(client.input.as_mut().unwrap(),"{}",json!({"protocol_version":1,"session_id":"another-session","id":"wrong","type":"edit","payload":{"path":"main.tex","expected_revision":1,"expected_sha256":"unused","text":"must not save"}})).unwrap();
+    assert_eq!(client.reply("wrong")["type"], "error");
+    client.send("get", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        client.reply("get")["payload"]["document"]["text"],
+        "α original"
+    );
+}
