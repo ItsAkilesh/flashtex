@@ -15,6 +15,7 @@ pub mod display;
 pub mod fonts;
 pub mod ids;
 pub mod mathfont;
+pub mod mathtex;
 pub mod pagebuild;
 pub mod params;
 pub mod pdf;

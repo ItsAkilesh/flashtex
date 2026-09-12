@@ -110,6 +110,15 @@ impl MathFonts {
         std::mem::take(&mut *self.missing.borrow_mut())
     }
 
+    /// The `k`-th (1-based) vertical variant of `base` from `MathVariants`,
+    /// in the table's increasing-size order.
+    pub fn variant_gid(&self, base: u16, k: usize) -> Option<u16> {
+        if k == 0 {
+            return Some(base);
+        }
+        self.vert_variants.get(&base)?.get(k - 1).map(|v| v.gid)
+    }
+
     /// The character actually drawn for a math symbol: letters and lower-case
     /// Greek go to the Unicode mathematical-italic block (what `cmmi` is to
     /// `cmr`), everything else is itself.

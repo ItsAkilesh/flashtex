@@ -100,8 +100,10 @@ fn fraction_bars_are_explicit_rules_in_v2_and_negotiated_in_v1() {
         .collect();
     assert_eq!(rules.len(), 1);
     let rule = rules[0];
-    // Latin Modern Math FractionRuleThickness = 40/1000 em at 12pt = 0.48 TeX pt.
-    assert_eq!(rule.height, Tick::from_tex_pt(0.48));
+    // TeX: \fontdimen8 of lmex10 (= cmex10) is 0.4pt at its fixed 10pt
+    // design size, the \frac rule thickness pdflatex draws (0.398bp).
+    let want = Tick::from_tex_pt(flashtex_math_layout::tfm::scale(41943, 10.0));
+    assert!((rule.height.0 - want.0).abs() <= 32, "fixword 41943 at 10pt: {:?} vs {:?} (tolerance: one scaled point)", rule.height, want);
     let Provenance::Sources(s) = &rule.provenance else { panic!() };
     assert!(s[0].start_byte <= math_span && s[0].end_byte >= math_span + "\\frac{1}{2}".len());
 

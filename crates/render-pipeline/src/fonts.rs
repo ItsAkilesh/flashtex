@@ -326,6 +326,11 @@ impl FontSet {
         self.search.dirs()
     }
 
+    /// Where `.tfm` files are looked for (see [`default_tfm_dirs`]).
+    pub fn tfm_dirs(&self) -> &[PathBuf] {
+        &self.tfm_dirs
+    }
+
     /// Every face loaded so far, in load order.
     pub fn loaded(&self) -> Vec<Rc<LoadedFace>> {
         self.faces.borrow().clone()

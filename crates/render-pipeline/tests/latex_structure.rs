@@ -94,7 +94,7 @@ fn only_equation_environments_are_numbered_and_the_number_is_flush_right() {
     }
     let eq = items("\\begin{document}Text.\n\\begin{equation} x = y \\end{equation}\\end{document}", &RenderOptions::default());
     let number = find(&eq, "(1)");
-    let x = find(&eq, "\u{1d465}");
+    let x = find(&eq, "x");
     assert_eq!(number.3, x.3, "the equation number sits on the display baseline");
     assert!(number.2 > 520.0 && number.2 < 540.0, "flush right inside the 1in margin: {number:?}");
     let bracket = items("\\begin{document}Text.\n\\[ x = y \\]\\end{document}", &RenderOptions::default());
@@ -117,7 +117,7 @@ fn display_skips_follow_tex_pre_display_size() {
     // line. 1pt = 72/72.27 bp.
     let bracket = items("\\begin{document}Text.\n\n\\[ x \\]\\end{document}", &RenderOptions::default());
     let equation = items("\\begin{document}Text.\n\n\\begin{equation} x \\end{equation}\\end{document}", &RenderOptions::default());
-    let gap = |v: &[(u32, String, f64, f64, usize, usize)]| find(v, "\u{1d465}").3 - find(v, "Text.").3;
+    let gap = |v: &[(u32, String, f64, f64, usize, usize)]| find(v, "x").3 - find(v, "Text.").3;
     let (g_bracket, g_equation) = (gap(&bracket), gap(&equation));
     assert!((g_bracket - 26.5 * 72.0 / 72.27).abs() < 0.3, "\\[ gap {g_bracket}");
     assert!((g_equation - 29.0 * 72.0 / 72.27).abs() < 0.3, "equation gap {g_equation}");

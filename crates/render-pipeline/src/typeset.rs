@@ -31,6 +31,7 @@ use crate::display::{
 };
 use crate::fonts::{Family, FontSet, LoadedFace, Role};
 use crate::mathfont::{MathFonts, MathSizes};
+use crate::mathtex::TexMathMetrics;
 use crate::pagebuild::{self, VBlock};
 use crate::params;
 use crate::shape::Shaper;
@@ -80,6 +81,39 @@ pub struct MathRec {
     pub root: ml::MathBox,
     pub span: Span,
     pub face: Rc<LoadedFace>,
+    /// The metrics the box was laid out with; maps placed glyphs to the
+    /// face's glyph ids.
+    pub metrics: MathProvider,
+}
+
+/// Which metrics lay math out: TeX's TFMs (pdfLaTeX's geometry) when the
+/// `lm` TFMs are installed, else the OpenType `MATH` table.
+#[derive(Clone)]
+pub enum MathProvider {
+    Tex(Rc<TexMathMetrics>),
+    Otf(Rc<MathFonts>),
+}
+
+impl MathProvider {
+    fn metrics(&self) -> &dyn ml::MathFontMetrics {
+        match self {
+            MathProvider::Tex(t) => &**t,
+            MathProvider::Otf(o) => &**o,
+        }
+    }
+    fn otf(&self) -> &Rc<MathFonts> {
+        match self {
+            MathProvider::Tex(t) => t.otf_fonts(),
+            MathProvider::Otf(o) => o,
+        }
+    }
+    /// Original glyph id in the drawn face for a placed glyph.
+    pub fn otf_gid(&self, g: &ml::PositionedGlyph) -> Option<u16> {
+        match self {
+            MathProvider::Tex(t) => t.otf_gid(g.font_id, g.gid as u8, g.ch),
+            MathProvider::Otf(_) => Some(g.gid),
+        }
+    }
 }
 
 /// One vertical-list block: its broken lines, the horizontal list they
@@ -147,7 +181,7 @@ pub struct Context<'a> {
     diagnostics: Vec<Diagnostic>,
     recs: Vec<BoxRec>,
     maths: Vec<MathRec>,
-    math_fonts: Option<Rc<MathFonts>>,
+    math_fonts: Option<MathProvider>,
     math_unavailable: bool,
     reported: BTreeSet<String>,
 }
@@ -209,7 +243,7 @@ impl<'a> Context<'a> {
         r.face
     }
 
-    fn math_fonts(&mut self, span: Span) -> Option<Rc<MathFonts>> {
+    fn math_fonts(&mut self, span: Span) -> Option<MathProvider> {
         if let Some(m) = &self.math_fonts {
             return Some(m.clone());
         }
@@ -225,8 +259,32 @@ impl<'a> Context<'a> {
         match (r.substituted, MathFonts::new(r.face, sizes)) {
             (None, Some(m)) => {
                 let m = Rc::new(m);
-                self.math_fonts = Some(m.clone());
-                Some(m)
+                // pdfLaTeX's geometry needs the lm math TFMs' parameters
+                // (metric-identical to CM, embedded in math-layout) and
+                // `rm-lmr` for the roman family; without the TFM directory
+                // the OpenType MATH table is used and reported.
+                let base = match self.style.base {
+                    flashtex_document_style::BaseSize::Pt10 => 10,
+                    flashtex_document_style::BaseSize::Pt11 => 11,
+                    flashtex_document_style::BaseSize::Pt12 => 12,
+                };
+                let tex = TexMathMetrics::new(base, m.clone(), self.fonts.tfm_dirs());
+                let provider = if tex.roman_available() {
+                    MathProvider::Tex(Rc::new(tex))
+                } else {
+                    let src = self.source(span);
+                    self.report_once(
+                        "math:no-tfm".into(),
+                        Diagnostic::warning(
+                            "math_metrics_opentype",
+                            String::from("rm-lmr*.tfm not found; math is laid out with the OpenType MATH table instead of TeX's metrics"),
+                            vec![src],
+                        ),
+                    );
+                    MathProvider::Otf(m)
+                };
+                self.math_fonts = Some(provider.clone());
+                Some(provider)
             }
             (subst, _) => {
                 let src = self.source(span);
@@ -375,12 +433,12 @@ impl<'a> Context<'a> {
         let fonts = self.math_fonts(span)?;
         let ml_list = convert_math(list);
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
-        let laid = ml::layout_with_report(&ml_list, style, &*fonts);
-        for ch in fonts.take_missing() {
+        let laid = ml::layout_with_report(&ml_list, style, fonts.metrics());
+        for ch in fonts.otf().take_missing() {
             let src = self.source(span);
             self.report_once(
                 format!("mathmissing:{ch}"),
-                Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}", ch as u32, ch, fonts.face().name), vec![src]),
+                Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}", ch as u32, ch, fonts.otf().face().name), vec![src]),
             );
         }
         for l in laid.limitations {
@@ -398,7 +456,8 @@ impl<'a> Context<'a> {
         self.maths.push(MathRec {
             root: laid.root,
             span,
-            face: fonts.face().clone(),
+            face: fonts.otf().face().clone(),
+            metrics: fonts.clone(),
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -939,6 +998,9 @@ pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
+                            // TeX discards the space token right after a
+                            // display's closing `$$` (§1200 resume_after_display).
+                            let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
                             if let Some(mut b) = ctx.paragraph_block(items, *indent && first, first, after_heading && first) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
@@ -1086,7 +1148,7 @@ pub fn assemble(
     style: &Stylesheet,
     _fonts: &FontSet,
     laid: Laid,
-    diagnostics: Vec<Diagnostic>,
+    mut diagnostics: Vec<Diagnostic>,
 ) -> DisplayList {
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
     let source_of = |span: Span| SourceRange {
@@ -1148,6 +1210,22 @@ pub fn assemble(
             height: Tick::from_tex_pt(page.height),
             items,
         });
+    }
+    // Glyphs TeX's metrics placed that the OpenType face cannot draw
+    // (extensible assemblies, unknown chains): reported, not faked.
+    let mut reported = BTreeSet::new();
+    for m in &laid.maths {
+        if let MathProvider::Tex(t) = &m.metrics {
+            for (font, code, ch) in t.take_unmapped() {
+                if reported.insert((font.clone(), code)) {
+                    diagnostics.push(Diagnostic::warning(
+                        "math_glyph_unmapped",
+                        format!("{font} code {code:#04x} ('{ch}') has no Latin Modern Math glyph mapping; nothing drawn for it"),
+                        vec![source_of(m.span)],
+                    ));
+                }
+            }
+        }
     }
     let fonts = used
         .values()
@@ -1282,7 +1360,8 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
         }
     };
     for g in &flat.glyphs {
-        if g.gid == 0 {
+        let Some(gid) = m.metrics.otf_gid(g) else { continue };
+        if gid == 0 {
             continue;
         }
         let size_tick = Tick::from_tex_pt(g.size);
@@ -1298,8 +1377,8 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
             paint: Paint::BLACK,
             role: display::RunRole::Math,
         });
-        let b = m.face.bounds(crate::ids::GlyphId(g.gid), Some(g.ch));
-        let adv = m.face.pt(i64::from(m.face.face().advance(crate::ids::GlyphId(g.gid)).unwrap_or(0)), g.size);
+        let b = m.face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
+        let adv = m.face.pt(i64::from(m.face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
         let (h, d) = if b.empty {
             (0.0, 0.0)
         } else {
@@ -1311,7 +1390,7 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
         let top = Tick::from_tex_pt(g.baseline_y - h);
         let hh = Tick::from_tex_pt((h + d).max(0.01));
         r.glyphs.push(Glyph {
-            gid: g.gid,
+            gid,
             origin_x: Tick::from_tex_pt(g.x),
             baseline_y: Tick::from_tex_pt(g.baseline_y),
             advance_x: Tick::from_tex_pt(adv),
