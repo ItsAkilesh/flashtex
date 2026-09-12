@@ -12,7 +12,7 @@ product path; pdflatex is used only as a test oracle (see
 ```sh
 cd crates/render-pipeline
 cargo build --release
-cargo test --release            # 55 tests; the Latin Modern ones skip (loudly) without the fonts
+cargo test --release            # 57 tests; the Latin Modern ones skip (loudly) without the fonts
 FLASHTEX_COMPILER=$PWD/target/release/flashtex-render   # drop-in worker for the Mac app
 ```
 

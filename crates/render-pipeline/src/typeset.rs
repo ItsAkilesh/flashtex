@@ -95,22 +95,19 @@ pub struct MathRec {
 impl MathRec {
     /// The `\text` run glyph a placed glyph stands for, if it is one.
     pub fn run_glyph(&self, g: &ml::PositionedGlyph) -> Option<&crate::mathtext::RunGlyph> {
-        let i = g.font_id.0.checked_sub(crate::mathtext::RUN_FONT_BASE)?;
-        self.text_runs.get(i as usize)?.glyphs.get(usize::from(g.gid))
+        crate::mathtext::run_of(&self.text_runs, g.font_id)?.glyph_at(g.font_id, g.gid)
     }
 
     /// The face and original glyph id that draw a placed glyph: a `\text`
     /// run's own shaped glyph (the text face's cmap id, 0 for its interword
     /// space) or the math provider's mapping.
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
-        match g.font_id.0.checked_sub(crate::mathtext::RUN_FONT_BASE) {
-            Some(i) => {
-                let run = self.text_runs.get(i as usize)?;
-                let glyph = run.glyphs.get(usize::from(g.gid))?;
-                Some((run.face.clone(), glyph.gid.0))
-            }
-            None => self.metrics.otf_glyph(g),
+        if g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+            let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
+            let glyph = run.glyph_at(g.font_id, g.gid)?;
+            return Some((run.face.clone(), glyph.gid.0));
         }
+        self.metrics.otf_glyph(g)
     }
 }
 
@@ -618,6 +615,21 @@ impl<'a> Context<'a> {
         let mut laid = ml::layout_with_report(&ml_list, style, &text_metrics);
         let (text_runs, notices) = text_metrics.finish();
         crate::mathtext::substitute(&mut laid.root, &text_runs);
+        for text in &sink.refused {
+            let src = self.source(span);
+            self.emit(
+                None,
+                Diagnostic::error(
+                    "math_text_overflow",
+                    format!(
+                        "more than {} \\text arguments in one formula; {:?} is not typeset",
+                        crate::mathtext::MAX_TEXT_ATOMS,
+                        crate::mathtext::abbreviate(text)
+                    ),
+                    vec![src],
+                ),
+            );
+        }
         for n in notices {
             use crate::mathtext::Notice;
             match n {
@@ -635,6 +647,17 @@ impl<'a> Context<'a> {
                     self.report_once(
                         format!("missing:{face}:{ch}"),
                         Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}; nothing drawn for it", ch as u32, ch, face), vec![src]),
+                    );
+                }
+                Notice::TooLarge { text_chars, glyphs } => {
+                    let src = self.source(span);
+                    self.emit(
+                        None,
+                        Diagnostic::error(
+                            "math_text_overflow",
+                            format!("a \\text argument of {text_chars} characters ({glyphs} entries) exceeds what one formula can address; it is not typeset"),
+                            vec![src],
+                        ),
                     );
                 }
                 Notice::TfmRunError { word, face, error } => {
@@ -656,6 +679,9 @@ impl<'a> Context<'a> {
         for l in laid.limitations {
             let src = self.source(span);
             let msg = match l {
+                // A refused `\text` run's placeholder: already reported as
+                // math_text_overflow above.
+                ml::Limitation::MissingGlyph(c) if crate::mathtext::is_handle(c) => continue,
                 ml::Limitation::MissingGlyph(c) => format!("no math glyph for '{c}'; empty box used"),
                 ml::Limitation::DelimiterTooSmall { ch, wanted, used } => {
                     format!("delimiter '{ch}' wanted {wanted:.2}pt, largest variant {used:.2}pt used")

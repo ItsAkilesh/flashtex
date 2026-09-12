@@ -17,7 +17,7 @@ use flashtex_math_layout as ml;
 use flashtex_render_pipeline::fonts::{Family, FontSet, Role};
 use flashtex_render_pipeline::mathfont::{MathFonts, MathSizes};
 use flashtex_render_pipeline::mathtex::TexMathMetrics;
-use flashtex_render_pipeline::mathtext::{substitute, TextRun, TextRunMetrics, TextSink, RUN_FONT_BASE};
+use flashtex_render_pipeline::mathtext::{run_of, substitute, TextRun, TextRunMetrics, TextSink, RUN_FONT_BASE, SLOT_GLYPHS};
 use flashtex_render_pipeline::tfm::Tfm;
 
 const FIX: f64 = 1_048_576.0;
@@ -61,9 +61,10 @@ fn place(fonts: &FontSet, texts: &[&str], scripts: Option<(&str, &str)>) -> Plac
     let flat = ml::positioned_runs(&laid.root, (0.0, 0.0));
     let mut glyphs = Vec::new();
     for g in &flat.glyphs {
-        let gid = match g.font_id.0.checked_sub(RUN_FONT_BASE) {
-            Some(i) => runs[i as usize].glyphs[usize::from(g.gid)].gid.0,
-            None => tex.otf_glyph(g.font_id, g.gid as u8, g.ch).map_or(0, |(_, gid)| gid),
+        let gid = if g.font_id.0 >= RUN_FONT_BASE {
+            run_of(&runs, g.font_id).expect("a run owns every run slot").glyph_at(g.font_id, g.gid).expect("in range").gid.0
+        } else {
+            tex.otf_glyph(g.font_id, g.gid as u8, g.ch).map_or(0, |(_, gid)| gid)
         };
         glyphs.push((g.ch, gid, g.x));
     }
@@ -211,4 +212,50 @@ fn comment_joined_argument_is_the_same_run() {
     let a = place(&fonts, &["and"], None);
     let b = place(&fonts, &["and"], None);
     assert_eq!(a.glyphs, b.glyphs);
+}
+
+/// Issue #43: a run of more than 65536 shaped entries must not alias its
+/// later entries onto the first chunk. Entries 65535 / 65536 / 65537 are a
+/// distinctive glyph, a space and another distinctive glyph; the first and
+/// last glyphs differ from everything in between.
+#[test]
+fn a_run_beyond_one_chunk_addresses_every_entry_without_aliasing() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let fonts = FontSet::with_default_dirs(&[]);
+    let (face, _) = text_face(&fonts);
+    // 16 words of 4000 (entries 4001k .. 4001k+3999, space at 4001k+4000),
+    // then a 1520-char word ending in 'z' at entry 65535, a space at 65536,
+    // then "c…d" from 65537.
+    let mut words: Vec<String> = Vec::new();
+    words.push(format!("b{}", "a".repeat(3999)));
+    for _ in 1..16 {
+        words.push("a".repeat(4000));
+    }
+    words.push(format!("{}z", "a".repeat(1519)));
+    words.push(format!("c{}d", "a".repeat(100)));
+    let text = words.join(" ");
+    let total = 65537 + 102;
+    assert_eq!(text.chars().count(), total);
+    let p = place(&fonts, &[&text], None);
+    assert_eq!(p.glyphs.len(), total, "one entry per character and space");
+    assert_eq!(p.runs.len(), 1);
+    assert_eq!(p.runs[0].glyphs.len(), total);
+    assert_eq!(p.runs[0].slots(), 2);
+    let gid = |c: char| face.face().glyph_id(c).unwrap().0;
+    assert_eq!((p.glyphs[0].0, p.glyphs[0].1), ('b', gid('b')));
+    assert_eq!((p.glyphs[SLOT_GLYPHS - 1].0, p.glyphs[SLOT_GLYPHS - 1].1), ('z', gid('z')));
+    assert_eq!((p.glyphs[SLOT_GLYPHS].0, p.glyphs[SLOT_GLYPHS].1), (' ', 0));
+    assert_eq!((p.glyphs[SLOT_GLYPHS + 1].0, p.glyphs[SLOT_GLYPHS + 1].1), ('c', gid('c')));
+    assert_eq!((p.glyphs[total - 1].0, p.glyphs[total - 1].1), ('d', gid('d')));
+    assert_eq!(p.glyphs[1].1, gid('a'));
+    assert_ne!(gid('a'), gid('c'));
+    // Geometry stays monotone across the chunk boundary and the run width
+    // is the sum of the entries.
+    for w in p.glyphs.windows(2) {
+        assert!(w[1].2 > w[0].2, "x must increase: {:?} {:?}", w[0], w[1]);
+    }
+    assert!(p.width > p.glyphs[total - 1].2);
 }

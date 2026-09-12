@@ -33,20 +33,43 @@ use crate::fonts::{Family, FontSet, LoadedFace, Role};
 use crate::ids::GlyphId;
 use crate::shape::Shaper;
 
-/// First `FontId` value of a text run; `FontId(RUN_FONT_BASE + i)` is run `i`
-/// of the math box being laid out (the CM/OpenType providers use small ids).
+/// First `FontId` value of a text-run *slot*. A placed glyph box addresses
+/// a run glyph by `(font_id, gid)`: `font_id - RUN_FONT_BASE` is the slot,
+/// `gid` (math-layout's `u16`) the index within that slot's chunk of
+/// [`SLOT_GLYPHS`] shaped entries. A run longer than one chunk occupies
+/// consecutive slots (`TextRun::first_slot .. first_slot + slots`), so no
+/// index is ever truncated (issue #43). The CM/OpenType providers use small
+/// font ids, far below this base.
 pub const RUN_FONT_BASE: u32 = 0x4000_0000;
 
-/// First placeholder character (Supplementary Private Use Area-A).
-const HANDLE_BASE: u32 = 0xF_0000;
+/// Shaped entries (ink glyphs and spaces) addressable through one slot.
+pub const SLOT_GLYPHS: usize = 1 << 16;
 
-fn handle_char(index: usize) -> char {
-    char::from_u32(HANDLE_BASE + index as u32).expect("private-use handle")
+/// Most slots one formula may use (keeps `RUN_FONT_BASE + slot` in `u32`).
+const MAX_SLOTS: usize = 0x1000_0000;
+
+/// Placeholder characters: Supplementary Private Use Area-A and -B,
+/// U+F0000..=U+10FFFF, one per `\text` argument of a formula.
+const HANDLE_BASE: u32 = 0xF_0000;
+/// Number of handles (131072); a formula with more `\text` arguments is
+/// refused with a diagnostic, never given an unrecognised or invalid handle.
+pub const MAX_TEXT_ATOMS: usize = (0x10_FFFF - 0xF_0000 + 1) as usize;
+
+fn handle_char(index: usize) -> Option<char> {
+    if index >= MAX_TEXT_ATOMS {
+        return None;
+    }
+    char::from_u32(HANDLE_BASE + index as u32)
+}
+
+/// Whether `ch` is a run placeholder (never drawn, never extracted).
+pub fn is_handle(ch: char) -> bool {
+    handle_index(ch).is_some()
 }
 
 fn handle_index(ch: char) -> Option<usize> {
     let c = ch as u32;
-    (HANDLE_BASE..HANDLE_BASE + 0x1_0000).contains(&c).then(|| (c - HANDLE_BASE) as usize)
+    (c >= HANDLE_BASE).then(|| (c - HANDLE_BASE) as usize)
 }
 
 /// Collects the `\text` arguments of one formula while the compiler list is
@@ -54,14 +77,25 @@ fn handle_index(ch: char) -> Option<usize> {
 #[derive(Default, Debug)]
 pub struct TextSink {
     pub texts: Vec<String>,
+    /// Arguments beyond [`MAX_TEXT_ATOMS`], in order: refused before any
+    /// state changed, reported by the caller as `math_text_overflow`.
+    pub refused: Vec<String>,
 }
 
 impl TextSink {
-    /// An `Ord` atom for `text` (TeX §1076: an hbox in math is an Ord).
+    /// An `Ord` atom for `text` (TeX §1076: an hbox in math is an Ord); an
+    /// empty Ord (scripts still attach) once the handle space is exhausted.
     pub fn atom(&mut self, text: &str) -> ml::Atom {
-        let handle = handle_char(self.texts.len());
-        self.texts.push(text.to_string());
-        ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Text(handle.to_string()))
+        match handle_char(self.texts.len()) {
+            Some(handle) => {
+                self.texts.push(text.to_string());
+                ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Text(handle.to_string()))
+            }
+            None => {
+                self.refused.push(text.to_string());
+                ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)
+            }
+        }
     }
 }
 
@@ -85,6 +119,9 @@ pub struct TextRun {
     pub text: String,
     pub size: f64,
     pub face: Rc<LoadedFace>,
+    /// First slot (`font_id - RUN_FONT_BASE`) of this run; it uses
+    /// `glyphs.len().div_ceil(SLOT_GLYPHS).max(1)` consecutive slots.
+    pub first_slot: usize,
     pub glyphs: Vec<RunGlyph>,
     /// The hbox: glyph boxes (`font_id` = this run, `gid` = index into
     /// `glyphs`, widths = TFM advances with kerns folded in) and the space
@@ -92,6 +129,36 @@ pub struct TextRun {
     pub hbox: ml::MathBox,
     /// True when the TFM produced the advances (TeX's geometry).
     pub tfm_metrics: bool,
+}
+
+impl TextRun {
+    /// Slots this run occupies.
+    pub fn slots(&self) -> usize {
+        self.glyphs.len().div_ceil(SLOT_GLYPHS).max(1)
+    }
+
+    /// The run glyph a placed `(font_id, gid)` addresses, if it is in this run.
+    pub fn glyph_at(&self, font_id: MathFontId, gid: u16) -> Option<&RunGlyph> {
+        let slot = font_id.0.checked_sub(RUN_FONT_BASE)? as usize;
+        let chunk = slot.checked_sub(self.first_slot)?;
+        if chunk >= self.slots() {
+            return None;
+        }
+        self.glyphs.get(chunk * SLOT_GLYPHS + usize::from(gid))
+    }
+
+    /// Whether `font_id` is one of this run's slots.
+    pub fn owns(&self, font_id: MathFontId) -> bool {
+        font_id.0.checked_sub(RUN_FONT_BASE).is_some_and(|s| {
+            let s = s as usize;
+            s >= self.first_slot && s < self.first_slot + self.slots()
+        })
+    }
+}
+
+/// The run among `runs` that a placed glyph's `font_id` belongs to.
+pub fn run_of(runs: &[TextRun], font_id: MathFontId) -> Option<&TextRun> {
+    runs.iter().find(|r| r.owns(font_id))
 }
 
 /// What happened while shaping, reported by the caller with the formula's
@@ -104,6 +171,9 @@ pub enum Notice {
     Refused { word: String, reason: String },
     MissingGlyph { ch: char, face: String },
     TfmRunError { word: String, face: String, error: String },
+    /// The run would need more slots than a formula may address; nothing
+    /// was shaped for it (the placeholder stays an empty box).
+    TooLarge { text_chars: usize, glyphs: usize },
 }
 
 /// Lazily shapes the registered texts at the sizes the layout asks for and
@@ -142,8 +212,11 @@ impl<'a> TextRunMetrics<'a> {
         if let Some(i) = self.runs.borrow().iter().position(|r| r.text == *text && r.size == size) {
             return Some(i);
         }
-        let index = self.runs.borrow().len();
-        let run = shape_run(self.fonts, self.shaper, self.family, text, size, index, &mut self.notices.borrow_mut());
+        let (index, first_slot) = {
+            let runs = self.runs.borrow();
+            (runs.len(), runs.last().map_or(0, |r| r.first_slot + r.slots()))
+        };
+        let run = shape_run(self.fonts, self.shaper, self.family, text, size, first_slot, &mut self.notices.borrow_mut())?;
         self.runs.borrow_mut().push(run);
         Some(index)
     }
@@ -156,7 +229,7 @@ impl MathFontMetrics for TextRunMetrics<'_> {
 
     fn font_name(&self, font: MathFontId) -> String {
         match font.0.checked_sub(RUN_FONT_BASE) {
-            Some(i) => self.runs.borrow().get(i as usize).map_or_else(|| format!("text-run-{i}"), |r| r.face.name.clone()),
+            Some(slot) => run_of(&self.runs.borrow(), font).map_or_else(|| format!("text-run-slot-{slot}"), |r| r.face.name.clone()),
             None => self.inner.font_name(font),
         }
     }
@@ -198,7 +271,7 @@ impl MathFontMetrics for TextRunMetrics<'_> {
         let runs = self.runs.borrow();
         let run = &runs[i];
         Some(Glyph {
-            font_id: MathFontId(RUN_FONT_BASE + i as u32),
+            font_id: MathFontId(RUN_FONT_BASE + run.first_slot as u32),
             gid: 0,
             ch,
             size: at,
@@ -211,12 +284,21 @@ impl MathFontMetrics for TextRunMetrics<'_> {
     }
 }
 
+/// A short, single-line rendering of a refused argument for diagnostics.
+pub fn abbreviate(text: &str) -> String {
+    let mut s: String = text.chars().take(32).collect();
+    if text.chars().count() > 32 {
+        s.push('…');
+    }
+    s
+}
+
 /// Replaces every placeholder glyph box in `root` by its shaped hbox.
 pub fn substitute(root: &mut ml::MathBox, runs: &[TextRun]) {
     match &mut root.kind {
         ml::BoxKind::Glyph { font_id, ch, size, .. } => {
             if handle_index(*ch).is_some() {
-                if let Some(run) = font_id.0.checked_sub(RUN_FONT_BASE).and_then(|i| runs.get(i as usize)) {
+                if let Some(run) = run_of(runs, *font_id) {
                     debug_assert_eq!(run.size, *size);
                     *root = run.hbox.clone();
                 }
@@ -246,8 +328,15 @@ fn space_dimens(fonts: &FontSet, family: Family, face: &LoadedFace, size: f64) -
 /// Shapes `text` as an hbox at `size`: words through the face's shaper
 /// (TFM ligatures/kerns), one glue per space at natural width with TeX's
 /// space factor (1000 at the start of the box, §1034 per character).
-fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size: f64, index: usize, notices: &mut Vec<Notice>) -> TextRun {
-    let font_id = MathFontId(RUN_FONT_BASE + index as u32);
+/// `None` when the run cannot be addressed (more than `MAX_SLOTS` chunks of
+/// entries from `first_slot`): a `TooLarge` notice is recorded instead.
+fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size: f64, first_slot: usize, notices: &mut Vec<Notice>) -> Option<TextRun> {
+    // Every shaped entry (space or glyph) gets its own index; chunk `k` of
+    // `SLOT_GLYPHS` entries is addressed through slot `first_slot + k`.
+    let address = |entry: usize| -> (MathFontId, u16) {
+        let slot = first_slot + entry / SLOT_GLYPHS;
+        (MathFontId(RUN_FONT_BASE + slot as u32), (entry % SLOT_GLYPHS) as u16)
+    };
     let face = fonts.resolve(family, Role::Text { bold: false, italic: false }, size).face;
     notices.push(Notice::FaceUsed { size });
     let (space, extra) = space_dimens(fonts, family, &face, size);
@@ -256,6 +345,13 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
     let mut factor = 1000u32;
     let mut tfm_metrics = true;
     let mut first = true;
+    // Capacity check before any state is built: the largest possible entry
+    // count is one per character plus one per space, which bounds the slots.
+    let max_entries = text.chars().count();
+    if first_slot + max_entries.div_ceil(SLOT_GLYPHS).max(1) > MAX_SLOTS {
+        notices.push(Notice::TooLarge { text_chars: max_entries, glyphs: max_entries });
+        return None;
+    }
     for word in text.split(' ') {
         if !first {
             // Interword glue at natural width; an hbox is never stretched.
@@ -263,10 +359,10 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
             if factor >= 2000 {
                 width += extra;
             }
-            let gi = glyphs.len() as u16;
+            let (font_id, gid) = address(glyphs.len());
             glyphs.push(RunGlyph { gid: GlyphId(0), ch: ' ', text: " ".to_string() });
             boxes.push(ml::MathBox {
-                kind: ml::BoxKind::Glyph { font_id, gid: gi, ch: ' ', size },
+                kind: ml::BoxKind::Glyph { font_id, gid, ch: ' ', size },
                 width,
                 height: 0.0,
                 depth: 0.0,
@@ -293,13 +389,13 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
         for c in &shaped.clusters {
             let ch = c.text.chars().next().unwrap_or('\u{FFFD}');
             for (k, g) in c.glyphs.iter().enumerate() {
-                let gi = glyphs.len() as u16;
+                let (font_id, gid) = address(glyphs.len());
                 // A cluster with several glyphs attributes its text to the first.
                 let text = if k == 0 { c.text.clone() } else { String::new() };
                 glyphs.push(RunGlyph { gid: g.gid, ch, text });
                 let width = g.advance as f64 * size / shaped.units_per_em as f64;
                 boxes.push(ml::MathBox {
-                    kind: ml::BoxKind::Glyph { font_id, gid: gi, ch, size },
+                    kind: ml::BoxKind::Glyph { font_id, gid, ch, size },
                     width,
                     height: if g.empty { 0.0 } else { height },
                     depth: if g.empty { 0.0 } else { depth },
@@ -310,8 +406,11 @@ fn shape_run(fonts: &FontSet, shaper: &Shaper, family: Family, text: &str, size:
             factor = space_factor(ch, factor);
         }
     }
+    // Shaping never yields more entries than characters (ligatures merge,
+    // font-engine clusters map one char to at most one glyph per char).
+    debug_assert!(glyphs.len() <= max_entries.max(1));
     let hbox = ml::MathBox::hlist(boxes);
-    TextRun { text: text.to_string(), size, face, glyphs, hbox, tfm_metrics }
+    Some(TextRun { text: text.to_string(), size, face, first_slot, glyphs, hbox, tfm_metrics })
 }
 
 #[cfg(test)]
@@ -320,24 +419,60 @@ mod tests {
 
     #[test]
     fn handles_round_trip_and_stay_private_use() {
-        for i in [0usize, 1, 255, 0xFFFF] {
-            let h = handle_char(i);
-            assert_eq!(handle_index(h), Some(i));
+        for i in [0usize, 1, 255, 0xFFFF, 0x1_0000, 0x1_0001, MAX_TEXT_ATOMS - 1] {
+            let h = handle_char(i).unwrap();
+            assert_eq!(handle_index(h), Some(i), "{i}");
             assert!(!h.is_ascii());
+            assert!(h as u32 >= 0xF_0000);
         }
+        assert_eq!(handle_char(MAX_TEXT_ATOMS), None, "beyond U+10FFFF: refused, never a panic");
+        assert_eq!(handle_char(usize::MAX), None);
         assert_eq!(handle_index('a'), None);
         assert_eq!(handle_index(' '), None);
         assert_eq!(handle_index('\u{E000}'), None, "BMP private use is not a handle");
+        assert_eq!(handle_index('\u{FFFF}'), None);
     }
 
     #[test]
-    fn sink_gives_ordinary_atoms_in_order() {
+    fn sink_gives_ordinary_atoms_in_order_and_refuses_beyond_the_handle_space() {
         let mut sink = TextSink::default();
         let a = sink.atom("(a)");
         let b = sink.atom("and");
         assert_eq!(sink.texts, vec!["(a)", "and"]);
         assert_eq!(a.class, ml::AtomClass::Ord);
-        assert_eq!(a.nucleus, ml::Nucleus::Text(handle_char(0).to_string()));
-        assert_eq!(b.nucleus, ml::Nucleus::Text(handle_char(1).to_string()));
+        assert_eq!(a.nucleus, ml::Nucleus::Text(handle_char(0).unwrap().to_string()));
+        assert_eq!(b.nucleus, ml::Nucleus::Text(handle_char(1).unwrap().to_string()));
+        for i in 2..MAX_TEXT_ATOMS {
+            let _ = sink.atom(&i.to_string());
+        }
+        assert_eq!(sink.texts.len(), MAX_TEXT_ATOMS);
+        assert!(sink.refused.is_empty());
+        let over = sink.atom("one too many");
+        assert_eq!(over.nucleus, ml::Nucleus::Empty);
+        assert_eq!(sink.refused, vec!["one too many"]);
+        assert_eq!(sink.texts.len(), MAX_TEXT_ATOMS, "no state changed for the refused atom");
+    }
+
+    #[test]
+    fn slot_addressing_does_not_alias_across_chunks() {
+        // A run whose glyph table spans three chunks: the boundary entries
+        // 65535, 65536 and 65537 resolve to themselves, not to 65535 % 65536.
+        let face = crate::fonts::FontSet::with_default_dirs(&[])
+            .resolve(Family::Times, Role::Text { bold: false, italic: false }, 10.0)
+            .face;
+        let glyphs: Vec<RunGlyph> = (0..(2 * SLOT_GLYPHS + 2)).map(|i| RunGlyph { gid: GlyphId(i as u16), ch: 'x', text: i.to_string() }).collect();
+        let run = TextRun { text: String::new(), size: 10.0, face, first_slot: 3, glyphs, hbox: ml::MathBox::empty(), tfm_metrics: false };
+        assert_eq!(run.slots(), 3);
+        let at = |entry: usize| {
+            let slot = 3 + entry / SLOT_GLYPHS;
+            run.glyph_at(MathFontId(RUN_FONT_BASE + slot as u32), (entry % SLOT_GLYPHS) as u16).map(|g| g.text.clone())
+        };
+        for e in [0usize, 1, SLOT_GLYPHS - 1, SLOT_GLYPHS, SLOT_GLYPHS + 1, 2 * SLOT_GLYPHS + 1] {
+            assert_eq!(at(e).as_deref(), Some(e.to_string().as_str()), "entry {e}");
+        }
+        assert_eq!(at(2 * SLOT_GLYPHS + 2), None, "past the end");
+        assert!(run.glyph_at(MathFontId(RUN_FONT_BASE + 2), 0).is_none(), "slot before the run");
+        assert!(run.glyph_at(MathFontId(RUN_FONT_BASE + 6), 0).is_none(), "slot after the run");
+        assert!(run.owns(MathFontId(RUN_FONT_BASE + 5)) && !run.owns(MathFontId(RUN_FONT_BASE + 6)));
     }
 }

@@ -139,6 +139,17 @@ sets the points flush right of `\textwidth`; the run before it keeps its space f
 then the compiler's `\hfill … not supported in this inline argument` diagnostic stands and the
 title is set without the fill (no silent approximation). No code was written for this.
 
+## 4. GH43 — run index / handle bounds (fixed on this branch)
+Slot addressing (`font_id = RUN_FONT_BASE + slot`, `gid` within a 65536-entry chunk, runs occupy
+consecutive slots from `TextRun::first_slot`; `glyph_at`/`owns`/`run_of`) replaces the u16 cast;
+handles span U+F0000..=U+10FFFF (`MAX_TEXT_ATOMS` 131072) and `TextSink::atom` refuses beyond
+without state change (`math_text_overflow` error). Tests: `mathtext::tests::slot_addressing_
+does_not_alias_across_chunks`, `handles_round_trip_and_stay_private_use`, `sink_gives_ordinary_
+atoms_in_order_and_refuses_beyond_the_handle_space`, `tests/math_text.rs::a_run_beyond_one_chunk_
+addresses_every_entry_without_aliasing`. Text-enabled route check `docs/evidence/hw1-text/issue43.
+{py,json}` (oversized runs, 131073 atoms → explicit reply-limit failure, then a valid request in
+the same session). Six probes byte-identical to `after/`. `cargo test --release`: 57 passed.
+
 ## Checkpoint
 - Branch `agent/mac-render-pipeline/text-gaps`; commits 82fcaf71 (audit), 033cd5cb (`\text`),
   this commit (guard + handoff). Base 9aaec57a; consumed main d5440b0 (through base); read
