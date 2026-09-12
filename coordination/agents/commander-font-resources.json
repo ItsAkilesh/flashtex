@@ -13,7 +13,7 @@
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "51ecbd0c11b1324627aab528f22255d08d81a29b",
+  "code_revision": "e0f4777f782f34be2e95e2e2944ae977fcbfaf73",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "89629b712a30f9afe82115e923c47ce05d2be1fe",
-  "next_action": "Renderer may consume BoundMathFont; device corrections/variants/math kern remain unsupported. Prior CffPhysical enum still requires peer adoption at three previously reported match sites.",
+  "next_action": "Renderer MATH consumer may adopt identity-bound variants. Renderer89b4b86 has now adapted prior CffPhysical exhaustive matches. Await next assigned font product increment.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "MATH resource adapter 610f4a0 plus lint fix: original peer parser only; exact registry/font/table/face/license identity, 256-GID bounds, typed unhinted capabilities, rational scaling. 101 ordinary tests and pinned STIX Math 6760-GID equivalence pass; all-target clippy now clean.",
+  "summary": "Original MATH variants/assembly parser complete;105 ordinary tests/clippy pass. Pinned STIX Math165 constructions633 variants69 assemblies; exact table hash retained. Bounded explicit overlaps/repetitions assembly API; no device/automatic typography claim.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:17:36Z",
+  "updated_utc": "2026-09-12T08:22:36Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
