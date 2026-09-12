@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
+  "code_revision": "83d4a0e0331fd7a305d2af8add0239d4155cc177",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 2,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
-  "next_action": "Publish bounded second-fixture evidence and hand off optical-family gap; await next owned product increment.",
+  "next_action": "Publish runner and exact tool/resource evidence; selected existing02-wrapping-paragraph from Mac closure matrix for next bounded investigation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT023r8 second existing display-math fixture: unchanged producer zero diagnostics, exact original export, 1244pixel gap; reference sum code88 missing ToUnicode entry while original GID3060 maps correctly to sum.",
+  "summary": "Three-fixture pinned replay runner completed: one producer build, independent zero/602/1244 pixel results, text equality and reference mapping validity separate.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:48:38Z",
+  "updated_utc": "2026-09-12T10:54:46Z",
   "usage": {
-    "evidence": "159 default tests passed, 2 ignored; strict all-target Clippy passed. Current fixtures use unchanged65dbe7d and matching rooted LM2.004 assets. No native/parity claim.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable."
+    "evidence": "6 Python decision/setup tests pass. Actual --fixture all exits3 with plain accepted/math mismatches; missing assets exits2; real restored source-drift preflight exits4 before build. Prior159 Rust tests unaffected.",
+    "status": "Hosted OpenAI only; no paid providers or descendants; no quota telemetry."
   }
 }

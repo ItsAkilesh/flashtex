@@ -15,7 +15,7 @@ pdfTeX reference after verification; no fonts are downloaded or installed.
 The runner extracts untouched published producer65dbe7d, builds it offline with
 two jobs, requires status `ok`, zero diagnostics and exactly one page, then calls
 the existing immutable registry/CFF searchable export example. The current
-consumer and dependency sources must match acceptance baselinec158f4e; changes
+consumer and dependency sources must match acceptance baseline83d4a0e; changes
 require a deliberate reviewed rebaseline. Original producer output is never
 rewritten. Source-preamble transformation remains recorded and explicit.
 
@@ -45,3 +45,39 @@ asset root returned2/refused; an intentionally fake version-only pdftotext
 executable returned4/unknown before compilation. No rasterizer was replaced in
 an acceptance run. Reports are retained under tools/evidence with the runner's
 publication checkpoint.
+
+## Three established fixtures (v2 runner)
+
+Add `--fixture plain`, `--fixture inline-math`, `--fixture display-math`, or
+`--fixture all`. Default remains plain. `replay-fixtures.json` pins each actual
+source, request, reference PDF/engine metadata, font and license; its own digest
+is pinned in the runner. Metrics remain separately pinned. Consumer baseline is
+now83d4a0e and includes the multi-font exporter plus the reference CMap regression.
+Source/dependency drift returns unknown before builds. Rebaseline is an explicit
+review decision, never automatic repair. One archived producer build serves all
+selected fixtures; each is measured even when another differs.
+
+The v2 report nests each result under `fixtures`, including asset hashes, exact
+PDF comparison, `raster.equal`, `extracted_text.equal`, and a separate
+`text_comparison_validity`. `limited_linear_text` is deliberately narrower than
+an exhaustive Unicode/structure/accessibility guarantee. Display math is an
+`oracle_limitation`: its pinned reference has no ToUnicode entry for shown
+summation code88. This fact is verified by the pinned existing-reader Rust test;
+the Python runner does not introduce another CMap parser. It never rewrites ∑ to
+X. Even zero raster differences cannot yield acceptance with this incomplete
+text oracle. A real raster difference still reports mismatch independently.
+
+Aggregate severity is execution error, unknown, refused, mismatch, accepted;
+all per-fixture results remain available. The report records executable hashes
+for invoked tools, version strings, producer binary/archive and runner/manifest
+hashes. Rustup-managed cargo/rustc paths may be shims; those hashes identify the
+invoked executable, while the version strings identify the selected toolchain.
+No claim of complete hermetic build provenance follows.
+
+Validation: `python3 -m unittest discover -s crates/rendering-core/tools -p
+ test_replay_original.py` checks six decision/setup gates using explicitly
+synthetic inputs. The real `--fixture all` report separately reproduces0/602/1244
+pixel differences and true/true/false text equality. `next-gap.json` selects only
+existing02-wrapping-paragraph from the pinned Mac closure matrix for the next
+investigation; its different rasterizer evidence is not compared numerically as
+though it were this Linux run.
