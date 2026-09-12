@@ -1,0 +1,42 @@
+use flashtex_font_resources::{pfb::*, sha256, EmbeddingPermission, LicenseMetadata};
+#[test]
+#[ignore = "set FLASHTEX_LM_TFM_DIR to existing official2.004 directory containing lmr10.pfb and LICENSE"]
+fn pinned_official_type1_container_only() {
+    let p = std::path::PathBuf::from(std::env::var("FLASHTEX_LM_TFM_DIR").unwrap());
+    let bytes = std::fs::read(p.join("lmr10.pfb")).unwrap();
+    let license = std::fs::read(p.join("LICENSE")).unwrap();
+    let provenance: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/lm-required-metrics-provenance.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        sha256(&bytes),
+        "84eb01245abb17c0530ca3909427256d73df8bed2d7243b9f2717ca08c010ac8"
+    );
+    assert_eq!(
+        sha256(&license),
+        provenance["license"]["sha256"].as_str().unwrap()
+    );
+    let identity = Identity {
+        resource_id: "lmr10-type1-container".into(),
+        sha256: sha256(&bytes),
+        byte_length: bytes.len() as u64,
+        license: LicenseMetadata {
+            identifier: "LicenseRef-GUST-Font-License".into(),
+            copyright: "see pinned license".into(),
+            source: "official GUST lm2.004bas.zip".into(),
+            text_path: "LICENSE".into(),
+            text_sha256: sha256(&license),
+            embedding_permission: EmbeddingPermission::Unknown,
+        },
+    };
+    let resource = Resource::from_bytes(&identity, &bytes, &license).unwrap();
+    assert_eq!(resource.segments().len(), 3);
+    for s in resource.segments() {
+        println!("{:?} {:?}", s.kind, s.payload);
+    }
+    assert_eq!(
+        resource.require_outlines(),
+        Err(Error::EncryptedOutlinesUnsupported)
+    );
+}
