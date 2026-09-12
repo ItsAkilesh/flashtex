@@ -8,7 +8,7 @@ Worktree: `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a1798a96df2c
 (local branch `rp/resume`, pushed as `agent/mac-render-pipeline/unified`)
 State: lane objectives met for the text and math fixtures the compiler can parse; follow-ups
 measured; every pushed SHA is a tested checkpoint (`cargo test --release`: 39 passed at
-919ad8b)
+1ade215)
 Owned paths: `crates/render-pipeline/**` (this lane), plus `docs/proposals/rendering-abi.md`,
 `coordination/mac-render-pipeline.md`, `coordination/agents/mac-render-pipeline.json`
 Rules in force: no purchases; crates/font-engine, crates/paragraph-layout, crates/math-layout
@@ -45,7 +45,7 @@ stages -- file.tex 2`.
 - 13/14 need compiler math parser support for `\left`/`\right` and Greek control words.
 - Lists (11), `ǅ` (10), extensible delimiter assemblies (no OTF mapping → `math_glyph_unmapped`),
   `\emph{\textbf{x}} y` outer-group italic correction.
-- No incremental reuse: 27 pages ≈ 95 ms per edit warm; 107 pages exceed the 16 MiB v1 reply.
+- No incremental layout reuse: 27 pages ≈ 71 ms per edit warm (1ade215); 107 pages exceed the 16 MiB v1 reply.
 - Provenance pins exist only for the 12 pt set; other sizes' TFMs warn (`tfm_missing`).
 
 ## Next steps (in order)
@@ -67,4 +67,4 @@ required metrics (919ad8b).
 
 Attach to the Mac app: `FLASHTEX_COMPILER=<repo>/crates/render-pipeline/target/release/flashtex-render`.
 Resource state: shared 20x Max quota on mac-m1max-a; usage not observable from a subagent.
-Updated: 2026-09-12T10:05:00Z
+Updated: 2026-09-12T10:20:00Z

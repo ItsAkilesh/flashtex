@@ -173,15 +173,20 @@ over stdin/stdout including JSON; "fresh" spawns a new process per compile.
 | document | pages | v1 items | persistent worker (median of edits) | fresh process |
 |---|---|---|---|---|
 | 08+09 bodies ×1 | 3 | 1 864 | 9.7 ms (first request 22.8 ms) | 27.0 ms |
-| ×10 | 27 | 18 631 | 95 ms (first 125 ms) | 148 ms |
+| ×10 | 27 | 18 631 | 95 ms (first 125 ms); **71 ms at `1ade215`** (direct JSON writer) | 148 ms; 128 ms |
 | ×40 | 107 | 74 841 | reply refused: 17.2 MB > 16 MiB line limit (explicit `failed`) | — |
 
-Stage split at 27 pages (`examples/stages.rs`): parse 3.5 ms, adapt 12,
-typeset (shape + break + pages) 23, assemble v2 14, v1 22, JSON 12. No
-incremental reuse exists yet: every paragraph is re-shaped and re-broken
-per request; a per-paragraph cache keyed by (text, style, measure) is the
-next step. Found while measuring: `FontSet::core14` re-hashed the AFM per
-lookup (Times documents: 25 pages 620 ms → 116 ms).
+Stage split at 27 pages (`examples/stages.rs`, `4888a67`): parse 3.5 ms,
+adapt 12, typeset (shape + break + pages) 23, assemble v2 14, v1 22, JSON
+12. At `1ade215` the v1 line is written directly (same bytes, no `Value`
+tree): v1 9 ms, JSON 7 ms. The shaping cache now outlives requests
+(`65dbe7d`), which changes little (typeset 23 → 21 ms): line breaking and
+page building dominate that stage. No incremental layout reuse exists yet;
+a per-paragraph cache keyed by (text, style, measure) is the next step
+(adapt + typeset ≈ 32 ms of the remaining ≈ 65 ms). Found while measuring:
+`FontSet::core14` re-hashed the AFM per lookup (Times documents: 25 pages
+620 ms → 116 ms). Measurements were taken with other agents loading the
+machine (load average 35–45); treat them as upper bounds.
 
 ## rendering-v2 validation against main's `rendering-core`
 

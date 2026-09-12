@@ -29,7 +29,7 @@
   "state": "in_progress",
   "summary": "render-pipeline: TFM-exact text+math via shared font-resources reader (cb4ff5f), digest-bound 12pt metrics with blocking diagnostic, raw font digests, display-list-v2 producer; all parseable fixtures at 0.00/0.01pt vs MacTeX 2026 pdflatex; 39 tests",
   "tool": "Claude Code subagent Opus (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T10:05:00Z",
+  "updated_utc": "2026-09-12T10:20:00Z",
   "usage": {
     "evidence": "shared 20x Max quota; not observable from a subagent",
     "status": "unknown"
