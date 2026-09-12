@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Move validated owned edit text from parsed request into durable API without response or envelope changes",
-      "objective": "Move validated owned edit text from parsed request into durable API without response or envelope changes",
+      "name": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
+      "objective": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Prove invalid input remains premutation and raw source buffer is moved in default and metadata paths",
-      "objective": "Prove invalid input remains premutation and raw source buffer is moved in default and metadata paths",
+      "name": "Verify cancel restart renegotiation exact source tokens and durable reopen on the same actual helper capture",
+      "objective": "Verify cancel restart renegotiation exact source tokens and durable reopen on the same actual helper capture",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify existing source token preview and durable recovery semantics and measure one500KB clone removal",
-      "objective": "Verify existing source token preview and durable recovery semantics and measure one500KB clone removal",
+      "name": "Publish exact original wire and provenance for independent runtime consumer without native or bibliography layout claims",
+      "objective": "Publish exact original wire and provenance for independent runtime consumer without native or bibliography layout claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

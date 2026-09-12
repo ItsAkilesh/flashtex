@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "fec22f105a028313962b69fa155b0621e3faf247",
-  "objective": "Move validated owned edit text from parsed request into durable API without response or envelope changes",
+  "input_main_sha": "ee5c1fd072bb3a96a1e194f484a941ced871c0c2",
+  "objective": "Capture actual multi-document explicit bibliography helper flow with distinct editor and compile revisions using pinned producer",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 15,
+  "revision": 16,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:44:17.034652+00:00"
+  "updated_utc": "2026-09-12T12:47:39.531062+00:00"
 }
