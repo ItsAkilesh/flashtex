@@ -229,3 +229,67 @@ owner should confirm the real service type before this ships). Both are
 inert until the app actually touches the network — declaring them now does
 not request any permission by itself, and adding them retroactively later
 would require nothing beyond this same edit.
+
+## Install and disk image
+
+`make-app.sh --install` copies the freshly built, ad-hoc-signed bundle to
+`~/Applications/FlashTeX.app`. The replace is atomic and recoverable:
+
+1. The new bundle is copied to a hidden staging name
+   (`~/Applications/.FlashTeX.app.staging.<pid>`) first.
+2. Any existing `~/Applications/FlashTeX.app` is moved (a same-volume
+   `mv`/rename, not a copy) to `~/Applications/FlashTeX-previous.app`.
+3. The staged bundle is renamed into place as `FlashTeX.app` — a single
+   `mv` within the same directory, so `FlashTeX.app` is never observably a
+   half-written directory.
+4. Any running `FlashTeX` is killed, the installed copy is launched with
+   `open`, and the script polls `pgrep -x FlashTeX` for up to 10s.
+   - **Launch confirmed:** the app is quit again (AppleScript `quit`,
+     falling back to `pkill`) and `FlashTeX-previous.app` is deleted — it
+     only exists to make the previous step reversible until this point.
+   - **Launch not confirmed:** the new `FlashTeX.app` is removed and
+     `FlashTeX-previous.app` is renamed back to `FlashTeX.app`, restoring
+     the last working install; the script exits non-zero.
+
+`make-app.sh --dmg` stages a copy of the bundle plus a symlink to
+`/Applications` in a temp directory and runs
+`hdiutil create -volname FlashTeX -srcfolder <staging> -ov -format UDZO`
+to produce `apps/mac/build/FlashTeX.dmg` (a standard compressed,
+read-only, drag-to-install image).
+
+Verified on this machine (`jay3332`'s Mac, `~/Applications` already has
+unrelated real apps installed — Android Studio, CLion, PyCharm, etc. — none
+of which this script touches):
+
+```console
+$ apps/mac/scripts/make-app.sh --compiler … --pdf … --dmg --install
+…
+==> Building DMG
+    DMG at /…/apps/mac/build/FlashTeX.dmg
+==> Installing to ~/Applications
+    installed /Users/jay3332/Applications/FlashTeX.app
+==> Verifying the installed app launches
+    launch OK (FlashTeX process is running)
+==> Done: /…/apps/mac/build/FlashTeX.app
+```
+
+Second run, with a previous install already present, to exercise the
+retention/rollback path:
+
+```console
+$ apps/mac/scripts/make-app.sh --install
+==> Installing to ~/Applications
+    kept previous install at /Users/jay3332/Applications/FlashTeX-previous.app pending launch verification
+    installed /Users/jay3332/Applications/FlashTeX.app
+==> Verifying the installed app launches
+    launch OK (FlashTeX process is running)
+    removed /Users/jay3332/Applications/FlashTeX-previous.app (new install verified)
+```
+
+Both runs: `plutil -lint` on the installed `Info.plist` → `OK`; `codesign -dv`
+→ ad-hoc signature, `tech.jay3332.flashtex.mac`; `hdiutil imageinfo` on the
+produced DMG → `Format: UDZO`, `Compressed: true`. After each run,
+`osascript -e 'tell application "System Events" to get name of every process
+whose name is "FlashTeX"'` showed the process while running and `pgrep -x
+FlashTeX` showed nothing after quitting — no stray `FlashTeX` process was
+left behind by either run.
