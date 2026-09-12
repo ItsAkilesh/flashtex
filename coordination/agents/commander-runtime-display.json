@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T13:17:35Z",
-      "adaptation": "Read-only new typing_burst.py review: source/revision/hash/permanent-ID sequence sound; current-preview monotonic/latest-ACK assertion gap sent root before attribution. Await published capture for independent exact snapshot audit; no throughput rerun.",
-      "main_sha": "367aba68e2ee689cca8db4da2a8427d82f3de72b",
-      "revision": 25
+      "acknowledged_utc": "2026-09-12T13:34:14Z",
+      "adaptation": "Read FT049r27; independently audited published8d913d2a historical bytes without workload rerun; sender lifecycle candidate pending root publication, no peer edits.",
+      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
+      "revision": 27
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "9d03bbe28ffabd863e9c2a882df2a80034792ea1",
+  "code_revision": "18335688addc11518a739152e74ca46c6a415dee",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "31f62559f2ed154b3c93e8bc2240690a565da672",
-  "next_action": "Commander review/integration; existing root historical opt-in harness read-only review if assigned. No active jobs, no native or continuous-preview claim.",
+  "next_action": "Read-only separate-process sender lifecycle review when root candidate available; no active jobs. Current audited maximum send lateness23.908608ms prevents fixed30ms cadence claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r25: 9d03bbe2 independently audits pinned06b2f7a8 checked capture. All artifact/assets verified;20 UTF8 guarded edits and ACKs,11 actual intermediate results map stale,8 missing map superseded,only current21. Exact final captured request/clean result equality and old command2/current21 retry verified. No workload rerun or production change.",
+  "summary": "FT049r27 historical audit passes exact8d913d2a:7 historical original same-stream results/token/source/currentness verified,12 superseded,only current21;20 source/ACK/receipt chain,clean equality. Both audit modes pass; no runtime production edits or throughput rerun.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T13:28:56Z",
+  "updated_utc": "2026-09-12T13:34:59Z",
   "usage": {
     "status": "unknown"
   }
