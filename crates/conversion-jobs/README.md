@@ -220,3 +220,22 @@ Full consumers lose notifications; dropped-delivery counts and immutable view
 snapshots support resynchronization. Persistence uncertainty emits a distinct event
 and makes view reads fail until reopen. Thirty-nine tests, strict Clippy and
 formatting pass, including actual native-ready snapshot admission into this inbox.
+
+### Review expiry and recovery
+
+Review cards optionally receive a caller-clock deadline with `set_expiry` before
+any decision; a deadline can only be shortened. Use `open_at`, `decide_at`, and
+`validate_handoff_at` with one consistent clock domain (for example persisted Unix
+seconds). These entry points durably run bounded `expire_due` before recovery or
+acceptance. The clock-free methods remain for controllers that explicitly run
+expiry themselves. No background wall-clock timer is implied. Expired cards clear
+current selection, revoke existing handoffs and remain expired across restart or
+clock rollback; explicit retirement retains the existing replay tombstone.
+
+Context revocation is sticky, including changes to included-document hashes with
+an unchanged destination revision. Returning to an earlier hash cannot revive a
+previous acceptance. After restoring native document snapshots, call
+`refresh_from_bridge` before using a recovered card. Missing context also durably
+revokes it; a new capture/conversion is required. This does not mutate the capture
+journal, prepared edits, receipts or source. `AcceptForPreparation` continues to
+require a separate exact-`PreparedEdit` review/approval in the controller.
