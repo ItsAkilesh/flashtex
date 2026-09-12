@@ -1,6 +1,6 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T05:20Z
+- Updated UTC: 2026-09-12T05:50Z
 - Agent / parent / machine alias: `mac-pdf` (Claude Code subagent; issue #2
   follow-up dispatched as worker `mac-pdf-unicode`, same agent and branch) /
   parent `mac-claude-a` / `mac-m1max-a`
@@ -29,6 +29,18 @@
     lacks stay `?` with warnings; CLI prints a `note: N warning(s)` summary,
     exit 0. Verified on this Mac with both system fonts: rasterised output
     shows Cyrillic/CJK/ℝ and composite glyphs; `?` only where warned.
+  - Corpus regression (`crates/pdf/docs/corpus-report.md`, runner
+    `crates/pdf/scripts/corpus_report.py`): all 14 `tests/tex-corpus` cases
+    through compiler origin/main 342e1e0 → flashtex-pdf: 14/14 verify and open
+    in sips; 12/14 zero warnings with default fonts, the 2 CJK cases warn;
+    Arial Unicode embedding gives 14/14 zero warnings. de1020c comparison
+    column for the math case.
+  - Native visual checks (`crates/pdf/docs/visual-checks.md`): three PDFs
+    rasterised by macOS and described, defects included. New finding for the
+    compiler/contract owners: with CJK embedded, `東京.` overlaps `After` in
+    `unicode-literals` because the compiler assumes 0.5 em for glyphs it has
+    no metrics for (`DEFAULT_ADVANCE_UNITS`); real ideographs are 1 em. The
+    PDF writer places items where told and does not re-flow.
   - `cargo test`: 32/32 pass (18 unit, 14 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
     encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
@@ -63,6 +75,9 @@
   - Not wired into `crates/compiler` or `apps/mac` yet (`pdf_path` still null).
     Integration steps are in `crates/pdf/README.md`; wiring belongs to the
     compiler/Mac owners, not this task.
+- Needs from others: compiler/contract owners to decide how the compiler
+  learns embedded-font advances (or a width exchange in runtime-v1) so
+  embedded wide glyphs do not collide; a font/weight field for headings.
 - Interface changes / consumer actions: none. Consumes runtime-v1 `compile_result`
   unchanged. Relies on the compiler's convention that fraction rules are text
   items consisting only of U+2500 (0.5 em per dash, baseline at the bar's
