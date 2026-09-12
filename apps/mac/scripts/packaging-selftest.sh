@@ -82,7 +82,7 @@ rc=0; "$MAKE" --bogus-flag >"$WORK/out.txt" 2>&1 || rc=$?
 section "Pinned rooted TFM metrics (GH36; no build, no download, no host TeX)"
 TEXMF_TOOL="$SCRIPT_DIR/bundle-texmf.py"
 if python3 "$TEXMF_TOOL" check "$MAC_DIR/Fonts/texmf" >"$WORK/texmf-check.json" 2>&1; then
-  ok "bundle-texmf.py check apps/mac/Fonts/texmf: $(( $(grep -c '"status": "verified"' "$WORK/texmf-check.json") - 1 )) entries verified against the pinned manifest"
+  ok "bundle-texmf.py check apps/mac/Fonts/texmf: $(( $(grep -c '"status": "verified"' "$WORK/texmf-check.json") - 1 )) entries verified (Commander manifest + SUPPLEMENTARY-METRICS.json pin)"
 else
   bad "bundle-texmf.py check apps/mac/Fonts/texmf failed: $(grep -E '"(status|reason)"' "$WORK/texmf-check.json" | head -2 | tr -s ' \n' ' ')"
 fi

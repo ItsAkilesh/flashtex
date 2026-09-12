@@ -38,6 +38,39 @@ final class BundledMetricsTests: XCTestCase {
         }
     }
 
+    /// The in-repo pin for the supplementary (non-Commander) metrics
+    /// (`SUPPLEMENTARY-METRICS.json`): every listed file exists with the
+    /// pinned hash, never overlaps the pinned five, and every `.tfm` in the
+    /// directory is accounted for by one of the two tiers.
+    func testSupplementaryMetricsMatchTheirInRepoPin() throws {
+        let pinURL = Self.vendoredRoot.appendingPathComponent("SUPPLEMENTARY-METRICS.json")
+        let doc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: pinURL)) as? [String: Any])
+        XCTAssertEqual(doc["schema_version"] as? Int, 1)
+        let entries = try XCTUnwrap(doc["entries"] as? [[String: Any]])
+        XCTAssertEqual(entries.count, 23)
+        let pinnedPaths = Set(Self.pinned.map(\.path))
+        var listed = Set<String>()
+        for e in entries {
+            let path = try XCTUnwrap(e["path"] as? String)
+            XCTAssertFalse(pinnedPaths.contains(path), "\(path) is Commander-pinned, not supplementary")
+            XCTAssertTrue(listed.insert(path).inserted, "duplicate \(path)")
+            let data = try Data(contentsOf: Self.vendoredRoot.appendingPathComponent(path))
+            XCTAssertEqual(data.count, e["byte_length"] as? Int, path)
+            XCTAssertEqual(Self.sha256Hex(data), e["sha256"] as? String, path)
+        }
+        let dir = Self.vendoredRoot.appendingPathComponent(BundledMetrics.tfmSubdirectory)
+        let onDisk = Set(try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".tfm") }
+            .map { BundledMetrics.tfmSubdirectory + "/" + $0 })
+        XCTAssertEqual(onDisk, pinnedPaths.filter { $0.hasSuffix(".tfm") }.union(listed), "every vendored TFM is pinned by one tier")
+        // The faces the pin claims are exactly the files present.
+        for (family, sizes) in try XCTUnwrap(doc["faces_covered"] as? [String: [Int]]) {
+            for size in sizes {
+                let name = "\(BundledMetrics.tfmSubdirectory)/\(family)\(size).tfm"
+                XCTAssertTrue(onDisk.contains(name), "claimed face missing: \(name)")
+            }
+        }
+    }
+
     // MARK: environment
 
     func testTFMDirectoryPrefersFirstRootThatExists() throws {
@@ -96,7 +129,8 @@ final class BundledMetricsTests: XCTestCase {
     }
 
     /// Runs `FLASHTEX_RENDER` on the 10 pt multi-document request (the
-    /// verified capture's input) plus 12 pt text and 12 pt math, with an
+    /// verified capture's input), 12 pt text, 12 pt math, 10 pt bold/italic
+    /// styles and an 11 pt document, with an
     /// `env -i`-style environment (no PATH to texbin, empty HOME, no
     /// FLASHTEX_*/TEXMF*) and host TeX trees denied by sandbox-exec.
     private func runProducer(_ executable: String, tfmDirs: String?, home: URL) throws -> ProducerRun {
@@ -104,6 +138,9 @@ final class BundledMetricsTests: XCTestCase {
             #"{"protocol_version":1,"id":"preview-1","type":"compile","payload":{"project_id":"p","revision":1,"entry_path":"main.tex","documents":[{"path":"chapter.tex","text":"Chapter text with \\(a+b\\).\n"},{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nOffice AV fi.\\input{chapter}\n\\end{document}\n"},{"path":"refs.bib","text":"@article{sample, title={Example}, author={A. Author}, year={2026}}\n"}]}}"#,
             #"{"protocol_version":1,"id":"text-12pt","type":"compile","payload":{"project_id":"p","revision":2,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nOffice AV fi. Twelve point text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
             #"{"protocol_version":1,"id":"math-12pt","type":"compile","payload":{"project_id":"p","revision":3,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nBody $x^2 + y_1$ text. \\[ \\sum_{i=1}^{n} a_i \\]\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+            // Supplementary metrics: 10 pt bold/italic/bold-italic and an 11 pt document.
+            #"{"protocol_version":1,"id":"styles-10pt","type":"compile","payload":{"project_id":"p","revision":4,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nRegular \\textbf{bold} \\textit{italic} \\textbf{\\textit{bold italic}} with $x_i^2$ text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+            #"{"protocol_version":1,"id":"text-11pt","type":"compile","payload":{"project_id":"p","revision":5,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[11pt]{article}\n\\begin{document}\nEleven point \\textbf{bold} \\textit{italic} text with $a+b$.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
         ]
         let profile = home.appendingPathComponent("no-host-tex.sb")
         try """
@@ -164,12 +201,12 @@ final class BundledMetricsTests: XCTestCase {
         let env = BundledMetrics.producerEnvironment(base: [:], bundledDirectory: BundledMetrics.tfmDirectory(roots: [Self.vendoredRoot]))
         let tfmDirs = try XCTUnwrap(env[BundledMetrics.environmentKey])
         let routed = try runProducer(render, tfmDirs: tfmDirs, home: home)
-        XCTAssertEqual(routed.results, 3)
+        XCTAssertEqual(routed.results, 5)
         XCTAssertTrue(routed.missing.isEmpty, "env route must leave no missing-metric diagnostics: \(routed.missing)")
 
         // User entries preserved after the bundled directory: still clean.
         let withUser = try runProducer(render, tfmDirs: tfmDirs + ":" + home.appendingPathComponent("user").path, home: home)
-        XCTAssertEqual(withUser.results, 3)
+        XCTAssertEqual(withUser.results, 5)
         XCTAssertTrue(withUser.missing.isEmpty, "\(withUser.missing)")
 
         // One metric removed from a copy of the tree: an explicit failure, never silence.
@@ -177,7 +214,7 @@ final class BundledMetricsTests: XCTestCase {
         try FileManager.default.copyItem(at: Self.vendoredRoot, to: copy)
         try FileManager.default.removeItem(at: copy.appendingPathComponent("fonts/tfm/public/lm/ec-lmr10.tfm"))
         let removed = try runProducer(render, tfmDirs: copy.appendingPathComponent(BundledMetrics.tfmSubdirectory).path, home: home)
-        XCTAssertEqual(removed.results, 3)
+        XCTAssertEqual(removed.results, 5)
         XCTAssertTrue(removed.missing.contains { $0.id == "preview-1" && $0.message.contains("ec-lmr10.tfm") },
                       "10 pt request must name the missing ec-lmr10.tfm: \(removed.missing)")
     }

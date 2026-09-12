@@ -2,6 +2,7 @@
 # App-only acceptance for the bundled rooted TFM metrics (GH36).
 #
 # Usage: apps/mac/scripts/texmf-acceptance.sh [--app <FlashTeX.app>] [--evidence <dir>]
+#                                            [--require-discovery]
 #
 # Runs the producer that is ACTUALLY INSIDE the bundle (Contents/MacOS/
 # flashtex-render) with the host TeX installation excluded: `env -i` with
@@ -11,10 +12,15 @@
 # /usr/share/texmf|texlive, so a MacTeX on the build machine cannot conceal a
 # packaging gap. Fixtures: the corrected 10 pt multi-document request
 # (crates/preview-controller/benchmarks/display-helper-multidoc-10pt, verified
-# capture) and 12 pt text and 12 pt roman-math documents.
+# capture), 12 pt text and 12 pt roman-math documents, and a 10 pt document
+# with bold/italic text plus an 11 pt document (supplementary metrics:
+# ec-lmbx10, ec-lmri10, ec-lmbxi10, rm-lmr10 and the 11 pt scaling of the
+# 10/12 pt masters).
 #
 # Runs, each recorded with the exact environment and every diagnostic:
-#   control    no FLASHTEX_TFM_DIRS (what the producer discovers on its own)
+#   control    no FLASHTEX_TFM_DIRS (what the producer discovers on its own:
+#              the DISCOVERY route; required with --require-discovery, which
+#              a producer at or after render-pipeline 421a2049 satisfies)
 #   env-direct FLASHTEX_TFM_DIRS as BundledMetrics.producerEnvironment sets it
 #              for the directly attached worker: <app>/Contents/Resources/
 #              texmf/fonts/tfm/public/lm
@@ -30,8 +36,8 @@
 # PASS requires zero missing-metric diagnostics (tfm_missing,
 # required_metrics_unavailable, font_unavailable) in every env-* compile
 # result, an explicit failure in the removed run and verifier exit 0. The
-# control run is recorded, not required (it passes only once the producer
-# itself discovers the bundle). No app window is opened; nothing is
+# control run is recorded, and required only with --require-discovery. Every
+# run records `uptime` next to its result. No app window is opened; nothing is
 # downloaded; only processes this script spawned are waited on.
 set -euo pipefail
 
@@ -40,11 +46,13 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 APP_DIR="$MAC_DIR/build/FlashTeX.app"
 EVIDENCE_DIR=""
+REQUIRE_DISCOVERY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP_DIR="$2"; shift 2 ;;
     --evidence) EVIDENCE_DIR="$2"; shift 2 ;;
-    -h|--help) sed -n '2,34p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --require-discovery) REQUIRE_DISCOVERY=1; shift ;;
+    -h|--help) sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "texmf-acceptance.sh: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -78,6 +86,8 @@ cat > "$FIXTURES" <<'JSONL'
 {"protocol_version":1,"id":"preview-2","type":"compile","payload":{"project_id":"p","revision":2,"entry_path":"main.tex","documents":[{"path":"chapter.tex","text":"Chapter text with \\(a+b\\).\n"},{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nOffice AV fi.\\input{chapter}\n\\end{document}\n"},{"path":"refs.bib","text":"@article{sample, title={Example}, author={A. Author}, year={2026}}\n"}],"layout_capabilities":["display-list-v2"]}}
 {"protocol_version":1,"id":"text-12pt","type":"compile","payload":{"project_id":"p","revision":3,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nOffice AV fi. Twelve point text with ligatures: office, affine, fluffy.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}
 {"protocol_version":1,"id":"math-12pt","type":"compile","payload":{"project_id":"p","revision":4,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nBody $x^2 + y_1$ text. \\[ \\sum_{i=1}^{n} a_i = \\frac{1}{2} \\]\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}
+{"protocol_version":1,"id":"styles-10pt","type":"compile","payload":{"project_id":"p","revision":5,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nRegular \\textbf{bold} \\textit{italic} \\textbf{\\textit{bold italic}} with $x_i^2$ text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}
+{"protocol_version":1,"id":"text-11pt","type":"compile","payload":{"project_id":"p","revision":6,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[11pt]{article}\n\\begin{document}\nEleven point \\textbf{bold} \\textit{italic} text with $a+b$.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}
 JSONL
 
 cat > "$PROFILE" <<'SB'
@@ -145,30 +155,36 @@ run_producer() {
   printf '%s\n' "$@" >> "$envf"
   ( cd "$WORK/home" && env -i PATH=/usr/bin:/bin HOME="$WORK/home" "$@" \
       sandbox-exec -f "$PROFILE" "$producer" < "$FIXTURES" > "$out" 2> "$err" ) || echo "exit $?" >> "$err"
+  LINES+=("- uptime after $name: $(uptime | sed 's/^ *//')")
 }
 
 echo "==> App: $APP_DIR"
 echo "    producer sha256 $(shasum -a 256 "$RENDER" | awk '{print $1}')"
 uptime | sed 's/^/    /'
 LINES+=("- app: $APP_DIR" "- producer sha256: $(shasum -a 256 "$RENDER" | awk '{print $1}')" "- uptime: $(uptime)")
+LINES+=("- producer component (components.json): $(python3 -c "import json,sys; r=json.load(open(sys.argv[1]))['render']; print('source_path', r['source_path'], 'git_sha', r['git_sha'], 'sha256', r['sha256'])" "$RESOURCES/components.json" 2>/dev/null || echo unavailable)")
 for f in "$BUNDLED_TFM_DIR"/*.tfm "$RESOURCES/texmf/doc/fonts/lm/GUST-FONT-LICENSE.TXT"; do
   LINES+=("- resource sha256 $(shasum -a 256 "$f" | awk '{print $1}') ${f#$APP_DIR/}")
 done
 
 echo "==> control: bundled producer, host TeX denied, no FLASHTEX_TFM_DIRS"
 run_producer control "$RENDER"
-n="$(count_missing "$EVIDENCE_DIR/control.output.jsonl")"
-info "control: $(results_in "$EVIDENCE_DIR/control.output.jsonl") results, $n missing-metric diagnostics (recorded, not required; 0 only once the producer discovers the bundle itself)"
+n="$(count_missing "$EVIDENCE_DIR/control.output.jsonl")"; r="$(results_in "$EVIDENCE_DIR/control.output.jsonl")"
+if [[ "$REQUIRE_DISCOVERY" -eq 1 ]]; then
+  if [[ "$r" -eq 6 && "$n" -eq 0 ]]; then ok "control/discovery route: 6/6 compile results, 0 missing-metric diagnostics (FLASHTEX_TFM_DIRS unset; producer found Contents/Resources/texmf itself)"; else bad "control/discovery route: $r/6 results, $n missing-metric diagnostics"; fi
+else
+  info "control/discovery route: $r results, $n missing-metric diagnostics (recorded, not required without --require-discovery)"
+fi
 
 echo "==> env-direct: FLASHTEX_TFM_DIRS=$BUNDLED_TFM_DIR"
 run_producer env-direct "$RENDER" "FLASHTEX_TFM_DIRS=$BUNDLED_TFM_DIR"
 n="$(count_missing "$EVIDENCE_DIR/env-direct.output.jsonl")"; r="$(results_in "$EVIDENCE_DIR/env-direct.output.jsonl")"
-if [[ "$r" -eq 4 && "$n" -eq 0 ]]; then ok "env-direct: 4/4 compile results, 0 missing-metric diagnostics"; else bad "env-direct: $r/4 results, $n missing-metric diagnostics"; fi
+if [[ "$r" -eq 6 && "$n" -eq 0 ]]; then ok "env-direct: 6/6 compile results, 0 missing-metric diagnostics"; else bad "env-direct: $r/6 results, $n missing-metric diagnostics"; fi
 
 echo "==> env-user: bundled directory first, explicit user entry preserved after it"
 run_producer env-user "$RENDER" "FLASHTEX_TFM_DIRS=$BUNDLED_TFM_DIR:$WORK/home/user-tfm"
 n="$(count_missing "$EVIDENCE_DIR/env-user.output.jsonl")"; r="$(results_in "$EVIDENCE_DIR/env-user.output.jsonl")"
-if [[ "$r" -eq 4 && "$n" -eq 0 ]]; then ok "env-user: 4/4 compile results, 0 missing-metric diagnostics"; else bad "env-user: $r/4 results, $n missing-metric diagnostics"; fi
+if [[ "$r" -eq 6 && "$n" -eq 0 ]]; then ok "env-user: 6/6 compile results, 0 missing-metric diagnostics"; else bad "env-user: $r/6 results, $n missing-metric diagnostics"; fi
 
 if [[ -x "$CONTROLLER" ]]; then
   echo "==> env-helper: bundled flashtex-preview-controller spawning the bundled producer"
@@ -199,7 +215,7 @@ echo "==> verifier on the real bundle"
 rc=0; python3 "$VERIFIER" "$RESOURCES" > "$EVIDENCE_DIR/verifier.json" 2>&1 || rc=$?
 if [[ "$rc" -eq 0 ]]; then ok "verify_bundle_resources.py $RESOURCES: exit 0 (9 pinned resources verified)"; else bad "verify_bundle_resources.py exit $rc"; fi
 if python3 -c "import json,sys; c=json.load(open(sys.argv[1])); r=c['resources']; assert r['status']=='verified' and len(r['resources'])==9" "$RESOURCES/components.json" 2>/dev/null; then
-  ok "components.json carries the 9 verified resource hashes"
+  ok "components.json carries the 9 verified resource hashes + $(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['resources'].get('supplementary',{})))" "$RESOURCES/components.json") supplementary"
 else
   bad "components.json lacks a verified resources entry"
 fi

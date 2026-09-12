@@ -335,11 +335,18 @@ written before `codesign`). The producer gets the bundled directory prepended to
 (`WorkerClient`, `PreviewControllerClient`); see `README.md` "Rooted TeX
 metrics" and the acceptance script `scripts/texmf-acceptance.sh` (bundled
 producer, host TeX denied by `sandbox-exec`, 10 pt multi-document + 12 pt
-text/math, deliberate removal, verifier exit 0). The producer itself does not
-yet discover `../Resources/texmf` on its own (the Commander's
-`producer-discovery.patch` is a reviewable file owned by the render-pipeline
-lane); until it does, the env route is what makes the packaged app independent
-of host TeX, and the acceptance's `control` run records exactly that.
+text/math, 10 pt styles, 11 pt, deliberate removal, verifier exit 0). A
+producer before render-pipeline 421a2049 does not discover
+`../Resources/texmf` on its own, so the env route is what makes such a bundle
+independent of host TeX (evidence `docs/evidence/mac-bundle-texmf-20260912T134120Z`,
+control row 9 diagnostics, env rows 0); from 421a2049 (tip 98e829bf) the
+producer finds the bundle itself and `texmf-acceptance.sh --require-discovery`
+passes both routes (`docs/evidence/mac-bundle-texmf-20260912T135157Z`).
+Beyond the Commander's five pinned files, 23 supplementary Latin Modern TFMs
+(other design sizes, bold, italic) ship under the in-repo pin
+`apps/mac/Fonts/texmf/SUPPLEMENTARY-METRICS.json` and are recorded in
+`components.json` `resources.supplementary`; their provenance limitation (not
+verified against the pinned 2.004 archive) is stated in that file.
 
 ## Known gaps (rev 5)
 

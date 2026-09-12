@@ -27,3 +27,13 @@ pinned manifest in `crates/rendering-core/docs/handoffs/native-assets/manifest.j
 rm-lmr8 80bcbfd8…, license 49ea6cb9…); `scripts/bundle-texmf.py check Fonts/texmf`
 re-verifies them and `make-app.sh` refuses to package on any mismatch. Bold,
 italic and the other design sizes have no metrics here yet.
+
+`texmf/SUPPLEMENTARY-METRICS.json` pins 23 further text TFMs in the same
+directory (`ec-lmr{5,6,7,8,9,17}`, `ec-lmbx{5,6,7,8,9,10,12}`,
+`ec-lmri{7,8,9,10,12}`, `ec-lmbxi10`, `rm-lmr{5,7,9,10}`) for the other design
+sizes and the bold/italic faces. They are not in the Commander's manifest: copied
+from the same MacTeX 2026 tree (TeX Live `lm` rev 77682, catalogue 2.005,
+MANIFEST 2.004) and byte-identical to the CTAN `lm.zip` copy on the build
+machine, but not verified against the pinned 2.004 archive hash; see the
+`provenance` block in that file. `make-app.sh` refuses packaging if any of them
+drifts from the pinned hash.

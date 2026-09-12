@@ -79,8 +79,24 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   (`PreviewControllerClient` → `flashtex-preview-controller` → compiler child,
   which inherits the helper's environment). Explicit user entries stay in
   effect after the bundled directory; nothing else in the environment changes.
-  Bold/italic/other design sizes are not covered by the five files (their TFMs
-  need a separate inventory) and still come from user entries or host TeX.
+  A producer at or after render-pipeline 421a2049 also discovers
+  `<exe>/../Resources/texmf` by itself (explicit env first, then the bundle,
+  then host TeX); the env route keeps older producers and explicit overrides
+  working and is what the shell sets regardless.
+- Supplementary metrics (`apps/mac/Fonts/texmf/SUPPLEMENTARY-METRICS.json`):
+  23 further Latin Modern text TFMs — `ec-lmr{5,6,7,8,9,17}`,
+  `ec-lmbx{5,6,7,8,9,10,12}`, `ec-lmri{7,8,9,10,12}`, `ec-lmbxi10`,
+  `rm-lmr{5,7,9,10}` — so 5–17 pt regular, 5–12 pt bold, 7–12 pt italic,
+  10 pt bold-italic and 5–10 pt roman math lay out with TeX metrics (GH34:
+  10/11 pt documents are `ok`, not `recovered/tfm_missing`). They are NOT in
+  the Commander's manifest: copied from MacTeX 2026 (TeX Live `lm` rev 77682,
+  catalogue 2.005, MANIFEST 2.004) and byte-identical to the CTAN `lm.zip`
+  copy on the build machine, but not verified against the pinned 2.004
+  archive; their SHA-256/lengths are pinned in that JSON, verified by
+  `bundle-texmf.py` on every package (drift refuses packaging), and recorded
+  under `components.json` `resources.supplementary`. Not covered: sans,
+  typewriter, caps, slanted, dunhill; the `lmmi/lmsy/lmex` math families come
+  from Latin Modern Math (OTF).
 - Acceptance: `scripts/texmf-acceptance.sh [--app …] [--evidence <dir>]` runs
   the producer actually inside the bundle with host TeX excluded (`env -i`,
   `PATH=/usr/bin:/bin`, empty `HOME`, no `FLASHTEX_*`/`TEXMF*`, plus a
