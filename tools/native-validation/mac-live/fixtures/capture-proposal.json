@@ -1,0 +1,1 @@
+{"protocol_version":1,"id":"mac-live-proposal-1","type":"capture_proposal","payload":{"capture_id":"mac-live-capture-offline","latex":"\\[ \\int_0^1 x^2 \\, dx = \\frac{1}{3} \\]\n","ambiguities":["mac-live fixture: not a provider result; used to exercise review, durable apply, compile and export without any Grok call"],"required_dependencies":[],"context_revision":1}}
