@@ -1,0 +1,63 @@
+{
+ "app_survived_bridge_kill": true,
+ "app_survived_compiler_kill": true,
+ "bridge_attached": true,
+ "bridge_exit_logged": true,
+ "bridge_reattached_after_kill": false,
+ "compiler_attached": true,
+ "compiler_first_result": true,
+ "compiler_reattached_after_kill": false,
+ "exit_code": 0,
+ "fail_lines": [],
+ "launched_with_no_activate": true,
+ "log_counts": {
+  "bridge exited": 1,
+  "bridge: attached:": 4,
+  "revision 1: ok": 1,
+  "status: attached:": 1,
+  "worker exited": 2
+ },
+ "log_excerpt": [
+  "2026-09-12T09:08:54Z\tstatus: attached: flashtex-compiler",
+  "2026-09-12T09:08:54Z\tstatus: compiling revision 1 (mac-1)\u2026",
+  "2026-09-12T09:08:54Z\tstatus: revision 1: ok, 0 diagnostics in 152 ms",
+  "2026-09-12T09:08:55Z\tpaint: revision 1 at 80372233670375 (covers 0 keystrokes, redrawn true)",
+  "2026-09-12T09:08:55Z\tbridge: attached: flashtex-bridge",
+  "2026-09-12T09:08:55Z\tbridge: attached: flashtex-bridge",
+  "2026-09-12T09:08:55Z\tbridge: attached: flashtex-bridge",
+  "2026-09-12T09:08:55Z\tbridge: attached: flashtex-bridge \u00b7 main.tex open at revision 1",
+  "2026-09-12T09:08:55Z\tstatus: worker exited (15)",
+  "2026-09-12T09:08:55Z\tworker exited with status 15",
+  "2026-09-12T09:08:57Z\tbridge: bridge exited (15)"
+ ],
+ "log_line_count": 12,
+ "notes": [
+  "probe compiled at /var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.aM7PZK/probe",
+  "bundled compiler/bridge present; launched with FLASHTEX_AUTOATTACH=1 FLASHTEX_LOG=/var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.aM7PZK/flashtex.log",
+  "FlashTeX running, pid=13564",
+  "CGWindowListCopyWindowInfo confirms an on-screen window owned by pid 13564",
+  "flashtex-compiler attached, pid=13581 (child of 13564)",
+  "log shows an 'attached:' status line within 10s",
+  "log shows 'revision 1: ok' within 10s",
+  "FlashTeX (pid 13564) is still running after its compiler child was killed",
+  "flashtex-compiler (pid 13581) confirmed gone",
+  "log shows a 'worker exited (' status line within 5s",
+  "flashtex-bridge attached, pid=13834 (child of 13564)",
+  "log shows a bridge 'attached:' status line within 10s",
+  "FlashTeX (pid 13564) is still running after its bridge child was killed",
+  "flashtex-bridge (pid 13834) confirmed gone",
+  "log shows a 'bridge exited (' status line within 5s",
+  "FlashTeX quit cleanly"
+ ],
+ "open_calls": [
+  "/usr/bin/open --env FLASHTEX_NO_ACTIVATE=1 --env FLASHTEX_BRIDGE_STORE=/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T090452Z/launch-store/captures --env FLASHTEX_TRANSCRIPT=/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/reports/20260912T090452Z/launch-transcript.jsonl --env FLASHTEX_AUTOATTACH=1 --env FLASHTEX_LOG=/var/folders/_0/d71mvr2d4_177qkm0506xl200000gn/T//flashtex-launch-check.aM7PZK/flashtex.log /Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a19c42dc3e488a6de/tools/native-validation/mac-live/build/app/d8baed6bc2ef1e333ecad48d3d056478a9f984fd/apps/mac/build/FlashTeX.app"
+ ],
+ "pids": {
+  "FlashTeX": 13564,
+  "flashtex-bridge": 13834,
+  "flashtex-compiler": 13581
+ },
+ "quit_cleanly": true,
+ "window_confirmed": true,
+ "worker_exit_logged": true
+}

@@ -1,0 +1,16 @@
+{"step":"fetch","exit":0,"seconds":0,"log":"logs/fetch.log"}
+{"step":"helpers-clone","exit":0,"seconds":0,"log":"logs/helpers-clone.log"}
+{"step":"helpers-checkout","exit":0,"seconds":0,"log":"logs/helpers-checkout.log"}
+{"step":"helpers-build-compiler","exit":0,"seconds":9,"log":"logs/helpers-build-compiler.log"}
+{"step":"helpers-build-pdf","exit":0,"seconds":3,"log":"logs/helpers-build-pdf.log"}
+{"step":"helpers-build-bridge","exit":0,"seconds":5,"log":"logs/helpers-build-bridge.log"}
+{"step":"helpers-build-edit-ledger","exit":0,"seconds":8,"log":"logs/helpers-build-edit-ledger.log"}
+{"step":"helpers-build-preview-controller","exit":0,"seconds":21,"log":"logs/helpers-build-preview-controller.log"}
+{"step":"app-clone","exit":0,"seconds":1,"log":"logs/app-clone.log"}
+{"step":"app-checkout","exit":0,"seconds":0,"log":"logs/app-checkout.log"}
+{"step":"app-build","exit":0,"seconds":61,"log":"logs/app-build.log"}
+{"step":"typing-bench","exit":0,"seconds":63,"log":"logs/typing-bench.log"}
+{"step":"typing-bench-controller","exit":0,"seconds":63,"log":"logs/typing-bench-controller.log"}
+{"step":"make-app","exit":0,"seconds":2,"log":"logs/make-app.log"}
+{"step":"launch-check","exit":0,"seconds":9,"log":"logs/launch-check.log"}
+{"step":"capture-cycle","exit":0,"seconds":0,"log":"logs/capture-cycle.log"}
