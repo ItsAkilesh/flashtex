@@ -12,5 +12,6 @@ path = "src/lib.rs"
 
 [dependencies]
 flashtex-project-files = { path = "../project-files" }
+unicode-normalization = "0.1.25"
 
 [dev-dependencies]

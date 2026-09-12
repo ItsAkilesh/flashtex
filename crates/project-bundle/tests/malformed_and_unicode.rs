@@ -184,3 +184,39 @@ fn unicode_normalization_collision_is_rejected_not_silently_admitted() {
         }
     );
 }
+
+#[test]
+fn unicode_normalization_collision_is_detected_before_the_second_path_is_ever_read() {
+    // Same NFC/NFD pair as above, but this time only the *first* declared
+    // spelling is ever written to disk; the second is not created at all.
+    // Detection is now Unicode-canonical-equivalence on the declared
+    // strings themselves, checked before either entry is read — so the
+    // collision is caught without this crate ever calling
+    // `read_rooted_optional` for the second path, whose backing file does
+    // not exist. This is exactly the capability an `fs::canonicalize`-based
+    // check structurally cannot have: canonicalize requires its argument to
+    // already exist, so a check built on it could only ever fire once both
+    // colliding paths are already real files — never for the import-preview
+    // case of validating a bundle before a target has anything written to
+    // it yet. Without this fix, the second path is read *before* the
+    // identity check runs, so a missing second file surfaces as
+    // `NotFound`, silently masking the collision instead of reporting it.
+    let nfc = "caf\u{e9}.tex".to_string(); // "café.tex", precomposed é (U+00E9)
+    let nfd = "cafe\u{301}.tex".to_string(); // "café.tex", "e" + combining acute (U+0301)
+
+    let dir = TempDir::new("unicode-normalization-collision-second-missing");
+    dir.write(&nfc, b"content");
+    // Deliberately: the NFD spelling is never created.
+    let root = ProjectRoot::new(dir.path()).unwrap();
+
+    let entries = [BundleEntry::new(nfc.clone()), BundleEntry::new(nfd.clone())];
+    let err = build_bundle(&root, &entries).unwrap_err();
+    assert_eq!(
+        err,
+        BundleError::AmbiguousPath {
+            first: nfc,
+            second: nfd
+        },
+        "must be caught by name alone before the second path is ever read — its file does not exist"
+    );
+}

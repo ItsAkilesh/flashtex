@@ -29,14 +29,18 @@ pub enum BundleError {
     MalformedPath(String),
     /// The same bundle path was declared more than once in one spec.
     DuplicatePath(String),
-    /// Two *different* caller-declared paths resolve to the same
-    /// underlying file on disk — most notably, two Unicode normalization
-    /// forms of one visual filename (precomposed vs. combining-mark
-    /// decomposed) that a normalization-insensitive filesystem (default
-    /// macOS APFS) folds into one directory entry. Rejected as a typed
-    /// error rather than silently building a bundle with two entries that
-    /// would in fact overwrite each other, or that both happen to read the
-    /// same bytes without the caller ever being told why.
+    /// Two *different* caller-declared paths are Unicode-canonically
+    /// equivalent — most notably, two normalization forms of one visual
+    /// filename (precomposed vs. combining-mark decomposed) that a
+    /// normalization-insensitive filesystem (default macOS APFS) folds
+    /// into one directory entry. Detected by comparing the two paths'
+    /// NFC-normalized forms directly, so this fires by name alone, before
+    /// either path is read or written — it does not require the collision
+    /// to already exist on disk. Rejected
+    /// as a typed error rather than silently building a bundle with two
+    /// entries that would in fact overwrite each other, or that both
+    /// happen to read the same bytes without the caller ever being told
+    /// why.
     AmbiguousPath { first: String, second: String },
     /// A bundle path lands inside the project's own control directory
     /// (`.flashtex/`), which holds `flashtex-project-files`' advisory lock

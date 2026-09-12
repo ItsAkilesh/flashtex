@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
 use flashtex_project_files::{Digest, sha256, sha256_to_hex as hex};
 
@@ -128,10 +127,12 @@ pub fn build_bundle(root: &ProjectRoot, entries: &[BundleEntry]) -> Result<Bundl
 /// per-file limit ([`BundleError::FileTooLarge`]).
 ///
 /// Two declared paths that are byte-identical are [`BundleError::DuplicatePath`].
-/// Two declared paths that are byte-*different* but resolve to the same
-/// underlying file (the APFS Unicode-normalization hazard — see
-/// [`BundleError::AmbiguousPath`]) are also rejected rather than silently
-/// admitted as two bundle entries that would, in fact, collide.
+/// Two declared paths that are byte-*different* but Unicode-canonically
+/// equivalent (the APFS normalization hazard — see
+/// [`BundleError::AmbiguousPath`]) are also rejected, checked by name alone
+/// before either path is read, rather than silently admitted as two bundle
+/// entries that would, in fact, collide on a filesystem that folds them
+/// together.
 pub fn build_bundle_with_limits(
     root: &ProjectRoot,
     entries: &[BundleEntry],
@@ -144,17 +145,16 @@ pub fn build_bundle_with_limits(
         });
     }
     let mut seen = HashSet::with_capacity(entries.len());
-    let mut seen_identity: HashMap<PathBuf, String> = HashMap::with_capacity(entries.len());
+    let mut seen_identity: HashMap<String, String> = HashMap::with_capacity(entries.len());
     let mut files = Vec::with_capacity(entries.len());
     let mut total_bytes: u64 = 0;
     for entry in entries {
         if !seen.insert(entry.path.clone()) {
             return Err(BundleError::DuplicatePath(entry.path.clone()));
         }
-        let read = root
-            .read_rooted_optional(&entry.path)?
-            .ok_or_else(|| BundleError::NotFound(entry.path.clone()))?;
-        if let Some(identity) = root.canonical_identity(&entry.path)
+        // Checked by declared name alone, before any read: needs neither
+        // `entry.path` nor a colliding earlier entry to exist on disk.
+        if let Some(identity) = ProjectRoot::normalized_identity(&entry.path)
             && let Some(first) = seen_identity.insert(identity, entry.path.clone())
         {
             return Err(BundleError::AmbiguousPath {
@@ -162,6 +162,9 @@ pub fn build_bundle_with_limits(
                 second: entry.path.clone(),
             });
         }
+        let read = root
+            .read_rooted_optional(&entry.path)?
+            .ok_or_else(|| BundleError::NotFound(entry.path.clone()))?;
         total_bytes = total_bytes.saturating_add(read.size);
         if total_bytes > limits.max_total_bytes {
             return Err(BundleError::TotalBytesExceeded {

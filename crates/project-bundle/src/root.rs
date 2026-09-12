@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use flashtex_project_files::ProjectRoot as FilesRoot;
 use flashtex_project_files::{Digest, PathError, ProjectPath, Refused, SaveError};
+use unicode_normalization::UnicodeNormalization;
 
 use crate::error::BundleError;
 
@@ -124,22 +125,30 @@ impl ProjectRoot {
         &self.inner
     }
 
-    /// Best-effort filesystem identity for `relative`, used only to detect
-    /// two *different* caller-declared paths that the filesystem itself
-    /// folds into the same underlying file — the APFS hazard documented at
-    /// the crate level: two Unicode normalization forms of one visual name
-    /// (precomposed vs. combining-mark decomposed) are distinct byte
-    /// strings but the same directory entry on a normalization-insensitive
-    /// volume (default macOS APFS). `None` when identity cannot be
-    /// determined (nothing there any more, or the OS-level canonicalize
-    /// call itself fails) — this is a collision *detector* layered on top
-    /// of an already-successful read, never a precondition for it, so a
-    /// failure here is silently treated as "no collision observed" rather
-    /// than propagated as an error.
-    pub(crate) fn canonical_identity(&self, relative: &str) -> Option<PathBuf> {
+    /// Unicode-canonical identity for `relative`, used to detect two
+    /// *different* caller-declared paths that are the same visual name in
+    /// different normalization forms — the APFS hazard documented at the
+    /// crate level: precomposed (`é`, U+00E9) vs. combining-mark-decomposed
+    /// (`e` + U+0301) spellings are distinct byte strings that a
+    /// normalization-insensitive volume (default macOS APFS) folds into one
+    /// directory entry.
+    ///
+    /// Purely syntactic: normalizes `relative` (after the same syntactic
+    /// validation [`ProjectRoot::normalize`] applies) to Unicode NFC and
+    /// returns that string. This takes no `&self`, opens nothing, and reads
+    /// nothing — unlike an `fs::canonicalize`-based identity check, it does
+    /// not require `relative` to exist on disk, so it can classify a
+    /// collision between two declared paths before either has been read or
+    /// written (the import-preview case: nothing on the target exists yet).
+    /// It is also filesystem-independent: two paths this function
+    /// identifies as colliding do so on every platform, not only on a host
+    /// whose filesystem happens to fold Unicode normalization forms
+    /// together. `None` only when `relative` itself fails syntactic
+    /// validation; the caller's own [`ProjectRoot::normalize`] call reports
+    /// the specific reason.
+    pub(crate) fn normalized_identity(relative: &str) -> Option<String> {
         let normalized = Self::normalize(relative).ok()?;
-        let os_path = normalized.to_os_path(self.as_path());
-        std::fs::canonicalize(&os_path).ok()
+        Some(normalized.as_str().nfc().collect())
     }
 }
 
