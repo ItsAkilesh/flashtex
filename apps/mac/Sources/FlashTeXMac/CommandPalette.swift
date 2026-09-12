@@ -93,6 +93,13 @@ enum CommandPaletteModel {
         case .renameCitation: openWindow(id: CitationRename.windowID)
         case .commandPalette: model.commandPaletteShown.toggle()
         case .toggleProblems: model.problemsVisible.toggle()
+        case .zoomIn: model.previewZoomIn() // PreviewZoom.swift
+        case .zoomOut: model.previewZoomOut()
+        case .actualSize: model.previewActualSize()
+        case .fitWidth: model.previewFitWidth()
+        case .increaseEditorFontSize: model.increaseEditorFontSize()
+        case .decreaseEditorFontSize: model.decreaseEditorFontSize()
+        case .resetEditorFontSize: model.resetEditorFontSize()
         }
         return true
     }

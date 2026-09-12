@@ -38,6 +38,12 @@ final class ShellModel {
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
+    /// Preview zoom multiplier over the fit-to-width scale (PreviewZoom.swift); persisted.
+    var previewZoom: CGFloat = PreviewZoom.load(.standard) {
+        didSet { let c = PreviewZoom.clamped(previewZoom); if c != previewZoom { previewZoom = c } else { PreviewZoom.store(c, in: .standard) } }
+    }
+    /// Fit-to-width scale the preview pane last laid out with (written by the pane; drives Actual Size and the percentage).
+    var previewFitScale: CGFloat = 1
     var displayListV2: V2PreviewState?
     var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.

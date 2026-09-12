@@ -804,6 +804,13 @@ explain that nothing is loaded.
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
 | Edit > Rename Citation… | Rename citation window (reviewed `plan_citation_rename` across the project → one `apply_group`; also in the toolbar) |
 | ⌘⇧P | Command palette (View; also the toolbar's Commands button): every command in this table with its menu and shortcut; type to filter, ↑/↓ choose, Return runs, Esc closes |
+| ⌘= | Zoom in preview (View; also the preview header's + button or a pinch): +25 % over fit-to-width, up to 400 %; wide pages scroll horizontally |
+| ⌘- | Zoom out preview (View; also the header's − button): −25 %, down to 25 % |
+| ⌘0 | Actual size preview (View): 1 PDF point per screen point |
+| ⌘9 | Fit width preview (View): reset zoom to 1x so the widest page fits the pane; double-click the header percentage does the same |
+| ⌘⌥= | Increase editor font size (View; also a pinch over the editor): +1 pt up to 36 pt, persisted as the Settings font-size preference; gutter and highlighting follow |
+| ⌘⌥- | Decrease editor font size (View): -1 pt down to 8 pt |
+| ⌘⌥0 | Reset editor font size (View): back to the default 13 pt |
 | ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
