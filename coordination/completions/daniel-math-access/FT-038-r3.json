@@ -1,0 +1,77 @@
+{
+  "agent_id": "daniel-math-access",
+  "archived_utc": "2026-09-12T16:38:51Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+    ],
+    "agent_id": "daniel-math-access",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-math-access/math-accessibility",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "ed7830614e68bbb45b5790444d3ee45c586f2dfc",
+    "objective": "Accessible structured math: bounded adversarial and stale-identity acceptance tests",
+    "owned_paths": [
+      "crates/math-accessibility"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-038",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:40:28Z"
+  },
+  "report": {
+    "agent_id": "daniel-math-access",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-038": {
+        "acknowledged_utc": "2026-09-12T16:31:39Z",
+        "adaptation": "Rev 3 objective (bounded adversarial and stale-identity acceptance tests) implemented entirely as additions to crates/math-accessibility/src/lib.rs's existing test module: no public API or behavior changes. Re-verified flashtex-math-layout's current Nucleus/Atom/MathList/AtomClass/Style types directly against this branch's merged-in main before writing tests; unchanged since rev2 (all eleven Nucleus variants, NodeId/PathStep as published). cargo test 42/42 (up from 25), cargo clippy --all-targets -D warnings clean, cargo fmt --check clean, all run against exact tested commit 900403b0db15c567791d71468a2b3074963a4f66 on this branch.",
+        "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+        "revision": 3
+      }
+    },
+    "branch": "agent/daniel-math-access/math-accessibility",
+    "capabilities": [
+      "rust",
+      "mathml",
+      "accessibility",
+      "math-layout-consumer"
+    ],
+    "code_revision": "900403b0db15c567791d71468a2b3074963a4f66",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+    "next_action": "Ready for Commander integration; no follow-up work identified within this crate's current scope.",
+    "reviewed_peers": {
+      "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/math-accessibility FT-038 rev3: added a bounded adversarial acceptance suite (depth and node-count bounds tested exactly at and one past their limit; two wide-and-deep trees each proving one bound fires before the other; NUL/C0/C1 controls and DEL degrading to <merror>; U+202E RIGHT-TO-LEFT OVERRIDE proven to take the unsupported-symbol path, not the control path; unpaired UTF-16 surrogates proven uncoinstructible as `char`; nine classic XML/HTML injection payloads round-tripped through Nucleus::Text and proven, via a byte-level known-tag scanner, to produce zero foreign markup; an empty document against zero bounds; a fraction with both children empty) plus a stale node-identity acceptance suite specifying the contract (identical structures rebuilt independently -> identical ids; a structurally different tree -> a different id at the changed node; reordering siblings -> the moved nodes' ids move with them). Re-verified math-layout's current types first; unchanged since rev2. No consumer wiring performed (none in scope); standalone additive crate only.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:31:39Z",
+    "usage": {
+      "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; no separate usage metering available to this agent.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 432,
+  "report_path": "coordination/agents/daniel-math-access.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-038",
+  "worker_branch": "agent/daniel-math-access/math-accessibility",
+  "worker_report_sha": "16525d1089d090b0beee17d5fc9ce17d61817f51"
+}
