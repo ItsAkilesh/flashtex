@@ -761,3 +761,29 @@ a narrow source-extraction helper. The published licensed `lm-ec.enc` (SHA
 is parsed as256 slots and compared against all253 mapped slots in the peer's
 encoding manifest. The existing GUST license is hash-verified by the test. No
 reference bytes are copied and no production PostScript engine is introduced.
+
+Rooted TFM/VF dependency schema2 adds `physical_encoding_asset` and
+`cff_physical_encoding_asset` node kinds. Each specifies the existing licensed
+`Asset { path, sha256, license }` as `encoding_asset`, plus TFM asset and explicit
+registry binding. TrueType also requires `declared_glyphs`; CFF uses its verified
+name index. Slot maps are loaded through `EncFile` and existing binders. Schema1
+inline nodes remain unchanged; new node kinds are rejected under schema1.
+Asset reads share existing byte/file/license budgets. Project generation includes
+the exact encoding asset path/SHA/license; ResourceKey variants are unchanged, so
+consumers must retain the project generation when caching across loaded projects.
+
+`ResolvedVfProject::physical_run` exposes the existing bounded TFM ligature/kern
+mapping for one loaded physical endpoint, returning project/registry generation,
+node ID, exact TFM words and original8bit input intervals. Virtual endpoints remain
+explicitly unsupported by this run API; their existing packet expansion is intact.
+Tests exercise both TT/CFF asset nodes, nested expansion, file-hash refusal and
+schema gating with synthetic fonts. Existing real Latin Modern TFM and encoding
+fixtures are hash-pinned, including `fi`->slot28 and AV kern-116509 evidence.
+
+The full matching-font test is deliberately opt-in:
+`FLASHTEX_LM_FONT=/exact/lmroman10-regular.otf cargo test --offline --manifest-path crates/font-resources/Cargo.toml --test rooted_lm_encoding -- --ignored`.
+It requires font SHA `1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852`
+and verifies exact TFM/encoding/license hashes, rooted loading, fi interval0..2,
+AV intervals0..1/1..2 and exact kern. Matching font bytes are absent on this Linux
+host; the test is compiled but not claimed executed. No substitute font is used
+as matching evidence.

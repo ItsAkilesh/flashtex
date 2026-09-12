@@ -1357,6 +1357,47 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
         assert!(
             matches!(&result.placements[0],vf_graph::NestedPlacement::Glyph{resource:vf_graph::ResourceKey::CffPhysical{..},glyph_id:1,source,..} if source.len()==2)
         );
+        let mut names = vec!["/.notdef"; 256];
+        names[65] = "/space";
+        let enc = format!("/Cff[{}]def", names.join(" "));
+        std::fs::write(dir.path().join("cff.enc"), enc.as_bytes()).unwrap();
+        let mut asset_deps = dependencies.clone();
+        asset_deps.schema_version = 2;
+        let Node::CffPhysical {
+            id, tfm, binding, ..
+        } = asset_deps.nodes[0].clone()
+        else {
+            panic!()
+        };
+        asset_deps.nodes[0] = Node::CffPhysicalEncodingAsset {
+            id,
+            tfm,
+            binding,
+            encoding_asset: Asset {
+                path: "cff.enc".into(),
+                sha256: sha256(enc.as_bytes()),
+                license: resource.license.clone(),
+            },
+        };
+        write(&asset_deps);
+        let from_asset =
+            ResolvedVfProject::load(&root, "cff-deps.json", &registry, Default::default()).unwrap();
+        let expanded = from_asset.expand(65, registry.generation()).unwrap();
+        assert!(
+            matches!(&expanded.placements[0],vf_graph::NestedPlacement::Glyph{glyph_id:1,source,..} if source.len()==2)
+        );
+        assert!(matches!(
+            from_asset
+                .physical_run("cff", b"A", registry.generation())
+                .unwrap()
+                .items
+                .as_slice(),
+            [encoding::MappedItem::Glyph {
+                input_start: 0,
+                input_end: 1,
+                ..
+            }]
+        ));
         let Node::CffPhysical { encoding, .. } = &mut dependencies.nodes[0] else {
             panic!()
         };
@@ -1574,6 +1615,60 @@ fn rooted_vf_dependencies_bind_licenses_graph_identity_and_reject_specials() {
     }
     assert_eq!(resolved.license_texts().len(), 3);
     assert!(resolved.expand(65, &"0".repeat(64)).is_err());
+    let mut literal_names = vec!["/.notdef"; 256];
+    literal_names[65] = "/A.alt";
+    let literal = format!("/Project[{}]def", literal_names.join(" "));
+    std::fs::write(dir.path().join("project.enc"), literal.as_bytes()).unwrap();
+    let mut v2 = manifest.clone();
+    v2.schema_version = 2;
+    let Node::Physical {
+        id,
+        tfm,
+        binding,
+        encoding,
+    } = v2.nodes[0].clone()
+    else {
+        panic!()
+    };
+    v2.nodes[0] = Node::PhysicalEncodingAsset {
+        id,
+        tfm,
+        binding,
+        encoding_asset: Asset {
+            path: "project.enc".into(),
+            sha256: sha256(literal.as_bytes()),
+            license: resource.license.clone(),
+        },
+        declared_glyphs: encoding.declared_glyphs,
+    };
+    write(&v2);
+    let from_asset = load().unwrap();
+    assert_eq!(
+        from_asset.expand(65, registry.generation()).unwrap(),
+        packet
+    );
+    assert_ne!(from_asset.generation(), resolved.generation());
+    let run = from_asset
+        .physical_run("physical", b"A", registry.generation())
+        .unwrap();
+    assert_eq!(run.project_generation, from_asset.generation());
+    assert!(matches!(
+        run.items.as_slice(),
+        [encoding::MappedItem::Glyph {
+            input_start: 0,
+            input_end: 1,
+            ..
+        }]
+    ));
+    let mut wrong_version = v2.clone();
+    wrong_version.schema_version = 1;
+    write(&wrong_version);
+    assert!(load().is_err());
+    write(&v2);
+    std::fs::write(dir.path().join("project.enc"), b"changed").unwrap();
+    assert!(load().is_err());
+    std::fs::write(dir.path().join("project.enc"), literal.as_bytes()).unwrap();
+    write(&manifest);
     manifest.nodes.reverse();
     write(&manifest);
     assert_eq!(load().unwrap().generation(), resolved.generation());

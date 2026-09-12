@@ -34,6 +34,20 @@ pub enum Node {
         binding: StyleBinding,
         encoding: crate::cff::CffEncodingManifest,
     },
+    /// Schema2: literal encoding file supplies all256 slots.
+    PhysicalEncodingAsset {
+        id: String,
+        tfm: Asset,
+        binding: StyleBinding,
+        encoding_asset: Asset,
+        declared_glyphs: Vec<crate::encoding::NamedGlyph>,
+    },
+    CffPhysicalEncodingAsset {
+        id: String,
+        tfm: Asset,
+        binding: StyleBinding,
+        encoding_asset: Asset,
+    },
     Virtual {
         id: String,
         tfm: Asset,
@@ -44,9 +58,11 @@ pub enum Node {
 impl Node {
     fn id(&self) -> &str {
         match self {
-            Self::Physical { id, .. } | Self::CffPhysical { id, .. } | Self::Virtual { id, .. } => {
-                id
-            }
+            Self::Physical { id, .. }
+            | Self::CffPhysical { id, .. }
+            | Self::PhysicalEncodingAsset { id, .. }
+            | Self::CffPhysicalEncodingAsset { id, .. }
+            | Self::Virtual { id, .. } => id,
         }
     }
 }
@@ -171,7 +187,9 @@ impl ResolvedVfProject {
         let raw = reader.read(&path(manifest_path)?, limits.max_manifest_bytes)?;
         let mut manifest: DependencyManifest = serde_json::from_slice(&raw)
             .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
-        if manifest.schema_version != 1 || !crate::valid_hash(&manifest.registry_generation) {
+        if !matches!(manifest.schema_version, 1 | 2)
+            || !crate::valid_hash(&manifest.registry_generation)
+        {
             return Err(RegistryError::InvalidManifest(
                 "VF dependency schema/generation".into(),
             ));
@@ -196,7 +214,84 @@ impl ResolvedVfProject {
                     "VF node ID duplicate/invalid".into(),
                 ));
             }
-            let loaded = match node {
+            let mut prepared = match node {
+                Node::PhysicalEncodingAsset {
+                    tfm,
+                    binding,
+                    encoding_asset,
+                    declared_glyphs,
+                    ..
+                } => {
+                    if manifest.schema_version != 2 {
+                        return Err(RegistryError::InvalidManifest(
+                            "encoding assets require schema2".into(),
+                        ));
+                    }
+                    if declared_glyphs.len() > 65536 {
+                        return Err(RegistryError::Budget("declared glyphs"));
+                    }
+                    let bytes = asset(
+                        &mut reader,
+                        encoding_asset,
+                        crate::enc_file::MAX_ENC_BYTES as u64,
+                        &mut license_texts,
+                    )?;
+                    let enc = crate::enc_file::EncFile::parse(&bytes, &encoding_asset.sha256)
+                        .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
+                    let font = registry.get(binding)?;
+                    Some(Node::Physical {
+                        id: id.clone(),
+                        tfm: tfm.clone(),
+                        binding: binding.clone(),
+                        encoding: EncodingManifest {
+                            tfm_sha256: tfm.sha256.clone(),
+                            font_sha256: font.descriptor().sha256.clone(),
+                            face_index: font.descriptor().face_index,
+                            encoding: enc.slots().to_vec(),
+                            declared_glyphs: declared_glyphs.clone(),
+                        },
+                    })
+                }
+                Node::CffPhysicalEncodingAsset {
+                    tfm,
+                    binding,
+                    encoding_asset,
+                    ..
+                } => {
+                    if manifest.schema_version != 2 {
+                        return Err(RegistryError::InvalidManifest(
+                            "encoding assets require schema2".into(),
+                        ));
+                    }
+                    let bytes = asset(
+                        &mut reader,
+                        encoding_asset,
+                        crate::enc_file::MAX_ENC_BYTES as u64,
+                        &mut license_texts,
+                    )?;
+                    let enc = crate::enc_file::EncFile::parse(&bytes, &encoding_asset.sha256)
+                        .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
+                    let RegistryResource::Cff(font) = registry.resource(binding)? else {
+                        return Err(RegistryError::InvalidManifest(
+                            "CFF encoding asset requires CFF resource".into(),
+                        ));
+                    };
+                    Some(Node::CffPhysical {
+                        id: id.clone(),
+                        tfm: tfm.clone(),
+                        binding: binding.clone(),
+                        encoding: crate::cff::CffEncodingManifest {
+                            tfm_sha256: tfm.sha256.clone(),
+                            font_sha256: font.identity().font_sha256.clone(),
+                            cff_sha256: font.identity().cff_sha256.clone(),
+                            face_index: font.identity().face_index,
+                            encoding: enc.slots().to_vec(),
+                        },
+                    })
+                }
+                _ => None,
+            };
+            let loaded = match prepared.as_mut().unwrap_or(node) {
                 Node::Physical {
                     tfm,
                     binding,
@@ -241,6 +336,11 @@ impl ResolvedVfProject {
                         font,
                         encoding: resolved,
                     }
+                }
+                Node::PhysicalEncodingAsset { .. } | Node::CffPhysicalEncodingAsset { .. } => {
+                    return Err(RegistryError::InvalidManifest(
+                        "unresolved encoding asset".into(),
+                    ))
                 }
                 Node::Virtual { tfm, vf, fonts, .. } => {
                     let bytes = asset(&mut reader, tfm, 131068, &mut license_texts)?;
@@ -363,6 +463,46 @@ impl ResolvedVfProject {
     pub fn manifest(&self) -> &DependencyManifest {
         &self.manifest
     }
+    pub fn physical_run(
+        &self,
+        node_id: &str,
+        input: &[u8],
+        registry_generation: &str,
+    ) -> Result<PhysicalRun> {
+        if registry_generation != self.manifest.registry_generation {
+            return Err(RegistryError::StaleGeneration {
+                expected: self.manifest.registry_generation.clone(),
+                actual: registry_generation.into(),
+            });
+        }
+        let node = self
+            .nodes
+            .get(node_id)
+            .ok_or_else(|| RegistryError::Missing {
+                path: node_id.into(),
+            })?;
+        let items = match node {
+            Loaded::Physical {
+                tfm,
+                font,
+                encoding,
+            } => BoundTfmFont::new(tfm, font, encoding).and_then(|b| b.map_run(input)),
+            Loaded::CffPhysical { tfm, encoding, .. } => {
+                crate::cff::BoundCffTfmFont::from_resolved(tfm, encoding.clone())
+                    .and_then(|b| b.map_run(input))
+            }
+            Loaded::Virtual { .. } => Err(crate::Error::UnsupportedFont(
+                "physical_run requires physical endpoint".into(),
+            )),
+        }
+        .map_err(|e| resource_error(node_id, e))?;
+        Ok(PhysicalRun {
+            project_generation: self.generation.clone(),
+            registry_generation: self.manifest.registry_generation.clone(),
+            node_id: node_id.into(),
+            items,
+        })
+    }
     pub fn loaded_bytes(&self) -> u64 {
         self.loaded_bytes
     }
@@ -426,4 +566,12 @@ impl ResolvedVfProject {
             .expand(&self.nodes[&self.manifest.root].key(), code)
             .map_err(|e| resource_error("VF expansion", e))
     }
+}
+
+/// Original input intervals and exact TFM words; no page-unit conversion.
+pub struct PhysicalRun {
+    pub project_generation: String,
+    pub registry_generation: String,
+    pub node_id: String,
+    pub items: Vec<crate::encoding::MappedItem>,
 }
