@@ -385,6 +385,18 @@ impl Session {
         } else if self.latest.len() >= self.limits.max_projects {
             return Err("project capacity reached".into());
         }
+        // Admission is complete. Do not retain caller reserve capacity or serializer
+        // growth slack alongside immutable snapshots for the lifetime of the queue.
+        let request = compact_request(request);
+        let bytes = bytes.into_boxed_slice().into_vec();
+        let capabilities = capabilities
+            .into_iter()
+            .map(compact_string)
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+            .into_vec();
+        let snapshot_origin =
+            snapshot_origin.map(|(epoch, origin)| (epoch, compact_string(origin)));
         if let Some(index) = self
             .queue
             .iter()
@@ -682,6 +694,20 @@ impl Session {
         self.process.is_some()
     }
 }
+fn compact_string(value: String) -> String {
+    value.into_boxed_str().into_string()
+}
+fn compact_request(mut request: Request) -> Request {
+    request.id = compact_string(request.id);
+    request.project_id = compact_string(request.project_id);
+    request.entry_path = compact_string(request.entry_path);
+    for document in &mut request.documents {
+        document.path = compact_string(std::mem::take(&mut document.path));
+        document.text = compact_string(std::mem::take(&mut document.text));
+    }
+    request.documents = request.documents.into_boxed_slice().into_vec();
+    request
+}
 fn safe_path(p: &str) -> bool {
     !p.is_empty()
         && !p.starts_with('/')
@@ -931,3 +957,81 @@ pub fn validate_layout_capabilities(capabilities: &[String]) -> Result<(), Strin
 }
 
 pub mod experimental_chunks;
+
+#[cfg(all(test, unix))]
+mod decode_cancellation_probe {
+    use super::*;
+    #[test]
+    #[ignore = "near-limit cancellation probe; run separately in a quiet window"]
+    fn cancellation_during_entered_serde_invalidates_source_ownership() {
+        let mut command = std::process::Command::new("/usr/bin/python3");
+        command.arg("-c").arg(r#"import sys,json
+r=json.loads(sys.stdin.readline());p=r['payload']
+v={'opaque':[''],'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}
+s=json.dumps(v,separators=(',',':'));v['opaque'][0]='x'*(8388608-1-len(s));print(json.dumps(v,separators=(',',':')),flush=True);sys.stdin.read()
+"#);
+        let mut s =
+            Session::spawn_command_raw_display_prototype(command, Limits::default()).unwrap();
+        let (entered_tx, entered) = std::sync::mpsc::sync_channel(1);
+        let (resume, resume_rx) = std::sync::mpsc::sync_channel(1);
+        s.process
+            .as_ref()
+            .unwrap()
+            .reader
+            .install_gate(crate::raw_display::DecodeGate {
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+        s.submit(Request {
+            id: "r".into(),
+            project_id: "p".into(),
+            revision: 1,
+            entry_path: "main.tex".into(),
+            documents: vec![Document {
+                path: "main.tex".into(),
+                text: "x".into(),
+            }],
+        })
+        .unwrap();
+        entered.recv_timeout(Duration::from_secs(10)).unwrap();
+        let start = Instant::now();
+        s.close_project("p").unwrap();
+        let cancel_ms = start.elapsed().as_secs_f64() * 1000.0;
+        assert!(s.active.as_ref().unwrap().cancelled);
+        assert!(s.last_display_profile().is_none());
+        resume.send(()).unwrap();
+        let started = Instant::now();
+        let mut events = vec![];
+        while s.active.is_some() {
+            events.extend(s.poll());
+            assert!(
+                s.is_alive() && started.elapsed() < Duration::from_secs(10),
+                "{events:?}"
+            );
+            std::thread::yield_now();
+        }
+        assert!(events.iter().any(|e| matches!(e, Event::Cancelled { .. })));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, Event::Preview { .. } | Event::Failed { .. })));
+        assert!(s.take_current_raw_display_candidate().is_none());
+        let drained_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let start = Instant::now();
+        drop(s);
+        let drop_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let peak = std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmHWM:"))
+                    .map(str::to_owned)
+            });
+        println!(
+            "{}",
+            serde_json::json!({"framed_bytes":8388608,"entered_serde_before_cancel":true,"cancel_ms":cancel_ms,"drain_after_release_ms":drained_ms,"drop_after_drain_ms":drop_ms,"cancelled_preview_suppressed":true,"process_peak":peak,"scope":"one test process; owner cancellation does not interrupt serde; no native responsiveness guarantee"})
+        );
+    }
+}
+
+#[cfg(test)]
+mod queue_accounting;

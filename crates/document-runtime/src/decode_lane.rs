@@ -36,6 +36,8 @@ pub(crate) struct DecodedFrame {
     _permit: Permit,
 }
 pub(crate) struct Decoder {
+    #[cfg(test)]
+    gate: Arc<Mutex<Option<crate::raw_display::DecodeGate>>>,
     budget: Arc<Mutex<crate::raw_display::MetadataBudget>>,
     reader: Option<Receiver<Input>>,
     stopped: Arc<AtomicBool>,
@@ -52,6 +54,10 @@ impl Decoder {
     pub fn spawn_mode(raw: Receiver<RawInput>, raw_display: bool) -> Self {
         let budget = Arc::new(Mutex::new(crate::raw_display::MetadataBudget::default()));
         let worker_budget = budget.clone();
+        #[cfg(test)]
+        let gate = Arc::new(Mutex::new(None));
+        #[cfg(test)]
+        let worker_gate = gate.clone();
         let (out, reader) = mpsc::sync_channel(1);
         let (wake, permits) = mpsc::sync_channel(1);
         wake.send(()).expect("initial decoder permit");
@@ -90,6 +96,8 @@ impl Decoder {
                         let start = Instant::now();
                         let decode_queue_wait_ms =
                             start.saturating_duration_since(reader_done).as_secs_f64() * 1000.0;
+                        #[cfg(test)]
+                        crate::raw_display::install_decode_gate(worker_gate.lock().unwrap().take());
                         let parsed = if raw_display {
                             {
                                 let budget = *worker_budget.lock().expect("metadata budget lock");
@@ -139,6 +147,8 @@ impl Decoder {
             }
         });
         Self {
+            #[cfg(test)]
+            gate,
             budget,
             reader: Some(reader),
             stopped,
@@ -147,6 +157,10 @@ impl Decoder {
             #[cfg(test)]
             published,
         }
+    }
+    #[cfg(test)]
+    pub(crate) fn install_gate(&self, gate: crate::raw_display::DecodeGate) {
+        *self.gate.lock().unwrap() = Some(gate);
     }
     pub fn set_budget(&self, budget: crate::raw_display::MetadataBudget) {
         *self.budget.lock().expect("metadata budget lock") = budget;
@@ -189,6 +203,62 @@ mod tests {
                 Err(TryRecvError::Disconnected) => panic!("decoder disconnected"),
             }
         }
+    }
+    #[test]
+    #[ignore = "near-limit joined-shutdown measurement; run separately in a quiet window"]
+    fn near_limit_shutdown_inside_serde_joins_after_explicit_release() {
+        let malformed = std::env::var_os("FLASHTEX_MALFORMED_TAIL").is_some();
+        let max = crate::Limits::default().max_frame;
+        let prefix = r#"{"opaque":[""#;
+        let suffix = r#""],"protocol_version":2,"type":"display_list","id":"r","payload":{"project_id":"p","revision":1,"render_format":"display-list-v2","documents":[]}}"#;
+        let mut bytes = Vec::with_capacity(max - 1);
+        bytes.extend_from_slice(prefix.as_bytes());
+        bytes.resize(max - 1 - suffix.len(), b'x');
+        bytes.extend_from_slice(suffix.as_bytes());
+        if malformed {
+            *bytes.last_mut().unwrap() = b'!';
+        }
+        assert_eq!(bytes.len() + 1, max);
+        let (tx, rx) = mpsc::sync_channel(4);
+        let decoder = Decoder::spawn_mode(rx, true);
+        let (entered_tx, entered) = mpsc::sync_channel(1);
+        let (resume, resume_rx) = mpsc::sync_channel(1);
+        decoder.install_gate(crate::raw_display::DecodeGate {
+            entered: entered_tx,
+            resume: resume_rx,
+        });
+        tx.send(RawInput::Frame(bytes, Instant::now(), Instant::now()))
+            .unwrap();
+        entered.recv_timeout(Duration::from_secs(10)).unwrap();
+        let stopped = decoder.stopped.clone();
+        let (done_tx, done) = mpsc::sync_channel(1);
+        let join = thread::spawn(move || {
+            drop(decoder);
+            done_tx.send(()).unwrap();
+        });
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !stopped.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline);
+            thread::yield_now();
+        }
+        assert!(matches!(done.try_recv(), Err(TryRecvError::Empty)));
+        let released = Instant::now();
+        resume.send(()).unwrap();
+        done.recv_timeout(Duration::from_secs(10)).unwrap();
+        let release_to_join_ms = released.elapsed().as_secs_f64() * 1000.0;
+        join.join().unwrap();
+        assert!(tx.send(raw(b"{}")).is_err());
+        let peak = std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmHWM:"))
+                    .map(str::to_owned)
+            });
+        println!(
+            "{}",
+            serde_json::json!({"framed_bytes":max,"malformed_tail":malformed,"entered_serde_before_shutdown":true,"shutdown_waited_for_release":true,"release_to_join_ms":release_to_join_ms,"process_peak":peak,"scope":"test process, explicit gate wait excluded; no elapsed-time guarantee"})
+        );
     }
     #[test]
     fn budget_handoff_occurs_under_existing_owner_permit() {
