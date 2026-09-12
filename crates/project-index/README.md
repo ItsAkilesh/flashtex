@@ -99,3 +99,33 @@ verbatim exclusions, declarations/citations, malformed recovery, duplicate targe
 sorted completion, atomic revision replacement, deletion tombstones, stale queries,
 retained-range revalidation, and 200 deterministic malformed Unicode source samples.
 This validates the index behavior only, not compiler compatibility or native UI.
+
+## Reviewable label rename plans
+
+`plan_label_rename(snapshot, old_name, new_name)` returns all lexical label
+definitions and references across the project as a `RenamePlan`. It does not
+change source or index state. `plan_label_rename_at` additionally requires a retained
+`SourceSpan` identifying an entire current label name, with exact revision/range
+checks. Citation keys, comments and verbatim bodies remain outside label edits.
+
+Plans contain the captured project snapshot, both names, and `TextEdit` entries
+with file/revision, UTF-8 byte range, expected old text and replacement. Edits have
+deterministic file/start-byte order and do not overlap. A caller can preview them
+against copied sources, applying each file's edits in descending byte order to
+avoid offset drift when Unicode replacement lengths differ.
+
+Before a caller applies a reviewed plan, `validate_rename_plan` rechecks the snapshot
+and regenerates the entire exact edit set. Omitted, duplicated, reordered, shifted
+or changed entries fail. Any intervening project update invalidates the old plan.
+The caller owns its native editing transaction and must preserve those guards
+through application; this library never applies edits automatically.
+
+A source definition is required. Existing definitions or unresolved references
+using the new name block rename to avoid accidental rebinding. Empty names,
+whitespace/control characters, commas, braces, backslashes and percent signs are
+rejected. Renaming to the same valid name produces an empty plan. Duplicate lexical
+definitions are all included, without inferring a scope winner. Macro expansion,
+runtime scoping and indirect labels remain outside this lexical operation.
+
+Rename checkpoint: all 26 tests pass, including seven plan/source-guard tests;
+strict Clippy and formatting pass. No automatic document mutation was introduced.

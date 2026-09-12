@@ -80,6 +80,12 @@ pub enum IndexError {
     MissingDocument,
     InvalidOffset,
     GenerationExhausted,
+    InvalidLabelName,
+    MissingLabelDefinition,
+    RenameCollision {
+        name: String,
+    },
+    InvalidRenamePlan,
 }
 
 impl std::fmt::Display for IndexError {
@@ -111,6 +117,23 @@ pub struct Navigation {
     pub origin: Symbol,
     /// Multiple lexical definitions remain visible; no TeX scope winner is guessed.
     pub definitions: Vec<Symbol>,
+}
+
+/// A proposed source edit, never applied by this library.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextEdit {
+    pub source: SourceSpan,
+    pub expected_text: String,
+    pub replacement: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenamePlan {
+    pub snapshot: VersionSnapshot,
+    pub old_name: String,
+    pub new_name: String,
+    /// Canonical file/start-byte order; callers apply within each file in reverse.
+    pub edits: Vec<TextEdit>,
 }
 
 struct Document {
@@ -309,6 +332,92 @@ impl ProjectIndex {
             origin: origin.clone(),
             definitions: self.definitions(snapshot, origin.kind.category(), &origin.name)?,
         }))
+    }
+
+    /// Rename every lexical definition/reference of a label across this snapshot.
+    /// Collisions with definitions OR unresolved references are rejected.
+    pub fn plan_label_rename(
+        &self,
+        snapshot: &VersionSnapshot,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<RenamePlan, IndexError> {
+        self.check(snapshot)?;
+        if new_name.is_empty()
+            || new_name
+                .chars()
+                .any(|ch| ch.is_whitespace() || ch.is_control() || "\\{}%,".contains(ch))
+        {
+            return Err(IndexError::InvalidLabelName);
+        }
+        let matches = self.occurrences(snapshot, Category::Label, old_name)?;
+        if !matches
+            .iter()
+            .any(|symbol| symbol.kind == SymbolKind::LabelDefinition)
+        {
+            return Err(IndexError::MissingLabelDefinition);
+        }
+        if old_name != new_name
+            && !self
+                .occurrences(snapshot, Category::Label, new_name)?
+                .is_empty()
+        {
+            return Err(IndexError::RenameCollision {
+                name: new_name.to_owned(),
+            });
+        }
+        let mut edits: Vec<TextEdit> = Vec::new();
+        if old_name != new_name {
+            for symbol in matches {
+                if self.source_text(snapshot, &symbol.source)? != old_name {
+                    return Err(IndexError::InvalidRenamePlan);
+                }
+                if let Some(previous) = edits.last() {
+                    if previous.source.file == symbol.source.file
+                        && previous.source.end_byte > symbol.source.start_byte
+                    {
+                        return Err(IndexError::InvalidRenamePlan);
+                    }
+                }
+                edits.push(TextEdit {
+                    source: symbol.source,
+                    expected_text: old_name.to_owned(),
+                    replacement: new_name.to_owned(),
+                });
+            }
+        }
+        Ok(RenamePlan {
+            snapshot: snapshot.clone(),
+            old_name: old_name.to_owned(),
+            new_name: new_name.to_owned(),
+            edits,
+        })
+    }
+
+    /// A retained selection must identify one complete current label name span.
+    pub fn plan_label_rename_at(
+        &self,
+        snapshot: &VersionSnapshot,
+        source: &SourceSpan,
+        new_name: &str,
+    ) -> Result<RenamePlan, IndexError> {
+        self.source_text(snapshot, source)?;
+        let symbol = self
+            .symbols(snapshot)?
+            .into_iter()
+            .find(|symbol| symbol.source == *source && symbol.kind.category() == Category::Label)
+            .ok_or(IndexError::InvalidRenamePlan)?;
+        self.plan_label_rename(snapshot, &symbol.name, new_name)
+    }
+
+    /// Rechecks all ranges/revisions and the complete deterministic edit set.
+    /// Missing, duplicated, reordered, overlapping or modified edits are rejected.
+    pub fn validate_rename_plan(&self, plan: &RenamePlan) -> Result<(), IndexError> {
+        let expected = self.plan_label_rename(&plan.snapshot, &plan.old_name, &plan.new_name)?;
+        if expected != *plan {
+            return Err(IndexError::InvalidRenamePlan);
+        }
+        Ok(())
     }
 
     /// Prefixes are literal names, without a leading backslash. Case is preserved.
