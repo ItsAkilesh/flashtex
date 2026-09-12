@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Bounded statistics from explicit rendered text/source items, word/math/page counts and exact revision binding; document lexical limitations. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Incremental document statistics: bounded adversarial and stale-identity acceptance tests",
       "owned_paths": [
         "crates/document-statistics"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Bounded statistics from explicit rendered text/source items, word/math/page counts and exact revision binding; document lexical limitations. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Incremental document statistics: actual existing consumer fixture and exact measured limitations",
+      "objective": "Incremental document statistics: actual existing consumer fixture and exact measured limitations",
       "owned_paths": [
         "crates/document-statistics"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

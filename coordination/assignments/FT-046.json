@@ -1,25 +1,25 @@
 {
-  "schema_version": 1,
-  "task_id": "FT-046",
-  "agent_id": "daniel-parent",
-  "branch": "agent/daniel-parent/supervisor",
-  "revision": 2,
-  "state": "assigned",
-  "objective": "Maintain16 concurrent authorized engineering lanes on Daniel machine, each with unique ownership and current+2followups. Verify exact live IDs, repair structured report schema and clock evidence. Do not reinterpret16lanes as a three-task queue or reduce based on another machine historical quota failures; report actual local capacity/permission blocker if any.",
-  "owned_paths": [
-    "tools/daniel-supervisor",
-    "coordination/agents/daniel-parent.json",
-    "coordination/daniel-parent.md"
-  ],
-  "dependencies": [],
   "acceptance": [
     "Actual registered machine and authorized usable route, no secret values",
     "16distinct existing-machine engineering sessions with exact assignments and unique worktrees; report actual count separately",
     "No purchases/unapproved overages or duplicate transferred ownership; no global Commander claim"
   ],
+  "agent_id": "daniel-parent",
   "allocation_id": "daniel-claude20x-shared",
-  "timebox_minutes": 30,
+  "branch": "agent/daniel-parent/supervisor",
   "deadline_utc": null,
-  "input_main_sha": "c9f1b9edbc872085949da89a7d3e4875ce17cd54",
-  "updated_utc": "2026-09-12T08:57:30.114547+00:00"
+  "dependencies": [],
+  "input_main_sha": "b1cf8b929851a4459123fb6fc868b1ed502c6d89",
+  "objective": "Verify all16 actual current session ACKs and rebalance only within approved exclusive lanes",
+  "owned_paths": [
+    "tools/daniel-supervisor",
+    "coordination/agents/daniel-parent.json",
+    "coordination/daniel-parent.md"
+  ],
+  "revision": 3,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-046",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T09:09:24Z"
 }
