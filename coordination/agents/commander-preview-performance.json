@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T13:49:30Z",
-      "adaptation": "Opt-in scalar output lifecycle and bounded receiver timings implemented; independent review addressed lock, generation and clock identity gaps. No timing run.",
-      "main_sha": "2c2455fef0f3dafc7537929bc4d18567273ac2dc",
-      "revision": 26
+      "acknowledged_utc": "2026-09-12T13:54:51Z",
+      "adaptation": "One approved diagnostic run68918 failed postmeasurement reopen; no rerun. Preserve partial artifact evidence and GH33 followup.",
+      "main_sha": "47a83acf4d380f25ff1fbb6e1a128824d94004c1",
+      "revision": 27
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "69bffa06de407eac37315858688aa999b45f111f",
+  "code_revision": "e8b5a6fac252d3ba5a5fc9afb46051bc69825e99",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "69bffa06de407eac37315858688aa999b45f111f",
-  "next_action": "Publish for exact-SHA independent review and integration; measured diagnostic capture requires separate quiet-window gate.",
+  "main_integrated_through": "e8b5a6fac252d3ba5a5fc9afb46051bc69825e99",
+  "next_action": "Independent failed-artifact audit and bounded recovery diagnosis; no rerun until failure scope reviewed.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r26 diagnostic instrumentation passes16binary/30stdio tests and strictalltargetlint; generation-correlated eviction and stalled-write timeout verified.",
+  "summary": "FT048r27 failedreopen capture preserved, prefix transport analyzer passes; GH33 updated, no complete benchmark acceptance.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T13:49:30Z",
+  "updated_utc": "2026-09-12T13:54:51Z",
   "usage": {
     "status": "unknown"
   }
