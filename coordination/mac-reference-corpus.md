@@ -73,3 +73,11 @@ then provide bounded compiler-result and minimal-reproducer work. No compiler co
 changes or global control edits. Existing machine work is preserved in its checkout.
 Publication uses documented observed Cursor-limit fallback, jay3332 primary author
 and truthful Codex executor. No Cursor inference or new charge.
+
+Publication outcome: corpus commit c4bed94f pushed non-force to own branch.
+Draft review PR: https://github.com/flash-tex/flashtex/pull/42
+Role notification delivered: https://github.com/flash-tex/flashtex/issues/41
+Seven harness tests pass; raw TeX logs retain their original trailing whitespace
+as evidence (git diff --check flags those generated logs). No authored-source
+whitespace issue was reported. Await Commander integration/assignment; next
+bounded scope is pinned-compiler diagnostics and minimal reproductions.
