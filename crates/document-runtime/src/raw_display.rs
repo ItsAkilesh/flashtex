@@ -8,6 +8,31 @@ use serde::{
 use serde_json::value::RawValue;
 use std::fmt;
 
+#[cfg(test)]
+pub(crate) struct DecodeGate {
+    pub entered: std::sync::mpsc::SyncSender<()>,
+    pub resume: std::sync::mpsc::Receiver<()>,
+}
+#[cfg(test)]
+thread_local! {
+    static DECODE_GATE: std::cell::RefCell<Option<DecodeGate>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+pub(crate) fn install_decode_gate(gate: Option<DecodeGate>) {
+    DECODE_GATE.with(|slot| *slot.borrow_mut() = gate);
+}
+#[cfg(test)]
+fn entered_sequence() {
+    DECODE_GATE.with(|slot| {
+        if let Some(gate) = slot.borrow_mut().take() {
+            gate.entered.send(()).expect("test observer");
+            gate.resume
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("test release");
+        }
+    });
+}
+
 // Delegate tokenization, escapes, number range and depth checks to serde_json.
 struct Syntax;
 impl<'de> Deserialize<'de> for Syntax {
@@ -41,6 +66,8 @@ impl<'de> Deserialize<'de> for Syntax {
                 Ok(Syntax)
             }
             fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Syntax, A::Error> {
+                #[cfg(test)]
+                entered_sequence();
                 while a.next_element::<Syntax>()?.is_some() {}
                 Ok(Syntax)
             }
