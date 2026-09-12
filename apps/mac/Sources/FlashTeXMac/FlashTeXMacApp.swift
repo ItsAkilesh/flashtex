@@ -24,6 +24,8 @@ struct FlashTeXMacApp: App {
                 Button("Reload Fixture") { model.reloadFixture() }
                     .keyboardShortcut("r")
                 Divider()
+                Button("Attach Built Compiler") { model.attachDiscoveredWorker() }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
                 Button("Attach Worker Executable…") { model.attachWorkerPanel() }
                     .keyboardShortcut("k")
                 Button("Compile") { model.compile() }

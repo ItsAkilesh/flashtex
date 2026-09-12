@@ -34,7 +34,9 @@ seed the editor when present. `⌘R` reloads.
   reversed, or inside a multi-byte scalar are rejected with a footer message rather
   than applied. Unknown item `kind`s decode as `.unknown` and are skipped.
 - Dark preview toggle in the toolbar (page and text colors only).
-- Worker transport: `File > Attach Worker Executable…` (⌘K) launches a process
+- Worker transport: `File > Attach Built Compiler` (⌘⇧K) finds `$FLASHTEX_COMPILER`
+  or `crates/compiler/target/{release,debug}/flashtex-compiler` under the repo;
+  `File > Attach Worker Executable…` (⌘K) launches a process
   speaking runtime v1 JSON Lines on stdin/stdout; `Compile` (⌘B) sends the current
   buffers as a `compile` envelope with the editor revision. The banner badge
   switches from `FIXTURE` to `WORKER`; an older `compile_result` never replaces a
@@ -64,8 +66,11 @@ seed the editor when present. `⌘R` reloads.
 
 ## Not done
 
-- No real Rust worker exists yet (FT-002/FT-005); the transport is exercised only
-  against the Python test double.
+- The FT-002 compiler (`crates/compiler`, branch `agent/claude/compiler-foundation`
+  at 29221d8 when checked) round-trips through this shell: `RealCompilerTests`
+  runs only when `FLASHTEX_COMPILER` points at a built binary and verifies every
+  emitted span slices back to its text after UTF-8→UTF-16 conversion. Without
+  the binary that test is skipped and only the Python double is exercised.
 - No PDF export, no image/line items (not in v1), no reverse (source→preview) sync.
 - Screen capture of the running app was not possible from the agent's terminal
   (no Screen Recording permission); visual click behavior needs a human check.

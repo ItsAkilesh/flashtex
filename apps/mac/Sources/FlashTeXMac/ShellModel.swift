@@ -140,6 +140,32 @@ final class ShellModel: ObservableObject {
 
     // MARK: worker transport (runtime v1 JSON Lines)
 
+    /// Finds a built FT-002 worker: $FLASHTEX_COMPILER, then
+    /// crates/compiler/target/{release,debug}/flashtex-compiler under the repo root.
+    static func locateCompiler() -> URL? {
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["FLASHTEX_COMPILER"], fm.isExecutableFile(atPath: env) {
+            return URL(fileURLWithPath: env)
+        }
+        guard let root = locateRepoRoot() else { return nil }
+        for profile in ["release", "debug"] {
+            let url = root.appendingPathComponent("crates/compiler/target/\(profile)/flashtex-compiler")
+            if fm.isExecutableFile(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// Attaches the discovered worker if any; returns whether one was found.
+    @discardableResult
+    func attachDiscoveredWorker() -> Bool {
+        guard let url = Self.locateCompiler() else {
+            workerStatus = "no built flashtex-compiler found (build crates/compiler or set FLASHTEX_COMPILER)"
+            return false
+        }
+        attachWorker(at: url)
+        return true
+    }
+
     func attachWorkerPanel() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
