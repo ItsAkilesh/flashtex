@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c8dbe898cb74ab8c2918cf905edec5e2e904846e",
+  "code_revision": "616ca60a1a14452e70cce3acdf067b3781c7b42c",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "6367ac344eab893b9830347a28bf6e14dfef6bb1",
-  "next_action": "Existing delta owner replaces heuristic with complete bounded accounting; root combines quantifier candidate.",
+  "next_action": "Root implements only verified vee/Rightarrow tables; preserve mid refusal pending explicit export semantics.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "R4 exact schema-valid document4214B versus200B estimator counterexample published; quantifier8daa source review passes bounded two-table scope.",
+  "summary": "Independent combined97a audit: mid4/vee4/Rightarrow3; safe SymbolDA/DE candidates verified; mid absent direct mapping remains blocked despite CM/cmap support.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T15:15:32Z",
+  "updated_utc": "2026-09-12T15:17:43Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/page-delta/long-document-charge-evidence.json",
-    "status": "Existing OpenAI; existing jsonschema venv only, no install/build/native/provider/descendant."
+    "evidence": "crates/rendering-core/docs/handoffs/hw1-logical/independent-pins.json",
+    "status": "Existing OpenAI; primary mapping/read-only output+AFM+cmap checks, no builds/native/providers/descendants."
   }
 }
