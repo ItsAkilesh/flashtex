@@ -295,8 +295,8 @@ final class CompletionLatencyTests: XCTestCase {
             sent.append((id, type, payload["category"] as? String ?? "?"))
             return id
         }
-        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete"])
-        XCTAssertEqual(Set(sent.map(\.category)), ["label", "citation", "command"])
+        XCTAssertEqual(sent.map(\.type), ["complete", "complete", "complete", "snapshot"])
+        XCTAssertEqual(Set(sent.prefix(3).map(\.category)), ["label", "citation", "command"])
         // The editor opened another file: revision 6 (ShellModel.replaceProject).
         tv.string = "\\cite{"
         tv.setSelectedRange(NSRange(location: 6, length: 0))
@@ -308,7 +308,10 @@ final class CompletionLatencyTests: XCTestCase {
         }
         var outcomes: [ProjectIndexCompletionFetcher.Outcome] = []
         for s in sent {
-            outcomes.append(fetcher.handle(resultID: s.id, payload: reply(s.category == "citation" ? ["knuth84"] : ["x"])))
+            let payload: [String: Any] = s.type == "snapshot"
+                ? ["project_id": "p", "source_versions": ["main.tex": 3], "membership_generation": 1, "document_kinds": ["main.tex": "latex"]]
+                : reply(s.category == "citation" ? ["knuth84"] : ["x"])
+            outcomes.append(fetcher.handle(resultID: s.id, payload: payload))
         }
         guard case .complete(let metadata) = outcomes.last else { return XCTFail("\(outcomes)") }
         XCTAssertEqual(metadata.revision, 5)
