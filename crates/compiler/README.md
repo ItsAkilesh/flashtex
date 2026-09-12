@@ -194,7 +194,10 @@ their argument in the current math face (no distinct face yet). `\displaystyle`,
 `\overline{...}` and `\underline{...}` draw real rules around, over or under
 their math list. `\tag{x}` places `(x)` two quads after the display content
 (`\tag*{x}` without parentheses); it is not right-aligned yet. `\pmod{n}`
-typesets `(mod n)`.
+typesets `(mod n)`. `\overset{over}{base}`, `\stackrel{over}{base}` and
+`\underset{under}{base}` centre a script-size list directly above or below the
+base. The TeX infix forms `{n \choose k}` and `{a \over b}` build the same
+grid and fraction as `\binom` and `\frac`.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
 export mapping; ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered

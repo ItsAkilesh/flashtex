@@ -53,6 +53,13 @@ pub enum Nucleus {
         body: MathList,
         frame: Frame,
     },
+    /// `\overset`, `\underset`, `\stackrel`: a base with a script-size list
+    /// centred directly above or below it.
+    Stacked {
+        base: MathList,
+        over: Option<MathList>,
+        under: Option<MathList>,
+    },
     /// `array`, `cases` and the amsmath matrix environments: a grid of cells
     /// with per-column alignment (`l`, `c`, `r`) and optional stretched fences.
     Matrix {
@@ -188,6 +195,36 @@ impl MathParser<'_> {
                 TokenKind::LBrace => {
                     self.i += 1;
                     atoms.extend(self.list(true).atoms);
+                }
+                TokenKind::Command(ref infix) if infix == "choose" || infix == "over" => {
+                    // TeX infix forms: everything before in this group is the
+                    // top, everything after (to the group's end) the bottom.
+                    self.i += 1;
+                    let top = MathList {
+                        atoms: std::mem::take(&mut atoms),
+                    };
+                    let bottom = self.list(stop_at_brace);
+                    let nucleus = if infix == "over" {
+                        Nucleus::Fraction {
+                            numerator: top,
+                            denominator: bottom,
+                        }
+                    } else {
+                        Nucleus::Matrix {
+                            rows: vec![vec![top], vec![bottom]],
+                            columns: "c".into(),
+                            left: "(".into(),
+                            right: ")".into(),
+                        }
+                    };
+                    return MathList {
+                        atoms: vec![MathAtom {
+                            nucleus,
+                            span: token.span,
+                            superscript: None,
+                            subscript: None,
+                        }],
+                    };
                 }
                 TokenKind::Superscript | TokenKind::Subscript => {
                     self.i += 1;
@@ -390,6 +427,21 @@ impl MathParser<'_> {
                         }
                     }
                     _ => radical,
+                }
+            }
+            "overset" | "stackrel" | "underset" => {
+                let script = self.required_group(&name, span);
+                let base = self.required_group(&name, span);
+                let (over, under) = if name == "underset" {
+                    (None, Some(script))
+                } else {
+                    (Some(script), None)
+                };
+                MathAtom {
+                    nucleus: Nucleus::Stacked { base, over, under },
+                    span,
+                    superscript: None,
+                    subscript: None,
                 }
             }
             "binom" | "dbinom" | "tbinom" => {
@@ -1276,6 +1328,45 @@ fn layout_nucleus(
             ascent: size,
             descent: 0.2 * size,
         },
+        Nucleus::Stacked { base, over, under } => {
+            let script_size = if level == 0 {
+                root_size * SCRIPT_SCALE
+            } else {
+                root_size * SECOND_ORDER_SCRIPT_SCALE
+            };
+            let mut b = layout_list(base, size, root_size, level, diagnostics);
+            let over = over
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let under = under
+                .as_ref()
+                .map(|l| layout_list(l, script_size, root_size, level + 1, diagnostics));
+            let width = [Some(&b), over.as_ref(), under.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(|m| m.width)
+                .fold(0.0, f64::max);
+            offset_items(&mut b.items, (width - b.width) / 2.0, 0.0);
+            let mut out = MathBox {
+                items: b.items,
+                width,
+                ascent: b.ascent,
+                descent: b.descent,
+            };
+            if let Some(mut m) = over {
+                let dy = -0.75 * size - 0.1 * size - m.descent;
+                offset_items(&mut m.items, (width - m.width) / 2.0, dy);
+                out.ascent = out.ascent.max(m.ascent - dy);
+                out.items.extend(m.items);
+            }
+            if let Some(mut m) = under {
+                let dy = 0.2 * size + 0.1 * size + 0.75 * script_size;
+                offset_items(&mut m.items, (width - m.width) / 2.0, dy);
+                out.descent = out.descent.max(m.descent + dy);
+                out.items.extend(m.items);
+            }
+            out
+        }
         Nucleus::Framed { body, frame } => {
             let mut b = layout_list(body, size, root_size, level, diagnostics);
             let rule = FRACTION_RULE_EM * size;
@@ -1605,6 +1696,11 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 body: shift_list(body, delta),
                 frame: *frame,
             },
+            Nucleus::Stacked { base, over, under } => Nucleus::Stacked {
+                base: shift_list(base, delta),
+                over: over.as_ref().map(|l| shift_list(l, delta)),
+                under: under.as_ref().map(|l| shift_list(l, delta)),
+            },
             Nucleus::Matrix {
                 rows,
                 columns,
@@ -1695,6 +1791,40 @@ mod parse_tests {
             .x;
         assert!(zero_x > int_x);
         assert!(display.width < inline.width);
+    }
+
+    #[test]
+    fn stacked_scripts_and_infix_choose_over_build_real_atoms() {
+        let mut diagnostics = Vec::new();
+        let tokens =
+            crate::lexer::tokenize(r"\overset{?}{=} \underset{x}{\min} {n \choose k} {a \over b}");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
+        assert_eq!(nuclei.len(), 4, "{nuclei:?}");
+        assert!(matches!(
+            nuclei[0],
+            Nucleus::Stacked {
+                over: Some(_),
+                under: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            nuclei[1],
+            Nucleus::Stacked {
+                over: None,
+                under: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(nuclei[2], Nucleus::Matrix { rows, .. } if rows.len() == 2));
+        assert!(matches!(nuclei[3], Nucleus::Fraction { .. }));
+        let laid = layout(&list, 12.0, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let question = laid.items.iter().find(|item| item.text == "?").unwrap();
+        let equals = laid.items.iter().find(|item| item.text == "=").unwrap();
+        assert!(question.baseline < equals.baseline - 6.0, "? sits above =");
     }
 
     #[test]
@@ -1844,6 +1974,14 @@ mod shift_tests {
                         Nucleus::Radical(inner) => min_start(inner),
                         Nucleus::Bold(_) => usize::MAX,
                         Nucleus::Framed { body, .. } => min_start(body),
+                        Nucleus::Stacked { base, over, under } => {
+                            [Some(base), over.as_ref(), under.as_ref()]
+                                .into_iter()
+                                .flatten()
+                                .map(min_start)
+                                .min()
+                                .unwrap_or(usize::MAX)
+                        }
                         Nucleus::Matrix { rows, .. } => rows
                             .iter()
                             .flatten()
