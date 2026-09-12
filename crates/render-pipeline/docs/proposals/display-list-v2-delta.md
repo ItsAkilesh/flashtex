@@ -1,6 +1,16 @@
 # Proposal: `display-list-v2-delta` — a bounded, opt-in delta sibling for `display-list-v2`
 
-Revision: **r3, 2026-09-12** — amended for the Commander's r2 response
+Revision: **r4, 2026-09-12** — amended for the Commander's r3 review (issue #2
+comment 5646664026): an over-cap reconstructed target is REJECTED before any
+allocation or paint (typed `delta_target_oversize` naming the estimated size
+vs the cap, last installed frame kept marked stale, chain cleared → full
+resync, which itself refuses honestly per §8); residency accounting now counts
+one IN-FLIGHT reconstruction (a running off-main callback is never terminated
+by replacing the queued callback) plus one queued wire line plus the painted
+frame's retained resources (§6.1–6.3, §10.2, §10.3); the renderer's
+machine-readable review scenarios (`crates/rendering-core/docs/handoffs/page-delta/refusal-scenarios.json`)
+are referenced where they plug into the gates (§10.4). Wire shape and Appendix A
+vectors unchanged. r3 was 05c0e619 — amended for the Commander's r2 response
 (issue #2 comment 5646611117): residency charges the RECONSTRUCTED target and
 states the peak bound (§6.2); stale refusal is preserved — a stale sibling is
 never installed, no reconstruction cache (§6.1, §6.3); digests do not establish
@@ -37,7 +47,7 @@ line and its decline fallback), `crates/preview-controller/docs/display-forwardi
 5. Digests (`dl2-canon-1`) are SHA-256 over a specified canonical binary encoding of the semantic model (glyph runs, rules, clusters, hit rects, carets, source spans, paint, fonts, documents, diagnostics) — implementable identically in Rust, Swift and the ~65-line Python reference in Appendix A, with test vectors; digests prove the consumer rebuilt what the producer sent, never that the producer sent everything (that is the fresh-full oracle's job, §10.1 P2).
 6. Reconstruction yields COMPLETE new semantics — documents, fonts/resource closure, diagnostics, required_features and every page's full model are produced by the reconstruction (changed pages as sent, unchanged pages relocated), nothing inherited implicitly — then the normal full validation. Invariant: `to_json(reconstructed)` is byte-identical to a fresh full compile's `display_list` line (same id), including unchanged pages, resources, source spans and diagnostics — proven with the existing `tests/incremental.rs` gate shape (200 edits × 27 pages; 30 × 107).
 7. Refusals are typed: the producer never emits a delta without a snapshot of its own (no snapshot → the unchanged full line, `status` stays `ok`, no diagnostic); the consumer verifies the delta's `base` against the snapshot it holds and refuses `delta_base_mismatch`, `delta_page_count`, `delta_relocation_invalid`, `delta_digest_mismatch`, `delta_list_digest_mismatch`, `delta_oversize`, `delta_unsolicited` and resyncs by requesting without `-delta` (→ full).
-8. Bounded state: at most old + new snapshots per side, each charged by its RECONSTRUCTED serialised-equivalent size (`MAX_SNAPSHOT_PAGES` 1 024, `MAX_SNAPSHOT_BYTES` 16 MiB, retained texts ≤ 8 MiB each / 32 MiB total); peak per side ≤ 2 × `MAX_SNAPSHOT_BYTES` + one 16 MiB line, with a defined eviction order (§6.2); over a cap → not retained → full replies only.
+8. Bounded state: every snapshot is charged by its RECONSTRUCTED serialised-equivalent size BEFORE allocation (`MAX_SNAPSHOT_PAGES` 1 024, `MAX_SNAPSHOT_BYTES` 16 MiB, retained texts ≤ 8 MiB each / 32 MiB total); an over-cap target is refused, never built or painted (`delta_target_oversize`); consumer peak = `installed` (incl. its painted-frame resources) + one in-flight reconstruction (its input line + target under construction) + one queued wire line; producer peak = `old` + `new` + the line being written + the request line; eviction order defined in §6.2.
 8b. The full resync path never truncates: when the full reply itself exceeds a limit, the reply is the existing typed refusal naming that limit (`display_list_declined` / `failed` / the runtime's `serialization_refused`), the consumer keeps its last installed frame marked stale and drops its base, and no page is ever omitted to fit (§8).
 9. Visibility page filtering is NOT this proposal: a filtered view is an incomplete view, never a complete compile, and never authorizes source actions outside its validated coverage; a reconstructed delta result IS a complete compile because it is verified equal to one.
 10. Acceptance is three separate gates — producer (cargo, byte identity + digests + refusals), consumer (Swift, reconstruction equality + typed refusals + V2Parity 0 px), transport (size/latency measured on the direct route and, after an FT-049 runtime change to accept the new sibling type, the helper route) — nothing about size or latency is claimed from this schema.
@@ -347,7 +357,11 @@ digest agreement establishes completeness of anything the producer omitted.
 
 A snapshot is **installed** on the consumer when, and only when, all of:
 
-1. its envelope was decoded (full line) or reconstructed (delta, §5.4);
+1. its envelope was decoded (full line) or, for a delta, its reconstructed
+   target was CHARGED and admitted before reconstruction (§6.2: the estimate
+   is computable from the delta header, the changed pages, and the per-page
+   estimates cached for `installed` — no target allocation is needed to
+   compute it) and then reconstructed (§5.4);
 2. the unchanged full validation path accepted it (§5.4a: `RenderingV2.validate`
    → `V2FontStore.resolve` → `V2Frame.prepare`);
 3. its `dl2-canon-1` page digests and `list_digest` were computed (and, for a
@@ -377,7 +391,7 @@ frame, or a frame still validating off-main is not installation. The consumer
 acknowledges (request `display_list_base`) only the installed snapshot and,
 after sending an acknowledgement, keeps that snapshot installed until the reply
 to that request has been processed: with one request in flight the outstanding
-reply IS the only candidate, so `installed` + `candidate` is the whole state;
+reply IS the only candidate, so `installed` + `in-flight` (+ one `queued` line) is the whole state (§6.2);
 if the consumer sends another request before that reply (pipelining), the
 reply's sibling will be stale on arrival, is refused per item 4, and the chain
 is cleared — consistent with the producer answering the pipelined request in
@@ -408,23 +422,34 @@ are unaffected.
 
 **Consumer** (per transport):
 
-| slot | content | when it exists |
-|---|---|---|
-| `installed` | the acknowledged base: validated model, digests, identity, transport binding | from installation until replaced or cleared |
-| `candidate` | the sibling being validated/reconstructed off-main (a delta reconstructs by reading `installed`, writing `candidate`) | from receipt until installation or refusal |
+| slot | content | charged as | when it exists |
+|---|---|---|---|
+| `installed` | the acknowledged base: validated model, digests, identity, transport binding, AND its painted-frame resources (`V2Frame`: prepared pages, resolved `CGFont`s shared with the store, prerastered bitmaps at the pane's last scale) | model ≤ `MAX_SNAPSHOT_BYTES` serialised-equivalent; bitmaps separately by the pane's raster policy (page count × pixels; a §10.3 measurement) | from installation until replaced or cleared |
+| `in-flight` | the ONE off-main preparation currently running (`V2Loader.queue`, `startDisplayListV2`): its input wire line (captured by the closure) and, for a delta, the target model under construction, which becomes `candidate` on completion | input line ≤ 16 MiB + target ≤ `MAX_SNAPSHOT_BYTES` (admitted by the pre-allocation charge, else refused before building) | from dispatch of the callback until it completes — replacing or dropping the QUEUED callback never terminates a RUNNING one, so this slot is live for the whole callback regardless of newer arrivals |
+| `queued` | the newest wire line waiting behind `in-flight` (`V2QueuedLoad`; older queued lines are dropped undecoded, existing coalescing) | one line ≤ 16 MiB | from arrival while `in-flight` is busy until it is dispatched (becomes `in-flight`) or replaced by a newer arrival |
+
+`candidate` is not a fourth slot: it is the completed `in-flight` result during
+the single main-thread step that either installs it (publish as the current
+frame) or drops it (stale, refused, or a clearing event happened meanwhile).
+Peak consumer residency is therefore `installed` (model + painted-frame
+resources) + `in-flight` (one line + one target) + `queued` (one line), i.e.
+≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent + 2 × 16 MiB of wire lines +
+the painted frame's raster resources. Dropping the queued line frees only that
+line; the running callback's allocations are released only when it returns.
 
 Eviction order: (1) a clearing event (a `compile_result` without accepted
 `display-list-v2`; any §7 refusal; pane hidden; worker/helper restart,
-reattach or session change; project change) drops `candidate` first, then
-`installed`; (2) on successful validation AND publish as the current frame,
-`candidate` becomes `installed` and the old `installed` is dropped in the same
-main-thread step; a candidate that validated but is stale is dropped and the
-chain cleared (§6.1 item 4); (3) a newer sibling arriving while one is
-validating replaces the queued candidate (existing coalescing,
-`PreviewV2View.swift` `startDisplayListV2`) — at most one candidate is ever
-retained. The frame on screen while a candidate validates IS the `installed`
-snapshot's frame, never a third snapshot: the residency table has exactly two
-rows on each side at every instant.
+reattach or session change; project change) drops `queued`, marks the ticket
+of `in-flight` stale (its result will be dropped on return — the callback
+itself runs to completion and its memory is counted until then), then drops
+`installed`; (2) when `in-flight` completes and its ticket is current, it is
+published and becomes `installed` and the old `installed` (model and frame
+resources) is dropped in the same main-thread step; otherwise its result is
+dropped and the chain cleared (§6.1 item 4); (3) a newer arrival while
+`in-flight` is busy replaces `queued` (the older queued line is dropped
+undecoded); (4) `queued` is dispatched only after `in-flight` returns. The
+frame on screen while `in-flight` runs IS the `installed` snapshot's frame,
+never an extra snapshot.
 
 **Caps (per snapshot, both sides; over any cap → the snapshot is not retained
 → full replies only, no delta):**
@@ -432,8 +457,8 @@ rows on each side at every instant.
 | cap | value | why |
 |---|---|---|
 | `MAX_SNAPSHOT_PAGES` | 1 024 pages | rendering-core allows 10 000; 1 024 keeps digest recomputation and page relocation bounded at ~40× the measured 27-page document |
-| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size of the RECONSTRUCTED TARGET, charged before retaining: `estimated_json_bytes()` over the target model (`display.rs:296-311`; the same constants are the consumer's charge function, applied to the reconstructed model — never the received delta line length, which bounds nothing about the target) | a delta line is small by construction while its target can be up to the full-line limit or, if the document grew, beyond it; charging the target keeps every retained snapshot ≤ what one full line may carry. A target over the cap is still validated and painted if it is a complete verified list, but is NOT retained as a base (next request without `-delta` → full) |
-| **peak residency (per side)** | ≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent (`installed` + `candidate` on the consumer; `old` + `new` on the producer) + one wire line ≤ 16 MiB (the delta or full line being read/written) + retained texts (producer) | the in-memory model overhead factor over serialised-equivalent is a §10.3 measurement, not a claim; the estimator's over-approximation (≈ 8 % on the runtime's 26-page fixture, `producer-size-contract.md`) makes the charge conservative |
+| `MAX_SNAPSHOT_BYTES` | 16 MiB of serialised-equivalent size of the RECONSTRUCTED TARGET, charged BEFORE any target allocation: `estimated_json_bytes()` constants (`display.rs:296-311`) applied as `est(delta header) + Σ est(changed pages) + Σ est(base pages reused)`, where each base page's estimate was cached at install (the constants count items, glyphs, clusters and text bytes only, so relocation does not change a page's estimate) — never the received delta line length, which bounds nothing about the target | a delta line is small by construction while its target can be up to the full-line limit or, if the document grew, beyond it. **Decision (r4): an over-cap target is REJECTED before reconstruction and before paint** — typed `delta_target_oversize` naming the estimated target size and the cap; the last installed frame stays on screen marked stale; the chain is cleared; the next request omits `-delta` and the full reply is subject to its own honest refusal (§8). Nothing over the cap is ever built, validated, painted or retained, so the painted frame is always within the cap |
+| **peak residency (per side)** | consumer: `installed` (model + painted-frame resources) + `in-flight` (one wire line + one target) + `queued` (one wire line) ≤ 2 × `MAX_SNAPSHOT_BYTES` serialised-equivalent + 2 × 16 MiB + raster resources; producer: `old` + `new` ≤ 2 × `MAX_SNAPSHOT_BYTES` + the reply line being written (≤ 16 MiB) + the request line (≤ 8 MiB input) + retained texts | the in-memory model overhead factor over serialised-equivalent and the raster resources are §10.3 measurements, not claims; the estimator's over-approximation (≈ 8 % on the runtime's 26-page fixture, `producer-size-contract.md`) makes the charge conservative |
 | retained request texts (producer only) | ≤ 8 MiB per document (rendering-core document bound), ≤ 32 MiB total | needed for the relocation diff; over the cap → no snapshot |
 | documents / fonts per snapshot | 4 096 / 256 (the existing validator bounds) | unchanged |
 
@@ -449,6 +474,17 @@ rows on each side at every instant.
   acknowledgement, the chain is broken: the next request omits `-delta` and
   the producer answers in full (§8). A delta whose `base` is not the currently
   installed (published) frame is `delta_base_mismatch` → full resync (§7).
+- **Over-cap target:** refused before allocation (`delta_target_oversize`,
+  §7); the delta line itself is dropped after the header/changed-page
+  estimate; `installed` stays painted and marked stale; chain cleared; the
+  next full reply is refused honestly if it too exceeds a limit (§8). There is
+  no "validate but do not retain" path in r4.
+- **In-flight work is never cancelled:** replacing or dropping `queued`, a
+  clearing event, or a newer result only marks the running callback's ticket
+  stale; the callback completes, its result is dropped on return, and its
+  memory is counted in the peak until then. Backpressure is the existing
+  one-in-flight + one-queued coalescing; the consumer never dispatches a second
+  reconstruction concurrently.
 - **Reset/cancel:** runtime-v1 has no cancel; superseded requests are answered
   in order. A consumer that cannot validate a sibling (helper dropped it as
   oversize/busy per `display-forwarding.md`; decode or validation failure)
@@ -470,6 +506,7 @@ rows on each side at every instant.
 | `delta_digest_mismatch(n)` | a page digest differs after reconstruction | refuse, resync; evidence-worthy: reconstruction or producer classification bug |
 | `delta_list_digest_mismatch` | header/list digest differs | refuse, resync |
 | `delta_oversize` | line over the consumer's framing budget | dropped before parse (existing behaviour), resync |
+| `delta_target_oversize` | the pre-allocation estimate of the reconstructed target exceeds `MAX_SNAPSHOT_BYTES` (or `page_count` > `MAX_SNAPSHOT_PAGES`) | refuse BEFORE building the target: message names "estimated reconstructed size N bytes / P pages over the cap C"; last installed frame kept marked stale; chain cleared; resync (whose full reply refuses honestly per §8 if it too is over a limit) |
 | existing full-validation errors | the reconstructed list fails `RenderingV2.validate` | refuse, resync (same codes as a full frame) |
 
 "Refuse" = keep the previous verified frame on screen (labelled stale as
@@ -571,12 +608,21 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   named in a request); a stale-by-ticket sibling is REFUSED, not installed, and
   the next request carries no acknowledgement; with one request in flight the
   acknowledged base stays installed until that reply is handled; at most
-  `installed` + `candidate` exist at any time and the charge of each is the
-  reconstructed target's `estimated_json_bytes()`-equivalent (assert both in
-  the fake-worker test, including a target that grows past the cap → painted,
-  not retained, next request full); both cleared on decline/failed/restart/
-  session change/pane hidden; the full-reply refusal (`display_list_declined`)
-  leaves the last installed frame on screen marked stale and clears both slots.
+  `installed` + `in-flight` + `queued` exist at any time and the charge of each target is the
+  reconstructed target's `estimated_json_bytes()`-equivalent computed BEFORE
+  allocation (assert in the fake-worker test: a delta whose target estimate is
+  cap + 1 byte is refused with `delta_target_oversize` naming both numbers, no
+  target object is created, the previous frame stays painted and marked stale,
+  the next request omits `-delta`; scenario `small_delta_oversized_reconstruction`
+  in §10.4); residency: at most `installed` + `in-flight` + `queued` (assert with
+  a slow fake reconstruction: a newer line arriving mid-callback lands in
+  `queued`, a third replaces it, the running callback completes and its result
+  is dropped as stale — scenario `coalescing_peak_inflight_and_queued`); a stale
+  late sibling is never installed/acknowledged and never used for navigation
+  (scenario `painted_a_stale_b_candidate_c`); all slots cleared on decline/
+  failed/restart/session change/pane hidden; the full-reply refusal
+  (`display_list_declined`) leaves the last installed frame on screen marked
+  stale and clears the chain.
 - C4 real producer: `flashtex-render` in delta mode over an edit script; every
   reconstructed frame passes `RenderingV2.validate` → `V2FontStore.resolve` →
   `V2Frame.prepare` (§5.4a) and reaches `V2Parity` with 0 differing pixels at
@@ -598,10 +644,39 @@ route (`untrusted:true`, `source_actions_enabled:false`) stay as they are.
   digest/classification pass added; worker CPU per request; snapshot RSS.
 - Consumer cost: decode+apply+verify of a delta vs decode+validate of a full
   frame, off-main, on the same frames.
+- Consumer peak residency: RSS at the moment `installed` + `in-flight` +
+  `queued` coexist (slow-reconstruction harness), split into model bytes,
+  wire-line bytes and painted-frame raster resources (prepared pages +
+  prerastered bitmaps at 1 and 2 px/pt), and the per-page estimate cache; the
+  in-memory factor over serialised-equivalent reported as a range.
+- Estimate accuracy: `estimated_json_bytes()`-equivalent vs the actual
+  `to_json` length of each reconstructed target over the 200-edit script
+  (over-approximation ratio), so the cap's conservatism is measured, not
+  assumed.
 - Wall: keystroke→paint through the v2 pane (`TypingBench`) with and without
   `-delta`, load-aware (`uptime` recorded; skipped above 1-min load 20).
 - Report as ranges with load; the 33.6 ms / 4.3 MB baseline in
   `oracle-evidence.md` is the comparison point.
+
+### 10.4 Machine-readable review scenarios (rendering-core handoff)
+
+The rendering-core owner publishes review scenarios at
+`crates/rendering-core/docs/handoffs/page-delta/refusal-scenarios.json` (main;
+`schema_version` 1, pinned to this proposal's commit) with `inputs`/`states`
+and a `required_outcome` per case, plus `review-r3.md`,
+`r3-reference-results.json` (the independent Appendix A reproduction) and
+`source-pins.json`. They plug into the gates as fixture inputs, one test per
+case, asserting every `required_outcome` key:
+
+| scenario id | gate | what the test feeds and asserts |
+|---|---|---|
+| `small_delta_oversized_reconstruction` | consumer C3 (fake worker); producer P4 | a 4 096-byte delta whose target charge is cap + 1 → `delta_target_oversize` before allocation, `install_as_base:false`, `publish_under_claimed_candidate_cap:false`, `old_frame_mutated:false`, next request = full resync under existing bounds (producer side: the producer itself never emits a delta whose target it would not retain, so P4 asserts a full reply there) |
+| `painted_a_stale_b_candidate_c` | consumer C2/C3 | painted A (rev 12), late B (rev 11), candidate C (rev 13): `install_late_b:false`, `acknowledge_late_b:false`, `use_b_for_current_export_or_hit:false`, `old_frame_mutated:false` (§6.1 item 4; the helper route's `DisplayCandidateGate` and, once D2 of the draft review is fixed, membership generation) |
+| `coalescing_peak_inflight_and_queued` | consumer C3 + §10.3 peak measurement | live objects painted A, active preparation B, queued C: `count_live_callback_allocations:true`, `count_queued_wire_bytes:true`, `count_retained_frame_resources:true`, `dropping_queue_counts_as_cancelling_active_work:false` (§6.2 slots) |
+
+New cases added to that file after this revision are picked up by the same
+mechanism; a case whose `required_outcome` the proposal cannot satisfy is a
+blocking finding for the next revision, not something the gate may skip.
 
 ## 11. What this proposal does not do
 

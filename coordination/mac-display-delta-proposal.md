@@ -82,9 +82,22 @@ Searched `origin/agent/mac-claude-a/mac-shell` (`apps/mac/Tests/FlashTeXMacTests
   / `helper_candidate::bind`) and states that rendering-core binds ORIGINAL bytes,
   so delta consumption is scoped to the Mac model-level path. §8 unchanged.
 
+## Follow-up 3 (Commander 5646664026 → r4, same branch)
+
+- `display-list-v2-delta.md` r4: over-cap reconstructed target is REJECTED before
+  allocation/paint (`delta_target_oversize` naming estimated size vs cap; estimate
+  computable from delta header + changed pages + cached per-page base estimates;
+  last installed frame kept marked stale; chain cleared → full resync with §8's
+  honest refusal); residency now `installed` (model + painted-frame resources) +
+  `in-flight` (one line + one target; a running callback is never terminated by
+  replacing the queued one) + `queued` (one line); producer `old` + `new` + reply
+  line + request line; §6.1–6.3, §7, §10.2 C3, §10.3 measurements updated; §10.4
+  maps the renderer's `refusal-scenarios.json` cases to gate tests. Vectors
+  unchanged (re-run: reconstruction == fresh: True).
+
 ## Status
 
-r1 committed as c797c5cf; r2 96e95628; r3 committed after (see the log); r2 + review committed after (see the log) and pushed to
+r1 committed as c797c5cf; r2 96e95628; r3 05c0e619; r4 committed after (see the log); r2 + review committed after (see the log) and pushed to
 `origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
 in the lane's completion message; the 10-line summary is section 0 of the
 proposal. Lane complete; no further steps owned here. Limitations: no code, no
