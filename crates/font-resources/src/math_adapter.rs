@@ -121,6 +121,15 @@ impl BoundMathFont {
         };
         Ok(Self { engine, identity })
     }
+    pub fn kerns(&self) -> Result<BoundMathKern, MathError> {
+        Ok(BoundMathKern {
+            identity: self.identity.clone(),
+            data: crate::math_kern::MathKern::parse(
+                self.engine.face().table(b"MATH").expect("bound MATH table"),
+                self.glyph_count(),
+            )?,
+        })
+    }
     /// Separate additive parse retains exact immutable parent identity.
     pub fn variants(&self) -> Result<BoundMathVariants, MathError> {
         Ok(BoundMathVariants {
@@ -236,6 +245,18 @@ impl BoundMathFit {
     }
     pub fn fit(&self) -> &crate::math_fit::MathFit {
         &self.fit
+    }
+}
+pub struct BoundMathKern {
+    identity: MathIdentity,
+    data: crate::math_kern::MathKern,
+}
+impl BoundMathKern {
+    pub fn identity(&self) -> &MathIdentity {
+        &self.identity
+    }
+    pub fn data(&self) -> &crate::math_kern::MathKern {
+        &self.data
     }
 }
 #[cfg(test)]

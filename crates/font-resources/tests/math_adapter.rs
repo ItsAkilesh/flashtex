@@ -188,6 +188,51 @@ fn pinned_math_registry_equivalence() {
     }
     println!("STIX 5000.5-unit assemblies fitted {fitted} refused {refused}");
     assert_eq!((fitted, refused), (66, 3));
+    let kerns = bound.kerns().unwrap();
+    assert_eq!(kerns.identity(), bound.identity());
+    let mut height_records = 0;
+    let mut device_records = 0;
+    for (&(gid, corner), table) in kerns.data().records() {
+        height_records += table.correction_heights().len();
+        device_records += table
+            .correction_heights()
+            .iter()
+            .chain(table.kern_values())
+            .filter(|v| v.device_adjustment_present)
+            .count();
+        for (i, height) in table.correction_heights().iter().enumerate() {
+            assert_eq!(
+                kerns
+                    .data()
+                    .lookup(
+                        gid,
+                        corner,
+                        Rational::new(height.design_units.into(), 1).unwrap()
+                    )
+                    .unwrap(),
+                table.kern_values()[i + 1]
+            );
+            assert_eq!(
+                kerns
+                    .data()
+                    .lookup(
+                        gid,
+                        corner,
+                        Rational::new(i128::from(height.design_units) * 2 - 1, 2).unwrap()
+                    )
+                    .unwrap(),
+                table.kern_values()[i]
+            );
+        }
+    }
+    assert_eq!(
+        (kerns.data().records().len(), height_records, device_records),
+        (219, 217, 0)
+    );
+    println!(
+        "STIX kern corner tables {} heights {height_records} device records {device_records}",
+        kerns.data().records().len()
+    );
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);
