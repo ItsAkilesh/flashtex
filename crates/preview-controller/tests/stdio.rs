@@ -13,6 +13,108 @@ struct Client {
     output: Receiver<Value>,
 }
 #[test]
+fn metadata_undo_redo_unread_ack_retry_and_later_edit() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut client = Client::start(dir.path());
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    let original = client.reply("doc")["payload"]["document"].clone();
+    let text = "β".repeat(250_000);
+    client.send(
+        "edit",
+        "edit",
+        json!({"path":"main.tex","expected_revision":1,
+        "expected_sha256":original["source_sha256"],"text":text,"response_mode":"metadata"}),
+    );
+    let edited = client.reply("edit")["payload"]["document"].clone();
+    let mut undo = json!({"path":"main.tex","response_mode":"invalid",
+        "command":{"command_id":"undo-compact","expected_revision":2,
+        "expected_sha256":edited["source_sha256"]}});
+    client.send("invalid", "undo", undo.clone());
+    assert_eq!(client.reply("invalid")["type"], "error");
+    undo["response_mode"] = json!("metadata");
+    client.send("undo", "undo", undo.clone());
+    let result = client.reply("undo");
+    assert_eq!(result["type"], "result");
+    let restored = &result["payload"]["history"]["document"];
+    assert_eq!(restored["revision"], 3);
+    assert_eq!(restored["source_sha256"], original["source_sha256"]);
+    assert!(restored.get("text").is_none());
+    let redo = json!({"path":"main.tex","response_mode":"metadata",
+        "command":{"command_id":"redo-compact","expected_revision":3,
+        "expected_sha256":restored["source_sha256"]}});
+    client.send("redo", "redo", redo.clone());
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let persisted: Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("store/document.json")).unwrap())
+                .unwrap();
+        if persisted["document"]["revision"] == 4 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(2));
+    }
+    drop(client); // Redo is durable but its acknowledgement was not consumed.
+    let mut client = Client::start(dir.path());
+    client.send("redo", "redo", redo.clone());
+    let replay = client.reply("redo");
+    assert_eq!(replay["type"], "result");
+    assert!(serde_json::to_vec(&replay).unwrap().len() < 1024);
+    let history = &replay["payload"]["history"];
+    assert_eq!(history["command_revision"], 4);
+    assert_eq!(history["replayed_command"], true);
+    assert_eq!(
+        history["document"]["source_sha256"],
+        edited["source_sha256"]
+    );
+    assert_eq!(history["document"]["byte_length"], 500000);
+    assert!(history["document"].get("text").is_none());
+    client.send("doc", "document", json!({"path":"main.tex"}));
+    assert_eq!(client.reply("doc")["payload"]["document"]["text"], text);
+    let mut conflict = redo.clone();
+    conflict["command"]["expected_revision"] = json!(4);
+    client.send("conflict", "redo", conflict);
+    assert_eq!(client.reply("conflict")["type"], "error");
+    let mut stale = undo.clone();
+    stale["command"]["command_id"] = json!("new-stale-undo");
+    client.send("stale", "undo", stale);
+    assert_eq!(client.reply("stale")["type"], "error");
+    client.send(
+        "later",
+        "edit",
+        json!({"path":"main.tex","expected_revision":4,
+        "expected_sha256":edited["source_sha256"],"text":"later source"}),
+    );
+    assert_eq!(client.reply("later")["payload"]["document"]["revision"], 5);
+    for (kind, request, revision) in [("undo", undo, 3), ("redo", redo, 4)] {
+        client.send("retry", kind, request.clone());
+        let compact = client.reply("retry");
+        let h = &compact["payload"]["history"];
+        assert_eq!(h["command_revision"], revision);
+        assert_eq!(h["document"]["revision"], 5);
+        assert_eq!(h["replayed_command"], true);
+        assert_eq!(h["can_redo"], false);
+        let mut full = request;
+        full.as_object_mut().unwrap().remove("response_mode");
+        client.send("full", kind, full);
+        let result = client.reply("full");
+        let f = &result["payload"]["history"];
+        assert_eq!(f["document"]["text"], "later source");
+        assert_eq!(
+            f["document"]["source_sha256"],
+            h["document"]["source_sha256"]
+        );
+        for key in [
+            "command_revision",
+            "replayed_command",
+            "can_undo",
+            "can_redo",
+        ] {
+            assert_eq!(f[key], h[key]);
+        }
+    }
+}
+#[test]
 fn metadata_group_ack_recovers_unread_reply_and_preserves_command_and_undo_identity() {
     let dir = tempfile::tempdir().unwrap();
     let source = "α".repeat(250_000);

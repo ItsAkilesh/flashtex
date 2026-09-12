@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T12:21:17Z",
-      "adaptation": "Read FT048r11: groupedmetadata ACK uses existing groupedcommand and permanentID logic; defaultfull, premutation policy, unreadACK/retry/undo checks preserved.",
-      "main_sha": "b4088b471190527e73d8bcea8ceb1b500c14071e",
-      "revision": 11
+      "acknowledged_utc": "2026-09-12T12:29:18Z",
+      "adaptation": "Extend existing metadata history adapter to undo/redo; preserve full replies and ledger commands, test unread redo ACK reopen and both retries after later source edit.",
+      "main_sha": "837db9000ca75de76bf538c040c59f06d875494e",
+      "revision": 12
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "fc262c468a8e25862c345574fffce857045ce89f",
+  "code_revision": "1699357c4ab6e481e2fa9665ff316540a534fe8e",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "dd2ff70f42997aa37a07dcd97806560090cf3aec",
-  "next_action": "Publish groupedACK/native reconciliation contract; receive next independent product objective from Commander.",
+  "main_integrated_through": "fc262c468a8e25862c345574fffce857045ce89f",
+  "next_action": "Commander integrate reviewed checkpoint; native adoption remains pending.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r11 groupedmetadata ACK tested and measured;500KB response500379\u2192417bytes, permanentID/undo behavior intact.",
+  "summary": "FT048r12 compact undo/redo acknowledgements implemented through shared history adapter; current versus command revisions and permanent IDs preserved.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T12:22:55Z",
+  "updated_utc": "2026-09-12T12:31:29Z",
   "usage": {
     "status": "unknown"
   }

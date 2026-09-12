@@ -728,13 +728,7 @@ fn handle(
                     "permanent_command_ids":MAX_HISTORY_COMMAND_IDS}}))
         }
         "apply_group" | "undo" | "redo" => {
-            if request["type"] == "apply_group" && metadata_response_mode(p)? {
-                let group =
-                    serde_json::from_value(p["command"].clone()).map_err(|e| e.to_string())?;
-                let result = controller.apply_group_metadata(string(p, "path")?, group)?;
-                return Ok(json!({"response_mode":"metadata","history":result.history,
-                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
-            }
+            let metadata_only = metadata_response_mode(p)?;
             let command = p["command"].clone();
             let action = match request["type"].as_str().unwrap() {
                 "apply_group" => HistoryAction::Group(
@@ -747,6 +741,11 @@ fn handle(
                     HistoryAction::Redo(serde_json::from_value(command).map_err(|e| e.to_string())?)
                 }
             };
+            if metadata_only {
+                let result = controller.apply_history_metadata(string(p, "path")?, action)?;
+                return Ok(json!({"response_mode":"metadata","history":result.history,
+                    "preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}));
+            }
             let outcome = controller.apply_history(string(p, "path")?, action)?;
             Ok(
                 json!({"history":outcome.history,"preview_error":outcome.source.preview_error,"save_and_submit_ms":outcome.source.save_and_submit_ms}),
