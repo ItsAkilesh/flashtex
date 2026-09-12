@@ -7,13 +7,23 @@ pub struct HorizontalMetrics {
 impl FontResource {
     /// Original font GID; None denotes .notdef. Does not perform shaping.
     pub fn glyph_id(&self, character: char) -> Result<Option<u16>> {
-        lookup(
-            self.table(b"cmap")
-                .ok_or_else(|| Error::UnsupportedFont("cmap missing".into()))?,
-            character as u32,
-            self.descriptor().glyph_count,
-        )
+        self.cmap
+            .get_or_init(|| {
+                Cmap::build(
+                    self.table(b"cmap")
+                        .ok_or_else(|| Error::UnsupportedFont("cmap missing".into()))?,
+                    self.descriptor().glyph_count,
+                )
+            })
+            .as_ref()
+            .map(|map| map.lookup(character as u32))
+            .map_err(Clone::clone)
     }
+    /// Cache identity is the verified immutable resource identity, never its filename.
+    pub fn cmap_cache_key(&self) -> (&str, u32) {
+        (&self.descriptor().sha256, self.descriptor().face_index)
+    }
+
     pub fn horizontal_metrics(&self, gid: u16) -> Result<HorizontalMetrics> {
         if gid as u32 >= self.descriptor().glyph_count {
             return Err(invalid("glyph ID outside font"));
@@ -34,63 +44,87 @@ impl FontResource {
         })
     }
 }
-fn lookup(cmap: &[u8], cp: u32, glyphs: u32) -> Result<Option<u16>> {
-    if u16_at(cmap, 0)? != 0 {
-        return Err(invalid("cmap version"));
-    }
-    let count = u16_at(cmap, 2)? as usize;
-    if count > 4096 || 4 + count * 8 > cmap.len() {
-        return Err(invalid("cmap directory bounds"));
-    }
-    let mut chosen = None;
-    for i in 0..count {
-        let at = 4 + i * 8;
-        let platform = u16_at(cmap, at)?;
-        let encoding = u16_at(cmap, at + 2)?;
-        if platform != 0 && !(platform == 3 && (encoding == 1 || encoding == 10)) {
-            continue;
-        }
-        let offset = u32_at(cmap, at + 4)? as usize;
-        if offset < 4 + count * 8 {
-            return Err(invalid("cmap overlaps directory"));
-        }
-        let data = cmap
-            .get(offset..)
-            .ok_or_else(|| invalid("cmap subtable offset"))?;
-        let format = u16_at(data, 0)?;
-        let priority = match format {
-            12 => 2,
-            4 => 1,
-            _ => continue,
-        };
-        if chosen.as_ref().is_none_or(|(p, _)| priority > *p) {
-            chosen = Some((priority, data));
-        }
-    }
-    let (_, data) =
-        chosen.ok_or_else(|| Error::UnsupportedFont("Unicode cmap format 4/12 required".into()))?;
-    let gid = if u16_at(data, 0)? == 12 {
-        format12(data, cp, glyphs)?
-    } else {
-        format4(data, cp, glyphs)?
-    };
-    if gid >= glyphs {
-        return Err(invalid("cmap glyph ID outside font"));
-    }
-    Ok(if gid == 0 { None } else { Some(gid as u16) })
+pub(crate) const MAX_CMAP_RANGES: usize = 65536;
+#[derive(Debug)]
+pub(crate) struct Cmap {
+    ranges: Vec<(u32, u32, u32)>,
 }
-fn format12(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
+impl Cmap {
+    fn lookup(&self, cp: u32) -> Option<u16> {
+        let index = self.ranges.partition_point(|&(start, _, _)| start <= cp);
+        if index == 0 {
+            return None;
+        }
+        let (start, end, gid) = self.ranges[index - 1];
+        if cp > end {
+            return None;
+        }
+        let gid = gid + cp - start;
+        if gid == 0 {
+            None
+        } else {
+            Some(gid as u16)
+        }
+    }
+    fn build(cmap: &[u8], glyphs: u32) -> Result<Self> {
+        if u16_at(cmap, 0)? != 0 {
+            return Err(invalid("cmap version"));
+        }
+        let count = u16_at(cmap, 2)? as usize;
+        if count > 4096 || 4 + count * 8 > cmap.len() {
+            return Err(invalid("cmap directory bounds"));
+        }
+        let mut chosen = None;
+        for i in 0..count {
+            let at = 4 + i * 8;
+            let platform = u16_at(cmap, at)?;
+            let encoding = u16_at(cmap, at + 2)?;
+            if platform != 0 && !(platform == 3 && (encoding == 1 || encoding == 10)) {
+                continue;
+            }
+            let offset = u32_at(cmap, at + 4)? as usize;
+            if offset < 4 + count * 8 {
+                return Err(invalid("cmap overlaps directory"));
+            }
+            let data = cmap
+                .get(offset..)
+                .ok_or_else(|| invalid("cmap subtable offset"))?;
+            let format = u16_at(data, 0)?;
+            let priority = match format {
+                12 => 2,
+                4 => 1,
+                _ => continue,
+            };
+            if chosen.as_ref().is_none_or(|(p, _)| priority > *p) {
+                chosen = Some((priority, data));
+            }
+        }
+        let (_, data) = chosen
+            .ok_or_else(|| Error::UnsupportedFont("Unicode cmap format 4/12 required".into()))?;
+        let ranges = if u16_at(data, 0)? == 12 {
+            format12(data, glyphs)?
+        } else {
+            format4(data, glyphs)?
+        };
+        Ok(Self { ranges })
+    }
+}
+#[cfg(test)]
+fn lookup(cmap: &[u8], cp: u32, glyphs: u32) -> Result<Option<u16>> {
+    Ok(Cmap::build(cmap, glyphs)?.lookup(cp))
+}
+fn format12(data: &[u8], glyphs: u32) -> Result<Vec<(u32, u32, u32)>> {
     if u16_at(data, 2)? != 0 {
         return Err(invalid("cmap12 reserved"));
     }
     let length = u32_at(data, 4)? as usize;
     let data = data.get(..length).ok_or_else(|| invalid("cmap12 length"))?;
     let count = u32_at(data, 12)? as usize;
-    if count > 1_114_112 || 16usize.checked_add(count * 12) != Some(length) {
+    if count > MAX_CMAP_RANGES || 16usize.checked_add(count * 12) != Some(length) {
         return Err(invalid("cmap12 group bounds"));
     }
     let mut previous = None;
-    let mut found = 0;
+    let mut ranges_out = Vec::new();
     for i in 0..count {
         let at = 16 + i * 12;
         let start = u32_at(data, at)?;
@@ -103,14 +137,12 @@ fn format12(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
         {
             return Err(invalid("cmap12 invalid group"));
         }
-        if cp >= start && cp <= end {
-            found = gid + cp - start;
-        }
+        ranges_out.push((start, end, gid));
         previous = Some(end);
     }
-    Ok(found)
+    Ok(ranges_out)
 }
-fn format4(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
+fn format4(data: &[u8], glyphs: u32) -> Result<Vec<(u32, u32, u32)>> {
     let length = u16_at(data, 2)? as usize;
     let data = data.get(..length).ok_or_else(|| invalid("cmap4 length"))?;
     let twice = u16_at(data, 6)? as usize;
@@ -125,7 +157,7 @@ fn format4(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
         return Err(invalid("cmap4 arrays"));
     }
     let mut previous = None;
-    let mut found = 0;
+    let mut ranges_out = Vec::new();
     for i in 0..n {
         let end = u16_at(data, 14 + i * 2)? as u32;
         let start = u16_at(data, starts + i * 2)? as u32;
@@ -152,8 +184,8 @@ fn format4(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
             if raw >= glyphs {
                 return Err(invalid("cmap4 glyph ID outside font"));
             }
-            if code == cp {
-                found = raw;
+            if raw != 0 {
+                ranges_out.push((code, code, raw));
             }
         }
         previous = Some(end);
@@ -161,7 +193,7 @@ fn format4(data: &[u8], cp: u32, glyphs: u32) -> Result<u32> {
     if previous != Some(65535) {
         return Err(invalid("cmap4 terminal segment missing"));
     }
-    Ok(found)
+    Ok(ranges_out)
 }
 #[cfg(test)]
 mod tests {
@@ -194,6 +226,35 @@ mod tests {
         assert_eq!(lookup(&c, 65, 4).unwrap(), Some(2));
         c[44..46].copy_from_slice(&0u16.to_be_bytes());
         assert_eq!(lookup(&c, 65, 4).unwrap(), None);
+    }
+    #[test]
+    fn cache_matches_revalidation_for_unicode_domain() {
+        for bytes in [cmap4(), cmap12()] {
+            let map = Cmap::build(&bytes, 3).unwrap();
+            for cp in (0..=0x10ffff)
+                .step_by(97)
+                .chain([65, 65535, 0x1f600, 0x1f601])
+            {
+                assert_eq!(map.lookup(cp), lookup(&bytes, cp, 3).unwrap());
+            }
+            assert!(map.ranges.capacity() <= MAX_CMAP_RANGES);
+        }
+    }
+    #[test]
+    #[ignore = "explicit release-mode timing evidence; no timing threshold"]
+    fn repeated_lookup_benchmark() {
+        let bytes = cmap12();
+        let map = Cmap::build(&bytes, 3).unwrap();
+        let start = std::time::Instant::now();
+        for _ in 0..100_000 {
+            std::hint::black_box(lookup(std::hint::black_box(&bytes), 0x1f600, 3).unwrap());
+        }
+        let uncached = start.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..100_000 {
+            std::hint::black_box(map.lookup(std::hint::black_box(0x1f600)));
+        }
+        eprintln!("100000 lookups uncached={uncached:?} cached={:?}; synthetic two-codepoint cmap12, not typing-visible latency",start.elapsed());
     }
     #[test]
     fn unicode12_original_gids() {

@@ -50,8 +50,11 @@ unmeasured integration gates. No reference LaTeX engine is used in this crate.
 Unicode access: `glyph_id(char)` returns the original GID or `None` for .notdef.
 It deterministically prefers Unicode format 12 over format 4, then first record
 in directory order; unsupported-only cmaps return an explicit error. It checks
-all selected subtable groups/segments and resulting GIDs before answering. Each
-lookup is bounded but currently rescans the selected table (no shaping cache).
+all selected subtable groups/segments and resulting GIDs before answering. The validated representation is initialized once per immutable resource and shared
+by clones, including cached validation failures. Lookup uses binary search; no
+process-global cache or filename-based identity exists. cmap_cache_key() exposes
+the verified SHA256/face tuple. A maximum of 65536 ranges retains at most 768KiB
+of mapping payload per resource (plus small allocation metadata).
 `horizontal_metrics(gid)` returns original unsigned advance and signed bearing,
 including the repeated final advance for trailing hmtx bearings.
 
@@ -62,3 +65,9 @@ component references at 1,000,000. Shared acyclic subgraphs are permitted; cache
 subtree heights cannot hide an over-depth ancestor chain. These are explicit
 experimental resource limits, not a claim to accept every valid TrueType font.
 Simple-outline point data and glyph instructions are still not interpreted.
+
+Cache evidence: 23 normal tests pass; an explicitly run release benchmark on this
+Linux host measured 100000 synthetic format-12 lookups at 9.672ms rebuilding
+validation versus 0.358ms cached. This is one tiny synthetic font and excludes
+initialization, shaping, rendering and UI latency. Reproduce with
+`cargo test --offline --release --manifest-path crates/font-resources/Cargo.toml repeated_lookup_benchmark -- --ignored --nocapture`.
