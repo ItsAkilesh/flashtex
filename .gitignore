@@ -30,3 +30,7 @@ docs/design/canvas/*.html
 
 # Local Python venv for protocol/rendering-v2.requirements.txt
 .venv/
+
+# Never commit provider credentials
+.env
+.env.*

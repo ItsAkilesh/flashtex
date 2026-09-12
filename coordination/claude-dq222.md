@@ -1,6 +1,6 @@
 # claude-dq222 registration and handoff
 
-- Updated UTC: 2026-09-12T08:10Z
+- Updated UTC: 2026-09-12T08:20Z
 - Agent / parent / machine alias: `claude-dq222` (Claude Code) / no parent, registers directly / `mac-m5pro-dq222`
 - Task / acceptance gate / owned paths: **registration only.** Acceptance gate is the Commander recording this machine in `ROSTER.md` and deciding whether to open pools for it. Owned paths: `coordination/claude-dq222.md`, `docs/resources/machines/mac-m5pro-dq222.md`
 - Branch / code revision / main integrated through: `agent/claude-dq222/register` / this commit / `2fd3026`
@@ -52,7 +52,7 @@ installing the toolchain and repairing the OS toolchain underneath it:
 | Rust tests | 772 passed, 0 failed |
 | Python coordination tests | 191 passed, 0 failed |
 | `swift build` | succeeds |
-| `swift test` | blocked, XCTest unavailable |
+| `swift test` | 167 executed, 5 skipped, 1 pre-existing failure |
 
 **Send here:** Rust crate work first — this is the fleet's largest Rust builder
 at 18 cores and 48 GB, with all 17 crates green. Then Python coordination
@@ -66,28 +66,48 @@ BasicTeX for the `pdflatex` oracle; and an isolated `.venv` carrying the
 Apple SDK licence was accepted and `xcode-select` was pointed back at the
 Command Line Tools.
 
-**Correction to the previous revision of this handoff.** It reported that Xcode
-was absent here. That was wrong. Xcode 26.6 is installed, a full 3.5 GB with
-every platform SDK. The error came from a shell glob that aborted on no-match
-and a Spotlight query that returned nothing; neither was evidence of absence.
+**Xcode is now repaired; this machine can take native Mac work.** An earlier
+revision of this handoff said Xcode was absent, then that it was present but
+unusable. Both are now superseded. Xcode 26.6 works, and so do `xcodebuild`,
+`swift test` and XCTest.
 
-**Do not send Apple platform work here anyway — Xcode is installed but
-unusable.** Pointing the developer directory at it breaks `cc`, `clang`, `git`
-and `swift` with `Symbol not found: _XPCTypeBool`, because Xcode's bundled
-CoreDevice framework expects a symbol this macOS 26.6.2 build does not export.
-This was the machine's original fault: `xcode-select` was already pointing at
-Xcode when this session began, which is why the whole toolchain was refusing
-before anything was changed. The machine now runs on the Command Line Tools,
-where everything above is green.
+Two stale components were the cause, neither of them Xcode itself:
 
-The practical limit is that `swift build` works but `swift test` does not, since
-XCTest is not in the Command Line Tools SDK. There is no `xcodebuild`, no
-simulator and no signing. Route FT-003, FT-004 and FT-008 elsewhere. Repair
-needs an Apple ID and a multi-gigabyte download; do not simply re-point
-`xcode-select`, which reproduces the breakage.
+- `/Library/Developer/PrivateFrameworks/CoreDevice.framework` was version 397.28
+  from March 2025, referencing a symbol this macOS 26.6.2 build no longer
+  exports. Xcode 26.6 ships a replacement that had never been installed because
+  Xcode had never been first-launched. `xcodebuild -runFirstLaunch` installed it
+  and moved CoreDevice to 518.33.
+- A `MacOSX27.0.sdk` was shadowing the correct SDK. `xcrun` picks the highest
+  version it finds, and that SDK declares an `arm64e.x1` architecture this
+  machine's linker cannot parse, so every link failed. It was moved to
+  `SDKs-disabled/` rather than deleted.
+
+This was the machine's original fault. `xcode-select` was already pointing at
+Xcode when the session began, which is why `cc`, `git` and Homebrew were all
+refusing before anything was changed here.
+
+**Send native Mac work here now.** `apps/mac` builds and runs 167 tests on this
+machine. The one failure is a pre-existing defect on `main`, reported below, not
+an environment problem.
+
+**Finding for `mac-claude-a`, who owns `apps/mac/`:**
+`CommandTableTests.testCommandTableMatchesREADMEShortcuts` fails because
+`apps/mac/README.md` documents an "Edit > Restore Discarded Buffer" shortcut
+that is missing from the command table. Not fixed here; this agent does not edit
+another agent's owned paths.
+
+**Still not available: simulator runtimes.** `xcrun simctl list runtimes` is
+empty, so there is no iOS or iPadOS simulator for companion work. Native Mac
+work is unaffected. Installing one is a multi-gigabyte download and was not done
+unprompted; request it before allocating FT-004-style work here.
 
 **Do not send here — no Grok/xAI credential.** No `XAI_*` or `GROK_*` key exists
-on this machine.
+on this machine. When one is supplied it goes in the environment variable
+`XAI_API_KEY`, read at `crates/bridge/src/main.rs:136`, and the bridge must also
+be started with `--enable-grok` or the handler returns `provider_disabled`
+without ever reading it. `.env` and `.env.*` are now gitignored, which they were
+not before. The key must never be committed or recorded in `coordination/`.
 
 **Not offered:** `codex-cli 0.146.0` is installed but its login, plan and funding
 were not audited and the owner did not offer it. Do not infer a pool from it.

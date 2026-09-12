@@ -1,7 +1,7 @@
 # Machine: mac-m5pro-dq222
 
 Verified by: Claude Code agent `claude-dq222` on this machine, session of 2026-09-12.
-Verified at: 2026-09-12T08:09Z. Quota readings are point-in-time and go stale.
+Verified at: 2026-09-12T08:20Z. Quota readings are point-in-time and go stale.
 Owner agent: `claude-dq222` (this machine).
 Status: **capability evidence only.** Confers no spending permission; read
 permissions from [RESOURCES.md](../../../coordination/RESOURCES.md).
@@ -109,7 +109,7 @@ handwriting-conversion work can run on this machine.
 | `rust-analyzer` | bundled with toolchain | ready |
 | `clang` / `cc` | Apple clang 21.0.0 | ready |
 | `git` | 2.50.1 (Apple Git-155) | ready |
-| `swift` | 6.3.3 (swiftlang-6.3.3.1.3) | compiles; see blocker |
+| `swift` | 6.3.3 (swiftlang-6.3.3.1.3) | ready, XCTest available |
 | `python3` | 3.14.6 | ready |
 | `uv` | 0.12.3 (Homebrew) | ready |
 | `node` | 25.9.0 | ready |
@@ -117,7 +117,9 @@ handwriting-conversion work can run on this machine.
 | `pdflatex` | pdfTeX 3.141592653, TeX Live 2026 (BasicTeX) | ready, reference oracle |
 | Command Line Tools | 26.6 | ready |
 | Apple SDK licence | accepted, recorded 26.6 | ready |
-| `xcodebuild` | Xcode 26.6 installed but **unusable** | blocker, below |
+| `xcodebuild` | Xcode 26.6 | ready |
+| Xcode SDKs | macOS, iPhoneOS, iPhoneSimulator | ready |
+| Simulator runtimes | **none installed** | see note |
 
 Three things were installed or repaired on 2026-09-12 to reach this state: the
 Rust toolchain, the Command Line Tools (26.6, replacing a May 2025 build), and
@@ -134,69 +136,98 @@ Measured 2026-09-12 after the repairs, not estimated.
 | Rust tests | 772 passed, 0 failed |
 | Python coordination tests | 191 passed, 0 failed, across 10 files |
 | `swift build` (apps/mac) | succeeds |
-| `swift test` (apps/mac) | blocked, see below |
+| `swift test` (apps/mac) | 167 executed, 5 skipped, 1 failed |
+
+The single Swift failure is a **pre-existing defect on `main`**, not an
+environment problem. `CommandTableTests.testCommandTableMatchesREADMEShortcuts`
+finds that `apps/mac/README.md` documents a shortcut, "Edit > Restore Discarded
+Buffer", which is absent from the command table. It is reported here rather than
+fixed: `apps/mac/` is owned by `mac-claude-a` and this agent does not edit
+another agent's paths.
 
 The Python suite needs `jsonschema==4.23.0`, which the repository declares in
 `protocol/rendering-v2.requirements.txt` and asks to be installed in an isolated
 venv. That venv is at `.venv/` (gitignored); without it `tests/test_rendering_v2.py`
 cannot import and its 23 tests do not run.
 
-### Blocker: Xcode 26.6 is installed but incompatible with this macOS
+### Xcode: was broken, now repaired
 
-An earlier revision of this file said Xcode was absent. **That was wrong**, and
-the error is recorded here rather than quietly deleted. `Xcode.app` is present,
-a full 3.5 GB install carrying every platform SDK: macOS, iPhoneOS and its
-simulator, AppleTVOS, WatchOS, XROS and the rest.
+This section previously recorded Xcode as unusable. **It has been fixed**, and
+the diagnosis is kept here because it explains why this machine appeared
+completely broken at the start of the session.
 
-It still cannot be used. Pointing the developer directory at it breaks the
-entire toolchain:
+Two independent stale components were at fault, not Xcode itself:
 
-```text
-$ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-$ cc hello.c -o hello
-dlopen(@rpath/libxcodebuildLoader.dylib): Symbol not found: _XPCTypeBool
-  Referenced from: /Library/Developer/PrivateFrameworks/CoreDevice.framework
-  Expected in:     /Library/Apple/System/Library/PrivateFrameworks/Mercury.framework
-```
+1. **`/Library/Developer/PrivateFrameworks/CoreDevice.framework` was version
+   397.28, installed March 2025** — left behind by an older Xcode and more than
+   a year out of date. It referenced `_XPCTypeBool`, a symbol this macOS 26.6.2
+   build no longer exports, so every tool resolving through the developer
+   directory died with `Symbol not found`. Xcode 26.6 ships a replacement in
+   `Contents/Resources/Packages/` that had never been installed, because Xcode
+   had never been first-launched. `xcodebuild -runFirstLaunch` installed it and
+   moved CoreDevice to **518.33**.
 
-With `xcode-select` on Xcode, `cc`, `clang`, `git` and `swift` all fail this way,
-while `xcodebuild -version` alone still answers. Xcode's bundled CoreDevice
-framework expects a symbol that this macOS 26.6.2 build does not export. The
-machine was returned to the Command Line Tools, where everything works.
+2. **`MacOSX27.0.sdk` was shadowing the correct SDK.** `xcrun` selects the
+   highest-numbered SDK it finds, and a macOS 27.0 SDK dated August 2026 was
+   present alongside the correct 26.5 one. Its `libSystem.B.tbd` declares the
+   `arm64e.x1` architecture, which this machine's linker (`ld-1267`) cannot
+   parse, so every link failed with `tapi error: malformed file`. It has been
+   moved to `/Library/Developer/CommandLineTools/SDKs-disabled/` rather than
+   deleted, so the change is reversible. `xcrun` now correctly selects 26.5.
 
-This was the machine's original fault. `xcode-select` was pointing at Xcode when
-this session began, which is why `cc`, `git` and Homebrew were all refusing
-before any change was made here.
+`xcode-select` now points at `/Applications/Xcode.app/Contents/Developer` and
+the full Apple toolchain works: `cc`, `clang`, `git`, `swift`, `xcodebuild` and
+XCTest. This machine can now build, test and sign native Mac work.
 
-Consequences for allocation:
+**Do not re-add the 27.0 SDK** unless the linker is also upgraded. Restoring it
+reproduces the link failure across every crate and Swift target.
 
-- Rust, Python, Node, docs and coordination work are unaffected and verified above.
-- `swift build` works, because the Swift compiler ships with the Command Line
-  Tools. **`swift test` does not**: XCTest is not in the Command Line Tools SDK,
-  so `apps/mac` tests fail with `no such module 'XCTest'`.
-- No `xcodebuild`, no simulators, no app signing. Route FT-003, FT-004 and FT-008
-  native work elsewhere until Xcode is repaired.
-
-Repair is an Xcode update or reinstall, which needs an Apple ID and a
-multi-gigabyte download. Do not simply re-point `xcode-select` at the current
-Xcode; that reproduces the breakage above.
+**One component is still missing: simulator runtimes.** `xcrun simctl list
+runtimes` is empty, so there is no iOS or iPadOS simulator to run the capture
+companion against. Native *Mac* work is unaffected. Installing a runtime is a
+multi-gigabyte download and has not been done; request it before allocating
+FT-004-style companion work here.
 
 ## What this machine is good for
 
 Ranked by verified evidence:
 
 1. **Rust crate work** — all 17 crates build, 772 tests green, 18 cores and
-   48 GB. This is now the machine's strongest capability and the fleet's
-   largest Rust builder.
-2. **Python coordination tooling** — 191 tests green.
-3. **Documentation, protocol and integration review** — no build needed.
-4. **LaTeX reference-oracle validation** — `pdflatex` available for
+   48 GB. The fleet's largest Rust builder.
+2. **Native Mac work** — `xcodebuild`, `swift build` and `swift test` all work
+   since the repair above. `apps/mac` runs 167 tests here.
+3. **Python coordination tooling** — 191 tests green.
+4. **Documentation, protocol and integration review**.
+5. **LaTeX reference-oracle validation** — `pdflatex` for
    `tools/native-validation/oracle_compare`.
-5. **Node/JavaScript work** — `node` 25.9.0.
-6. **Commit execution** via authenticated Cursor CLI and `gh`.
-7. **Swift compilation only** — `swift build` works, `swift test` does not.
-8. **Not** `xcodebuild`, simulators or app signing, until Xcode is repaired.
-9. **Not** Grok/xAI capture work, until a key is supplied.
+6. **Node/JavaScript work**, and **commit execution** via Cursor CLI and `gh`.
+7. **Not** iPad/iPhone companion work, until a simulator runtime is installed.
+8. **Not** Grok/xAI capture work, until a key is supplied. See below.
+
+## Supplying the Grok / xAI key
+
+The key is read at `crates/bridge/src/main.rs:136` as the environment variable
+**`XAI_API_KEY`**, and only inside the `capture_convert` handler. Two things
+gate it, and both must be satisfied:
+
+- The bridge binary must be started with **`--enable-grok`**. Without it the
+  handler returns `provider_disabled` and never reads the key.
+- `XAI_API_KEY` must be present in that process's environment. Without it the
+  handler returns `provider_auth_missing`.
+
+`FLASHTEX_GROK_MODEL` optionally overrides the default model.
+
+Supply it per-process rather than writing it into a shell profile, so it is not
+exported to every program on the machine:
+
+```sh
+XAI_API_KEY='...' flashtex-bridge --enable-grok
+```
+
+`.env` and `.env.*` are now in `.gitignore`, which they were not before. Nothing
+in this repository reads a `.env` file, so the environment variable is the only
+supported route. Never commit the key, and never record it in
+`coordination/` or in this register.
 
 ## Commit attribution on this machine
 
