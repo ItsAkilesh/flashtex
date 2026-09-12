@@ -55,6 +55,8 @@ struct SourceEditorView: NSViewRepresentable {
     /// brace) offers nothing here — the `\end{env}` snippet belongs to the
     /// completion lane (`Completion.swift`, "\end{X} for every open \begin{X}").
     var autoClosePairs: Set<Character> = ["{"]
+    /// LaTeX syntax colouring (SyntaxHighlighter.swift); off paints nothing.
+    var syntaxHighlighting = true
 
     /// A navigation selection that would move the caret backwards is deferred
     /// while the last user edit is younger than this.
@@ -81,6 +83,8 @@ struct SourceEditorView: NSViewRepresentable {
         tv.setAccessibilityLabel("LaTeX source") // FlashTeXAccessibility: VoiceOver names the editor
         tv.setAccessibilityHelp("LaTeX source editor. Moving the selection announces the line and column.")
         tv.string = text
+        context.coordinator.syntax.enabled = syntaxHighlighting
+        context.coordinator.syntax.attach(tv) // follows the storage from here on; paints the visible window
         context.coordinator.attach(scroll)
         return scroll
     }
@@ -89,6 +93,10 @@ struct SourceEditorView: NSViewRepresentable {
         let tv = scroll.documentView as! NSTextView
         let co = context.coordinator
         co.parent = self
+        if co.syntax.enabled != syntaxHighlighting {
+            co.syntax.enabled = syntaxHighlighting
+            if syntaxHighlighting { co.syntax.reset() }
+        }
         (tv as? CompletingTextView)?.compileResult = result
         (tv as? CompletingTextView)?.editorRevision = editorRevision
         if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
@@ -585,6 +593,8 @@ struct SourceEditorView: NSViewRepresentable {
         /// Keeps EditorPreferences applied to the text view (EditorPreferences.swift).
         var preferencesToken: EditorPreferences.ObservationToken?
         let marks = MarkPainter()
+        /// Syntax colours as temporary attributes (SyntaxHighlighter.swift).
+        let syntax = SyntaxPainter()
         /// The String instance last set on, or read from, the text view.
         var lastKnownText: String
         /// > 0 while this coordinator itself edits the text view (string reset,
@@ -655,6 +665,7 @@ struct SourceEditorView: NSViewRepresentable {
                 MainActor.assumeIsolated {
                     guard let self, let tv = scroll?.documentView as? NSTextView else { return }
                     self.marks.scrolled(tv)
+                    self.syntax.scrolled()
                 }
             }
         }
@@ -826,6 +837,7 @@ struct SourceEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             TypingBench.shared.textViewDidChange() // stamps the delegate time for keystroke -> paint
+            syntax.flush() // the storage notification updated the line model; colours the changed lines now (deferred while composing)
             if !textChangedThisTurn {
                 textChangedThisTurn = true
                 DispatchQueue.main.async { [weak self] in self?.textChangedThisTurn = false }
@@ -897,6 +909,7 @@ struct SourceEditorView: NSViewRepresentable {
         func textWasReset() {
             braceHighlight = nil // the reset dropped every temporary attribute
             pendingClosers = []
+            syntax.reset()
         }
 
         /// Recomputes the pair around the caret and moves the highlight.
