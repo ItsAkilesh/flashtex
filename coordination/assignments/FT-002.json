@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "f1f1f21e69d06877ddb200fd983f133924f490ac",
-  "objective": "URGENT user-designated Kabir CLAUDE Commander successor readiness. Read coordination/kabir-transfer-pending.md and GH1#5647020028; publish exact Claude parent identity/session/PID, actual route/capacity, supervised watcher/publisher readiness and read-only standby ACK. Do NOT claim authority yet. Astra remains active until explicit named quiesced handoff. Preserve compiler bc737126 work and existing engineering ownership; latest cumulative Text be426 remains separately reviewable.",
+  "input_main_sha": "35f5ad4c07f35fa8a6312143834346608d5a3114",
+  "objective": "PRIORITY successor readiness completion: explicit authorization GH1#5647097898 to install/test deterministic launchd read-only standby supervisor (control infrastructure, NOT new engineering/paid agent). Publish plist/script hashes, exact servicePID/poll/shell-survival/authority-refusal evidence or exact blocker. ACK standby boundary GH2#5647125681; no global grants/corrections until Astra explicit quiescence. Parent claude/session_01Xd5Hmwh5GHNTiAmHUJ1MZu accepted. Defer unrelated bookkeeping. Text-only root8b againstbc737 waits your overlap/base ACK.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 18,
+  "revision": 19,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T16:11:31.063859+00:00"
+  "updated_utc": "2026-09-12T16:36:08.240545+00:00"
 }

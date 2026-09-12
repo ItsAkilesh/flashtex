@@ -1,25 +1,23 @@
 {
   "acceptance": [
-    "Start from integrated decoder ecbaf7c on main; preserve four raw frames plus one decoded permit and joined shutdown",
-    "Exactly one contiguous sibling only after requested and accepted nonfailed result; bind ID/project/revision/document hashes and reject malformed, unsolicited, missing or out-of-order frames",
-    "Default legacy requests unchanged; preserve line limits and source epochs, no duplicate renderer parser or automatic native activation",
-    "Use corrected actual producer65dbe7d or later raw-byte font hashes; old contract SHA-bytes-plus-face deviation is historical, not accepted resource evidence",
-    "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
+    "Preserve exact source hash/byte boundaries including ASCII and UTF8 endpoints",
+    "Preserve failure rollback, stale source proof, fairness and contiguous sibling validation",
+    "No helper/ledger/API adoption before independent review"
   ],
   "agent_id": "commander-runtime-display",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "8e9ae6a9bf64ac98d05a5389ef87d45f92169c75",
-  "objective": "Isolated source-validation proof prototype only: path/length/rawSHA/exact UTF8 boundaries versus retained source. Verify existing captured v1/v2 checks, A-submit then mutableB stale/current proof, rollback and sibling drain. Compare complete preprocessing admission cost and retained bytes once after correctness. No production runtime API/helper/ledger adoption, trusted caller digest or broad benchmark.",
+  "input_main_sha": "ce7b6d0cf32358a379baa1be757d79e74886a3f8",
+  "objective": "Verify captured and mutation stale/current acceptance equivalence before comparing costs",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 48,
+  "revision": 49,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T16:28:27.333441+00:00"
+  "updated_utc": "2026-09-12T16:35:39Z"
 }

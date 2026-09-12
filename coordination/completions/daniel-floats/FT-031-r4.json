@@ -1,0 +1,79 @@
+{
+  "agent_id": "daniel-floats",
+  "archived_utc": "2026-09-12T16:38:51Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
+      "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
+      "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+      "Register Daniel machine and exact assignment ACK/session before working",
+      "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
+    ],
+    "agent_id": "daniel-floats",
+    "allocation_id": "daniel-claude20x-shared",
+    "branch": "agent/daniel-floats/float-layout",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "18827dca98e78ca6aa3af9b3b80c4981bc109f68",
+    "objective": "Verified collection face/table descriptor: adversarial bounds and exact identity regressions",
+    "owned_paths": [
+      "crates/font-engine"
+    ],
+    "revision": 4,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-031",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T09:46:48Z"
+  },
+  "report": {
+    "agent_id": "daniel-floats",
+    "allocation_id": "daniel-claude20x-shared",
+    "assignment_acknowledgements": {
+      "FT-031": {
+        "acknowledged_utc": "2026-09-12T16:32:45Z",
+        "adaptation": "Implemented both revision-4 halves as additional test files plus targeted fixes in truetype.rs: adversarial bounds as one table-driven test over hostile buffers (tests/ttc_adversarial.rs), exact-identity regressions via literal assert_eq! on the full CollectionLayout (tests/ttc_identity.rs). While attacking the rev-3 descriptor, found and fixed two real gaps (unchecked sfnt version, unrejected zero-length/misaligned/non-ascending directories) rather than only testing existing behavior. Resolved the rev-3 parse_with_source follow-up by wiring duplicate-tag and overlap validation into its directory loop and proving 787 real system-font faces parse identically before/after, rather than deferring it again.",
+        "main_sha": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+        "revision": 4
+      }
+    },
+    "branch": "agent/daniel-floats/float-layout",
+    "capabilities": [
+      "rust",
+      "fonts",
+      "truetype",
+      "opentype"
+    ],
+    "code_revision": "b579632f0634587af7e74c2accf1877fd9a44ad0",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "mac-m5pro-dq222",
+    "main_integrated_through": "967703ebb4e8140feaf4db02d27cb3ac63c573f6",
+    "next_action": "Await Commander integration. Open follow-up (not done, flagged): mirror collection_layout's new zero-length/alignment/ascending-order checks into parse_with_source's own directory walk if stricter-by-default main-path parsing is wanted; deferred this revision to keep the main-path behavior change limited to the two gaps rev 3 explicitly flagged (duplicate tag, overlap), both of which are now wired in and proven against real fonts.",
+    "reviewed_peers": {
+      "origin/main": "967703ebb4e8140feaf4db02d27cb3ac63c573f6"
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "crates/font-engine: FT-031 rev 4. Added tests/ttc_adversarial.rs (one table-driven test, 14 hostile buffers run through collection_layout inside catch_unwind: truncated mid-header/mid-directory, numFonts/numTables at u32/u16 max, face offset past EOF, table offset+length overrun, zero-length table, misaligned offsets, non-ascending directory order, all-zero-bytes file, empty/single-byte buffers) - every case asserted Error::Malformed, never a panic. Two cases exposed real rev-3 gaps, now fixed in face_layout/collection_layout: an unchecked sfnt version (an all-zero buffer parsed as a trivial valid zero-table sfnt) and unrejected zero-length tables/misaligned offsets/non-ascending tag order. Verified the new checks against all 128 .ttc/.ttf/.otf files under /System/Library/Fonts(/Supplemental): zero anomalies before or after. Added tests/ttc_identity.rs: 3 tests pinning the entire CollectionLayout (every sfnt_offset, every TableRange tag/offset/length) via assert_eq! against literal values, not shape checks; FaceLayout/CollectionLayout now derive PartialEq/Eq. Wired the rev-3-flagged parse_with_source follow-up in: duplicate table tags and overlapping table ranges now reject with Error::Malformed instead of the BTreeMap silently overwriting/ignoring them; verified against 787 real faces (723 Ok/10 MissingTable/54 Unsupported/0 Malformed, identical before and after). cargo test 77/77 (was 73), cargo clippy --all-targets -D warnings clean, cargo fmt --check clean.",
+    "tool": "Claude Code on Claude Max 20x",
+    "updated_utc": "2026-09-12T16:34:26Z",
+    "usage": {
+      "evidence": "Runs on the user's Claude Max 20x subscription per this session's explicit direction; live token consumption is not exposed to this agent. No purchases, overages, or other accounts used.",
+      "status": "unknown"
+    }
+  },
+  "report_age_seconds": 265,
+  "report_path": "coordination/agents/daniel-floats.json",
+  "review_required": true,
+  "revision": 4,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-031",
+  "worker_branch": "agent/daniel-floats/float-layout",
+  "worker_report_sha": "637614fdf33fb14f03f60a84241d84cc65f1e31d"
+}
