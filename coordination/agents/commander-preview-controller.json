@@ -13,7 +13,7 @@
   "capabilities": [
     "rust"
   ],
-  "code_revision": "f709a979bc2d55377351b1ca9d397285c7d5f80e",
+  "code_revision": "9e1835dbf9a9286b38c0876b4af02959c9279d53",
   "eta_minutes": {
     "likely": 20,
     "optimistic": 10,
@@ -21,15 +21,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "3e8861e4403f5934c5a4c0a387f2393d4870a5f5",
-  "next_action": "Publish experimental sink; coordinate producer/native contract and broaden corruption/deadline checks.",
+  "next_action": "Integrate experimental stage; move same root slot to assigned assistant-context product work.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Provisional validated page sink and final SHA256 gate implemented;18 runtime tests and clippy pass. Offline301pages exact, first sink0.336ms/full170.39ms excludes compiler/native.",
+  "state": "ready_for_integration",
+  "summary": "Experimental provisional-page stage complete. Added corruption, invalid UTF8-source sink exclusion, expired/stale completion regressions; all6 chunk tests and strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:23:50Z",
+  "updated_utc": "2026-09-12T07:25:16Z",
   "usage": {
     "evidence": "unknown",
-    "status": "Existing hosted Astra only; no paid API calls or new workers."
+    "status": "Existing hosted Astra only; no inference calls or staffing changes."
   }
 }

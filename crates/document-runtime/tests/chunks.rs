@@ -159,3 +159,69 @@ fn provisional_delivery_is_validated_and_final_digest_gated() {
     assert_eq!(rejected.residency().1, 0);
     assert!(rejected.finish_verified(1, expected).is_err());
 }
+
+#[test]
+fn valid_but_altered_page_cannot_pass_expected_completion_hash() {
+    use flashtex_document_runtime::experimental_chunks::{
+        canonical_digest, PageAssembly, PageChunk,
+    };
+    let header = result();
+    let bytes = serde_json::to_vec(&header).unwrap();
+    let original = json!({"number":1,"width_pt":612,"height_pt":792,"items":[]});
+    let mut expected = header.clone();
+    expected["payload"]["pages"] = json!([original]);
+    let digest = canonical_digest(&expected).unwrap();
+    let changed = json!({"number":1,"width_pt":613,"height_pt":792,"items":[]});
+    let frame = serde_json::to_vec(&PageChunk {
+        id: "r".into(),
+        project_id: "p".into(),
+        revision: 1,
+        page: changed,
+    })
+    .unwrap();
+    let mut assembly =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    let mut provisional = 0;
+    assembly
+        .push_to_sink(&frame, 1, |_| {
+            provisional += 1;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(provisional, 1); // Geometry is valid, but the revision is not complete.
+    assert!(assembly.finish_verified(1, digest).is_err());
+}
+
+#[test]
+fn invalid_source_never_reaches_sink_and_expired_or_stale_completion_fails() {
+    use flashtex_document_runtime::experimental_chunks::{
+        canonical_digest, PageAssembly, PageChunk,
+    };
+    let header = result();
+    let bytes = serde_json::to_vec(&header).unwrap();
+    let page = json!({"number":1,"width_pt":612,"height_pt":792,"items":[{"kind":"text","text":"α","font_size_pt":12,"x_pt":0,"baseline_y_pt":12,"source":{"path":"main.tex","start_byte":1,"end_byte":2}}]});
+    let frame = serde_json::to_vec(&PageChunk {
+        id: "r".into(),
+        project_id: "p".into(),
+        revision: 1,
+        page,
+    })
+    .unwrap();
+    let mut assembly =
+        PageAssembly::new(request(), vec![], &bytes, 1, 1024, Duration::from_secs(5)).unwrap();
+    assert!(assembly
+        .push_to_sink(&frame, 1, |_| panic!("invalid UTF-8 source reached sink"))
+        .is_err());
+    assert_eq!(assembly.residency(), (0, 0, 0));
+    let expired =
+        PageAssembly::new(request(), vec![], &bytes, 0, 1024, Duration::from_millis(1)).unwrap();
+    std::thread::sleep(Duration::from_millis(2));
+    assert!(expired
+        .finish_verified(1, canonical_digest(&header).unwrap())
+        .is_err());
+    let stale =
+        PageAssembly::new(request(), vec![], &bytes, 0, 1024, Duration::from_secs(5)).unwrap();
+    assert!(stale
+        .finish_verified(2, canonical_digest(&header).unwrap())
+        .is_err());
+}
