@@ -313,6 +313,16 @@ const BUILT_INS: &[&str] = &[
     "pagestyle",
     "listfiles",
     "noindent",
+    "tiny",
+    "scriptsize",
+    "footnotesize",
+    "small",
+    "normalsize",
+    "large",
+    "Large",
+    "LARGE",
+    "huge",
+    "Huge",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -822,6 +832,11 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
+            // Font-size declarations: this layout has no per-run size
+            // scaling for body text, so honestly doing nothing is preferred
+            // over fabricating a size change the renderer cannot represent.
+            "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large"
+            | "Large" | "LARGE" | "huge" | "Huge" => {}
             // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
             // in math mode (`src/math.rs`); this arm covers the same commands
             // used directly in running text, 1em/2em of the body text size.
