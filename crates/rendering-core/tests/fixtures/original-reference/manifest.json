@@ -1,0 +1,20 @@
+{
+  "pipeline_commit": "9bb7b2736f16c96f4ce356fbb89caf9de395402c",
+  "reference_commit": "10e80be98a59a6c6317cb21348cee07370ebf1b0",
+  "source_transformation": "Original request retains begin{document} and following body; reference preamble is replaced as recorded in reference-engine.json. Full inputs are not identical.",
+  "pipeline_pdf_route": "vendored runtime-v1 PDF; not rendering-core exact path",
+  "font_sha256": "d0f39b3e9f0ba871e9659676236d9ffaee9113ea30b07e40235fa2fdbe549c1c",
+  "font_name": "LMRoman12-Regular",
+  "missing_metrics": "ec-lmr12.tfm; pipeline silently uses OTF metrics, diagnostics empty",
+  "original_gid_binding_present": true,
+  "visual_equality": null,
+  "files": {
+    "comparison.json": "88bf8f8cd2e7e6ba4802f7ca2c6a2753cc77af56e990b1a176aa9323b3236ce7",
+    "original-v2.json": "4acd3ffef70a4935b0330fcee342c99c7cfd5d6b7e993ddb6bb843c9560ca749",
+    "original.pdf": "8d130791ad2d5da2c20fd5eb134a62bbc75fb41a7446c90158fd945e4f0edbd5",
+    "reference-engine.json": "fdde1c02add6450469801fdfa86b80c24d15a2bcdc4538106691011e46dca084",
+    "reference.pdf": "7434e7c32852c7313ac973ecd3edb3625a2935046dc25060d3464d8fecd66292",
+    "request.jsonl": "16e39aa9eba60096b8067ad69644c3f614fe0ea0a65a627e31b7579feef08c64",
+    "source.tex": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b"
+  }
+}
