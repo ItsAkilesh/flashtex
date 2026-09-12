@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "agent_id": "chatgpt-a",
+  "task_id": "FT-014",
+  "revision": 1,
+  "branch": "agent/chatgpt-a/companion-validation",
+  "action": "work",
+  "assignment_path": "coordination/assignments/FT-014.json",
+  "issue_number": 5
+}

@@ -1,0 +1,24 @@
+{
+  "acceptance": [
+    "Owned tools/companion-validation harness pins and reports exact FT-004 SHA, Xcode/SDK/destination, commands, exit codes, and concise logs",
+    "Tests reproduce malformed project and missing test target, validate repaired patch in disposable checkout, and check MIME bytes against declarations",
+    "No writes under apps/companion or overlap with FT-004; repair patch is submitted through a recovery issue for owner/Commander review",
+    "Publish exact FT-014 rev 1 ACK plus actual local worker PID/session and current non-secret Codex quota/auth evidence"
+  ],
+  "agent_id": "chatgpt-a",
+  "allocation_id": "openai-aarush-chatgpt-ft014",
+  "branch": "agent/chatgpt-a/companion-validation",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "6944368dea5e529ca96563b82d36e42c332761de",
+  "objective": "Build an independent native validation and repair-broker harness for FT-004. In a disposable read-only checkout of the pinned companion branch, run Xcode project parsing/build/tests, detect malformed pbxproj and missing test targets, validate PNG/JPEG MIME bytes, and emit a minimal binary-safe repair patch/evidence for the FT-004 owner without editing apps/companion on this branch.",
+  "owned_paths": [
+    "tools/companion-validation"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-014",
+  "timebox_minutes": 45,
+  "updated_utc": "2026-09-12T04:43:03Z"
+}
