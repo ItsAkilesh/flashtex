@@ -228,18 +228,34 @@ fn pt_max(a: Pt, b: Pt) -> Pt {
     if b.0 > a.0 { b } else { a }
 }
 
+/// A width is only usable when it is finite and non-negative. A caller's
+/// metrics provider that returns zero, negative, infinite, or `NaN` gets
+/// rejected here rather than being allowed to flow into baseline/centering
+/// arithmetic, where it could silently produce a negative or infinite
+/// position, or flip a page-fit comparison the wrong way (a `NaN` width
+/// compares `false` against everything, so an unchecked `>` check would
+/// never trip).
+fn is_usable_width(w: Pt) -> bool {
+    w.0.is_finite() && w.0 >= 0.0
+}
+
 /// Measures one line's natural width by summing caller-supplied glyph
 /// advances one Unicode scalar value at a time (never per byte, so a
 /// multi-byte character costs exactly one query). Fails with
 /// [`TitleLayoutError::MissingGlyphMetric`] at the first character the
-/// caller cannot measure, naming exactly that character — never a
-/// substituted nominal width.
+/// caller cannot measure, naming exactly that character, and with
+/// [`TitleLayoutError::InvalidGlyphMetric`] at the first character whose
+/// measured width is not finite and non-negative — never a substituted or
+/// silently accepted nonsense width.
 fn measure_line(metrics: &dyn GlyphMetrics, line: &str, size: Pt) -> Result<Pt, TitleLayoutError> {
     let mut width = Pt::ZERO;
     for ch in line.chars() {
         let w = metrics
             .advance_width(ch, size)
             .ok_or(TitleLayoutError::MissingGlyphMetric { ch, size })?;
+        if !is_usable_width(w) {
+            return Err(TitleLayoutError::InvalidGlyphMetric { ch, size, value: w });
+        }
         width += w;
     }
     Ok(width)
@@ -271,6 +287,17 @@ pub fn layout_title_block_with_metrics(
 
     let text_area = sheet.page_layout().text_area;
     let text_width = text_area.width;
+
+    let page_area_usable = text_width.0.is_finite()
+        && text_width.0 > 0.0
+        && text_area.height.0.is_finite()
+        && text_area.height.0 > 0.0;
+    if !page_area_usable {
+        return Err(TitleLayoutError::InvalidPageArea {
+            width: text_width,
+            height: text_area.height,
+        });
+    }
 
     if layout.total_height > text_area.height {
         return Err(TitleLayoutError::BlockTallerThanPage {
@@ -316,6 +343,12 @@ pub fn layout_title_block_with_metrics(
             .ok_or(TitleLayoutError::MissingEmMetric {
                 size: author_font.size,
             })?;
+        if !is_usable_width(gap) {
+            return Err(TitleLayoutError::InvalidEmMetric {
+                size: author_font.size,
+                value: gap,
+            });
+        }
         total_author_width += gap * (author_count as f64 - 1.0);
         gap
     } else {

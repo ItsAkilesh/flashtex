@@ -32,6 +32,21 @@ pub enum TitleLayoutError {
     /// [`crate::metrics::GlyphMetrics::em`] returned `None` for `size`,
     /// needed for the fixed part of `\and`'s inter-author glue.
     MissingEmMetric { size: Pt },
+    /// [`crate::metrics::GlyphMetrics::advance_width`] returned `Some`, but
+    /// the value is not a usable width: negative, infinite, or `NaN`. This
+    /// crate never lets such a value flow into layout arithmetic, where it
+    /// could silently produce a negative or infinite position, or make a
+    /// page-fit comparison vacuously true or false.
+    InvalidGlyphMetric { ch: char, size: Pt, value: Pt },
+    /// [`crate::metrics::GlyphMetrics::em`] returned `Some`, but the value
+    /// is not usable: negative, infinite, or `NaN`.
+    InvalidEmMetric { size: Pt, value: Pt },
+    /// The page's usable text width or height
+    /// ([`flashtex_document_style::PageLayout::text_area`]) is zero,
+    /// negative, or non-finite. This crate refuses to lay out against a
+    /// degenerate page rather than computing a nonsense centering offset or
+    /// letting every width comparison against it come out wrong.
+    InvalidPageArea { width: Pt, height: Pt },
     /// A title or date line's measured natural width exceeds the page's
     /// usable text width. Reported explicitly; this line is never clipped
     /// or silently allowed to overflow the page.
@@ -79,6 +94,18 @@ impl fmt::Display for TitleLayoutError {
             TitleLayoutError::MissingEmMetric { size } => write!(
                 f,
                 "no caller-supplied em (quad) metric at {size}; refusing to fabricate the inter-author glue"
+            ),
+            TitleLayoutError::InvalidGlyphMetric { ch, size, value } => write!(
+                f,
+                "caller-supplied metric for {ch:?} at {size} is {value}, not a usable width (must be finite and non-negative)"
+            ),
+            TitleLayoutError::InvalidEmMetric { size, value } => write!(
+                f,
+                "caller-supplied em (quad) metric at {size} is {value}, not usable (must be finite and non-negative)"
+            ),
+            TitleLayoutError::InvalidPageArea { width, height } => write!(
+                f,
+                "the page's usable text area is {width} x {height}, not usable (width and height must both be finite and positive)"
             ),
             TitleLayoutError::RowTooWide {
                 row,
