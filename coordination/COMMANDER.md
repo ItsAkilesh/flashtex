@@ -1,46 +1,54 @@
-## Current Commander update — Codex local integration fleet, 2026-09-12T20:02:00Z
+## Current Commander update — Codex local integration fleet, 2026-09-12T20:41:59Z
 
 - Sole Commander: `codex-kabir-commander` on `mac-m5pro-kabir`, session
   `codex-ECA8936A-6AA8-4023-829F-5A6CB2776FEB`. The authority-only claim is
   published at `1275473b`; `coordination/authority.json` is the mandatory fence.
-- Current main: `03f147d5`. The predecessor Claude session and its two local
+- Current main: `f803a711`. The predecessor Claude session and its two local
   issue pollers were terminated before the claim; no dispatch, integration,
   Cursor-publication, or promotion process remained. The launchd supervisor is
   deterministic fetch/report-only monitoring and remains active.
-- Integrated compiler checkpoint `787bf7a2`: amsmath grid/display environments
-  plus the reviewed `\Longrightarrow` route. Full compiler tests and strict
-  Clippy passed; HW1 stayed at three pages and improved from 35 to 30 diagnostics.
-- Integrated native checkpoint `c7ff3f74`: current macOS workspace UI, iOS capture
-  app, live Grok flow, syntax highlighting, and basic editor intelligence. The
-  `FlashTeXMac` product builds on this CommandLineTools-only host. XCTest is absent
-  here, so current-main Xcode/Swift tests remain assigned to `mac-claude-a`.
-- Integrated compiler/bridge checkpoint `97525480`: HW1 preamble/list handling,
-  compiler-derived Grok feature declarations, and load-bearing rejection of
-  unsupported/empty math proposals. Compiler and bridge suites plus strict Clippy
-  passed; HW1 stayed at three pages and improved from 30 to 26 diagnostics.
-- Integrated compiler checkpoint `79986817`: real page controls and spacing;
-  compiler tests and strict Clippy passed, HW1 stayed at three pages and improved
-  from 26 to 23 diagnostics.
-- Integrated visual-fidelity checkpoint `03f147d5`: scoped text styles with
-  Base-14 font selection, TeX text ligatures, and correct Symbol font-hint
-  routing. Compiler reported 119 passed / 3 ignored, PDF reported 90 passed,
-  strict Clippy passed for both, and HW1 remains three pages / 23 diagnostics.
+- Integrated math checkpoint `b09ea17c`: broad Grok math coverage plus a guarded
+  nesting-depth correction found during local review. Compiler reported 123
+  passed / 3 ignored and strict Clippy passed; HW1 remained three pages / 23
+  diagnostics.
+- Integrated font checkpoint `a9a2e8af`: pinned Latin Modern Math resource and
+  measured `\mathbb{A-Z}`, `\setminus`, and `\Longrightarrow` glyphs with honest
+  base-14 export limitations. Compiler reported 130 passed / 3 ignored, the Mac
+  product built, and HW1 improved to three pages / 16 diagnostics.
+- Integrated native checkpoint `3c459bf5`: current-result retention without a
+  per-keystroke stale flash, explicit author errors versus system gaps, compact
+  source-located Problems rows, a capped panel, and an idle-hidden bridge. The
+  canned Grok demo-mode commit `17ce6dd7` remains held out of main.
+- Integrated recovery checkpoint `5b07e6e7`: real `\hfill`/`\hfil` distribution,
+  exact `\hspace`, corpus no-ops, source-mapped misplaced-`&` recovery, and an
+  incremental reuse fix. Commander-added tests caught and fixed final-line glue
+  resolution and implicit-gap double counting. Compiler reported 136 passed / 3
+  ignored; HW1 remained three pages / 16 diagnostics.
+- Integrated accent checkpoint `33f5934f`: source-mapped math accents with real
+  available glyphs, explicit unavailable/non-stretching diagnostics, and reuse of
+  the existing rule-backed overline/underline path. Compiler reported 142 passed /
+  3 ignored, strict Clippy and release build passed, and HW1 remained three pages /
+  16 diagnostics.
+- Integrated completion checkpoint `f803a711`: 280 unique current compiler
+  completions, exact synchronization to all 112 `COMMAND_GLYPHS` mappings and 33
+  named operators, parser-arm coverage, and exclusion of explicitly unsupported
+  commands. `FlashTeXMac` builds. The focused XCTest remains unavailable because
+  selected CommandLineTools has no XCTest; no Xcode legal agreement was accepted.
 - The user reports Daniel offline. His published branches are now static handoff
-  inputs; no further Daniel execution or quota is assumed. The clean sizes and
-  length slice `e00edb25` is held because it changes HW1 from three pages to four
-  despite reducing diagnostics from 23 to 17.
-- Three local Codex product engineers prepare isolated, product-only candidates:
-  Grok math coverage, HW1 recovery/accents/quick wins, and Mac completion/UI.
-  They do not publish main or control files; the Commander serializes integration.
-- Native next gate: integrate a current-main completion-vocabulary/UI candidate.
-  Full Xcode tests remain externally required because this host's Xcode license is
-  unaccepted; the Commander will not accept a legal agreement for the user. The
-  canned Grok demo-mode commit `17ce6dd7` remains explicitly held out of main.
+  inputs; no further Daniel execution or quota is assumed.
+- Three local Codex product engineers were allocated isolated, product-only
+  candidates. Their useful handoffs were reviewed and serialized; all three then
+  hit the local Codex usage cap. Their worktrees are preserved and no retry,
+  replacement, purchase, or overage is assumed before a verified reset.
+- The clean Daniel sizes/length slice `e00edb25` remains held: sizes alone and
+  paragraph skip alone each independently change HW1 from three pages to four,
+  despite reducing diagnostics. It needs a fidelity correction, not a blind merge.
 - No paid API call, purchase, overage, or new resource grant was used by this
   Commander. Existing machine allocations and path ownership remain in force;
   do not duplicate Daniel compiler work or Jaysen native work.
-- Next action: review and serialize the three local candidates, prioritizing real
-  HW1 math coverage without page-count regression, then rerun the real demo path.
+- Next action: checkpoint the integrated fleet state, publish recovery evidence,
+  then inspect remaining current-main branches for a small non-overlapping
+  candidate that preserves the three-page HW1 gate.
 
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
