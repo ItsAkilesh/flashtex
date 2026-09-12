@@ -40,6 +40,8 @@ enum EditHistory {
     /// Usage fraction from which the panel shows a capacity warning.
     static let warningFraction = 0.8
 
+    static func steps(_ n: Int) -> String { n == 1 ? "1 step" : "\(n) steps" }
+
     /// `history_status` reply (`payload.history`).
     struct Status: Equatable {
         /// Oldest → newest; the next step to undo is the LAST element.
@@ -215,7 +217,7 @@ enum EditHistory {
 
         func accessibilityLabel(direction: Direction) -> String {
             let position = distance == 0 ? "next \(direction.rawValue)" : "\(distance) steps below the next \(direction.rawValue)"
-            let count = steps == 1 ? "1 step" : "\(steps) steps"
+            let count = EditHistory.steps(steps)
             return "\(title), \(count), \(position). \(detail)"
         }
     }
@@ -737,14 +739,14 @@ struct EditHistoryPanel: View {
                         .accessibilityLabel("Undo stack is empty")
                 }
                 ForEach(client.undoRows) { row in HistoryRowView(row: row, direction: .undo) }
-            } header: { Text("Undo (\(client.status?.undoLabels.count ?? 0) steps, newest first)") }
+            } header: { Text("Undo (\(EditHistory.steps(client.status?.undoLabels.count ?? 0)), newest first)") }
             Section {
                 if client.redoRows.isEmpty {
                     Text("nothing to redo").font(.caption).foregroundStyle(.secondary)
                         .accessibilityLabel("Redo stack is empty")
                 }
                 ForEach(client.redoRows) { row in HistoryRowView(row: row, direction: .redo) }
-            } header: { Text("Redo (\(client.status?.redoLabels.count ?? 0) steps, next first)") }
+            } header: { Text("Redo (\(EditHistory.steps(client.status?.redoLabels.count ?? 0)), next first)") }
         }
         .listStyle(.inset)
         .accessibilityIdentifier("history.stacks")
