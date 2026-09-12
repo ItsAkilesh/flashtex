@@ -43,6 +43,24 @@ impl FileProject {
         project_id: &str,
         entry: &str,
     ) -> Result<(Self, Controller), String> {
+        Self::open_with_bibliography(root, private_root, project_id, entry, &[])
+    }
+    /// Explicit bibliography paths are imported through the same rooted capability
+    /// and retained private ledgers as ordinary source documents.
+    pub fn open_with_bibliography(
+        root: &Path,
+        private_root: &Path,
+        project_id: &str,
+        entry: &str,
+        bibliography_paths: &[String],
+    ) -> Result<(Self, Controller), String> {
+        let mut declared = std::collections::BTreeSet::new();
+        for path in bibliography_paths {
+            let normalized = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
+            if normalized.as_str() != path || path == entry || !declared.insert(path) {
+                return Err("invalid, duplicate or entry bibliography path".into());
+            }
+        }
         let root = root.canonicalize().map_err(|e| e.to_string())?;
         if !root.is_dir() {
             return Err("project root is not a directory".into());
@@ -124,15 +142,43 @@ impl FileProject {
                 .map_err(|e| e.to_string())?;
             stores.insert(file.path.as_str().to_owned(), store);
         }
+        for path in bibliography_paths {
+            if stores.contains_key(path) {
+                continue;
+            }
+            if stores.len() >= 256 {
+                return Err("project exceeds 256 source stores".into());
+            }
+            let normalized = ProjectPath::normalize(path).map_err(|e| e.to_string())?;
+            let file = capability
+                .read(&normalized, flashtex_edit_ledger::MAX_DOCUMENT_BYTES as u64)
+                .map_err(|e| e.to_string())?
+                .ok_or("bibliography source missing on disk")?;
+            let text =
+                String::from_utf8(file.bytes).map_err(|_| "bibliography source must be UTF-8")?;
+            let slot = ledger_root.join(sha256_hex(path.as_bytes()));
+            if fs::symlink_metadata(&slot).is_ok_and(|meta| !meta.is_dir()) {
+                return Err("ledger slot is not a private directory".into());
+            }
+            let mut store = Store::open(slot).map_err(|e| e.to_string())?;
+            store
+                .initialize(
+                    Document::new(project_id.into(), path.clone(), 1, text)
+                        .map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+            stores.insert(path.clone(), store);
+        }
         let diagnostics = graph
             .diagnostics()
             .iter()
             .map(|diagnostic| diagnostic.message.clone())
             .collect();
-        let controller = Controller::open_without_compiler(
+        let controller = Controller::open_with_bibliography(
             project_id.into(),
             entry.as_str().into(),
             stores.into_values().collect(),
+            bibliography_paths,
         )?;
         Ok((
             Self {
@@ -184,6 +230,20 @@ impl FileProject {
         expected: &flashtex_project_index::VersionSnapshot,
         path: &str,
     ) -> Result<crate::EditOutcome, String> {
+        self.open_document_with_kind(
+            controller,
+            expected,
+            path,
+            flashtex_project_index::DocumentKind::Latex,
+        )
+    }
+    pub fn open_document_with_kind(
+        &self,
+        controller: &mut Controller,
+        expected: &flashtex_project_index::VersionSnapshot,
+        path: &str,
+        kind: flashtex_project_index::DocumentKind,
+    ) -> Result<crate::EditOutcome, String> {
         if expected != &controller.index().snapshot() || expected.project_id != self.project_id {
             return Err("project membership snapshot is stale".into());
         }
@@ -219,7 +279,7 @@ impl FileProject {
                     .map_err(|e| e.to_string())?;
             }
         }
-        controller.attach_document(expected, store)
+        controller.attach_document_with_kind(expected, store, kind)
     }
 
     /// Explicitly accept a reviewed disk snapshot into durable source. The old

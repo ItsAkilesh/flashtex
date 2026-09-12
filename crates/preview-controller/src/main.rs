@@ -89,18 +89,16 @@ fn run(config: Value) -> Result<(), String> {
             .unwrap_or(json!([])),
     )
     .map_err(|e| e.to_string())?;
-    if config.get("project_root").is_some() && !bibliography_paths.is_empty() {
-        return Err("explicit bibliography sources currently require store_paths".into());
-    }
     let (mut controller, file_project) = if config.get("project_root").is_some() {
         if config.get("store_paths").is_some() {
             return Err("choose project_root or store_paths, not both".into());
         }
-        let (files, controller) = FileProject::open(
+        let (files, controller) = FileProject::open_with_bibliography(
             std::path::Path::new(string(&config, "project_root")?),
             std::path::Path::new(string(&config, "private_ledger_root")?),
             &project,
             &entry,
+            &bibliography_paths,
         )?;
         (controller, Some(files))
     } else {
@@ -516,9 +514,17 @@ fn handle(
             }
             let path = string(p, "path")?;
             let (document, preview_error) = if request["type"] == "open_document" {
+                let kind = match p.get("document_kind").and_then(Value::as_str) {
+                    None if p.get("document_kind").is_none() => {
+                        flashtex_project_index::DocumentKind::Latex
+                    }
+                    Some("latex") => flashtex_project_index::DocumentKind::Latex,
+                    Some("bibliography") => flashtex_project_index::DocumentKind::Bibliography,
+                    _ => return Err("document_kind must be latex or bibliography".into()),
+                };
                 let result = file_project
                     .ok_or("helper was not opened from a file project")?
-                    .open_document(controller, &expected, path)?;
+                    .open_document_with_kind(controller, &expected, path, kind)?;
                 (Some(result.document), result.preview_error)
             } else {
                 (None, controller.detach_document(&expected, path)?)

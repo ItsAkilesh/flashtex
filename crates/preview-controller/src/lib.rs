@@ -166,6 +166,16 @@ impl Controller {
         expected: &VersionSnapshot,
         store: Store,
     ) -> Result<EditOutcome, String> {
+        self.attach_document_with_kind(expected, store, flashtex_project_index::DocumentKind::Latex)
+    }
+    /// Attach with an explicitly selected lexical kind. Surviving document kinds
+    /// are preserved by the same atomic membership update.
+    pub fn attach_document_with_kind(
+        &mut self,
+        expected: &VersionSnapshot,
+        store: Store,
+        kind: flashtex_project_index::DocumentKind,
+    ) -> Result<EditOutcome, String> {
         if self.closed || expected != &self.index.snapshot() {
             return Err("project closed or membership snapshot is stale".into());
         }
@@ -183,7 +193,7 @@ impl Controller {
         let started = Instant::now();
         let mut members = self.membership_documents(None)?;
         members.push(document.clone());
-        self.replace_membership(expected, &members)?;
+        self.replace_membership(expected, &members, Some((&document.path, kind)))?;
         self.submitted = None;
         self.stores.insert(document.path.clone(), store);
         Ok(self.after_save(document, started))
@@ -200,6 +210,7 @@ impl Controller {
         &mut self,
         expected: &VersionSnapshot,
         documents: &[Document],
+        added_kind: Option<(&str, flashtex_project_index::DocumentKind)>,
     ) -> Result<(), String> {
         let members: Vec<_> = documents
             .iter()
@@ -208,9 +219,14 @@ impl Controller {
                     doc.path.as_str(),
                     doc.revision,
                     doc.text.as_str(),
-                    self.index
-                        .document_kind(expected, &doc.path)
-                        .unwrap_or(flashtex_project_index::DocumentKind::Latex),
+                    added_kind
+                        .filter(|(path, _)| *path == doc.path)
+                        .map(|(_, kind)| kind)
+                        .unwrap_or_else(|| {
+                            self.index
+                                .document_kind(expected, &doc.path)
+                                .unwrap_or(flashtex_project_index::DocumentKind::Latex)
+                        }),
                 )
             })
             .collect();
@@ -235,7 +251,7 @@ impl Controller {
         }
         self.document(path)?;
         let members = self.membership_documents(Some(path))?;
-        self.replace_membership(expected, &members)?;
+        self.replace_membership(expected, &members, None)?;
         self.submitted = None;
         self.stores.remove(path);
         Ok(self.compile_current().err())
@@ -547,7 +563,7 @@ impl Controller {
         let documents = self.membership_documents(None)?;
         let mut runtime = Session::spawn_command(command, limits)?;
         runtime.set_completed_snapshots_enabled(self.historical.enabled)?;
-        self.replace_membership(&expected, &documents)?;
+        self.replace_membership(&expected, &documents, None)?;
         self.runtime = Some(runtime);
         self.submitted = None;
         self.compile_current()

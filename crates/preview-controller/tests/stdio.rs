@@ -713,3 +713,75 @@ fn source_plans_are_bounded_exact_snapshot_proposals_without_mutation() {
         assert_eq!(client.reply(kind)["type"], "error");
     }
 }
+
+#[test]
+fn rooted_bibliography_plans_survive_typed_attach_edit_and_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let private = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("main.tex"), "\\cite{old}").unwrap();
+    std::fs::write(
+        project.path().join("references.data"),
+        "@article{old,title={Title}}",
+    )
+    .unwrap();
+    let config = json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","project_root":project.path(),"private_ledger_root":private.path(),"bibliography_paths":["references.data"]});
+    let mut client = Client::configured(dir.path(), config.clone());
+    let plan = |client: &mut Client| {
+        client.send("snap", "snapshot", json!({}));
+        let mut request = client.reply("snap")["payload"].clone();
+        request["max_bytes"] = json!(100000);
+        request["old_name"] = json!("old");
+        request["new_name"] = json!("new");
+        client.send("plan", "plan_citation_rename", request);
+        let response = client.reply("plan");
+        assert_eq!(response["type"], "result", "{response}");
+        assert_eq!(
+            response["payload"]["plan"]["edits"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+    };
+    plan(&mut client);
+    client.send("snap", "snapshot", json!({}));
+    let mut detach = client.reply("snap")["payload"].clone();
+    detach["path"] = json!("references.data");
+    client.send("detach", "detach_document", detach.clone());
+    let detached = client.reply("detach");
+    assert_eq!(detached["type"], "result");
+    let mut attach = detached["payload"].clone();
+    attach["path"] = json!("references.data");
+    attach["document_kind"] = json!("bibliography");
+    client.send("attach", "open_document", attach);
+    assert_eq!(client.reply("attach")["type"], "result");
+    plan(&mut client);
+    // Membership generation distinguishes detach/reattach with unchanged revisions.
+    detach["max_bytes"] = json!(100000);
+    detach["old_name"] = json!("old");
+    detach["new_name"] = json!("new");
+    client.send("stale", "plan_citation_rename", detach);
+    assert_eq!(client.reply("stale")["type"], "error");
+    client.send("doc", "document", json!({"path":"references.data"}));
+    let doc = client.reply("doc")["payload"]["document"].clone();
+    client.send("edit", "edit", json!({"path":"references.data","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":"@article{old,title={Durable}}"}));
+    assert_eq!(client.reply("edit")["type"], "result");
+    plan(&mut client);
+    for (kind, id) in [("undo", "undo-bib"), ("redo", "redo-bib")] {
+        client.send("history-doc", "document", json!({"path":"references.data"}));
+        let document = client.reply("history-doc")["payload"]["document"].clone();
+        client.send(id, kind, json!({"path":"references.data","command":{"command_id":id,"expected_revision":document["revision"],"expected_sha256":document["source_sha256"]}}));
+        assert_eq!(client.reply(id)["type"], "result");
+        plan(&mut client);
+    }
+    drop(client);
+    std::fs::remove_file(project.path().join("references.data")).unwrap();
+    let mut client = Client::configured(dir.path(), config);
+    plan(&mut client);
+    client.send("doc", "document", json!({"path":"references.data"}));
+    assert_eq!(
+        client.reply("doc")["payload"]["document"]["text"],
+        "@article{old,title={Durable}}"
+    );
+}

@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "0f2373bc8cc81b2997e54070192af736be482932",
+  "code_revision": "b4802cf1a11823e3651e283d3bfb3cbd0df32847",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Implement explicit bibliography kind through project-root imports, typed attach and reopen; add lifecycle tests before native citation adoption.",
+  "next_action": "Review and document native proposal-to-approval mapping; exercise existing apply_group refusal and recovery with actual generated plans. No automatic cross-document application.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r5 proposal helper checkpoint: exact snapshot literal/citation plans, explicit bibliography store constructor, no automatic edits. 54 helper checks including three explicit original compiler tests and strict lint pass. GH30 tracks remaining project-root and attach/reopen kind lifecycle.",
+  "summary": "FT048r5 rooted bibliography lifecycle implemented: explicit import, typed attach, preserved kinds across edits/history/membership, reopen with app-supplied declarations. 56 tests including all explicit original compiler checks pass, strict Clippy clean.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:45:20Z",
+  "updated_utc": "2026-09-12T10:48:56Z",
   "usage": {
     "status": "unknown"
   }
