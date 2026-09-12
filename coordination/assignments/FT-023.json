@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "052363664cc5e78ea3a61cfe74cc450d0d98abec",
-  "objective": "Review native helper display source and font freshness interoperability against actual rendering candidate fixtures; publish concrete gaps without peer edits or duplicate validators",
+  "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
+  "objective": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:29:28.429953+00:00"
+  "updated_utc": "2026-09-12T11:36:16.558654+00:00"
 }

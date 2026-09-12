@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "e4c9252ddb947aebebb81d384d72782e7613a263",
-  "objective": "Independently verify published incremental producer through existing runtime with exact fresh/persistent source and sibling equality; no producer edits",
+  "input_main_sha": "81b482cc3730758c48b3c98d3ea55706fc425df6",
+  "objective": "Prototype bounded validated raw display sibling with typed source correlation to avoid full Value materialization; no custom JSON parser or decoder expansion",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 4,
+  "revision": 5,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T11:16:55.918555+00:00"
+  "updated_utc": "2026-09-12T11:36:16.558654+00:00"
 }

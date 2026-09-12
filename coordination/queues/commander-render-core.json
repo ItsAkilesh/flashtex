@@ -4,42 +4,42 @@
   "schema_version": 1,
   "steps": [
     {
+      "name": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
+      "objective": "Verify existing rendering validation on actual raw versus normalized helper candidate JSON with exact numeric, duplicate field and source/resource gates",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
-      "objective": "Classify the actual pinned 602-pixel math mismatch using existing original/reference glyph, rule and resource evidence without invented correspondence",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Consume reviewed raw transport fixture through existing immutable renderer/exporter and record exact geometry/text equivalence",
+      "objective": "Consume reviewed raw transport fixture through existing immutable renderer/exporter and record exact geometry/text equivalence",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Prepare a minimal tested owner-scoped patch or exact unsupported correspondence contract for the demonstrated mismatch; no authoritative peer writes",
-      "objective": "Prepare a minimal tested owner-scoped patch or exact unsupported correspondence contract for the demonstrated mismatch; no authoritative peer writes",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     },
     {
+      "name": "Recheck published native helper route and font-byte fix against existing interoperability fixtures; no authoritative native edits",
+      "objective": "Recheck published native helper route and font-byte fix against existing interoperability fixtures; no authoritative native edits",
+      "owned_paths": [
+        "crates/rendering-core"
+      ],
       "acceptance": [
         "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
         "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Run the next existing pinned math fixture after the classified correction; keep text, geometry, pixel and source evidence separate",
-      "objective": "Run the next existing pinned math fixture after the classified correction; keep text, geometry, pixel and source evidence separate",
-      "owned_paths": [
-        "crates/rendering-core"
-      ],
       "timebox_minutes": 40
     }
   ],
