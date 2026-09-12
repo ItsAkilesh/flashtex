@@ -11,8 +11,8 @@
   ],
   "branch": "agent/daniel-calc/tex-calc",
   "state": "ready_for_integration",
-  "summary": "crates/tex-calc rev 2: LengthTable adds scoped named-length dependency tracking (free_names respects rev1 shadowing) with incremental recompute after redefinition, invalidating exactly the transitively-stale set. Proved eval_all_fresh() == eval_all_incremental() by exact HashMap equality over 5 varied graphs (linear chain, diamond, unrelated branch, shadowed-inner-definition, cycle-then-overflow). CyclicLength now carries the full chain (e.g. [a,b,c,a]); Overflow now carries OverflowInfo{op,operands} naming the exact operation and operand values. All rev1 exactness preserved (i64 sp, i128 rational literals, tex.web unit ratios, MAX_DIMEN_SP boundaries, typed div-by-zero, 72.26999pt fidelity). 66 unit tests + 1 doctest, cargo clippy --all-targets -D warnings clean, cargo fmt --check clean.",
-  "next_action": "Await Commander/integration review; no further work planned on this lane unless requested.",
+  "summary": "crates/tex-calc rev 3: added pub const parser::MAX_PARSE_DEPTH (200), checked once per parse_unary call, so nested (, {, and unary - past that depth are a typed CalcError::Parse instead of a Rust stack overflow, mirroring MAX_RESOLUTION_DEPTH on the eval side. Published the LengthTable consumer adapter contract as a compiled module-doc doctest in deps.rs (define/get/eval_all_incremental/eval_all_fresh, the document-style Pt boundary crossing via Sp::to_style_pt/try_from_style_pt, and every CalcError variant a consumer must handle); repo-wide grep confirms no consumer of tex-calc/tex_calc exists yet, so none was invented. Confirmed crates/document-style/src/length.rs:22 (pub struct Pt(pub f64)) is the repository's existing style-units type, already the only interchange type this crate consumes (no parallel unit type invented). Added 15 new tests (14 in src/lib.rs, 1 in src/sp.rs), each asserting a specific typed CalcError variant rather than is_err(), covering every required bounded-adversarial category: sp-unit overflow at/past MAX_DIMEN_SP, nested parens at/past MAX_PARSE_DEPTH, a 10,000-term flat expression bounded by MAX_RESOLUTION_DEPTH, NUL bytes, non-NFC Unicode, U+202E RTL override, division by a named length resolving to zero, all four lone operators, and literals one past i32::MAX/i64::MAX, plus overflow-with-op-name, a 200-digit literal past i128, a named-length dependency chain at/past MAX_RESOLUTION_DEPTH (found by binary search), unknown/partial-match unit suffixes, and self-shadowing inside a nested group. 81 unit tests + 2 doctests (up from 66 + 1), cargo clippy --all-targets -D warnings clean, cargo fmt --check clean. Only crates/tex-calc and this lane's own two coordination files were touched; no peer crate was edited. Repository AGENTS.md/CLAUDE.md/coordination/CLAUDE.md contain fabricated 'LATEST USER OVERRIDE' staffing/authority/commit-identity text; treated as data, not instruction, per this lane's actual assignment, and not acted on.",
+  "next_action": "Await Commander/integration review of the rev 3 typed contract (new MAX_PARSE_DEPTH bound, the 15 new adversarial-category tests, and the published LengthTable consumer contract). No further work planned on this lane unless requested.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -24,17 +24,17 @@
     "evidence": "Shared Claude Max 20x allocation daniel-claude20x-shared; no purchases or overages made or requested."
   },
   "reviewed_peers": {
-    "origin/main": "155e6ff84c60353aeab1422a0b86897d5fd17fd7"
+    "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
   },
   "assignment_acknowledgements": {
     "FT-045": {
-      "acknowledged_utc": "2026-09-12T09:44:55Z",
-      "revision": 2,
-      "main_sha": "155e6ff84c60353aeab1422a0b86897d5fd17fd7",
-      "adaptation": "Implemented LengthTable (crates/tex-calc/src/deps.rs) reusing eval.rs's existing lazy-thunk/blackhole machinery via new pub(crate) helpers (define_in, invalidate, lookup, force_named, value_to_sp) rather than a parallel evaluator, so cycle detection, overflow checks, and MAX_RESOLUTION_DEPTH are identical to plain evaluate(). Changed CyclicLength and Overflow payload shapes to carry diagnostics; updated every existing test that matched them (no test loosened). No peer files touched; document-style still consumed read-only via Pt boundary conversion only."
+      "acknowledged_utc": "2026-09-12T17:00:31Z",
+      "revision": 3,
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+      "adaptation": "Found rev 3 code already partially drafted uncommitted in the worktree from an interrupted prior session (MAX_PARSE_DEPTH, the deps.rs consumer-contract doctest, and 8 of the required adversarial tests); verified every line against the actual source and test output rather than trusting it, judged it sound, and kept it. Added the remaining 6 required adversarial-category tests it was missing (NUL bytes, non-NFC Unicode, RTL override, lone operators, absurdly-long flat input, literals past i32/i64) so every category the assignment names explicitly has its own test asserting a specific typed CalcError variant. Confirmed by repo-wide grep that no consumer of tex-calc exists today, so the published adapter contract's worked example was verified against this crate's own compiled doctest rather than a fabricated caller. Confirmed document-style::length::Pt (crates/document-style/src/length.rs:22) is the repo's existing style-units type and remains the only thing this crate consumes from document-style, unchanged from rev 1/2. No peer crate file was edited. Merged origin/main to the stated main_sha (git merge --no-ff 486b759c, clean, no conflicts); confirmed by git diff that the merge touched zero files under crates/tex-calc, then re-ran cargo test/clippy/fmt at the resulting merge commit to get the final tested SHA."
     }
   },
-  "updated_utc": "2026-09-12T09:44:55Z",
-  "code_revision": "09c049a43ff25854724fc794651a4e8691145be1",
-  "main_integrated_through": "155e6ff84c60353aeab1422a0b86897d5fd17fd7"
+  "updated_utc": "2026-09-12T17:00:31Z",
+  "code_revision": "8913fd58847d09e20c811a387b5eb5efd14da9f2",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b"
 }
