@@ -147,7 +147,7 @@ extension ShellModel {
         guard bridge === session, text != activeText else { return }
         session.expectAdoption(of: text)
         let whole = NSRange(location: 0, length: (activeText as NSString).length)
-        pendingEdit = .init(path: activePath, nsRange: whole, text: text, token: (pendingEdit?.token ?? 0) + 1)
+        pendingEdit = .init(path: activePath, nsRange: whole, text: text, token: nextEditToken())
     }
 
     /// Re-runs restart reconciliation for entries a transport failure left
@@ -375,10 +375,10 @@ extension ShellModel {
             activePath = edit.path
             if applied.document.text == afterText,
                let ns = text.nsRange(utf8Bytes: .init(path: edit.path, startByte: edit.startByte, endByte: edit.endByte)) {
-                pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: (pendingEdit?.token ?? 0) + 1)
+                pendingEdit = .init(path: edit.path, nsRange: ns, text: edit.replacement, token: nextEditToken())
             } else {
                 let whole = NSRange(location: 0, length: (text as NSString).length)
-                pendingEdit = .init(path: edit.path, nsRange: whole, text: applied.document.text, token: (pendingEdit?.token ?? 0) + 1)
+                pendingEdit = .init(path: edit.path, nsRange: whole, text: applied.document.text, token: nextEditToken())
             }
             proposals.removeAll { $0.captureId == proposal.captureId }
             reviewing = proposals.first

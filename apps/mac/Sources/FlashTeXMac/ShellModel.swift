@@ -38,12 +38,26 @@ final class ShellModel {
     var recoverableBuffer: RecoverableBuffer?
 
     // Capture review / insertion (contract: "Capture and insertion").
-    struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
+    struct PendingEdit: Equatable {
+        var path: String; var nsRange: NSRange; var text: String; var token: Int
+        /// Editor revision `nsRange` was computed for; the editor refuses the
+        /// edit if the buffer moved on (an IME commit, a keystroke) before it
+        /// could apply it. nil: not bound (bridge-verified edits).
+        var revision: Int? = nil
+        /// What to give back when a capture insertion is refused.
+        var captureRefund: CaptureRefund? = nil
+    }
+    struct CaptureRefund: Equatable { var proposal: RuntimeV1.CaptureProposal; var anchorBefore: InsertionAnchor }
     var caretUTF16: Int = 0
     var anchor: InsertionAnchor?
     var proposals: [RuntimeV1.CaptureProposal] = []
     var reviewing: RuntimeV1.CaptureProposal?
     var pendingEdit: PendingEdit?
+    /// Tokens only ever grow: the editor remembers the last token it consumed,
+    /// so a token that restarted at 1 after `pendingEdit` was cleared (an
+    /// applied or refused edit) would never be applied.
+    @ObservationIgnored private var editTokens = 0
+    func nextEditToken() -> Int { editTokens += 1; return editTokens }
     var captureNote: String?
     var appliedCaptureIDs: Set<String> = []
     var nextAnchorNumber = 1
@@ -277,7 +291,7 @@ final class ShellModel {
             quickFix = nil; return
         }
         pendingEdit = .init(path: grouped.path, nsRange: grouped.nsRange, text: grouped.text,
-                            token: (pendingEdit?.token ?? 0) + 1)
+                            token: nextEditToken(), revision: editorRevision)
         navigationNote = "Applied: \(preview.summary) (undo with ⌘Z)"
         quickFix = nil
     }
@@ -874,7 +888,10 @@ final class ShellModel {
             captureNote = "Anchor offset is not a valid position."; return .needsReselection("invalid offset")
         }
         activePath = anchor.path
-        pendingEdit = .init(path: anchor.path, nsRange: ns, text: insert, token: (pendingEdit?.token ?? 0) + 1)
+        var reviewed = proposal
+        reviewed.latex = latex
+        pendingEdit = .init(path: anchor.path, nsRange: ns, text: insert, token: nextEditToken(),
+                            revision: editorRevision, captureRefund: .init(proposal: reviewed, anchorBefore: anchor))
         appliedCaptureIDs.insert(proposal.captureId)
         proposals.removeAll { $0.captureId == proposal.captureId }
         reviewing = proposals.first
@@ -883,6 +900,26 @@ final class ShellModel {
                                       revision: editorRevision, contextAfter: anchor.contextAfter)
         captureNote = "Inserted \(proposal.captureId) at byte \(byte) (undo with ⌘Z)."
         return .inserted(byteOffset: byte)
+    }
+
+    /// Called by the editor when it could NOT apply a pending edit: the buffer
+    /// moved on since the edit was prepared (an IME commit, a keystroke) or the
+    /// range no longer fits. A capture goes back to the front of the review
+    /// queue with its pre-insertion anchor, so approving it again re-resolves
+    /// the anchor against the current text; nothing is recorded as inserted.
+    func editRefused(_ edit: PendingEdit, reason: String) {
+        if pendingEdit == edit { pendingEdit = nil }
+        guard let refund = edit.captureRefund else {
+            navigationNote = "Edit not applied: \(reason)."
+            return
+        }
+        let id = refund.proposal.captureId
+        appliedCaptureIDs.remove(id)
+        if !proposals.contains(where: { $0.captureId == id }) { proposals.insert(refund.proposal, at: 0) }
+        reviewing = proposals.first
+        if anchor?.id == refund.anchorBefore.id { anchor = refund.anchorBefore }
+        captureNote = "Capture \(id) was not inserted: \(reason). It is back in the review queue; approve it again."
+        log("insertion of \(id) refused: \(reason)")
     }
 
     /// Called by the editor once it has applied a pending edit (with undo registered).

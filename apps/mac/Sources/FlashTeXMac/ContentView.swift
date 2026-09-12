@@ -174,6 +174,7 @@ private struct EditorPane: View {
                 onCaretChange: { model.caretUTF16 = $0 },
                 onSelectionChange: { model.caretLengthUTF16 = $0.length },
                 onEditApplied: { model.editApplied($0, newText: $1) },
+                onEditRefused: { model.editRefused($0, reason: $1) },
                 autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : [] // EditorPreferences.swift gates the braces lane set
             )
             CaptureBar()

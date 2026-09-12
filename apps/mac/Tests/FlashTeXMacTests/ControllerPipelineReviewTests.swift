@@ -184,6 +184,56 @@ final class ControllerPipelineReviewTests: XCTestCase {
         XCTAssertTrue(released, "nothing retains the model once the flush has returned")
     }
 
+    /// Finding 8: a capture approved while the editor is composing (IME marked
+    /// text) produced a `pendingEdit` whose UTF-16 range was computed against
+    /// the model text, which is BEHIND the storage by the marked run; the view
+    /// applied it at once (before its own marked-text guard), landing the
+    /// capture inside/before the composition, or — when AppKit refused the
+    /// change — reported it applied anyway, so `appliedCaptureIDs` recorded a
+    /// capture that was never inserted (a retry is refused as a duplicate).
+    /// Expected: the edit waits for the composition; a range that no longer
+    /// matches the buffer is refused explicitly, the capture returns to the
+    /// review queue, and approving it again inserts at the pinned anchor.
+    func testCaptureApprovedDuringCompositionIsNotMisplacedOrSilentlyLost() async throws {
+        let h = try await IMEHarness.attached("capture-ime", text: "AB\n")
+        defer { h.close() }
+        let model = h.model
+        // Pin the insertion point after "AB" (byte 2).
+        h.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        XCTAssertEqual(model.caretUTF16, 2)
+        model.pinAnchorAtCaret()
+        XCTAssertEqual(model.anchor?.byteOffset, 2)
+        // The IME composes two characters at the start: the storage is ahead of the model.
+        h.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        h.compose("かな")
+        XCTAssertTrue(h.hasMarkedText)
+        XCTAssertEqual(h.string, "かなAB\n")
+        XCTAssertEqual(model.activeText, "AB\n", "the model sees the buffer only once the composition commits")
+
+        let proposal = RuntimeV1.CaptureProposal(captureId: "cap-ime-1", latex: "X", ambiguities: [], requiredDependencies: [])
+        model.enqueue(proposal)
+        XCTAssertEqual(model.approveProposal(proposal, latex: "X"), .inserted(byteOffset: 2))
+        // Give the view its update passes while the composition is still open.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(h.hasMarkedText, "the pending edit must not break the composition")
+        XCTAssertEqual(h.string, "かなAB\n", "nothing is inserted into a buffer that is still being composed: \(h.probe.editApplied.map(\.1))")
+        h.commit("かな")
+        XCTAssertFalse(h.hasMarkedText)
+        let settled = await settles(5) { model.pendingEdit == nil && model.activeText == "かなAB\n" }
+        XCTAssertTrue(settled, "text \(model.activeText.debugDescription), pendingEdit \(String(describing: model.pendingEdit)), applied \(h.probe.editApplied.map(\.1))")
+        XCTAssertNotEqual(h.string, "かなXAB\n", "the capture must not land inside the composed run")
+        // Either the capture was inserted at the anchor, or it was refused explicitly and re-queued.
+        if model.appliedCaptureIDs.contains("cap-ime-1") {
+            XCTAssertTrue(model.activeText.hasPrefix("かなAB") && model.activeText.contains("X"), "an inserted capture sits after the pinned anchor: \(model.activeText.debugDescription)")
+        } else {
+            XCTAssertTrue(model.proposals.contains { $0.captureId == "cap-ime-1" }, "a refused capture returns to the queue: \(model.captureNote ?? "-")")
+            XCTAssertEqual(model.approveProposal(proposal, latex: "X").isInserted, true, model.captureNote ?? "-")
+            let inserted = await settles(5) { model.activeText.hasPrefix("かなAB") && model.activeText.contains("X") }
+            XCTAssertTrue(inserted, "text \(model.activeText.debugDescription), note \(model.captureNote ?? "-")")
+        }
+        XCTAssertTrue(model.appliedCaptureIDs.contains("cap-ime-1"))
+    }
+
     /// Polls `cond` on the main actor until it holds or `timeout` elapses.
     private func settles(_ timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
         let start = Date()
@@ -193,4 +243,8 @@ final class ControllerPipelineReviewTests: XCTestCase {
         }
         return true
     }
+}
+
+private extension ShellModel.ApproveOutcome {
+    var isInserted: Bool { if case .inserted = self { return true } else { return false } }
 }
