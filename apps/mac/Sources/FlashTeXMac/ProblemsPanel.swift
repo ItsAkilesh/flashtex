@@ -12,7 +12,9 @@ struct ProblemsPanel: View {
     @Environment(ShellModel.self) var model
 
     static let identifier = "problems.panel"
-    static let height: CGFloat = 220
+    /// Split-pane bounds: the header plus two rows at least; the ideal shows ~5 grouped rows.
+    static let minHeight: CGFloat = 120
+    static let idealHeight: CGFloat = 260
 
     var body: some View {
         @Bindable var model = model
@@ -54,12 +56,11 @@ struct ProblemsPanel: View {
                 } description: {
                     Text(model.result == nil ? "Compile results list their diagnostics here; the preview is never hidden by them." : "The last compile reported no diagnostics.")
                 }
-                .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 120)
+                .frame(maxWidth: .infinity, minHeight: 80, maxHeight: .infinity)
             } else {
                 problemsList(diags)
             }
         }
-        .frame(height: diags.isEmpty ? 150 : Self.height)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Problems")
         .accessibilityIdentifier(Self.identifier)
@@ -70,5 +71,6 @@ struct ProblemsPanel: View {
         // spoken group count/occurrence (DiagnosticsPanel.swift, mac-diagnostics-3).
         DiagnosticsListView(diagnostics: diags, panel: model.problemsPanel,
                             severityFilter: model.problemsSeverityFilter, showsHeader: false, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -77,8 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // not cropped by a restored off-screen frame.
         if let spec = ProcessInfo.processInfo.environment["FLASHTEX_WINDOW_FRAME"] {
             let p = spec.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-            if p.count == 4, let window = NSApp.windows.first {
-                window.setFrame(NSRect(x: p[0], y: p[1], width: p[2], height: p[3]), display: true)
+            if p.count == 4 {
+                // After SwiftUI restored the saved frame, so the hook wins.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    (NSApp.windows.first { $0.title == "FlashTeX" } ?? NSApp.windows.first)?
+                        .setFrame(NSRect(x: p[0], y: p[1], width: p[2], height: p[3]), display: true)
+                }
             }
         }
     }
@@ -102,6 +106,24 @@ struct FlashTeXMacApp: App {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
                     // Automation: open a secondary window at launch for evidence captures.
                     if ProcessInfo.processInfo.environment["FLASHTEX_SHOW_PALETTE"] == "1" { model.commandPaletteShown = true } // evidence captures of the command palette
+                    // Evidence captures of the completion list: place the caret after the
+                    // first occurrence of the given text and open the list (⌃Space) once
+                    // the window is up, exactly as a keystroke would.
+                    if let needle = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_COMPLETION"], !needle.isEmpty {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            guard let tv = TypingBenchDriver.findTextView(in: NSApp.windows.compactMap(\.contentView)) else { return }
+                            let r = (tv.string as NSString).range(of: needle)
+                            guard r.location != NSNotFound else { return }
+                            tv.window?.makeFirstResponder(tv)
+                            tv.setSelectedRange(NSRange(location: r.location + r.length, length: 0))
+                            tv.scrollRangeToVisible(tv.selectedRange())
+                            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                        windowNumber: tv.window?.windowNumber ?? 0, context: nil, characters: " ",
+                                                        charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49) {
+                                tv.keyDown(with: e)
+                            }
+                        }
+                    }
                     if let id = ProcessInfo.processInfo.environment["FLASHTEX_OPEN_WINDOW"], ["nearby", AccessibilityHelpView.windowID, EditHistoryPanel.windowID, ProjectSearch.windowID, CitationRename.windowID].contains(id) { openWindow(id: id) }
                 }
         }

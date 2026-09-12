@@ -56,6 +56,13 @@ parent's package). Seed: `fixtures/real-world/hw1/HW1.tex`.
   (WORKER · flashtex-compiler · recovered · capabilities), preview pages, Problems
   panel (All/Errors/Warnings, grouped rows with recovery lines and Go to source),
   status bar (r2 · 134 ms · worker · 111/8 · note).
+- `hw1-latin-modern-1-FlashTeX.png` — the same seed compiled by the bundled
+  `flashtex-render` (Latin Modern metrics, `FLASHTEX_COMPILER` → the bundled
+  producer): 69 errors / 17 warnings / All 86 in the sidebar, panel and status bar.
+- `hw1-completion-*.png` — the IntelliSense-style completion list (⌃Space after
+  `\sub`, `FLASHTEX_SHOW_COMPLETION`): tinted SF Symbol per kind, candidate in the
+  editor font, origin column, and the documentation pane (`\subsection{…}{…}` —
+  "Command · numbered subsection heading …") with the ↑↓ / ⏎ / esc hint line.
 - `hw1-palette-*.png` — the command palette sheet over the same window
   (37 commands; key caps ⌘, ⌘O ⌘S ⌘⇧S ⌘⇧O ⌘R ⌘⇧K ⌘⇧R …; menu badges).
 - `fixture-problems-1-FlashTeX.png` — protocol fixture compiled by the bundled
@@ -67,6 +74,24 @@ The first capture (before d3feb0b7) showed the three columns overflowing a
 restored 900 pt frame clamped to the old 1100 pt minimum; the window minimum is now
 1200 pt with a 1500×950 default size.
 
+## User feedback round (issue #2, 19:0xZ)
+
+- Problems panel: the list scrolls within the panel (HW1: 119 diagnostics with the
+  compiler, 86 with the render pipeline), the panel height is a drag handle above
+  it (`PanelResizeHandle`, remembered in `FlashTeX.workspace.problemsHeight`), and
+  it is never taller than the window leaves for the editor (240 pt). Severity icons,
+  counts, grouping ("2× \setlength …", "1 of 2: main.tex line 10") and inline
+  underlines in the editor were already live; gutter markers need a hook in
+  `SourceEditorView.swift`, owned by mac-syntax-highlight.
+- Completion popup (`CompletionPopup`, Completion.swift): rows are
+  `CompletionRowView`s (icon + label + detail), one accessibility element each,
+  plus a documentation pane; `CompletionTests`/`CompletionAccessibilityTests`/
+  `CompletionLatencyTests` unchanged and green.
+- Not done here (needs `SourceEditorView.swift`): hover quick-info, ⌘-click /
+  context-menu go-to-definition. Navigate > Go to Matching (⌘⇧D) already jumps
+  between `\label`/`\ref` and `\begin`/`\end`; the sidebar's Outline and the
+  Project menu cover labels/sections and `\input` targets.
+
 ## Tests
 
 - `CommandTableTests` (8): README ⇄ command table ⇄ menu wiring parity now also
@@ -76,7 +101,11 @@ restored 900 pt frame clamped to the old 1100 pt minimum; the window minimum is 
 - `WorkspaceShellTests` (9): outline scan, reveal/stale refusal, switchOrNote,
   palette rows/filter/runnable set, workspace flags, View-menu entries.
 - `DiagnosticsPanelTests`, `PanelAccessibilityTests`, `DiagnosticGroupAccessibilityTests` (20) unchanged and green.
-- Full `swift test` with the parent's helper env: see the final report / handoff for the executed count at the final SHA.
+- Full `swift test` with the parent's helper env (`FLASHTEX_REVIEW_HISTORY_DIR=off`,
+  `FLASHTEX_NO_ACTIVATE=1`) at d3feb0b7: **767 executed, 22 skipped, 0 failures**
+  (228 s; baseline 660/0 at f01b56f, ~690 at the branch point). 2bdf7876 adds only
+  the `FLASHTEX_WINDOW_FRAME` AppDelegate hook and this evidence; its re-run is
+  recorded in `coordination/agents/mac-ui-redesign.json`.
 
 ## Known rough edges
 

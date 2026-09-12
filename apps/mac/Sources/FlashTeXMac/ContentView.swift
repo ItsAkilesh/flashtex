@@ -14,6 +14,8 @@ struct ContentView: View {
     @Environment(ShellModel.self) var model
     @Environment(\.openWindow) private var openWindow
     @State private var columns: NavigationSplitViewVisibility = .all
+    /// Height of the Problems panel; remembered across launches.
+    @AppStorage("FlashTeX.workspace.problemsHeight") private var problemsHeight: Double = ProblemsPanel.idealHeight
 
     var body: some View {
         @Bindable var model = model
@@ -21,22 +23,53 @@ struct ContentView: View {
             WorkspaceSidebar()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
         } detail: {
-            VStack(spacing: 0) {
-                HSplitView {
-                    EditorPane().frame(minWidth: 340, maxWidth: .infinity)
-                    PreviewPane().frame(minWidth: 380, maxWidth: .infinity)
-                }
-                if model.problemsVisible {
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    HSplitView {
+                        EditorPane().frame(minWidth: 340, maxWidth: .infinity)
+                        PreviewPane().frame(minWidth: 380, maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if model.problemsVisible {
+                        // Drag the handle to give the diagnostics list more or less
+                        // room; the list scrolls within whatever height it has.
+                        PanelResizeHandle(height: $problemsHeight,
+                                          range: ProblemsPanel.minHeight...max(ProblemsPanel.minHeight, geo.size.height - 240))
+                        ProblemsPanel().frame(height: min(problemsHeight, max(ProblemsPanel.minHeight, geo.size.height - 240)))
+                    }
                     Divider()
-                    ProblemsPanel()
+                    StatusBar()
                 }
-                Divider()
-                StatusBar()
             }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+    }
+}
+
+/// The divider above the Problems panel, draggable up and down (the cursor
+/// shows the resize arrows on hover). Keyboard users size it with the split
+/// of the window itself; the panel is never taller than the window allows.
+private struct PanelResizeHandle: View {
+    @Binding var height: Double
+    let range: ClosedRange<Double>
+    @State private var startHeight: Double?
+
+    var body: some View {
+        Rectangle().fill(.clear)
+            .frame(height: 7)
+            .overlay(Divider(), alignment: .center)
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let start = startHeight ?? height
+                    startHeight = start
+                    height = min(max(start - value.translation.height, range.lowerBound), range.upperBound)
+                }
+                .onEnded { _ in startHeight = nil })
+            .accessibilityHidden(true)
     }
 }
 
