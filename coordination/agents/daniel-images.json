@@ -1,39 +1,39 @@
 {
-  "schema_version": 1,
   "agent_id": "daniel-images",
-  "machine": "mac-m5pro-dq222",
-  "tool": "Claude Code on Claude Max 20x",
+  "allocation_id": "daniel-claude20x-shared",
+  "assignment_acknowledgements": {
+    "FT-036": {
+      "acknowledged_utc": "2026-09-12T09:21:36Z",
+      "adaptation": "Reused flashtex_project_files::ProjectRoot instead of image-assets' own hand-rolled AssetRoot filesystem primitives; kept AssetLoader/AssetError/AssetId public contract stable, added RootError variants only where project-files' richer error set needed a home; added the two rev-2-required tests (file replacement changes content identity; decoded-pixel-axis limit rejected with a typed error, not decoded); replaced the one rooting test whose property project-files deliberately no longer allows (symlink-that-stays-in-root) with a test documenting that it is now rejected, since project-files' guarantee is strictly stronger, not weaker.",
+      "main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
+      "revision": 2
+    }
+  },
+  "branch": "agent/daniel-images/image-assets",
   "capabilities": [
     "rust",
     "image-processing",
     "filesystem-security"
   ],
-  "branch": "agent/daniel-images/image-assets",
-  "state": "ready_for_integration",
-  "summary": "FT-036 rev 2: crates/image-assets now delegates rooted path resolution and bounded reads to flashtex_project_files::ProjectRoot's openat(O_NOFOLLOW) walk instead of its own canonicalize-based root.rs; strictly stricter (refuses every symlink component, not just escaping ones) with no security gap to layer over; added file-replacement and decoded-pixel-limit tests. 42/42 tests pass, clippy -D warnings clean.",
-  "next_action": "Await Commander integration; no consumer wires flashtex-image-assets in yet (confirmed by repo-wide grep), so downstream wiring is a separate follow-up task, not part of FT-036.",
+  "code_revision": "91716b77d8c682a11bad267758e693e9b1a9a088",
   "eta_minutes": {
-    "optimistic": 0,
     "likely": 0,
+    "optimistic": 0,
     "pessimistic": 0
   },
-  "allocation_id": "daniel-claude20x-shared",
-  "usage": {
-    "status": "unknown",
-    "evidence": "Runs on the shared Claude Max 20x subscription allocation for this task; live token/session consumption is not exposed to this agent."
-  },
+  "machine": "mac-m5pro-dq222",
+  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
+  "next_action": "Await Commander integration; no consumer wires flashtex-image-assets in yet (confirmed by repo-wide grep), so downstream wiring is a separate follow-up task, not part of FT-036.",
   "reviewed_peers": {
     "origin/main": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
   },
-  "assignment_acknowledgements": {
-    "FT-036": {
-      "acknowledged_utc": "2026-09-12T09:21:36Z",
-      "revision": 2,
-      "main_sha": "5499e419b09868e2e248c413351a5646db74fac1",
-      "adaptation": "Reused flashtex_project_files::ProjectRoot instead of image-assets' own hand-rolled AssetRoot filesystem primitives; kept AssetLoader/AssetError/AssetId public contract stable, added RootError variants only where project-files' richer error set needed a home; added the two rev-2-required tests (file replacement changes content identity; decoded-pixel-axis limit rejected with a typed error, not decoded); replaced the one rooting test whose property project-files deliberately no longer allows (symlink-that-stays-in-root) with a test documenting that it is now rejected, since project-files' guarantee is strictly stronger, not weaker."
-    }
-  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "FT-036 rev 2: crates/image-assets now delegates rooted path resolution and bounded reads to flashtex_project_files::ProjectRoot's openat(O_NOFOLLOW) walk instead of its own canonicalize-based root.rs; strictly stricter (refuses every symlink component, not just escaping ones) with no security gap to layer over; added file-replacement and decoded-pixel-limit tests. 42/42 tests pass, clippy -D warnings clean.",
+  "tool": "Claude Code on Claude Max 20x",
   "updated_utc": "2026-09-12T09:21:36Z",
-  "code_revision": "988e4bc78aa131a3be0e16309edae1da2497ce20",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9"
+  "usage": {
+    "evidence": "Runs on the shared Claude Max 20x subscription allocation for this task; live token/session consumption is not exposed to this agent.",
+    "status": "unknown"
+  }
 }

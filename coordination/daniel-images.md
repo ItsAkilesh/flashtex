@@ -5,7 +5,7 @@ project-files reader for bounded image assets" / `agent/daniel-images/image-asse
 Owned paths: `crates/image-assets/**`, `coordination/daniel-images.md`,
 `coordination/agents/daniel-images.json`.
 State: ready for integration.
-Tested commit: `988e4bc78aa131a3be0e16309edae1da2497ce20` (HEAD of the code
+Tested commit: `bcabbf215e5621267acebc60cd0cef6ba7609604` (HEAD of the code
 change on this branch, this worktree; `cargo test` and `cargo clippy
 --all-targets -- -D warnings` re-verified clean at exactly this SHA, both
 before and after committing). `input_main_sha` from the FT-036 rev-2
