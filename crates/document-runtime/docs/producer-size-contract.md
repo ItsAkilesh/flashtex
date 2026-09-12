@@ -59,3 +59,28 @@ runtime acceptance was established. The unchanged producer's optional `--v2 FILE
 output can serialize the retained display into a separate artifact for an exact
 size check without raising stream caps. Such an additional replay is pending the
 active measurement window's release; this note does not invent its result.
+
+
+## Exact CLI artifact observation
+
+The authorized single `--v2` run is now complete with the identical26-page source,
+verified6e69661 binary/assets, and unchanged caps. The CLI artifact is25120854
+bytes without newline (25120855 if framed). Its SHA256 is
+`eeacaaf4cbec909311cd511d1bec31681a3d3e565f48d664dd78e4498b0ce25f`.
+The preflight estimate27152372 exceeds actual JSON by2031518 bytes, about8.1%.
+The estimate is conservative in this concrete case; both estimated and actual
+sizes exceed16MiB. This is not evidence of a false decline or a universal estimate
+bound. The exact artifact also exceeds runtime's8MiB framed default.
+
+Stdout contains exactly one1745747-byte v1 line with26 pages, byte-identical to the
+prior multi-page replay, no accepted v2 capability and the explicit decline warning.
+The file artifact's complete document set, raw UTF8 hashes, lengths and revisions
+match the request. Producing this file does not negotiate or deliver a sibling.
+The two line budgets remain independent; adding v1's size to v2 would describe a
+different, nonexistent combined cap. Newline accounting remains separately relevant.
+
+`benchmarks/display-exact-size-6e69661/evidence.json` records exact command, source,
+binary, asset, artifact and stdout hashes. The25MB artifact is retained at the
+recorded temporary evidence path; the repository keeps concise reproducible evidence
+instead of another full large display copy. No source, serializer, thread, default,
+stream cap, font mapping or native acceptance change was made.

@@ -1,5 +1,6 @@
 //! Experimental syntax-checked raw transport. Rendering fields remain untrusted.
 use crate::{Request, SourceBinding};
+use serde::de::DeserializeSeed;
 use serde::{
     de::{IgnoredAny, MapAccess, SeqAccess, Visitor},
     Deserialize, Deserializer,
@@ -53,39 +54,126 @@ impl<'de> Deserialize<'de> for Syntax {
         d.deserialize_any(Check)
     }
 }
-// Deserialize recognized metadata and validate all opaque values in one serde pass.
-// Field order is unrestricted. Serde owns JSON tokenization and recursion limits.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct MetadataBudget {
+    pub documents: usize,
+    pub path_bytes: usize,
+}
+impl MetadataBudget {
+    pub fn from_request(r: &Request) -> Self {
+        Self {
+            documents: r.documents.len(),
+            path_bytes: r.documents.iter().map(|d| d.path.len()).max().unwrap_or(0),
+        }
+    }
+}
+struct Text {
+    value: Option<String>,
+}
+struct TextSeed {
+    limit: usize,
+}
+impl<'de> DeserializeSeed<'de> for TextSeed {
+    type Value = Text;
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Text, D::Error> {
+        struct Capture(usize);
+        impl Visitor<'_> for Capture {
+            type Value = Text;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("metadata string")
+            }
+            fn visit_str<E>(self, s: &str) -> Result<Text, E> {
+                Ok(Text {
+                    value: (s.len() <= self.0).then(|| s.to_owned()),
+                })
+            }
+        }
+        d.deserialize_str(Capture(self.limit))
+    }
+}
+// Serde handles syntax and decoded duplicate keys; seeds cap retained metadata.
 macro_rules! checked_object {
-    ($name:ident { $($field:ident : $ty:ty => $key:literal),* $(,)? }) => {
+    ($name:ident,$seed:ident,$budget:ident { $($field:ident : $ty:ty => $key:literal => $field_seed:expr),* $(,)? }) => {
         struct $name { $( $field: Option<$ty> ),* }
-        impl<'de> Deserialize<'de> for $name {
-            fn deserialize<D:Deserializer<'de>>(deserializer:D)->Result<Self,D::Error>{
-                struct Object;
+        struct $seed(MetadataBudget);
+        impl<'de> DeserializeSeed<'de> for $seed {
+            type Value=$name;
+            fn deserialize<D:Deserializer<'de>>(self,deserializer:D)->Result<Self::Value,D::Error>{
+                struct Object(MetadataBudget);
                 impl<'de> Visitor<'de> for Object {
                     type Value=$name;
-                    fn expecting(&self,f:&mut fmt::Formatter)->fmt::Result { f.write_str(stringify!($name)) }
+                    fn expecting(&self,f:&mut fmt::Formatter)->fmt::Result {f.write_str(stringify!($name))}
                     fn visit_map<A:MapAccess<'de>>(self,mut map:A)->Result<$name,A::Error>{
-                        $(let mut $field=None;)*
+                        let $budget=self.0;$(let mut $field=None;)*
                         while let Some(key)=map.next_key::<String>()? {
                             match key.as_str() {
-                                $($key => {
-                                    if $field.is_some(){return Err(serde::de::Error::duplicate_field($key));}
-                                    $field=Some(map.next_value::<$ty>()?);
-                                },)*
+                                $($key => {if $field.is_some(){return Err(serde::de::Error::duplicate_field($key));}
+                                    $field=Some(map.next_value_seed($field_seed)?);},)*
                                 _=>{map.next_value::<Syntax>()?;}
                             }
                         }
                         Ok($name{$($field),*})
                     }
                 }
-                deserializer.deserialize_map(Object)
+                deserializer.deserialize_map(Object(self.0))
             }
         }
     }
 }
-checked_object!(WireEnvelope { protocol_version:u64=>"protocol_version", id:String=>"id", kind:String=>"type", payload:WirePayload=>"payload" });
-checked_object!(WirePayload { project_id:String=>"project_id", revision:u64=>"revision", render_format:String=>"render_format", documents:Vec<WireDocument> =>"documents" });
-checked_object!(WireDocument { path:String=>"path", revision:u64=>"revision", sha256:String=>"sha256", byte_length:u64=>"byte_length" });
+checked_object!(WireEnvelope,EnvelopeSeed,budget {
+ protocol_version:u64=>"protocol_version"=>std::marker::PhantomData::<u64>,
+ id:Text=>"id"=>TextSeed{limit:128}, kind:Text=>"type"=>TextSeed{limit:14},
+ payload:WirePayload=>"payload"=>PayloadSeed(budget)
+});
+checked_object!(WirePayload,PayloadSeed,budget {
+ project_id:Text=>"project_id"=>TextSeed{limit:128}, revision:u64=>"revision"=>std::marker::PhantomData::<u64>,
+ render_format:Text=>"render_format"=>TextSeed{limit:15}, documents:Documents=>"documents"=>DocumentsSeed(budget)
+});
+checked_object!(WireDocument,DocumentSeed,budget {
+ path:Text=>"path"=>TextSeed{limit:budget.path_bytes}, revision:u64=>"revision"=>std::marker::PhantomData::<u64>,
+ sha256:Text=>"sha256"=>TextSeed{limit:64}, byte_length:u64=>"byte_length"=>std::marker::PhantomData::<u64>
+});
+struct Documents {
+    entries: Vec<Document>,
+    invalid: bool,
+}
+struct DocumentsSeed(MetadataBudget);
+impl<'de> DeserializeSeed<'de> for DocumentsSeed {
+    type Value = Documents;
+    fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Documents, D::Error> {
+        struct Entries(MetadataBudget);
+        impl<'de> Visitor<'de> for Entries {
+            type Value = Documents;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("documents array")
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Documents, A::Error> {
+                let mut entries = Vec::new();
+                let mut invalid = false;
+                let mut count = 0usize;
+                while let Some(d) = seq.next_element_seed(DocumentSeed(self.0))? {
+                    count = count.saturating_add(1);
+                    match d.complete() {
+                        Some(d) if count <= self.0.documents => entries.push(d),
+                        _ => invalid = true,
+                    }
+                }
+                Ok(Documents { entries, invalid })
+            }
+        }
+        d.deserialize_seq(Entries(self.0))
+    }
+}
+impl WireDocument {
+    fn complete(self) -> Option<Document> {
+        Some(Document {
+            path: self.path?.value?,
+            revision: self.revision?,
+            sha256: self.sha256?.value?,
+            byte_length: self.byte_length?,
+        })
+    }
+}
 struct Envelope {
     protocol_version: u64,
     id: String,
@@ -107,31 +195,42 @@ struct Document {
 impl WireEnvelope {
     fn required(self) -> Result<Envelope, String> {
         let p = self.payload.ok_or("missing raw payload")?;
-        let documents = p
-            .documents
-            .ok_or("missing raw documents")?
-            .into_iter()
-            .map(|d| {
-                Ok(Document {
-                    path: d.path.ok_or("missing raw path")?,
-                    revision: d.revision.ok_or("missing raw document revision")?,
-                    sha256: d.sha256.ok_or("missing raw sha256")?,
-                    byte_length: d.byte_length.ok_or("missing raw byte_length")?,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
+        let documents = p.documents.ok_or("missing raw documents")?;
+        if documents.invalid {
+            return Err("raw metadata exceeds request budget or lacks required fields".into());
+        }
         Ok(Envelope {
             protocol_version: self.protocol_version.ok_or("missing raw protocol")?,
-            id: self.id.ok_or("missing raw id")?,
-            kind: self.kind.ok_or("missing raw type")?,
+            id: self
+                .id
+                .and_then(|v| v.value)
+                .ok_or("missing/overlong raw id")?,
+            kind: self
+                .kind
+                .and_then(|v| v.value)
+                .ok_or("missing/overlong raw type")?,
             payload: Payload {
-                project_id: p.project_id.ok_or("missing raw project")?,
+                project_id: p
+                    .project_id
+                    .and_then(|v| v.value)
+                    .ok_or("missing/overlong raw project")?,
                 revision: p.revision.ok_or("missing raw revision")?,
-                render_format: p.render_format.ok_or("missing raw format")?,
-                documents,
+                render_format: p
+                    .render_format
+                    .and_then(|v| v.value)
+                    .ok_or("missing/overlong raw format")?,
+                documents: documents.entries,
             },
         })
     }
+}
+fn metadata(text: &str, budget: MetadataBudget) -> Result<WireEnvelope, String> {
+    let mut d = serde_json::Deserializer::from_str(text);
+    let result = EnvelopeSeed(budget)
+        .deserialize(&mut d)
+        .map_err(|e| format!("raw syntax and metadata: {e}"))?;
+    d.end().map_err(|e| e.to_string())?;
+    Ok(result)
 }
 #[derive(Debug)]
 pub struct UntrustedRawDisplayCandidate {
@@ -167,16 +266,19 @@ pub(crate) struct Parsed {
 }
 #[cfg(test)]
 pub(crate) fn is_display(bytes: &[u8]) -> Result<bool, String> {
-    serde_json::from_slice::<WireEnvelope>(bytes)
-        .map(|e| e.protocol_version == Some(2) && e.kind.as_deref() == Some("display_list"))
-        .map_err(|e| e.to_string())
+    let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
+    metadata(text, MetadataBudget::default()).map(|e| {
+        e.protocol_version == Some(2)
+            && e.kind.and_then(|v| v.value).as_deref() == Some("display_list")
+    })
 }
 pub(crate) type Decoded = (Option<serde_json::Value>, Option<Box<Parsed>>);
-pub(crate) fn decode(bytes: Vec<u8>) -> Result<Decoded, String> {
+pub(crate) fn decode(bytes: Vec<u8>, budget: MetadataBudget) -> Result<Decoded, String> {
     let text = String::from_utf8(bytes).map_err(|_| "invalid UTF8")?;
-    let wire: WireEnvelope =
-        serde_json::from_str(&text).map_err(|e| format!("raw syntax and metadata: {e}"))?;
-    if wire.protocol_version == Some(2) && wire.kind.as_deref() == Some("display_list") {
+    let wire = metadata(&text, budget)?;
+    if wire.protocol_version == Some(2)
+        && wire.kind.as_ref().and_then(|v| v.value.as_deref()) == Some("display_list")
+    {
         let envelope = wire.required()?;
         let raw = RawValue::from_string(text).map_err(|e| e.to_string())?;
         Ok((None, Some(Box::new(Parsed { envelope, raw }))))
@@ -189,10 +291,16 @@ pub(crate) fn decode(bytes: Vec<u8>) -> Result<Decoded, String> {
 impl Parsed {
     #[cfg(test)]
     pub fn parse(bytes: Vec<u8>) -> Result<Self, String> {
-        decode(bytes)?
-            .1
-            .map(|p| *p)
-            .ok_or("not a raw display envelope".into())
+        decode(
+            bytes,
+            MetadataBudget {
+                documents: 4096,
+                path_bytes: 4096,
+            },
+        )?
+        .1
+        .map(|p| *p)
+        .ok_or("not a raw display envelope".into())
     }
     pub fn validate(self, request: &Request) -> Result<UntrustedRawDisplayCandidate, String> {
         let e = self.envelope;
@@ -247,6 +355,82 @@ impl Parsed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn request_budget_bounds_retention_without_weakening_overflow_validation() {
+        let empty = MetadataBudget::default();
+        let docs = "{},".repeat(50_000) + "{}";
+        let v1 = format!(
+            r#"{{"payload":{{"documents":[{docs}]}},"type":"compile_result","protocol_version":1}}"#
+        );
+        let scanned = metadata(&v1, empty).unwrap();
+        let captured = scanned.payload.unwrap().documents.unwrap();
+        assert!(captured.entries.is_empty());
+        assert!(captured.invalid);
+        let (value, raw) = decode(v1.as_bytes().to_vec(), empty).unwrap();
+        assert!(raw.is_none());
+        assert_eq!(
+            value.unwrap(),
+            serde_json::from_str::<serde_json::Value>(&v1).unwrap()
+        );
+        let v2 = v1
+            .replace("compile_result", "display_list")
+            .replace("\"protocol_version\":1", "\"protocol_version\":2");
+        assert!(decode(v2.into_bytes(), empty).is_err());
+        for entry in [
+            r#"{"revision":"wrong"}"#,
+            r#"{"path":"a","path":"b"}"#,
+            r#"{"opaque":1e400}"#,
+        ] {
+            let input =
+                format!(r#"{{"payload":{{"documents":[{{}},{entry}]}},"protocol_version":1}}"#);
+            assert!(decode(input.into_bytes(), empty).is_err());
+        }
+    }
+    #[test]
+    fn exact_request_budget_and_long_identity_refusal() {
+        let (bytes, request) = fixture();
+        let budget = MetadataBudget::from_request(&request);
+        assert_eq!(budget.documents, 1);
+        assert_eq!(budget.path_bytes, 8);
+        assert!(decode(bytes.clone(), MetadataBudget::default()).is_err());
+        let candidate = decode(bytes.clone(), budget)
+            .unwrap()
+            .1
+            .unwrap()
+            .validate(&request)
+            .unwrap();
+        assert_eq!(candidate.sources().len(), 1);
+        let text = String::from_utf8(bytes).unwrap();
+        let long = text.replacen("real-1", &"x".repeat(524288), 1);
+        assert!(decode(long.into_bytes(), budget).is_err());
+        assert!(decode(text.into_bytes(), budget).unwrap().1.is_some());
+    }
+    #[test]
+    fn budget_does_not_adopt_renderer_path_limit() {
+        let path = "a".repeat(5000) + ".tex";
+        let request = Request {
+            id: "r".into(),
+            project_id: "p".into(),
+            revision: 1,
+            entry_path: path.clone(),
+            documents: vec![crate::Document {
+                path: path.clone(),
+                text: "a".into(),
+            }],
+        };
+        let frame = serde_json::json!({"protocol_version":2,"type":"display_list","id":"r","payload":{"project_id":"p","revision":1,"render_format":"display-list-v2","documents":[{"path":path,"revision":1,"sha256":flashtex_project_files::sha256_hex(b"a"),"byte_length":1}]}});
+        let parsed = decode(
+            serde_json::to_vec(&frame).unwrap(),
+            MetadataBudget::from_request(&request),
+        )
+        .unwrap()
+        .1
+        .unwrap();
+        assert_eq!(
+            parsed.validate(&request).unwrap().sources()[0].path.len(),
+            5004
+        );
+    }
     fn fixture() -> (Vec<u8>, Request) {
         let request: serde_json::Value =
             serde_json::from_str(include_str!("../fixtures/display-producer-request.json"))

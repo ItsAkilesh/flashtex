@@ -78,7 +78,7 @@ fn main() {
             assert!(equal);
             println!(
                 "{}",
-                serde_json::json!({"mode":args[1],"profile":profile,"process_peak_before_verification":hwm,"semantically_equal":equal,"raw_exact":raw,"input_frame_sha256":flashtex_project_files::sha256_hex(expected),"scope":"isolated replay of producer-derived normalized fixture; no native timing"})
+                serde_json::json!({"mode":args[1],"profile":profile,"v1_profile":session.last_profile(),"process_peak_before_verification":hwm,"semantically_equal":equal,"raw_exact":raw,"input_frame_sha256":flashtex_project_files::sha256_hex(expected),"scope":"isolated replay of producer-derived normalized fixture; no native timing"})
             );
             break;
         }

@@ -460,7 +460,17 @@ impl Session {
         if self.active.is_some() || self.process.is_none() {
             return;
         }
+        self.process
+            .as_ref()
+            .unwrap()
+            .reader
+            .set_budget(raw_display::MetadataBudget::default());
         if let Some(mut pending) = self.queue.pop_front() {
+            self.process
+                .as_ref()
+                .unwrap()
+                .reader
+                .set_budget(raw_display::MetadataBudget::from_request(&pending.request));
             pending.sent = Some(Instant::now());
             let bytes = std::mem::take(&mut pending.bytes);
             self.active = Some(pending);

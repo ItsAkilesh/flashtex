@@ -84,3 +84,24 @@ duplicate/numeric/depth/lifecycle/budget gates. In raw sessions, recognized meta
 keys are checked even on v1 classification; this stricter experimental behavior does
 not change the default Value session. Downstream helper/render/native integration
 must preserve original raw bytes and all current-source gates before activation.
+
+## Required v1 overhead measurement
+
+`benchmarks/raw-v1-overhead` extends the same captured-stream example with the
+existing v1 ResponseProfile; no new corpus or production behavior is introduced.
+The required107874-byte frame parsed in3.89/4.17ms under the default constructor
+and6.77/6.04ms under the raw constructor. Validation stayed approximately0.43–0.54ms.
+This pair shows about2–3ms additional required-frame work from raw classification's
+metadata/syntax pass followed by Value decoding. It does not establish native
+latency or predict cost on a larger frame.
+
+An owner-to-decoder expected-frame hint could potentially avoid this work because
+the single permit already prevents decoding the next frame until owner validation
+finishes. Such a change needs careful policy review: raw classification currently
+rejects duplicate recognized envelope/payload metadata even on a v1 result, whereas
+the original Value path may normalize them. Simply switching hinted v1 frames to
+Value would alter that stricter experimental refusal set. Any implementation must
+preserve contiguous accepted-sibling handling through cancellation, mode epochs,
+timeouts and malformed/unsolicited frames, without introducing another queue or
+assuming JSON field order. No hint implementation or refusal change is included in
+this measurement checkpoint.

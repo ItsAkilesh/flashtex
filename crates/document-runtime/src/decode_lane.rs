@@ -5,7 +5,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError},
-        Arc,
+        Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -36,6 +36,7 @@ pub(crate) struct DecodedFrame {
     _permit: Permit,
 }
 pub(crate) struct Decoder {
+    budget: Arc<Mutex<crate::raw_display::MetadataBudget>>,
     reader: Option<Receiver<Input>>,
     stopped: Arc<AtomicBool>,
     wake: SyncSender<()>,
@@ -49,6 +50,8 @@ impl Decoder {
         Self::spawn_mode(raw, false)
     }
     pub fn spawn_mode(raw: Receiver<RawInput>, raw_display: bool) -> Self {
+        let budget = Arc::new(Mutex::new(crate::raw_display::MetadataBudget::default()));
+        let worker_budget = budget.clone();
         let (out, reader) = mpsc::sync_channel(1);
         let (wake, permits) = mpsc::sync_channel(1);
         wake.send(()).expect("initial decoder permit");
@@ -88,7 +91,10 @@ impl Decoder {
                         let decode_queue_wait_ms =
                             start.saturating_duration_since(reader_done).as_secs_f64() * 1000.0;
                         let parsed = if raw_display {
-                            crate::raw_display::decode(bytes)
+                            {
+                                let budget = *worker_budget.lock().expect("metadata budget lock");
+                                crate::raw_display::decode(bytes, budget)
+                            }
                         } else {
                             std::str::from_utf8(&bytes)
                                 .map_err(|e| e.to_string())
@@ -133,6 +139,7 @@ impl Decoder {
             }
         });
         Self {
+            budget,
             reader: Some(reader),
             stopped,
             wake,
@@ -140,6 +147,9 @@ impl Decoder {
             #[cfg(test)]
             published,
         }
+    }
+    pub fn set_budget(&self, budget: crate::raw_display::MetadataBudget) {
+        *self.budget.lock().expect("metadata budget lock") = budget;
     }
     pub fn try_recv(&self) -> Result<Input, TryRecvError> {
         self.reader
@@ -179,6 +189,27 @@ mod tests {
                 Err(TryRecvError::Disconnected) => panic!("decoder disconnected"),
             }
         }
+    }
+    #[test]
+    fn budget_handoff_occurs_under_existing_owner_permit() {
+        let (tx, rx) = mpsc::sync_channel(4);
+        let decoder = Decoder::spawn_mode(rx, true);
+        tx.send(raw(b"{}")).unwrap();
+        let held = receive(&decoder);
+        let sibling = br#"{"payload":{"documents":[{"path":"long.tex","revision":1,"sha256":"a","byte_length":1}],"project_id":"p","revision":1,"render_format":"display-list-v2"},"protocol_version":2,"id":"r","type":"display_list"}"#;
+        tx.send(raw(sibling)).unwrap();
+        assert!(matches!(decoder.try_recv(), Err(TryRecvError::Empty)));
+        decoder.set_budget(crate::raw_display::MetadataBudget {
+            documents: 1,
+            path_bytes: 8,
+        });
+        drop(held);
+        let accepted = receive(&decoder);
+        assert!(matches!(&accepted, Input::Frame(f) if f.raw.is_some()));
+        decoder.set_budget(crate::raw_display::MetadataBudget::default());
+        tx.send(raw(sibling)).unwrap();
+        drop(accepted);
+        assert!(matches!(receive(&decoder), Input::Failure(_)));
     }
     #[test]
     fn sole_permit_covers_queued_and_owner_held_values_with_four_raw_slots() {
