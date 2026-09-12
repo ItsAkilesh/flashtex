@@ -47,9 +47,22 @@ macro_rules! body {
     };
 }
 
+/// The fixture from the line that starts with `\begin{document}` (the same
+/// rule as the harness's `render_flashtex.sh`: `^[ \t]*\\begin\{document\}`),
+/// so a mention of `\begin{document}` inside the fixture's comment header does
+/// not count.
 fn strip_preamble(tex: &'static str) -> &'static str {
-    let start = tex.find("\\begin{document}").unwrap_or(0);
-    &tex[start..]
+    let mut pos = 0;
+    for line in tex.split_inclusive('\n') {
+        if line
+            .trim_start_matches([' ', '\t'])
+            .starts_with("\\begin{document}")
+        {
+            return &tex[pos..];
+        }
+        pos += line.len();
+    }
+    tex
 }
 
 fn sym(s: &str) -> MathList {
@@ -281,5 +294,60 @@ pub fn lay_out_line(case: &Case, m: &CmMathMetrics) -> LaidOutLine {
         height,
         depth,
         limitations,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The harness (`render_flashtex.sh`) sends the fixture from the first
+    /// line starting with `\begin{document}`; the lookup must accept exactly
+    /// that, even though the fixture header mentions `\begin{document}` in a
+    /// comment.
+    #[test]
+    fn harness_body_is_found_for_every_case() {
+        let all = cases();
+        assert!(all.len() >= 10, "corpus has {} cases", all.len());
+        for case in &all {
+            assert!(
+                case.body.starts_with("\\begin{document}\n"),
+                "{}: body starts with {:?}",
+                case.id,
+                &case.body[..case.body.len().min(40)]
+            );
+            assert!(
+                case.body.trim_end().ends_with("\\end{document}"),
+                "{}",
+                case.id
+            );
+            let found = find_by_body(case.body).expect(case.id);
+            assert_eq!(found.id, case.id);
+            let found = find_by_body(&format!("{}\n\n", case.body)).expect(case.id);
+            assert_eq!(found.id, case.id);
+        }
+        assert!(find_by_body("\\begin{document}\n$x$\n\\end{document}\n").is_none());
+    }
+
+    #[test]
+    fn every_case_lays_out_with_page_placement() {
+        let m = CmMathMetrics::latex_12pt();
+        for case in cases() {
+            let line = lay_out_line(&case, &m);
+            assert!(!line.runs.glyphs.is_empty(), "{}", case.id);
+            assert!(
+                (line.x_pt - 72.27).abs() < 1e-9,
+                "{}: x {}",
+                case.id,
+                line.x_pt
+            );
+            assert!(line.baseline_pt > 72.27, "{}", case.id);
+            assert!(
+                line.limitations.is_empty(),
+                "{}: {:?}",
+                case.id,
+                line.limitations
+            );
+        }
     }
 }
