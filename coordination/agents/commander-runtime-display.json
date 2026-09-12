@@ -13,17 +13,17 @@
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "92b288245243b63e753e94ee19c2612471313d1f",
+  "code_revision": "d8a9f7a8e7d32f5ef6fced54723725e0bc2e4426",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "513926ce2160b1db18dead25acc650b3d749f924",
-  "next_action": "Final read-only owner publication review once root addresses generation binding or explicitly limits attribution; preserve no cross-process clock/no loss-cause claims. No active jobs.",
+  "next_action": "Commander integration/next bounded assignment; preserve timing/clock/loss caveats. No active jobs or native activation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049r31 review checkpoint: source-free numeric IDs, queue mutex logging and receiver attribution fixes reviewed read-only. Remaining optional evicted-frame generation binding gap and request-counter saturation sent owner. No heavytests/runtime edits.",
+  "summary": "FT049r31 final read-only e8b5a6fa review: generation/frame identity gap closed, numeric counter exhaustion safe, queue traces outside lock, receiver fullordinal/decode scope/cap correct. Owner88555 tests+lint reportedPASS; no independent heavytest or workloadrun. No remaining concrete blocker.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T13:48:19Z",
+  "updated_utc": "2026-09-12T13:50:11Z",
   "usage": {
     "status": "unknown"
   }
