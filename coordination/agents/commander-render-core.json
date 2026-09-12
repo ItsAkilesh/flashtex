@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T13:16:34.309615+00:00",
-      "adaptation": "Read exact FT023r17. Bounded read-only pinned bundle asset verifier, isolated official asset stage and malformed/missing cases only; no native discovery claims.",
-      "main_sha": "291849d7d5ab67781d1c681f50ebc328fd8a996c",
-      "revision": 17
+      "revision": 19,
+      "main_sha": "620c349ccfa3796201290300a77c558024a1ffd3",
+      "acknowledged_utc": "2026-09-12T13:35:53.670040+00:00",
+      "adaptation": "Read FT023r19. Bound current native evidence review to exact published SHAs; no native execution or speculative patch."
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "f576ac11002f3ad64ddbf4172aba7d95d912dbbf",
+  "code_revision": "4dba31c78bd88e4d8a8391d05fd7979fdff9de84",
   "eta_minutes": {
     "likely": 2,
     "optimistic": 1,
     "pessimistic": 3
   },
   "machine": "linux-primary",
-  "main_integrated_through": "9d8931d5f948416ca9c7e915da47808b3f9fe10e",
-  "next_action": "Commander route exact patches to existing packaging/pipeline owners; require their appliedSHA/buildidentity and nohostTeX native acceptance.",
+  "main_integrated_through": "aef15f20a676289e6a7b6d8116cc18ce48337c5d",
+  "next_action": "Commander route GH31 integration/native test provenance and GH36 actual package/nohostTeX artifacts; no new owner or speculativepatch.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "accepted",
-  "summary": "GH36 candidate patches prepared only in owned handoff: rooted official asset staging via existing verifier and producer bundle discovery after explicit TFM overrides.",
+  "summary": "FT023r19 native evidence review4dba31c7: older230gate run does not establish current rawhelper/noTeX route;2.9scurrentpaint limitation retained. GH31a9b55af7 source fix matches handoff, not integratede50f.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T13:21:46Z",
+  "updated_utc": "2026-09-12T13:35:53Z",
   "usage": {
-    "evidence": "Exactaf155e59/f762f82a gitapplychecks and bashsyntax pass; isolatedstaging9assetsverified, missing10pt refuses. Override ordering checked structurally, no native execution claim. patch-manifest and patch-check-evidence record hashes.",
-    "status": "Hosted OpenAI only; no descendants/providers. Scratch-only git/shell/Python checks terminal; no native or Rust builds. Context telemetry/native compaction unavailable."
+    "evidence": "Pinned report5a13599 actually app7ccbd7e9/helpers1884986f/render6e696616. Controller useslegacycompiler. Historical60KB30ms currentp952900ms vs firstp95258ms, latencynotgated. GH31readonceSHAcheckedbeforeCGFont; ownertestsinspectedonly. GH36branchabsentatfetch.",
+    "status": "Hosted OpenAI only; no providers/descendants. Read-only Git/gh source review, no native/build/test jobs. Context telemetry/native compaction unavailable."
   }
 }
