@@ -831,3 +831,15 @@ A peer implementation must validate the full TTC header/face list and all direct
 and table ranges, distinguish allowed exact sharing from partial overlaps, and
 expose that verified layout without losing full collection identity. No second
 parser or unverified production adapter has been added.
+
+Fresh TTC review: `f2fdb08` (float-layout report `4422cff`) adds
+`collection_layout`, but the exact compiled peer accepts unsupported TTC/sfnt
+versions and table payloads overlapping the TTC header or face directory.
+`tools/ttc_peer_contract.rs` reproduces the five tiny directory probes; actual
+outcomes/source hashes are in `fixtures/ttc-peer-contract.json`. Consumer tests
+independently enforce header/directory/table separation, same-tag exact sharing
+and128face/256table caps. Those post-parse caps cannot bound the peer's prior work.
+The resolver gate therefore remains: the peer must return a validated header range
+and directory ranges, reject unsupported versions/DSIG as appropriate, and enforce
+hard caller-supplied face/table/work caps before allocation and cross-face scans.
+No header decoder was duplicated and no peer dependency was activated prematurely.
