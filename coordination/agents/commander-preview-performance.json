@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T10:08:35Z",
-      "adaptation": "Read main0dc50da ownership extension: profile retained-history cost before optimization; prefer immutable sharing/validation reuse preserving exact schema bytes, receipts and undo recovery, with existing root only.",
-      "main_sha": "0dc50da7dfc8237e533d3a34ceb2321400c5d386",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T10:43:53Z",
+      "adaptation": "Decoder ecbaf7c published. Consuming existing index plan APIs; adding explicit bibliography source classification and native helper stale/bounded proposal checks without automatic edits.",
+      "main_sha": "7802c9af4728a2dcf86541fb86f0468c69be039e",
+      "revision": 5
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "a4a7bcd",
+  "code_revision": "0f2373bc8cc81b2997e54070192af736be482932",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "ab945e65d23797918e4d6ee21a6b856e00151723",
-  "next_action": "Commander/nativeparent integrate exactworker andremeasure. Investigate owner discardedValue destruction vssemanticvalidation, preservingone-decodedvalue budget and allstale/sourcechecks.",
+  "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
+  "next_action": "Implement explicit bibliography kind through project-root imports, typed attach and reopen; add lifecycle tests before native citation adoption.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Boundeddecoderworker: same4rawqueue +1globalparse/validationpermit, joinedshutdown,owneridentityvalidationunchanged.31runtime/53helpertests+lintpass.60ACKs/3cleanfinals/reopens in500KBprobes; pairfinal644\u2013656ms,ownerpoll13\u201351ms. RSSprobe224396kBpeak,no matchedbaseline.",
+  "state": "in_progress",
+  "summary": "FT048r5 proposal helper checkpoint: exact snapshot literal/citation plans, explicit bibliography store constructor, no automatic edits. 54 helper checks including three explicit original compiler tests and strict lint pass. GH30 tracks remaining project-root and attach/reopen kind lifecycle.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T10:35:19Z",
+  "updated_utc": "2026-09-12T10:45:20Z",
   "usage": {
     "status": "unknown"
   }

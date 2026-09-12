@@ -21,6 +21,7 @@ use std::{
 };
 mod output_buffer;
 mod output_delivery;
+mod source_plans;
 mod wire;
 use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
@@ -81,6 +82,16 @@ fn run(config: Value) -> Result<(), String> {
     let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
+    let bibliography_paths: Vec<String> = serde_json::from_value(
+        config
+            .get("bibliography_paths")
+            .cloned()
+            .unwrap_or(json!([])),
+    )
+    .map_err(|e| e.to_string())?;
+    if config.get("project_root").is_some() && !bibliography_paths.is_empty() {
+        return Err("explicit bibliography sources currently require store_paths".into());
+    }
     let (mut controller, file_project) = if config.get("project_root").is_some() {
         if config.get("store_paths").is_some() {
             return Err("choose project_root or store_paths, not both".into());
@@ -107,7 +118,7 @@ fn run(config: Value) -> Result<(), String> {
             })
             .collect::<Result<Vec<_>, String>>()?;
         (
-            Controller::open_without_compiler(project, entry, stores)?,
+            Controller::open_with_bibliography(project, entry, stores, &bibliography_paths)?,
             None,
         )
     };
@@ -393,6 +404,9 @@ fn handle(
             Ok(
                 json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,"membership_generation":snapshot.generation}),
             )
+        }
+        "plan_literal_replacement" | "plan_citation_rename" | "plan_citation_rename_at" => {
+            source_plans::handle(controller.index(), string(request, "type")?, p)
         }
         "search_literal" => {
             let snapshot = controller.index().snapshot();

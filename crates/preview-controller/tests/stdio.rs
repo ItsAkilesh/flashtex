@@ -646,3 +646,70 @@ for line in sys.stdin:
     client.send("get3", "document", json!({"path":"main.tex"}));
     assert_eq!(client.reply("get3")["payload"]["document"], saved);
 }
+
+#[test]
+fn source_plans_are_bounded_exact_snapshot_proposals_without_mutation() {
+    let dir = tempfile::tempdir().unwrap();
+    let text = "α \\cite{old}\n% \\cite{old}\n\\begin{verbatim}\\cite{old}\\end{verbatim}\n";
+    let bib = "@article{old,title={Title}}";
+    let mut paths = Vec::new();
+    for (i, (file, source)) in [("main.tex", text), ("refs.bib", bib)].iter().enumerate() {
+        let path = dir.path().join(format!("store-{i}"));
+        let mut store = Store::open(&path).unwrap();
+        store
+            .initialize(Document::new("p".into(), (*file).into(), 1, (*source).into()).unwrap())
+            .unwrap();
+        paths.push(path);
+    }
+    let mut client = Client::configured(
+        dir.path(),
+        json!({"session_id":"session1","project_id":"p","entry_path":"main.tex","store_paths":paths,"bibliography_paths":["refs.bib"]}),
+    );
+    client.send("snapshot", "snapshot", json!({}));
+    let snapshot = client.reply("snapshot")["payload"].clone();
+    let mut request = snapshot.clone();
+    request["max_bytes"] = json!(100000);
+    request["old_name"] = json!("old");
+    request["new_name"] = json!("new");
+    client.send("rename", "plan_citation_rename", request.clone());
+    let response = client.reply("rename");
+    assert_eq!(response["type"], "result", "{response}");
+    let plan = &response["payload"]["plan"];
+    assert_eq!(plan["proposal_only"], true);
+    assert_eq!(plan["requires_user_approval"], true);
+    assert_eq!(plan["edits"].as_array().unwrap().len(), 2);
+    let start = text.find("old").unwrap();
+    request["path"] = json!("main.tex");
+    request["start_byte"] = json!(start);
+    request["end_byte"] = json!(start + 3);
+    client.send("at", "plan_citation_rename_at", request.clone());
+    assert_eq!(client.reply("at")["payload"]["plan"], *plan);
+    request["max_bytes"] = json!(16);
+    client.send("small", "plan_citation_rename", request.clone());
+    assert_eq!(client.reply("small")["type"], "error");
+    request["max_bytes"] = json!(100000);
+    request["literal"] = json!("α");
+    request["replacement"] = json!("βγ");
+    request["max_matches"] = json!(100);
+    request["max_work"] = json!(100000);
+    client.send("literal", "plan_literal_replacement", request.clone());
+    let literal = client.reply("literal");
+    assert_eq!(literal["payload"]["plan"]["edits"][0]["end_byte"], "2");
+    client.send("unchanged", "document", json!({"path":"main.tex"}));
+    assert_eq!(
+        client.reply("unchanged")["payload"]["document"]["text"],
+        text
+    );
+    client.send("bib", "document", json!({"path":"refs.bib"}));
+    let document = client.reply("bib")["payload"]["document"].clone();
+    client.send("edit-bib", "edit", json!({"path":"refs.bib","expected_revision":1,"expected_sha256":document["source_sha256"],"text":"@article{old,title={Changed}}"}));
+    assert_eq!(client.reply("edit-bib")["type"], "result");
+    for kind in [
+        "plan_literal_replacement",
+        "plan_citation_rename",
+        "plan_citation_rename_at",
+    ] {
+        client.send(kind, kind, request.clone());
+        assert_eq!(client.reply(kind)["type"], "error");
+    }
+}
