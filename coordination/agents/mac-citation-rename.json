@@ -1,0 +1,30 @@
+{
+  "agent_id": "mac-citation-rename",
+  "allocation_id": "claude-mac20x-citation-rename",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-citation-rename/citation-rename",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "1630fdbc",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 80
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "ffe199d",
+  "next_action": "Implement CitationRename.swift (plan_citation_rename/_at -> reviewed per-file apply_group via the search lane's client core), CitationRenameTests.swift with the real helper, menu item; report the FlashTeXMacApp hook diff to the parent",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Coverage audit done (gap fully uncovered on the Mac side; see coordination/mac-citation-rename.md); implementing reviewed citation rename on top of ProjectSearchClient's apply/retry/reconcile core",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T14:08:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
