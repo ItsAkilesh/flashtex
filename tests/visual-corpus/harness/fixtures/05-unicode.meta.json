@@ -1,0 +1,16 @@
+{
+  "fixture": "05-unicode.tex",
+  "purpose": "UTF-8 literals with diacritics and an em dash, plus the equivalent TeX accent commands and ---.",
+  "expected_engines": [
+    "pdflatex",
+    "xelatex",
+    "lualatex"
+  ],
+  "flashtex_features": [
+    "utf-8 literal text",
+    "accent commands (currently rendered as separate glyphs)"
+  ],
+  "notes": "Literal and command forms should be visually identical in a real TeX; the second half measures FlashTeX's accent-command gap.",
+  "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+  "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+}
