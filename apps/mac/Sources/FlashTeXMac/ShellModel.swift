@@ -244,15 +244,24 @@ final class ShellModel {
         // Historical spans are inert: not drawn even when their offsets are in bounds.
         guard let result, historicalPreview == nil else { return .empty }
         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
-                                 explanationsCount: explanations[resultID]?.count ?? -1)
+                                 explanationsCount: explanations[resultID]?.count ?? -1,
+                                 carriedExplanationsCount: explanations[retainedMarks?.resultID]?.count ?? -1)
         if let cached = editorMarksCache, cached.key == key { return cached.report }
-        let report = EditorDiagnostics.attach(explanations[resultID], to: EditorDiagnostics.report(
-            for: result, resultID: resultID, path: activePath,
-            compiledText: compiledDocuments[activePath], currentText: activeText))
+        // Retention: a failed result with no pages keeps the last marks, flagged
+        // (ShellModel+DiagnosticRetention.swift); carried marks take their
+        // explanation lines from the retained result's cache entry.
+        let report = EditorDiagnostics.attach(explanations[resultID], carried: explanations[retainedMarks?.resultID],
+                                              to: diagnosticReport(for: activePath, currentText: activeText))
         editorMarksCache = (key, report)
         return report
     }
-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String; var explanationsCount: Int }
+    /// The last result that produced output (`EditorDiagnostics.Retained`),
+    /// kept while a later result fails with no pages; see `retainMarksAfterResultBound`.
+    var retainedMarks: EditorDiagnostics.Retained?
+    private struct EditorMarksKey: Equatable {
+        var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String
+        var explanationsCount: Int; var carriedExplanationsCount: Int
+    }
     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
     /// start offset are each visited once (Navigation.swift).
@@ -408,6 +417,7 @@ final class ShellModel {
                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
                 compiledDocuments = [:]
             }
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
             selection = nil
             navigationNote = nil
         } catch {
@@ -448,6 +458,7 @@ final class ShellModel {
         compiledDocuments = [:]
         result = nil
         resultID = nil
+        retainedMarks = nil
         previewSource = .none
         historicalPreview = nil
         negotiation = .legacy
@@ -716,6 +727,7 @@ final class ShellModel {
             historicalPreview = nil
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
             fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
