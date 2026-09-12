@@ -169,6 +169,17 @@ Cross-check: `dl2-canon-1` list digest of the same frame computed by the Swift
 consumer and the Rust producer on identical text: `690bf7fe…eac05` on both
 (header canonical bytes byte-identical, 1 155 B).
 
+### Recovery issue #50 (consumer test stall on a v1-only producer) — fixed at 65f06169
+
+`Worker` reads on a background thread; `readLine(timeout:)` is a semaphore wait
+with a real deadline (EOF-aware); `session()` checks the negotiation echo before
+awaiting any sibling (no `display-list-v2` → skip after one reply; no `-delta`
+→ skip; `FLASHTEX_COMPILER` named `flashtex-compiler` → immediate skip); all
+other reads bounded (60 s → skip). Measured: parent `helpers.env` plain compiler
+→ 4 skipped + 1 passed, 0.21 s test time; renamed plain compiler (echo path) →
+skips in ~7 s wall; delta-capable producer → 5/5 in 41 s (load ~40). Branch
+merged with mac-shell 9ba9851c.
+
 ### Not done / diff requests (parent-retained files)
 
 - `ShellModel.swift` `compile()`: when `DisplayListDelta.enabled`, append
@@ -189,7 +200,7 @@ consumer and the Rust producer on identical text: `690bf7fe…eac05` on both
 
 ## Status
 
-r1 committed as c797c5cf; r2 96e95628; r3 05c0e619; r4 0569b742; r5 77477b70; implementation b956304a/f9eff0e7 (producer) + ac3d8969 (consumer); r2 + review committed after (see the log) and pushed to
+r1 committed as c797c5cf; r2 96e95628; r3 05c0e619; r4 0569b742; r5 77477b70; implementation b956304a/f9eff0e7 (producer) + ac3d8969/65f06169 (consumer); r2 + review committed after (see the log) and pushed to
 `origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
 in the lane's completion message; the 10-line summary is section 0 of the
 proposal. Lane complete; no further steps owned here. Limitations: no code, no
