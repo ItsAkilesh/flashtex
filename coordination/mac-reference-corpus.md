@@ -2,6 +2,23 @@
 
 ## Current checkpoint: extended incremental acceptance
 
+Latest code `1ac7c12cb33d6d13ca49a996936ee56517d36ca4` adds three warning-free,
+individually inspected one-page MacTeX references: `amscd`, `tikz-cd` and
+`algorithm2e`. Corpus is now 58 projects, 51 original positive PDFs/60 pages,
+seven errors, six edited PDFs and14 exact edits. Full corpus suite15/15 passes;
+the separate edited index manifest hash was refreshed after the new cases. The
+first algorithm candidate's unsupported small-caps italic T1 fallback was removed
+before acceptance. Evidence `docs/evidence/diagram-algorithm-oracles-20260912/`.
+Branch push verified. Pending: report commit/push plus PR/dispatch refresh.
+
+Independent focused iPad acceptance on published `88696d8a` is **not green**:
+7 FinishTests pass but unknown-capture-after-Mac-restart crashes signal SEGV after
+FakeMac tries rebinding a just-cancelled port. `.xcresult` and exact command/log
+are in GH2#5648855578; fixture should restart on ephemeral port and reconnect.
+No owner code changes, no duplicate test job, and no production defect claim beyond
+the reproducible test failure. Opus PID43863 live; await published correction then
+rerun exact target.
+
 Latest code `a41d843d` pins the twelve original/edited HW1 source smoke run against
 both existing producers: 24 zero-exit, single correlated replies, all recovered.
 No PDF route invoked; both artifact source revisions unknown and hashes unchanged.

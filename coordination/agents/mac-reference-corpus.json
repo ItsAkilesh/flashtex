@@ -7,7 +7,7 @@
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "a41d843d058b055995a95c90396e2205f258f042",
+  "code_revision": "1ac7c12cb33d6d13ca49a996936ee56517d36ca4",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -15,7 +15,7 @@
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Commander review PR53; parent rerun using fresh verified renderer for release acceptance. Continue reference work and read-only iPad pre-send persistence failure review; no overlapping edits.",
+  "next_action": "Commander review PR53 and use newly added package references. Await and independently rerun a fixed iPad restart test; continue disjoint corpus work.",
   "reviewed_peers": {
     "origin/agent/mac-grok-polish/fast-default": {
       "adaptation": "Read preference migration, provider selection and corresponding final tests; merged code preserves explicit legacy false and new mode precedence. Targeted injected-credential acceptance passes 2/2, no user Keychain/defaults or live call.",
@@ -25,11 +25,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "a41d843d pins original+edited HW1 smoke evidence: 24/24 zero-exit correlated compiler/render replies, all recovered. Artifact hashes unchanged, build-source revisions unknown. PR53 includes six edited oracles, 15 tests and earlier84 raw consistency comparisons.",
+  "summary": "1ac7c12c adds three clean MacTeX references (amscd, tikz-cd, algorithm2e): 58 projects, 51 original PDFs/60 pages; 15 corpus checks pass. Independent iPad 88696d8a FinishTests run: 7 pass, restart/redelivery test crashes; dispatched exact evidence.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T21:31:03Z",
+  "updated_utc": "2026-09-12T21:37:32Z",
   "usage": {
-    "evidence": "docs/evidence/hw1-producer-smoke-20260912/README.md; docs/evidence/edited-hw1-oracles-20260912/README.md; docs/evidence/extended-incremental-20260912/README.md.",
-    "status": "Current authorized Codex only; no paid/Claude calls, purchases, children or allocations changed; balance unknown."
+    "evidence": "docs/evidence/diagram-algorithm-oracles-20260912/README.md; /private/tmp/flashtex-codex-ios-finish-88696.log; GH2#5648855578.",
+    "status": "Current authorized Codex only; no paid provider/Claude calls, children, purchases, or allocation changes; balance unknown."
   }
 }
