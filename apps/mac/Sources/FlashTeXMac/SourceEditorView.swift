@@ -55,6 +55,15 @@ struct SourceEditorView: NSViewRepresentable {
     /// brace) offers nothing here — the `\end{env}` snippet belongs to the
     /// completion lane (`Completion.swift`, "\end{X} for every open \begin{X}").
     var autoClosePairs: Set<Character> = ["{"]
+    /// LaTeX syntax colouring (SyntaxHighlighter.swift); off paints nothing.
+    var syntaxHighlighting = true
+    /// Line-number gutter with diagnostic markers (EditorIntelligence.swift).
+    var showLineNumbers = true
+    /// ⌘-click on a `\ref`/`\cite` key, an `\input` path or an environment
+    /// name: the owner routes the target to the model's navigation
+    /// (`goToMatching`, `project.openDocument`). The caret is placed on the
+    /// clicked token first, so `goToMatching` sees it.
+    var onDefinitionRequest: (EditorIntelligence.DefinitionTarget) -> Void = { _ in }
 
     /// A navigation selection that would move the caret backwards is deferred
     /// while the last user edit is younger than this.
@@ -81,7 +90,10 @@ struct SourceEditorView: NSViewRepresentable {
         tv.setAccessibilityLabel("LaTeX source") // FlashTeXAccessibility: VoiceOver names the editor
         tv.setAccessibilityHelp("LaTeX source editor. Moving the selection announces the line and column.")
         tv.string = text
+        context.coordinator.syntax.enabled = syntaxHighlighting
+        context.coordinator.syntax.attach(tv) // follows the storage from here on; paints the visible window
         context.coordinator.attach(scroll)
+        context.coordinator.installIntelligence(on: scroll, lineNumbers: showLineNumbers)
         return scroll
     }
 
@@ -89,6 +101,11 @@ struct SourceEditorView: NSViewRepresentable {
         let tv = scroll.documentView as! NSTextView
         let co = context.coordinator
         co.parent = self
+        if co.syntax.enabled != syntaxHighlighting {
+            co.syntax.enabled = syntaxHighlighting
+            if syntaxHighlighting { co.syntax.reset() }
+        }
+        co.setLineNumbers(showLineNumbers, on: scroll)
         (tv as? CompletingTextView)?.compileResult = result
         (tv as? CompletingTextView)?.editorRevision = editorRevision
         if let m = projectIndexMetadata { _ = (tv as? CompletingTextView)?.accept(projectIndex: m) }
@@ -122,6 +139,7 @@ struct SourceEditorView: NSViewRepresentable {
             textReset = true
         }
         co.marks.update(marks, in: tv, reset: textReset)
+        co.gutter?.update(marks: marks)
         if textReset { co.refreshBraceHighlight(tv) }
         if let selection, selection.token != co.appliedToken {
             co.appliedToken = selection.token
@@ -585,6 +603,16 @@ struct SourceEditorView: NSViewRepresentable {
         /// Keeps EditorPreferences applied to the text view (EditorPreferences.swift).
         var preferencesToken: EditorPreferences.ObservationToken?
         let marks = MarkPainter()
+        /// Syntax colours as temporary attributes (SyntaxHighlighter.swift).
+        let syntax = SyntaxPainter()
+        /// Line numbers + diagnostic markers (nil while hidden).
+        private(set) var gutter: LineNumberGutter?
+        /// Hover quick-info popover.
+        let hover = HoverController()
+        /// Index of the caret's line, for the current-line band and the gutter.
+        private(set) var currentLine: Int?
+        /// Definition targets routed to the owner (evidence for tests).
+        private(set) var definitionRequests: [EditorIntelligence.DefinitionTarget] = []
         /// The String instance last set on, or read from, the text view.
         var lastKnownText: String
         /// > 0 while this coordinator itself edits the text view (string reset,
@@ -655,11 +683,127 @@ struct SourceEditorView: NSViewRepresentable {
                 MainActor.assumeIsolated {
                     guard let self, let tv = scroll?.documentView as? NSTextView else { return }
                     self.marks.scrolled(tv)
+                    self.syntax.scrolled()
+                    self.hover.dismiss()
+                    self.gutter?.needsDisplay = true
                 }
             }
         }
 
         var textView: NSTextView? { scrollView?.documentView as? NSTextView }
+
+        // MARK: editor intelligence (EditorIntelligence.swift)
+
+        func installIntelligence(on scroll: NSScrollView, lineNumbers: Bool) {
+            guard let tv = scroll.documentView as? NSTextView else { return }
+            hover.install(on: tv)
+            hover.info = { [weak self] index in self?.quickInfo(at: index) }
+            if let completing = tv as? CompletingTextView {
+                completing.commandClickHandler = { [weak self] index in self?.commandClick(at: index) ?? false }
+                completing.backgroundDecorator = { [weak self] rect in self?.drawCurrentLine(in: rect) }
+            }
+            setLineNumbers(lineNumbers, on: scroll)
+            updateCurrentLine(tv)
+        }
+
+        func setLineNumbers(_ on: Bool, on scroll: NSScrollView) {
+            if on, gutter == nil {
+                let g = LineNumberGutter(scrollView: scroll)
+                g.lineTable = { [weak self] in self?.syntax.highlighter ?? SyntaxHighlighter() }
+                scroll.verticalRulerView = g
+                scroll.hasVerticalRuler = true
+                scroll.rulersVisible = true
+                gutter = g
+                g.layoutIfNeeded(lineCount: syntax.highlighter.lineCount)
+                g.update(marks: parent.marks)
+                g.currentLine = currentLine
+            } else if !on, gutter != nil {
+                scroll.rulersVisible = false
+                scroll.hasVerticalRuler = false
+                scroll.verticalRulerView = nil
+                gutter = nil
+            }
+        }
+
+        /// Hover data for a character index: token documentation plus the diagnostics there.
+        func quickInfo(at index: Int) -> EditorIntelligence.QuickInfo? {
+            guard let tv = textView else { return nil }
+            let text = tv.textStorage?.string as NSString? ?? ""
+            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            return EditorIntelligence.quickInfo(in: text, at: index, marks: marks.marks, highlighter: h)
+        }
+
+        /// ⌘-click: place the caret on the token and hand its target to the owner.
+        @discardableResult
+        func commandClick(at index: Int) -> Bool {
+            guard let tv = textView else { return false }
+            let text = tv.textStorage?.string as NSString? ?? ""
+            let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
+            guard let target = EditorIntelligence.definitionTarget(in: text, at: index, highlighter: h) else { return false }
+            hover.dismiss()
+            tv.setSelectedRange(NSRange(location: index, length: 0)) // onCaretChange → model.caretUTF16
+            definitionRequests.append(target)
+            if definitionRequests.count > 32 { definitionRequests.removeFirst(definitionRequests.count - 32) }
+            parent.onDefinitionRequest(target)
+            return true
+        }
+
+        /// Return: auto-indent, one level deeper after `\begin{env}`, closing
+        /// it with `\end{env}` when brace auto-closing is on. One typing-
+        /// coalesced insertion through `insertText` (undo removes it whole).
+        func insertNewline(in tv: NSTextView) -> Bool {
+            guard programmaticChanges == 0, !tv.hasMarkedText() else { return false }
+            let sel = tv.selectedRange()
+            guard sel.length == 0 else { return false }
+            let text = tv.textStorage?.string as NSString? ?? ""
+            let insertion = EditorIntelligence.newline(in: text, caret: sel.location, indentUnit: EditorPreferences.shared.indentString,
+                                                       closeEnvironments: parent.autoClosePairs.contains("{"))
+            guard insertion.text != "\n" else { return false } // plain Return: AppKit's own path
+            tv.insertText(insertion.text, replacementRange: sel)
+            tv.setSelectedRange(NSRange(location: sel.location + insertion.caretOffset, length: 0))
+            return true
+        }
+
+        func updateCurrentLine(_ tv: NSTextView) {
+            let caret = tv.selectedRange().location
+            let table = syntax.highlighter
+            let line = table.length == (tv.textStorage?.length ?? 0) ? table.line(at: caret) : nil
+            guard line != currentLine else { return }
+            let old = currentLine
+            currentLine = line
+            gutter?.currentLine = line
+            for l in [old, line].compactMap({ $0 }) { tv.setNeedsDisplay(currentLineRect(l, in: tv)) }
+        }
+
+        private func currentLineRect(_ line: Int, in tv: NSTextView) -> NSRect {
+            guard let lm = tv.layoutManager else { return tv.bounds }
+            let table = syntax.highlighter
+            guard line < table.lineCount, table.length == (tv.textStorage?.length ?? 0) else { return .zero }
+            let r = table.lineRange(line)
+            let rect: NSRect
+            if r.length == 0 || r.location >= table.length {
+                rect = lm.extraLineFragmentRect
+            } else {
+                let glyphs = lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
+                var union = NSRect.null
+                lm.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, _, _ in union = union.union(fragment) }
+                rect = union.isNull ? .zero : union
+            }
+            var band = rect.offsetBy(dx: 0, dy: tv.textContainerInset.height)
+            band.origin.x = 0
+            band.size.width = tv.bounds.width
+            return band
+        }
+
+        /// The current-line band, drawn under the text (only when no selection).
+        func drawCurrentLine(in rect: NSRect) {
+            guard let tv = textView, let line = currentLine, tv.selectedRange().length == 0,
+                  tv.window?.firstResponder === tv else { return }
+            let band = currentLineRect(line, in: tv)
+            guard !band.isEmpty, band.intersects(rect) else { return }
+            SyntaxTheme.currentLine.setFill()
+            band.fill()
+        }
 
         // MARK: pending edit (one undo step)
 
@@ -783,8 +927,10 @@ struct SourceEditorView: NSViewRepresentable {
             return true
         }
 
-        /// Backspace between an auto-closed pair removes both characters.
+        /// Backspace between an auto-closed pair removes both characters;
+        /// Return auto-indents (EditorIntelligence.swift).
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) { return insertNewline(in: textView) }
             guard commandSelector == #selector(NSResponder.deleteBackward(_:)), !pairing, programmaticChanges == 0,
                   !textView.hasMarkedText() else { return false }
             let caret = textView.selectedRange()
@@ -826,6 +972,10 @@ struct SourceEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             TypingBench.shared.textViewDidChange() // stamps the delegate time for keystroke -> paint
+            syntax.flush() // the storage notification updated the line model; colours the changed lines now (deferred while composing)
+            hover.dismiss()
+            gutter?.layoutIfNeeded(lineCount: syntax.highlighter.lineCount)
+            gutter?.needsDisplay = true
             if !textChangedThisTurn {
                 textChangedThisTurn = true
                 DispatchQueue.main.async { [weak self] in self?.textChangedThisTurn = false }
@@ -860,6 +1010,7 @@ struct SourceEditorView: NSViewRepresentable {
             let range = tv.selectedRange()
             parent.onCaretChange(range.location)
             parent.onSelectionChange(range)
+            updateCurrentLine(tv)
             if !textChangedThisTurn { refreshBraceHighlight(tv) } // a typing turn refreshes from textDidChange
             // A typing step already reads as typed text in VoiceOver; only
             // caret/selection moves are announced, once per run-loop turn.
@@ -897,6 +1048,10 @@ struct SourceEditorView: NSViewRepresentable {
         func textWasReset() {
             braceHighlight = nil // the reset dropped every temporary attribute
             pendingClosers = []
+            syntax.reset()
+            hover.dismiss()
+            gutter?.layoutIfNeeded(lineCount: syntax.highlighter.lineCount)
+            gutter?.needsDisplay = true
         }
 
         /// Recomputes the pair around the caret and moves the highlight.

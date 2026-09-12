@@ -123,12 +123,12 @@ final class WorkspaceShellTests: XCTestCase {
 
     func testCompletionDocumentationNamesKindAndSyntax() {
         let cmd = Completion.Suggestion(label: "\\section", insertText: "\\section", kind: .command, detail: "supported by this compiler")
-        let doc = CompletionPopup.documentation(for: cmd)
+        let doc = CompletionPopup.documentationPane(for: cmd)
         XCTAssertEqual(doc.title, "\\section{…}")
         XCTAssertTrue(doc.body.hasPrefix("Command · supported by this compiler"))
         let ref = Completion.Suggestion(label: "sec:setup", insertText: "sec:setup", kind: .reference, detail: "label in main.tex")
-        XCTAssertEqual(CompletionPopup.documentation(for: ref).title, "\\ref{sec:setup}")
-        XCTAssertTrue(CompletionPopup.documentation(for: ref).body.contains("⌘⇧D"))
+        XCTAssertEqual(CompletionPopup.documentationPane(for: ref).title, "\\ref{sec:setup}")
+        XCTAssertTrue(CompletionPopup.documentationPane(for: ref).body.contains("⌘⇧D"))
         for kind in [Completion.Kind.command, .environment, .reference, .citation, .word] {
             XCTAssertFalse(kind.symbolName.isEmpty)
             XCTAssertNotNil(NSImage(systemSymbolName: kind.symbolName, accessibilityDescription: nil), kind.badge)

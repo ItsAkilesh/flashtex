@@ -1488,14 +1488,15 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     }
 
     private func showDocumentation(for s: Completion.Suggestion) {
-        let doc = Self.documentation(for: s)
+        var doc = Self.documentationPane(for: s)
+        if let line = Self.documentation(for: s) { doc.body = line + " " + doc.body } // CommandDocs (mac-syntax-highlight)
         docTitle.stringValue = doc.title
         docBody.stringValue = doc.body
     }
 
     /// The documentation pane's text for a candidate: its syntax as inserted
     /// and a sentence built from the kind and the candidate's origin (`detail`).
-    static func documentation(for s: Completion.Suggestion) -> (title: String, body: String) {
+    static func documentationPane(for s: Completion.Suggestion) -> (title: String, body: String) {
         switch s.kind {
         case .command: return (s.label + "{…}", "Command · \(s.detail). Inserted over the typed token; braces are completed by the editor when auto-close is on.")
         case .environment: return (s.label, "Environment · \(s.detail). Completes the \\end for an open \\begin.")
@@ -1508,14 +1509,48 @@ final class CompletionPopup: NSPanel, NSTableViewDataSource, NSTableViewDelegate
     /// `\section  cmd · supported by this compiler` — label in the editor's
     /// monospaced font, kind and detail in the secondary colour (kept for
     /// tests and the accessibility layer; the rows draw the same parts).
+    /// `[icon] \section  cmd · supported by this compiler — a numbered section
+    /// heading` — a kind icon (SF Symbol tinted like the token's syntax
+    /// colour), the label in the editor's monospaced font, kind and detail in
+    /// the secondary colour, then the documentation line (EditorIntelligence's
+    /// CommandDocs) in the tertiary colour, truncated by the row. One text
+    /// field per row: the accessibility tree keeps a single cell.
     static func attributed(_ s: Completion.Suggestion) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: s.label, attributes: [
+        let out = NSMutableAttributedString()
+        if let image = s.kind.icon {
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = NSRect(x: 0, y: -3, width: 14, height: 14)
+            out.append(NSAttributedString(attachment: attachment))
+            out.append(NSAttributedString(string: " "))
+        }
+        out.append(NSAttributedString(string: s.label, attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.labelColor,
-        ])
+        ]))
         out.append(NSAttributedString(string: "  \(s.kind.badge) · \(s.detail)", attributes: [
             .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
         ]))
+        if let doc = documentation(for: s) {
+            out.append(NSAttributedString(string: " — \(doc)", attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor,
+            ]))
+        }
         return out
+    }
+
+    /// One documentation line for a command or environment suggestion (nil when unknown).
+    static func documentation(for s: Completion.Suggestion) -> String? {
+        switch s.kind {
+        case .command:
+            let name = s.label.hasPrefix("\\") ? String(s.label.dropFirst()) : s.label
+            return EditorIntelligence.CommandDocs.documentation(for: name)
+        case .environment:
+            let name = s.label.replacingOccurrences(of: "\\begin{", with: "").replacingOccurrences(of: "\\end{", with: "")
+                .replacingOccurrences(of: "}", with: "")
+            return EditorIntelligence.CommandDocs.environmentDocumentation(for: name)
+        case .reference, .citation, .word:
+            return nil
+        }
     }
 }
 
@@ -1606,6 +1641,19 @@ extension Completion.Kind {
         case .word: return .secondaryLabelColor
         }
     }
+
+    /// SF Symbol per kind, tinted like the token's syntax colour (SyntaxTheme).
+    var icon: NSImage? {
+        let (symbol, color): (String, NSColor) = switch self {
+        case .command: ("chevron.left.forwardslash.chevron.right", SyntaxTheme.command)
+        case .environment: ("curlybraces", SyntaxTheme.environment)
+        case .reference: ("tag", SyntaxTheme.reference)
+        case .citation: ("book.closed", SyntaxTheme.reference)
+        case .word: ("textformat.abc", NSColor.secondaryLabelColor)
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium).applying(.init(paletteColors: [color]))
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config)
+    }
 }
 
 // MARK: - NSTextView integration
@@ -1683,6 +1731,27 @@ final class CompletingTextView: NSTextView {
     private var applyingCompletion = false
     private var lastCaret: NSRange?
     private var storageObserver: NSObjectProtocol?
+
+    // Editor-intelligence hooks (SourceEditorView's coordinator sets them; EditorIntelligence.swift).
+    /// ⌘-click on a character index; return true to consume the click.
+    var commandClickHandler: ((Int) -> Bool)?
+    /// Draws under the text (current-line band) after the background.
+    var backgroundDecorator: ((NSRect) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift), event.clickCount == 1,
+           let handler = commandClickHandler, !hasMarkedText() {
+            let point = convert(event.locationInWindow, from: nil)
+            let index = characterIndexForInsertion(at: point)
+            if index >= 0, index < (textStorage?.length ?? 0), handler(index) { return }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        backgroundDecorator?(rect)
+    }
 
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.

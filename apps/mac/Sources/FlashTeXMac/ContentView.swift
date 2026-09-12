@@ -172,6 +172,15 @@ private struct EditorPane: View {
                 onEditApplied: { model.editApplied($0, newText: $1) },
                 onEditRefused: { model.editRefused($0, reason: $1) },
                 autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : [] // EditorPreferences.swift gates the braces lane set
+                ,
+                syntaxHighlighting: true, // SyntaxHighlighter.swift / EditorIntelligence.swift (mac-syntax-highlight)
+                showLineNumbers: true,
+                onDefinitionRequest: { target in
+                    switch target {
+                    case .label, .citation, .environment: model.goToMatching() // caret already on the token
+                    case .file(let path, _): Task { await model.project.openDocument(path, role: .opened) }
+                    }
+                }
             )
             CaptureBar()
             BridgeBar()
