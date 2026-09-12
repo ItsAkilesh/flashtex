@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
-      "objective": "Implement operation-specific nullable compile admission identity for full and metadata edit ACKs plus actual discarded preview revision; preserve source authority and failure durability",
+      "name": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
+      "objective": "Extend operation-local typed compile admission to apply_group full and metadata ACKs, separating permanent command receipt from fresh compile admission and preserving null failure semantics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
-      "objective": "Verify held-child supersession and failed or absent compiler admission without returning old identities",
+      "name": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
+      "objective": "Verify exact retry at later document revision reports durable command revision separately from newly admitted compile identity",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
-      "objective": "Publish additive edit-only contract and owner handoff; group history paths remain separately scoped",
+      "name": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
+      "objective": "Publish group-only additive contract and failure durability tests; undo redo and native activation remain separately scoped",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

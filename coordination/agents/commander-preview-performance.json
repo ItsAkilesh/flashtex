@@ -13,23 +13,23 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "f8bb23892aa01bee3b7c436493feb824ae491cbe",
+  "code_revision": "3014ade297a420655c796a3c03c8b3b919171da6",
   "eta_minutes": {
-    "likely": 30,
-    "optimistic": 15,
-    "pessimistic": 60
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 40
   },
   "machine": "linux-primary",
-  "main_integrated_through": "71049ffa90db021375617a59bdf7440fcaf4a369",
-  "next_action": "Commander review correlation design; implement only agreed additive submission identity semantics.",
+  "main_integrated_through": "e196bdfaaf5e40729e6423768da75cb58857af3a",
+  "next_action": "Commander/native owner review; preserve history/group scope and proceed next eligible assigned helper improvement.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Publishedf8bb2389 actual producer accept-decline-accept and complete fallback/reopen proof. Added reviewed launch-boundary tests and read-only edit compile-correlation design.",
+  "summary": "Published3014ade2 full/metadata edit admission IDs and actual discarded generation.47lifecycle/stdio pass,3ignored; strictlint. Added actual child wire ACK-to-preview mapping with distinct source/compile revisions, pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T14:51:38Z",
+  "updated_utc": "2026-09-12T14:56:48Z",
   "usage": {
-    "evidence": "f8bb2389; docs/proposals/edit-compile-correlation.md",
-    "status": "Hosted retained engineer, no paid calls, quota unknown; no running commands."
+    "evidence": "3014ade2; tests/stdio.rs full_and_metadata_edit_admissions_match_wire_previews",
+    "status": "Retained hosted engineer; no paid calls or active tests; quota unknown."
   }
 }

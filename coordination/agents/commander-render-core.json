@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "6e8ef9d2afb8b7fc70472ddaa4892b99c6b03880",
+  "code_revision": "c98814b7f69de7094844c3be1845f1f4c5617e6f",
   "eta_minutes": {
     "likely": 3,
     "optimistic": 1,
     "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "6e8ef9d2afb8b7fc70472ddaa4892b99c6b03880",
-  "next_action": "Commander handles scoped issue closure; await next bounded consumer task.",
+  "main_integrated_through": "c98814b7f69de7094844c3be1845f1f4c5617e6f",
+  "next_action": "Review existing native conformance owner commits when published; no duplicate implementation.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "GH31 closure recommended for original mutation bug: current native23596ffb retains exact fix/tests, owner52/52 zero-skip report distinguished from source verification.",
+  "summary": "Pinned native conformance parent23596ffb/lane1b487924: D1 source binding, D2 membership check, D3 alias removal remain unpublished; lane audit only.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T14:52:25Z",
+  "updated_utc": "2026-09-12T14:54:22Z",
   "usage": {
-    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/helper-3162b89/README.md",
-    "status": "Existing OpenAI only; read-only Git/GH evidence, no native rerun/build/provider/descendant."
+    "evidence": "crates/rendering-core/docs/handoffs/native-evidence/conformance-23596ffb.md",
+    "status": "Existing OpenAI only; read-only remote/source review, no native/build/provider/descendant."
   }
 }
