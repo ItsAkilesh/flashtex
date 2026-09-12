@@ -14,12 +14,7 @@ fn main() {
         let reply = match protocol::read_request_line(&mut input) {
             Ok(Some(RequestLine::Data(bytes))) => match std::str::from_utf8(&bytes) {
                 Ok(line) if line.trim().is_empty() => continue,
-                Ok(line) => protocol::handle_line(line),
-                Err(_) => json::write(&protocol::error_envelope(
-                    "",
-                    "invalid_utf8",
-                    "request line is not valid UTF-8",
-                )),
+                _ => protocol::handle_request_bytes(&bytes),
             },
             Ok(Some(RequestLine::TooLarge)) => json::write(&protocol::error_envelope(
                 "",
