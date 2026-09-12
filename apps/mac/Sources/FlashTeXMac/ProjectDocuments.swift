@@ -768,6 +768,11 @@ final class ProjectDocuments {
         diskBaselines[path] = diskSHA256
         detachedBuffers.removeValue(forKey: path)
         model.log("project: opened \(path) (\(text.utf8.count) bytes, \(origin)) — \(model.documents.count) documents")
+        // Unsaved text kept for this member by an earlier session or detach is
+        // offered (DirtySnapshots.swift), never applied over the opened text.
+        if let root = projectRoot, let offered = model.offerDirtySnapshot(for: root.appendingPathComponent(path), currentText: text) {
+            status = "opened \(path); unsaved text from before is available (\(offered.reason))"
+        }
     }
 
     // MARK: detach
@@ -801,7 +806,12 @@ final class ProjectDocuments {
                 return note(.refused("helper refused detach of \(path): \(e.message)"))
             }
         }
-        if isDirty(path) { detachedBuffers[path] = doc.text }
+        if isDirty(path) {
+            detachedBuffers[path] = doc.text
+            // Session memory plus a durable snapshot (the helper's ledger drops
+            // a detached document's text with the membership).
+            if let root = projectRoot { model.preserveDirtyText(doc.text, at: root.appendingPathComponent(path), reason: "detached from the project with unsaved edits") }
+        }
         model.documents.removeAll { $0.path == path }
         roles.removeValue(forKey: path); origins.removeValue(forKey: path); baselines.removeValue(forKey: path)
         carets.removeValue(forKey: path); diskBaselines.removeValue(forKey: path)
@@ -911,22 +921,73 @@ final class ProjectDocuments {
             }
             let reply = await helperRequest("export", ["path": path, "expected_revision": durable.revision,
                                                        "expected_sha256": durable.sha256, "expected_disk_sha256": expectedDisk ?? NSNull()])
-            switch reply {
-            case .success(let payload):
-                let sha = payload["sha256"] as? String ?? SourceDigest.sha256Hex(text)
+            let verdict = await Self.exportVerdict(reply, path: path, text: text) { [weak self] in await self?.diskSHA256(of: path) }
+            switch verdict {
+            case .saved(let sha, let afterError):
                 baselines[path] = text
                 diskBaselines[path] = sha
                 saveConflict = nil
-                return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))")
-            case .failure(let e):
-                guard let kind = ShellModel.conflictKind(inExportRefusal: e.message) else { return noteSave(.failed(e.message)) }
-                let theirs = await diskSHA256(of: path)
+                model.snapshotSaved(url: url, text: text)
+                let how = afterError.map { " (the helper reported \"\($0)\" after the rename; the file holds exactly the exported text)" } ?? ""
+                return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))" + how)
+            case .conflict(let kind, let theirs):
                 let conflict = DocumentConflict(url: url, kind: kind, ours: expectedDisk, theirs: theirs, size: nil, mtimeUnixMs: nil, viaHelper: true)
                 saveConflict = conflict
+                model.preserveDirtyText(text, at: url, reason: "save refused: file changed on disk")
                 return noteSave(.conflict(conflict))
+            case .failed(let why):
+                model.preserveDirtyText(text, at: url, reason: "save failed: \(why)")
+                return noteSave(.failed(why))
             }
         }
         return saveDocumentNow(path)
+    }
+
+    /// What an `export` reply means for the member's baseline (STDIO.md).
+    enum ExportVerdict: Equatable {
+        /// The file holds exactly `text` (receipt hash verified). `afterError`
+        /// is the helper's error when the write landed but the reply was an
+        /// error ("an error can follow rename"): disk was inspected, not assumed.
+        case saved(sha256: String, afterError: String?)
+        case conflict(ProjectFilesV1.ConflictKind, theirs: String?)
+        case failed(String)
+    }
+
+    /// The exact guard on the export route, on top of the helper's own
+    /// (`expected_revision`/`expected_sha256`/`expected_disk_sha256`, rooted
+    /// lock, rename): a receipt is a save only when it names this path and
+    /// hashes to exactly the text sent — a different hash means the helper
+    /// exported some other durable text and the buffer stays dirty. A refusal
+    /// naming a project-files conflict is a conflict with the disk hash read
+    /// through `file_status`. Any other error is checked against disk first:
+    /// the helper documents errors after a successful rename (directory
+    /// durability), so a file that now hashes to the text sent *is* saved and
+    /// the baseline follows it; otherwise nothing changes and the error stands.
+    static func exportVerdict(_ reply: Result<[String: Any], ControllerError>, path: String, text: String,
+                              diskSHA256: () async -> String?) async -> ExportVerdict {
+        let sent = SourceDigest.sha256Hex(text)
+        switch reply {
+        case .success(let payload):
+            if let p = payload["path"] as? String, p != path {
+                return .failed("export receipt names \(p), not \(path); buffer kept unsaved")
+            }
+            guard let sha = payload["sha256"] as? String else {
+                return .failed("export receipt for \(path) carries no sha256; buffer kept unsaved")
+            }
+            guard sha == sent else {
+                return .failed("export receipt hash for \(path) (\(sha.prefix(12))) is not the text sent (\(sent.prefix(12))); buffer kept unsaved")
+            }
+            if let bytes = payload["bytes"] as? Int, bytes != text.utf8.count {
+                return .failed("export receipt for \(path) reports \(bytes) bytes, sent \(text.utf8.count); buffer kept unsaved")
+            }
+            return .saved(sha256: sha, afterError: nil)
+        case .failure(let e):
+            if let kind = ShellModel.conflictKind(inExportRefusal: e.message) {
+                return .conflict(kind, theirs: await diskSHA256())
+            }
+            if await diskSHA256() == sent { return .saved(sha256: sent, afterError: e.message) }
+            return .failed(e.message)
+        }
     }
 
     /// Synchronous save of a non-entry member through the file layer's
@@ -948,9 +1009,11 @@ final class ProjectDocuments {
             baselines[path] = text
             diskBaselines[path] = sha
             saveConflict = nil
+            model.snapshotSaved(url: url, text: text)
             return noteSave(.saved(path: path, sha256: sha))
         case .conflict(let c):
             saveConflict = c
+            model.preserveDirtyText(text, at: url, reason: "save refused: file changed on disk")
             return noteSave(.conflict(c))
         case .failed(let why):
             return noteSave(.failed(why))
@@ -1130,17 +1193,26 @@ final class ProjectDocuments {
     func refreshSnapshot() async -> Snapshot? {
         switch await helperRequest("snapshot", [:]) {
         case .success(let payload):
-            guard let versions = payload["source_versions"] as? [String: Int], let generation = payload["membership_generation"] as? Int else {
-                status = "helper snapshot is missing source_versions/membership_generation"
-                return nil
-            }
-            sourceVersions = versions
-            membershipGeneration = generation
-            return Snapshot(versions: versions, generation: generation)
+            return adoptSnapshot(payload)
         case .failure(let e):
             status = "helper snapshot failed: \(e.message)"
             return nil
         }
+    }
+
+    /// Adopts a `snapshot` reply as the current versions/generation (also the
+    /// ready-time learn in ShellModel+DisplayCandidates.swift, which sends the
+    /// request itself so it precedes the first compile); nil, with `status`
+    /// set, when the reply lacks the fields.
+    @discardableResult
+    func adoptSnapshot(_ payload: [String: Any]) -> Snapshot? {
+        guard let versions = payload["source_versions"] as? [String: Int], let generation = payload["membership_generation"] as? Int else {
+            status = "helper snapshot is missing source_versions/membership_generation"
+            return nil
+        }
+        sourceVersions = versions
+        membershipGeneration = generation
+        return Snapshot(versions: versions, generation: generation)
     }
 
     /// Current active-source metadata from the helper (`project_status`), or nil.
@@ -1148,6 +1220,15 @@ final class ProjectDocuments {
         guard case .success(let payload) = await helperRequest("project_status", [:]) else { return nil }
         adoptMembership(payload)
         return payload
+    }
+
+    /// The helper is gone (detach, exit, reattach): its generation and
+    /// versions mean nothing to the next session, which learns them afresh
+    /// (`snapshot` on `ready`; ShellModel+DisplayCandidates.swift). Until then
+    /// the display-candidate gate refuses every candidate as `membership_unknown`.
+    func forgetMembership() {
+        membershipGeneration = nil
+        sourceVersions = [:]
     }
 
     private func adoptMembership(_ payload: [String: Any]) {

@@ -60,6 +60,9 @@ final class ShellModel {
     func nextEditToken() -> Int { editTokens += 1; return editTokens }
     var captureNote: String?
     var appliedCaptureIDs: Set<String> = []
+    /// Past proposal decisions with outcomes (ReviewHistory.swift); persisted
+    /// under Application Support (`FLASHTEX_REVIEW_HISTORY_DIR` overrides, `off` = memory only).
+    @ObservationIgnored lazy var reviewHistory = ReviewHistoryRecorder(projectId: projectId)
     var nextAnchorNumber = 1
     /// UTF-16 length of the editor selection starting at `caretUTF16` (0 = caret only).
     var caretLengthUTF16: Int = 0
@@ -244,15 +247,24 @@ final class ShellModel {
         // Historical spans are inert: not drawn even when their offsets are in bounds.
         guard let result, historicalPreview == nil else { return .empty }
         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
-                                 explanationsCount: explanations[resultID]?.count ?? -1)
+                                 explanationsCount: explanations[resultID]?.count ?? -1,
+                                 carriedExplanationsCount: explanations[retainedMarks?.resultID]?.count ?? -1)
         if let cached = editorMarksCache, cached.key == key { return cached.report }
-        let report = EditorDiagnostics.attach(explanations[resultID], to: EditorDiagnostics.report(
-            for: result, resultID: resultID, path: activePath,
-            compiledText: compiledDocuments[activePath], currentText: activeText))
+        // Retention: a failed result with no pages keeps the last marks, flagged
+        // (ShellModel+DiagnosticRetention.swift); carried marks take their
+        // explanation lines from the retained result's cache entry.
+        let report = EditorDiagnostics.attach(explanations[resultID], carried: explanations[retainedMarks?.resultID],
+                                              to: diagnosticReport(for: activePath, currentText: activeText))
         editorMarksCache = (key, report)
         return report
     }
-    private struct EditorMarksKey: Equatable { var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String; var explanationsCount: Int }
+    /// The last result that produced output (`EditorDiagnostics.Retained`),
+    /// kept while a later result fails with no pages; see `retainMarksAfterResultBound`.
+    var retainedMarks: EditorDiagnostics.Retained?
+    private struct EditorMarksKey: Equatable {
+        var resultID: String?; var resultRevision: Int; var editorRevision: Int; var path: String
+        var explanationsCount: Int; var carriedExplanationsCount: Int
+    }
     @ObservationIgnored private var editorMarksCache: (key: EditorMarksKey, report: EditorDiagnostics.Report)?
     /// Identity of the mark last reached by ⌘⇧]/⌘⇧[, so marks sharing a
     /// start offset are each visited once (Navigation.swift).
@@ -299,6 +311,9 @@ final class ShellModel {
     /// Asks the helper once per result; the cache is read by `editorMarkReport`.
     private func fetchExplanations(for result: RuntimeV1.CompileResult, id: String, documents: [RuntimeV1.Document]) {
         guard explanations[id] == nil else { return }
+        if explanations.reuse(for: id, result: result, documents: documents) { // ExplanationMemo.swift: unchanged diagnostics, no helper request
+            editorMarksCache = nil; explanationStatus = nil; return
+        }
         if explanationClient == nil || explanationClient?.isRunning == false {
             guard let exe = ExplanationClient.locate() else { explanationStatus = nil; return }
             explanationClient = try? ExplanationClient(executable: exe) { [weak self] e in self?.explanationStatus = "flashtex-explain: " + e }
@@ -307,7 +322,7 @@ final class ShellModel {
             guard let self else { return }
             switch outcome {
             case .success(let list):
-                self.explanations.store(list, for: id)
+                self.explanations.store(list, for: id, result: result, documents: documents)
                 self.editorMarksCache = nil // re-attach on the next read
                 self.explanationStatus = nil
             case .failure(let f):
@@ -408,6 +423,7 @@ final class ShellModel {
                 if documents.isEmpty { documents = [.init(path: "main.tex", text: "")] }
                 compiledDocuments = [:]
             }
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
             selection = nil
             navigationNote = nil
         } catch {
@@ -448,6 +464,7 @@ final class ShellModel {
         compiledDocuments = [:]
         result = nil
         resultID = nil
+        retainedMarks = nil
         previewSource = .none
         historicalPreview = nil
         negotiation = .legacy
@@ -716,6 +733,7 @@ final class ShellModel {
             historicalPreview = nil
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
+            retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
             fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
             TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
@@ -860,6 +878,7 @@ final class ShellModel {
         proposals.removeAll { $0.captureId == proposal.captureId }
         if reviewing?.captureId == proposal.captureId { reviewing = proposals.first }
         captureNote = "Rejected \(proposal.captureId)."
+        reviewHistory.recordRejected(proposal, editorRevision: editorRevision)
         bridgeReject(captureId: proposal.captureId)
     }
 
@@ -871,6 +890,12 @@ final class ShellModel {
     /// verified against the bridge), never through this local path.
     @discardableResult
     func approveProposal(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
+        let outcome = approveProposalCore(proposal, latex: latex)
+        reviewHistory.record(outcome, proposal: proposal, latex: latex, path: anchor?.path ?? activePath, editorRevision: editorRevision)
+        return outcome
+    }
+
+    private func approveProposalCore(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
         guard !appliedCaptureIDs.contains(proposal.captureId) else {
             rejectProposal(proposal); captureNote = "Capture \(proposal.captureId) already inserted."; return .duplicate
         }
@@ -928,6 +953,7 @@ final class ShellModel {
         reviewing = proposals.first
         if anchor?.id == refund.anchorBefore.id { anchor = refund.anchorBefore }
         captureNote = "Capture \(id) was not inserted: \(reason). It is back in the review queue; approve it again."
+        reviewHistory.recordRefused(refund, reason: reason, editorRevision: editorRevision)
         log("insertion of \(id) refused: \(reason)")
     }
 
@@ -935,6 +961,7 @@ final class ShellModel {
     func editApplied(_ edit: PendingEdit, newText: String) {
         if pendingEdit == edit { pendingEdit = nil }
         updateActiveText(newText)
+        reviewHistory.recordApplied(edit, editorRevision: editorRevision)
         // The insertion is the edit that bumped the revision; the anchor is exact for it.
         if let a = anchor, a.path == edit.path {
             anchor = InsertionAnchor(id: a.id, path: a.path, byteOffset: a.byteOffset,

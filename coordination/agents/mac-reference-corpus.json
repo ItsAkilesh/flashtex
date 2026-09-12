@@ -1,0 +1,31 @@
+{
+  "agent_id": "mac-reference-corpus",
+  "allocation_id": "user-temporary-opus-20min",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-reference-corpus/opus-fonts-takeover",
+  "capabilities": [
+    "swift-packaging",
+    "mactex"
+  ],
+  "code_revision": "22bddb4c6e5cd231a5ea84ca344d7927b06b77ff",
+  "eta_minutes": null,
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Parent/Commander review draft stacked PR49 and recovery50; no continuation staffing or main integration claimed.",
+  "reviewed_peers": {
+    "origin/main": {
+      "adaptation": "Read current authority and relevant Fonts.swift/resource staging differences. Keep stacked mac-shell baseline 7a2f63f4; main lacks parent packaging/cache changes. Older optical producer uses explicit bundled metrics environment.",
+      "reviewed_utc": "2026-09-12T18:12:39Z",
+      "sha": "abbe88a5275b89d99357815846de3cbe76a91810"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Temporary Opus font lane complete: packaging32/32, affected Swift consumer tests18/18 at22bddb4c, two signed app export profiles7/7 each, explicit metrics7/7. Full broad suite incomplete from blocking delta test read; recovery50.",
+  "tool": "Codex",
+  "updated_utc": "2026-09-12T18:14:48Z",
+  "usage": {
+    "evidence": "docs/evidence/opus-fonts-takeover-20260912T1800Z/README.md",
+    "status": "Current Codex session only; no paid inference/purchases/children/in-flight paid calls; monetary balance unknown."
+  }
+}

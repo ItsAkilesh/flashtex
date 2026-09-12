@@ -516,6 +516,7 @@ extension ShellModel {
         for (path, rev) in update.sourceVersions { if let t = controllerState.textByDurable[path]?[rev] { compiled[path] = t } }
         controllerState.lastPreviewRequestID = update.requestID
         setCompiledDocuments(compiled)
+        retainMarksAfterResultBound() // ShellModel+DiagnosticRetention.swift
         let ms = update.controllerTotalMs ?? update.runtimeTotalMs ?? 0
         TypingBench.shared.noteCompile(revision: editorRev, ms: ms)
         if TypingBench.isBenchActive { FlashTeXLog.write("compile: applied revision \(editorRev) at \(MonotonicClock.nowNs())") }

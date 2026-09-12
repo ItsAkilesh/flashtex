@@ -776,7 +776,10 @@ struct SourceEditorView: NSViewRepresentable {
                 return false // nothing changes: the caret stepped over the closer
             }
             shiftPendingClosers(edit: range, replacementLength: replacementLength)
-            if !pairing, programmaticChanges == 0 { lastEdit = replacementString.map { (range, $0) } }
+            if !pairing, programmaticChanges == 0 {
+                lastEdit = replacementString.map { (range, $0) }
+                noteTypingStep() // the selection change AppKit posts before textDidChange is a typing step: no highlight refresh, no announcement
+            }
             return true
         }
 
@@ -900,7 +903,12 @@ struct SourceEditorView: NSViewRepresentable {
         func refreshBraceHighlight(_ tv: NSTextView) {
             guard let lm = tv.layoutManager else { return }
             let caret = tv.selectedRange()
+            // O(1) look at the storage first: the native-text conversion and the
+            // UTF-16 breadcrumbs behind `match` are O(n) per fresh buffer (1.2 +
+            // 1.3 ms at 560 KB, LargeDocumentEditorTests) and a prose keystroke
+            // is almost never next to a delimiter.
             let new = caret.length == 0 && !tv.hasMarkedText()
+                && BraceMatcher.delimiterAdjacent(in: tv.textStorage, caretUTF16: caret.location)
                 ? BraceMatcher.match(in: currentText(of: tv), caretUTF16: caret.location) : nil
             guard new != braceHighlight else { return }
             let length = tv.textStorage?.length ?? 0

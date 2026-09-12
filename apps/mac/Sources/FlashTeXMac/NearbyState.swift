@@ -123,6 +123,8 @@ final class NearbyState: ObservableObject {
     @Published private(set) var duplicateCaptureCount = 0
     @Published private(set) var lastDuplicateCaptureId: String?
     static let maxReceiveErrors = 20
+    /// Transport counters for the window's metrics line (`NearbyMetrics.swift`).
+    @Published private(set) var metrics = NearbyTransportMetrics()
 
     /// Raw listener events, forwarded on the main actor before `handle` acts
     /// on them (the pairing flow controller's `observe(_:)` consumes these).
@@ -231,6 +233,7 @@ final class NearbyState: ObservableObject {
 
     private func handle(_ event: NearbyListener.Event) {
         onEvent?(event)
+        metrics.record(event)
         switch event {
         case .ready(let p):
             port = p
@@ -368,6 +371,8 @@ final class NearbyState: ObservableObject {
     var activity: [String: PairActivity] {
         Dictionary(uniqueKeysWithValues: pairs.map { ($0.pairId, $0.activity) })
     }
+
+    func resetMetrics() { metrics.reset() }
 
     /// Acknowledges the error state in the UI; the log keeps its lines.
     func clearReceiveErrors() {

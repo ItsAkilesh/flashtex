@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-validation-4",
+  "allocation_id": "claude-mac20x-validation",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-validation-4/mac-live-4",
+  "capabilities": [
+    "bash",
+    "python3",
+    "macos-native-validation",
+    "typing-bench"
+  ],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 5
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005b90c1b495889dea7c664aae4b8a9424c4",
+  "next_action": "Parent merges the branch (owned paths only) and, when the machine is idle, runs tools/native-validation/mac-live/quiet-window.sh --app <packaged bundle> --quiet-wait 1800 for unaffected numbers; a full run.sh rerun for the acceptance delta vs 20260912T110944Z",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Based the lane on cd58fc2e; the runner packaged the remote tip at run time (fb16d07d) and records it; by the end the tip had moved again (ef08107a) — the aborted second partial run would have rebuilt a different bundle",
+      "reviewed_utc": "2026-09-12T16:50:00Z",
+      "sha": "fb16d07d1e0d062a59188fb267e98227a33c2d28"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "Per-stage typing latency attribution on the packaged FlashTeX.app (app fb16d07d, helpers 3377748c, render 9aaec57a) for fixture/demo/hw1/render27/body60k on v1, v1-render, v2 and helper routes: small docs are paint-dominated (60-66%), large v1 docs are JSON line size (producer 50-95 ms + reader decode 45-456 ms of 2.3-3.2 MB), v2 is not measurable on the 22-27 page docs (sibling declined over 16 MiB) and hw1 on v2 stalls in paint (470 ms p50), helper route large docs are the helper round trip (76-78%). All cells load-affected (load 8-83, other lanes building). quiet-window.sh for unattended quiet cells; run.sh bundles the controller.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:52:00Z",
+  "usage": {
+    "evidence": "tools/native-validation/mac-live/reports/attribution-20260912T161500Z (17 cells + 6 quieter re-runs in pass2-quieter/, uptime per cell, per-revision stage JSON, timeline logs, v2-sibling-probe.txt); packaged exact export 8/8 in the discarded partial acceptance run",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

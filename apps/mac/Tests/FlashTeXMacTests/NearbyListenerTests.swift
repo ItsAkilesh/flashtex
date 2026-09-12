@@ -1146,6 +1146,10 @@ final class NearbySessionBoundsTests: XCTestCase {
         _ = s.handle(line: capture("again", captureId: "cap-1", image: png), emit: { out.append($0) })
         XCTAssertEqual(sink.count, 7, "an evicted id is delivered again")
         s.end()
+        // The memory belongs to the pairing, not the session (mac-nearby-transport-2):
+        // a reconnect is answered from it; a forgotten pairing drops it.
+        XCTAssertEqual(s.rememberedCaptureCount, 3)
+        s.memory.forget(pairId: "p")
         XCTAssertEqual(s.rememberedCaptureCount, 0)
     }
 }
@@ -1525,8 +1529,9 @@ final class NearbyTranscriptAcceptanceTests: XCTestCase {
         XCTAssertEqual(model.nearbyInbox.received.count, 2)
 
         // Connection 3: reconnect with a fresh hello and retry the same
-        // captures (§7.4). The session is new, so the retries reach the
-        // inbox, which acknowledges identical payloads without storing again.
+        // captures (§7.4). The pairing's acknowledgement memory outlives the
+        // session (mac-nearby-transport-2), so the retries are acknowledged
+        // by the listener and never reach the inbox again.
         let c3 = NearbyTestClient(port: h.port, identity: Pairing.vectorPairID, psk: Self.vectorPSK)
         try await waitUntil("client 3 ready") { c3.isReady }
         let nonce = UUID().uuidString
@@ -1539,7 +1544,10 @@ final class NearbyTranscriptAcceptanceTests: XCTestCase {
         let again = try c3.allLines[1...4].map { try JSONDecoder().decode(RuntimeV1.Envelope<NearbyV1.CaptureReceived>.self, from: $0) }
         XCTAssertEqual(again.map(\.payload.captureId), t.captures.map(\.payload.captureId))
         XCTAssertEqual(model.nearbyInbox.received.count, 2, "identical retries after a reconnect are not stored twice")
-        XCTAssertEqual(model.nearbyInbox.lastNote, "Duplicate capture-23361924 acknowledged again.")
+        XCTAssertEqual(model.nearbyInbox.lastNote, "Received capture-23361924 (image/png, 75600 base64 bytes); not journaled.",
+                       "the retries were answered from the pairing's memory, so the inbox never saw them")
+        let dupes = h.snapshot.filter { if case .captureDuplicate(Pairing.vectorPairID?, _) = $0 { return true }; return false }
+        XCTAssertEqual(dupes.count, 6, "two duplicates on connection 1, four retries on the reconnect: \(dupes)")
         c1.cancel(); c3.cancel()
     }
 

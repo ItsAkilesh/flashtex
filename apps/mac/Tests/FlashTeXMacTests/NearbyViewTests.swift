@@ -445,6 +445,103 @@ final class NearbyViewControllerTests: XCTestCase {
         state.stopAdvertising()
     }
 
+    // MARK: cancellation and reconnect (mac-pairing-ui-2)
+
+    /// Cancel while a companion holds the bootstrap session (verifying): the
+    /// companion receives `error pairing_cancelled` before the close, no
+    /// record is written, the journal is cleared, and a hello it sends
+    /// afterwards goes nowhere.
+    func testCancelDuringVerifyingTellsTheCompanionAndLeavesNoRecord() async throws {
+        let (state, _) = makeState()
+        let c = makeController(state)
+        c.showCode()
+        guard case .codeShown(let a) = c.phase else { return XCTFail("\(c.phase)") }
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        let derived = Pairing.derive(code: a.code, salt: state.store.salt)
+        let peer = NearbyTestClient(port: state.port!, identity: derived.pairId, psk: derived.psk)
+        try await waitUntil("peer ready") { peer.isReady }
+        try await waitUntil("verifying") { c.phase == .verifying(a) }
+        XCTAssertEqual(c.phase.step, .init(index: 3, status: .active))
+
+        c.cancel()
+        XCTAssertEqual(c.phase, .advertising)
+        XCTAssertNil(c.journal.pending)
+        XCTAssertNil(state.coordinator.current)
+        try await waitUntil("companion told") { peer.lineCount >= 1 }
+        struct Unrequested: Decodable { var id: String?; var type: String; var payload: NearbyV1.ErrorPayload }
+        let e = try JSONDecoder().decode(Unrequested.self, from: peer.allLines[0])
+        XCTAssertEqual(e.type, "error")
+        XCTAssertEqual(e.payload.code, "pairing_cancelled")
+        XCTAssertNil(e.id, "answers no request")
+        XCTAssertEqual(e.payload.message, "the Mac withdrew the pairing code before hello")
+        try await waitUntil("companion closed") { peer.isClosed }
+        XCTAssertEqual(state.pairs, [], "no half-paired record")
+        XCTAssertEqual(state.store.pairs, [])
+        XCTAssertFalse(state.log.contains { $0.hasPrefix("stored pairing") }, "\(state.log)")
+        try await waitUntil("close logged") { state.log.contains("closed unauthenticated: pairing code withdrawn before hello") }
+        // A late hello with the cancelled code cannot pair: the session is gone.
+        let nonce = UUID().uuidString
+        peer.send(id: "h", type: "hello", NearbyV1.Hello(pairId: derived.pairId, companionName: "Late", nonce: nonce,
+                                                         proof: Pairing.helloProof(psk: derived.psk, nonce: nonce)))
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(state.pairs, [])
+        XCTAssertEqual(c.phase, .advertising)
+        XCTAssertTrue(c.staleInputs.isEmpty, "\(c.staleInputs)")
+        XCTAssertFalse(announced.contains { $0.contains("disconnected") }, "an unauthenticated peer has no name to announce: \(announced)")
+        state.stopAdvertising()
+    }
+
+    /// A paired companion that drops and reconnects with its long-term key
+    /// is back without any click on the Mac; both events are announced with
+    /// its name, and the pairing phase is untouched. A forgotten (revoked)
+    /// companion fails the TLS handshake and is neither connected nor announced.
+    func testKnownCompanionReconnectIsAnnouncedAndRevokedIsRefused() async throws {
+        let (state, _) = makeState()
+        let c = makeController(state)
+        c.showCode()
+        guard case .codeShown(let a) = c.phase else { return XCTFail("\(c.phase)") }
+        try await waitUntil("advertising") { state.isAdvertising && state.port != nil }
+        let (first, longTerm) = try await pair(code: a.code, port: state.port!, salt: state.store.salt, companion: "Roaming iPad")
+        let key = try XCTUnwrap(longTerm)
+        try await waitUntil("paired") { if case .paired = c.phase { return true }; return false }
+        try await waitUntil("connected") { state.connectedPairIds == [a.pairId] }
+        c.dismiss()
+        XCTAssertEqual(c.phase, .advertising)
+
+        first.cancel()
+        try await waitUntil("disconnect announced") { self.announced.contains { $0.hasPrefix("Roaming iPad disconnected: ") } }
+        try await waitUntil("not connected") { state.connectedPairIds.isEmpty }
+        XCTAssertEqual(c.phase, .advertising, "a paired companion dropping is not a pairing event")
+
+        // Reconnect with the long-term key: hello(bootstrap: false).
+        let again = NearbyTestClient(port: state.port!, identity: a.pairId, psk: key)
+        try await waitUntil("reconnected TLS") { again.isReady }
+        let nonce = UUID().uuidString
+        again.send(id: "h2", type: "hello", NearbyV1.Hello(pairId: a.pairId, companionName: "Roaming iPad", nonce: nonce,
+                                                           proof: Pairing.helloProof(psk: key, nonce: nonce)))
+        try await waitUntil("hello_ack") { again.lineCount >= 1 }
+        try await waitUntil("reconnect announced") { self.announced.contains("Roaming iPad reconnected.") }
+        try await waitUntil("connected again") { state.connectedPairIds == [a.pairId] }
+        XCTAssertEqual(c.phase, .advertising)
+        XCTAssertEqual(state.pairs.count, 1, "no second record for a reconnect")
+        XCTAssertTrue(c.staleInputs.isEmpty, "\(c.staleInputs)")
+
+        // Revoke: the session closes with the reason and a new handshake fails.
+        let before = announced.count
+        c.forget(pairId: a.pairId)
+        try await waitUntil("revoked session closed") { again.isClosed }
+        XCTAssertEqual(state.pairs, [])
+        let revoked = NearbyTestClient(port: state.port!, identity: a.pairId, psk: key)
+        try await waitUntil("revoked key refused") { revoked.isFailed }
+        XCTAssertFalse(revoked.isReady)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(state.connectedPairIds.isEmpty)
+        XCTAssertEqual(announced[before...].filter { $0.hasPrefix("Roaming iPad") }, [],
+                       "a forgotten companion has no record to name: \(announced[before...])")
+        XCTAssertTrue(state.log.contains { $0.hasPrefix("closed unauthenticated: handshake failed") }, "\(state.log)")
+        state.stopAdvertising()
+    }
+
     func testControllerIsSharedPerStateAndSurvivesWindowReopen() {
         let (state, _) = makeState()
         let journal = PairingJournal(url: dir.appendingPathComponent("pairing-session.json"))

@@ -66,7 +66,7 @@ final class DisplayCandidateTests: XCTestCase {
         guard case .displayCandidate(let c) = PreviewControllerClient.decode(try candidateLine(), sessionID: "s1") else { return XCTFail() }
         let applied = DisplayCandidateAppliedPreview(requestID: "pc-7", compileRevision: 3, sourceVersions: ["main.tex": 2], editorRevision: 5)
         var gate = DisplayCandidateGate(negotiated: true, sessionID: "s1", projectID: "demo", applied: applied, appliedResultID: "pc-7",
-                                        activePath: "main.tex", displayedEditorRevision: nil)
+                                        activePath: "main.tex", displayedEditorRevision: nil, membershipGeneration: 1) // learned on ready (FirstGenerationGateTests)
         XCTAssertNil(gate.rejection(of: c))
         gate.negotiated = false
         XCTAssertEqual(gate.rejection(of: c), "display candidates not negotiated for this session")
@@ -136,13 +136,13 @@ final class DisplayCandidateTests: XCTestCase {
         XCTAssertEqual(state.acknowledge(requestID: "n1", payload: ["capability": "display-candidates-v1", "enabled": true, "preview_error": NSNull()]), true)
         XCTAssertTrue(state.isNegotiated)
         state.applied = DisplayCandidateAppliedPreview(requestID: "pc-1", compileRevision: 3, sourceVersions: ["main.tex": 2], editorRevision: 1)
-        XCTAssertEqual(state.admit(a, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-1")), .queued)
+        XCTAssertEqual(state.admit(a, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-1", membershipGeneration: 1)), .queued)
         state.applied = DisplayCandidateAppliedPreview(requestID: "pc-2", compileRevision: 3, sourceVersions: ["main.tex": 2], editorRevision: 2)
-        XCTAssertEqual(state.admit(b, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-2")), .replacedPending("pc-1"))
+        XCTAssertEqual(state.admit(b, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-2", membershipGeneration: 1)), .replacedPending("pc-1"))
         XCTAssertEqual(state.dropped, 1)
         XCTAssertNil(state.takePending(activePath: "other.tex"), "a document switch invalidates the queued candidate")
         XCTAssertEqual(state.dropped, 2)
-        XCTAssertEqual(state.admit(b, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-2")), .queued)
+        XCTAssertEqual(state.admit(b, gate: state.gate(activePath: "main.tex", appliedResultID: "pc-2", membershipGeneration: 1)), .queued)
         state.invalidate()
         XCTAssertFalse(state.isNegotiated); XCTAssertNil(state.pending); XCTAssertNil(state.applied); XCTAssertEqual(state.dropped, 3)
         // A disable acknowledgement is not a negotiation.
@@ -411,7 +411,7 @@ final class DisplayCandidateTests: XCTestCase {
             tampered = tampered.replacingOccurrences(of: sha, with: String(sha.reversed()))
             let applied = try XCTUnwrap(model.displayCandidates.applied)
             let forged = DisplayCandidateFrame(sessionID: model.controller!.config.sessionID, requestID: applied.requestID, projectID: model.controller!.config.projectID,
-                                               compileRevision: applied.compileRevision, sourceVersions: applied.sourceVersions, membershipGeneration: 1,
+                                               compileRevision: applied.compileRevision, sourceVersions: applied.sourceVersions, membershipGeneration: try XCTUnwrap(model.project.membershipGeneration), // learned on ready; the gate refuses anything older
                                                displayList: Data(tampered.utf8), frameBytes: tampered.utf8.count, receivedNs: MonotonicClock.nowNs())
             let publishedBefore = model.displayCandidates.published
             model.handleDisplayCandidate(forged)
@@ -424,7 +424,7 @@ final class DisplayCandidateTests: XCTestCase {
 
             // A candidate from another helper session (a toggled/old session) is refused at admission.
             let foreign = DisplayCandidateFrame(sessionID: "mac-old-session", requestID: applied.requestID, projectID: model.controller!.config.projectID,
-                                                compileRevision: applied.compileRevision, sourceVersions: applied.sourceVersions, membershipGeneration: 1,
+                                                compileRevision: applied.compileRevision, sourceVersions: applied.sourceVersions, membershipGeneration: try XCTUnwrap(model.project.membershipGeneration), // learned on ready; the gate refuses anything older
                                                 displayList: line, frameBytes: line.count, receivedNs: MonotonicClock.nowNs())
             let refusedBefore = model.displayCandidates.refused
             model.handleDisplayCandidate(foreign)

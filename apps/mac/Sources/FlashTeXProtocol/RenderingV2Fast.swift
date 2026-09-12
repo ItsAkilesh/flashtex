@@ -670,6 +670,250 @@ public struct RenderingV2Fast {
     }
 }
 
+// MARK: display-list-v2-delta (isolated; crates/render-pipeline/docs/proposals/display-list-v2-delta.md r5)
+
+extension RenderingV2Fast {
+    /// The full `display_list` envelope plus, for every page, the exact byte
+    /// length of its JSON object as it sits on the wire (the writer's bytes;
+    /// `page_bytes` of the proposal). Same acceptance as `envelope(_:)`.
+    public static func envelopeWithPageBytes(_ data: Data) throws -> (envelope: RenderingV2.Envelope, pageBytes: [Int]) {
+        try data.withUnsafeBytes { raw -> (RenderingV2.Envelope, [Int]) in
+            var p = RenderingV2Fast(raw.bindMemory(to: UInt8.self))
+            p.ws()
+            var version: Int?, id: String?, type: String?, payload: RenderingV2.DisplayList?
+            var pageBytes: [Int] = []
+            try p.object { key, p in
+                switch key {
+                case "protocol_version": version = try p.int()
+                case "id": id = try p.string()
+                case "type": type = try p.string()
+                case "payload": payload = try p.displayListRecordingPageBytes(&pageBytes)
+                default: try p.skip(depth: 1)
+                }
+            }
+            p.ws()
+            guard p.i == p.b.count else { throw p.err("trailing characters") }
+            guard let version, let id, let type, let payload else { throw p.err("missing envelope field") }
+            return (RenderingV2.Envelope(protocolVersion: version, id: id, type: type, payload: payload), pageBytes)
+        }
+    }
+
+    private mutating func displayListRecordingPageBytes(_ pageBytes: inout [Int]) throws -> RenderingV2.DisplayList {
+        var renderFormat: String?, unit: String?, colorSpace: String?, extraction: String?
+        var projectId: String?, revision: Int?, features: [String]?
+        var documents: [RenderingV2.DocumentResource]?, fonts: [RenderingV2.FontResource]?
+        var pages: [RenderingV2.Page]?, diagnostics: [RenderingV2.Diagnostic]?
+        var lengths: [Int] = []
+        try object { key, p in
+            switch key {
+            case "render_format": renderFormat = try p.string()
+            case "coordinate_unit": unit = try p.string()
+            case "color_space": colorSpace = try p.string()
+            case "text_extraction": extraction = try p.string()
+            case "project_id": projectId = try p.string()
+            case "revision": revision = try p.int()
+            case "required_features": features = try p.array { try $0.string() }
+            case "documents": documents = try p.array { try $0.document() }
+            case "fonts": fonts = try p.array { try $0.font() }
+            case "pages":
+                pages = try p.array { q in
+                    q.ws()
+                    let start = q.i
+                    let page = try q.page()
+                    lengths.append(q.i - start)
+                    return page
+                }
+            case "diagnostics": diagnostics = try p.array { try $0.diagnostic() }
+            default: try p.skip(depth: 2)
+            }
+        }
+        guard let renderFormat, let unit, let colorSpace, let extraction, let projectId, let revision,
+              let features, let documents, let fonts, let pages, let diagnostics else { throw err("missing display_list field") }
+        pageBytes = lengths
+        return RenderingV2.DisplayList(renderFormat: renderFormat, coordinateUnit: unit, colorSpace: colorSpace, textExtraction: extraction,
+                                       projectId: projectId, revision: revision, requiredFeatures: features, documents: documents,
+                                       fonts: fonts, pages: pages, diagnostics: diagnostics)
+    }
+
+    /// Decoded `display_list_delta` envelope. Raw byte lengths of the header
+    /// arrays and of the `id`/`project_id`/`revision` values are recorded so the
+    /// consumer can compute the exact full-line size without a JSON writer.
+    public struct DeltaEnvelope: Equatable {
+        public struct Base: Equatable {
+            public var requestId: String, projectId: String, revision: Int, pageCount: Int, listDigest: String
+        }
+        public struct Relocation: Equatable {
+            public var path: String, editStart: Int, editEnd: Int, delta: Int
+        }
+        public struct ChangedPage: Equatable {
+            public var page: RenderingV2.Page
+            /// Byte length of the page object on the wire.
+            public var wireBytes: Int
+        }
+        /// Raw wire slice lengths reused verbatim by the exact size formula.
+        public struct RawParts: Equatable {
+            public var id: Int, projectId: Int, revision: Int, requiredFeatures: Int, documents: Int, fonts: Int, diagnostics: Int
+        }
+        public var protocolVersion: Int
+        public var id: String
+        public var type: String
+        public var renderFormat: String, coordinateUnit: String, colorSpace: String, textExtraction: String
+        public var projectId: String
+        public var revision: Int
+        public var requiredFeatures: [String]
+        public var digestScheme: String
+        public var base: Base
+        public var documents: [RenderingV2.DocumentResource]
+        public var fonts: [RenderingV2.FontResource]
+        public var diagnostics: [RenderingV2.Diagnostic]
+        public var relocations: [Relocation]
+        public var pageCount: Int
+        public var pageDigests: [String]
+        public var pageBytes: [Int]
+        public var changedPages: [ChangedPage]
+        public var removedPages: [Int]
+        public var listDigest: String
+        public var raw: RawParts
+    }
+
+    /// Reads one `display_list_delta` envelope. Bounded before indexing: the
+    /// page count is capped, and `page_digests`/`page_bytes` must each have
+    /// exactly `page_count` entries (checked here, before any use).
+    public static func delta(_ data: Data, maxPages: Int) throws -> DeltaEnvelope {
+        try data.withUnsafeBytes { raw -> DeltaEnvelope in
+            var p = RenderingV2Fast(raw.bindMemory(to: UInt8.self))
+            p.ws()
+            var version: Int?, id: String?, type: String?
+            var out: DeltaEnvelope?
+            var rawId = 0
+            try p.object { key, p in
+                switch key {
+                case "protocol_version": version = try p.int()
+                case "id":
+                    let s = p.i
+                    id = try p.string()
+                    rawId = p.i - s
+                case "type": type = try p.string()
+                case "payload": out = try p.deltaPayload(maxPages: maxPages)
+                default: try p.skip(depth: 1)
+                }
+            }
+            p.ws()
+            guard p.i == p.b.count else { throw p.err("trailing characters") }
+            guard let version, let id, let type, var env = out else { throw p.err("missing envelope field") }
+            env.protocolVersion = version
+            env.id = id
+            env.type = type
+            env.raw.id = rawId
+            return env
+        }
+    }
+
+    private mutating func deltaPayload(maxPages: Int) throws -> DeltaEnvelope {
+        var renderFormat: String?, unit: String?, colorSpace: String?, extraction: String?
+        var projectId: String?, revision: Int?, features: [String]?, scheme: String?
+        var base: DeltaEnvelope.Base?
+        var documents: [RenderingV2.DocumentResource]?, fonts: [RenderingV2.FontResource]?, diagnostics: [RenderingV2.Diagnostic]?
+        var relocations: [DeltaEnvelope.Relocation]?
+        var pageCount: Int?, pageDigests: [String]?, pageBytes: [Int]?
+        var changed: [DeltaEnvelope.ChangedPage]?, removed: [Int]?, listDigest: String?
+        var raw = DeltaEnvelope.RawParts(id: 0, projectId: 0, revision: 0, requiredFeatures: 0, documents: 0, fonts: 0, diagnostics: 0)
+        try object { key, p in
+            switch key {
+            case "render_format": renderFormat = try p.string()
+            case "coordinate_unit": unit = try p.string()
+            case "color_space": colorSpace = try p.string()
+            case "text_extraction": extraction = try p.string()
+            case "project_id":
+                let s = p.i
+                projectId = try p.string()
+                raw.projectId = p.i - s
+            case "revision":
+                let s = p.i
+                revision = try p.int()
+                raw.revision = p.i - s
+            case "required_features":
+                let s = p.i
+                features = try p.array { try $0.string() }
+                raw.requiredFeatures = p.i - s
+            case "digest_scheme": scheme = try p.string()
+            case "base":
+                var rid: String?, pid: String?, rev: Int?, count: Int?, digest: String?
+                try p.object { k, q in
+                    switch k {
+                    case "request_id": rid = try q.string()
+                    case "project_id": pid = try q.string()
+                    case "revision": rev = try q.int()
+                    case "page_count": count = try q.int()
+                    case "list_digest": digest = try q.string()
+                    default: try q.skip(depth: 3)
+                    }
+                }
+                guard let rid, let pid, let rev, let count, let digest else { throw p.err("missing base field") }
+                base = DeltaEnvelope.Base(requestId: rid, projectId: pid, revision: rev, pageCount: count, listDigest: digest)
+            case "documents":
+                let s = p.i
+                documents = try p.array { try $0.document() }
+                raw.documents = p.i - s
+            case "fonts":
+                let s = p.i
+                fonts = try p.array { try $0.font() }
+                raw.fonts = p.i - s
+            case "diagnostics":
+                let s = p.i
+                diagnostics = try p.array { try $0.diagnostic() }
+                raw.diagnostics = p.i - s
+            case "relocations":
+                relocations = try p.array { q in
+                    var path: String?, a: Int?, b: Int?, d: Int?
+                    try q.object { k, r in
+                        switch k {
+                        case "path": path = try r.string()
+                        case "edit_start": a = try r.int()
+                        case "edit_end": b = try r.int()
+                        case "delta": d = try r.int()
+                        default: try r.skip(depth: 3)
+                        }
+                    }
+                    guard let path, let a, let b, let d, a >= 0, b >= a else { throw q.err("invalid relocation") }
+                    return DeltaEnvelope.Relocation(path: path, editStart: a, editEnd: b, delta: d)
+                }
+            case "page_count":
+                let n = try p.int()
+                guard n >= 0, n <= maxPages else { throw p.err("page_count outside 0...\(maxPages)") }
+                pageCount = n
+            case "page_digests": pageDigests = try p.array { try $0.string() }
+            case "page_bytes":
+                pageBytes = try p.array { q in
+                    let v = try q.int()
+                    guard v >= 0, Int64(v) <= RenderingV2.maxExactInteger else { throw q.err("page_bytes entry out of range") }
+                    return v
+                }
+            case "changed_pages":
+                changed = try p.array { q in
+                    q.ws()
+                    let start = q.i
+                    let page = try q.page()
+                    return DeltaEnvelope.ChangedPage(page: page, wireBytes: q.i - start)
+                }
+            case "removed_pages": removed = try p.array { try $0.int() }
+            case "list_digest": listDigest = try p.string()
+            default: try p.skip(depth: 2)
+            }
+        }
+        guard let renderFormat, let unit, let colorSpace, let extraction, let projectId, let revision, let features, let scheme,
+              let base, let documents, let fonts, let diagnostics, let relocations, let pageCount, let pageDigests, let pageBytes,
+              let changed, let removed, let listDigest else { throw err("missing display_list_delta field") }
+        guard pageDigests.count == pageCount, pageBytes.count == pageCount else { throw err("page_digests/page_bytes must have page_count entries") }
+        guard changed.count <= pageCount else { throw err("more changed pages than page_count") }
+        return DeltaEnvelope(protocolVersion: 0, id: "", type: "", renderFormat: renderFormat, coordinateUnit: unit, colorSpace: colorSpace,
+                             textExtraction: extraction, projectId: projectId, revision: revision, requiredFeatures: features, digestScheme: scheme,
+                             base: base, documents: documents, fonts: fonts, diagnostics: diagnostics, relocations: relocations,
+                             pageCount: pageCount, pageDigests: pageDigests, pageBytes: pageBytes, changedPages: changed, removedPages: removed,
+                             listDigest: listDigest, raw: raw)
+    }
+}
+
 private extension String {
     /// Validated UTF-8 from `bytes[start..<end]`, nil when invalid.
     init?(validatingUTF8Slice bytes: UnsafeBufferPointer<UInt8>, _ start: Int, _ end: Int) {

@@ -144,6 +144,21 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
   unaffected. After edits a mark is rebased through `SourceMapping` or dropped when
   it overlaps the edited region — never drawn under the wrong text. Diagnostics
   with null `source` appear only in the preview's diagnostics list.
+  Partial output (`recovered` with pages AND diagnostics) marks every reported
+  span, including spans inside regions the compiler skipped; a diagnostic raised
+  while expanding a user macro is reported at the macro's call site (HW1:
+  `\problem` carries `\subsection`/`\hfill`/`\normalfont`, `\Z` carries
+  `\mathbb`), verified for all 119 HW1 diagnostics in
+  `EditorDiagnosticsPartialOutputTests`. A `failed` result with no pages keeps
+  the last result's underlines, rebased and flagged "kept from revision N:
+  revision M failed with no output" (tooltip, VoiceOver line, footer) — never
+  cleared, never duplicated across consecutive failures; any result with
+  output replaces them (`EditorDiagnostics.Retained`,
+  `ShellModel+DiagnosticRetention.swift`). The diagnostics list groups
+  identical diagnostics (same severity and message) into one row — "12× `\in`
+  is not supported in math mode" — with an "N places" menu that jumps to each
+  occurrence ("3 of 12: main.tex line 41"); Fix… and the explanation line
+  belong to the first occurrence (`EditorDiagnostics.groups`).
 - Dark preview toggle in the toolbar (page and text colors only).
 - Stale offsets are never applied. Each `compile_result` remembers the exact
   document text it was produced for; after edits, a span is rebased through the
@@ -473,7 +488,20 @@ Bounded disconnect/reconnect (`NearbyReconnector`, actor):
   **5 destination changed on the Mac, reselect and send again** · 64/65/66
   usage/not an image/unreadable file.
 
-Tests: `swift test` in `tools/nearby-client` (35: vectors, wire shapes, TXT
+`nearby-client doctor [--mac <name|fp>] [--host H --port N] [--seconds 5]
+[--json]` validates one stored pairing against the running listener without
+sending a capture: checks `store` (`no_pairing`, `ambiguous_pairing`,
+`bad_pair_psk`), `discovery` (`not_advertised`, `unsupported_service`,
+`fp_mismatch` — same Mac name, another fp: re-pair), `connect` (`unreachable`,
+`handshake_refused`, `connect_timeout`), `tls` (`tls_not_1_2`,
+`tls_suite_mismatch`), `hello` (the Mac's error code verbatim, e.g.
+`pair_mismatch`, `too_many_sessions`; `hello_timeout`, `closed`,
+`protocol_violation`) and `destination` (warn `no_destination`). One line per
+check, `check <name>: ok|warn|FAIL code=<code>`, a summary with a hint, and
+with `--json` the whole report as one line; exit 0 healthy (warnings allowed)
+· 1 no pairing / not advertised · 3 re-pair · 4 try later · 2 other.
+
+Tests: `swift test` in `tools/nearby-client` (47: vectors, wire shapes, TXT
 validation, pair file, and a loopback-only `FakeMac` with fault injection —
 drop before ack → identical re-send, idle drop, refused key terminal, remote
 error terminal, destination changed/unpinned/re-pinned, deadline, cancellation,
@@ -481,12 +509,21 @@ refused port fails fast, 9th in-flight request refused, oversized inbound line
 closes, request timeout, CLI exit codes 0/2/3/4/5; backpressure retried on the
 same session after acks and budget-bounded, `too_many_sessions` retried after
 a reconnect, image/revision/conflict refusals terminal, local image checks,
-CLI hints per code). `swift test` here runs the same client against the real
+CLI hints per code; `NearbyTranscriptFixtureTests` replays duplicate delivery,
+revocation — key removed by a same-port listener restart, and `pair_mismatch`
+at hello — and idle-drop reconnect and compares every wire line and reconnector
+event with the captured client-side transcripts in `tools/nearby-client/
+Tests/Fixtures/*.jsonl`, ids/nonce/proof normalised; re-record after a
+deliberate wire change with `NEARBY_CLIENT_RECORD_FIXTURES=1`; `NearbyDoctorTests`:
+every doctor code and exit code against the fake Mac, Bonjour discovery,
+re-salted Mac, refused port in 0.004 s). `swift test` here runs the same client against the real
 stack in `NearbyReferenceClientTests` (Bonjour pair → send → identical retry →
 conflict → status → forget; direct mode and listener refusals; listener
 dropped after the inbox stored a capture and restarted on the same port →
 duplicate delivery acknowledged, stored once; `NearbyState.forget` with a
-live session → one refused reconnect, terminal, CLI exit 3;
+live session → one refused reconnect, terminal, CLI exit 3; `doctor` healthy
+through Bonjour, `handshake_refused` exit 3 after `forget`, `not_advertised`
+exit 1 after advertising stops, nothing in the inbox;
 `replaceProject`/re-pin → `destinationChanged` on reused and fresh
 connections, nothing in the inbox until rebuilt; with lowered
 `NearbyReceiveLimits`: `too_many_in_flight` and `inbox_full` while an
@@ -677,8 +714,15 @@ for the preview currently on screen, never for the request in flight.
 Completion (`Completion.swift`) is a pure engine over the buffer's UTF-8 bytes
 with the caret in UTF-16 units, wired into the editor through a small
 `NSTextView` subclass (`CompletingTextView`) whose user-completion range includes
-a leading `\`. Esc or ⌃Space opens the standard AppKit completion popup; choosing
-an entry replaces the partial token. Sources, in rank order, at most 12 entries:
+a leading `\`. Esc or ⌃Space opens the editor's own non-activating completion
+list (`CompletionPopup`, a child panel that never becomes key): ↑/↓ or Tab/⇧Tab
+choose (wrapping, each choice announced to VoiceOver as "n of m: candidate, kind,
+origin"), Return/Enter inserts the chosen entry over the partial token as one
+undo step, Esc closes; typing narrows the list and any other caret move closes
+it. Candidates are computed off the main thread and delivered only while the
+buffer and caret are unchanged (`CompletionLatencyTests` measures pickup,
+narrowing, arrow and Return latency best-of-N). Sources, in rank order, at most
+12 entries:
 
 1. `\end{X}` for every `\begin{X}` before the caret that is still unclosed
    (detail names the byte of the `\begin`).
@@ -748,12 +792,13 @@ explain that nothing is loaded.
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
-| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures) |
+| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
 | ⌘⇧F | Find in Project… window (case-sensitive literal search of the durable project source; Return searches or goes to the selected match, ↑/↓ move the selection, Esc closes; Plan Replacement / Apply for reviewed replacement) |
 | ⌘G | Next match (while the Find in Project window is key: selects the next match, wrapping, and goes there) |
 | ⌘Z | Undo (including an approved capture insertion) |
-| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, document words) |
+| Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
+| ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⇧J | Reveal caret in preview (selects the item's source span) |

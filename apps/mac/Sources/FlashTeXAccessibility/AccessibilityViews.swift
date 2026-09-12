@@ -343,13 +343,14 @@ public struct AccessibilityHelpView: View {
     /// Per-pane VoiceOver notes beyond the focus-order table.
     public static let voiceOverNotes: [String] = [
         "Editor: the text view is “LaTeX source”; every caret move that is not a typing step says “Line L, column C” (or the selection extent). ⌘⇧] and ⌘⇧[ move to the next or previous diagnostic and say “Error n of m, line L: message — recovery note”.",
-        "Completion popup (Esc or ⌃Space): a list named “Completions”; each row reads the candidate, its kind (command, environment, label, citation, word) and where it comes from; arrow keys choose, Return inserts, Esc closes.",
+        "Completion popup (Esc or ⌃Space): a list named “Completions”; each row reads the candidate, its kind (command, environment, label, citation, word) and where it comes from; ↑/↓ or Tab/⇧Tab choose and each choice is announced as “n of m: candidate, kind, origin”, Return inserts, Esc closes; the list never takes the keyboard from the editor.",
         "Preview: use the Landmarks rotor to jump between pages (“Page n of m, k lines”); inside a page each line is a group (“Page n, line k: text”) and each item is static text whose value gives its size and whether it has a source; the “Go to source” action selects the source in the editor.",
         "Diagnostics: each list row is “Diagnostic n of m: Error or Warning: message”; its value is the recovery line and source bytes; rows with a source have the “Go to source” action, rows without say “No source mapping; listed only.”",
         "Capture bar: one group whose value reads the pinned insertion point and how many proposals are waiting; the review sheet approves with Return.",
         "Settings (⌘,): a form named “Editor preferences”; each control reads its label and value (“Editor font size, 13 points”, “Tab width, 4 columns”); hints explain the wrap, appearance, brace and completion switches.",
         "Durable History (Edit > Durable History…): the header reads the durable revision; Undo and Redo read how many steps are available; the retention gauge reads its percentage; each stack row is “undo/redo n of m: label”; empty stacks say so.",
         "Find in Project (⌘⇧F): the literal field reads its hint (Return searches or goes to the selected match, ↑/↓ move the selection); results read “match n of m, file, line, snippet”; replacement previews read “replacement n of m … becomes …”; status lines are labelled “Search status” and “Replacement status”.",
+        "Nearby Companion (⌘⇧N): the status row reads “Pairing state: <state>” with a countdown-free value; the step indicator reads “Pairing step n of 4: <step>, <in progress | interrupted | done>”; the code reads its six digits one by one and the expiry reads “n seconds left”; each companion row reads its name, pair id, connected/not connected, paired and last-seen times; every transition (code shown, companion connected, paired, cancelled, interrupted, reconnected, disconnected, capture received or refused) is announced.",
     ]
 
     public init() {}

@@ -105,7 +105,11 @@ final class PairingFlowController: ObservableObject {
         case .connectionOpened:
             apply(.bootstrapSessionOpened(generation: g))
         case .hello(let id, let name, let bootstrap):
-            guard bootstrap else { apply(.otherCompanionConnected(generation: g)); return }
+            guard bootstrap else {
+                apply(.otherCompanionConnected(generation: g))
+                apply(.companionConnected(pairId: id, companionName: name))
+                return
+            }
             // The generation that confirmed is persisted with the record
             // (pairs.json v2); a stored value from another attempt is stale.
             let confirmed = nearby?.store.pair(id: id)?.generation
@@ -113,6 +117,11 @@ final class PairingFlowController: ObservableObject {
             apply(.confirmed(pairId: id, companionName: name, generation: confirmed))
         case .connectionClosed(let id, let reason):
             apply(.peerGone(pairId: id, reason: reason, generation: g))
+            // A known companion dropping is announced; unauthenticated peers
+            // (handshake failures, cancelled bootstrap sessions) have no name.
+            if let id, let r = nearby?.store.pair(id: id) {
+                apply(.companionDisconnected(pairId: id, companionName: r.companionName, reason: reason))
+            }
         case .receiving(let id, let bytes, let expected):
             // Unauthenticated peers (before hello) have no identity and no row.
             guard let id else { return }
@@ -327,21 +336,7 @@ struct NearbyFlowView: View {
                             lastCaptureId: nearby.lastReceivedCaptureId)
             if let e = nearby.lastReceiveError {
                 Divider()
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Refused capture").font(.headline).foregroundStyle(.red)
-                    Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        .accessibilityLabel("Last refused capture")
-                        .accessibilityValue(e.summary)
-                        .accessibilityIdentifier("nearby.refused.last")
-                    HStack {
-                        Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Clear") { nearby.clearReceiveErrors() }
-                            .accessibilityLabel("Clear refused captures")
-                            .accessibilityIdentifier("nearby.refused.clear")
-                    }
-                }
+                refusedSection(e)
             }
             Divider()
             logSection
@@ -385,11 +380,18 @@ struct NearbyFlowView: View {
                 GridRow { Text("Port").foregroundStyle(.secondary); Text(nearby.port.map(String.init) ?? "—") }
                 GridRow { Text("Mac id (fp)").foregroundStyle(.secondary); Text(nearby.fingerprint).font(.system(.body, design: .monospaced)) }
                 GridRow { Text("TLS").foregroundStyle(.secondary); Text("1.2, \(nearby.cipherSuite), no resumption") }
+                GridRow {
+                    Text("Transport").foregroundStyle(.secondary)
+                    Text(nearby.metrics.line)
+                        .accessibilityLabel("Transport metrics")
+                        .accessibilityValue(nearby.metrics.line)
+                        .accessibilityIdentifier("nearby.transport.metrics")
+                }
             }
             .font(.callout)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Service details")
-            .accessibilityValue("Bonjour \(nearby.serviceType) named \(nearby.macName); port \(nearby.port.map(String.init) ?? "none"); Mac id \(nearby.fingerprint); TLS 1.2 \(nearby.cipherSuite)")
+            .accessibilityValue("Bonjour \(nearby.serviceType) named \(nearby.macName); port \(nearby.port.map(String.init) ?? "none"); Mac id \(nearby.fingerprint); TLS 1.2 \(nearby.cipherSuite); transport \(nearby.metrics.line)")
             Text("Proposal nearby-v1 — not yet a published contract. Captures are kept in memory only (durable: false).")
                 .font(.caption2).foregroundStyle(.secondary)
         }
@@ -401,6 +403,9 @@ struct NearbyFlowView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Pair a companion").font(.headline)
             statusRow
+            if let step = controller.phase.step {
+                PairingStepIndicator(step: step)
+            }
             switch controller.phase {
             case .codeShown(let a), .verifying(let a):
                 codeRow(a, verifying: { if case .verifying = controller.phase { return true }; return false }())
@@ -613,6 +618,28 @@ struct NearbyFlowView: View {
         }
     }
 
+    // MARK: refused captures
+
+    /// Declared after the paired rows: the controls' source order is the
+    /// window's Tab order (`PanelFocusOrder`, checked by the accessibility tests).
+    private func refusedSection(_ e: NearbyState.ReceiveError) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Refused capture").font(.headline).foregroundStyle(.red)
+            Text(e.summary).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                .accessibilityLabel("Last refused capture")
+                .accessibilityValue(e.summary)
+                .accessibilityIdentifier("nearby.refused.last")
+            HStack {
+                Text("\(nearby.receiveErrors.count) refusal(s), \(nearby.duplicateCaptureCount) duplicate(s) acknowledged")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Clear") { nearby.clearReceiveErrors() }
+                    .accessibilityLabel("Clear refused captures")
+                    .accessibilityIdentifier("nearby.refused.clear")
+            }
+        }
+    }
+
     // MARK: activity
 
     private var logSection: some View {
@@ -630,6 +657,55 @@ struct NearbyFlowView: View {
             .accessibilityLabel("Activity log")
             .accessibilityValue(nearby.log.suffix(5).joined(separator: ". "))
             .accessibilityIdentifier("nearby.log")
+        }
+    }
+}
+
+/// Numbered steps of the pairing sequence with the current one highlighted;
+/// one accessibility element ("Pairing step 2 of 4: …") so VoiceOver reads
+/// the position, not four capsules.
+struct PairingStepIndicator: View {
+    var step: PairingFlow.Step
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(1...PairingFlow.Step.count, id: \.self) { k in
+                let status = step.status(of: k)
+                HStack(spacing: 4) {
+                    Image(systemName: symbol(status))
+                        .foregroundStyle(color(status))
+                    Text(PairingFlow.Step.shortNames[k - 1])
+                        .font(.caption.weight(status == .active || status == .interrupted ? .semibold : .regular))
+                        .lineLimit(1).fixedSize()
+                        .foregroundStyle(status == .pending ? .secondary : .primary)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(status == .pending ? Color.clear : color(status).opacity(0.12), in: Capsule())
+                if k < PairingFlow.Step.count {
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(step.accessibilityLabel)
+        .accessibilityIdentifier("nearby.pairing.steps")
+    }
+
+    private func symbol(_ s: PairingFlow.Step.Status) -> String {
+        switch s {
+        case .pending: return "circle"
+        case .active: return "circle.fill"
+        case .done: return "checkmark.circle.fill"
+        case .interrupted: return "exclamationmark.circle.fill"
+        }
+    }
+
+    private func color(_ s: PairingFlow.Step.Status) -> Color {
+        switch s {
+        case .pending: return .secondary
+        case .active: return .accentColor
+        case .done: return .green
+        case .interrupted: return .orange
         }
     }
 }

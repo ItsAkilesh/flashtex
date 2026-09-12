@@ -1,0 +1,36 @@
+note: /F1 LMRoman12-Bold from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman12-bold.otf: 32 glyph(s), CffSubset, program 4749 bytes
+note: /F2 LatinModernMath-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/latinmodern-math.otf: 18 glyph(s), CffSubset, program 3284 bytes
+note: /F3 LMRoman12-Italic from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman12-italic.otf: 24 glyph(s), CffSubset, program 4392 bytes
+note: /F4 LMRoman12-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman12-regular.otf: 67 glyph(s), CffSubset, program 8616 bytes
+note: /F5 LMRoman8-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman8-regular.otf: 3 glyph(s), CffSubset, program 828 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages amsmath are recognised but not implemented
+diagnostic (from the display list): error: compiler: \title is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \author is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \date is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \maketitle is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \LaTeX is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \texttt is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \min is not supported in math mode
+diagnostic (from the display list): error: compiler: \left is not supported in math mode
+diagnostic (from the display list): error: compiler: \left is not supported in math mode
+diagnostic (from the display list): error: compiler: \right is not supported in math mode
+diagnostic (from the display list): error: compiler: \right is not supported in math mode
+diagnostic (from the display list): error: compiler: \cite is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cite is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cite is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \appendix is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \texttt is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: compiler: environment 'thebibliography' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \bibitem is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \bibitem is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \bibitem is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: math_limitation: no math glyph for ' '; empty box used
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 34.54pt too wide (no hyphenation available)
+diagnostic (from the display list): warning: math_resource_profile: lmex10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmex10 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi12: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi12 design
+diagnostic (from the display list): warning: math_resource_profile: lmmi8: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmmi8 design
+diagnostic (from the display list): warning: math_resource_profile: lmsy10: glyphs drawn from latinmodern-math (one 10pt design); no optical-size OpenType outline resource exists for this family, so the outlines are not the reference's lmsy10 design
+note: 2 page(s), 502 glyph run(s), 2376 glyph(s) (8 continued at the natural advance, 0 with an exact TJ kern), 1 rule(s), 216636 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/base-app-exports/input-bibliography/export.pdf

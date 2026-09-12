@@ -1,0 +1,37 @@
+{
+  "agent_id": "mac-admission-groups",
+  "allocation_id": "claude-mac20x-admission-groups",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-admission-groups/groups-and-gate",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "preview-controller-client",
+    "display-candidates"
+  ],
+  "code_revision": "8496956f",
+  "eta_minutes": {
+    "likely": 10,
+    "optimistic": 5,
+    "pessimistic": 25
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Parent merges the branch (no parent-retained file changed; optional doc-comment diff for controllerAdoptHistoryResult in the handoff) and decides on the floor semantics of the D2 membership gate reported there",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Branched from cd58fc2e (main c11c005 typed edit + grouped admissions, helper built from this tree). The apply_group pair is already consumed by controllerAdoptHistoryResult -> applyDurableDocument; only tests were needed for item 1. Item 2 hooks the ready-time snapshot into displayCandidatesNegotiate (called on ready) because the ready handler lives in the parent-retained ShellModel+Controller.swift.",
+      "reviewed_utc": "2026-09-12T12:03:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "ready_for_integration",
+  "summary": "agent/mac-admission-groups/groups-and-gate: (1) AdmissionGroupsTests (4 real-helper tests: group pair recorded/released by id, exact retry replays command r2 with a FRESH pair for the current r3 document, failed group records nothing, undo/redo numeric fallback) - no product change; (2) D2 first-generation gate: snapshot sent with the opt-in on ready/toggle/restart before the document request, DisplayCandidateGate refuses candidates typed membership_unknown until learned, learned generation is a FLOOR (the helper's membership_generation is the project-index generation and advances on every durable edit; edit replies do not carry it), forgotten on detach/exit; FirstGenerationGateTests (5) + V2Conformance/DisplayCandidate test updates",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T12:03:00Z",
+  "usage": {
+    "evidence": "swift build OK; AdmissionGroupsTests 4/4, FirstGenerationGateTests 5/5 (real helper+compiler from this tree, flashtex-render 9aaec57a); required filter run at 8496956f: see coordination/mac-admission-groups.md",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}

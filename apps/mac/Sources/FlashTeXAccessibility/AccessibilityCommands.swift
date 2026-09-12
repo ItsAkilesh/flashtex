@@ -11,7 +11,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case exportPDF, exportPDFViaRust, exportPDFExact
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
-    case undo, completion
+    case undo, completion, completionList
     case goToMatching, nextDiagnostic, previousDiagnostic, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
@@ -119,14 +119,18 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          menuItem: "Convert Capture")
         case .nearbyCompanion:
             return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
-                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal).",
+                         description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code, paired devices, received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
                          menuItem: "Nearby Companion…")
         case .undo:
             return Entry(command: self, title: "Undo", shortcuts: ["⌘Z"], menu: "Edit",
                          description: "Undoes the last edit, including an approved capture insertion.")
         case .completion:
             return Entry(command: self, title: "Completion popup", shortcuts: ["Esc", "⌃Space"], menu: "Editor",
-                         description: "Lists supported commands, \\end{…} for open environments, labels, and document words; arrow keys choose, Return inserts.")
+                         description: "Lists supported commands, \\end{…} for open environments, labels, citation keys and document words for the token at the caret; the list never takes the keyboard from the editor.")
+        case .completionList:
+            return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Return"], menu: "Editor",
+                         description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
+                         requires: "an open completion list")
         case .goToMatching:
             return Entry(command: self, title: "Go to matching", shortcuts: ["⌘⇧D"], menu: "Navigate",
                          description: "Selects the matching \\begin/\\end or \\label/\\ref for the command under the caret; misses are explained in the footer.",
@@ -328,6 +332,26 @@ public enum PanelFocusOrder {
                 Control(name: "Retry path", sourceMarker: "Button(\"Retry \\(outcome.path)\")", when: "an uncertain apply"),
               ],
               sourceFile: "ProjectSearchPanel.swift"),
+        Panel(name: "Nearby Companion", windowTitle: "Nearby Companion", command: .nearbyCompanion,
+              initialFocus: "Show Pairing Code (Return); focus follows the pairing state: the code while it is shown or verified, Resume when interrupted, Dismiss on paired/error, Cancel while receiving",
+              closing: "Esc cancels the current pairing step (or dismisses a banner); ⌘W closes the window; the editor text view is first responder again. The whole pairing is keyboard-only: Return shows or resumes a code, Esc cancels it.",
+              controls: [
+                Control(name: "Advertise on the local network (switch)", sourceMarker: "Toggle(\"Advertise\""),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "after an error"),
+                Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "after an error"),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "paired banner"),
+                Control(name: "Cancel receiving", sourceMarker: "accessibilityLabel(\"Cancel receiving\")", when: "receiving a capture"),
+                Control(name: "Show Pairing Code / Show New Code", sourceMarker: "Button(title) { controller.showCode() }", when: "idle, paired, error or expired"),
+                Control(name: "Pairing code (spoken as digits)", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.code\")", when: "code shown or verifying"),
+                Control(name: "Cancel pairing", sourceMarker: "accessibilityLabel(\"Cancel pairing\")", when: "code shown or verifying"),
+                Control(name: "Resume", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.resume\")", when: "interrupted, code still valid"),
+                Control(name: "Cancel interrupted pairing", sourceMarker: "accessibilityLabel(\"Cancel interrupted pairing\")", when: "interrupted, code still valid"),
+                Control(name: "Dismiss", sourceMarker: "accessibilityIdentifier(\"nearby.pairing.dismiss\")", when: "interrupted, code expired"),
+                Control(name: "Show New Code", sourceMarker: "showCodeButton(title: \"Show New Code\")", when: "interrupted, code expired"),
+                Control(name: "Forget <companion>", sourceMarker: "Button(\"Forget\")", when: "one per paired companion"),
+                Control(name: "Clear refused captures", sourceMarker: "Button(\"Clear\")", when: "after a refused capture"),
+              ],
+              sourceFile: "NearbyView.swift"),
     ]
 
     public static var helpLines: [String] { panels.map(\.helpLine) }
