@@ -549,3 +549,196 @@ final class ExplanationClient {
         }
     }
 }
+
+// MARK: - Reviewed quick fixes from explanation suggestions
+
+extension EditorDiagnostics {
+    /// Turns one explanation suggestion's `edits` (byte ranges into the
+    /// *compiled* text) into a preview and ONE grouped replacement for the
+    /// *current* editor text. Every edit is rebased byte-exactly through
+    /// `SourceMapping` and refused when it overlaps an edit made since the
+    /// compile, when the bytes it targets no longer match, when it is not a
+    /// scalar-aligned range, or when the suggestion's edits overlap each
+    /// other. Nothing is applied here: the caller shows the preview and only
+    /// then hands `Grouped` to the editor as a single undoable edit.
+    enum QuickFix {
+        /// One rebased edit, as the editor sees it (UTF-16 in the current text).
+        struct Replacement: Equatable {
+            /// Byte range in the current text.
+            var byteRange: Range<Int>
+            /// The same range in UTF-16 units.
+            var nsRange: NSRange
+            var text: String
+        }
+
+        /// The one grouped edit: the covering range of all replacements in
+        /// the current text and the text that replaces it. Applying it is
+        /// byte-identical to applying every replacement.
+        struct Grouped: Equatable {
+            var path: String
+            var nsRange: NSRange
+            var byteRange: Range<Int>
+            /// Bytes of the covering range at preparation time.
+            var before: String
+            var text: String
+            /// The individual replacements, ascending, non-overlapping.
+            var replacements: [Replacement]
+
+            /// True when `currentText` still holds `before` at `byteRange`, so
+            /// the grouped edit can be applied without re-preparing.
+            func matches(_ currentText: String) -> Bool {
+                guard let r = currentText.rangeOfUTF8(start: byteRange.lowerBound, end: byteRange.upperBound) else { return false }
+                return String(currentText[r]).sameBytes(as: before)
+            }
+
+            /// The full text after the edit, nil when `currentText` changed
+            /// since preparation (never guesses).
+            func applied(to currentText: String) -> String? {
+                guard matches(currentText), let r = currentText.rangeOfUTF8(start: byteRange.lowerBound, end: byteRange.upperBound)
+                else { return nil }
+                var out = currentText
+                out.replaceSubrange(r, with: text)
+                return out
+            }
+        }
+
+        struct Preview {
+            var path: String
+            var suggestionText: String
+            var confidence: String
+            /// Ascending, non-overlapping, in the current text.
+            var replacements: [Replacement]
+            /// Whole lines of the current text around the edits (UTF-16 range
+            /// in the current text), and the same lines after the edit.
+            var snippetRange: NSRange
+            var before: String
+            var after: String
+            /// The single edit the editor applies; never applied automatically.
+            var grouped: Grouped
+            /// Yields the grouped replacement for the editor (one undoable edit).
+            var apply: () -> Grouped
+
+            var summary: String {
+                let n = replacements.count
+                return "\(suggestionText) (\(confidence) confidence, \(n) edit\(n == 1 ? "" : "s"))"
+            }
+        }
+
+        enum Refusal: Error, Equatable {
+            /// The suggestion has no mechanical form (advice only).
+            case noEdits
+            /// An edit targets a document other than `path`.
+            case otherDocument(path: String)
+            /// The compiled text for this document is unknown; edits cannot be trusted.
+            case noCompiledText
+            /// Edit `index` is not a scalar-aligned, in-bounds range of the compiled text.
+            case invalidRange(edit: Int)
+            /// Edit `index` spans text edited since the compile.
+            case overlapsEdit(edit: Int)
+            /// The bytes edit `index` targets are not the ones the explanation saw.
+            case bytesChanged(edit: Int, expected: String, actual: String)
+            /// Edits `a` and `b` of the suggestion overlap each other.
+            case editsOverlap(a: Int, b: Int)
+
+            var text: String {
+                switch self {
+                case .noEdits: "this suggestion is advice only; there is nothing to apply"
+                case .otherDocument(let p): "the fix edits \(p), not the active document"
+                case .noCompiledText: "the compiled text is not known; recompile before applying a fix"
+                case .invalidRange(let i): "edit \(i + 1) is not a valid range of the compiled text"
+                case .overlapsEdit(let i): "edit \(i + 1) spans text changed since the compile; recompile to refresh the fix"
+                case .bytesChanged(let i, let e, let a): "edit \(i + 1) expected “\(e)” but the text reads “\(a)”; recompile to refresh the fix"
+                case .editsOverlap(let a, let b): "edits \(a + 1) and \(b + 1) of this suggestion overlap; not applied"
+                }
+            }
+        }
+
+        /// Prepares suggestion `suggestion` of `explanation` for `path`.
+        /// `compiledText` is the text the compile (and the explanation) ran
+        /// on; `currentText` is the editor buffer now.
+        static func prepare(_ explanation: Explanation, suggestion index: Int = 0, path: String,
+                            in currentText: String, compiledText: String?) -> Result<Preview, Refusal> {
+            guard explanation.suggestions.indices.contains(index) else { return .failure(.noEdits) }
+            let suggestion = explanation.suggestions[index]
+            guard !suggestion.edits.isEmpty else { return .failure(.noEdits) }
+            if let other = suggestion.edits.first(where: { $0.path != path }) { return .failure(.otherDocument(path: other.path)) }
+            guard let compiledText else { return .failure(.noCompiledText) }
+            let compiledBytes = Array(compiledText.utf8)
+            let currentBytes = Array(currentText.utf8)
+            let region: SourceMapping.ChangedRegion? = compiledText.sameBytes(as: currentText) ? nil
+                : SourceMapping.changedRegion(from: compiledText, to: currentText)
+
+            // Rebase each edit, checking the bytes it targets twice: against
+            // the explanation's own context excerpt (what the crate saw) and
+            // against the current buffer (what the editor will replace).
+            var replacements: [(index: Int, Replacement)] = []
+            for (i, edit) in suggestion.edits.enumerated() {
+                guard edit.startByte <= edit.endByte, compiledText.rangeOfUTF8(start: edit.startByte, end: edit.endByte) != nil
+                else { return .failure(.invalidRange(edit: i)) }
+                let original = String(decoding: compiledBytes[edit.startByte..<edit.endByte], as: UTF8.self)
+                if let c = explanation.context, c.path == path,
+                   edit.startByte >= c.startByte, edit.endByte <= c.endByte {
+                    let ctx = Array(c.text.utf8)
+                    let lo = edit.startByte - c.startByte, hi = edit.endByte - c.startByte
+                    if hi <= ctx.count {
+                        let seen = String(decoding: ctx[lo..<hi], as: UTF8.self)
+                        if !seen.sameBytes(as: original) { return .failure(.bytesChanged(edit: i, expected: seen, actual: original)) }
+                    }
+                }
+                var start = edit.startByte, end = edit.endByte
+                if let region {
+                    guard case .rebased(let s, let e) = SourceMapping.rebase(start: start, end: end, across: region)
+                    else { return .failure(.overlapsEdit(edit: i)) }
+                    start = s; end = e
+                }
+                guard let r = currentText.rangeOfUTF8(start: start, end: end) else { return .failure(.invalidRange(edit: i)) }
+                let now = String(decoding: currentBytes[start..<end], as: UTF8.self)
+                guard now.sameBytes(as: original) else { return .failure(.bytesChanged(edit: i, expected: original, actual: now)) }
+                replacements.append((i, Replacement(byteRange: start..<end, nsRange: NSRange(r, in: currentText), text: edit.replacement)))
+            }
+            // Ascending by start; insertions at one offset keep the suggestion's order.
+            let ordered = replacements.enumerated().sorted { a, b in
+                a.element.1.byteRange.lowerBound != b.element.1.byteRange.lowerBound
+                    ? a.element.1.byteRange.lowerBound < b.element.1.byteRange.lowerBound : a.offset < b.offset
+            }.map(\.element)
+            for k in ordered.indices.dropFirst() where ordered[k].1.byteRange.lowerBound < ordered[k - 1].1.byteRange.upperBound {
+                return .failure(.editsOverlap(a: ordered[k - 1].index, b: ordered[k].index))
+            }
+            let reps = ordered.map(\.1)
+
+            // The grouped edit: covering range, rewritten once.
+            let lo = reps[0].byteRange.lowerBound, hi = reps.map(\.byteRange.upperBound).max()!
+            var grouped = ""
+            var cursor = lo
+            for r in reps {
+                grouped += String(decoding: currentBytes[cursor..<r.byteRange.lowerBound], as: UTF8.self)
+                grouped += r.text
+                cursor = r.byteRange.upperBound
+            }
+            grouped += String(decoding: currentBytes[cursor..<hi], as: UTF8.self)
+            let coveringIndex = currentText.rangeOfUTF8(start: lo, end: hi)!
+            let before = String(currentText[coveringIndex])
+            let group = Grouped(path: path, nsRange: NSRange(coveringIndex, in: currentText), byteRange: lo..<hi,
+                                before: before, text: grouped, replacements: reps)
+
+            // Snippet: whole lines around the covering range, before and after.
+            var lineLo = lo, lineHi = hi
+            while lineLo > 0, currentBytes[lineLo - 1] != 0x0A { lineLo -= 1 }
+            // A covering range that ends just after a newline stays on its
+            // own lines instead of pulling in the next one.
+            let endsAfterNewline = hi > lo && currentBytes[hi - 1] == 0x0A
+            if endsAfterNewline { lineHi = hi - 1 } else {
+                while lineHi < currentBytes.count, currentBytes[lineHi] != 0x0A { lineHi += 1 }
+            }
+            let snippetIndex = currentText.rangeOfUTF8(start: lineLo, end: lineHi)!
+            let beforeSnippet = String(currentText[snippetIndex])
+            var afterSnippet = String(decoding: currentBytes[lineLo..<lo], as: UTF8.self) + grouped
+            if endsAfterNewline { if afterSnippet.hasSuffix("\n") { afterSnippet.removeLast() } }
+            else { afterSnippet += String(decoding: currentBytes[hi..<lineHi], as: UTF8.self) }
+            let preview = Preview(path: path, suggestionText: suggestion.text, confidence: suggestion.confidence,
+                                  replacements: reps, snippetRange: NSRange(snippetIndex, in: currentText),
+                                  before: beforeSnippet, after: afterSnippet, grouped: group, apply: { group })
+            return .success(preview)
+        }
+    }
+}

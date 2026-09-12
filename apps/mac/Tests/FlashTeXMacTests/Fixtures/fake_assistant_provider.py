@@ -9,6 +9,8 @@ the context is explanation-only.
 Directives anywhere in the supplied snippet text or user instruction:
 `%slowprovider` -> reply after 600 ms; `%hangprovider` -> reply after 30 s;
 `%crashprovider` -> exit 4 with no output; `%garbageprovider` -> non-JSON output;
+`%hugeprovider` -> a reply above the 64 KiB response limit; `%envprovider` -> the
+explanation lists the FLASHTEX_* variable names visible to the provider;
 `%badprovider` -> wrong context id; `%outsideprovider` -> an edit outside the
 allowed destination (both must be refused by the helper's validation);
 `%noeditprovider` -> explanation only.
@@ -28,6 +30,9 @@ if "%crashprovider" in text:
     sys.exit(4)
 if "%garbageprovider" in text:
     print("this is not json")
+    sys.exit(0)
+if "%hugeprovider" in text:
+    sys.stdout.write(json.dumps({"context_id": payload["context_id"], "explanation": "x" * (65 * 1024), "edits": []}))
     sys.exit(0)
 
 context_id = "0" * 64 if "%badprovider" in text else payload["context_id"]
@@ -56,4 +61,7 @@ elif allowed and "%noeditprovider" not in text:
         edits.append({"location": loc, "removed_text": old, "replacement": "% reviewed: " + old})
 
 explanation = "Fake explanation of %d diagnostic(s) for context %s." % (len(payload["diagnostics"]), payload["context_id"][:8])
+if "%envprovider" in text:
+    import os
+    explanation += " env: " + ",".join(sorted(k for k in os.environ if k.startswith("FLASHTEX_")))
 print(json.dumps({"context_id": context_id, "explanation": explanation, "edits": edits}))

@@ -1,0 +1,40 @@
++    0.0 ms keystroke: revision 100 at 85065781448666 (delegate 85065782061958, revision 85065782109708)
++    0.7 ms compile: sending revision 100 at 85065782128208
+             status: compiling revision 100 (mac-100)…
++   21.5 ms keystroke: revision 101 at 85065802914500 (delegate 85065803474083, revision 85065803516583)
++   25.9 ms worker: line 225701 B decoded in 3.532375 ms at 85065807309458
++   26.5 ms worker: event on main at 85065807945000
++   27.0 ms compile: applied revision 100 at 85065808414666
+             status: revision 100: ok, 0 diagnostics in 26 ms
++   27.0 ms compile: sending revision 101 at 85065808454000
+             status: compiling revision 101 (mac-101)…
++   29.9 ms worker: line 1976511 B decoded in 2.209375 ms at 85065811345458
++   39.3 ms worker: event on main at 85065820762041
++   39.4 ms preview-v2: preparing live mac-100 (revision 100) ticket 99 at 85065820824125
++   46.0 ms keystroke: revision 102 at 85065827466083 (delegate 85065827983541, revision 85065828022291)
++   52.9 ms worker: line 225702 B decoded in 3.499583 ms at 85065834342291
++   54.2 ms preview-v2: blit page 1 of mac-99#r99#98 at 85065835665958
++   54.3 ms preview-v2: blit page 2 of mac-99#r99#98 at 85065835763208
++   57.1 ms worker: line 1976870 B decoded in 2.1865 ms at 85065838535708
++   66.3 ms worker: event on main at 85065847715041
++   66.8 ms compile: applied revision 101 at 85065848294625
+             status: revision 101: ok, 0 diagnostics in 40 ms
++   66.9 ms compile: sending revision 102 at 85065848346375
+             status: compiling revision 102 (mac-102)…
+             preview-v2: prepared live mac-100 (revision 100) in 12.403291 ms, prerastered 2 page(s) in 2.7185 ms, delivered 12.515334 ms later
++   67.0 ms preview-v2: published live mac-100 (revision 100) revision 100 at 85065848491000
++   67.1 ms worker: event on main at 85065848579083
++   67.1 ms preview-v2: preparing live mac-101 (revision 101) ticket 100 at 85065848590000
++   84.7 ms preview-v2: blit page 1 of mac-100#r100#99 at 85065866162541
++   84.8 ms preview-v2: blit page 2 of mac-100#r100#99 at 85065866253333
+             paint: revision 100 needed 1 extra turn(s); drew 2/2 pages
++   90.6 ms paint: revision 100 at 85065872034416 (covers 1 keystrokes, redrawn true)
+             preview-v2: prepared live mac-101 (revision 101) in 12.466375 ms, prerastered 2 page(s) in 2.60525 ms, delivered 8.386916 ms later
++   90.7 ms preview-v2: published live mac-101 (revision 101) revision 101 at 85065872128583
++   90.8 ms keystroke: revision 103 at 85065872276000 (delegate 85065872813750, revision 85065872850333)
++   92.9 ms worker: line 225703 B decoded in 3.516292 ms at 85065874366625
++   97.1 ms worker: line 1977229 B decoded in 2.213166 ms at 85065878587291
++  101.3 ms worker: event on main at 85065882792083
++  101.9 ms compile: applied revision 102 at 85065883306875
+             status: revision 102: ok, 0 diagnostics in 35 ms
++  101.9 ms compile: sending revision 103 at 85065883352291

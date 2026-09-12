@@ -1,0 +1,9 @@
+2026-09-12T10:39:19Z	launched /Users/jay3332/Projects/flashtex/crates/preview-controller/target/release/flashtex-preview-controller for /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/evidence-project (ledger /private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/ledger)
+2026-09-12T10:39:19Z	controller ready: compiler frames ≤ 8 MiB, helper output ≤ 16 MiB
+2026-09-12T10:39:20Z	status: revision 2: ok, 0 diagnostics in 3 ms (durable r1)
+2026-09-12T10:39:20Z	status: revision 2: ok, 0 diagnostics in 4 ms (durable r1)
+2026-09-12T10:39:21Z	project: opened chapter.tex (128 bytes, helper) — 2 documents
+2026-09-12T10:39:21Z	project: opened chapter.tex (durable r1, membership g4)
+2026-09-12T10:39:21Z	project: opened ch/section.tex (121 bytes, helper) — 3 documents
+2026-09-12T10:39:21Z	project: opened ch/section.tex (durable r1, membership g4)
+2026-09-12T10:39:21Z	project: open all includes: opened 2 (chapter.tex, ch/section.tex)

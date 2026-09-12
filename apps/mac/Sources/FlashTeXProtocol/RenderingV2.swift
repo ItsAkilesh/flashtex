@@ -305,6 +305,32 @@ public enum RenderingV2 {
     /// protocol version, message type, item kind, feature, font reference, or
     /// malformed geometry/cluster is an error, never a partial result.
     public static func decode(_ data: Data) throws -> Envelope {
+        let envelope: Envelope
+        do {
+            // Fast typed reader first (same values for every valid frame); any
+            // syntax/shape it does not accept falls back to JSONDecoder, whose
+            // error then stands. An unknown item kind is refused by both alike.
+            envelope = try RenderingV2Fast.envelope(data)
+        } catch {
+            envelope = try decodeSlow(data)
+        }
+        try checkHeader(version: envelope.protocolVersion, type: envelope.type)
+        try validate(envelope.payload)
+        return envelope
+    }
+
+    private static func checkHeader(version: Int, type: String) throws {
+        guard version == protocolVersion else {
+            throw ValidationError(code: "unsupported_protocol_version", message: "protocol version \(version) is not supported; this consumer speaks rendering-v2 (protocol_version 2)")
+        }
+        guard type == messageType else {
+            throw ValidationError(code: "unsupported_message_type", message: "message type '\(type)' is not a display_list")
+        }
+    }
+
+    /// `JSONDecoder` path: the header is probed first so version/type refusals
+    /// name what was found rather than failing on an unrelated payload key.
+    private static func decodeSlow(_ data: Data) throws -> Envelope {
         let decoder = JSONDecoder()
         let header: Header
         do { header = try decoder.decode(Header.self, from: data) } catch {
@@ -313,15 +339,9 @@ public enum RenderingV2 {
         guard let version = header.protocolVersion else {
             throw ValidationError(code: "missing_protocol_version", message: "protocol_version is required")
         }
-        guard version == protocolVersion else {
-            throw ValidationError(code: "unsupported_protocol_version", message: "protocol version \(version) is not supported; this consumer speaks rendering-v2 (protocol_version 2)")
-        }
         guard let type = header.type else { throw ValidationError(code: "missing_type", message: "type is required") }
-        guard type == messageType else {
-            throw ValidationError(code: "unsupported_message_type", message: "message type '\(type)' is not a display_list")
-        }
-        let envelope: Envelope
-        do { envelope = try decoder.decode(Envelope.self, from: data) } catch let e as ValidationError {
+        try checkHeader(version: version, type: type)
+        do { return try decoder.decode(Envelope.self, from: data) } catch let e as ValidationError {
             throw e
         } catch let DecodingError.dataCorrupted(ctx) {
             if let inner = ctx.underlyingError as? ValidationError { throw inner }
@@ -329,8 +349,6 @@ public enum RenderingV2 {
         } catch {
             throw ValidationError(code: "malformed_payload", message: describe(error))
         }
-        try validate(envelope.payload)
-        return envelope
     }
 
     private static func describe(_ error: Error) -> String {
