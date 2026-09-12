@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
-  "objective": "ACK current session and review HW1 starred sectioning priority in the existing bounded compiler parser",
+  "input_main_sha": "89eee175dc6aec657bb3d6cbdb4bd11c47ac0d3c",
+  "objective": "Review exact-base isolated HW1 starred-section handoff 846ff03d and GH38 diagnostic preservation; only existing compiler owner may adopt after relevant gates",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 14,
+  "revision": 15,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T14:31:37.368113+00:00"
+  "updated_utc": "2026-09-12T14:44:47.424074+00:00"
 }
