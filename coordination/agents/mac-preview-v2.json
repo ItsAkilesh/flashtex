@@ -1,0 +1,41 @@
+{
+  "agent_id": "mac-preview-v2",
+  "allocation_id": "claude-mac20x-preview-v2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-preview-v2/exact-glyphs",
+  "capabilities": [
+    "swift",
+    "coregraphics",
+    "rendering-v2"
+  ],
+  "code_revision": "00e2e7697f54ca18a2ec2cfa70a43332019b3ed2",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 30,
+    "pessimistic": 120
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "6b43a3a1ae8697697a3fb338909bc973db0c1e02",
+  "next_action": "Merge advanced mac-shell (312cabc), window screenshot + FLASHTEX_V2_PARITY_OUT evidence, README v2 section update, handoff; then measure hover/caret repaint cost without glyph drawing.",
+  "reviewed_peers": {
+    "origin/agent/mac-render-pipeline/unified": {
+      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
+      "reviewed_utc": "2026-09-12T09:11:14Z",
+      "sha": "ba5611fc8954456db54731576cd1ac75b2f566c9"
+    },
+    "origin/main": {
+      "adaptation": "Swift validator applies rendering-core's DisplayList::validate structural rules (feature declaration, cluster-glyph mapping, exact-range ticks, bounds); main dd75e15 changes only coordination queues (mac-preview-v2 lane unchanged); pipeline display.rs unchanged between 79ba728 (scratch-built for the fixtures) and ba5611f (space factor + TFM metrics only; manifest hash/format conventions unchanged), still emits opentype-cff and bytes+face0 hashes (documented deviations kept); its --pdf is the legacy v1 writer, so parity is against the Mac CG export",
+      "reviewed_utc": "2026-09-12T09:11:14Z",
+      "sha": "dd75e15f32e5a0616939e3d32078b4434db8a2d7"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Preview-v2 lane rebased onto mac-shell 6b43a3a (branch agent/mac-preview-v2/exact-glyphs, tip 00e2e76): validator aligned with rendering-core; off-main immutable page preparation with load tickets (stale results dropped, previous frame retained with STALE indicator); off-main bounded page raster cache; zero-tolerance export/preview parity 0 px at 1 and 2 px/pt on 22 real pipeline pages (rules as path fills + 7-significant-digit serialized coordinates); swift test 218/218.",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T09:11:14Z",
+  "usage": {
+    "evidence": "apps/mac swift test 218 tests 0 failures 0 skipped (real worker binaries); v2 suites 33/33; docs/evidence/mac-preview-v2-parity-2026-09-12.md (pending)",
+    "status": "Shared Claude Max 20x quota with parent mac-claude-a; no purchases; no paid network calls"
+  }
+}
