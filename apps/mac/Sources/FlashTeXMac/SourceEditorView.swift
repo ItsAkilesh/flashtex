@@ -108,6 +108,7 @@ struct SourceEditorView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
+            TypingBench.shared.textViewDidChange() // stamps the delegate time for keystroke -> paint
             parent.text = tv.string
         }
 
