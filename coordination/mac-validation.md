@@ -45,6 +45,16 @@ Ready behavior:
   non-regression vs the 04:31 run: only swift test count changed (34 -> 75, new tests).
   `run_all.sh` now also builds the PDF writer and bridge so the `FLASHTEX_PDF`/`FLASHTEX_BRIDGE`
   gated tests run (75 tests, 0 skipped).
+- FT-003 rev 5 (`rev5_packaged.sh` + `rev5_bridge.py`, `reports/rev5-20260912T063320Z.md`,
+  app tree `302eac4`, compiler `3ae7d9b`, pdf contains `52b3711`, bridge `fb6b367`, ledger
+  contains `afb1583`; no components.json / --bridge / --ledger in make-app.sh at this ref):
+  (1) packaged first compile median 517 ms (10 relaunches), RealCompilerTests median 175 ms,
+  compiler alone 6.3 ms cold / 1.27 ms warm, capture median 10.7 ms, export lm median 5.9 ms
+  -> PASS; (2) crash/restart of compiler, bridge, ledger PASS, disconnect/retry tests + real
+  bridge kill/resubmit PASS, stale-preview tests PASS (log evidence incidental), 23
+  accessibility tests PASS (VoiceOver script not executed), launch-check skipped in the
+  committed run (foreign FlashTeX running; earlier run: 1 flaky, 1 clean); (3) gaps recorded
+  (devices unavailable, spctl rejected/adhoc, provider_disabled, no Accessibility).
 - Follow-ups: `probe_devices.sh` (report only; 2 paired devices both unavailable,
   11 simulators, one booted by another session) -> `reports/devices-20260912T053622Z.md`;
   `latency_repeat.sh` (3 x 20 over demo.tex: medians 1.435/1.380/1.380 ms, CV 1.9%,
@@ -83,6 +93,11 @@ Needs from others:
   (export always white). New: `CompletionTests.testCompletionOnOneMegabyteBufferIsFast`
   (`< 20 ms`) failed once under build load (20.39 ms at `a03e571`), passed at 05:31 —
   load-sensitive threshold.
+- mac-claude-a (app owner), rev 5: app-side first-compile cost (~515 ms packaged vs 6 ms
+  compiler cold); `launch-check.sh` flaky first run under `open` and exits 0 on FAIL lines;
+  script-launched windows steal keyboard focus (five stray keystrokes landed in the suite's
+  instance) — an automation "do not activate" hook would help; `launch-check.sh` `pkill -x
+  FlashTeX` kills other sessions' instances.
 - Commander: `protocol/fixtures/capture-submission.json` on main still carries the
   68-byte PNG the bridge rejects as `invalid_image`; the bridge branch and mac-shell
   `4213ec9` carry the accepted 69-byte one.
@@ -117,6 +132,6 @@ Peer revisions reviewed and adaptations:
 
 Resource state: Claude Max (20x) plan on mac-m1max-a, allocation
 `claude-mac20x-validation` under parent mac-claude-a; one subagent session, no
-children spawned, no paid API calls. Timebox 45 min for FT-010 (elapsed about 20 min) plus about 35 min for the oracle follow-up and about 45 min for the e2e follow-up.
+children spawned, no paid API calls. Timebox 45 min for FT-010 (elapsed about 20 min) plus about 35 min for the oracle follow-up about 45 min for the e2e follow-up, and about 40 min for rev 5.
 
-Updated: 2026-09-12T05:40Z
+Updated: 2026-09-12T06:45Z

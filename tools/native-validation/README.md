@@ -17,6 +17,7 @@ failures in those are written up in `reports/` for their owners.
 | `e2e_native.sh` + `e2e_latency.py`, `e2e_bridge.py`, `e2e_nonregression.py`, `window_probe.swift` | Native end-to-end (issue #2): builds Mac shell + its `crates/compiler`, PDF writer and bridge from refs; (1) launches `FlashTeXMac` with `FLASHTEX_AUTOATTACH=1 FLASHTEX_SEED_FILE=oracle-samples/wrap-sample.tex` and observes process, `flashtex-compiler` child (`pgrep -P`), window (`CGWindowListCopyWindowInfo`, no Accessibility needed) and a screenshot by window id, then runs the CLI-equivalent `flashtex-compiler -> flashtex-pdf --verify -> PDFKit` for the same input; (2) 20x CLI round trip over `Samples/demo.tex` while attached + `swift test --filter RealCompilerTests` REAL-COMPILER LATENCY; (3) SIGKILL compiler child (app must survive 5 s), relaunch re-attaches, SIGKILL app, relaunch shows a window within 5 s; (4) re-runs `run_all.sh` and `oracle_compare.sh --only fixture-hello` and diffs headline numbers against the newest previous reports; (5) bridge receipt path against the real `flashtex-bridge`. Only its own app instance (PID from `$!`) is ever signalled. Writes `reports/e2e-<UTC>.md` + PNGs <= 300 KB. | yes (exit 1 on FAIL; findings and diffs are INFO/FINDING) |
 | `probe_devices.sh` | Report-only: paired physical devices (`xcrun devicectl list devices --json-output`: model, identifier, connection/pairing state, OS), available simulators, `xctrace` device list, Wi-Fi interface. Names/hostnames redacted. Writes `reports/devices-<UTC>.md`. | no |
 | `latency_repeat.sh` | Repeated compiler-latency non-regression: builds the compiler from a ref, runs `e2e_latency.py` R times (fresh worker each) x N requests over `Samples/demo.tex`, reports per-run min/median/max, spread/SD/CV of the medians, cold first-request times, and compares the median-of-medians with the newest previous `reports/latency-*.md` (2x band). | no (flags only) |
+| `rev5_packaged.sh` + `rev5_bridge.py` | FT-003 rev 5 evidence: builds compiler/pdf/bridge/edit-ledger from the app tree, packages `FlashTeX.app` with the owner's `make-app.sh`, records integrated component SHAs (from `Contents/Resources/components.json` when present, else git), then (1) edit->visible over >=10 seed-relaunches via `FLASHTEX_LOG` + RealCompilerTests + warm pipe latency, capture latency and disconnect/retry against the real bridge, export latency (`flashtex-pdf --verify --default-face lm`, `--embed-font auto`, PDFExportTests); (2) crash/restart of all three helper children, cited recovery tests, stale-preview citations, accessibility tests, owner's `launch-check.sh` x3 (only when no foreign FlashTeX process exists); (3) explicit gaps. Writes `reports/rev5-<UTC>.md` + a window screenshot. | yes |
 | `expectations.md` | Human checklist for what automation cannot verify here: visual click-to-source, Unicode selection, stale-preview banner, dark preview vs export, capture review. | manual |
 
 ## Running
@@ -38,6 +39,8 @@ tools/native-validation/check_ui_capabilities.sh --mac-dir apps/mac --repo .
 tools/native-validation/oracle_compare.sh --compiler-ref main=origin/main --compiler-ref de1020c=de1020c --pdf-ref c0f3837
 # native end-to-end (own app instance, screenshots, bridge); ~4 min
 tools/native-validation/e2e_native.sh
+# FT-003 rev 5 packaged evidence (~6 min; launches take keyboard focus, see caution below)
+tools/native-validation/rev5_packaged.sh --expect compiler=<sha> --expect pdf=<sha> --expect bridge=<sha> --expect edit-ledger=<sha>
 # inspect a PDF a human exported with File > Export PDF…
 python3 tools/native-validation/check_pdf_export.py ~/Desktop/demo-r3.pdf --expect-pages 1
 ```
@@ -260,3 +263,39 @@ medians 1.435 / 1.380 / 1.380 ms (median of medians **1.380 ms**, spread 0.055 m
 across 60 samples min 1.329 / median 1.393 / p95 2.603 / max 190.5 ms. The 190 ms outlier is the
 first request of run 1 against a freshly built binary (cold start); runs 2-3 first requests were
 3.7 and 3.6 ms. Later runs compare against this file automatically.
+
+## FT-003 rev 5 packaged evidence — run 2026-09-12T06:33:20Z (`reports/rev5-20260912T063320Z.md`)
+
+App tree mac-shell `302eac4`; bundle from `make-app.sh --compiler --pdf` (no `--bridge`/`--ledger`
+and no `components.json` at this ref, so bridge and ledger were supplied at launch via
+`FLASHTEX_BRIDGE`/`FLASHTEX_EDIT_LEDGER`). Component SHAs: compiler `3ae7d9b` (expected, exact);
+pdf last touched `2d67b0d`, contains expected `52b3711`; bridge `fb6b367`; edit-ledger last touched
+`a1bb884`, contains expected `afb1583`.
+
+| Item | Result |
+|---|---|
+| (1) edit->visible, packaged app, first compile per launch (10 seed relaunches) | min 503 / median 517 / max 549 ms as logged by the app (`revision N: ok ... in X ms`) |
+| (1) in-app path `RealCompilerTests` REAL-COMPILER LATENCY | n=2 min 1.16 / median 175 ms |
+| (1) incidental warm in-app compile (unplanned keystrokes, see caution) | revision 2: 68 ms; 5 keystrokes coalesced into one `compiling revision 7`: 209 ms |
+| (1) compiler alone over the pipe, fresh process | first request 6.3 ms, then min 1.21 / median 1.27 / max 6.29 ms |
+| (1) capture `capture_submit` -> `capture_received` x10, real bridge, durable | min 9.75 / median 10.73 / max 12.79 ms |
+| (1) export `flashtex-pdf --verify --default-face lm` x10 (3 pages) | min 5.8 / median 5.9 / max 9.8 ms; `--embed-font auto` median 7.1 ms (embeds LM Roman .otf found under BasicTeX — a font file, TeX is not run) |
+| (1) CoreGraphics export tests | `PDFExportTests` 3 passed (8-32 ms each), `RustPDFExportTests` passed |
+| (2) crash/restart | SIGKILL compiler -> `worker exited (9)`, app alive; SIGKILL bridge -> `bridge exited (9)`, later `document_open failed — process is not running`, app alive; SIGKILL ledger -> `edit ledger exited (9)`, app alive; relaunch re-attaches all three (no auto-respawn) |
+| (2) disconnect/retry | `testTransientStatusFailuresRetainTransactionsAndEvidence` 1.29 s, `testDetachAndReattachIgnoresOldSessionEvents` 2.27 s passed; real bridge: `BrokenPipeError` on the submit after SIGKILL, 5/5 receipts durable after restart, 5/5 resubmits received, pre-crash duplicate returns the same record |
+| (2) stale preview | `testAutoCompileDebouncesAndCoalescesEdits` passed; worker ordering via `check_protocol.py`; log-based edit-while-compiling evidence only incidental (above) — no typing route, seed-file change does not recompile |
+| (2) accessibility | `FlashTeXAccessibilityTests` 23 passed; VoiceOver script in `apps/mac/docs/accessibility.md` **not executed** |
+| (2) update path | owner's `launch-check.sh` (no `--install` at this ref): skipped in the committed run (foreign FlashTeX pid running; the script `pkill -x FlashTeX`s); earlier run of the same bundle: run 1 attached but never auto-compiled and no child within 5 s (2 FAIL lines, exit 0), run 2 clean — see report addendum |
+| (3) gaps | devices: 2 paired, both unavailable; 11 simulators, none used. Signing: `spctl --assess` **rejected**, `Signature=adhoc TeamIdentifier=not set`. Provider: `provider_disabled`, no key. Visual: Accessibility `-1728`; capture by window id only; preview face `times` |
+
+Findings for the app owner: (a) the app-reported first-compile latency (~515 ms packaged,
+175 ms in `RealCompilerTests`) is app-side — the same compiler answers its first pipe request in
+6 ms; (b) `launch-check.sh` run 1 attached without auto-compiling (flaky launch under `open`),
+and the script exits 0 on FAIL lines; (c) helpers are not respawned after a crash until relaunch
+(documented behaviour, banner shows the exit).
+
+**Caution:** script-launched `FlashTeX` windows take keyboard focus. During the committed run,
+five keystrokes typed on this Mac landed in the suite's own instance (`seed.tex — edited`,
+revisions 3-7); nothing was saved (the instance is SIGKILLed, the seed lives in scratch), but do
+not run `e2e_native.sh`/`rev5_packaged.sh` while someone is typing at the machine, and an
+automation-only "do not activate" launch hook would remove the hazard.
