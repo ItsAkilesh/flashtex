@@ -192,6 +192,13 @@ plus one error diagnostic with a source range and recovery text and one warning
 with null source/recovery. Use it for manual click-to-source, caret-sync, and
 diagnostics checks beyond the one-line contract fixture.
 
+- Faces: LaTeX's default is Computer Modern, so the preview and CoreGraphics
+  export use **Latin Modern** (GUST FL; registered at launch from `FLASHTEX_LM_DIR`,
+  a bundled `Resources/Fonts`, or BasicTeX's `fonts/opentype/public/lm`) when the
+  attached producer is the new `flashtex-render` pipeline or `FLASHTEX_PREVIEW_FACE=latin-modern`
+  is set; when attached to today's `flashtex-compiler` (Core-14 Times metrics) they
+  draw Times-Roman so glyph widths match the positions. Optical masters follow
+  LaTeX (lmroman5/7/8/9/10/12/17).
 - Export is always white: dark preview is a viewing mode only. `File > Export
   PDF…` (⌘⇧E) uses CoreGraphics; `File > Export PDF via Rust Writer…` (⌘⌥E) pipes
   the current `compile_result` envelope to the FT-009 `flashtex-pdf --verify`
