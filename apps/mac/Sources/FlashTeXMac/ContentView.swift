@@ -36,6 +36,13 @@ struct ContentView: View {
                 Text("\(sourceName) · id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision)")
                 Text("status: \(r.status.rawValue)")
                     .foregroundStyle(statusColor(r.status)).bold()
+                let errors = r.diagnostics.filter { $0.severity == .error }.count
+                let warnings = r.diagnostics.count - errors
+                if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
+                if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                if r.status == .recovered {
+                    Text("recovered: preview shown with provisional rendering").foregroundStyle(.orange)
+                }
                 Text("pdf: \(r.pdfPath ?? "none")").foregroundStyle(.secondary)
                 if model.inFlightRevision != nil {
                     ProgressView().controlSize(.small)
@@ -149,19 +156,32 @@ struct ContentView: View {
     }
 
     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
-        List(Array(diags.enumerated()), id: \.offset) { _, d in
-            HStack(alignment: .top) {
-                Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(d.severity == .error ? .red : .yellow)
-                VStack(alignment: .leading) {
-                    Text(d.message)
-                    if let rec = d.recovery { Text("recovery: \(rec)").font(.caption).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Diagnostics (\(diags.count)) — the preview above is still shown; errors are not hidden")
+                .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
+            List(Array(diags.enumerated()), id: \.offset) { _, d in
+                HStack(alignment: .top) {
+                    Image(systemName: d.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(d.severity == .error ? .red : .orange)
+                    VStack(alignment: .leading) {
+                        Text(d.message)
+                        if let rec = d.recovery {
+                            Text("↳ recovery: \(rec)").font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("↳ no provisional rendering").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        if let src = d.source {
+                            Text("\(src.path) bytes \(src.startByte)..<\(src.endByte)").font(.caption2).foregroundStyle(.tertiary)
+                        } else {
+                            Text("no source mapping").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                    Spacer()
+                    if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
                 }
-                Spacer()
-                if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
             }
+            .frame(minHeight: 80, maxHeight: 180)
         }
-        .frame(maxHeight: 140)
     }
 
     private var footer: some View {

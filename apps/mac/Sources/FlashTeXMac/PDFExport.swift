@@ -67,7 +67,8 @@ extension ShellModel {
         panel.message = "Export the preview's reported layout as PDF (not a TeX-engine PDF)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try PDFExport.render(result, dark: darkPreview).write(to: url, options: .atomic)
+            // Dark preview is a viewing mode only; the exported document is always white.
+            try PDFExport.render(result, dark: false).write(to: url, options: .atomic)
             captureNote = "Exported \(result.pages.count) page\(result.pages.count == 1 ? "" : "s") to \(url.path)"
         } catch {
             captureNote = "PDF export failed: \(error.localizedDescription)"

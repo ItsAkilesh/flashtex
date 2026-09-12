@@ -85,11 +85,20 @@ plus one error diagnostic with a source range and recovery text and one warning
 with null source/recovery. Use it for manual click-to-source, caret-sync, and
 diagnostics checks beyond the one-line contract fixture.
 
+- Export is always white: dark preview is a viewing mode only. `File > Export
+  PDF…` (⌘⇧E) uses CoreGraphics; `File > Export PDF via Rust Writer…` (⌘⌥E) pipes
+  the current `compile_result` envelope to the FT-009 `flashtex-pdf --verify`
+  binary (`$FLASHTEX_PDF` or `crates/pdf/target/{release,debug}/flashtex-pdf`).
+  `RustPDFExportTests` runs only when `FLASHTEX_PDF` is set.
+- Diagnostics panel under the preview is never hidden when diagnostics exist; each
+  entry shows severity, message, recovery note (or "no provisional rendering"),
+  and source bytes; the banner shows error/warning counts and a `recovered` note.
+
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (34): source mapping (shift/refuse/multi-byte/expected-text), stale
+- Tests (36): Rust-writer export (gated on `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,
   two-page synthetic sizes, unknown-kind skipping, page-less result); anchor/rebase/reselection logic, review flow with duplicate
   suppression, capture fixture decoding; caret sync (multi-page sample slices
