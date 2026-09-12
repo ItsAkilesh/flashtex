@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement separate-process burst sender with explicit schedule and byte-preserving request ownership",
-      "objective": "Implement separate-process burst sender with explicit schedule and byte-preserving request ownership",
+      "name": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
+      "objective": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Test sender lifecycle cancellation partial writes and error propagation without altering helper production policy",
-      "objective": "Test sender lifecycle cancellation partial writes and error propagation without altering helper production policy",
+      "name": "Run one quiet-window current and explicitly historical burst pair with exact source bytes and actual cadence reporting",
+      "objective": "Run one quiet-window current and explicitly historical burst pair with exact source bytes and actual cadence reporting",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish bounded harness correction and retain prior observational cadence limitations without automatic benchmark repetition",
-      "objective": "Publish bounded harness correction and retain prior observational cadence limitations without automatic benchmark repetition",
+      "name": "Publish bounded timing evidence with final clean reopen and receipt guards and no native or universal latency claims",
+      "objective": "Publish bounded timing evidence with final clean reopen and receipt guards and no native or universal latency claims",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

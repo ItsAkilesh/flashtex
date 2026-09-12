@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ffe199d89302a4353f621923c0914707b5611a80",
-  "objective": "Implement separate-process burst sender with explicit schedule and byte-preserving request ownership",
+  "input_main_sha": "4bcd708710d87ca5790fae5d11086a53b5226ff6",
+  "objective": "Verify fragmented greater-than-pipe-capacity sender transfer and documented failure limits",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 23,
+  "revision": 24,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:33:32.337444+00:00"
+  "updated_utc": "2026-09-12T13:38:12.447923+00:00"
 }

@@ -91,3 +91,7 @@ Integrated root06b2f7a8/d6b3df2b/8d913d2a and runtime974756a3. Independently rer
 
 ## Independent historical audit integration
 Integrated18335688/report7943d17e. Commander reran --historical audit without workload execution: all20 guarded edits/ACKs,7 unique original producer request/result/source/token matches,12 superseded,current21 and exact clean/reopen/retry identities pass. Historical flags remain false current/source-actions; sender lateness23.908608ms precludes matched-cadence comparison. Root sender lifecycle candidate5tests initially pass; runtime review requests early child-error propagation and nested helper cleanup if stop raises before publication. GH31 route a9b55af7 published but native parent adoption/test evidence review remains renderer task; GH36 owner ref absent at latest check. No new runtime production changes or workers.
+
+
+## Sender and native review integration
+Integrated dfa69e19, runtime1027d3ae and renderer a177cc3c. Independent five sender lifecycle tests pass. Child error surfaces after existing blocked Client.read deadline (up to15s), not immediate interrupt; helper reap failure does not prove all handles cleaned. Root adding fragmented large-transfer gate before one authorized quiet-window pair; no other heavy job. Native census correction and patch-only scope clarification recorded in RESOURCES. GH31 source matches fix but Mac adoption/evidence pending; GH36 remains no app-only acceptance.

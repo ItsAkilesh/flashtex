@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "f9b6c150589f15ccf54f9c039384343a76177d44",
-  "objective": "Review separate-process sender lifecycle and byte-order guarantees without peer mutation or duplicate workload",
+  "input_main_sha": "4bcd708710d87ca5790fae5d11086a53b5226ff6",
+  "objective": "Independently audit published separate-process sender burst pair exact artifacts source identities and actual cadence",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 28,
+  "revision": 29,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T13:35:16Z"
+  "updated_utc": "2026-09-12T13:38:12.447923+00:00"
 }
