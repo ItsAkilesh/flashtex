@@ -20,8 +20,15 @@ and [structured outputs](https://docs.x.ai/developers/model-capabilities/text/st
 Implemented: atomic durable receipt, duplicate detection, decoded image bounds,
 source-aware context limits, deterministic provider response checks, anchor
 rebasing/invalidation, review requirement and idempotent insertion receipts.
-Tests use a deterministic fake converter; they do not spend API credits or prove
-handwriting quality. No live Grok request has been made for validation here.
+Tests use a deterministic fake converter by default; they do not spend API
+credits. One successful live round trip has been made against the real xAI
+endpoint, on a synthetic rendered-math image, proving the request/response
+plumbing (auth, strict schema, image upload, response parsing) works for that
+clean case. Actual handwriting and photo-of-paper conditions (lighting, paper
+texture, camera noise, real strokes) remain unproven. A gated, `#[ignore]`d
+integration test (`tests/live_grok.rs`) makes further live checks cheap to
+run for anyone holding an `XAI_API_KEY`; it never runs in a normal `cargo
+test` and asserts only on response structure, never on exact output.
 
 Outstanding: encrypted paired nearby networking, real native credential and
 transaction adapters, actual compiler validation before review, real Pencil and
