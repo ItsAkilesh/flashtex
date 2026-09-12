@@ -82,9 +82,35 @@ impl std::error::Error for PdfError {}
 /// Rendering choices. The default embeds nothing.
 #[derive(Debug, Clone, Default)]
 pub struct RenderOptions {
-    /// A Unicode TrueType font to subset and embed for characters outside
-    /// WinAnsi and Symbol. `None` keeps the `?` + warning behaviour.
+    /// A Unicode OpenType font to embed. `None` keeps the `?` + warning
+    /// behaviour for characters outside WinAnsi and Symbol.
     pub embed_font: Option<embed::EmbedFont>,
+    /// Which font ordinary text is set in. [`encoding::Face::Embedded`] makes
+    /// the embedded font the document face (Symbol, then Times, as
+    /// fallbacks); it is ignored with a warning when nothing is embedded.
+    /// [`RenderOptions::default_face_for`] picks `Embedded` for Latin Modern.
+    pub face: encoding::Face,
+}
+
+impl RenderOptions {
+    /// The face the CLI implies for a font: Latin Modern (PostScript names
+    /// starting with `LM`) becomes the document face; anything else stays a
+    /// gap-filler behind Times.
+    pub fn default_face_for(font: &embed::EmbedFont) -> encoding::Face {
+        if font.font.postscript_name.starts_with("LM") {
+            encoding::Face::Embedded
+        } else {
+            encoding::Face::Times
+        }
+    }
+
+    /// Embed `font` and use it as the document face.
+    pub fn with_document_face(font: embed::EmbedFont) -> Self {
+        RenderOptions {
+            embed_font: Some(font),
+            face: encoding::Face::Embedded,
+        }
+    }
 }
 
 /// Renders positioned pages to PDF bytes with default options (no embedding).

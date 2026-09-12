@@ -59,13 +59,34 @@ open out.pdf
 
 ## Font embedding
 
-Off by default. When enabled, every character that WinAnsi and Symbol cannot
-show is looked up in the supplied OpenType font and written through a Type0
-font with `Identity-H` encoding (two bytes per glyph, written as hex strings),
-a `/W` widths array, and a `ToUnicode` CMap so text extraction and search
-return the original characters. Two outline formats are handled; the parser,
-subsetter, and CMap writer are hand-written (`src/truetype.rs`,
-`src/embed.rs`) and the crate still has no dependencies.
+Off by default. When enabled, the supplied OpenType font is written through
+a Type0 font with `Identity-H` encoding (two bytes per glyph, written as hex
+strings), a `/W` widths array with the `hmtx` advance of every glyph used, and
+a `ToUnicode` CMap so text extraction and search return the original
+characters. Two outline formats are handled; the parser, subsetter, and CMap
+writer are hand-written (`src/truetype.rs`, `src/embed.rs`) and the crate
+still has no dependencies.
+
+**Document face.** `RenderOptions.face` / `--default-face` decides what the
+embedded font is for:
+
+- `embedded` (alias `lm`): **the embedded font is the document face.** Every
+  character is looked up in it first; Symbol fills what it lacks (Greek and
+  operators for Latin Modern Roman), base-14 Times fills what neither covers,
+  and only a character in none of the three becomes `?` with a warning. The
+  content stream for plain Latin text then uses only `/F3`. This is implied
+  when `--embed-font` resolves to Latin Modern (PostScript name `LM…`).
+- `times`: base-14 Times-Roman (WinAnsi) first, then Symbol, and the embedded
+  font only fills the gaps. Implied for any other font, and the right choice
+  for `\usepackage{times}`-style documents. With this face a Latin-only
+  document embeds a font but uses no glyph from it (`/W [ ]`).
+
+Verified on macOS with `lmroman10-regular.otf` as the face: the sample
+`Latin Modern naïve — café` produces a single `/F3 12 Tf` run and no `/F1`;
+PDFKit's selection bounds for `Latin Modern` at 12 pt measure 72.552 pt,
+which is exactly the sum of Latin Modern's advances (6046/1000 em × 12), while
+Times-Roman's advances would give 66.324 pt; the raster is visibly Computer
+Modern. The test asserts the width within 0.5 pt.
 
 - **TrueType (`.ttf`, `glyf` outlines): subset.** The glyphs used (plus
   `.notdef` and the parts of any composite glyph) are copied into a new,
@@ -188,7 +209,7 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
 
 ## Verification performed
 
-- `cargo test`: 35 tests (18 unit, 17 integration) covering the fixture's page
+- `cargo test`: 39 tests (19 unit, 20 integration) covering the fixture's page
   count and MediaBox, a two-page synthetic result with distinct page sizes,
   multiline placement (every `Td` equals `(x_pt, height_pt - baseline_y_pt)`),
   WinAnsi encoding (`é` is byte `0xE9`, `—` is `0x97`), unrepresentable
@@ -224,6 +245,15 @@ dark mode. `tests/render.rs::export_is_white_and_theme_independent` guards this.
   and fails if CoreGraphics reports an unsupported font program, then
   extracts the page text with PDFKit (`PDFPage.string` via PyObjC, skipped
   if PyObjC is absent) and asserts it equals the input `Latin Modern ŵŷ ő`.
+- Document face: with Latin Modern as the face, `Latin Modern naïve — café`
+  uses only `/F3` (no `/F1`/`/F2`), `/W` has the `hmtx` advance of every
+  used glyph, ToUnicode round-trips the text; the same input with the Times
+  face uses `/F1` and an empty `/W`; the issue #9 math result under the LM
+  face keeps the `re f` rule, sets `a b + x` in LM, `α` in Symbol, and `√`
+  in LM (which has a radical glyph) with zero warnings; a macOS test runs
+  the CLI without `--default-face`, requires the "as the document face"
+  note, rasterises cleanly, and checks PDFKit's selection width for
+  `Latin Modern` against the LM advances (±0.5 pt) and away from Times.
 - Manual: the fixture and a two-page Unicode sample were rendered, opened by
   `sips` (`format: pdf`, `pixelWidth: 612.000`, `pixelHeight: 792.000`), and
   rasterised to PNG; the heading, three baselines, accented characters, escaped

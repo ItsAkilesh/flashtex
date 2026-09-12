@@ -88,8 +88,19 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
     let mut warnings = Vec::new();
     let page_count = result.pages.len();
 
+    let face = match (options.face, &options.embed_font) {
+        (encoding::Face::Embedded, None) => {
+            warnings.push(
+                "document face 'embedded' requested but no font is embedded; using Times".into(),
+            );
+            encoding::Face::Times
+        }
+        (face, _) => face,
+    };
+
     // Decide the embedded subset up front: it needs every character on every
-    // page, and the pages need its glyph ids.
+    // page, and the pages need its glyph ids. As the document face it gets
+    // every character; as a gap-filler only those outside WinAnsi and Symbol.
     let embedded: Option<EmbeddedSubset> = match &options.embed_font {
         None => None,
         Some(font) => {
@@ -99,14 +110,17 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
                 .flat_map(|p| p.items.iter())
                 .filter(|item| !is_rule_item(&item.text))
                 .flat_map(|item| item.text.chars())
-                .filter(|&c| encoding::needs_embedding(c))
+                .filter(|&c| face == encoding::Face::Embedded || encoding::needs_embedding(c))
                 .collect();
             let subset = font.subset_for(wanted.iter().copied()).map_err(|e| {
                 PdfError::Invalid(format!("embedding {}: {e}", font.source.display()))
             })?;
+            // Only characters that will end up as '?' are worth a font-level
+            // warning; with the embedded face, Symbol and Times still cover
+            // what it lacks silently.
             let missing: Vec<String> = wanted
                 .iter()
-                .filter(|c| !subset.chars.contains_key(c))
+                .filter(|c| !subset.chars.contains_key(c) && encoding::needs_embedding(**c))
                 .map(|c| format!("{c:?} (U+{:04X})", *c as u32))
                 .collect();
             if !missing.is_empty() {
@@ -184,7 +198,7 @@ pub fn render(result: &CompileResult, options: &RenderOptions) -> Result<PdfOutp
     for (i, page) in result.pages.iter().enumerate() {
         let page_obj = FIRST_PAGE_OBJECT + 2 * i;
         let content_obj = page_obj + 1;
-        let content = page_content(page, lookup_ref, embedded.as_ref(), &mut warnings);
+        let content = page_content(page, lookup_ref, embedded.as_ref(), face, &mut warnings);
 
         doc.object(
             page_obj,
@@ -279,6 +293,7 @@ fn page_content(
     page: &crate::Page,
     lookup: Option<&dyn Fn(char) -> Option<u16>>,
     embedded: Option<&EmbeddedSubset>,
+    face: encoding::Face,
     warnings: &mut Vec<String>,
 ) -> Vec<u8> {
     let mut out = Vec::new();
@@ -305,7 +320,7 @@ fn page_content(
             .expect("writing to Vec cannot fail");
             continue;
         }
-        let encoded = encoding::encode_with(&item.text, lookup);
+        let encoded = encoding::encode_face(&item.text, lookup, face);
         if !encoded.unrepresentable.is_empty() {
             let listed: Vec<String> = encoded
                 .unrepresentable

@@ -491,6 +491,7 @@ fn embedded_subset_font_covers_unicode_and_reports_the_rest() {
     };
     let options = flashtex_pdf::RenderOptions {
         embed_font: Some(font.clone()),
+        face: flashtex_pdf::encoding::Face::Times,
     };
     let out = flashtex_pdf::render_pdf_with(&result, &options).unwrap();
     let s = check_structure(&out.bytes).unwrap();
@@ -640,7 +641,10 @@ fn cli_embed_font_writes_a_pdf_that_sips_opens() {
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
-    assert!(stderr.contains("note: embedding subset of"), "{stderr}");
+    assert!(
+        stderr.contains("note: embedding ") && stderr.contains("(Times remains the face)"),
+        "{stderr}"
+    );
     assert!(
         stderr.contains("warning:") && stderr.contains("U+1F600"),
         "{stderr}"
@@ -698,6 +702,7 @@ fn latin_modern_cff_is_embedded_whole_and_verbatim() {
     };
     let options = flashtex_pdf::RenderOptions {
         embed_font: Some(font.clone()),
+        face: flashtex_pdf::encoding::Face::Times,
     };
     let out = flashtex_pdf::render_pdf_with(&result, &options).unwrap();
     let s = check_structure(&out.bytes).unwrap();
@@ -890,5 +895,284 @@ fn latin_modern_pdf_renders_in_sips_and_round_trips_through_pdfkit() {
         let extracted = String::from_utf8_lossy(&py.stdout);
         assert_eq!(extracted.trim(), text, "PDFKit page.string round-trip");
     }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// The embedded font as the document face (Latin Modern primary).
+
+/// Width of `text` at `size` from the font's own advances, in points.
+fn advance_width(font: &flashtex_pdf::embed::EmbedFont, text: &str, size: f64) -> f64 {
+    text.chars()
+        .map(|c| font.font.advance(font.font.glyph_id(c).expect("glyph")) as f64)
+        .sum::<f64>()
+        * size
+        / font.font.units_per_em as f64
+}
+
+/// Times-Roman AFM widths for the letters in "Latin Modern", 1/1000 em.
+fn times_width(text: &str, size: f64) -> f64 {
+    text.chars()
+        .map(|c| match c {
+            'L' => 611.0,
+            'a' => 444.0,
+            't' => 278.0,
+            'i' => 278.0,
+            'n' => 500.0,
+            ' ' => 250.0,
+            'M' => 889.0,
+            'o' => 500.0,
+            'd' => 500.0,
+            'e' => 444.0,
+            'r' => 333.0,
+            other => panic!("no Times width for {other:?}"),
+        })
+        .sum::<f64>()
+        * size
+        / 1000.0
+}
+
+#[test]
+fn latin_modern_as_document_face_sets_all_latin_text_in_it() {
+    use flashtex_pdf::embed::{Program, parse_to_unicode};
+    let Some(font) = font_with_outlines_or_skip(
+        "latin_modern_as_document_face_sets_all_latin_text_in_it",
+        flashtex_pdf::truetype::Outlines::Cff,
+    ) else {
+        return;
+    };
+    let text = "Latin Modern naïve — café";
+    let result = CompileResult {
+        pages: vec![page(1, 612.0, 792.0, vec![item(text, 72.0, 84.0, 12.0)])],
+    };
+    assert_eq!(
+        flashtex_pdf::RenderOptions::default_face_for(&font),
+        flashtex_pdf::encoding::Face::Embedded,
+        "Latin Modern implies the embedded face"
+    );
+    let options = flashtex_pdf::RenderOptions::with_document_face(font.clone());
+    let out = flashtex_pdf::render_pdf_with(&result, &options).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    check_structure(&out.bytes).unwrap();
+
+    // Every character went through /F3; Times and Symbol are unused.
+    let content = stream_data(&out.bytes, 7).unwrap();
+    assert!(
+        find(&content, b"/F1 ").is_none(),
+        "no Times run: {}",
+        String::from_utf8_lossy(&content)
+    );
+    assert!(find(&content, b"/F2 ").is_none());
+    assert_eq!(count(&content, b"/F3 12 Tf\n"), 1);
+    let placed = placements(&content).unwrap();
+    assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].font, "F3");
+    assert_eq!(placed[0].bytes.len(), 2 * text.chars().count());
+
+    // /W carries the hmtx advance of every used glyph, and ToUnicode maps
+    // every glyph back to its character.
+    let subset = font.subset_for(text.chars()).unwrap();
+    let Program::Cff { used_advances, .. } = &subset.program else {
+        panic!("expected a whole-CFF program");
+    };
+    assert_eq!(
+        used_advances.len(),
+        text.chars()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+    );
+    let to_unicode = parse_to_unicode(&stream_data(&out.bytes, 12).unwrap()).unwrap();
+    let mut round_trip = String::new();
+    for gid in placed[0].bytes.chunks(2) {
+        let gid = u16::from_be_bytes([gid[0], gid[1]]);
+        let w = (font.font.advance(gid) as f64 * 1000.0 / font.font.units_per_em as f64).round();
+        assert!(
+            find(&out.bytes, format!(" {gid} [ {w} ]").as_bytes()).is_some(),
+            "/W for {gid}"
+        );
+        round_trip.push(to_unicode[&gid]);
+    }
+    assert_eq!(round_trip, text);
+    assert!(find(&out.bytes, b"/W [ ]").is_none());
+
+    // The same sample with the Times face still uses /F1 for Latin text.
+    let times_options = flashtex_pdf::RenderOptions {
+        embed_font: Some(font.clone()),
+        face: flashtex_pdf::encoding::Face::Times,
+    };
+    let times_out = flashtex_pdf::render_pdf_with(&result, &times_options).unwrap();
+    let times_content = stream_data(&times_out.bytes, 7).unwrap();
+    assert!(find(&times_content, b"/F1 12 Tf").is_some());
+    assert!(find(&times_content, b"/F3 ").is_none());
+    assert!(
+        find(&times_out.bytes, b"/W [ ]").is_some(),
+        "no glyph used from the embedded font"
+    );
+
+    // Asking for the embedded face without a font is warned, not silent.
+    let no_font = flashtex_pdf::RenderOptions {
+        embed_font: None,
+        face: flashtex_pdf::encoding::Face::Embedded,
+    };
+    let fallback = flashtex_pdf::render_pdf_with(&result, &no_font).unwrap();
+    assert!(
+        fallback
+            .warnings
+            .iter()
+            .any(|w| w.contains("no font is embedded"))
+    );
+}
+
+#[test]
+fn latin_modern_face_keeps_rules_and_symbol_math() {
+    let Some(font) = font_with_outlines_or_skip(
+        "latin_modern_face_keeps_rules_and_symbol_math",
+        flashtex_pdf::truetype::Outlines::Cff,
+    ) else {
+        return;
+    };
+    let options = flashtex_pdf::RenderOptions::with_document_face(font.clone());
+    let out = flashtex_pdf::render_envelope_with(MATH_RESULT, &options).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    check_structure(&out.bytes).unwrap();
+    let content = stream_data(&out.bytes, 7).unwrap();
+
+    // The fraction bar is still a rectangle, never a glyph.
+    let bars = rules(&content).unwrap();
+    assert_eq!(bars.len(), 1);
+    assert!((bars[0].width - 8.4).abs() < 0.0005);
+
+    // Latin letters and '+' come from Latin Modern; α falls back to Symbol
+    // because LM Roman has no Greek; √ comes from whichever has it (LM Roman
+    // does carry a radical glyph); nothing uses Times.
+    let placed = placements(&content).unwrap();
+    let summary: Vec<(&str, Vec<u8>)> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.bytes.clone()))
+        .collect();
+    let gid = |c: char| font.font.glyph_id(c).unwrap().to_be_bytes().to_vec();
+    let radical = match font.font.glyph_id('√') {
+        Some(g) => ("F3", g.to_be_bytes().to_vec()),
+        None => ("F2", vec![0xD6]),
+    };
+    assert_eq!(
+        font.font.glyph_id('α'),
+        None,
+        "LM Roman has no Greek; Symbol covers it"
+    );
+    assert_eq!(
+        summary,
+        vec![
+            ("F3", gid('a')),
+            ("F3", gid('b')),
+            ("F3", gid('+')),
+            ("F2", vec![0x61]),
+            ("F3", gid('+')),
+            radical,
+            ("F3", gid('x')),
+        ]
+    );
+    assert!(find(&content, b"/F1 ").is_none());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn latin_modern_face_widths_match_lm_metrics_in_pdfkit() {
+    let Some(font) = font_with_outlines_or_skip(
+        "latin_modern_face_widths_match_lm_metrics_in_pdfkit",
+        flashtex_pdf::truetype::Outlines::Cff,
+    ) else {
+        return;
+    };
+    let exe = env!("CARGO_BIN_EXE_flashtex-pdf");
+    let dir = std::env::temp_dir().join(format!("flashtex-pdf-lmface-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = "Latin Modern naïve — café";
+    let probe = "Latin Modern";
+    let input = dir.join("lmface.json");
+    std::fs::write(
+        &input,
+        format!(
+            r#"{{"protocol_version":1,"id":"f","type":"compile_result","payload":{{"pages":[{{"number":1,"width_pt":612,"height_pt":792,"items":[{{"kind":"text","text":"{text}","x_pt":72,"baseline_y_pt":84,"font_size_pt":12}}]}}]}}}}"#
+        ),
+    )
+    .unwrap();
+    let out = dir.join("lmface.pdf");
+    // No --default-face: Latin Modern must imply the embedded face.
+    let output = std::process::Command::new(exe)
+        .arg(&input)
+        .arg("--out")
+        .arg(&out)
+        .arg("--verify")
+        .arg("--embed-font")
+        .arg(&font.source)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(stderr.contains("as the document face"), "{stderr}");
+    assert!(!stderr.contains("warning:"), "{stderr}");
+    let pdf = std::fs::read(&out).unwrap();
+    assert!(find(&pdf, b"/F1 12 Tf").is_none());
+    assert!(find(&pdf, b"/F3 12 Tf").is_some());
+
+    let sips = std::process::Command::new("/usr/bin/sips")
+        .env("CG_PDF_VERBOSE", "1")
+        .args(["-s", "format", "png"])
+        .arg(&out)
+        .arg("--out")
+        .arg(dir.join("lmface.png"))
+        .output()
+        .unwrap();
+    let sips_err = String::from_utf8_lossy(&sips.stderr);
+    assert!(
+        sips.status.success() && !sips_err.contains("unsupported"),
+        "{sips_err}"
+    );
+
+    // PDFKit: text round-trips, and the selection bounds of "Latin Modern"
+    // are as wide as Latin Modern's advances say, not Times-Roman's.
+    let script = "import sys\nfrom Quartz import PDFDocument\nfrom Foundation import NSURL\n\
+                  d = PDFDocument.alloc().initWithURL_(NSURL.fileURLWithPath_(sys.argv[1]))\n\
+                  pg = d.pageAtIndex_(0)\ns = pg.string()\nprint(s)\n\
+                  i = s.index(sys.argv[2])\nsel = pg.selectionForRange_((i, len(sys.argv[2])))\n\
+                  print(sel.boundsForPage_(pg).size.width)\n";
+    let py = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(script)
+        .arg(&out)
+        .arg(probe)
+        .output()
+        .unwrap();
+    let py_err = String::from_utf8_lossy(&py.stderr);
+    if !py.status.success() && py_err.contains("No module named") {
+        eprintln!(
+            "SKIPPED PDFKit checks: PyObjC Quartz not available ({})",
+            py_err.trim()
+        );
+        return;
+    }
+    assert!(py.status.success(), "{py_err}");
+    let stdout = String::from_utf8_lossy(&py.stdout);
+    let mut lines = stdout.lines();
+    assert_eq!(
+        lines.next().unwrap_or(""),
+        text,
+        "PDFKit page.string round-trip"
+    );
+    let measured: f64 = lines.next().unwrap_or("").trim().parse().unwrap();
+    let expected_lm = advance_width(&font, probe, 12.0);
+    let expected_times = times_width(probe, 12.0);
+    eprintln!(
+        "\"{probe}\" at 12pt: PDFKit selection width {measured:.3}pt, Latin Modern advances {expected_lm:.3}pt, Times-Roman advances {expected_times:.3}pt"
+    );
+    assert!(
+        (measured - expected_lm).abs() <= 0.5,
+        "PDFKit width {measured} should match Latin Modern {expected_lm} within 0.5pt"
+    );
+    assert!(
+        (measured - expected_times).abs() > 2.0,
+        "width {measured} must not look like Times {expected_times}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -260,24 +260,56 @@ pub fn needs_embedding(c: char) -> bool {
     winansi_byte(c).is_none() && symbol_byte(c).is_none()
 }
 
-/// Like [`encode`], but characters outside both base-14 fonts are first
-/// offered to `embedded`, which returns the two-byte subset glyph id to write
-/// in an [`Font::Embedded`] run. `None` from it still means `?` + report.
+/// Which font is tried first for ordinary text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Face {
+    /// Base-14 Times-Roman (WinAnsi) first, then Symbol, then the embedded
+    /// font: the embedded font only fills gaps. For `\usepackage{times}`
+    /// style documents and for when nothing is embedded.
+    #[default]
+    Times,
+    /// The embedded font first, then Symbol for operators it lacks, then
+    /// Times only for characters neither covers. Requires an embedded font.
+    Embedded,
+}
+
+/// Like [`encode`], but with an embedded font available. `embedded` returns
+/// the two-byte glyph id to write in an [`Font::Embedded`] run for a character
+/// it covers. With [`Face::Times`] it is consulted only for characters outside
+/// both base-14 fonts; with [`Face::Embedded`] it is consulted first. A
+/// character no font covers still means `?` + report.
 pub fn encode_with(text: &str, embedded: Option<&dyn Fn(char) -> Option<u16>>) -> Encoded {
+    encode_face(text, embedded, Face::Times)
+}
+
+/// [`encode_with`] with an explicit primary face.
+pub fn encode_face(
+    text: &str,
+    embedded: Option<&dyn Fn(char) -> Option<u16>>,
+    face: Face,
+) -> Encoded {
     let mut runs: Vec<Run> = Vec::new();
     let mut unrepresentable = Vec::new();
     for c in text.chars() {
-        let (font, bytes): (Font, Vec<u8>) = if let Some(b) = winansi_byte(c) {
-            (Font::Times, vec![b])
-        } else if let Some(b) = symbol_byte(c) {
-            (Font::Symbol, vec![b])
-        } else if let Some(gid) = embedded.and_then(|f| f(c)) {
-            (Font::Embedded, gid.to_be_bytes().to_vec())
-        } else {
-            if !unrepresentable.contains(&c) {
-                unrepresentable.push(c);
+        let embedded_run = || {
+            embedded
+                .and_then(|f| f(c))
+                .map(|gid| (Font::Embedded, gid.to_be_bytes().to_vec()))
+        };
+        let times_run = || winansi_byte(c).map(|b| (Font::Times, vec![b]));
+        let symbol_run = || symbol_byte(c).map(|b| (Font::Symbol, vec![b]));
+        let found = match face {
+            Face::Times => times_run().or_else(symbol_run).or_else(embedded_run),
+            Face::Embedded => embedded_run().or_else(symbol_run).or_else(times_run),
+        };
+        let (font, bytes): (Font, Vec<u8>) = match found {
+            Some(run) => run,
+            None => {
+                if !unrepresentable.contains(&c) {
+                    unrepresentable.push(c);
+                }
+                (Font::Times, vec![SUBSTITUTE])
             }
-            (Font::Times, vec![SUBSTITUTE])
         };
         match runs.last_mut() {
             Some(run) if run.font == font => run.bytes.extend_from_slice(&bytes),
@@ -397,6 +429,35 @@ mod tests {
         );
         assert_eq!(e.unrepresentable, vec!['😀']);
         assert!(needs_embedding('中') && !needs_embedding('α') && !needs_embedding('a'));
+    }
+
+    #[test]
+    fn embedded_face_is_consulted_first_then_symbol_then_times() {
+        let lookup = |c: char| match c {
+            'a' | 'é' | '中' => Some(0x0010u16),
+            _ => None,
+        };
+        // 'a' and 'é' go to the embedded font even though WinAnsi has them;
+        // 'α' falls back to Symbol; 'ç' to Times (WinAnsi) since the lookup
+        // lacks it; '😀' is still substituted.
+        let e = encode_face("aéαç中😀", Some(&lookup), Face::Embedded);
+        let fonts: Vec<(Font, usize)> = e.runs.iter().map(|r| (r.font, r.bytes.len())).collect();
+        assert_eq!(
+            fonts,
+            vec![
+                (Font::Embedded, 4),
+                (Font::Symbol, 1),
+                (Font::Times, 1),
+                (Font::Embedded, 2),
+                (Font::Times, 1),
+            ]
+        );
+        assert_eq!(e.runs[2].bytes, vec![0xE7]);
+        assert_eq!(e.unrepresentable, vec!['😀']);
+        assert_eq!(
+            encode_face("a", None, Face::Embedded).runs[0].font,
+            Font::Times
+        );
     }
 
     #[test]

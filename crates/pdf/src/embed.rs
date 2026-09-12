@@ -256,7 +256,11 @@ impl EmbeddedSubset {
                     .iter()
                     .map(|(&gid, &a)| format!("{gid} [ {} ]", w(a)))
                     .collect();
-                format!("[ {} ]", entries.join(" "))
+                if entries.is_empty() {
+                    "[ ]".to_string()
+                } else {
+                    format!("[ {} ]", entries.join(" "))
+                }
             }
         }
     }

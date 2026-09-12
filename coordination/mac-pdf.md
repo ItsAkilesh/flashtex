@@ -1,6 +1,6 @@
 # mac-pdf handoff — FT-009 PDF output
 
-- Updated UTC: 2026-09-12T06:20Z
+- Updated UTC: 2026-09-12T06:50Z
 - Agent / parent / machine alias: `mac-pdf` (Claude Code subagent; issue #2
   follow-up dispatched as worker `mac-pdf-unicode`, same agent and branch) /
   parent `mac-claude-a` / `mac-m1max-a`
@@ -29,6 +29,13 @@
     lacks stay `?` with warnings; CLI prints a `note: N warning(s)` summary,
     exit 0. Verified on this Mac with both system fonts: rasterised output
     shows Cyrillic/CJK/ℝ and composite glyphs; `?` only where warned.
+  - Document face (defect found by coordinator in e3e5e1e fixed): the
+    embedded font was only a gap-filler behind Times, so LM was embedded but
+    unused. `RenderOptions.face` / `--default-face embedded|lm|times`; Latin
+    Modern implies `embedded` (LM first, Symbol, then Times, `?` last),
+    other fonts imply `times`. Verified: sample `Latin Modern naïve — café`
+    uses only `/F3`; PDFKit selection width of "Latin Modern" at 12pt =
+    72.552pt = LM advances (Times would be 66.324pt); raster is CM-style.
   - CFF OpenType (Latin Modern, `OTTO`) embedding: the whole `CFF ` table
     verbatim as `/FontFile3 /Subtype /CIDFontType0C` under CIDFontType0 +
     Identity-H + sparse `/W` + ToUnicode. `/Type1C` was rejected by
@@ -52,7 +59,7 @@
     `unicode-literals` because the compiler assumes 0.5 em for glyphs it has
     no metrics for (`DEFAULT_ADVANCE_UNITS`); real ideographs are 1 em. The
     PDF writer places items where told and does not re-flow.
-  - `cargo test`: 35/35 pass (18 unit, 17 integration). Covers fixture page count
+  - `cargo test`: 39/39 pass (19 unit, 20 integration). Covers fixture page count
     and MediaBox, a 2-page synthetic result, multiline baselines, WinAnsi
     encoding (`é` → `0xE9`), unrepresentable chars (`中`, `😀`, `ℝ`) → `?` +
     warning, delimiter escaping, unsupported item kinds, bad envelopes,
@@ -106,7 +113,7 @@
   (500-unit fallback for non-Latin glyphs) plus GitHub issue #9 — adapted by
   rendering U+2500 runs as rules and adding the Symbol font.
 - Validation commands / results / artifact paths:
-  `cd crates/pdf && cargo test` (35 passed);
+  `cd crates/pdf && cargo test` (39 passed);
   `cargo run --bin flashtex-pdf -- in.json --out out.pdf --embed-font auto` (prints which font was embedded);
   `cargo run --bin flashtex-pdf -- tests/fixtures/math-compile-result.json --out math.pdf --verify` (exit 0, no warnings);
   `cargo run --bin flashtex-pdf -- --out out.pdf --verify < ../../protocol/fixtures/compile-result.json`;

@@ -11,18 +11,24 @@
 //! written and nothing was dropped), 1 when the input is not a supported
 //! envelope or cannot be rendered, 2 on usage errors.
 //!
-//! `--embed-font PATH` subsets and embeds a Unicode TrueType font for
-//! characters outside WinAnsi and Symbol; `--embed-font auto` honours
-//! `FLASHTEX_UNICODE_FONT` and then macOS system fonts. Setting the environment
-//! variable alone also enables embedding. Default: no embedding.
+//! `--embed-font PATH` embeds a Unicode OpenType font; `--embed-font auto`
+//! honours `FLASHTEX_UNICODE_FONT`, then Latin Modern, then macOS system
+//! fonts. Setting the environment variable alone also enables embedding.
+//! `--default-face embedded|lm|times` chooses whether the embedded font is
+//! the document face (implied for Latin Modern) or only fills gaps behind
+//! base-14 Times (implied for anything else). Default: no embedding.
 
 use std::io::Read;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: flashtex-pdf [INPUT.json] --out OUTPUT.pdf [--verify] [--embed-font PATH|auto]\n\
+const USAGE: &str = "usage: flashtex-pdf [INPUT.json] --out OUTPUT.pdf [--verify] [--embed-font PATH|auto] [--default-face embedded|lm|times]\n\
        Reads a runtime-v1 compile_result envelope (from INPUT.json or stdin) and writes a PDF.\n\
-       --embed-font PATH  subset and embed this .ttf for characters outside WinAnsi/Symbol\n\
-       --embed-font auto  use $FLASHTEX_UNICODE_FONT, else a macOS system font if present\n\
+       --embed-font PATH        embed this .ttf (subset) or .otf (whole CFF)\n\
+       --embed-font auto        use $FLASHTEX_UNICODE_FONT, else Latin Modern, else a macOS system font\n\
+       --default-face embedded  set all text in the embedded font (Symbol, then Times, fill gaps)\n\
+       --default-face lm        same as 'embedded'\n\
+       --default-face times     base-14 Times first; the embedded font only fills gaps\n\
+       Without --default-face, Latin Modern implies 'embedded' and any other font 'times'.\n\
        Setting FLASHTEX_UNICODE_FONT alone also enables embedding.";
 
 fn main() -> ExitCode {
@@ -32,6 +38,7 @@ fn main() -> ExitCode {
     // The environment variable alone opts in; "auto" then resolves to it.
     let mut embed: Option<String> =
         std::env::var_os(flashtex_pdf::embed::ENV_VAR).map(|_| "auto".to_string());
+    let mut face: Option<flashtex_pdf::encoding::Face> = None;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -43,6 +50,12 @@ fn main() -> ExitCode {
             "--embed-font" => match args.next() {
                 Some(p) => embed = Some(p),
                 None => return usage("--embed-font needs a path or 'auto'"),
+            },
+            "--default-face" => match args.next().as_deref() {
+                Some("embedded" | "lm") => face = Some(flashtex_pdf::encoding::Face::Embedded),
+                Some("times") => face = Some(flashtex_pdf::encoding::Face::Times),
+                Some(other) => return usage(&format!("unknown --default-face {other:?}")),
+                None => return usage("--default-face needs embedded, lm, or times"),
             },
             "-h" | "--help" => {
                 println!("{USAGE}");
@@ -85,12 +98,20 @@ fn main() -> ExitCode {
         };
         match loaded {
             Ok(Some(font)) => {
+                let chosen =
+                    face.unwrap_or_else(|| flashtex_pdf::RenderOptions::default_face_for(&font));
                 embed_note = Some(format!(
-                    "embedding subset of {} from {}",
+                    "embedding {} from {} as {}",
                     font.font.postscript_name,
-                    font.source.display()
+                    font.source.display(),
+                    match chosen {
+                        flashtex_pdf::encoding::Face::Embedded => "the document face",
+                        flashtex_pdf::encoding::Face::Times =>
+                            "a fallback for characters outside WinAnsi/Symbol (Times remains the face)",
+                    }
                 ));
                 options.embed_font = Some(font);
+                options.face = chosen;
             }
             Ok(None) => eprintln!(
                 "warning: --embed-font auto found no usable font (set {} or install a .ttf); characters outside WinAnsi/Symbol become '?'",
