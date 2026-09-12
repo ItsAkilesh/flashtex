@@ -3,17 +3,17 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T06:01:34Z",
-      "adaptation": "Own crates/font-resources; original immutable loader, cmap cache, bounded exact outline expansion and path iteration published. Keep native fidelity and latency gates separate.",
-      "main_sha": "bce4982f5db9e0b08063c7bc3200f9a1e5bcf711",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T06:03:43Z",
+      "adaptation": "Prior 74c3682 already implements bounded exact composite transforms and quadratic paths. Continue current authorized point-attachment acceptance and explicit offset-policy checks, without repeating prior stage.",
+      "main_sha": "a77e697faa51866607f8c9cf9f5d2a65a63e1521",
+      "revision": 2
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "74c368253247152eef37a08a272bc6f0ec8138a6",
+  "code_revision": "60aa3ed1c288d6efa7126c3922562cf9c4abb3b3",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -21,13 +21,13 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "894a9ce582fee1f0bea2706b58d79d7d631a1259",
-  "next_action": "Renderer consumer integration; define unhinted/grid-rounded offset policy before relaxing unsupported cases.",
+  "next_action": "Consumer integration; grid rounding still requires explicit ppem/device-grid/hint policy.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Published 74c3682: 36 normal tests and clippy pass. Exact composite expansion and quadratic paths; real font: 1679 expanded, 941 explicitly unsupported.",
+  "summary": "39 tests and clippy pass; exact transformed point attachment and explicit offset-policy checks implemented. Real-font 1679 accepted, 941 unsupported grid-rounded offsets.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T06:01:45Z",
+  "updated_utc": "2026-09-12T06:04:10Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."
