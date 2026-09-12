@@ -30,6 +30,48 @@
         "crates/font-resources"
       ],
       "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Exact TeX encoding to font-resource mapping",
+      "objective": "Exact TeX encoding to font-resource mapping",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "TFM metric and glyph binding consumer adapter",
+      "objective": "TFM metric and glyph binding consumer adapter",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
+    },
+    {
+      "acceptance": [
+        "Meaningful tests and strict lint pass",
+        "Publish truthful execution provenance and exact tested SHA",
+        "No native integration or PDF parity claim without measured evidence"
+      ],
+      "allocation_id": "hosted-openai-product",
+      "name": "Real licensed font metric equivalence fixtures",
+      "objective": "Real licensed font metric equivalence fixtures",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
+      "timebox_minutes": 30
     }
   ],
   "task_id": "FT-024"
