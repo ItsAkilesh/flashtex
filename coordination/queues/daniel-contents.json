@@ -5,8 +5,8 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "Integrate an explicit published consumer adapter without peer ownership edits",
-      "objective": "Bounded contents/list-of-figures entry layout from explicit section/page records, measured leaders and revision-safe convergence. Integrate an explicit published consumer adapter without peer ownership edits",
+      "name": "Contents stabilization: adversarial bounds and exact identity regressions",
+      "objective": "Contents stabilization: adversarial bounds and exact identity regressions",
       "owned_paths": [
         "crates/toc-layout"
       ],
@@ -16,11 +16,11 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
-      "objective": "Bounded contents/list-of-figures entry layout from explicit section/page records, measured leaders and revision-safe convergence. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
+      "name": "Contents stabilization: existing consumer integration fixture and measured unsupported gaps",
+      "objective": "Contents stabilization: existing consumer integration fixture and measured unsupported gaps",
       "owned_paths": [
         "crates/toc-layout"
       ],
@@ -30,7 +30,7 @@
         "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

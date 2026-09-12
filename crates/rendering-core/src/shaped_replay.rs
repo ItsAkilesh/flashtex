@@ -648,3 +648,40 @@ impl PlacedShapedRun {
         encode(&f, max_bytes)
     }
 }
+
+impl ShapedReplay {
+    /// Exact geometry for a consumer; parsing does not verify original font bytes.
+    pub fn geometry(&self, index: usize) -> Result<crate::mixed_replay::ReplayGeometry> {
+        use crate::mixed_replay::{ReplayCommand as R, ReplayGeometry as G};
+        let p = self
+            .fixture
+            .primitives
+            .get(index)
+            .ok_or_else(|| ValidationError("shaped replay primitive index".into()))?;
+        let commands = p
+            .commands
+            .iter()
+            .map(|c| {
+                Ok(match c {
+                    Command::Move(p) => R::Move(exact(p)?),
+                    Command::Line(p) => R::Line(exact(p)?),
+                    Command::Quad(p) => R::Quadratic {
+                        control: exact(&p[0])?,
+                        end: exact(&p[1])?,
+                    },
+                    Command::Cubic(p) => R::Cubic {
+                        control1: exact(&p[0])?,
+                        control2: exact(&p[1])?,
+                        end: exact(&p[2])?,
+                    },
+                    Command::Close => R::Close,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(if p.kind == "quadratic" {
+            G::Quadratic(commands)
+        } else {
+            G::Cubic(commands)
+        })
+    }
+}

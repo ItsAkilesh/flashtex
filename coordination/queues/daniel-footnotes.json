@@ -5,32 +5,36 @@
   "next_index": 0,
   "steps": [
     {
-      "name": "math-layout: exact reference-fixture mismatch repair with measured deltas",
-      "objective": "math-layout: exact reference-fixture mismatch repair with measured deltas",
+      "name": "Math layout consumer regressions: adversarial bounds and exact identity regressions",
+      "objective": "Math layout consumer regressions: adversarial bounds and exact identity regressions",
       "owned_paths": [
         "crates/math-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+        "Register Daniel machine and exact assignment ACK/session before working",
+        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     },
     {
-      "name": "math-layout: bounded performance regression and native/compiler adapter evidence",
-      "objective": "math-layout: bounded performance regression and native/compiler adapter evidence",
+      "name": "Math layout consumer regressions: existing consumer integration fixture and measured unsupported gaps",
+      "objective": "Math layout consumer regressions: existing consumer integration fixture and measured unsupported gaps",
       "owned_paths": [
         "crates/math-layout"
       ],
       "acceptance": [
         "Meaningful tests and strict Rust lint pass with bounded malformed/Unicode inputs",
         "Preserve exact source/revision and resource identities; no implicit approximation or parity claim",
-        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA"
+        "Do not edit peer compiler/native/layout files; publish typed adapter contract and exact tested SHA",
+        "Register Daniel machine and exact assignment ACK/session before working",
+        "Preserve old WIP and test before publication; no automatic return of paths at cooldown end"
       ],
       "allocation_id": "daniel-claude20x-shared",
-      "timebox_minutes": 40
+      "timebox_minutes": 30
     }
   ]
 }

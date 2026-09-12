@@ -1,3 +1,9 @@
+> LATEST USER STAFFING OVERRIDE: retain THREE Astra engineers (root runtime
+> performance, font-resources, rendering-core) plus the sole Commander. Bridge,
+> project-index and edit-ledger may finish their current task, then STOP. Their
+> queues are paused; do not restart, replace or reallocate them. This supersedes
+> every older local seven-agent reset below. Remote staffing remains unchanged.
+
 ## Latest local staffing reset
 
 User explicitly reports plan reset and requests6 Astra engineers plus Commander.

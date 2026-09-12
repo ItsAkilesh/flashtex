@@ -829,14 +829,18 @@ pub fn num(v: f64) -> String {
     }
 }
 
-struct Document {
+/// The one PDF container implementation: objects are appended in numeric
+/// order, offsets recorded, and the classic cross-reference table and
+/// trailer written by [`Document::finish`]. Both the runtime-v1 route and
+/// the exact route (`crate::exact`) write through it.
+pub(crate) struct Document {
     bytes: Vec<u8>,
     /// Byte offset of each object, indexed by object number (index 0 unused).
     offsets: Vec<usize>,
 }
 
 impl Document {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Document {
             bytes: PDF_HEADER.to_vec(),
             offsets: vec![0],
@@ -853,18 +857,18 @@ impl Document {
         writeln!(self.bytes, "{number} 0 obj").expect("Vec write");
     }
 
-    fn object(&mut self, number: usize, body: &[u8]) {
+    pub(crate) fn object(&mut self, number: usize, body: &[u8]) {
         self.begin(number);
         self.bytes.extend_from_slice(body);
         self.bytes.extend_from_slice(b"\nendobj\n");
     }
 
-    fn stream(&mut self, number: usize, data: &[u8]) {
+    pub(crate) fn stream(&mut self, number: usize, data: &[u8]) {
         self.stream_with(number, "", data);
     }
 
     /// A stream whose dictionary carries extra entries (e.g. `/Length1`).
-    fn stream_with(&mut self, number: usize, extra: &str, data: &[u8]) {
+    pub(crate) fn stream_with(&mut self, number: usize, extra: &str, data: &[u8]) {
         self.begin(number);
         write!(
             self.bytes,
@@ -878,7 +882,13 @@ impl Document {
         self.bytes.extend_from_slice(b"\nendstream\nendobj\n");
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    fn finish(self) -> Vec<u8> {
+        self.finish_with_info(5)
+    }
+
+    /// Writes the xref table and trailer; `info_obj` is the object number of
+    /// the document information dictionary.
+    pub(crate) fn finish_with_info(mut self, info_obj: usize) -> Vec<u8> {
         let xref_offset = self.bytes.len();
         let size = self.offsets.len();
         write!(self.bytes, "xref\n0 {size}\n0000000000 65535 f \n").expect("Vec write");
@@ -887,7 +897,7 @@ impl Document {
         }
         write!(
             self.bytes,
-            "trailer\n<< /Size {size} /Root 1 0 R /Info 5 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+            "trailer\n<< /Size {size} /Root 1 0 R /Info {info_obj} 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
         )
         .expect("Vec write");
         self.bytes
