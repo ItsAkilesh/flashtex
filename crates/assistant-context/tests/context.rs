@@ -286,3 +286,87 @@ fn tampered_source_hash_and_outside_context_edits_are_refused() {
         .validate_response(&serde_json::to_vec(&response).unwrap(), &docs)
         .is_err());
 }
+
+#[test]
+fn registry_interleaves_routes_cancels_and_bounds_terminal_retention() {
+    use flashtex_assistant_context::{ExplanationRegistry, FlightState};
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("session_a".into(), 2, 1).unwrap();
+    let first = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    let context = Context::build(
+        CompileBinding::capture("r", "p", 7, &docs).unwrap(),
+        &docs,
+        &result(),
+        "different request",
+        &[],
+    )
+    .unwrap();
+    let second = registry
+        .submit(context, &docs, Duration::from_secs(10))
+        .unwrap();
+    assert!(registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .is_err());
+    let first_context = registry.payload(&first).unwrap().context_id.clone();
+    let second_context = registry.payload(&second).unwrap().context_id.clone();
+    let response = serde_json::to_vec(
+        &json!({"context_id":second_context,"explanation":"Explain","edits":[]}),
+    )
+    .unwrap();
+    assert!(registry
+        .receive(&first, &second_context, &response, &docs)
+        .is_err());
+    assert_eq!(registry.state(&first), Some(FlightState::AwaitingResponse));
+    assert!(registry
+        .receive(&second, &second_context, &response, &docs)
+        .is_ok());
+    assert!(registry
+        .receive(&second, &second_context, &response, &docs)
+        .is_err());
+    assert!(registry.cancel(&first));
+    assert!(registry
+        .receive(&first, &first_context, &response, &docs)
+        .is_err());
+    assert_eq!(registry.state(&second), None); // bounded tombstone eviction
+    let third = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    assert_ne!(first, third);
+    assert_ne!(second, third);
+    assert_eq!(registry.retained_counts(), (1, 1));
+    let changed = vec![Document::new("p".into(), "main.tex".into(), 2, "changed".into()).unwrap()];
+    assert!(registry
+        .revoke_stale("another-project", &changed)
+        .is_empty());
+    assert_eq!(registry.revoke_stale("p", &changed), vec![third.clone()]);
+    assert_eq!(registry.state(&third), Some(FlightState::Cancelled));
+    assert_eq!(docs[0].text, "α \\bad");
+}
+
+#[test]
+fn registry_expiry_reclaims_capacity_and_bad_responses_are_terminal() {
+    use flashtex_assistant_context::{ExplanationRegistry, FlightState};
+    use std::time::Duration;
+    let docs = vec![source()];
+    let mut registry = ExplanationRegistry::new("session_b".into(), 1, 2).unwrap();
+    let expired = registry
+        .submit(build(&docs), &docs, Duration::from_nanos(1))
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(1));
+    assert_eq!(registry.sweep(), vec![expired.clone()]);
+    assert_eq!(registry.state(&expired), Some(FlightState::Expired));
+    let next = registry
+        .submit(build(&docs), &docs, Duration::from_secs(10))
+        .unwrap();
+    let context_id = registry.payload(&next).unwrap().context_id.clone();
+    assert!(registry
+        .receive(&next, &context_id, b"invalid", &docs)
+        .is_err());
+    assert_eq!(registry.state(&next), Some(FlightState::Failed));
+    assert_eq!(registry.retained_counts(), (0, 2));
+    assert!(ExplanationRegistry::new("".into(), 1, 1).is_err());
+    assert!(ExplanationRegistry::new("ok".into(), 33, 1).is_err());
+}

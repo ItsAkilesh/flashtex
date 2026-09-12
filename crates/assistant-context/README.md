@@ -77,3 +77,17 @@ called directly as a library as well as through the16MiB JSON helper. The limit
 is explicit; this crate does not silently omit source identities to make a large
 project fit. Malformed/oversized helper requests fail without mutating source;
 a subsequent clean process can prepare a fresh context normally.
+
+`ExplanationRegistry` manages up to32 pending requests and256 terminal IDs (caller
+chooses lower limits). Supply a fresh session identifier for each registry lifetime;
+monotonic request IDs are never recycled within that lifetime, even after eviction.
+Route responses with both request ID and immutable context ID. Wrong routing cannot
+consume another pending request. Invalid correctly routed responses terminate it.
+Cancellation, timeout and successful completion reject all later callbacks.
+Terminal retention stores only IDs/states, never source text or completed proposals.
+The caller receives a proposal once and must separately obtain approval and perform
+ledger validation before editing. There is intentionally no automatic replay/apply.
+Call `revoke_stale(project_id, complete_current_snapshot)` on source changes and
+cancel the returned provider task IDs; call `sweep` from the native timer to collect
+expired IDs. Registry lifecycle actions do not themselves stop network requests.
+This is a Rust integration API; the one-request JSON helper remains unchanged.

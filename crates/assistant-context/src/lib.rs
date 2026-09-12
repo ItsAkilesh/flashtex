@@ -504,3 +504,6 @@ impl ExplanationFlight {
         }
     }
 }
+
+mod registry;
+pub use registry::ExplanationRegistry;
