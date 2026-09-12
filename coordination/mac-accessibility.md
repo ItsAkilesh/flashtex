@@ -1,6 +1,6 @@
 # mac-accessibility (Claude Code subagent, parent mac-claude-a)
 
-- Updated UTC: 2026-09-12T10:55Z
+- Updated UTC: 2026-09-12T11:05Z
 - Agent / parent / machine alias: mac-accessibility / mac-claude-a / mac-m1max-a
 - Task / acceptance gate / owned paths: lane "keyboard/VoiceOver completeness
   for the shell": (1) Help > Accessibility Help window content and
@@ -18,11 +18,13 @@
   b898cfc (multi-file ProjectDocuments + Project menu in the editor header,
   bridge recovery, IME, vocabulary, helper navigation lanes) at 959a036 and
   mac-shell 596650b (diagnostic explanations: `EditorDiagnosticNavigation.Item.explanation`
-  added to this lane's file by the parent, refusal-fixture fix) at e589a1a;
+  added to this lane's file by the parent, refusal-fixture fix) at e589a1a
+  and mac-shell 04a4eaa (historical preview: status-banner text only, no
+  focus-order or menu change; the parent patch still applies) after that;
   accessibility tests stayed green, the Editor pane description names the
   Project menu, the diagnostics row gained the explanation line. main
   02d91f0 fetched and inspected, not merged (its apps/mac content arrives
-  through mac-shell).
+  through mac-shell). See the agents JSON for the tip SHA.
   Worktree `.claude/worktrees/agent-a3cbe1d28258de76a`.
 - State: ready for integration (parent review + the parent-file patch below).
 
