@@ -879,6 +879,10 @@ struct ProjectSearchPanel: View {
                             let deadline = Date().addingTimeInterval(10)
                             while !c.helperAvailable, Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
                             await c.search()
+                            if let r = ProcessInfo.processInfo.environment["FLASHTEX_SEARCH_REPLACEMENT"], !r.isEmpty {
+                                c.replacement = r
+                                await c.planReplacement() // proposal only; Apply stays a click
+                            }
                         }
                     }
                 }
@@ -1080,7 +1084,7 @@ struct ProjectSearchWindow: Scene {
         Window("Find in Project", id: ProjectSearch.windowID) {
             ProjectSearchPanel().environment(model)
         }
-        .defaultSize(width: 720, height: 440)
+        .defaultSize(width: 760, height: 600)
     }
 }
 
