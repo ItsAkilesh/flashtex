@@ -702,3 +702,36 @@ substantial, so tests assert no timing threshold or native performance claim.
 `fixtures/math-cache-replay.json` preserves measured source/hash/context evidence.
 Tests also cover device-context changes, exact fitted-shape equality, stale
 identity, eviction, disabled budgets, and cached VariationIndex refusal.
+
+### Explicit collection consumer and remaining resolver dependency
+
+`registry::collections::CollectionRegistry::load` is a separate opt-in consumer
+requiring a `VerifiedCollectionResolver`. No built-in resolver is supplied and
+no existing rendering-v2 registry format is silently broadened. The resolver must
+provide a complete, structurally verified collection layout; completeness is a
+trusted parser contract, not something this consumer can infer from partial data.
+The consumer bounds128 faces/256 tables per face, validates supplied directory and
+table bounds/overlaps, permits exact same-tag shared tables across distinct faces,
+and compares every supplied selected-face table range with the existing peer
+accessor. Rooted reads, full collection SHA/face index, original engine ID, exact
+table SHA/ranges, descriptor, license and stale-generation gates are retained.
+
+Reviewed peer `8080c90` exposes `parse_with_source` and `table(tag)` but lacks
+complete validated directory enumeration (and does not reject duplicate tags or
+partial overlaps itself). Its `truetype.rs` is byte-identical to the currently
+linked original reader: SHA
+`2aca31389307f63cb8df88388dea0810b291d44ba0702b56fa5cbc0db78e0b77`.
+The concrete dependency is an original-engine API returning every face directory
+and table range after checking TTC header/version/counts, duplicate records and
+shared-table rules. This crate does not add another directory parser to fill it.
+Collection resources expose the original selected `TrueTypeFace`; existing
+single-face outline/cache adapters remain unchanged.
+
+Synthetic two-face fixtures establish explicit face identity, table matching,
+shared-table versus partial-overlap checks, bounds and immutable stale snapshots.
+The installed NotoSansCJK-VF.ttc inventory (font SHA
+`d3d8256cdec8dbcb3552284bc6b20c734dd60c2ee9df83b5758e34807c4bac32`)
+currently yields peer `MissingTable("CFF ")` for face0. Its license hash and exact
+refusal are pinned in `tests/collection_inventory.rs`; this is not successful
+collection-rendering evidence. Production collection activation awaits the
+verified resolver and downstream outline support.

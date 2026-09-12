@@ -1952,3 +1952,139 @@ fn math_binding_synthetic_limits_and_missing_table() {
         Err(MathError::LookupBudget)
     ));
 }
+
+#[test]
+fn explicit_collection_resolver_registry_identity_and_bounds() {
+    use flashtex_font_engine::Face;
+    use registry::{collections::*, *};
+    struct SyntheticResolver(CollectionLayout);
+    impl VerifiedCollectionResolver for SyntheticResolver {
+        fn implementation_identity(&self) -> &str {
+            "synthetic-complete-layout-v1-test-only"
+        }
+        fn complete_layout(&self, _: &[u8]) -> Result<CollectionLayout> {
+            Ok(self.0.clone())
+        }
+    }
+    let original = fixture();
+    let n = u16::from_be_bytes(original[4..6].try_into().unwrap()) as usize;
+    let mut bytes = vec![0; 20];
+    bytes[..4].copy_from_slice(b"ttcf");
+    be32(&mut bytes, 4, 0x00010000);
+    be32(&mut bytes, 8, 2);
+    let mut layout = CollectionLayout {
+        header: 0..20,
+        faces: Vec::new(),
+    };
+    for index in 0..2 {
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0)
+        }
+        let base = bytes.len();
+        be32(&mut bytes, 12 + index * 4, base as u32);
+        let mut font = original.clone();
+        let mut tables = Vec::new();
+        for i in 0..n {
+            let pos = 12 + i * 16;
+            let start =
+                u32::from_be_bytes(font[pos + 8..pos + 12].try_into().unwrap()) as usize + base;
+            let len = u32::from_be_bytes(font[pos + 12..pos + 16].try_into().unwrap()) as usize;
+            be32(&mut font, pos + 8, start as u32);
+            tables.push(TableRange {
+                tag: font[pos..pos + 4].try_into().unwrap(),
+                range: start..start + len,
+            });
+        }
+        layout.faces.push(FaceLayout {
+            directory: base..base + 12 + n * 16,
+            tables,
+        });
+        bytes.extend(font);
+    }
+    let resolver = SyntheticResolver(layout.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let root = flashtex_project_files::ProjectRoot::open(dir.path()).unwrap();
+    let mut resource = entry(&bytes);
+    resource.font.format = "collection-truetype".into();
+    resource.font.face_index = 1;
+    let binding = StyleBinding {
+        family: "Explicit Collection".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let write = |resource: ManifestEntry| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(&RegistryManifest {
+                schema_version: 1,
+                entries: vec![RegistryEntry {
+                    binding: binding.clone(),
+                    resource,
+                }],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    std::fs::write(dir.path().join(&resource.path), &bytes).unwrap();
+    std::fs::write(
+        dir.path().join(&resource.license.text_path),
+        b"test license",
+    )
+    .unwrap();
+    write(resource.clone());
+    let first = CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+        .unwrap();
+    let held = first.get(&binding, first.generation()).unwrap();
+    assert_eq!(held.declaration().font.face_index, 1);
+    assert_eq!(held.bytes(), bytes);
+    assert_eq!(held.face().num_glyphs(), 3);
+    assert_eq!(held.tables().len(), n);
+    resource.font.face_index = 0;
+    write(resource.clone());
+    let second =
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .unwrap();
+    assert_ne!(first.generation(), second.generation());
+    assert!(second.get(&binding, first.generation()).is_err());
+    assert_ne!(
+        held.face().id(),
+        second
+            .get(&binding, second.generation())
+            .unwrap()
+            .face()
+            .id()
+    );
+    resource.font.face_index = 2;
+    write(resource.clone());
+    assert!(
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .is_err()
+    );
+    resource.font.face_index = 0;
+    write(resource);
+    let mut overlap = layout.clone();
+    overlap.faces[1].directory = overlap.faces[0].directory.clone();
+    assert!(CollectionRegistry::load(
+        &root,
+        "fonts.json",
+        RegistryLimits::default(),
+        &SyntheticResolver(overlap)
+    )
+    .is_err());
+    let mut mismatch = layout;
+    mismatch.faces[0].tables[0].range.start += 4;
+    assert!(CollectionRegistry::load(
+        &root,
+        "fonts.json",
+        RegistryLimits::default(),
+        &SyntheticResolver(mismatch)
+    )
+    .is_err());
+    std::fs::write(dir.path().join("font.ttf"), b"changed").unwrap();
+    assert!(
+        CollectionRegistry::load(&root, "fonts.json", RegistryLimits::default(), &resolver)
+            .is_err()
+    );
+    assert_eq!(held.bytes(), bytes);
+}
