@@ -155,9 +155,8 @@ budgets fail explicitly.
 
 `EncodedRun::batch` emits existing unhinted exact quadratic draw batches using only
 loader-bound immutable fonts and supplied logical UTF-8/source interval mappings.
-Source snapshots must match declared revision/digest. Current batch conversion
-requires integral canonical origins/sizes and returns `NonIntegralTicks` otherwise;
-the original run retains its exact fractions. No Unicode inference, interval
+Source snapshots must match declared revision/digest. Internal batch conversion preserves rational origins/sizes through exact checked
+quadratic placement; `ExactRule` retains fractional virtual-rule bounds. No Unicode inference, interval
 interpolation, implicit rounding or production runtime activation occurs. Flat/VF
 equivalence fixtures are original synthetic data, not a reference-TeX oracle.
 
@@ -169,3 +168,11 @@ root-to-leaf source chain. LRU entry/payload limits and explicit cached unsuppor
 resource or oversize outcomes bound retained work; loader limits bound expansion
 separately. Payload figures exclude map/allocator overhead and externally held Arcs.
 Tests explicitly distinguish identical font/TFM hashes with different encodings.
+
+`place_path_exact` accepts checked rational font sizes and origins, retaining exact
+quadratic coordinates with bounded i128/u128 arithmetic. `ExactClip` supports exact
+intersection and half-open membership; `batch_with_exact_clip` returns an
+`ExactDrawBatch` whose exact clip is authoritative for the consumer. Curves remain
+unflattened, and the original integer wire schema is unchanged. Overflow is an
+explicit error. Tests cover fractional glyph origins/scales, VF rule bounds, clips,
+precision exhaustion and integral-path equivalence.

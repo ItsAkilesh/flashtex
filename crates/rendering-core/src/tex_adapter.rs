@@ -346,9 +346,8 @@ pub struct BatchContext<'a> {
     pub snapshots: &'a BTreeMap<String, crate::SourceSnapshot>,
 }
 impl EncodedRun<'_> {
-    /// Convert only exactly integral canonical sizes/origins to the current batch
-    /// consumer contract. Fractions are retained by this run and rejected here,
-    /// never rounded implicitly. Source mappings must be explicitly supplied.
+    /// Convert exact rational positions to internal path geometry without changing
+    /// the integer wire contract. Source mappings must be explicitly supplied.
     pub fn batch(
         &self,
         context: &BatchContext<'_>,
@@ -358,7 +357,7 @@ impl EncodedRun<'_> {
         use crate::{
             batch::{DrawBatch, DrawOperation},
             glyph_cache::PathOutcome,
-            outlines::{place_path, PositionedGlyph},
+            outlines::{place_path_exact, OutlinePoint, PositionedGlyph},
             require, HitRect,
         };
         require(
@@ -462,12 +461,11 @@ impl EncodedRun<'_> {
             let origin_y = ExactTicks::integer(context.origin.y)?;
             match op {
                 Operation::Glyph(g) => {
-                    let origin = crate::hit_test::Point {
-                        x: g.x.add(origin_x)?.require_integer()?,
-                        y: g.baseline_y.add(origin_y)?.require_integer()?,
+                    let origin = OutlinePoint {
+                        x: g.x.add(origin_x)?.0,
+                        y: g.baseline_y.add(origin_y)?.0,
                     };
-                    let size = g.size.require_integer()?;
-                    size.positive()?;
+                    let size = g.size.0;
                     let cached = cache.lookup(g.font, g.original_gid)?;
                     let PathOutcome::Ready(path) = cached.outcome else {
                         return Err(match cached.outcome {
@@ -484,7 +482,7 @@ impl EncodedRun<'_> {
                     {
                         return Err(AdapterError::Budget);
                     }
-                    let commands = place_path(
+                    let commands = place_path_exact(
                         path.commands.iter().cloned(),
                         size,
                         g.font.descriptor().units_per_em,
@@ -520,17 +518,19 @@ impl EncodedRun<'_> {
                     height,
                     ..
                 } => {
-                    let geometry = HitRect {
-                        x: x.add(origin_x)?.require_integer()?,
-                        top: top.add(origin_y)?.require_integer()?,
-                        width: width.require_integer()?,
-                        height: height.require_integer()?,
+                    let left = x.add(origin_x)?;
+                    let top = top.add(origin_y)?;
+                    let geometry = crate::batch::ExactClip {
+                        left: left.0,
+                        top: top.0,
+                        right: left.add(*width)?.0,
+                        bottom: top.add(*height)?.0,
                     };
                     geometry.validate()?;
-                    if crate::batch::intersection(&geometry, batch.visible_clip.as_ref().unwrap())
-                        .is_some()
-                    {
-                        batch.operations.push(DrawOperation::Rule {
+                    let clip =
+                        crate::batch::ExactClip::from_rect(batch.visible_clip.as_ref().unwrap())?;
+                    if geometry.intersect(clip)?.is_some() {
+                        batch.operations.push(DrawOperation::ExactRule {
                             geometry,
                             paint: context.paint.clone(),
                             sources: p.sources.clone(),
@@ -541,5 +541,30 @@ impl EncodedRun<'_> {
             }
         }
         Ok(batch)
+    }
+}
+
+impl EncodedRun<'_> {
+    pub fn batch_with_exact_clip(
+        &self,
+        context: &BatchContext<'_>,
+        clip: crate::batch::ExactClip,
+        limits: crate::batch::BatchLimits,
+        cache: &mut crate::glyph_cache::GlyphPathCache,
+    ) -> Result<crate::batch::ExactDrawBatch> {
+        clip.validate()?;
+        let mut batch = self.batch(context, limits, cache)?;
+        let visible_clip = match &batch.visible_clip {
+            Some(integer) => crate::batch::ExactClip::from_rect(integer)?.intersect(clip)?,
+            None => None,
+        };
+        if visible_clip.is_none() {
+            batch.operations.clear();
+            batch.path_commands = 0;
+        }
+        Ok(crate::batch::ExactDrawBatch {
+            batch,
+            visible_clip,
+        })
     }
 }

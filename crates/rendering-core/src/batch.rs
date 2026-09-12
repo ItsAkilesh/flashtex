@@ -10,6 +10,12 @@ use crate::{
 use flashtex_font_resources::FontCollection;
 #[derive(Debug, Clone)]
 pub enum DrawOperation {
+    ExactRule {
+        geometry: ExactClip,
+        paint: Paint,
+        sources: Vec<SourceRange>,
+        synthetic_reason: Option<String>,
+    },
     Glyph {
         path: Box<PositionedGlyph>,
         paint: Paint,
@@ -190,4 +196,65 @@ pub(crate) fn intersection(a: &HitRect, b: &HitRect) -> Option<HitRect> {
         width: Tick(right - left),
         height: Tick(bottom - top),
     })
+}
+
+/// Exact half-open internal rectangle; no wire fields are added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExactClip {
+    pub left: outlines::OutlineCoordinate,
+    pub top: outlines::OutlineCoordinate,
+    pub right: outlines::OutlineCoordinate,
+    pub bottom: outlines::OutlineCoordinate,
+}
+impl ExactClip {
+    pub fn validate(&self) -> Result<()> {
+        require(
+            self.left.checked_cmp(self.right)?.is_lt()
+                && self.top.checked_cmp(self.bottom)?.is_lt(),
+            "empty or reversed exact clip",
+        )
+    }
+    pub fn from_rect(rect: &HitRect) -> Result<Self> {
+        rect.validate()?;
+        let c = |value: Tick| outlines::OutlineCoordinate::from_fraction(value.0 as i128, 1);
+        Ok(Self {
+            left: c(rect.x)?,
+            top: c(rect.top)?,
+            right: c(rect.x.checked_add(rect.width)?)?,
+            bottom: c(rect.top.checked_add(rect.height)?)?,
+        })
+    }
+    pub fn intersect(self, other: Self) -> Result<Option<Self>> {
+        self.validate()?;
+        other.validate()?;
+        let min = |a: outlines::OutlineCoordinate, b: outlines::OutlineCoordinate| -> Result<_> {
+            Ok(if a.checked_cmp(b)?.is_lt() { a } else { b })
+        };
+        let max = |a: outlines::OutlineCoordinate, b: outlines::OutlineCoordinate| -> Result<_> {
+            Ok(if a.checked_cmp(b)?.is_gt() { a } else { b })
+        };
+        let result = Self {
+            left: max(self.left, other.left)?,
+            top: max(self.top, other.top)?,
+            right: min(self.right, other.right)?,
+            bottom: min(self.bottom, other.bottom)?,
+        };
+        Ok((result.left.checked_cmp(result.right)?.is_lt()
+            && result.top.checked_cmp(result.bottom)?.is_lt())
+        .then_some(result))
+    }
+    pub fn contains(self, point: outlines::OutlinePoint) -> Result<bool> {
+        self.validate()?;
+        Ok(!point.x.checked_cmp(self.left)?.is_lt()
+            && point.x.checked_cmp(self.right)?.is_lt()
+            && !point.y.checked_cmp(self.top)?.is_lt()
+            && point.y.checked_cmp(self.bottom)?.is_lt())
+    }
+}
+/// The exact clip is authoritative and must be applied by the consumer; an empty
+/// clip returns no operations. The inner batch retains the integer page clip.
+#[derive(Debug, Clone)]
+pub struct ExactDrawBatch {
+    pub batch: DrawBatch,
+    pub visible_clip: Option<ExactClip>,
 }

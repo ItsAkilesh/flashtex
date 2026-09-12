@@ -273,10 +273,30 @@ fn bound_run_emits_existing_paths_with_explicit_utf8_provenance() {
         },
     ];
     ctx.provenance = &mappings;
-    assert!(matches!(
-        fractional.batch(&ctx, BatchLimits::default(), &mut cache),
-        Err(AdapterError::NonIntegralTicks)
-    ));
+    let fractional_batch = fractional
+        .batch(&ctx, BatchLimits::default(), &mut cache)
+        .unwrap();
+    let DrawOperation::Glyph { path, .. } = &fractional_batch.operations[1] else {
+        panic!()
+    };
+    let flashtex_rendering_core::outlines::PlacedPathCommand::MoveTo(point) = path.commands[0]
+    else {
+        panic!()
+    };
+    assert_eq!((point.x.numerator(), point.x.denominator()), (1, 2));
+    let frac =
+        |n, d| flashtex_rendering_core::outlines::OutlineCoordinate::from_fraction(n, d).unwrap();
+    let exact_clip = ExactClip {
+        left: frac(1, 4),
+        top: frac(999, 1),
+        right: frac(3, 4),
+        bottom: frac(1001, 1),
+    };
+    let clipped = fractional
+        .batch_with_exact_clip(&ctx, exact_clip, BatchLimits::default(), &mut cache)
+        .unwrap();
+    assert_eq!(clipped.visible_clip, Some(exact_clip));
+    assert_eq!(clipped.batch.operations.len(), 2);
     ctx.provenance = &[];
     assert!(run.batch(&ctx, BatchLimits::default(), &mut cache).is_err());
 }
@@ -450,4 +470,109 @@ fn identical_file_hashes_with_different_encoding_do_not_share_cache() {
         panic!()
     };
     assert_eq!((a, b), (1, 2));
+}
+#[test]
+fn signed_tfm_kern_moves_following_original_glyph_exactly() {
+    let mut bytes = [18u16, 2, 65, 66, 2, 1, 1, 1, 1, 1, 0, 1]
+        .into_iter()
+        .flat_map(u16::to_be_bytes)
+        .collect::<Vec<_>>();
+    for word in [
+        0u32,
+        10 << 20,
+        0x01000100,
+        0x01000000,
+        0,
+        1 << 19,
+        0,
+        0,
+        0,
+        0x80428000,
+        (-(1i32 << 18)) as u32,
+        0,
+    ] {
+        bytes.extend(word.to_be_bytes());
+    }
+    let t = Tfm::parse(&bytes).unwrap();
+    let f = font(true);
+    let mut m = manifest(&f, &t);
+    m.encoding[1].glyph_name = "triangle".into();
+    let b = BoundTfmFont::new(&t, &f, &m).unwrap();
+    let run = physical_run(&b, b"AB", scale()).unwrap();
+    let Operation::Glyph(g) = &run.operations[1] else {
+        panic!()
+    };
+    assert_eq!(g.x.require_integer().unwrap(), Tick(250));
+    assert_eq!(g.original_gid, 1);
+    assert_eq!(g.code, 66);
+    assert_eq!(g.input, InputInterval { start: 1, end: 2 });
+    assert_eq!(run.advance.require_integer().unwrap(), Tick(750));
+}
+#[test]
+fn fractional_virtual_rule_emits_exact_internal_geometry() {
+    use flashtex_rendering_core::{
+        batch::*, glyph_cache::GlyphPathCache, hit_test::Point, outlines::OutlineCoordinate, Paint,
+    };
+    let f = font(false);
+    let t = tfm();
+    let b = BoundTfmFont::new(&t, &f, &manifest(&f, &t)).unwrap();
+    let bindings = BTreeMap::from([(0, b)]);
+    let mut cmd = vec![137];
+    cmd.extend((1i32 << 19).to_be_bytes());
+    cmd.extend((1i32 << 18).to_be_bytes());
+    let run = virtual_run(
+        &vf(&cmd),
+        &t,
+        &bindings,
+        b"A",
+        RunScale::canonical(Tick(1), MetricPolicy::ExactRationalNoTexRounding).unwrap(),
+    )
+    .unwrap();
+    let mappings = [Provenance {
+        input: InputInterval { start: 0, end: 1 },
+        logical_start: 0,
+        logical_end: 1,
+        sources: vec![],
+        synthetic_reason: Some("fixture rule".into()),
+    }];
+    let snapshots = BTreeMap::new();
+    let ctx = BatchContext {
+        project_id: "test",
+        revision: 1,
+        page: 1,
+        page_width: Tick(2),
+        page_height: Tick(2),
+        origin: Point {
+            x: Tick(0),
+            y: Tick(1),
+        },
+        clip: None,
+        paint: Paint {
+            r: 0.,
+            g: 0.,
+            b: 0.,
+            a: 1.,
+        },
+        logical_text: "A",
+        provenance: &mappings,
+        documents: &[],
+        snapshots: &snapshots,
+    };
+    let mut cache = GlyphPathCache::new(4, 10000).unwrap();
+    let batch = run.batch(&ctx, BatchLimits::default(), &mut cache).unwrap();
+    let DrawOperation::ExactRule { geometry, .. } = batch.operations[0] else {
+        panic!()
+    };
+    assert_eq!(
+        geometry.top,
+        OutlineCoordinate::from_fraction(1, 2).unwrap()
+    );
+    assert_eq!(
+        geometry.right,
+        OutlineCoordinate::from_fraction(1, 4).unwrap()
+    );
+    assert_eq!(
+        geometry.bottom,
+        OutlineCoordinate::from_fraction(1, 1).unwrap()
+    );
 }

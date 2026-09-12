@@ -18,6 +18,54 @@ impl OutlineCoordinate {
     pub fn denominator(self) -> u128 {
         self.denominator
     }
+    pub fn from_fraction(numerator: i128, denominator: u128) -> Result<Self> {
+        Self::new(numerator, denominator)
+    }
+    pub fn checked_add(self, other: Self) -> Result<Self> {
+        let divisor = gcd(self.denominator, other.denominator);
+        let a = other.denominator / divisor;
+        let b = self.denominator / divisor;
+        let numerator = self
+            .numerator
+            .checked_mul(a as i128)
+            .and_then(|n| {
+                other
+                    .numerator
+                    .checked_mul(b as i128)
+                    .and_then(|m| n.checked_add(m))
+            })
+            .ok_or_else(|| ValidationError("exact outline addition overflow".into()))?;
+        Self::new(
+            numerator,
+            self.denominator
+                .checked_mul(a)
+                .ok_or_else(|| ValidationError("exact outline denominator overflow".into()))?,
+        )
+    }
+    pub fn checked_multiply(self, other: Self) -> Result<Self> {
+        let a = gcd(self.numerator.unsigned_abs(), other.denominator);
+        let b = gcd(other.numerator.unsigned_abs(), self.denominator);
+        Self::new(
+            (self.numerator / a as i128)
+                .checked_mul(other.numerator / b as i128)
+                .ok_or_else(|| ValidationError("exact outline multiplication overflow".into()))?,
+            (self.denominator / b)
+                .checked_mul(other.denominator / a)
+                .ok_or_else(|| ValidationError("exact outline precision overflow".into()))?,
+        )
+    }
+    pub fn checked_cmp(self, other: Self) -> Result<std::cmp::Ordering> {
+        let divisor = gcd(self.denominator, other.denominator);
+        let a = self
+            .numerator
+            .checked_mul((other.denominator / divisor) as i128)
+            .ok_or_else(|| ValidationError("exact outline comparison overflow".into()))?;
+        let b = other
+            .numerator
+            .checked_mul((self.denominator / divisor) as i128)
+            .ok_or_else(|| ValidationError("exact outline comparison overflow".into()))?;
+        Ok(a.cmp(&b))
+    }
     pub(crate) fn new(numerator: i128, denominator: u128) -> Result<Self> {
         require(
             denominator > 0 && denominator <= i128::MAX as u128,
@@ -343,4 +391,60 @@ impl PreparedOutlines<'_> {
             hinting_applied: false,
         })
     }
+}
+
+/// Original exact rational size/origin adapter. This is internal geometry, not a
+/// change to the negotiated integer-tick display-list wire format.
+pub fn place_path_exact<I: IntoIterator<Item = PathCommand>>(
+    path: I,
+    size: OutlineCoordinate,
+    units: u32,
+    origin: OutlinePoint,
+) -> Result<Vec<PlacedPathCommand>> {
+    require(size.numerator() > 0, "nonpositive exact font size")?;
+    require(
+        (16..=16384).contains(&units),
+        "invalid outline units per em",
+    )?;
+    let point = |p: flashtex_font_resources::ExactPoint| -> Result<OutlinePoint> {
+        let coord =
+            |v: Coordinate, base: OutlineCoordinate, flip: bool| -> Result<OutlineCoordinate> {
+                let denominator = (1u128
+                    .checked_shl(v.shift())
+                    .ok_or_else(|| ValidationError("outline precision overflow".into()))?)
+                .checked_mul(units as u128)
+                .ok_or_else(|| ValidationError("outline units precision overflow".into()))?;
+                let numerator = if flip {
+                    v.numerator()
+                        .checked_neg()
+                        .ok_or_else(|| ValidationError("outline y overflow".into()))?
+                } else {
+                    v.numerator()
+                };
+                OutlineCoordinate::new(numerator, denominator)?
+                    .checked_multiply(size)?
+                    .checked_add(base)
+            };
+        Ok(OutlinePoint {
+            x: coord(p.x, origin.x, false)?,
+            y: coord(p.y, origin.y, true)?,
+        })
+    };
+    let mut commands = Vec::new();
+    for command in path {
+        require(
+            commands.len() < 2_000_000,
+            "placed exact path command budget",
+        )?;
+        commands.push(match command {
+            PathCommand::MoveTo(p) => PlacedPathCommand::MoveTo(point(p)?),
+            PathCommand::LineTo(p) => PlacedPathCommand::LineTo(point(p)?),
+            PathCommand::QuadTo { control, end } => PlacedPathCommand::QuadTo {
+                control: point(control)?,
+                end: point(end)?,
+            },
+            PathCommand::Close => PlacedPathCommand::Close,
+        });
+    }
+    Ok(commands)
 }
