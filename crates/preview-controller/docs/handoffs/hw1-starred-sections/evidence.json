@@ -1,0 +1,11 @@
+{
+  "base": "467538c77e84e4c3febc5308d49b53e1ca7f3d65",
+  "focused_pass": 12,
+  "full_suite": "running process81665",
+  "files": {
+    "candidate.patch": "ffcadd5168ac29b0e60e7cc608d8dfd449e6a4533812d4440adba5aec4afed8b",
+    "README.md": "8f8c9bf3445bc9968da2f7b932b3377b854e9b398733909f37c2c42b0bebac95",
+    "red.log": "c589aadfccb13e874c23e0a0c0fe9f184936b8f1d2b8b17eb7c6aea0459b1be4",
+    "focused.log": "a84aeced90a61fcdf5e0a1009015cd3fd007c155c833398d9969ffa17a56879c"
+  }
+}
