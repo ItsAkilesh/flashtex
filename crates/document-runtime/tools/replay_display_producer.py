@@ -27,7 +27,7 @@ license_path=pathlib.Path(a.tfm_dir).parents[3]/'doc/fonts/lm/GUST-FONT-LICENSE.
 assets.append({'path':str(license_path),'sha256':sha(license_path.read_bytes()),'bytes':license_path.stat().st_size})
 env=dict(os.environ,FLASHTEX_FONT_DIRS=a.font_dir,FLASHTEX_TFM_DIRS=a.tfm_dir,FLASHTEX_REPLAY_PRODUCER=str(binary),FLASHTEX_REPLAY_OUTPUT=str(out/'runtime.json'))
 test=[cargo,'test','--offline','--manifest-path',str(repo/'crates/document-runtime/Cargo.toml'),'--test','real_display_producer','--','--ignored']
-result=run(test,env=env);(out/'test.log').write_bytes(result.stdout+result.stderr)
+result=subprocess.run(test,env=env,capture_output=True);(out/'test.log').write_bytes(result.stdout+result.stderr);result.check_returncode()
 fixture_path=repo/'crates/document-runtime/fixtures/display-producer-request.json'
 fixture=json.loads(fixture_path.read_text());raw_evidence=[]
 for mode,limit in [('requested',None),('legacy',None),('declined','1500'),('failed','1')]:
@@ -46,5 +46,5 @@ for case in report:
  if candidate:
   for font in candidate['payload']['fonts']:
    if font['sha256'] not in font_hashes:raise RuntimeError('producer font raw SHA not found in supplied assets')
-evidence={'producer_sha':exact,'raw_cases':raw_evidence,'fixture_sha256':sha(fixture_path.read_bytes()),'archive_sha256':sha(archive),'verified_source_files':len(files),'binary_sha256':sha(binary.read_bytes()),'build_command':build,'test_command':test,'assets':assets,'runtime_evidence_sha256':sha((out/'runtime.json').read_bytes()),'rendering_validation':'not performed','native_latency':'not measured'}
+evidence={'producer_sha':exact,'raw_cases':raw_evidence,'fixture_sha256':sha(fixture_path.read_bytes()),'archive_sha256':sha(archive),'verified_source_files':len(files),'binary_sha256':sha(binary.read_bytes()),'build_command':build,'test_command':test,'assets':assets,'runtime_evidence_sha256':sha((out/'runtime.json').read_bytes()),'lifecycle_evidence_sha256':sha((out/'lifecycle.json').read_bytes()),'rendering_validation':'not performed','native_latency':'not measured'}
 (out/'provenance.json').write_text(json.dumps(evidence,indent=2)+'\n');print(out)
