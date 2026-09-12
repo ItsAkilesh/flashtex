@@ -35,3 +35,9 @@ Fresh remote branch bc737126 discovered: own report15:42:09UTC says FT002r17 del
 GH1#5647078578: claude session_01Xd5Hmwh5GHNTiAmHUJ1MZu, parentPID55790, mac-m5pro-kabir, actual Git push and Codex2%5h/10%weekly usage reported. Claude subscription use explicitly user authorized, cost unknown. No independent supervisor yet; session-contained watcher alone does not meet continuity claim. GH1#5647097898 authorizes launchd deterministic read-only standby control infrastructure, not another engineering agent/paid-model daemon. Require plist/script/PID/poll and shell-survival evidence, authority-refusal check, and honest limitation of restarting Claude. Full transfer chosen; no split global authority. Astra remains active until tested readiness and final serialized stop/quiescence.
 
 Final root runner e975f38f and reviewfc393c95 integrated main805777e4. No remaining local product publication pending. Dispatcher journal was published a3381ae7 with no pending control/integration journal; recheck at final fence. Additional read-only transfer poller PID1975407 is bounded30cycles/60s, owned by Astra; stop it at final fence.
+
+## Standby boundary correction
+
+Kabir GH2#5647120295 prematurely granted FT018/019/020/024 reassignment while Astra remains active. GH2#5647125681 explicitly holds those changes and asks standby acknowledgement. Cancelled historical rows alone do not prove absence of later Daniel FT030–045 ownership. No successor main claim observed at recheck. Resolve this boundary before final transfer; existing authorized lanes continue.
+
+Root8b676e72 Text-only reconciliation against actualbc737 integrated as no-build handoff. Owner base/overlap ACK still pending GH1#5647108963. Existing symbols/headings/delimiter diagnostics retained; old104-test result is not a build of this combination.
