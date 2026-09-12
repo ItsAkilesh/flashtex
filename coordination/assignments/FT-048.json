@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "02a9858dd15aebcb62879a2577467e207a203348",
-  "objective": "Verify explicit current compile-generation predicate regression and review consolidated full-snapshot contract",
+  "input_main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
+  "objective": "Finish queued existing three-state helper acceptance against verified unchanged9aa producer with exact source and direct output gates",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 33,
+  "revision": 34,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:23:56.570752+00:00"
+  "updated_utc": "2026-09-12T14:31:37.368113+00:00"
 }

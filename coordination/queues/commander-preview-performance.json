@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Verify explicit current compile-generation predicate regression and review consolidated full-snapshot contract",
-      "objective": "Verify explicit current compile-generation predicate regression and review consolidated full-snapshot contract",
+      "name": "Finish queued existing three-state helper acceptance against verified unchanged9aa producer with exact source and direct output gates",
+      "objective": "Finish queued existing three-state helper acceptance against verified unchanged9aa producer with exact source and direct output gates",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "After published runtime9aa acceptance replay existing actual helper three-state full snapshots against unchanged new producer",
-      "objective": "After published runtime9aa acceptance replay existing actual helper three-state full snapshots against unchanged new producer",
+      "name": "Prepare isolated exact-base existing-compiler starred sectioning candidate for HW1 under owned helper handoff only",
+      "objective": "Prepare isolated exact-base existing-compiler starred sectioning candidate for HW1 under owned helper handoff only",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify exact direct result source authority restart and durable reopen without new wire modes or timing comparisons",
-      "objective": "Verify exact direct result source authority restart and durable reopen without new wire modes or timing comparisons",
+      "name": "Test unstarred numbering starred counter and label behavior macro UTF8 spans and incremental-clean equality without authoritative compiler edits",
+      "objective": "Test unstarred numbering starred counter and label behavior macro UTF8 spans and incremental-clean equality without authoritative compiler edits",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

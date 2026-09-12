@@ -9,15 +9,15 @@
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "1d25ed009e7007b65258d4b684421cb9aadc59c2",
-  "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
+  "input_main_sha": "ad922ea13be340f48af110f11d393c6e53afa605",
+  "objective": "ACK current session and review HW1 starred sectioning priority in the existing bounded compiler parser",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 13,
+  "revision": 14,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T09:54:41Z"
+  "updated_utc": "2026-09-12T14:31:37.368113+00:00"
 }
