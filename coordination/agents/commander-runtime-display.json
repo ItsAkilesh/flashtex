@@ -3,27 +3,27 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-049": {
-      "acknowledged_utc": "2026-09-12T12:15:42Z",
-      "adaptation": "Implement exact request-derived raw metadata capture bounds; preserve v1 overflow semantics and existing single-permit lifecycle. Full tests and strict lint pass.",
-      "main_sha": "ecb70205a806bbe6fc10c3697879ba9536cb3593",
-      "revision": 9
+      "acknowledged_utc": "2026-09-12T12:19:12Z",
+      "adaptation": "Existing residency evidence 00490d56 preserved without repeated probes. Exact pinned6e69661 raw acceptance passes all12 fresh/persistent combinations and queued cancellation to changed source set; no producer rebuild or speed claim.",
+      "main_sha": "b4088b471190527e73d8bcea8ceb1b500c14071e",
+      "revision": 10
     }
   },
   "branch": "agent/commander-runtime-display/display-runtime",
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "00490d569502bd0eb03749c08c95be7ed64d2224",
+  "code_revision": "9db023326dd54c210815b52ca8dff952ef900ceb",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "217ec7dfc7ff586c90e5211039229589e461699e",
-  "next_action": "Commander integration and helper consumer review. Preserve default Value route, raw opt-in, raw4/decoded1, source/epoch gates. Current branch clean after report publication; no pending processes.",
+  "next_action": "Commander integration review; preserve defaultOFF/raw opt-in and untrusted renderer gate. All test/build handles terminal; clean checkpoint after report publication. Current bounded metadata00490d56 acceptance evidence complete.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT049 r9 product 00490d56: request-derived raw metadata bounds, unchanged v1 semantics, full tests 48 passed plus 4 explicitly ignored; strict Clippy passes. Same-frame 50000-empty-doc process peak 7528 to 3784 KiB; no native speed claim.",
+  "summary": "FT049 r10 product9db02332: actual pinned6e69661 bounded raw requested/legacy/declined/failed pass; all12 fresh/persistent pairs exact raw equal and match prior Value envelopes; cancelled request then2 sources/UTF8 longer path passes. Binary plus77 asset hashes reverified. Three actual tests and strict lint pass; no producer rebuild or repeated memory probe.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T12:16:50Z",
+  "updated_utc": "2026-09-12T12:20:35Z",
   "usage": {
     "status": "unknown"
   }
