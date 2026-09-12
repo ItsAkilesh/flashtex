@@ -630,4 +630,109 @@ mod shift_tests {
 
         assert_eq!(min_start(&shifted), min_start(&list) + 10);
     }
+    // ── parse_tokens: basic atoms ─────────────────────────────────────────────
+
+    #[test]
+    fn empty_tokens_produce_empty_list() {
+        let mut diags = Vec::new();
+        let list = parse_tokens(&[], &mut diags);
+        assert!(list.atoms.is_empty(), "no tokens → empty MathList");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn single_letter_produces_one_symbol_atom() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("x");
+        let list = parse_tokens(&tokens, &mut diags);
+        assert_eq!(list.atoms.len(), 1);
+        assert!(matches!(&list.atoms[0].nucleus, Nucleus::Symbol(s) if s == "x"));
+    }
+
+    #[test]
+    fn superscript_attaches_to_preceding_atom() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("x^2");
+        let list = parse_tokens(&tokens, &mut diags);
+        // x should be parsed as one atom with a superscript.
+        let atom = list.atoms.iter().find(|a| a.superscript.is_some());
+        assert!(atom.is_some(), "x^2 must produce an atom with a superscript");
+    }
+
+    #[test]
+    fn subscript_attaches_to_preceding_atom() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("x_i");
+        let list = parse_tokens(&tokens, &mut diags);
+        let atom = list.atoms.iter().find(|a| a.subscript.is_some());
+        assert!(atom.is_some(), "x_i must produce an atom with a subscript");
+    }
+
+    #[test]
+    fn frac_command_produces_fraction_nucleus() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("\frac{a}{b}");
+        let list = parse_tokens(&tokens, &mut diags);
+        let has_frac = list.atoms.iter().any(|a| matches!(a.nucleus, Nucleus::Fraction { .. }));
+        assert!(has_frac, "\frac must produce a Fraction nucleus");
+    }
+
+    #[test]
+    fn sqrt_command_produces_radical_nucleus() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("\sqrt{x}");
+        let list = parse_tokens(&tokens, &mut diags);
+        let has_radical = list.atoms.iter().any(|a| matches!(a.nucleus, Nucleus::Radical(_)));
+        assert!(has_radical, "\sqrt must produce a Radical nucleus");
+    }
+
+    // ── shift_list ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn shift_list_zero_is_identity() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("a+b");
+        let list = parse_tokens(&tokens, &mut diags);
+        let shifted = shift_list(&list, 0);
+        for (orig, shifted_atom) in list.atoms.iter().zip(shifted.atoms.iter()) {
+            assert_eq!(orig.span.start, shifted_atom.span.start);
+            assert_eq!(orig.span.end, shifted_atom.span.end);
+        }
+    }
+
+    #[test]
+    fn shift_list_positive_moves_starts_forward() {
+        let mut diags = Vec::new();
+        let tokens = crate::lexer::tokenize("x");
+        let list = parse_tokens(&tokens, &mut diags);
+        let shifted = shift_list(&list, 5);
+        assert_eq!(shifted.atoms[0].span.start, list.atoms[0].span.start + 5);
+    }
+
+    // ── constants ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn script_scale_less_than_one() {
+        // Scripts must be smaller than their base; scale must be < 1.
+        assert!(SCRIPT_SCALE < 1.0, "SCRIPT_SCALE must be less than 1.0");
+    }
+
+    #[test]
+    fn second_order_script_scale_less_than_script_scale() {
+        assert!(
+            SECOND_ORDER_SCRIPT_SCALE < SCRIPT_SCALE,
+            "second-order scripts must be smaller than first-order scripts"
+        );
+    }
+
+    #[test]
+    fn superscript_raise_is_positive() {
+        assert!(SUPERSCRIPT_RAISE_EM > 0.0);
+    }
+
+    #[test]
+    fn subscript_lower_is_positive() {
+        assert!(SUBSCRIPT_LOWER_EM > 0.0);
+    }
+
 }
