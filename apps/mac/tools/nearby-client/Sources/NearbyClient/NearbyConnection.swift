@@ -213,6 +213,8 @@ public final class NearbyConnection: @unchecked Sendable { // all mutable state 
             if connectWaiter != nil {
                 if case .tls = error {
                     failConnect(.handshakeFailed(String(describing: error)), reason: "handshake failed: \(error)")
+                } else if case .dns = error {
+                    failConnect(.unreachable(String(describing: error)), reason: "unreachable: \(error)")
                 } else if case .posix(let code) = error, code == .ECONNREFUSED || code == .EHOSTUNREACH || code == .ENETUNREACH || code == .ENETDOWN {
                     failConnect(.unreachable(String(describing: error)), reason: "unreachable: \(error)")
                 } else {

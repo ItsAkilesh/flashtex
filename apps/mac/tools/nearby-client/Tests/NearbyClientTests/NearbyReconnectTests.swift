@@ -96,7 +96,7 @@ final class NearbyReconnectTests: XCTestCase {
         m.dropCapturesBeforeReply = 1
         let rec = Recorder()
         let r = NearbyReconnector(pair: pair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0.25, maxDelay: 4, jitter: 0),
-                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         let started = Date()
         let ack = try await r.submit(capture())
         let elapsed = Date().timeIntervalSince(started)
@@ -132,7 +132,7 @@ final class NearbyReconnectTests: XCTestCase {
         let m = try mac()
         defer { m.stop() }
         let rec = Recorder()
-        let r = NearbyReconnector(pair: pair(), policy: .immediate, endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+        let r = NearbyReconnector(pair: pair(), policy: .immediate, endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         let s1 = try await r.connect()
         XCTAssertTrue(s1.isOpen)
         m.dropConnections()
@@ -154,7 +154,7 @@ final class NearbyReconnectTests: XCTestCase {
         let port = try closedPort()
         let rec = Recorder()
         let policy = ReconnectPolicy(maxAttempts: 3, initialDelay: 0.5, maxDelay: 4, jitter: 0, connectTimeout: 2)
-        let r = NearbyReconnector(pair: pair(), policy: policy, endpoints: { [ep = self.endpoint(port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+        let r = NearbyReconnector(pair: pair(), policy: policy, endpoints: { [ep = self.endpoint(port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         let started = Date()
         do { _ = try await r.submit(capture()); XCTFail("nothing listens") } catch let e as NearbyError {
             guard case .attemptsExhausted(let n, let last) = e else { return XCTFail("unexpected \(e)") }
@@ -176,7 +176,7 @@ final class NearbyReconnectTests: XCTestCase {
         defer { m.stop() }
         let rec = Recorder()
         let r = NearbyReconnector(pair: pair(), policy: ReconnectPolicy(maxAttempts: 5, initialDelay: 0.1, jitter: 0),
-                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         let started = Date()
         do { _ = try await r.submit(capture()); XCTFail("key must be refused") } catch let e as NearbyError {
             guard case .handshakeFailed = e else { return XCTFail("unexpected \(e)") }
@@ -195,7 +195,7 @@ final class NearbyReconnectTests: XCTestCase {
         let m = try mac()
         defer { m.stop() }
         let rec = Recorder()
-        let r = NearbyReconnector(pair: pair(), policy: .immediate, endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+        let r = NearbyReconnector(pair: pair(), policy: .immediate, endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         let s = try await r.connect()
         do {
             let _: NearbyWire.Envelope<NearbyWire.Empty> = try await s.connection.request(type: "bogus", NearbyWire.Empty(), expecting: "never")
@@ -222,7 +222,7 @@ final class NearbyReconnectTests: XCTestCase {
         // While the client backs off, the Mac re-pins (new destination id / revision).
         rec.beforeSleep = { m.destination = .init(destinationId: "anchor-8", projectId: "demo", path: "main.tex", baseRevision: 4) }
         let r = NearbyReconnector(pair: pair(), policy: ReconnectPolicy(maxAttempts: 4, initialDelay: 0.1, jitter: 0),
-                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: rec.event, sleep: rec.sleep)
+                                  endpoints: { [ep = endpoint(m.port)] in ep }, onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) })
         do { _ = try await r.submit(capture()); XCTFail("the destination moved") } catch let e as NearbyError {
             XCTAssertEqual(e, .destinationChanged(captureDestination: "anchor-7 @ rev 3", current: "anchor-8 @ rev 4"))
             XCTAssertFalse(e.isRetryable)
@@ -260,12 +260,13 @@ final class NearbyReconnectTests: XCTestCase {
     func testDeadlineStopsRetriesBeforeMaxAttempts() async throws {
         let port = try closedPort()
         let rec = Recorder()
-        let now = NSLock(); var fakeNow: TimeInterval = 1000
-        let clock: @Sendable () -> TimeInterval = { now.withLock { fakeNow } }
-        rec.beforeSleep = { now.withLock { fakeNow += 30 } } // each wait "takes" 30 s
+        final class FakeClock: @unchecked Sendable { let lock = NSLock(); var now: TimeInterval = 1000 }
+        let fake = FakeClock()
+        let clock: @Sendable () -> TimeInterval = { fake.lock.withLock { fake.now } }
+        rec.beforeSleep = { fake.lock.withLock { fake.now += 30 } } // each wait "takes" 30 s
         let policy = ReconnectPolicy(maxAttempts: 10, initialDelay: 1, jitter: 0, overallDeadline: 45, connectTimeout: 2)
         let r = NearbyReconnector(pair: pair(), policy: policy, endpoints: { [ep = self.endpoint(port)] in ep },
-                                  onEvent: rec.event, sleep: rec.sleep, clock: clock)
+                                  onEvent: { rec.event($0) }, sleep: { try await rec.sleep($0) }, clock: clock)
         do { _ = try await r.submit(capture()); XCTFail() } catch let e as NearbyError {
             guard case .attemptsExhausted(let n, let last) = e else { return XCTFail("unexpected \(e)") }
             XCTAssertEqual(n, 3, "t=0 fail, wait 1 → t=30 fail, wait 2 → t=60 fail: past the 45 s deadline, no fourth wait")

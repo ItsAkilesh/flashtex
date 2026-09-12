@@ -14,6 +14,7 @@ public enum NearbyCLI {
              [--mac <name|fp>] [--host H --port N]
              [--destination-id ID --base-revision N]          (override the Mac's pin)
              [--attempts 5] [--retry-delay 0.25] [--max-delay 4] [--deadline 60]
+             [--request-timeout 30]
       status [--seconds 2]        stored pairings and which Macs are visible now
       browse [--seconds 2]        every _flashtex._tcp service and its TXT record
       forget --mac <name|fp>

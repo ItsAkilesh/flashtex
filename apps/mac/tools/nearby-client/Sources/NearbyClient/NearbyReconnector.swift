@@ -87,17 +87,21 @@ public actor NearbyReconnector {
     public init(pair: PairedMac, policy: ReconnectPolicy = ReconnectPolicy(), endpoints: @escaping EndpointSource,
                 onEvent: (@Sendable (Event) -> Void)? = nil,
                 onLine: ((NearbyConnection.Direction, Data) -> Void)? = nil,
-                sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64(max(0, $0) * 1_000_000_000)) },
-                random: @escaping @Sendable (ClosedRange<Double>) -> Double = { Double.random(in: $0) },
-                clock: @escaping @Sendable () -> TimeInterval = { Date().timeIntervalSinceReferenceDate }) {
+                sleep: (@Sendable (TimeInterval) async throws -> Void)? = nil,
+                random: (@Sendable (ClosedRange<Double>) -> Double)? = nil,
+                clock: (@Sendable () -> TimeInterval)? = nil) {
         self.pair = pair
         self.policy = policy
         self.endpoints = endpoints
         self.onEvent = onEvent
         self.onLine = onLine
-        self.sleep = sleep
-        self.random = random
-        self.clock = clock
+        // Resolved here, not as a default argument: an `async throws` closure
+        // used as an initializer default argument makes a later task
+        // cancellation inside this actor abort with "freed pointer was not the
+        // last allocation" (Swift 6.2.4; bisected in NearbyReconnectTests).
+        self.sleep = sleep ?? { try await Task.sleep(nanoseconds: UInt64(max(0, $0) * 1_000_000_000)) }
+        self.random = random ?? { Double.random(in: $0) }
+        self.clock = clock ?? { Date().timeIntervalSinceReferenceDate }
     }
 
     public init(pair: PairedMac, endpoint: NWEndpoint, policy: ReconnectPolicy = ReconnectPolicy(),
@@ -164,25 +168,33 @@ public actor NearbyReconnector {
     private final class Budget { let started: TimeInterval; var tries = 0; init(started: TimeInterval) { self.started = started } }
 
     private func withRetries<T>(_ body: (Budget) async throws -> T) async throws -> T {
+        do { return try await retryLoop(body) } catch is CancellationError { throw NearbyError.cancelled }
+    }
+
+    /// Decides whether the budget allows another try after `failure` and waits
+    /// out the backoff; throws `attemptsExhausted` otherwise. A cancelled task
+    /// surfaces as `CancellationError` from `sleep` and becomes `cancelled`.
+    private func waitBeforeRetry(_ budget: Budget, after failure: NearbyError) async throws {
+        let elapsed = clock() - budget.started
+        guard budget.tries < policy.maxAttempts else {
+            let e = NearbyError.attemptsExhausted(attempts: budget.tries, last: failure.description)
+            onEvent?(.gaveUp(error: e.description)); throw e
+        }
+        let wait = policy.delay(beforeAttempt: budget.tries + 1, random: random)
+        guard elapsed + wait <= policy.overallDeadline else {
+            let e = NearbyError.attemptsExhausted(attempts: budget.tries, last: "\(failure.description) (deadline \(policy.overallDeadline)s reached)")
+            onEvent?(.gaveUp(error: e.description)); throw e
+        }
+        onEvent?(.failed(attempt: attemptsMade, error: failure.description, retryIn: wait))
+        try await sleep(wait)
+    }
+
+    private func retryLoop<T>(_ body: (Budget) async throws -> T) async throws -> T {
         guard !closedByUser else { throw NearbyError.closed("reconnector shut down") }
         let budget = Budget(started: clock())
         var last: NearbyError?
         while true {
-            if let l = last {
-                // A retry: decide whether the budget allows it and wait.
-                let elapsed = clock() - budget.started
-                guard budget.tries < policy.maxAttempts else {
-                    let e = NearbyError.attemptsExhausted(attempts: budget.tries, last: l.description)
-                    onEvent?(.gaveUp(error: e.description)); throw e
-                }
-                let wait = policy.delay(beforeAttempt: budget.tries + 1, random: random)
-                guard elapsed + wait <= policy.overallDeadline else {
-                    let e = NearbyError.attemptsExhausted(attempts: budget.tries, last: "\(l.description) (deadline \(policy.overallDeadline)s reached)")
-                    onEvent?(.gaveUp(error: e.description)); throw e
-                }
-                onEvent?(.failed(attempt: attemptsMade, error: l.description, retryIn: wait))
-                do { try await sleep(wait) } catch { throw NearbyError.cancelled }
-            }
+            if let l = last { try await waitBeforeRetry(budget, after: l) }
             budget.tries += 1
             do {
                 return try await body(budget)
@@ -193,8 +205,6 @@ public actor NearbyReconnector {
                 if case .cancelled = e { throw e }
                 onEvent?(.gaveUp(error: e.description))
                 throw e
-            } catch is CancellationError {
-                throw NearbyError.cancelled
             }
         }
     }
