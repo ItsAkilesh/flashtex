@@ -27,11 +27,18 @@ final class SourceEditorViewTests: XCTestCase {
         return s
     }
 
+    /// A mark with a synthetic identity (the painter only uses range, severity and tooltip).
+    static func mark(_ range: NSRange, _ severity: RuntimeV1.Severity, _ message: String, recovery: String? = nil,
+                     index: Int = 0) -> EditorDiagnostics.Mark {
+        EditorDiagnostics.Mark(identity: .init(resultID: "r", index: index,
+                                               source: .init(path: "main.tex", startByte: range.location, endByte: NSMaxRange(range))),
+                               nsRange: range, severity: severity, message: message, recovery: recovery, resultStatus: .ok)
+    }
+
     static func marks(count: Int, in text: String) -> [EditorDiagnostics.Mark] {
         let len = (text as NSString).length
         return (0..<count).map { i in
-            EditorDiagnostics.Mark(nsRange: NSRange(location: i * (len / count), length: 5),
-                                   severity: i % 3 == 0 ? .error : .warning, message: "mark \(i)", recovery: nil)
+            mark(NSRange(location: i * (len / count), length: 5), i % 3 == 0 ? .error : .warning, "mark \(i)", index: i)
         }
     }
 
@@ -269,8 +276,8 @@ final class SourceEditorViewTests: XCTestCase {
         XCTAssertEqual(painter.paints, 1)
 
         // Every mark moved (typing before them rebases all 200): clear + repaint the window.
-        let shifted = marks.map { EditorDiagnostics.Mark(nsRange: NSRange(location: $0.nsRange.location + 1, length: 5),
-                                                         severity: $0.severity, message: $0.message, recovery: $0.recovery) }
+        let shifted = marks.map { Self.mark(NSRange(location: $0.nsRange.location + 1, length: 5), $0.severity, $0.message,
+                                            index: $0.diagnosticIndex) }
         t0 = MonotonicClock.nowNs()
         painter.update(shifted, in: tv, reset: false)
         let shiftedMs = Double(MonotonicClock.nowNs() - t0) / 1e6
@@ -314,7 +321,7 @@ final class SourceEditorViewTests: XCTestCase {
         // Gaps around and between painted ranges.
         let tv = NSTextView(frame: .zero)
         tv.string = String(repeating: "x", count: 100)
-        let mark = EditorDiagnostics.Mark(nsRange: NSRange(location: 50, length: 2), severity: .warning, message: "m", recovery: nil)
+        let mark = Self.mark(NSRange(location: 50, length: 2), .warning, "m")
         painter.update([mark], in: tv, reset: false) // offscreen: the whole text is the window
         XCTAssertEqual(painter.painted, [NSRange(location: 0, length: 100)])
         XCTAssertEqual(painter.gaps(in: NSRange(location: 20, length: 30)), [])
@@ -340,12 +347,12 @@ final class SourceEditorViewTests: XCTestCase {
         let lm = try XCTUnwrap(tv.layoutManager)
         XCTAssertTrue(marks.allSatisfy { lm.temporaryAttribute(.underlineStyle, atCharacterIndex: $0.nsRange.location, effectiveRange: nil) != nil })
         // Errors win over warnings where they overlap.
-        let a = EditorDiagnostics.Mark(nsRange: NSRange(location: 10, length: 10), severity: .warning, message: "w", recovery: nil)
-        let b = EditorDiagnostics.Mark(nsRange: NSRange(location: 15, length: 10), severity: .error, message: "e", recovery: "fix")
+        let a = Self.mark(NSRange(location: 10, length: 10), .warning, "w")
+        let b = Self.mark(NSRange(location: 15, length: 10), .error, "e", recovery: "fix", index: 1)
         SourceEditorView.applyMarks([b, a], to: tv)
         XCTAssertEqual(lm.temporaryAttribute(.underlineColor, atCharacterIndex: 12, effectiveRange: nil) as? NSColor, .systemOrange)
         XCTAssertEqual(lm.temporaryAttribute(.underlineColor, atCharacterIndex: 17, effectiveRange: nil) as? NSColor, .systemRed)
-        XCTAssertEqual(lm.temporaryAttribute(.toolTip, atCharacterIndex: 17, effectiveRange: nil) as? String, "e\n↳ fix")
+        XCTAssertEqual(lm.temporaryAttribute(.toolTip, atCharacterIndex: 17, effectiveRange: nil) as? String, b.toolTip)
         XCTAssertNil(lm.temporaryAttribute(.underlineStyle, atCharacterIndex: marks[3].nsRange.location, effectiveRange: nil))
         print("whole-document applyMarks: \(ms) ms (60 KB, 200 marks, offscreen view)")
     }
