@@ -223,12 +223,13 @@ this worker (`mac-packaging`) to acquire or spend on.
 `NSLocalNetworkUsageDescription` is required before macOS will show the local
 network permission prompt at all (its absence causes a silent denial, not a
 prompt); `NSBonjourServices` must list every Bonjour service type the app
-resolves or advertises via `NWBrowser`/`NetService` (`_flashtex._tcp` is a
-placeholder pending the actual capture-bridge contract — the capture/AI
-owner should confirm the real service type before this ships). Both are
-inert until the app actually touches the network — declaring them now does
-not request any permission by itself, and adding them retroactively later
-would require nothing beyond this same edit.
+resolves or advertises via `NWBrowser`/`NetService`. **Update (rev 5):**
+`_flashtex._tcp` is no longer a placeholder — the nearby listener landed
+(`NearbyListener.swift`, `NearbyProtocol.swift`) and
+`NearbyV1.serviceType == "_flashtex._tcp"` exactly, confirmed by reading the
+source directly, so the bundled Info.plist key already matches what the app
+actually advertises. Both keys are inert until the app touches the network —
+declaring them does not request any permission by itself.
 
 ## Install and disk image
 
@@ -293,3 +294,50 @@ produced DMG → `Format: UDZO`, `Compressed: true`. After each run,
 whose name is "FlashTeX"'` showed the process while running and `pgrep -x
 FlashTeX` showed nothing after quitting — no stray `FlashTeX` process was
 left behind by either run.
+
+## Known gaps (rev 5)
+
+- **Signing/notarization: unchanged.** Everything in "What ad-hoc signing
+  does **not** give us" and "Exact steps for Developer ID signing +
+  notarization" above still holds exactly as written; nothing in rev 5
+  (bundling `flashtex-bridge`/`flashtex-edit-ledger`, `components.json`)
+  changes the signing story. The bundle is still ad-hoc only
+  (`TeamIdentifier=not set`), `spctl -a -vv` still reports `rejected`
+  (exit 3), and there is still no Apple Developer Program membership
+  available in this environment to go further.
+
+- **Local-network permission prompt: not scriptable, by OS design.**
+  The packaged app now bundles a real nearby-capture listener
+  (`NearbyListener.swift`, `Edit > Nearby Companion…`, backed by
+  `NWListener` + Bonjour `_flashtex._tcp`) that only asks macOS for local
+  network access when a user opens that window and turns on its
+  "Advertise" toggle — nothing in `make-app.sh`, `launch-check.sh`, or
+  `FLASHTEX_AUTOATTACH` starts it automatically, so packaging alone never
+  triggers the prompt. Once triggered, the system's local-network consent
+  dialog is a TCC (Transparency, Consent, and Control) prompt: macOS
+  deliberately prevents AppleScript/`osascript` "System Events" UI
+  scripting from reading or clicking TCC dialogs, with or without
+  Accessibility permission, specifically so software cannot auto-grant
+  itself permissions a human didn't approve. That means this gap cannot be
+  closed with a better script; it is not this environment's Accessibility
+  limitation (as with the earlier "System Events... not allowed assistive
+  access" case elsewhere in this doc) but the intended, unbypassable
+  behavior of the permission system itself. What *is* verified mechanically:
+  the bundled `Info.plist` already carries `NSLocalNetworkUsageDescription`
+  and the correct `NSBonjourServices` entry (see above), which is the
+  entire portion of this gate that automation can check. What remains for a
+  human: launch the installed `FlashTeX.app` (not `swift run`, which has no
+  bundle identity for TCC to key off), open `Edit > Nearby Companion…`,
+  flip "Advertise" on, confirm the system prompt reads "FlashTeX uses the
+  local network to discover and receive captures from nearby devices."
+  (this doc's `NSLocalNetworkUsageDescription` string) with the app's name
+  and icon, approve it, and confirm the listener starts (its status text)
+  and that `System Settings > Privacy & Security > Local Network` then
+  lists FlashTeX. Whether a subsequent `make-app.sh --install` rebuild
+  re-prompts is untested here (it would require first getting a human to
+  grant the prompt, which is exactly the step this gap says automation
+  cannot do) — macOS's TCC store is generally understood to key grants off
+  the bundle identifier plus code signature, and ad-hoc signing produces a
+  distinct signature on every rebuild (no stable Team ID), so a rebuild
+  could plausibly force a re-prompt; this is a real open question for the
+  signing gap above to resolve, not a claim this doc verifies.
