@@ -265,6 +265,11 @@ impl TexMathMetrics {
                     0x27 => '\u{1D711}',
                     _ => c,
                 }
+            } else if name.starts_with("cmsy") && code == 0x00 {
+                // cmsy slot 0 is the minus sign: the compiler spells it as
+                // the ASCII hyphen, whose Latin Modern Math glyph is the
+                // short text hyphen, not U+2212.
+                '\u{2212}'
             } else {
                 c
             };
