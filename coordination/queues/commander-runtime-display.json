@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Inspect and deterministically verify cancellation and joined shutdown while raw decoder processes near-limit valid and malformed frames",
-      "objective": "Inspect and deterministically verify cancellation and joined shutdown while raw decoder processes near-limit valid and malformed frames",
+      "name": "Audit aggregate queued source and encoded request residency across projects under existing admission limits",
+      "objective": "Audit aggregate queued source and encoded request residency across projects under existing admission limits",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Measure bounded decoder shutdown latency and retained allocation with existing frame limits; propose correction only for demonstrated defects",
-      "objective": "Measure bounded decoder shutdown latency and retained allocation with existing frame limits; propose correction only for demonstrated defects",
+      "name": "Verify deterministic supersede cancel close and failed-admission accounting without retaining discarded source",
+      "objective": "Verify deterministic supersede cancel close and failed-admission accounting without retaining discarded source",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Verify any justified correction preserves raw finite/depth/source policies, one decoded permit and complete worker reaping",
-      "objective": "Verify any justified correction preserves raw finite/depth/source policies, one decoded permit and complete worker reaping",
+      "name": "Implement only justified bounded residency reduction preserving default admission fairness and exact source identity",
+      "objective": "Implement only justified bounded residency reduction preserving default admission fairness and exact source identity",
       "owned_paths": [
         "crates/document-runtime"
       ],

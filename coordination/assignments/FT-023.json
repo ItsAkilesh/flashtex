@@ -8,15 +8,15 @@
   "branch": "agent/commander-render-core/rendering-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
-  "objective": "Measure raw helper rendering preflight allocation and validation phases on existing actual candidate before optimizing",
+  "input_main_sha": "cdcfc63f8dbda433d94c4c49337ae4350ca86464",
+  "objective": "Inspect measured repeated pairing and resource parsing for one immutable helper candidate",
   "owned_paths": [
     "crates/rendering-core"
   ],
-  "revision": 13,
+  "revision": 14,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-023",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
+  "updated_utc": "2026-09-12T12:28:06.741146+00:00"
 }
