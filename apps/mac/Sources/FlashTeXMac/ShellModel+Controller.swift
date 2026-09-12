@@ -34,7 +34,11 @@ struct ControllerState {
     var ready = false
     var compilerError: String?
     var lastPreviewRequestID: String?
+    /// Request ids of `export`/`file_status` calls awaiting their reply.
+    var awaiting: [String: (Result<[String: Any], ControllerError>) -> Void] = [:]
 }
+
+struct ControllerError: Error, Equatable { var message: String }
 
 extension ShellModel {
     // MARK: attach / detach
@@ -160,6 +164,7 @@ extension ShellModel {
             }
             _ = try? controller.document(path: activePath)
         case .result(let id, let payload):
+            if let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.success(payload)); return }
             switch completionFetcher.handle(resultID: id, payload: payload) {
             case .notMine: break
             case .pending: return
@@ -174,6 +179,7 @@ extension ShellModel {
                 log("controller result \(id): \(payload.keys.sorted().joined(separator: ","))")
             }
         case .error(let id, let message):
+            if let id, let waiter = controllerState.awaiting.removeValue(forKey: id) { waiter(.failure(.init(message: message))); return }
             if case .refused(let why) = completionFetcher.handle(errorID: id, message: message) {
                 log("completion metadata refused: \(why)")
                 break
@@ -214,6 +220,7 @@ extension ShellModel {
         case .stderr(let text):
             log("controller: " + text.trimmingCharacters(in: .whitespacesAndNewlines))
         case .exited(let code):
+            for (_, waiter) in controllerState.awaiting { waiter(.failure(.init(message: "helper exited (\(code))"))) }
             controllerStatus = "helper exited (\(code))"
             workerStatus = "worker exited (\(code))"
             log("controller exited with status \(code)")
@@ -325,5 +332,87 @@ extension ShellModel {
         if let controller {
             completionFetcher.request(sourceVersions: update.sourceVersions, editorRevision: editorRev) { try controller.send($0, $1) }
         }
+    }
+}
+
+// MARK: saving through the durable helper
+
+extension ShellModel {
+    /// Saves the active document through the helper's `export`: waits (bounded)
+    /// for the buffer to be durable, then writes exactly that durable source
+    /// with the mandatory disk expectation (the hash we last saw on disk, or
+    /// "must not exist"). Stale source, a changed file, and symlink components
+    /// are refused by the helper; a refusal names the disk conflict so the
+    /// existing Resolve On-Disk Conflict flow applies. Never blocks the UI.
+    func controllerSave(timeout: TimeInterval = 10) async -> DocumentFilesState.SaveResult {
+        guard let controller, controller.isRunning, controllerState.ready else { return .failed("preview controller not ready") }
+        guard let documentURL else { return .failed("no document URL") }
+        let path = activePath
+        let text = activeText
+        // 1. The durable source must equal the buffer.
+        let deadline = Date().addingTimeInterval(timeout)
+        controllerSubmitEdit()
+        while true {
+            if let durable = controllerState.durable[path], controllerState.textByDurable[path]?[durable.revision]?.sameBytes(as: text) == true,
+               controllerState.inFlight == nil { break }
+            if Date() > deadline { return .failed("buffer did not become durable within \(Int(timeout)) s") }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        guard let durable = controllerState.durable[path] else { return .failed("no durable revision") }
+        // 2. Export exactly that revision.
+        let id: String
+        do { id = try controller.export(path: path, expectedRevision: durable.revision, expectedSHA256: durable.sha256, expectedDiskSHA256: baselineSha256) }
+        catch { return .failed("export failed to send: \(error.localizedDescription)") }
+        let reply: Result<[String: Any], ControllerError> = await withCheckedContinuation { cont in
+            controllerState.awaiting[id] = { cont.resume(returning: $0) }
+        }
+        switch reply {
+        case .success(let payload):
+            let sha = payload["sha256"] as? String ?? SourceDigest.sha256Hex(text)
+            savedText = text
+            files.conflict = nil
+            captureNote = "Saved \(documentURL.lastPathComponent) through the preview controller (durable r\(durable.revision))"
+            bridgeSourceSaved(url: documentURL, text: text)
+            return .saved(sha256: sha)
+        case .failure(let e):
+            // The rooted save primitive refuses changed/appeared/missing files;
+            // the helper relays its message ("save of <path> refused: <Kind>").
+            // Only such a refusal is a conflict; anything else is a failure.
+            guard let kind = Self.conflictKind(inExportRefusal: e.message) else { return .failed(e.message) }
+            let theirs = await controllerFileStatus(path: path)?.diskSHA256
+            files.conflict = DocumentConflict(url: documentURL, kind: kind, ours: baselineSha256, theirs: theirs,
+                                              size: nil, mtimeUnixMs: nil, viaHelper: true)
+            return .conflict(files.conflict!)
+        }
+    }
+
+    /// Maps the project-files refusal named in an export error to a conflict kind.
+    static func conflictKind(inExportRefusal message: String) -> ProjectFilesV1.ConflictKind? {
+        guard message.contains("refused:") else { return nil }
+        if message.hasSuffix("ModifiedExternally") { return .modifiedExternally }
+        if message.hasSuffix("DeletedExternally") { return .deletedExternally }
+        if message.hasSuffix("AlreadyExists") { return .alreadyExists }
+        if message.hasSuffix("ModifiedDuringSave") { return .modifiedDuringSave }
+        return nil
+    }
+
+    struct ControllerDiskStatus: Equatable {
+        /// `matches_source`, `differs_from_source`, `missing` or `unavailable`.
+        var state: String
+        var diskSHA256: String?
+        var reason: String?
+    }
+
+    /// `file_status` through the helper (rereads the disk, never reloads);
+    /// nil when the helper cannot answer.
+    func controllerFileStatus(path: String) async -> ControllerDiskStatus? {
+        guard let controller, controller.isRunning, controllerState.ready else { return nil }
+        guard let id = try? controller.fileStatus(path: path) else { return nil }
+        let reply: Result<[String: Any], ControllerError> = await withCheckedContinuation { cont in
+            controllerState.awaiting[id] = { cont.resume(returning: $0) }
+        }
+        guard case .success(let payload) = reply, let disk = payload["disk"] as? [String: Any],
+              let state = disk["state"] as? String else { return nil }
+        return ControllerDiskStatus(state: state, diskSHA256: disk["disk_sha256"] as? String, reason: disk["reason"] as? String)
     }
 }
