@@ -170,3 +170,11 @@ compiler memory and allocator overhead are additional; this is not an RSS cap.
 The native client must continuously drain large replies off its UI thread.
 Chunked or compact output requires a separate negotiated contract; no pages are
 silently omitted under the current JSON protocol.
+
+
+For developer diagnostics, optional startup `diagnostic_timings:true` writes JSON
+phase records to stderr containing only durations and event counts, never source
+or tokens. It does not alter protocol stdout. Consumers enabling this option must
+drain stderr; normal callers should leave it off. The replay driver's `--phases`
+option captures these records in a temporary file and bounds the parsed capture
+at1MiB. Timing records are attribution data, not latency guarantees.

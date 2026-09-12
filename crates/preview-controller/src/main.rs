@@ -78,6 +78,7 @@ fn run(config: Value) -> Result<(), String> {
         return Err("invalid session identity".into());
     }
     let limits = compiler_limits(&config)?;
+    let diagnostic_timings = config["diagnostic_timings"].as_bool().unwrap_or(false);
     let project = string(&config, "project_id")?.to_owned();
     let entry = string(&config, "entry_path")?.to_owned();
     let (mut controller, file_project) = if config.get("project_root").is_some() {
@@ -212,6 +213,7 @@ fn run(config: Value) -> Result<(), String> {
         }
         match input_rx.recv_timeout(Duration::from_millis(2)) {
             Ok(request) => {
+                let request_started = std::time::Instant::now();
                 let id = request["id"].clone();
                 let response = if request["protocol_version"] != 1
                     || request["session_id"] != session
@@ -272,12 +274,29 @@ fn run(config: Value) -> Result<(), String> {
                     Ok(payload) => wire::envelope(&session, id, "result", payload),
                     Err(reason) => failure(&session, id, reason),
                 };
+                let handling_ms = request_started.elapsed().as_secs_f64() * 1000.0;
+                let serialization_started = std::time::Instant::now();
                 emit(&output_tx, &stopped, output);
+                if diagnostic_timings {
+                    eprintln!(
+                        "{}",
+                        json!({"phase":"request","handling_ms":handling_ms,
+                        "response_serialization_ms":serialization_started.elapsed().as_secs_f64()*1000.0})
+                    );
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+        let poll_started = std::time::Instant::now();
         let updates = controller.poll();
+        if diagnostic_timings && !updates.is_empty() {
+            eprintln!(
+                "{}",
+                json!({"phase":"compiler_poll","events":updates.len(),
+                "duration_ms":poll_started.elapsed().as_secs_f64()*1000.0})
+            );
+        }
         let historical = controller.take_completed_snapshot().and_then(|snapshot| {
             bindings
                 .take(bindings.epoch(), snapshot.compile_revision())

@@ -47,3 +47,24 @@ send intervals30.052/30.386ms. These are single samples with an unexplained larg
 latency difference, not evidence of a stable causal speedup. Both exceed200ms.
 The cap repair establishes delivery for this specific full-result case, not
 responsive rendering, arbitrary-source-size support or native acceptance.
+
+## Follow-up attribution, not a speed comparison
+
+`--phases` enables source-free helper stderr timing records; the production default
+is off and the JSONL wire is unchanged. Nonempty controller polls and request
+handling/response serialization are measured separately. The driver additionally
+records ACK latency, current runtime/controller totals and driver CPU versus wall.
+
+One external-timing follow-up produced lastACK3380ms and final3983ms, with final
+runtime499ms/controller561ms. One internal-phase follow-up produced lastACK973ms,
+final1547ms and finalruntime441ms/controller517ms. All40ACKs, both clean finals and
+both reopened sources are exact. Variation remains unexplained and large.
+
+In the latter run, request handling totals931ms; edit handling grows from7ms to
+76ms over20edits. Response serialization totals18ms. Several compiler polls consume
+115–190ms each. Timings include startup snapshot/poll diagnostics where indicated
+by the captured sequence. They locate both a request-service backlog and substantial
+compiler response processing; they do not measure ledger internals separately.
+Read-only inspection finds undo history retaining full before/after text, cloned,
+validated and serialized on each durable update. This is a concrete candidate for
+follow-up profiling/compact-history work, not yet proof of its isolated cost.

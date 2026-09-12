@@ -23,8 +23,8 @@ def run(args):
         config = root / "config.json"
         config.write_text(json.dumps(dict(session_id="benchmark", project_id="p", entry_path="main.tex",
             project_root=str(root / "project"), private_ledger_root=str(root / "ledger"),
-            compiler_path=compiler, compiler_max_frame_bytes=args.compiler_frame_mib * 1024 * 1024)))
-        client = Client(helper, config)
+            diagnostic_timings=args.phases, compiler_path=compiler, compiler_max_frame_bytes=args.compiler_frame_mib * 1024 * 1024)))
+        client = Client(helper, config, capture_diagnostics=args.phases)
         writer = None
         try:
             before = snapshot_after_initial_preview(client)
@@ -54,6 +54,9 @@ def run(args):
             writer = threading.Thread(target=send_edits)
             writer.start()
             acknowledged = set()
+            acknowledgement_samples = []
+            measurement_cpu_started = time.process_time()
+            measurement_wall_started = time.monotonic()
             counts = Counter()
             latest_ack_revision = before["revision"]
             final = None
@@ -76,6 +79,8 @@ def run(args):
                     assert not event["payload"]["preview_error"]
                     latest_ack_revision = document["revision"]
                     acknowledged.add(index)
+                    acknowledgement_samples.append(dict(index=index,
+                        delivery_after_send_ms=(received-starts[index])*1000))
                 payload = event.get("payload", {})
                 kind = payload.get("kind")
                 if kind:
@@ -106,12 +111,17 @@ def run(args):
                     index = revision - before["revision"] - 1
                     assert 0 <= index < len(starts)
                     current_samples.append(dict(source_revision=revision,
-                        delivery_after_original_send_ms=(received-starts[index])*1000))
+                        delivery_after_original_send_ms=(received-starts[index])*1000,
+                        runtime_total_ms=payload.get("runtime_total_ms"),
+                        controller_total_ms=payload.get("controller_total_ms")))
                     assert revision >= latest_ack_revision, "preview older than delivered durable acknowledgement"
                     if revision == before["revision"] + args.edits:
                         final, final_received = payload, received
+            measurement_cpu_ms = (time.process_time()-measurement_cpu_started)*1000
+            measurement_wall_ms = (time.monotonic()-measurement_wall_started)*1000
             writer.join(timeout=5)
             assert not writer.is_alive() and not failures
+            phase_diagnostics = client.diagnostics()
             result = final["result"]
             request = dict(protocol_version=1, id=result["id"], type="compile", payload=dict(project_id="p",
                 revision=result["payload"]["revision"], entry_path="main.tex",
@@ -123,7 +133,7 @@ def run(args):
             client.stop()
             if writer is not None:
                 writer.join(timeout=5)
-        client = Client(helper, config)
+        client = Client(helper, config, capture_diagnostics=args.phases)
         try:
             reopened = snapshot_after_initial_preview(client)
             assert reopened["text"] == sources[-1]
@@ -131,6 +141,8 @@ def run(args):
         finally:
             client.stop()
         print(json.dumps(dict(source_bytes=len(sources[-1].encode()), edits=args.edits,
+            phase_diagnostics=phase_diagnostics, compiler_frame_mib=args.compiler_frame_mib, acknowledgement_samples=acknowledgement_samples,
+            driver_cpu_during_burst_ms=measurement_cpu_ms, burst_wall_ms=measurement_wall_ms,
             historical_negotiated=args.historical, historical_samples=historical_samples, current_samples=current_samples,
             intended_interval_ms=args.interval_ms, acknowledged=len(acknowledged), updates=dict(counts),
             actual_intervals_ms=[(b-a)*1000 for a,b in zip(starts, starts[1:])],
@@ -147,6 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--compiler", required=True)
     parser.add_argument("--size", type=int, default=50000)
     parser.add_argument("--compiler-frame-mib", type=int, choices=range(1,16), default=12)
+    parser.add_argument("--phases", action="store_true", help="capture optional source-free helper phase diagnostics")
     parser.add_argument("--historical", action="store_true", help="explicitly negotiate completed-snapshots-v1")
     parser.add_argument("--edits", type=int, default=20)
     parser.add_argument("--interval-ms", type=int, default=30)
