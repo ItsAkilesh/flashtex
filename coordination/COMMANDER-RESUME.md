@@ -1,3 +1,24 @@
+# Latest verified resumption checkpoint
+
+Main781aafa applies the latest user limit: THREE product engineers plus sole
+Commander. Retain root runtime-performance (FT047), fonts and rendering. Bridge,
+index and ledger finish current checkpoints only, then stop. Their dispatcher
+queues are paused; no replacements or compensating remote expansion.
+
+Jaysen cooldown was explicitly lifted early. The deterministic service posted
+at08:20:39Z; the scheduled08:21 repeat was idempotent. Authenticated Jaysen parent
+reported15 running engineering session IDs at08:27:33Z (issue2, branch91badb9).
+This is machine-reported evidence, not independent SSH inspection. Daniel remains
+unregistered with zero verified sessions. Recheck both before reporting current liveness.
+Dispatcher was independently active PID819368 at this checkpoint.
+
+The revival prompt is docs/commander-failover.md. Keep this host preferred while
+usable. Missing or ambiguous terminal evidence BLOCKS takeover; no timeout can
+establish certainty. Live-process quota exhaustion still has no verified terminal
+hook. Read current authority, control, queues and journals before any action.
+
+The older checkpoints below are historical and cannot override this entry.
+
 # NEW USER OVERRIDE: seven local active total
 
 User explicitly restored6 product engineers plus existing soleCommander after
