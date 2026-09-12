@@ -1,0 +1,84 @@
+{
+  "agent_id": "mac-paragraph-layout",
+  "archived_utc": "2026-09-12T06:42:27Z",
+  "assignment": {
+    "acceptance": [
+      "Page and baseline metrics have golden tests",
+      "Preview/PDF positions agree",
+      "Visual deltas are quantified"
+    ],
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "df9e26e44a74b4322f86bcbcfe0cf2312afaece0",
+    "objective": "Add paragraph spacing, baseline grid, widow/orphan control and deterministic page breaking, then compare page geometry to declared TeX oracles.",
+    "owned_paths": [
+      "crates/paragraph-layout"
+    ],
+    "revision": 3,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-019",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T06:27:23Z"
+  },
+  "report": {
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph",
+    "assignment_acknowledgements": {
+      "FT-019": {
+        "acknowledged_utc": "2026-09-12T06:29:49Z",
+        "adaptation": "Merged origin/main a949f5b (no conflicts). Plan: style adapter from crates/document-style (on main) into PageParams/LineBreakParams/section blocks; 2-page golden tests for page/baseline metrics; pdflatex oracle for page geometry (default article 12pt letter margins and 1in) comparing every baseline and the page-break word; preview/PDF agreement via runtime-v1 JSON through crates/pdf and a CoreText Swift script, word boxes compared with PDFKit.",
+        "main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+        "revision": 3
+      }
+    },
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "capabilities": [
+      "rust",
+      "typesetting"
+    ],
+    "code_revision": "b5c429a297970b493d9771720c18b28f14794774",
+    "eta_minutes": {
+      "likely": 5,
+      "optimistic": 0,
+      "pessimistic": 15
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+    "next_action": "Await orchestrator review/integration; follow-ups on request.",
+    "reviewed_peers": {
+      "origin/agent/mac-font-engine/tex-fonts": {
+        "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+        "reviewed_utc": "2026-09-12T06:08:14Z",
+        "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
+      },
+      "origin/main": {
+        "adaptation": "origin/main advanced only in coordination/other crates; crates/paragraph-layout, document-style and pdf unchanged since the merge at a949f5b, so no re-merge needed.",
+        "reviewed_utc": "2026-09-12T06:41:52Z",
+        "sha": "baa3b9f8053f7516f9a1404182a415a249a64b12"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "FT-019 rev 3 delivered: page geometry from crates/document-style (style adapter, ArticleLayout), page/baseline golden tests, two-page pdflatex oracles (default article margins and 1in: 668/668 line starts and page assignments, same page-break word, every baseline within 0.013 bp, 4 overfull boxes reproduced), runtime-v1 emission with one item per word and exact spans, preview/PDF agreement flashtex-pdf vs CoreText: origins within 0.0005 pt, right edges within 0.028 pt on 668 words.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:41:52Z",
+    "usage": {
+      "evidence": "cargo test: 40 passed; cargo clippy --all-targets: 0 warnings; tools/preview_pdf_agreement.sh report in docs/comparison.md",
+      "status": "Claude Max 20x shared quota; remaining unknown"
+    }
+  },
+  "report_age_seconds": 35,
+  "report_path": "coordination/agents/mac-paragraph-layout.json",
+  "review_required": true,
+  "revision": 3,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-019",
+  "worker_branch": "agent/mac-paragraph-layout/linebreak",
+  "worker_report_sha": "70209e2c1b38f873e29d06bdf6e6bb01e3eaf42d"
+}
