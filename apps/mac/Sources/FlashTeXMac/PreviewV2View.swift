@@ -268,10 +268,11 @@ extension ShellModel {
                 prerastered = V2Loader.preraster(frame, pixelsPerPoint: hint.pixelsPerPoint, dark: hint.dark)
             }
             let t2 = MonotonicClock.nowNs()
+            let prerasteredResult = prerastered // immutable copy for the Sendable delivery closure
             V2Loader.deliverOnMain {
                 MainActor.assumeIsolated {
-                    if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: prepared \(source.label) in \(Double(t1 &- t0) / 1e6) ms, prerastered \(prerastered?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later") }
-                    self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome, prerastered: prerastered)
+                    if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: prepared \(source.label) in \(Double(t1 &- t0) / 1e6) ms, prerastered \(prerasteredResult?.images.count ?? 0) page(s) in \(Double(t2 &- t1) / 1e6) ms, delivered \(Double(MonotonicClock.nowNs() &- t2) / 1e6) ms later") }
+                    self.deliverDisplayListV2(ticket: ticket, source: source, outcome: outcome, prerastered: prerasteredResult)
                     completion?()
                 }
             }
