@@ -3,7 +3,7 @@
 Agent / task / branch: `daniel-collaboration` / FT-044 "Offline bounded
 collaborative text operation core" / `agent/daniel-collaboration/collaboration-core`
 
-State: ready for integration (revision 2)
+State: ready for integration (revision 3)
 
 Owned paths: `crates/collaboration-core/**`, `coordination/daniel-collaboration.md`.
 No other crate is touched, in particular `crates/edit-ledger` is untouched.
@@ -287,13 +287,15 @@ cargo test --manifest-path crates/collaboration-core/Cargo.toml
 cargo clippy --manifest-path crates/collaboration-core/Cargo.toml --all-targets -- -D warnings
 ```
 
-33 tests pass: 24 unit tests in `src/lib.rs` (13 core + 5 in
-`checkpoint::tests` + 6 in `recovery::tests`), plus integration tests in
-`tests/convergence.rs` (4, revision 1, unchanged), `tests/checkpoint_equivalence.rs`
-(3), and `tests/interrupted_delivery.rs` (2). Clippy passes with warnings
+44 tests pass: 26 unit tests in `src/lib.rs` (15 core, incl. the two new
+revision-3 counter-exhaustion cases, + 5 in `checkpoint::tests` + 6 in
+`recovery::tests`), plus integration tests in `tests/convergence.rs` (4,
+revision 1, unchanged), `tests/checkpoint_equivalence.rs` (3, revision 2,
+unchanged), `tests/interrupted_delivery.rs` (2, revision 2, unchanged), and
+the new `tests/adversarial.rs` (9, revision 3). Clippy passes with warnings
 denied (`cargo clippy --all-targets -- -D warnings`). Zero dependencies
 (`Cargo.lock` lists only this crate itself), so no network access is
-possible at build or run time — revision 2 added no dependency either.
+possible at build or run time — revision 3 added no dependency either.
 
 ## Known limitations / not done
 
@@ -319,3 +321,187 @@ possible at build or run time — revision 2 added no dependency either.
 - No integration with `edit-ledger` or any native/bridge caller is
   implemented or claimed; this is a standalone additive crate per FT-044's
   scope, awaiting a consumer contract before integration.
+
+## Revision 3: adversarial hardening and the published consumer contract
+
+Two additions, both additive; revision 1's convergence/dedup and revision 2's
+checkpoint equivalence are unchanged and still pass (see "Build and check"
+below for the updated count).
+
+### Bug fixed while adding adversarial coverage: `OpBuilder` counter exhaustion
+
+Writing the "counter at integer maximum" adversarial case surfaced a real,
+if extremely unlikely, defect: `OpBuilder::next_id` incremented its
+per-replica counter with plain `+= 1`, which panics on overflow in a debug
+build and silently wraps to a reused counter (a latent `IdConflict`) in a
+release build. Fixed with `checked_add`: `OpBuilder::insert_at`/`delete_at`
+now return `None` — the same bounded, already-documented signal they use for
+an out-of-range index — if this replica's counter is already at `u64::MAX`.
+`OpId.counter` itself is an unconstrained `u64`; `u64::MAX` is a perfectly
+valid id and applies normally (`op_with_max_counter_value_applies_normally`
+in `src/lib.rs`). This does not change any public type signature.
+
+### New adversarial tests (`crates/collaboration-core/tests/adversarial.rs`
+unless noted), each asserting a typed `Err`/`None` result or a well-defined
+success — never a panic:
+
+- **Operation referencing an unknown replica**:
+  `insert_referencing_an_id_from_a_replica_that_never_produced_any_operation_is_rejected`
+  and the `Delete` counterpart — an `OpId` whose replica has never applied
+  anything to the document is rejected with `CrdtError::MissingDependency`,
+  identically to any other unknown id.
+- **Counter at integer maximum**: `op_builder_returns_none_when_counter_is_exhausted_not_panicking`
+  and `op_with_max_counter_value_applies_normally` (`src/lib.rs`, private-field
+  access needed to construct a pre-exhausted builder) — see the bugfix above.
+- **Pending buffer at and past capacity**:
+  `pending_buffer_exactly_at_capacity_succeeds_next_one_is_rejected` — fills
+  `PendingOps` to exactly `max_pending`, confirms all of them are accepted as
+  `Buffered`, then confirms the very next one is rejected with
+  `CrdtError::PendingBufferFull` and the buffer length does not grow past the
+  bound.
+- **Checkpoint at and past its entry bound**:
+  `checkpoint_exactly_at_bound_succeeds_one_less_bound_fails` — a document
+  with exactly 5 entries checkpoints successfully at `max_entries: 5` and
+  fails with `CheckpointError::TooLarge` at `max_entries: 4`.
+- **Truncated and corrupted checkpoint bytes**: beyond revision 2's
+  `Truncated`/`InvalidChar` cases, adds a header that declares
+  `u64::MAX` elements backed by no data
+  (`checkpoint_bytes_with_declared_counts_far_exceeding_actual_data_is_rejected` —
+  confirms the bounded `Reader` fails on the first missing field rather than
+  attempting to allocate or iterate anything unbounded), a sweep of
+  arbitrary byte patterns of varying length wrapped in
+  `std::panic::catch_unwind` (`checkpoint_bytes_corrupted_with_arbitrary_patterns_never_panics`),
+  and a single flipped byte inside an otherwise-valid encoding
+  (`checkpoint_bytes_with_a_flipped_byte_in_the_middle_is_rejected_or_harmlessly_decoded` —
+  asserts only "does not panic", since a flipped byte may or may not
+  produce a structurally-valid-looking decode).
+- **Insert whose position references a deleted element**:
+  `insert_anchored_to_a_tombstoned_element_still_integrates_deterministically` —
+  a tombstone is a structurally *present* element (only its `deleted` flag is
+  set), so `left`/`right` anchoring to one is not a missing dependency; the
+  insert integrates at a definite position. Also adds
+  `delete_of_an_already_deleted_element_is_idempotent_not_double_counted` for
+  the adjacent case of two independent delete operations targeting the same
+  (already-deleted) element.
+
+## Published consumer contract
+
+**No consumer exists today.** Confirmed by grepping the whole repository
+(not just this crate) for every plausible reference to this crate's package
+and crate names:
+
+```sh
+grep -rn "collaboration.core\|collaboration_core\|flashtex-collaboration-core\|flashtex_collaboration_core" \
+  --include="*.rs" --include="*.toml" --include="*.md" --include="*.json" . \
+  | grep -v "^./crates/collaboration-core/" | grep -v "/target/"
+```
+
+Every hit outside `crates/collaboration-core/` itself is coordination
+bookkeeping (this file, the assignment/agent-registry JSON) — no `.rs` or
+`Cargo.toml` anywhere else in the repository names this crate. There is also
+no workspace-root `Cargo.toml` (none exists in this repository at all), so
+nothing pulls this crate in implicitly either. Per FT-044's ownership
+boundary this agent does not edit `crates/edit-ledger` or any other crate to
+manufacture a consumer; what follows is the interface a future consumer
+would use, published so an integrator can wire it up without needing to read
+`src/`.
+
+### The contract, by consumer-facing operation
+
+```rust
+use flashtex_collaboration_core::{
+    ApplyOutcome, Checkpoint, CheckpointDecodeError, CheckpointError,
+    CrdtError, Document, Op, OpBuilder, OpId, PendingOps, ReplicaId,
+};
+
+// 1. Construct a replica's document (and its op-authoring helper).
+let mut doc: Document = Document::new(); // DEFAULT_MAX_ELEMENTS = 200_000
+// or: Document::with_max_elements(max_elements: usize) -> Document
+let mut builder: OpBuilder = OpBuilder::new(ReplicaId(my_replica_id));
+
+// 2. Submit a local edit: build an `Op` anchored to the document's current
+//    visible state, then apply it to this replica's own document.
+let op: Option<Op> = builder.insert_at(&doc, index /* char index */, value /* char */);
+// or: builder.delete_at(&doc, index) -> Option<Op>
+// `None` means `index` was out of range, or (see revision 3) this builder's
+// counter is exhausted at `u64::MAX` — never a panic.
+let outcome: Result<ApplyOutcome, CrdtError> = doc.apply(op.unwrap());
+// Send `op` (it is `Copy`) to every other replica over whatever transport
+// the caller owns; this crate does no I/O itself.
+
+// 3. Receive a remote operation.
+//    Direct (revision 1): requires causal delivery (op's left/right/target
+//    already applied locally); a gap is a typed error, not a panic:
+let outcome: Result<ApplyOutcome, CrdtError> = doc.apply(remote_op);
+// `Ok(Applied)` | `Ok(Duplicate)` (already-seen id, safe to redeliver) |
+// `Err(MissingDependency(id))` | `Err(IdConflict(id))` | `Err(DocumentFull)`.
+
+// 4. Recover from a gap (out-of-order/partial backlog, e.g. after a
+//    reconnect): route delivery through `PendingOps` instead of `apply`
+//    directly. It buffers on a missing dependency instead of erroring, and
+//    auto-drains (including multi-level chains) as dependencies arrive.
+let mut pending: PendingOps = PendingOps::new(max_pending: usize);
+let outcome: Result<ApplyOutcome, CrdtError> = pending.receive(&mut doc, remote_op);
+// `Ok(Buffered)` on a gap; `Err(PendingBufferFull { max_pending })` past the
+// configured bound. To proactively re-request instead of only waiting:
+let still_missing: Vec<OpId> = pending.missing_dependencies(&doc);
+
+// 5. Take a checkpoint (bounded snapshot: structure + causal frontier).
+let cp: Result<Checkpoint, CheckpointError> = doc.checkpoint(max_entries: usize);
+// Err(TooLarge { entries, max_entries }) instead of an unbounded snapshot.
+let bytes: Vec<u8> = cp.unwrap().to_bytes();
+
+// ...and restore one (a fully functional Document, not a read-only view):
+let restored_cp: Result<Checkpoint, CheckpointDecodeError> = Checkpoint::from_bytes(&bytes);
+// Err(Truncated) | Err(InvalidChar(code)) on malformed/corrupted bytes.
+let mut restored_doc: Document = Document::from(restored_cp.unwrap());
+// Apply whatever operations postdate the checkpoint exactly as in step 3/4.
+
+// 6. Read the resulting text and its causal frontier.
+let text: String = doc.text();                    // current visible text
+let n: usize = doc.len_chars();                    // visible char count
+let seen: bool = doc.is_applied(some_op_id);        // frontier membership
+let id_at_i: Option<OpId> = doc.char_id_at(index);  // stable per-char id
+```
+
+### Worked example: two replicas, offline, then reconciled
+
+```rust
+let mut a = Document::new();
+let mut ba = OpBuilder::new(ReplicaId(1));
+a.apply(ba.insert_at(&a, 0, 'a').unwrap()).unwrap();
+a.apply(ba.insert_at(&a, 1, 'c').unwrap()).unwrap(); // replica A: "ac"
+
+let mut b = a.clone();                     // replica B starts from the same state
+let mut bb = OpBuilder::new(ReplicaId(2));
+let op_b = bb.insert_at(&b, 1, 'z').unwrap();
+b.apply(op_b).unwrap();                    // replica B, offline: "azc"
+
+let op_a = ba.insert_at(&a, 1, 'b').unwrap();
+a.apply(op_a).unwrap();                    // replica A, offline: "abc"
+
+// Reconcile: exchange operations in either order.
+a.apply(op_b).unwrap();
+b.apply(op_a).unwrap();
+assert_eq!(a.text(), b.text());            // both converge to "azbc"
+
+// A single owner now replays the converged text into edit-ledger as one
+// ordinary transaction (see "What this is, and what it explicitly is
+// not" above) — collaboration-core makes no call into edit-ledger itself.
+```
+
+### Relationship to `edit-ledger`, restated for revision 3
+
+FT-044's objective is explicit that this is "no ... ledger replacement",
+and that remains true after the consumer contract above: nothing in this
+contract talks to `edit-ledger`, imports it, or duplicates its
+responsibilities (`crates/edit-ledger`'s own public surface —
+`Store::open`/`apply`/`replace_document`/`confirm`/`recovery`,
+`Document::new(project_id, path, revision, text)` — is single-writer,
+revision-guarded, durable, fsynced, with receipts and crash recovery; none
+of that is reimplemented here, and `flashtex-collaboration-core` has zero
+dependencies and no I/O of any kind). This crate only prepares converged
+text that a consumer would *then* hand to `edit-ledger` as one ordinary
+edit, per step 5 of the worked example above; whether and how a caller does
+that wiring is exactly the "no consumer exists today" gap this section
+reports rather than fills.

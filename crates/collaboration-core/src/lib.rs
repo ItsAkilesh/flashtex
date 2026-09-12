@@ -412,18 +412,25 @@ impl OpBuilder {
         Self { replica, counter: 0 }
     }
 
-    fn next_id(&mut self) -> OpId {
-        self.counter += 1;
-        OpId {
-            counter: self.counter,
+    /// Allocate the next `OpId`, or `None` if this replica's per-replica
+    /// counter is already at `u64::MAX` (already exhausted): incrementing
+    /// further would either wrap back to a previously issued counter value
+    /// (a silent `IdConflict`-in-waiting) or panic on overflow in a debug
+    /// build. Bounded and non-panicking either way.
+    fn next_id(&mut self) -> Option<OpId> {
+        let next = self.counter.checked_add(1)?;
+        self.counter = next;
+        Some(OpId {
+            counter: next,
             replica: self.replica,
-        }
+        })
     }
 
     /// Build an insert of `value` so that, from `doc`'s current point of
     /// view, it becomes the character at visible index `index` (0-based;
     /// `index == doc.len_chars()` appends at the end). Returns `None` if
-    /// `index > doc.len_chars()` rather than panicking or clamping.
+    /// `index > doc.len_chars()`, or if this builder's counter is already
+    /// exhausted (see [`OpBuilder::next_id`]) — never panics or clamps.
     pub fn insert_at(&mut self, doc: &Document, index: usize, value: char) -> Option<Op> {
         if index > doc.len_chars() {
             return None;
@@ -434,18 +441,21 @@ impl OpBuilder {
             doc.char_id_at(index - 1)
         };
         let right = doc.char_id_at(index);
+        let id = self.next_id()?;
         Some(Op {
-            id: self.next_id(),
+            id,
             payload: OpPayload::Insert { left, right, value },
         })
     }
 
     /// Build a delete of the visible character currently at `index`.
-    /// Returns `None` if `index >= doc.len_chars()`.
+    /// Returns `None` if `index >= doc.len_chars()`, or if this builder's
+    /// counter is already exhausted (see [`OpBuilder::next_id`]).
     pub fn delete_at(&mut self, doc: &Document, index: usize) -> Option<Op> {
         let target = doc.char_id_at(index)?;
+        let id = self.next_id()?;
         Some(Op {
-            id: self.next_id(),
+            id,
             payload: OpPayload::Delete { target },
         })
     }
@@ -660,6 +670,46 @@ mod tests {
         for ch in doc.text().chars() {
             assert!(ch.len_utf8() >= 1); // every remaining scalar is intact
         }
+    }
+
+    // --- Revision 3: adversarial edge cases -------------------------------
+
+    #[test]
+    fn op_builder_returns_none_when_counter_is_exhausted_not_panicking() {
+        // Directly construct a builder one allocation away from `u64::MAX`
+        // (private-field access is available here because `tests` is a
+        // descendant of the module `OpBuilder` is defined in).
+        let mut b = OpBuilder {
+            replica: r(1),
+            counter: u64::MAX - 1,
+        };
+        let doc = Document::new();
+        let op = b.insert_at(&doc, 0, 'x').unwrap();
+        assert_eq!(op.id.counter, u64::MAX, "the last allocatable id");
+        // One more allocation would overflow; must return `None`, not panic
+        // or silently wrap back to a reused counter value.
+        assert!(b.insert_at(&doc, 0, 'y').is_none());
+        assert!(b.delete_at(&doc, 0).is_none());
+    }
+
+    #[test]
+    fn op_with_max_counter_value_applies_normally() {
+        // The counter is just a `u64`; `u64::MAX` itself is a perfectly
+        // valid, orderable id and must apply like any other.
+        let mut doc = Document::new();
+        let op = Op {
+            id: OpId {
+                counter: u64::MAX,
+                replica: r(1),
+            },
+            payload: OpPayload::Insert {
+                left: None,
+                right: None,
+                value: 'z',
+            },
+        };
+        assert_eq!(doc.apply(op), Ok(ApplyOutcome::Applied));
+        assert_eq!(doc.text(), "z");
     }
 
     #[test]
