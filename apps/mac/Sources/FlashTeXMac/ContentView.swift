@@ -307,6 +307,27 @@ private struct PreviewPane: View {
                                        description: Text("Use File > Open Compile Result Fixture…"))
             }
         }
+        .sheet(isPresented: Binding(get: { model.quickFix != nil }, set: { if !$0 { model.quickFix = nil } })) {
+            if let p = model.quickFix {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Suggested fix").font(.headline)
+                    Text(p.summary).font(.caption).foregroundStyle(.secondary)
+                    Text("Before").font(.caption.bold())
+                    Text(p.before).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("After").font(.caption.bold())
+                    Text(p.after).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text("Heuristic suggestion from the explanation catalogue; applied as one undoable edit only when you choose Apply.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                    HStack {
+                        Spacer()
+                        Button("Cancel") { model.quickFix = nil }.keyboardShortcut(.cancelAction)
+                        Button("Apply") { model.applyQuickFix() }.keyboardShortcut(.defaultAction)
+                    }
+                }
+                .padding(16).frame(minWidth: 480)
+                .accessibilityElement(children: .contain).accessibilityLabel("Suggested fix preview")
+            }
+        }
     }
 
     private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
@@ -338,6 +359,11 @@ private struct PreviewPane: View {
                     }
                     Spacer()
                     if d.source != nil { Button("Go to source") { model.navigate(to: d.source) } }
+                    if let x = model.explanations.explanation(resultID: model.resultID, index: i),
+                       x.suggestions.contains(where: { !$0.edits.isEmpty }) {
+                        Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
+                            .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
+                    }
                 }
                 .accessibleDiagnostic(d, index: i, total: diags.count, status: model.result?.status ?? .ok,
                                       explanation: model.explanations.explanation(resultID: model.resultID, index: i)?.line) { model.navigate(to: d.source) } // FlashTeXAccessibility
