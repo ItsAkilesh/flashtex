@@ -126,6 +126,23 @@ parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
 this compiler version" diagnostic — never silent output.
 
+`\vspace{<dimen>}` adds real vertical glue (`pt`, `in`, `cm`, `mm`, or `em`,
+the last relative to the fixed 12pt body size). `\hrule` draws a full-measure
+rule. `\newpage` forces an unconditional page break. `\pagestyle{...}` is
+accepted for any argument as an honest no-op: no header/footer rendering
+exists yet to make styles behave differently.
+
+`\tiny`, `\scriptsize`, `\footnotesize`, `\small`, `\normalsize`, `\large`,
+`\Large`, `\LARGE`, `\huge`, and `\Huge` are declarations that scale
+subsequent text (relative to `\normalsize`, using the standard LaTeX 10pt
+class ratios) until the enclosing `{ ... }` group closes or another size
+declaration overrides them. They only affect ordinary text runs, not math or
+heading sizes, which are computed separately.
+
+`\setlength{\parindent}{<dimen>}` and `\setlength{\parskip}{<dimen>}` set the
+paragraph indent and inter-paragraph gap used by every later paragraph.
+Every other `\setlength` target is diagnosed and ignored.
+
 ## Macro expansion and source mapping
 
 User macros expand at their use site and may call other user macros. Expansion

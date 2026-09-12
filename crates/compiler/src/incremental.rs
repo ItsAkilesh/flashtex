@@ -151,6 +151,16 @@ impl Session {
         }
 
         let parsed = parser::parse_project(documents, entry_path);
+        // `\setlength{\parindent}`/`\parskip}` live in the preamble and are
+        // part of `LayoutConstraints` (documented as "layout inputs that
+        // participate in incremental cache validation"), so folding them in
+        // here makes a changed preamble value correctly invalidate the cache
+        // below rather than silently keeping a stale cached page.
+        let constraints = LayoutConstraints {
+            parindent_pt: parsed.parindent_pt.or(constraints.parindent_pt),
+            parskip_pt: parsed.parskip_pt.or(constraints.parskip_pt),
+            ..constraints
+        };
         let same_document_set = self.previous.as_ref().is_some_and(|previous| {
             previous.entry_path == entry_path
                 && previous.documents.len() == snapshot.len()
@@ -341,6 +351,11 @@ pub fn compile_full_project(
     constraints: LayoutConstraints,
 ) -> CompileOutput {
     let parsed = parser::parse_project(documents, entry_path);
+    let constraints = LayoutConstraints {
+        parindent_pt: parsed.parindent_pt.or(constraints.parindent_pt),
+        parskip_pt: parsed.parskip_pt.or(constraints.parskip_pt),
+        ..constraints
+    };
     let (pages, mut layout_diagnostics) = layout::layout_converged(&parsed.blocks, constraints);
     let mut diagnostics = parsed.diagnostics;
     diagnostics.append(&mut layout_diagnostics);
@@ -412,9 +427,14 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span } => Some(Inline::Text {
+            Inline::Text {
+                text,
+                span,
+                size_scale,
+            } => Some(Inline::Text {
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
+                size_scale: *size_scale,
             }),
             Inline::LineBreak { span } => Some(Inline::LineBreak {
                 span: mapped_span(*span, changes, deltas)?,
@@ -816,6 +836,7 @@ mod tests {
         let constraints = LayoutConstraints {
             font_size_pt: 13.0,
             measure_pt: 320.0,
+            ..LayoutConstraints::default()
         };
         let result = session.compile(text, constraints);
         eprintln!("constraint ReuseStats: {:?}", result.stats);
