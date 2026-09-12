@@ -892,7 +892,11 @@ impl P<'_> {
         let (tokens, argument_span) = self.required_group(kind, span);
         let environment = token_text(&tokens).trim().to_string();
         if kind == "begin" {
-            if matches!(environment.as_str(), "equation" | "equation*") && self.in_body {
+            if matches!(
+                environment.as_str(),
+                "equation" | "equation*" | "displaymath"
+            ) && self.in_body
+            {
                 self.equation_environment(span, &environment, blocks, para);
                 return;
             }
@@ -969,7 +973,7 @@ impl P<'_> {
         para: &mut Vec<Inline>,
     ) {
         self.flush_paragraph(blocks, para);
-        let numbered = !name.ends_with('*');
+        let numbered = name == "equation";
         if numbered {
             self.equation_counter += 1;
             self.current_counter = Some(self.equation_counter.to_string());
@@ -1351,19 +1355,13 @@ impl P<'_> {
                 Some("closed math mode at end of input and typeset its contents".into()),
             ));
         }
-        let number = if display && found {
-            self.equation_counter += 1;
-            let number = self.equation_counter.to_string();
-            self.current_counter = Some(number.clone());
-            Some(number)
-        } else {
-            None
-        };
+        // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
+        // print a number or advance the equation counter.
         para.push(Inline::Math {
             list,
             display,
-            number,
-            number_span: (display && found).then_some(open),
+            number: None,
+            number_span: None,
             span: Span::in_document(open.document, open.start, end),
         });
     }
@@ -2026,5 +2024,31 @@ mod tests {
         );
         assert_eq!(at("After.").x_pt, crate::layout::MARGIN_PT);
         assert_eq!(at("Plain.").x_pt, crate::layout::MARGIN_PT);
+    }
+
+    #[test]
+    fn only_numbered_displays_print_numbers_and_advance_the_counter() {
+        let source = "\\[a\\] $$b$$ \\begin{displaymath}c\\end{displaymath}\\begin{equation*}d\\end{equation*}\\begin{gather*}e\\end{gather*}\\begin{align*}f&=g\\end{align*}\\begin{equation}h\\label{h}\\end{equation}\\begin{align}i\\nonumber\\\\j\\label{j}\\end{align}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1)", "(2)"]);
+        let labels: Vec<_> = parsed
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph(inlines) => inlines.as_slice(),
+                _ => &[],
+            })
+            .filter_map(|inline| match inline {
+                Inline::Label { key, value, .. } => Some((key.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, [("h", "1"), ("j", "2")]);
     }
 }
