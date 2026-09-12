@@ -272,14 +272,16 @@ final class CaptureAcceptanceTests: XCTestCase {
     // MARK: (d) capture bound to an anchor whose text changed
 
     /// After `hello_ack` advertised the pinned destination, an edit that
-    /// overlaps the pin makes the real bridge's anchor invalid. The Mac still
-    /// advertises the old destination (finding: `bridgeDestination` is not
-    /// refreshed on edits; the bridge is authoritative), so the companion's own
-    /// destination check passes and the real bridge decides:
-    /// `destination_reselection_required`, terminal, nothing journaled, nothing
-    /// inserted. A fresh pin accepts a new capture; an edit elsewhere keeps that
-    /// anchor valid (accepted, rebased on the bridge) and still nothing is
-    /// inserted without review.
+    /// overlaps the pin makes the real bridge's anchor invalid. The Mac mirrors
+    /// that rule (mac-nearby-errors): the pin stays listed as invalid, the user
+    /// is told, and companions are told `destination: null`, so the reference
+    /// client's own check stops the send (`destinationChanged`, terminal). A
+    /// client that skips the check reaches the real bridge, which decides the
+    /// same way: `destination_reselection_required`, terminal, classified as
+    /// "new capture at a new destination", nothing journaled, nothing inserted.
+    /// A fresh pin accepts a new capture; an edit elsewhere keeps that anchor
+    /// valid (accepted, rebased on the bridge and in the Mac's mirror) and
+    /// still nothing is inserted without review.
     func testCaptureAgainstAChangedAnchorIsRefusedByTheRealBridgeAndNeverInserted() async throws {
         let bridgeBin = try requireBridge()
         let store = try BridgeClientTests.tempStore()
@@ -309,14 +311,33 @@ final class CaptureAcceptanceTests: XCTestCase {
         let editedRevision = model.editorRevision
         try await waitUntil("document_edit sent") { bridge.shadow["main.tex"]?.revision == editedRevision }
         if ledgerLaunch != nil { try await waitUntil("durable edit") { bridge.durable?.revision == editedRevision } }
-        XCTAssertEqual(model.nearbyDestination, advertised, "finding: the Mac keeps advertising the pinned destination after the edit; the bridge decides")
+        XCTAssertNil(model.nearbyDestination, "the Mac stops advertising a pin an edit overlapped")
+        XCTAssertEqual(model.bridgeDestination?.destinationId, advertised.destinationId, "the pin is listed (invalid), not silently removed")
+        XCTAssertEqual(model.bridgeDestination?.valid, false)
+        XCTAssertTrue(model.captureNote?.contains("dropped by an edit") == true, model.captureNote ?? "nil")
+        let query = try await session.connection.destinationQuery()
+        XCTAssertNil(query, "destination_query reports nothing pinned")
 
-        do { _ = try await r.submit(stale); XCTFail("a capture bound to an overlapped anchor must be refused") }
+        // The reference client checks the destination first: terminal, nothing sent to the bridge.
+        do { _ = try await r.submit(stale); XCTFail("a capture bound to a dropped destination must not be sent") }
+        catch let e as NearbyError {
+            guard case .destinationChanged(let was, let now) = e else { return XCTFail("unexpected \(e)") }
+            XCTAssertTrue(was.hasPrefix(advertised.destinationId), was)
+            XCTAssertNil(now)
+            XCTAssertFalse(e.isRetryable); XCTAssertTrue(e.needsNewDestination); XCTAssertTrue(e.needsNewCapture)
+        }
+        XCTAssertFalse(h.snapshot.contains { if case .captureRefused = $0 { return true }; return false }, "the listener saw no capture: \(h.snapshot)")
+        XCTAssertNil(model.bridgeCaptures.first { $0.captureId == "acceptance-stale-1" })
+
+        // A client that skips the check: the real bridge decides, same conclusion.
+        do { _ = try await r.submit(stale, requireCurrentDestination: false); XCTFail("a capture bound to an overlapped anchor must be refused") }
         catch let e as NearbyError {
             guard case .remote(let code, _) = e else { return XCTFail("unexpected \(e)") }
             XCTAssertEqual(code, "destination_reselection_required")
             XCTAssertFalse(e.isRetryable, "terminal: retrying the same bytes would repeat it")
-            print("measured: stale-anchor refusal code=\(code) needsNewCapture=\(e.needsNewCapture)")
+            XCTAssertTrue(e.needsNewCapture, "classified: build a new capture")
+            XCTAssertTrue(e.needsNewDestination, "…at a destination re-read from the Mac")
+            print("measured: stale-anchor refusal code=\(code) needsNewCapture=\(e.needsNewCapture) needsNewDestination=\(e.needsNewDestination)")
         }
         XCTAssertTrue(journalFiles(in: store, captureId: "acceptance-stale-1").isEmpty, "refused before the journal")
         XCTAssertEqual(model.bridgeCaptures.first { $0.captureId == "acceptance-stale-1" }?.state, .failed, model.bridgeStatus)
@@ -333,7 +354,10 @@ final class CaptureAcceptanceTests: XCTestCase {
         model.caretUTF16 = 5
         model.pinAnchorAtCaret()
         try await waitUntil("re-pin") { model.bridgeDestination?.pinnedRevision == editedRevision }
+        XCTAssertEqual(model.bridgeDestination?.valid, true)
         let fresh = try XCTUnwrap(model.nearbyDestination)
+        let requeried = try await session.connection.destinationQuery()
+        XCTAssertEqual(requeried?.destinationId, fresh.destinationId)
         XCTAssertNotEqual(fresh.destinationId, advertised.destinationId)
         XCTAssertEqual(fresh.baseRevision, editedRevision)
         let freshWire = NearbyWire.Destination(destinationId: fresh.destinationId, projectId: fresh.projectId, path: fresh.path, baseRevision: fresh.baseRevision)
@@ -348,6 +372,9 @@ final class CaptureAcceptanceTests: XCTestCase {
         model.updateActiveText(appended)
         try await waitUntil("second document_edit sent") { bridge.shadow["main.tex"]?.revision == model.editorRevision }
         XCTAssertEqual(model.nearbyDestination, fresh, "unchanged pin, unchanged advertisement")
+        XCTAssertEqual(model.bridgeDestination?.valid, true)
+        XCTAssertEqual(model.bridgeDestination?.currentRevision, model.editorRevision, "the mirror follows the bridge's current_revision")
+        XCTAssertEqual(model.bridgeDestination?.startByte, 5, "an edit after the pin does not move it")
         let third = try session.makeCapture(captureId: "acceptance-stale-3", image: Self.fixturePNG, mimeType: "image/png", instructions: "edit elsewhere", destination: freshWire)
         let ack3 = try await r.submit(third)
         XCTAssertTrue(ack3.durable)

@@ -75,6 +75,9 @@ final class BridgeSession {
     /// Reconciliation after a relaunch may need the editor revision to pass a
     /// revision the ledger/bridge already confirmed (`advanceEditorRevision`).
     var onRevisionFloor: (Int) -> Void = { _ in }
+    /// An ordinary edit overlapped the pinned destination (id given): the pin
+    /// is kept listed as invalid, never re-pinned; the shell tells the user.
+    var onDestinationDropped: ((String) -> Void)?
     /// How the shell reads the live source, remembered from `reconcile`/`open`
     /// so a relaunch can reconcile and resynchronize without the shell.
     struct DocumentContext {
@@ -369,6 +372,11 @@ final class BridgeSession {
     /// otherwise it is dropped and reported, and a new pin is required.
     private func restoreDestination(path: String, source: (text: String, revision: Int)) async -> String {
         guard let d = destination else { return "no pinned destination" }
+        guard d.valid else {
+            destination = nil
+            onChange()
+            return "pinned destination \(d.destinationId) had been dropped by an edit before the bridge exited; pin again"
+        }
         guard d.path == path, d.pinnedRevision == source.revision, d.binding.sourceSha256 == SourceDigest.sha256Hex(source.text) else {
             destination = nil
             onChange()
@@ -571,6 +579,7 @@ final class BridgeSession {
         let edit = TransferV1.DocumentEdit(projectId: projectId, path: path, baseRevision: base, revision: revision,
                                            startByte: region.startByte, endByte: region.oldEndByte, replacement: region.replacement)
         shadow[path] = (revision, newText)
+        followDestination(path: path, region: region, revision: revision)
         if let l = ledger, ledgerError == nil, let doc = durable, doc.path == path {
             if consumeAdoption(newText) {
                 // The store already holds this text; only its revision number must catch up.
@@ -677,6 +686,23 @@ final class BridgeSession {
         onChange()
     }
 
+    /// Mirrors the bridge's own anchor rule for an ordinary edit
+    /// (`DestinationTracking`): a pin the edit overlapped stays listed but
+    /// `valid == false` (shown "(invalid)", announced to companions as no
+    /// destination) until the user pins again; a pin after the edit is
+    /// shifted. Never re-pins.
+    private func followDestination(path: String, region: SourceMapping.ChangedRegion, revision: Int) {
+        guard let d = destination, d.projectId == projectId, d.path == path else { return }
+        let next = DestinationTracking.follow(d, region: region, revision: revision)
+        guard next != d else { return }
+        destination = next
+        if d.valid, !next.valid {
+            note("pinned destination \(d.destinationId) dropped: the edit at bytes \(region.startByte)..<\(region.oldEndByte) (revision \(revision)) overlapped it; pin again")
+            onDestinationDropped?(d.destinationId)
+        }
+        onChange()
+    }
+
     func convert(captureId: String, supportedFeatures: [String] = []) async throws -> RuntimeV1.CaptureProposal {
         let previous = capture(captureId)?.state ?? .received
         setCapture(captureId, .converting, "converting…")
@@ -706,7 +732,18 @@ final class BridgeSession {
             return edit
         } catch {
             let f = fail("capture_prepare_insert", error)
-            setCapture(captureId, f.code == "destination_reselection_required" ? .needsReselection : .proposed, f.text)
+            // The row state must say what the bridge holds: no proposal exists after
+            // `proposal_missing` (received, convertible), `capture_rejected` is terminal,
+            // `already_applied` is settled by the shell; other refusals keep the proposal.
+            let state: CaptureState
+            switch f.code {
+            case "destination_reselection_required": state = .needsReselection
+            case "proposal_missing": state = .received
+            case "capture_rejected": state = .rejected
+            case "already_applied": state = capture(captureId)?.state == .confirmed ? .confirmed : .applied
+            default: state = .proposed
+            }
+            setCapture(captureId, state, f.text)
             throw f
         }
     }

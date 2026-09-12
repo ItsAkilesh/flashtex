@@ -57,7 +57,23 @@ final class NearbyReceiveCapTests: XCTestCase {
         for code in ["image_too_large", "invalid_image", "revision_mismatch", "capture_id_conflict", "unsupported_image"] {
             let e = NearbyError.remote(code: code, message: "")
             XCTAssertFalse(e.isRetryable, code); XCTAssertTrue(e.needsNewCapture, code); XCTAssertFalse(e.needsRepair, code)
+            XCTAssertFalse(e.needsNewDestination, code)
         }
+        // Bridge refusals the Mac passes through verbatim (crates/bridge validate/capture_anchor).
+        for code in ["destination_reselection_required", "revision_conflict", "instructions_too_large", "invalid_id"] {
+            let e = NearbyError.remote(code: code, message: "")
+            XCTAssertFalse(e.isRetryable, code); XCTAssertTrue(e.needsNewCapture, code); XCTAssertFalse(e.needsRepair, code)
+            XCTAssertFalse(e.isClosing, code); XCTAssertFalse(e.isBackpressure, code)
+        }
+        for code in ["destination_reselection_required", "revision_conflict"] {
+            XCTAssertTrue(NearbyError.remote(code: code, message: "").needsNewDestination, code)
+        }
+        XCTAssertTrue(NearbyError.destinationChanged(captureDestination: "d1", current: nil).needsNewDestination)
+        XCTAssertTrue(NearbyError.destinationChanged(captureDestination: "d1", current: nil).needsNewCapture, "same conclusion as the bridge's refusal")
+        XCTAssertFalse(NearbyError.destinationChanged(captureDestination: "d1", current: "d2").isRetryable)
+        XCTAssertFalse(NearbyError.remote(code: "unavailable", message: "").needsNewCapture, "a bridge outage is not a capture defect")
+        XCTAssertFalse(NearbyError.remote(code: "unavailable", message: "").needsNewDestination)
+        XCTAssertTrue(NearbyWire.destinationErrorCodes.isSubset(of: NearbyWire.captureInputErrorCodes))
         XCTAssertNil(NearbyWire.checkImage(TestImages.png1x1, mimeType: "image/png"))
         XCTAssertEqual(NearbyWire.checkImage(TestImages.png1x1, mimeType: "image/jpeg"), "mime_type image/jpeg but the bytes are not a JPEG")
         XCTAssertEqual(NearbyWire.checkImage(Data(), mimeType: "image/png"), "image is empty")

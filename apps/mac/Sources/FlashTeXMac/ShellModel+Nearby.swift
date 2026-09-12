@@ -71,13 +71,11 @@ extension ShellModel: CaptureSink, DestinationProvider {
 
     /// The pinned anchor as the companion sees it, or nil when nothing is
     /// pinned. With a bridge attached the bridge's anchor is authoritative
-    /// (`base_revision` = its pinned revision); otherwise the local anchor.
+    /// (`base_revision` = its pinned revision; `nil` once an edit dropped it —
+    /// the bridge would refuse the local anchor's id); otherwise the local
+    /// anchor. See `NearbyDestination.swift`.
     var nearbyDestination: NearbyV1.Destination? {
-        if let a = bridgeDestination, a.valid {
-            return .init(destinationId: a.destinationId, projectId: a.projectId, path: a.path, baseRevision: a.pinnedRevision)
-        }
-        guard let anchor else { return nil }
-        return .init(destinationId: anchor.id, projectId: projectId, path: anchor.path, baseRevision: anchor.revision)
+        announcedNearbyDestination(bridgeAttached: bridgeAttached, bridgeAnchor: bridgeDestination, localAnchor: anchor)
     }
 
     // MARK: CaptureSink / DestinationProvider (called from the listener queue)

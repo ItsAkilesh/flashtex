@@ -86,12 +86,26 @@ public enum NearbyError: Error, CustomStringConvertible, Equatable {
         }
     }
 
-    /// Terminal because the capture itself was refused (image, id, revision):
-    /// a retry with the same bytes repeats it; build a new capture.
+    /// Terminal because the capture itself was refused (image, id, revision,
+    /// or a destination the Mac no longer holds — reported before sending or
+    /// refused by its bridge): a retry with the same bytes repeats it; build a
+    /// new capture.
     public var needsNewCapture: Bool {
         switch self {
         case .remote(let code, _): return NearbyWire.captureInputErrorCodes.contains(code)
-        case .invalidInput: return true
+        case .invalidInput, .destinationChanged: return true
+        default: return false
+        }
+    }
+
+    /// The destination this capture was built against is not what the Mac
+    /// holds now (reported by the Mac before sending, or refused by its
+    /// bridge): reselect on the Mac and re-read `hello_ack.destination`
+    /// before building the new capture.
+    public var needsNewDestination: Bool {
+        switch self {
+        case .destinationChanged: return true
+        case .remote(let code, _): return NearbyWire.destinationErrorCodes.contains(code)
         default: return false
         }
     }

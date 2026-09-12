@@ -152,10 +152,21 @@ public enum NearbyWire {
     public static let backpressureErrorCodes: Set<String> = ["too_many_in_flight", "inbox_full"]
     /// The Mac refused this capture's content or identity; retrying the same
     /// bytes can only repeat the refusal. Build a new capture (new id, valid
-    /// image, current destination) instead.
+    /// image, current destination) instead. The first line is the listener's
+    /// own codes; the second line is what the Mac's bridge answers verbatim
+    /// when one is attached (crates/bridge `validate`/`capture_anchor`):
+    /// `destination_reselection_required` — the pinned target was unpinned or
+    /// an edit overlapped it (reselect on the Mac; `hello_ack`/`destination`
+    /// then report `null` or a new id), `revision_conflict` — `base_revision`
+    /// is not the pin's revision, `instructions_too_large`, `invalid_id`.
     public static let captureInputErrorCodes: Set<String> = [
         "image_too_large", "invalid_image", "unsupported_image", "revision_mismatch", "capture_id_conflict", "bad_request",
+        "destination_reselection_required", "revision_conflict", "instructions_too_large", "invalid_id",
     ]
+    /// Subset of `captureInputErrorCodes` meaning the *destination* the capture
+    /// was built against is gone: reselect the insertion point on the Mac
+    /// (re-read `hello_ack.destination`) before building the new capture.
+    public static let destinationErrorCodes: Set<String> = ["destination_reselection_required", "revision_conflict"]
 
     /// Client-side mirror of the Mac's cheap image checks: declared MIME must
     /// match the file signature and the encoded size must be within
