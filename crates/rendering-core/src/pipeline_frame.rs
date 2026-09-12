@@ -54,7 +54,11 @@ pub fn pair(
             .as_array()
             .ok_or_else(|| ValidationError("missing diagnostics".into()))?;
         require(
-            !diagnostics.iter().any(|d| d["code"] == "tfm_missing"),
+            !diagnostics.iter().any(|d| {
+                d["code"] == "tfm_missing"
+                    || d["code"] == "required_metrics_unavailable"
+                    || d["severity"] == "error"
+            }),
             "reference metrics unavailable",
         )?;
     }

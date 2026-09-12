@@ -196,14 +196,55 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
     assert_eq!(unicode.get(&62).map(String::as_str), Some("H"));
     assert!(unicode.values().any(|s| s == "fi"));
     // Published producer65dbe7d, without JSON repair, is now accepted end to end.
-    let published = include_bytes!("fixtures/original-reference/65dbe7d-v2.json");
+    let published = include_bytes!("fixtures/original-reference/65dbe7d-clean-v2.json");
     let published_resources =
         BTreeMap::from([(digest(font), resources.values().next().unwrap().clone())]);
     let published = PipelineCff::bind(published, &caps, &docs, &published_resources).unwrap();
     let original_pdf = published.export_searchable(8 * 1024 * 1024).unwrap();
+    let escaped_request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-request.jsonl"
+    ))
+    .unwrap();
+    let escaped_docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: escaped_request["payload"]["documents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .into(),
+        },
+    )]);
+    let escaped = PipelineCff::bind(
+        include_bytes!("fixtures/original-reference/escaped-display.json"),
+        &caps,
+        &escaped_docs,
+        &published_resources,
+    )
+    .unwrap();
+    assert_eq!(
+        escaped.export_searchable(8 * 1024 * 1024).unwrap().bytes,
+        include_bytes!("fixtures/original-reference/escaped-searchable.pdf")
+    );
+
+    let unavailable = PipelineCff::bind(
+        include_bytes!("fixtures/original-reference/65dbe7d-required-unavailable.json"),
+        &caps,
+        &docs,
+        &published_resources,
+    )
+    .unwrap();
+    assert_eq!(
+        unavailable
+            .export_searchable(8 * 1024 * 1024)
+            .err()
+            .unwrap()
+            .0,
+        "error diagnostics prevent searchable export"
+    );
     assert_eq!(
         original_pdf.bytes,
-        include_bytes!("fixtures/original-reference/65dbe7d-searchable.pdf")
+        include_bytes!("fixtures/original-reference/65dbe7d-clean-searchable.pdf")
     );
 
     // Explicit consumer extraction fixture with a real empty-outline space,
@@ -349,5 +390,40 @@ fn reviewable_producer_candidate_changes_only_raw_digest() {
     assert_eq!(
         candidate["payload"]["fonts"][0]["font_id"],
         base["payload"]["fonts"][0]["font_id"]
+    );
+}
+
+#[test]
+fn actual_escape_text_is_distinct_from_tex_source_spelling() {
+    let request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-request.jsonl"
+    ))
+    .unwrap();
+    let source = request["payload"]["documents"][0]["text"].as_str().unwrap();
+    let display: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-display.json"
+    ))
+    .unwrap();
+    assert!(display["payload"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    for symbol in ["%", "_", "&", "#", "{", "}"] {
+        let run = display["payload"]["pages"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["text"] == symbol)
+            .unwrap();
+        let span = &run["clusters"][0]["sources"][0];
+        assert_eq!(
+            &source[span["start_byte"].as_u64().unwrap() as usize
+                ..span["end_byte"].as_u64().unwrap() as usize],
+            format!("\\{symbol}")
+        );
+    }
+    assert_eq!(
+        include_str!("fixtures/original-reference/escaped-extracted.txt"),
+        "Escaped % _ & # { } and office fi.\n\n\u{c}"
     );
 }

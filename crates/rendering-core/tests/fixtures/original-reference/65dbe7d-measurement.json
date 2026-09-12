@@ -1,5 +1,5 @@
 {
-  "status": "published original producer, no output rewriting",
+  "status": "historical FALLBACK metrics: required_metrics_unavailable error; not matched-metrics acceptance",
   "producer_commit": "65dbe7da7a182e99322070e2c9763cc3b69a342b",
   "source_archive": "git archive producer crates/render-pipeline; unchanged isolated build",
   "font_sha256": "e6be218ae83e61aa8a29990d3cdc401c678c1962188cb9a4a8b6359e4f5e5870",
@@ -33,5 +33,6 @@
     "65dbe7d-reference-text.txt": "c07367c3ecbc63ae919a318e707047ec051a8b4e82a5e85cea835b8deb1f84fb",
     "65dbe7d-bbox.html": "7c1f400adcd0bd7b444d91cd0c444b699d42f657df1113b0bc1a277975f25952",
     "65dbe7d-reference-bbox.html": "60712a500492d56b0d829574b0b3968a7a5a6d1dd4b2062861c64720e04518c2"
-  }
+  },
+  "correction": "superseded by65dbe7d-clean-measurement.json with rooted required assets and zero diagnostics"
 }

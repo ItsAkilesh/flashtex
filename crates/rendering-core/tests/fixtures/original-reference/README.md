@@ -137,7 +137,12 @@ Actual producer4888a67 remains refused until it publishes its raw SHA correctly.
 PDF classifier fix654f626 is merged unchanged. The existing independent
 unsupported-identical guard and all seven PDF comparison tests continue to pass.
 
-## Published producer65dbe7d: first verified searchable original export
+## Historical65dbe7d run: raw hash verified, required metrics unavailable
+
+Correction: the first run below used the old FLASHTEX_TFM_DIRS layout and
+contained an error diagnostic. Its211-pixel result is fallback-metrics evidence,
+not matched-metrics acceptance. The corrected zero-diagnostic run is documented
+next; searchable export now refuses error diagnostics.
 
 The owner published the raw digest correction in919ad8b, followed by65dbe7d.
 An untouched archived build of65dbe7d now emits valid raw font identities and
@@ -165,3 +170,39 @@ This mode emits the owner's CID-CFF PDF and a separate verified-input evidence
 sidecar. It does not use the outline-only exporter. Run `pdf_compare` without
 passing that sidecar (the comparison's outline-span evidence format is distinct),
 then `pdftotext -enc UTF-8` and `pdftoppm -r 144 -singlefile -png` on both PDFs.
+
+## Corrected rooted-assets run and source-text semantics
+
+The new producer requires four pinned TFM files and the exact license under a
+rooted layout: `fonts/tfm/public/lm/{ec-lmr12,rm-lmr12,rm-lmr8,rm-lmr6}.tfm` and
+`doc/fonts/lm/GUST-FONT-LICENSE.TXT`. FLASHTEX_TFM_DIRS must name that full TFM
+directory, not the old flat download directory. With these unchanged official
+assets the producer reports zero diagnostics. `65dbe7d-clean-*` pins this run.
+
+The original searchable PDF SHA6308c8a95726a980ec341ad53af15a0b12654d27c9021d5a74306b8b807c9cb1
+reproduces exactly from unmodified producer JSON. Poppler26.01 extracted text
+matches the established reference, and144DPI1224×1584 RGB pixels are identical.
+This establishes one fixture/configuration's raster and extraction equality;
+it is not all-document, all-resolution or PDF byte/operator equality. The latter
+still differ. Word-box x differences are at most0.007259bp; y box differences
+remain font-metric extraction differences, not proven baseline differences.
+
+The historical error-bearing display is retained as
+`65dbe7d-required-unavailable.json` and now exercises a refusal before searchable
+export. Partial geometry remains available through the separate page API. The
+reference frame gate refuses both old `tfm_missing` and new
+`required_metrics_unavailable`/error diagnostics, preventing this setup mistake
+from being labeled successful reference acceptance again.
+
+Actual published-producer `escaped-*` fixtures retain visible `% _ & # { }`
+cluster strings while their source spans include the original backslash escapes.
+Actual exported PDF text is `Escaped % _ & # { } and office fi.`; no extraction
+text is inferred from source spelling or reverse-mapped from a GID. `ffi`/`fi`
+clusters retain their logical strings. Therefore no new policy refusal is needed
+for these demonstrated cases. Source ranges remain navigation provenance.
+
+The actual math emitter appends its laid-out `g.ch` into logical cluster text,
+while source ranges can cover the enclosing TeX expression. No matching
+`latinmodern-math.otf` is installed on this host, so a real matching-font math
+extraction probe is still unavailable; there is no new math-text parity claim.
+The ActualText proposal and existing ambiguous-mapping refusals remain in force.

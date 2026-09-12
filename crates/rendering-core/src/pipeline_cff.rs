@@ -212,6 +212,14 @@ pub struct SearchablePdf {
 impl PipelineCff {
     pub fn export_searchable(&self, max_pdf_bytes: usize) -> Result<SearchablePdf> {
         require(
+            !self
+                .list
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d.severity, Severity::Error)),
+            "error diagnostics prevent searchable export",
+        )?;
+        require(
             max_pdf_bytes > 0 && max_pdf_bytes <= 64 * 1024 * 1024,
             "PDF output budget",
         )?;

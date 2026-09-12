@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "73af4b8e7816c4c895b9fcddf278757276aa6feb",
+  "code_revision": "59b974e9c6bce6e090aaf7570bbe3950efb3d662",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Continue math/escaped-control text semantics audit; retain source provenance separately and no visual parity claim.",
+  "next_action": "Obtain existing Mac LMmath asset/fixture for math cluster extraction evidence; preserve explicit text ambiguity guards. Prior211pixel run classified fallback/error, not matched acceptance.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Published producer65dbe7d now passes raw resource/source binding and exports real searchable original PDF; byte-for-byte regression added, no metadata repair.",
+  "summary": "Corrected required-metrics setup: untouched65dbe7d with rooted pinned assets and zero diagnostics yields identical plain fixture raster/text to pdfTeX reference. Added error-diagnostic export/ref gates and actual escaped-text evidence.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:06:58Z",
+  "updated_utc": "2026-09-12T10:11:55Z",
   "usage": {
-    "evidence": "156tests and strictclippy pass. OriginalPDF005e999bc16a49b88b341627a9a6afbd82768e3caba0f78a0d537f5ae63f60ff. Poppler26.01 text equals establishedpdfTeX reference;144DPI1224x1584 RGB differs211pixels.13wordstrings match; boxes notbaselineevidence. Full source/resource/reference/measurement hashes pinned.",
-    "status": "Hosted OpenAI only; no providers or descendants. Native context telemetry/control unavailable."
+    "evidence": "157tests and strictclippy pass. Clean originalPDF6308c8a95726a980ec341ad53af15a0b12654d27c9021d5a74306b8b807c9cb1;144DPI1224x1584 RGB0pixels differ, extractedtext equal. Escaped%_&#{}andffi/fi exact extraction verified; source spans retainTeX. Matching LMmath asset unavailable. No pending calls.",
+    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
