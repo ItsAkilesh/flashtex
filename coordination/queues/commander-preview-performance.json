@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
-      "objective": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
+      "name": "Implement explicit metadata-only edit acknowledgement without full-source cloning; preserve default full reply and premutation policy validation",
+      "objective": "Implement explicit metadata-only edit acknowledgement without full-source cloning; preserve default full reply and premutation policy validation",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify full-size flush and fallback recovery with actual required envelopes and exact byte equality",
-      "objective": "Verify full-size flush and fallback recovery with actual required envelopes and exact byte equality",
+      "name": "Measure same500KB acknowledgement bytes and verify durable edit, stale retry and lost-reply reopen semantics",
+      "objective": "Measure same500KB acknowledgement bytes and verify durable edit, stale retry and lost-reply reopen semantics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish measured phase attribution and native consumer handoff without changing defaults or claiming paint latency",
-      "objective": "Publish measured phase attribution and native consumer handoff without changing defaults or claiming paint latency",
+      "name": "Publish native opt-in contract with exact source identity and reconciliation behavior; no default activation",
+      "objective": "Publish native opt-in contract with exact source identity and reconciliation behavior; no default activation",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

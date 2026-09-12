@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "35616393ec6447900b8c680f59447f8c98cafe59",
-  "objective": "Measure and, if justified, batch required-output serialization while preserving exact bounded fallback and durable ACK semantics",
+  "input_main_sha": "3b0fa70e1bb55e31d013828a54ba3416ad47e8e2",
+  "objective": "Implement explicit metadata-only edit acknowledgement without full-source cloning; preserve default full reply and premutation policy validation",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T12:03:26.044120+00:00"
+  "updated_utc": "2026-09-12T12:07:54.247541+00:00"
 }
