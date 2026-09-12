@@ -31,6 +31,8 @@ It separately detects the cross-transport failure mode where `CaptureTransport`
 prints a capture and disconnected `BonjourTransport` prints the same JSON again.
 For the queued companion-to-Mac interop gate, it also flags plaintext/unpaired
 Bonjour delivery and missing physical-device local-network privacy declarations.
+Finally, it distinguishes a received network response from a durable bridge
+receipt, which prevents the companion from reporting delivery too early.
 
 Run the harness unit tests with:
 

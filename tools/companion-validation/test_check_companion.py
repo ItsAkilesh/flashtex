@@ -111,6 +111,20 @@ class CompanionValidationTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_requires_durable_capture_receipt(self):
+        self.assertEqual(
+            check_companion.receipt_findings(
+                'if type_ == "capture_received" { let id = payload["capture_id"] }'
+            ),
+            ["capture_received is accepted without checking durable receipt status"],
+        )
+        self.assertEqual(
+            check_companion.receipt_findings(
+                'if type_ == "capture_received", let durable = payload["durable"] as? Bool, durable == true {}'
+            ),
+            [],
+        )
         self.assertEqual(
             check_companion.cross_transport_findings(
                 "BonjourTransport.shared.send(json)", "print(jsonLine)\nfflush(stdout)"

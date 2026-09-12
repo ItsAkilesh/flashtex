@@ -182,6 +182,19 @@ def nearby_transport_findings(bonjour_source: str, info_plist: str) -> list[str]
     return findings
 
 
+def receipt_findings(bonjour_source: str) -> list[str]:
+    """Ensure a network acknowledgement is not confused with a durable receipt."""
+    findings: list[str] = []
+    if 'type_ == "capture_received"' not in bonjour_source:
+        findings.append("Bonjour transport does not parse capture_received acknowledgements")
+        return findings
+    if 'payload["durable"]' not in bonjour_source:
+        findings.append("capture_received is accepted without checking durable receipt status")
+    elif "durable == true" not in bonjour_source and "durable {" not in bonjour_source:
+        findings.append("capture_received durable status is parsed but not required before acknowledgement")
+    return findings
+
+
 def fixture_mime_findings(fixture: Path) -> list[str]:
     """Validate declared MIME type against decoded bytes in a capture fixture."""
     try:
@@ -216,6 +229,7 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
         "deduplication_findings": [],
         "cross_transport_findings": [],
         "nearby_transport_findings": [],
+        "receipt_findings": [],
         "fixture_mime_findings": [],
         "commands": [],
     }
@@ -244,14 +258,19 @@ def validate_tree(source: Path, xcodebuild: str, build: bool) -> dict[str, Any]:
                 bonjour_transport.read_text(encoding="utf-8"),
                 info_plist.read_text(encoding="utf-8") if info_plist.exists() else "",
             )
+            result["receipt_findings"] = receipt_findings(
+                bonjour_transport.read_text(encoding="utf-8")
+            )
         else:
             result["cross_transport_findings"] = ["Bonjour transport source missing"]
             result["nearby_transport_findings"] = ["Bonjour transport source missing"]
+            result["receipt_findings"] = ["Bonjour transport source missing"]
     else:
         result["delivery_findings"] = ["capture delivery sources missing"]
         result["deduplication_findings"] = ["capture delivery sources missing"]
         result["cross_transport_findings"] = ["capture delivery sources missing"]
         result["nearby_transport_findings"] = ["capture delivery sources missing"]
+        result["receipt_findings"] = ["capture delivery sources missing"]
     fixture = source / CAPTURE_FIXTURE
     if fixture.exists():
         result["fixture_mime_findings"] = fixture_mime_findings(fixture)
