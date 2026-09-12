@@ -13,17 +13,17 @@
   "capabilities": [
     "rust-runtime"
   ],
-  "code_revision": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
+  "code_revision": "551371625898078095046ea82dcbe0e29007f5d0",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "c47139ffbbf49be640a7e7033abcbce0d9c3b60e",
-  "next_action": "Send additive API to helper owner for eventless display profiling. Await concrete consumer feedback; preserve pinned binaries and owned crate boundary. No extra workers/providers.",
+  "main_integrated_through": "5d12255f26c07de0bef07dced4bb89c3bcf84cd9",
+  "next_action": "Send exact large-v2 decline boundary to Commander/helper owner. Await concrete runtime consumer feedback; preserve current candidate/profile contracts, no peer/provider writes.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Authorized r4 followup scalar DisplayResponseProfile published: exact request/project/revision/display_epoch, framed bytes, parse/decode-wait/owner-wait/source-binding timings; current only, clears submit/close/policy/failure, survives candidate take. Full tests8 siblings and strict clippy pass; actual6e69661 requested4434bytes profile recorded, legacy/declined/failed None. Single uncalibrated observation, no native/render validation claim.",
+  "summary": "Authorized multipage acceptance: three26-page states exact fresh/persistent runtime page/item equality plus direct raw byte equality, default and2M producer limits. Item counts10979/10979/10980, frames1745747/1745768/1745905bytes; final sentinel and hashes intact. Actual v2 estimates27,152,372bytes and explicitly declines under16MiB;96 overfull warnings preserved. No cap/performance change. Actual replay/clippy pass.",
   "tool": "codex",
-  "updated_utc": "2026-09-12T11:24:02Z",
+  "updated_utc": "2026-09-12T11:29:14Z",
   "usage": {
     "status": "unknown"
   }
