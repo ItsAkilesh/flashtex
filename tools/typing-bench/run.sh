@@ -179,7 +179,7 @@ PY
 wait_quiet() { # blocks until the 1-minute load is below QUIET_LOAD and no other
   local waited=0 l other # FlashTeXMac (another bench/validation run) is alive, or QUIET_WAIT s passed
   while :; do
-    l="$(load1)"; other="$(pgrep -x FlashTeXMac | wc -l | tr -d ' ')"
+    l="$(load1)"; other="$( (pgrep -x FlashTeXMac || true) | wc -l | tr -d ' ')"
     if awk -v l="$l" -v q="$QUIET_LOAD" 'BEGIN { exit !(l < q) }' && (( other == 0 )); then return 0; fi
     if (( waited >= QUIET_WAIT )); then echo "    load $l / $other other FlashTeXMac after $QUIET_WAIT s; running anyway" >&2; return 0; fi
     (( waited == 0 )) && echo "    load $l (limit $QUIET_LOAD), $other other FlashTeXMac process(es); waiting for a quiet machine (up to $QUIET_WAIT s)"
