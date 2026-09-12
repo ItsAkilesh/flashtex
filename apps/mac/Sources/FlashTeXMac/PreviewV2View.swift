@@ -782,7 +782,8 @@ struct PreviewV2Pane: View {
     }
 
     private func pages(_ frame: V2Frame, stale: Bool) -> some View {
-        PreviewV2View(frame: frame, dark: model.darkPreview, stale: stale, caretPath: model.activePath, caretByte: model.caretByte) { hit in
+        PreviewV2View(frame: frame, dark: model.darkPreview, stale: stale, caretPath: model.activePath, caretByte: model.caretByte,
+                      zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 }) { hit in
             model.navigateV2(hit)
         }
     }
@@ -889,13 +890,17 @@ struct PreviewV2View: View {
     var stale = false
     let caretPath: String
     let caretByte: Int?
+    /// Zoom multiplier over the fit-to-width scale (PreviewZoom.swift).
+    var zoom: CGFloat = 1
+    var onFitScale: ((CGFloat) -> Void)? = nil
     let onSelect: (V2Geometry.Hit) -> Void
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { geo in
             let widest = frame.list.pages.map(\.widthPt).max() ?? 612
-            let scale = min(1, max(0.2, (geo.size.width - 48) / widest))
+            let fit = min(1, max(0.2, (geo.size.width - 48) / widest))
+            let scale = PreviewZoom.scale(fit: fit, zoom: zoom)
             // Scroll anchoring (PreviewAnchor.swift): the (page, fraction) under the
             // viewport's top edge survives a frame with another page count and a
             // pane resize; a frame with the same page geometry never moves the scroll.
@@ -923,6 +928,7 @@ struct PreviewV2View: View {
                 .padding(24)
                 .background(PreviewAnchorKeeper(layout: layout))
             }
+            .onChange(of: fit, initial: true) { _, f in onFitScale?(f) }
         }
         .background(dark ? Color(white: 0.12) : Color(nsColor: .windowBackgroundColor))
         .onAppear { V2PageRasterizer.shared.setCurrent(frame: frame) }

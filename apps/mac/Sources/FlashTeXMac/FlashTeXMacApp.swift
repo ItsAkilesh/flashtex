@@ -147,6 +147,24 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Toggle Problems") { model.problemsVisible.toggle() }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
+                Divider()
+                // Preview zoom (PreviewZoom.swift): multiplier over fit-to-width.
+                Button("Zoom In") { model.previewZoomIn() }
+                    .keyboardShortcut("=")
+                Button("Zoom Out") { model.previewZoomOut() }
+                    .keyboardShortcut("-")
+                Button("Actual Size") { model.previewActualSize() }
+                    .keyboardShortcut("0")
+                Button("Fit Width") { model.previewFitWidth() }
+                    .keyboardShortcut("9")
+                Divider()
+                // Editor text size: EditorPreferences.fontSize (8…36 pt).
+                Button("Increase Editor Font Size") { model.increaseEditorFontSize() }
+                    .keyboardShortcut("=", modifiers: [.command, .option])
+                Button("Decrease Editor Font Size") { model.decreaseEditorFontSize() }
+                    .keyboardShortcut("-", modifiers: [.command, .option])
+                Button("Reset Editor Font Size") { model.resetEditorFontSize() }
+                    .keyboardShortcut("0", modifiers: [.command, .option])
             }
             CommandGroup(after: .help) {
                 Button("FlashTeX Accessibility Help") { openWindow(id: AccessibilityHelpView.windowID) }

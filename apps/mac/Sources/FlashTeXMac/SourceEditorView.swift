@@ -81,6 +81,7 @@ struct SourceEditorView: NSViewRepresentable {
         tv.delegate = context.coordinator
         // Font, tab interval, wrapping and appearance follow EditorPreferences (applied now and on every change).
         context.coordinator.preferencesToken = EditorPreferences.shared.observeApplying(to: tv)
+        context.coordinator.magnifyMonitor = EditorFontMagnifier.install(on: scroll) // pinch changes the font size (PreviewZoom.swift)
         tv.isRichText = false
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
@@ -606,6 +607,7 @@ struct SourceEditorView: NSViewRepresentable {
         var appliedEditToken = 0
         /// Keeps EditorPreferences applied to the text view (EditorPreferences.swift).
         var preferencesToken: EditorPreferences.ObservationToken?
+        var magnifyMonitor: Any? { didSet { if let old = oldValue { NSEvent.removeMonitor(old) } } }
         let marks = MarkPainter()
         /// Syntax colours as temporary attributes (SyntaxHighlighter.swift).
         let syntax = SyntaxPainter()
@@ -675,6 +677,7 @@ struct SourceEditorView: NSViewRepresentable {
 
         deinit {
             if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
+            if let magnifyMonitor { NSEvent.removeMonitor(magnifyMonitor) }
             deferredTimer?.invalidate()
         }
 
