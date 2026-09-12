@@ -1,23 +1,22 @@
 {
   "acceptance": [
-    "Cold/warm/edit measurements use pinned corpus inputs and compare exact clean output",
-    "Crash/restart and malformed-repair sequences preserve deterministic state and diagnostics",
-    "Every remaining unsupported corpus feature is explicit with a reproducible case"
+    "Pinned fixture evidence reports every byte/pixel mismatch without normalization",
+    "Warm edit timing includes compiler work and leaves native paint gate explicit"
   ],
   "agent_id": "claude",
-  "allocation_id": "openai-kabir-plus-ft002-stage5",
+  "allocation_id": "openai-kabir-plus-ft002-stage6",
   "branch": "agent/claude/compiler-foundation",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "ac170976d00cb5e8549c17542522608ad35c98ac",
-  "objective": "Harden incremental restart/recovery and run the pinned corpus non-regression gate across the integrated compiler, recording supported, failed, unsupported, and unverified behavior honestly.",
+  "input_main_sha": "38155b125775d84438b5694c9bfb9fb71a2c0556",
+  "objective": "Connect original compiler to negotiated original Rust font/layout pipeline with exact source identity. Separate raw PDF bytes, pixel equality and incremental-clean equivalence; no reference engine in production.",
   "owned_paths": [
     "crates/compiler"
   ],
-  "revision": 5,
+  "revision": 6,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-002",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:22:39Z"
+  "updated_utc": "2026-09-12T06:38:17Z"
 }

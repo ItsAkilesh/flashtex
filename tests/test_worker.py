@@ -44,6 +44,13 @@ class WorkerTests(unittest.TestCase):
         self.execute = self.enterContext(patch.object(worker, 'execute', side_effect=self.model))
         self.publish = self.enterContext(patch.object(coord, 'publish', side_effect=self.commit_checkpoint))
 
+    def test_user_paused_worker_never_spends_or_publishes(self):
+        coord.write_json(self.root / 'coordination/control.json', {'schema_version': 1, 'state': 'running', 'paused_agents': ['tester']})
+        self.publish_assignment()
+        self.assertEqual(self.run_cycle(), 'paused_by_user')
+        self.execute.assert_not_called()
+        self.publish.assert_not_called()
+
     def publish_assignment(self):
         coord.write_json(self.root / 'coordination/assignments/FT-TEST.json', self.assignment)
         coord.git(self.root, 'add', '.')

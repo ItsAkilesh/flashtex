@@ -1,6 +1,6 @@
 {
   "agent_id": "commander-preview-controller",
-  "next_index": 1,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
@@ -14,7 +14,8 @@
       "name": "Subprocess crash/restart and reviewed receipt recovery",
       "objective": "Subprocess crash/restart and reviewed receipt recovery",
       "owned_paths": [
-        "crates/preview-controller"
+        "crates/preview-controller",
+        "crates/document-runtime"
       ],
       "timebox_minutes": 30
     },
@@ -29,7 +30,8 @@
       "name": "Consume authoritative ledger undo/redo and background event integration",
       "objective": "Consume authoritative ledger undo/redo and background event integration",
       "owned_paths": [
-        "crates/preview-controller"
+        "crates/preview-controller",
+        "crates/document-runtime"
       ],
       "timebox_minutes": 30
     }

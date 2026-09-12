@@ -1,3 +1,11 @@
+> LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
+> commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
+> supervisor_api_review rendering. Bridge-context, project-index and edit-ledger
+> agents are paused; preserve all dirty/published work. Never revive or replace
+> them automatically and do not compensate by increasing staffing elsewhere.
+> This overrides older six-engineer staffing text below. Other authorization
+> and explicit-user-stop-only project continuity remain unchanged.
+
 # Astra orchestrator resumption packet
 
 Read AGENTS.md and fetch current authority before any global write. Sole active
@@ -50,3 +58,5 @@ Exact byte-PDF identity and exact pixel identity are separate acceptance gates.
 No alignment/tolerance normalization counts as success. Native typing-to-visible
 under200ms includes paint; Rust queue/compiler measurements alone do not establish it.
 Record explicit unsupported functionality and real/reference resource provenance.
+
+Paused work preservation at staffing cut: conversion-jobs clean c655cb2; project-index local579a58c plus dirty src/search.rs and untracked tests/search_replace.rs; edit-ledger local4f96ee1 plus dirty src/checkpoint.rs and untracked src/checkpoint/. Do not revive those agents, spawn replacements, or move the work to added remote staff. Existing tested published checkpoints may be reviewed by the active Commander; preserve unfinished files.
