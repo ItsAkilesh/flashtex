@@ -15,6 +15,15 @@ pub enum Value {
     Str(String),
     Arr(Vec<Value>),
     Obj(BTreeMap<String, Value>),
+    /// Pre-rendered JSON, written verbatim.
+    ///
+    /// Large replies spend a large share of their time building a `Value` tree
+    /// that is immediately thrown away: at 500 KB the page items alone are tens
+    /// of thousands of maps with owned String keys. This lets a hot path render
+    /// straight to text while the rest of the document stays structured. The
+    /// caller is responsible for the content being valid JSON; the byte-exact
+    /// pinned fixtures are what prove it.
+    Raw(String),
 }
 
 impl Value {
@@ -309,6 +318,7 @@ fn write_into(v: &Value, out: &mut String) {
             }
         }
         Value::Str(s) => write_string(s, out),
+        Value::Raw(raw) => out.push_str(raw),
         Value::Arr(a) => {
             out.push('[');
             for (i, item) in a.iter().enumerate() {
@@ -332,6 +342,15 @@ fn write_into(v: &Value, out: &mut String) {
             out.push('}');
         }
     }
+}
+
+pub fn write_string_into(s: &str, out: &mut String) {
+    write_string(s, out);
+}
+
+/// Number formatting identical to [`Value::Num`] serialisation.
+pub fn write_number_into(n: f64, out: &mut String) {
+    write_into(&Value::Num(n), out);
 }
 
 fn write_string(s: &str, out: &mut String) {
