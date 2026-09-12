@@ -9,15 +9,15 @@
   "branch": "agent/daniel-collaboration/collaboration-core",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6c89f26ff65929428ae9fb1e0dd670318159b0f6",
-  "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Integrate an explicit published consumer adapter without peer ownership edits",
+  "input_main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+  "objective": "Offline bounded collaborative text operation core with stable IDs, causal/replay dedup and convergence fixtures; no network or ledger replacement. Expand measured fixtures and adversarial bounds with reproducible compatibility evidence",
   "owned_paths": [
     "crates/collaboration-core"
   ],
-  "revision": 3,
+  "revision": 4,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-044",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T09:44:37Z"
+  "updated_utc": "2026-09-12T16:48:36Z"
 }
