@@ -29,6 +29,14 @@ final class ShellModel {
     var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
     /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
     var autoClosePairs: Set<Character> = ["{"]
+    // Workspace chrome (ContentView.swift, mac-ui-redesign): the bottom
+    // Problems panel, its severity filter, and the command palette sheet.
+    // The panel state is shared with the palette so Next/Previous
+    // Occurrence work from there too (DiagnosticsPanel.swift).
+    var problemsVisible = true
+    var problemsSeverityFilter: RuntimeV1.Severity?
+    var commandPaletteShown = false
+    let problemsPanel = DiagnosticsPanelState()
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)
     var displayListV2: V2PreviewState?
     var previewSource: PreviewSource = .none

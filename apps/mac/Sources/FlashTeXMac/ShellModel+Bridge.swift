@@ -235,7 +235,7 @@ extension ShellModel {
     /// `capture_submit` bound to the pinned destination.
     func submitSampleCapturePanel() {
         guard bridgeAttached else { captureNote = "Attach the capture bridge first (Edit > Attach Capture Bridge)."; return }
-        guard bridgeDestination?.valid == true else { captureNote = "Pin an insertion point first (⌘⇧P) so the capture has a destination."; return }
+        guard bridgeDestination?.valid == true else { captureNote = "Pin an insertion point first (⌘⌥P) so the capture has a destination."; return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg]
         panel.message = "Choose a PNG or JPEG capture to submit through the bridge"
@@ -256,10 +256,10 @@ extension ShellModel {
     @discardableResult
     func submitCapture(image: RuntimeV1.CaptureImage, captureId: String? = nil, instructions: String) async -> TransferV1.CaptureReceived? {
         guard let bridge, bridge.running else { captureNote = "No bridge attached."; return nil }
-        guard let destination = bridgeDestination else { captureNote = "Pin an insertion point first (⌘⇧P)."; return nil }
+        guard let destination = bridgeDestination else { captureNote = "Pin an insertion point first (⌘⌥P)."; return nil }
         // A pin an edit overlapped is listed "(invalid)"; the bridge would refuse it
         // (`destination_reselection_required`), so say so instead of sending.
-        guard destination.valid else { captureNote = "Pinned insertion point \(destination.destinationId) was dropped by an edit; pin again (⌘⇧P) first."; return nil }
+        guard destination.valid else { captureNote = "Pinned insertion point \(destination.destinationId) was dropped by an edit; pin again (⌘⌥P) first."; return nil }
         guard RuntimeV1.acceptedCaptureMimeTypes.contains(image.mimeType) else { captureNote = "Only PNG and JPEG captures are accepted."; return nil }
         let id = captureId ?? "mac-capture-\(UUID().uuidString.lowercased())"
         let submit = RuntimeV1.CaptureSubmit(captureId: id, destinationId: destination.destinationId,

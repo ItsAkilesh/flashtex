@@ -2,42 +2,140 @@ import SwiftUI
 import FlashTeXProtocol
 import FlashTeXAccessibility
 
+/// The main window (mac-ui-redesign): a `NavigationSplitView` whose sidebar
+/// is the project/outline/problems navigator (WorkspaceSidebar.swift) and
+/// whose detail is the document tabs + editor and the preview side by side,
+/// the Problems panel underneath (ProblemsPanel.swift) and a status bar at
+/// the bottom. The window toolbar carries the everyday commands with their
+/// menu shortcuts in tooltips, and View > Command Palette… (⌘⇧P) lists every
+/// command of the accessibility table (CommandPalette.swift). Every action
+/// here is an existing model operation; the redesign moves and labels them.
 struct ContentView: View {
     @Environment(ShellModel.self) var model
+    @Environment(\.openWindow) private var openWindow
+    @State private var columns: NavigationSplitViewVisibility = .all
+    /// Height of the Problems panel; remembered across launches.
+    @AppStorage("FlashTeX.workspace.problemsHeight") private var problemsHeight: Double = ProblemsPanel.idealHeight
 
     var body: some View {
         @Bindable var model = model
-        VStack(spacing: 0) {
-            StatusBanner()
-            Divider()
-            HSplitView {
-                EditorPane().frame(minWidth: 320)
-                PreviewPane().frame(minWidth: 400)
+        NavigationSplitView(columnVisibility: $columns) {
+            WorkspaceSidebar()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
+        } detail: {
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    HSplitView {
+                        EditorPane().frame(minWidth: 340, maxWidth: .infinity)
+                        PreviewPane().frame(minWidth: 380, maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if model.problemsVisible {
+                        // Drag the handle to give the diagnostics list more or less
+                        // room; the list scrolls within whatever height it has.
+                        PanelResizeHandle(height: $problemsHeight,
+                                          range: ProblemsPanel.minHeight...max(ProblemsPanel.minHeight, geo.size.height - 240))
+                        ProblemsPanel().frame(height: min(problemsHeight, max(ProblemsPanel.minHeight, geo.size.height - 240)))
+                    }
+                    Divider()
+                    StatusBar()
+                }
             }
-            Divider()
-            Footer()
         }
-        .toolbar {
-            ToolbarItem {
-                HStack(spacing: 4) {
-                    Text("Dark preview").font(.caption)
-                    Toggle("Dark preview", isOn: $model.darkPreview).toggleStyle(.switch).labelsHidden()
+        .navigationSplitViewStyle(.balanced)
+        .toolbar { WorkspaceToolbar(openWindow: openWindow) }
+        .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+    }
+}
+
+/// The divider above the Problems panel, draggable up and down (the cursor
+/// shows the resize arrows on hover). Keyboard users size it with the split
+/// of the window itself; the panel is never taller than the window allows.
+private struct PanelResizeHandle: View {
+    @Binding var height: Double
+    let range: ClosedRange<Double>
+    @State private var startHeight: Double?
+
+    var body: some View {
+        Rectangle().fill(.clear)
+            .frame(height: 7)
+            .overlay(Divider(), alignment: .center)
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let start = startHeight ?? height
+                    startHeight = start
+                    height = min(max(start - value.translation.height, range.lowerBound), range.upperBound)
                 }
+                .onEnded { _ in startHeight = nil })
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: toolbar
+
+/// Labelled toolbar items; each tooltip names the menu shortcut so the
+/// keyboard workflow is discoverable from the toolbar itself.
+private struct WorkspaceToolbar: ToolbarContent {
+    @Environment(ShellModel.self) var model
+    let openWindow: OpenWindowAction
+
+    var body: some ToolbarContent {
+        @Bindable var model = model
+        ToolbarItemGroup(placement: .principal) {
+            Button {
+                if !model.outputBoundExplicitRetry() { model.compile() }
+            } label: { Label("Compile", systemImage: "hammer.fill") }
+                .labelStyle(.titleAndIcon)
+                .disabled(!model.workerAttached)
+                .help("Send the current buffers to the attached producer (File > Compile, ⌘B)")
+            Menu {
+                Button("Attach Built Compiler") { _ = model.attachDiscoveredWorker() }
+                    .help("⌘⇧K")
+                Button("Attach Render Pipeline (Latin Modern)") { _ = model.attachDiscoveredRenderPipeline() }
+                    .help("⌘⇧R")
+                Button("Attach Worker Executable…") { model.attachWorkerPanel() }
+                    .help("⌘K")
+                Divider()
+                Toggle("Auto-compile after edits", isOn: $model.autoCompile).disabled(!model.workerAttached)
+                Button("Detach Worker") { model.detachWorker() }.disabled(!model.workerAttached)
+                if model.isFixture { Divider(); Button("Reload Fixture") { model.reloadFixture() } }
+            } label: {
+                Label(model.workerAttached ? "Producer" : "Attach", systemImage: model.workerAttached ? "cpu.fill" : "cpu")
             }
-            ToolbarItem {
-                HStack(spacing: 4) {
-                    Text("Auto-compile").font(.caption)
-                    Toggle("Auto-compile", isOn: $model.autoCompile).toggleStyle(.switch).labelsHidden()
-                        .disabled(!model.workerAttached)
-                }
+            .help("Producer: " + (model.isFixture ? "fixture (not a real compile)" : model.workerStatus) + " — attach the built compiler (⌘⇧K), the Latin Modern render pipeline (⌘⇧R) or any executable (⌘K)")
+        }
+        ToolbarItemGroup(placement: .automatic) {
+            Toggle(isOn: $model.previewV2) { Label("v2 pane", systemImage: "rectangle.on.rectangle") }
+                .toggleStyle(.button)
+                .help("Experimental display-list-v2 preview (File > Open Display List (v2)…)")
+            Toggle(isOn: $model.darkPreview) { Label("Dark preview", systemImage: "moon") }
+                .toggleStyle(.button)
+                .help("Draw the preview pages dark (page and text colors only)")
+            Button { openWindow(id: ProjectSearch.windowID) } label: { Label("Find in Project", systemImage: "magnifyingglass") }
+                .help("Find in Project… (Edit, ⌘⇧F)")
+            Button { openWindow(id: CitationRename.windowID) } label: { Label("Rename Citation", systemImage: "quote.bubble") }
+                .help("Rename Citation… (Edit): reviewed plan across the project")
+            Button { openWindow(id: EditHistoryPanel.windowID) } label: { Label("Durable History", systemImage: "clock.arrow.circlepath") }
+                .help("Durable History… (Edit): undo/redo on the helper's edit ledger")
+            Menu {
+                Button("Export PDF…") { model.exportPDF() }.disabled(model.result == nil)
+                Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }.disabled(model.result == nil)
+                Button("Export PDF (exact, v2)…") { model.exportPDFExact() }.disabled(model.displayListV2?.frame == nil)
+            } label: { Label("Export", systemImage: "square.and.arrow.up") }
+                .help("Export PDF… (⌘⇧E), via Rust writer (⌘⌥E), or exact from the v2 display list (File menu)")
+            Button { openWindow(id: "nearby") } label: { Label("Nearby", systemImage: "ipad.and.iphone") }
+                .help("Nearby Companion… (Edit, ⌘⇧N): pair an iPad/iPhone to send captures")
+            Toggle(isOn: $model.problemsVisible) {
+                let n = model.displayedDiagnostics.count
+                Label(n > 0 ? "Problems \(n)" : "Problems", systemImage: n > 0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
             }
-            ToolbarItem { HStack(spacing: 4) { Text("v2 preview").font(.caption); Toggle("v2 preview", isOn: $model.previewV2).toggleStyle(.switch).labelsHidden() }.help("Experimental display-list-v2 preview (File > Open Display List (v2)…)") }
-            ToolbarItem { Button("Reload fixture") { model.reloadFixture() } }
-            ToolbarItem {
-                Button("Compile", systemImage: "hammer") { if !model.outputBoundExplicitRetry() { model.compile() } }
-                    .disabled(!model.workerAttached)
-                    .help("Send the current buffers to the attached worker (⌘B)")
-            }
+            .toggleStyle(.button)
+            .help("Show or hide the Problems panel (View, ⌘⇧M)")
+            Button { model.commandPaletteShown = true } label: { Label("Commands", systemImage: "command") }
+                .help("Command Palette… (View, ⌘⇧P): every command with its shortcut")
+                .accessibilityIdentifier("toolbar.command-palette")
         }
     }
 }
@@ -46,89 +144,9 @@ struct ContentView: View {
 //
 // Each pane is its own view reading the model from the environment, so
 // `@Observable` tracking scopes invalidation: a keystroke (documents,
-// editorRevision) re-evaluates EditorPane and Footer; a compile result the
-// StatusBanner and PreviewPane; bridge traffic the bridge bar only.
-
-private struct StatusBanner: View {
-    @Environment(ShellModel.self) var model
-
-    var body: some View {
-        HStack(spacing: 12) {
-            sourceBadge
-            if let r = model.result {
-                Text("\(sourceName) · id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision)")
-                Text("status: \(r.status.rawValue)")
-                    .foregroundStyle(statusColor(r.status)).bold()
-                let diags = model.displayedDiagnostics
-                let errors = diags.filter { $0.severity == .error }.count
-                let warnings = diags.count - errors
-                if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
-                if warnings > 0 { Label("\(warnings)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                if r.status == .recovered {
-                    Text("recovered: preview shown with provisional rendering").foregroundStyle(.orange)
-                }
-                Text("pdf: \(r.pdfPath ?? "none")").foregroundStyle(.secondary)
-                Text("layout: " + (model.negotiation.accepted.isEmpty ? "legacy" : model.negotiation.accepted.joined(separator: ", ")))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .help(model.negotiation.accepted.isEmpty
-                          ? "No layout capability accepted for this result: U+2500 fraction bars are an approximation."
-                          : "Capabilities the worker accepted for this result (typed rules / explicit font hints).")
-                ForEach(model.capabilityNotes, id: \.self) { note in
-                    Text(note).font(.caption).foregroundStyle(.orange).lineLimit(1).help(note)
-                }
-                if model.inFlightRevision != nil {
-                    ProgressView().controlSize(.small)
-                }
-                if let ms = model.lastLatencyMs, let med = model.medianLatencyMs {
-                    Text(String(format: "latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if let historical = model.historicalPreview {
-                    Text(historical.label).foregroundStyle(.purple).bold()
-                        .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
-                } else if model.previewIsStale {
-                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
-                         ?? (model.workerAttached
-                         ? (model.autoCompile ? "editor at revision \(model.editorRevision) — compiling…" : "editor at revision \(model.editorRevision) — press ⌘B to compile")
-                         : "editor at revision \(model.editorRevision) — preview not recompiled (no worker attached)"))
-                        .foregroundStyle(.orange)
-                }
-            } else if let err = model.loadError {
-                Text(err).foregroundStyle(.red)
-            }
-            Spacer()
-            Text(model.isFixture ? "Not a real compile." : model.workerStatus)
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        }
-        .font(.callout)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(.bar)
-    }
-
-    private var sourceBadge: some View {
-        let (label, color): (String, Color) = switch model.previewSource {
-        case .none: ("NONE", .gray)
-        case .fixture: ("FIXTURE", .orange)
-        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
-        }
-        return Text(label)
-            .font(.caption.bold())
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.25), in: Capsule())
-    }
-
-    private var sourceName: String {
-        switch model.previewSource {
-        case .none: "—"
-        case .fixture: model.fixtureURL?.lastPathComponent ?? "fixture"
-        case .worker(let name): name
-        }
-    }
-
-    private func statusColor(_ s: RuntimeV1.Status) -> Color {
-        switch s { case .ok: .green; case .recovered: .orange; case .failed: .red }
-    }
-}
+// editorRevision) re-evaluates EditorPane and the status bar; a compile
+// result the status bar, PreviewPane and ProblemsPanel; bridge traffic the
+// bridge bar only.
 
 private struct EditorPane: View {
     @Environment(ShellModel.self) var model
@@ -136,33 +154,11 @@ private struct EditorPane: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            HStack {
-                // Switching goes through ProjectDocuments so each document's
-                // caret/selection is kept and a pending insertion is never
-                // applied to the wrong buffer (ProjectDocuments.swift).
-                Picker("Document", selection: Binding(get: { model.activePath },
-                                                      set: { model.project.switchDocument(to: $0) })) {
-                    ForEach(model.project.listing) { doc in
-                        Text(doc.path + (doc.isDirty ? " •" : "") + (doc.durableRevision.map { " r\($0)" } ?? "")).tag(doc.path)
-                    }
-                }
-                .labelsHidden().frame(maxWidth: 260)
-                ProjectMenu()
-                DocumentKindIndicator() // DocumentKinds.swift: helper-reported bibliography kind, read-only
-                if let url = model.documentURL {
-                    let dirty = model.project.isDirty(model.activePath)
-                    let name = model.activePath == model.project.entryPath ? url.lastPathComponent : model.activePath
-                    Text(name + (dirty ? " — edited" : ""))
-                        .font(.caption).foregroundStyle(dirty ? .orange : .secondary)
-                        .help(model.activePath == model.project.entryPath ? url.path : url.deletingLastPathComponent().appendingPathComponent(model.activePath).path)
-                } else {
-                    Text("unsaved buffer").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("\(model.activeText.utf8.count) UTF-8 bytes · \((model.activeText as NSString).length) UTF-16 units")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(8)
+            // Switching goes through ProjectDocuments so each document's
+            // caret/selection is kept and a pending insertion is never
+            // applied to the wrong buffer (ProjectDocuments.swift).
+            DocumentTabBar()
+            Divider()
             SourceEditorView(
                 text: Binding(get: { model.activeText }, set: { model.updateActiveText($0) }),
                 selection: model.selection,
@@ -183,73 +179,14 @@ private struct EditorPane: View {
     }
 }
 
-/// Project membership: open the entry document's `\input`/`\include`
-/// targets, save or detach the active non-entry document. Discovery runs
-/// when the menu opens (bounded lexical scan, ProjectDocuments.swift).
-private struct ProjectMenu: View {
-    @Environment(ShellModel.self) var model
-
-    var body: some View {
-        Menu {
-            // The transitive closure (chapter → section → …), depth-first in
-            // source order, indented by depth; cycles and missing files are
-            // listed with their reason. Bounded: 8 levels, 256 documents.
-            let closure = model.project.discoverClosure()
-            if closure.nodes.isEmpty {
-                Text("No \\input or \\include in \(model.project.entryPath)")
-            }
-            ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
-                let indent = String(repeating: "    ", count: max(0, n.depth))
-                let name = n.resolvedPath ?? n.reference.argument
-                switch n.state {
-                case .available:
-                    Button(indent + "Open \(name)") { Task { await model.project.openDocument(name, role: .included(from: n.from)) } }
-                case .open:
-                    Button(indent + "Show \(name)") { model.project.switchDocument(to: name) }
-                case .unresolvable(let why):
-                    Text(indent + "\\\(n.reference.kind.rawValue){\(n.reference.argument)}: \(why)")
-                }
-            }
-            if closure.truncated { Text("closure truncated at \(ProjectDocuments.maxClosureDocuments) documents") }
-            if closure.nodes.contains(where: { $0.state == .available }) {
-                Button("Open All Includes") { Task { await model.project.openDiscoveredIncludes() } }
-                    .help("Opens the whole include closure in this order; unresolvable references are reported in the footer note")
-            }
-            if let report = model.project.lastOpenReport, !report.unresolvable.isEmpty {
-                Divider()
-                Text("Open All: \(report.unresolvable.count) unresolvable")
-                ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
-            }
-            if model.activePath != model.project.entryPath {
-                Divider()
-                Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
-                    .disabled(model.documentURL == nil)
-                Button("Detach \(model.activePath) (this session)") {
-                    Task {
-                        switch await model.project.detachDocument(model.activePath) {
-                        case .refused(let why): model.captureNote = why
-                        case .detached(let path): model.captureNote = "Detached \(path) — " + ProjectDocuments.detachScopeNote
-                        }
-                    }
-                }
-                .help("Session only: " + ProjectDocuments.detachScopeNote)
-            }
-            DocumentKindsMenuSection() // DocumentKinds.swift: declare/undeclare bibliography sources
-        } label: {
-            Label("Project", systemImage: "doc.on.doc")
-        }
-        .menuStyle(.borderlessButton).fixedSize()
-        .help(model.project.status)
-    }
-}
-
 private struct CaptureBar: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
         HStack(spacing: 8) {
             Button("Pin insertion point") { model.pinAnchorAtCaret() }
-                .help("Use the caret as the destination for capture proposals (⌘⇧P)")
+                .controlSize(.small)
+                .help("Use the caret as the destination for capture proposals (⌘⌥P)")
             if let a = model.anchor {
                 Text("anchor \(a.id) · \(a.path) byte \(a.byteOffset) @ rev \(a.revision)")
                     .font(.caption).foregroundStyle(.secondary)
@@ -261,6 +198,7 @@ private struct CaptureBar: View {
                 Button("Review \(model.proposals.count) proposal\(model.proposals.count == 1 ? "" : "s")") {
                     model.reviewing = model.proposals.first
                 }
+                .controlSize(.small)
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -307,6 +245,8 @@ private struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            PreviewHeader()
+            Divider()
             if model.previewV2 {
                 PreviewV2Pane() // experimental v2 path (PreviewV2View.swift); v1 below stays the default
             } else if let result = model.result {
@@ -314,14 +254,12 @@ private struct PreviewPane: View {
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)
                 }
-                let diags = model.displayedDiagnostics
-                if !diags.isEmpty {
-                    Divider()
-                    diagnosticsList(diags)
-                }
             } else {
-                ContentUnavailableView("No compile result loaded", systemImage: "doc.richtext",
-                                       description: Text("Use File > Open Compile Result Fixture…"))
+                ContentUnavailableView {
+                    Label("No preview yet", systemImage: "doc.richtext")
+                } description: {
+                    Text("Attach a producer from the toolbar (⌘⇧K builds, ⌘⇧R Latin Modern) and compile (⌘B), or File > Open Compile Result Fixture… (⌘⇧O).")
+                }
             }
         }
         .sheet(isPresented: Binding(get: { model.quickFix != nil }, set: { if !$0 { model.quickFix = nil } })) {
@@ -346,36 +284,152 @@ private struct PreviewPane: View {
             }
         }
     }
-
-    private func diagnosticsList(_ diags: [RuntimeV1.Diagnostic]) -> some View {
-        // Grouped rows with a selection, Return / Esc / ⌘C and the spoken group
-        // count/occurrence (DiagnosticsPanel.swift, mac-diagnostics-3).
-        DiagnosticsListView(diagnostics: diags)
-    }
 }
 
-private struct Footer: View {
+/// The preview column's header: source badge, compile status, freshness
+/// (historical / stale / compiling) and the layout capabilities — the former
+/// top banner, kept to one line with details in tooltips.
+private struct PreviewHeader: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
+            sourceBadge
+            if let r = model.result {
+                Text(sourceName).font(.caption).lineLimit(1)
+                    .help("result id \(model.resultID ?? "?") · project \(r.projectId) · revision \(r.revision) · pdf: \(r.pdfPath ?? "none")")
+                Text(r.status.rawValue).font(.caption.bold()).foregroundStyle(statusColor(r.status))
+                if r.status == .recovered {
+                    Text("provisional rendering").font(.caption).foregroundStyle(.orange)
+                        .help("recovered: preview shown with provisional rendering")
+                }
+                if model.inFlightRevision != nil { ProgressView().controlSize(.mini) }
+                if let historical = model.historicalPreview {
+                    Text(historical.label).font(.caption.bold()).foregroundStyle(.purple).lineLimit(1)
+                        .help("A completed older snapshot is shown while the helper compiles the newer revision; navigation, caret sync, capture destinations and export return with the current preview.")
+                } else if model.previewIsStale {
+                    Text(model.outputBound?.banner // the reply exceeded a bound: nothing is compiling (ShellModel+OutputBounds.swift)
+                         ?? (model.workerAttached
+                         ? (model.autoCompile ? "editor at r\(model.editorRevision) — compiling…" : "editor at r\(model.editorRevision) — ⌘B to compile")
+                         : "editor at r\(model.editorRevision) — no producer attached"))
+                        .font(.caption).foregroundStyle(.orange).lineLimit(1)
+                }
+            } else if let err = model.loadError {
+                Text(err).font(.caption).foregroundStyle(.red).lineLimit(1).help(err)
+            } else {
+                Text("Preview").font(.caption.bold()).foregroundStyle(.secondary)
+            }
+            Spacer()
+            ForEach(model.capabilityNotes, id: \.self) { note in
+                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange).help(note)
+                    .accessibilityLabel(note)
+            }
+            Text(model.negotiation.accepted.isEmpty ? "legacy layout" : model.negotiation.accepted.joined(separator: ", "))
+                .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                .help(model.negotiation.accepted.isEmpty
+                      ? "No layout capability accepted for this result: U+2500 fraction bars are an approximation."
+                      : "Capabilities the worker accepted for this result (typed rules / explicit font hints).")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private var sourceBadge: some View {
+        let (label, color): (String, Color) = switch model.previewSource {
+        case .none: ("NONE", .gray)
+        case .fixture: ("FIXTURE", .orange)
+        case .worker: model.historicalPreview != nil ? ("HISTORICAL", .purple) : ("WORKER", .green)
+        }
+        return Text(label)
+            .font(.caption2.bold())
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.25), in: Capsule())
+            .help(model.isFixture ? "Not a real compile." : model.workerStatus)
+    }
+
+    private var sourceName: String {
+        switch model.previewSource {
+        case .none: "—"
+        case .fixture: model.fixtureURL?.lastPathComponent ?? "fixture"
+        case .worker(let name): name
+        }
+    }
+
+    private func statusColor(_ s: RuntimeV1.Status) -> Color {
+        switch s { case .ok: .green; case .recovered: .orange; case .failed: .red }
+    }
+}
+
+/// Bottom status bar: editor revision, the helper's durable revision of the
+/// active document, compile latency, the route (fixture / worker /
+/// controller), then the last navigation, staleness or capture note, and an
+/// exact-export progress control while one runs.
+private struct StatusBar: View {
+    @Environment(ShellModel.self) var model
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("r\(model.editorRevision)", systemImage: "pencil.line")
+                .help("Editor revision (increments on every edit)")
+            if let durable = model.controllerState.durable[model.activePath]?.revision {
+                Label("durable r\(durable)", systemImage: "internaldrive")
+                    .help("Durable revision of \(model.activePath) in the helper's edit ledger")
+            }
+            if let ms = model.lastLatencyMs, let med = model.medianLatencyMs {
+                Label(String(format: "%.0f ms", ms), systemImage: "timer")
+                    .help(String(format: "Last compile latency %.0f ms (median %.0f over %d)", ms, med, model.latenciesMs.count))
+            }
+            Label(route, systemImage: routeIcon)
+                .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            let diags = model.displayedDiagnostics
+            if !diags.isEmpty {
+                let errors = diags.filter { $0.severity == .error }.count
+                Button {
+                    model.problemsVisible.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        if errors > 0 { Label("\(errors)", systemImage: "xmark.octagon.fill").foregroundStyle(.red) }
+                        if diags.count - errors > 0 { Label("\(diags.count - errors)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Errors and warnings of the last result — click to show or hide the Problems panel (⌘⇧M)")
+            }
+            Divider().frame(height: 12)
             Text(model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus
                  ?? "Click text in the preview to select its source range.")
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             if case .running(let pid, _) = model.exportSession.state { // ShellModel+ExportSession.swift
                 ProgressView().controlSize(.small)
                 Text("Exporting exact PDF (flashtex-pdf-exact pid \(pid))…")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .foregroundStyle(.secondary).lineLimit(1)
                 Button("Cancel") { model.cancelExactExport() }
                     .controlSize(.small)
                     .help("Terminate flashtex-pdf-exact; nothing is written to the destination")
                     .accessibilityIdentifier("export.cancel")
             } else if let note = model.captureNote {
-                Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(note).foregroundStyle(.secondary).lineLimit(1).help(note)
             }
         }
+        .font(.caption)
+        .monospacedDigit()
         .padding(.horizontal, 12).padding(.vertical, 4)
+        .background(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Status bar")
+    }
+
+    private var route: String {
+        if model.isFixture { return "fixture" }
+        if model.controllerAttached { return "controller" }
+        if model.workerAttached { return "worker" }
+        return "no producer"
+    }
+
+    private var routeIcon: String {
+        if model.isFixture { return "doc.badge.gearshape" }
+        return model.workerAttached ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle"
     }
 }
 
