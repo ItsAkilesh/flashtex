@@ -101,6 +101,33 @@ ln -s "$MAC_DIR/Fonts/texmf/fonts/tfm/public/lm/ec-lmr12.tfm" "$WORK/texmf-symli
 FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-symlink" expect_preflight_failure "pinned bundle metric refused" --debug
 FLASHTEX_BUNDLE_TEXMF_ROOT="$WORK/texmf-absent" expect_preflight_failure "pinned bundle metrics root not found" --debug
 
+section "Pinned Latin Modern faces (SUPPLEMENTARY-FACES.json; no build, no download, no host TeX)"
+if python3 "$TEXMF_TOOL" check "$MAC_DIR/Fonts/texmf" "$MAC_DIR/Fonts" >"$WORK/faces-check.json" 2>&1; then
+  ok "bundle-texmf.py check apps/mac/Fonts/texmf apps/mac/Fonts: $(grep -c '"tier": "supplementary-face"' "$WORK/faces-check.json") supplementary faces + 3 Commander-pinned faces verified"
+else
+  bad "bundle-texmf.py check with apps/mac/Fonts failed: $(grep -E '"(status|reason)"' "$WORK/faces-check.json" | head -2 | tr -s ' \n' ' ')"
+fi
+# Every face the render pipeline can request (fonts.rs latin_modern_file at
+# 9aaec57a) is vendored: 8 regular + 7 bold + 5 italic + 1 bold-italic + math.
+FACES_MISSING=""
+for f in lmroman{5,6,7,8,9,10,12,17}-regular lmroman{5,6,7,8,9,10,12}-bold lmroman{7,8,9,10,12}-italic lmroman10-bolditalic latinmodern-math; do
+  [[ -f "$MAC_DIR/Fonts/$f.otf" ]] || FACES_MISSING="$FACES_MISSING $f.otf"
+done
+if [[ -z "$FACES_MISSING" ]]; then ok "all 22 producer-requestable Latin Modern faces present in apps/mac/Fonts"; else bad "producer-requestable faces missing:$FACES_MISSING"; fi
+# Faces directory copies: a corrupted face, a missing face and an unpinned
+# extra .otf are each refused BEFORE the build.
+copy_faces() { mkdir -p "$1"; cp "$MAC_DIR/Fonts/"*.otf "$MAC_DIR/Fonts/"*.TXT "$MAC_DIR/Fonts/SUPPLEMENTARY-FACES.json" "$1/"; }
+copy_faces "$WORK/fonts-corrupt"; printf 'x' >> "$WORK/fonts-corrupt/lmroman8-regular.otf"
+FLASHTEX_BUNDLE_FONTS_DIR="$WORK/fonts-corrupt" expect_preflight_failure "pinned bundle metric refused" --debug
+copy_faces "$WORK/fonts-missing"; rm "$WORK/fonts-missing/lmroman6-regular.otf"
+FLASHTEX_BUNDLE_FONTS_DIR="$WORK/fonts-missing" expect_preflight_failure "pinned bundle metric refused" --debug
+copy_faces "$WORK/fonts-unpinned"; cp "$MAC_DIR/Fonts/lmroman8-regular.otf" "$WORK/fonts-unpinned/lmroman8-stray.otf"
+FLASHTEX_BUNDLE_FONTS_DIR="$WORK/fonts-unpinned" expect_preflight_failure "pinned bundle metric refused" --debug
+copy_faces "$WORK/fonts-symlink"; rm "$WORK/fonts-symlink/lmroman10-regular.otf"
+ln -s "$MAC_DIR/Fonts/lmroman10-regular.otf" "$WORK/fonts-symlink/lmroman10-regular.otf"
+FLASHTEX_BUNDLE_FONTS_DIR="$WORK/fonts-symlink" expect_preflight_failure "pinned bundle metric refused" --debug
+FLASHTEX_BUNDLE_FONTS_DIR="$WORK/fonts-absent" expect_preflight_failure "pinned bundle fonts directory not found" --debug
+
 section "Resources"
 for f in Info.plist.template FlashTeX.entitlements; do
   if plutil -lint "$MAC_DIR/Resources/$f" >/dev/null 2>&1; then ok "plutil -lint Resources/$f"; else bad "plutil -lint Resources/$f"; fi

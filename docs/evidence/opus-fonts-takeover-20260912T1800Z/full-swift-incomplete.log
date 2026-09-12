@@ -1,0 +1,432 @@
+warning: 'mac': found 20 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker_v2.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/build_assistant_context.sh
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.tex
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-text.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_context.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_project_files.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_pdf_writer.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/controlled_assistant_provider.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_preview_controller.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-missing-font.json
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_bridge.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/display-list-v2-math-rules.tex
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_assistant_provider.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_worker.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/nearby-companion-session.jsonl
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/fake_edit_ledger.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/holding_preview_controller_proxy.py
+    /private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/Fixtures/delaying_assistant_context_proxy.py
+[0/1] Planning build
+Building for debugging...
+[0/4] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.79s)
+Test Suite 'All tests' started at 2026-09-12 14:08:51.977.
+Test Suite 'FlashTeXMacPackageTests.xctest' started at 2026-09-12 14:08:51.978.
+Test Suite 'AdmissionCorrelationTests' started at 2026-09-12 14:08:51.978.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testAdmittedIdentityReleasesOnlyTheMatchingOutcome]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testAdmittedIdentityReleasesOnlyTheMatchingOutcome]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testEditReplyCarriesTheAdmittedPairAndItsPreviewReleases]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testEditReplyCarriesTheAdmittedPairAndItsPreviewReleases]' passed (0.909 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testEditReplyPairDecodesAndNullsAreNil]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testEditReplyPairDecodesAndNullsAreNil]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testFailedOutcomeOfTheAdmittedCompileReleasesAndSurfaces]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testFailedOutcomeOfTheAdmittedCompileReleasesAndSurfaces]' passed (0.302 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testForgedMismatchedOutcomeDoesNotRelease]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testForgedMismatchedOutcomeDoesNotRelease]' passed (1.271 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testNumericFallbackAgainstAHelperWithoutThePair]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testNumericFallbackAgainstAHelperWithoutThePair]' passed (0.303 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testNumericFallbackWithoutAPairIsThePreviousBehaviour]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testNumericFallbackWithoutAPairIsThePreviousBehaviour]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testRapidEditsReleaseExactlyOncePerAdmittedCompile]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testRapidEditsReleaseExactlyOncePerAdmittedCompile]' passed (1.917 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testSupersededRebindsOnlyTheAdmittedCompile]' started.
+Test Case '-[FlashTeXMacTests.AdmissionCorrelationTests testSupersededRebindsOnlyTheAdmittedCompile]' passed (0.000 seconds).
+Test Suite 'AdmissionCorrelationTests' passed at 2026-09-12 14:08:56.683.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 4.703 (4.704) seconds
+Test Suite 'AdmissionGroupsTests' started at 2026-09-12 14:08:56.683.
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testExactRetryReplaysTheCommandAndRecordsAFreshPairForTheCurrentDocument]' started.
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testExactRetryReplaysTheCommandAndRecordsAFreshPairForTheCurrentDocument]' passed (0.151 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testFailedGroupRecordsNoAdmissionAndLeavesTheBufferIntact]' started.
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testFailedGroupRecordsNoAdmissionAndLeavesTheBufferIntact]' passed (0.098 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testGroupApplyRecordsTheAdmittedPairAndItsOutcomeReleasesByID]' started.
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testGroupApplyRecordsTheAdmittedPairAndItsOutcomeReleasesByID]' passed (0.094 seconds).
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testUndoAndRedoAdoptThroughTheSamePathWithTheNumericFallback]' started.
+Test Case '-[FlashTeXMacTests.AdmissionGroupsTests testUndoAndRedoAdoptThroughTheSamePathWithTheNumericFallback]' passed (0.163 seconds).
+Test Suite 'AdmissionGroupsTests' passed at 2026-09-12 14:08:57.189.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.505 (0.506) seconds
+Test Suite 'AssistantRecoveryTests' started at 2026-09-12 14:08:57.189.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testDocumentChangeExpiresTheRequestAndTheHelperRefusesTheMovedSnapshot]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testDocumentChangeExpiresTheRequestAndTheHelperRefusesTheMovedSnapshot]' passed (1.215 seconds).
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testHelperExitMidRequestIsSurfacedAndRelaunchedOnNextRequest]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testHelperExitMidRequestIsSurfacedAndRelaunchedOnNextRequest]' passed (0.953 seconds).
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testNoEditReachesTheDocumentWithoutExplicitApproveAcrossRecoveries]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testNoEditReachesTheDocumentWithoutExplicitApproveAcrossRecoveries]' passed (2.389 seconds).
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testProviderTimeoutFromEnvironmentThenRetryStartsNewRequestAndIgnoresLateResult]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testProviderTimeoutFromEnvironmentThenRetryStartsNewRequestAndIgnoresLateResult]' passed (3.403 seconds).
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testRecoveryEventsClassifyFailuresAndChanges]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testRecoveryEventsClassifyFailuresAndChanges]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testReviewerCancelDiscardsLateProviderResultAndLeavesSheetIdle]' started.
+Test Case '-[FlashTeXMacTests.AssistantRecoveryTests testReviewerCancelDiscardsLateProviderResultAndLeavesSheetIdle]' passed (0.498 seconds).
+Test Suite 'AssistantRecoveryTests' passed at 2026-09-12 14:09:05.650.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 8.460 (8.461) seconds
+Test Suite 'BridgeClientTests' started at 2026-09-12 14:09:05.650.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testChangedRegionIsScalarAligned]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testChangedRegionIsScalarAligned]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BridgeClientTests testEditLedgerHelperRoundTrip]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testEditLedgerHelperRoundTrip]' passed (0.054 seconds).
+Test Case '-[FlashTeXMacTests.BridgeClientTests testEveryRequestTypeRoundTripsWithSnakeCaseKeys]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testEveryRequestTypeRoundTripsWithSnakeCaseKeys]' passed (0.056 seconds).
+Test Case '-[FlashTeXMacTests.BridgeClientTests testProviderErrorsAreErrorsWithCodesNotCrashes]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testProviderErrorsAreErrorsWithCodesNotCrashes]' passed (0.050 seconds).
+Test Case '-[FlashTeXMacTests.BridgeClientTests testRequestedErrorGarbageAndOversizedLines]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testRequestedErrorGarbageAndOversizedLines]' passed (0.648 seconds).
+Test Case '-[FlashTeXMacTests.BridgeClientTests testTrailingBytesAtExitAndOversizedRequest]' started.
+Test Case '-[FlashTeXMacTests.BridgeClientTests testTrailingBytesAtExitAndOversizedRequest]' passed (0.261 seconds).
+Test Suite 'BridgeClientTests' passed at 2026-09-12 14:09:06.720.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 1.069 (1.070) seconds
+Test Suite 'BridgeRecoveryTests' started at 2026-09-12 14:09:06.720.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testBridgeCrashIsRelaunchedAndStateReconciled]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testBridgeCrashIsRelaunchedAndStateReconciled]' passed (0.517 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testCorruptOrUnreadableDurableStoreDisablesApplication]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testCorruptOrUnreadableDurableStoreDisablesApplication]' passed (0.186 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testCrashDuringCaptureSubmitLeavesTheCaptureUncertainAndRetryable]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testCrashDuringCaptureSubmitLeavesTheCaptureUncertainAndRetryable]' passed (0.835 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDestinationLostWhenSourceMovedPastThePinIsReported]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDestinationLostWhenSourceMovedPastThePinIsReported]' passed (0.394 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDetachAndReattachIgnoresOldSessionEvents]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDetachAndReattachIgnoresOldSessionEvents]' passed (2.261 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDurableEditAwaitingAdoptionSurvivesABridgeRelaunch]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testDurableEditAwaitingAdoptionSurvivesABridgeRelaunch]' passed (0.404 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testEditsDuringReconciliationAreCarriedByTheInitialOpen]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testEditsDuringReconciliationAreCarriedByTheInitialOpen]' passed (2.244 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testExplicitDetachCancelsAPendingRelaunchAndCleanExitNeverRelaunches]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testExplicitDetachCancelsAPendingRelaunchAndCleanExitNeverRelaunches]' passed (1.581 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testExportFailureWithholdsReceiptWhileTheDurableCommitStands]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testExportFailureWithholdsReceiptWhileTheDurableCommitStands]' passed (0.614 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testFileBackedDocumentIsExportedBeforeTheReceipt]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testFileBackedDocumentIsExportedBeforeTheReceipt]' passed (0.151 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashDuringApplyInsertsExactlyOnce]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashDuringApplyInsertsExactlyOnce]' passed (1.188 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashIsRelaunchedAndRealignedWithTheEditor]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashIsRelaunchedAndRealignedWithTheEditor]' passed (1.505 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashWithPendingReceiptKeepsTheEvidence]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testLedgerCrashWithPendingReceiptKeepsTheEvidence]' passed (0.364 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testMissingReceiptIsReplayedFromTheRetainedSnapshot]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testMissingReceiptIsReplayedFromTheRetainedSnapshot]' passed (0.491 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testPersistenceFailureInsertsNothingAndSendsNoReceipt]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testPersistenceFailureInsertsNothingAndSendsNoReceipt]' passed (0.379 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testReceiptInFlightAtBridgeCrashIsSettledFromTheLedgerExactlyOnce]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testReceiptInFlightAtBridgeCrashIsSettledFromTheLedgerExactlyOnce]' passed (0.827 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testRelaunchLimitPerMinuteLeavesTheExitVisible]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testRelaunchLimitPerMinuteLeavesTheExitVisible]' passed (5.131 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testStalledBridgeDoesNotBlockMainThreadAndBoundsQueuedBytes]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testStalledBridgeDoesNotBlockMainThreadAndBoundsQueuedBytes]' passed (2.218 seconds).
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testTransientStatusFailuresRetainTransactionsAndEvidence]' started.
+Test Case '-[FlashTeXMacTests.BridgeRecoveryTests testTransientStatusFailuresRetainTransactionsAndEvidence]' passed (1.280 seconds).
+Test Suite 'BridgeRecoveryTests' passed at 2026-09-12 14:09:29.293.
+	 Executed 19 tests, with 0 failures (0 unexpected) in 22.569 (22.573) seconds
+Test Suite 'BundledFacesTests' started at 2026-09-12 14:09:29.293.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryPreviewMasterResolvesToARealCoreTextFace]' passed (0.019 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testEveryProducerRequestableFaceIsVendoredAndPinned]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testMasterBoundariesMirrorTheProducer]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testPackagingCheckVerifiesFacesAndRefusesDrift]' passed (0.271 seconds).
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' started.
+Test Case '-[FlashTeXMacTests.BundledFacesTests testRealProducerNeedsNoSubstitutionForSmallMastersWithHostTeXExcluded]' passed (0.432 seconds).
+Test Suite 'BundledFacesTests' passed at 2026-09-12 14:09:30.020.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.726 (0.727) seconds
+Test Suite 'BundledMetricsTests' started at 2026-09-12 14:09:30.020.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testDefaultDiscoveryFindsTheRepositoryCopyFromASwiftBuildProduct]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testDefaultDiscoveryFindsTheRepositoryCopyFromASwiftBuildProduct]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testExplicitEntriesComeFirstAndTheBundledDirectoryIsTheFallback]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testExplicitEntriesComeFirstAndTheBundledDirectoryIsTheFallback]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentAppendsAndPassesEverythingElseThrough]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentAppendsAndPassesEverythingElseThrough]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentIsUntouchedWithoutABundledDirectory]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testProducerEnvironmentIsUntouchedWithoutABundledDirectory]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testRealProducerHasNoMissingMetricsThroughTheEnvRouteWithHostTeXExcluded]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testRealProducerHasNoMissingMetricsThroughTheEnvRouteWithHostTeXExcluded]' passed (0.263 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testSupplementaryMetricsMatchTheirInRepoPin]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testSupplementaryMetricsMatchTheirInRepoPin]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testTFMDirectoryPrefersFirstRootThatExists]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testTFMDirectoryPrefersFirstRootThatExists]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testVendoredTreeMatchesPinnedManifest]' started.
+Test Case '-[FlashTeXMacTests.BundledMetricsTests testVendoredTreeMatchesPinnedManifest]' passed (0.001 seconds).
+Test Suite 'BundledMetricsTests' passed at 2026-09-12 14:09:30.291.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.270 (0.271) seconds
+Test Suite 'CaptureAcceptanceTests' started at 2026-09-12 14:09:30.291.
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testAppRelaunchBetweenReceiptAndInsertKeepsOneJournaledCaptureWithoutDuplicates]' started.
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testAppRelaunchBetweenReceiptAndInsertKeepsOneJournaledCaptureWithoutDuplicates]' passed (0.285 seconds).
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testCaptureAgainstAChangedAnchorIsRefusedByTheRealBridgeAndNeverInserted]' started.
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testCaptureAgainstAChangedAnchorIsRefusedByTheRealBridgeAndNeverInserted]' passed (0.138 seconds).
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testDropAfterDeliveryThenReconnectIsJournaledOnceByTheRealBridge]' started.
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testDropAfterDeliveryThenReconnectIsJournaledOnceByTheRealBridge]' passed (0.304 seconds).
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testExplicitInsertRidesTheRealPreviewControllerAsOneDurableEdit]' started.
+Test Case '-[FlashTeXMacTests.CaptureAcceptanceTests testExplicitInsertRidesTheRealPreviewControllerAsOneDurableEdit]' passed (0.346 seconds).
+Test Suite 'CaptureAcceptanceTests' passed at 2026-09-12 14:09:31.365.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 1.073 (1.074) seconds
+Test Suite 'CaptureListTests' started at 2026-09-12 14:09:31.365.
+Test Case '-[FlashTeXMacTests.CaptureListTests testFeatureFlagIsOffByDefaultAndHonoursEnvThenDefaults]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testFeatureFlagIsOffByDefaultAndHonoursEnvThenDefaults]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testMergeNeverDuplicatesAndKeepsRowsThisSessionOwns]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testMergeNeverDuplicatesAndKeepsRowsThisSessionOwns]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testOutcomePerStatusFollowsTheHandoffTable]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testOutcomePerStatusFollowsTheHandoffTable]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testPagerFailureKeepsReceivedRowsAndNamesTheCode]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testPagerFailureKeepsReceivedRowsAndNamesTheCode]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testPagerFollowsCursorsAndStopsAtEightPages]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testPagerFollowsCursorsAndStopsAtEightPages]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testReplyDecodesTheHandoffExample]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testReplyDecodesTheHandoffExample]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testRequestEncodesTheHandoffExampleWithSnakeCaseKeys]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testRequestEncodesTheHandoffExampleWithSnakeCaseKeys]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaptureListTests testRestoreDestinationGateRequiresExactTextAndRevision]' started.
+Test Case '-[FlashTeXMacTests.CaptureListTests testRestoreDestinationGateRequiresExactTextAndRevision]' passed (0.000 seconds).
+Test Suite 'CaptureListTests' passed at 2026-09-12 14:09:31.370.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+Test Suite 'CaretSyncIndexTests' started at 2026-09-12 14:09:31.370.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testCaretByteRoundsSurrogateHalvesAndRefusesOutOfRange]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testCaretByteRoundsSurrogateHalvesAndRefusesOutOfRange]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testIndexMatchesLinearScanOnOverlappingAndCrossPageSpans]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testIndexMatchesLinearScanOnOverlappingAndCrossPageSpans]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testIndexMatchesLinearScanOnRandomSpans]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testIndexMatchesLinearScanOnRandomSpans]' passed (0.256 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testModelCachesIndexPerResultAndDocument]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testModelCachesIndexPerResultAndDocument]' passed (0.005 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testModelExactCaretItemsEqualScanAtEveryCaret]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testModelExactCaretItemsEqualScanAtEveryCaret]' passed (0.008 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testTenThousandItemsQueryIsLogarithmic]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncIndexTests testTenThousandItemsQueryIsLogarithmic]' passed (1.220 seconds).
+Test Suite 'CaretSyncIndexTests' passed at 2026-09-12 14:09:32.861.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 1.490 (1.491) seconds
+Test Suite 'CaretSyncTests' started at 2026-09-12 14:09:32.861.
+Test Case '-[FlashTeXMacTests.CaretSyncTests testEmptyRangeMatchesOnlyExactByte]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncTests testEmptyRangeMatchesOnlyExactByte]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncTests testEveryItemSourceSlicesToItsText]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncTests testEveryItemSourceSlicesToItsText]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CaretSyncTests testItemsContainingFindsNonASCIIWordAndIgnoresGaps]' started.
+Test Case '-[FlashTeXMacTests.CaretSyncTests testItemsContainingFindsNonASCIIWordAndIgnoresGaps]' passed (0.001 seconds).
+Test Suite 'CaretSyncTests' passed at 2026-09-12 14:09:32.863.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'CitationRenameHelperTests' started at 2026-09-12 14:09:32.863.
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testApplyGroupReplaysTheIdenticalCommandAndRefusesAChangedPayload]' started.
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testApplyGroupReplaysTheIdenticalCommandAndRefusesAChangedPayload]' passed (0.132 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testCaretVariantUsesTheExactKeySpanAndRefusesACaretElsewhere]' started.
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testCaretVariantUsesTheExactKeySpanAndRefusesACaretElsewhere]' passed (0.129 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testStaleSnapshotsAreRefusedAsAWholeAndTheCaretSpanIsDroppedAfterAnEdit]' started.
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testStaleSnapshotsAreRefusedAsAWholeAndTheCaretSpanIsDroppedAfterAnEdit]' passed (0.168 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testTypedRenameCoversAllThreeDocumentsAndApplyAdvancesDurableRevisionsExactly]' started.
+Test Case '-[FlashTeXMacTests.CitationRenameHelperTests testTypedRenameCoversAllThreeDocumentsAndApplyAdvancesDurableRevisionsExactly]' passed (0.174 seconds).
+Test Suite 'CitationRenameHelperTests' passed at 2026-09-12 14:09:33.466.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.603 (0.603) seconds
+Test Suite 'CitationRenamePureTests' started at 2026-09-12 14:09:33.466.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testExplainQuotesTheHelperAndAddsAHint]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testExplainQuotesTheHelperAndAddsAHint]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testKeyRuleMirrorsTheHelper]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testKeyRuleMirrorsTheHelper]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testParsePlanKeepsExactOffsetsAcrossThreeDocuments]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testParsePlanKeepsExactOffsetsAcrossThreeDocuments]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testParsePlanRefusesAnythingUnexpected]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testParsePlanRefusesAnythingUnexpected]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testPreviewsAndAccessibilityLabelsNameTheDeclaredKind]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testPreviewsAndAccessibilityLabelsNameTheDeclaredKind]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testRequestShapesTypedAndAtVariants]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testRequestShapesTypedAndAtVariants]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testWithoutHelperEverythingIsRefusedAndNothingIsSent]' started.
+Test Case '-[FlashTeXMacTests.CitationRenamePureTests testWithoutHelperEverythingIsRefusedAndNothingIsSent]' passed (0.001 seconds).
+Test Suite 'CitationRenamePureTests' passed at 2026-09-12 14:09:33.470.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'CommandTableTests' started at 2026-09-12 14:09:33.470.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testCommandTableMatchesREADMEShortcuts]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testCommandTableMatchesREADMEShortcuts]' passed (0.004 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEntriesAreDiscoverable]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEntriesAreDiscoverable]' passed (0.000 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEveryCommandHasAREADMERowAndEveryRowACommand]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testEveryCommandHasAREADMERowAndEveryRowACommand]' passed (0.004 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderHelpText]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderHelpText]' passed (0.000 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderMatchesContentViewPaneOrder]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testFocusOrderMatchesContentViewPaneOrder]' passed (0.002 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testHelpViewCoversEveryCommandAndMenu]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testHelpViewCoversEveryCommandAndMenu]' passed (0.001 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testMenuItemsMatchTheShellWiring]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testMenuItemsMatchTheShellWiring]' passed (0.040 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testPanelFocusOrderMatchesThePanelSources]' started.
+Test Case '-[FlashTeXAccessibilityTests.CommandTableTests testPanelFocusOrderMatchesThePanelSources]' passed (0.053 seconds).
+Test Suite 'CommandTableTests' passed at 2026-09-12 14:09:33.574.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.104 (0.105) seconds
+Test Suite 'CompletionAccessibilityTests' started at 2026-09-12 14:09:33.575.
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testAnnouncementsLeadWithNOfM]' started.
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testAnnouncementsLeadWithNOfM]' passed (0.000 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testRowLabelsSpellKindAndOrigin]' started.
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testRowLabelsSpellKindAndOrigin]' passed (0.000 seconds).
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testTableRowsReadBackThroughNSAccessibility]' started.
+Test Case '-[FlashTeXAccessibilityTests.CompletionAccessibilityTests testTableRowsReadBackThroughNSAccessibility]' passed (0.058 seconds).
+Test Suite 'CompletionAccessibilityTests' passed at 2026-09-12 14:09:33.633.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.058 (0.059) seconds
+Test Suite 'CompletionLatencyTests' started at 2026-09-12 14:09:33.633.
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testArrowSelectionThroughTwelveRowsAvoidsTheTableReload]' started.
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testArrowSelectionThroughTwelveRowsAvoidsTheTableReload]' passed (0.226 seconds).
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testHelperReplyAfterProjectReplacementIsRefusedAtBind]' started.
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testHelperReplyAfterProjectReplacementIsRefusedAtBind]' passed (0.087 seconds).
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testOutcomeForThePreviousDocumentNeverOpensOrMutatesTheList]' started.
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testOutcomeForThePreviousDocumentNeverOpensOrMutatesTheList]' passed (0.239 seconds).
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testPickupNarrowArrowAndReturnLatencyBestOfN]' started.
+Test Case '-[FlashTeXMacTests.CompletionLatencyTests testPickupNarrowArrowAndReturnLatencyBestOfN]' passed (0.751 seconds).
+Test Suite 'CompletionLatencyTests' passed at 2026-09-12 14:09:34.937.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 1.303 (1.304) seconds
+Test Suite 'CompletionLiveHelperTests' started at 2026-09-12 14:09:34.937.
+Test Case '-[FlashTeXMacTests.CompletionLiveHelperTests testCiteCompletionUsesTheDeclaredBibliographyKind]' started.
+Test Case '-[FlashTeXMacTests.CompletionLiveHelperTests testCiteCompletionUsesTheDeclaredBibliographyKind]' passed (0.330 seconds).
+Test Case '-[FlashTeXMacTests.CompletionLiveHelperTests testHelperVocabularyReachesThePopupBoundToTheEditorRevision]' started.
+Test Case '-[FlashTeXMacTests.CompletionLiveHelperTests testHelperVocabularyReachesThePopupBoundToTheEditorRevision]' passed (0.663 seconds).
+Test Suite 'CompletionLiveHelperTests' passed at 2026-09-12 14:09:35.931.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.993 (0.993) seconds
+Test Suite 'CompletionTests' started at 2026-09-12 14:09:35.931.
+Test Case '-[FlashTeXMacTests.CompletionTests testBackslashTriggersCommandsAndPrefixFilters]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testBackslashTriggersCommandsAndPrefixFilters]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testCandidateComputationOnDemoTexStaysUnderTwoMilliseconds]' passed (0.004 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testCitationCompletionUsesDeclaredKindsAndNeverInfersThem]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testCitationCompletionUsesDeclaredKindsAndNeverInfersThem]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testCompletingTextViewUsesSubclassAndBackslashRange]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testCompletingTextViewUsesSubclassAndBackslashRange]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testCompletionOnOneMegabyteBufferIsFast]' started.
+/private/tmp/flashtex-opus-fonts-takeover/apps/mac/Tests/FlashTeXMacTests/CompletionTests.swift:1398: Test Case '-[FlashTeXMacTests.CompletionTests testCompletionOnOneMegabyteBufferIsFast]' measured [Time, seconds] average: 0.014, relative standard deviation: 0.742%, values: [0.013915, 0.013803, 0.013742, 0.013675, 0.013619, 0.013741, 0.013682, 0.013678, 0.013708, 0.013512], performanceMetricID:com.apple.XCTPerformanceMetric_WallClockTime, baselineName: "", baselineAverage: , polarity: prefers smaller, maxPercentRegression: 10.000%, maxPercentRelativeStandardDeviation: 10.000%, maxRegression: 0.100, maxStandardDeviation: 0.100
+Test Case '-[FlashTeXMacTests.CompletionTests testCompletionOnOneMegabyteBufferIsFast]' passed (0.984 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testEnvironmentSnippetKeepsIndentationAndClosingStaysExact]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testEnvironmentSnippetKeepsIndentationAndClosingStaysExact]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testFetcherQueriesThreeCategoriesPlusKindsAndRefusesStaleOrFailedReplies]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testFetcherQueriesThreeCategoriesPlusKindsAndRefusesStaleOrFailedReplies]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testKeyboardChoosesInsertsAndClosesThroughTheRealTextView]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testKeyboardChoosesInsertsAndClosesThroughTheRealTextView]' passed (0.436 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testKeystrokeThroughOpenListOnDemoTexDoesNotScanOnMain]' passed (0.173 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testLabelKeyIsDerivedFromTheEnclosingHeadingAndMadeUnique]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testLabelKeyIsDerivedFromTheEnclosingHeadingAndMadeUnique]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataBindsOnlyToItsRevisionAndMergesSameRevision]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataBindsOnlyToItsRevisionAndMergesSameRevision]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataContributesProjectLabelsCitationsDeclaredCommandsAndDiagnostics]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataContributesProjectLabelsCitationsDeclaredCommandsAndDiagnostics]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataFromCompileResultParsesDiagnosticsAndCaps]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testMetadataFromCompileResultParsesDiagnosticsAndCaps]' passed (0.001 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testNeverThrowsOnMalformedInput]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testNeverThrowsOnMalformedInput]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testNonASCIIWordsAndCaretsAreSafe]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testNonASCIIWordsAndCaretsAreSafe]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testProjectIndexReplyDecodesIsBoundedAndRefusesStaleVersions]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testProjectIndexReplyDecodesIsBoundedAndRefusesStaleVersions]' passed (0.003 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testReferencesSuggestLabels]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testReferencesSuggestLabels]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testSchedulerRefusesCancelledAndSupersededOutcomes]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testSchedulerRefusesCancelledAndSupersededOutcomes]' passed (0.011 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testSnippetsInsertThroughTheRealTextViewAsOneUndoStep]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testSnippetsInsertThroughTheRealTextViewAsOneUndoStep]' passed (0.411 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testStaticVocabularyMatchesTheCompilerDocs]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testStaticVocabularyMatchesTheCompilerDocs]' passed (0.009 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testTabAndShiftTabTraverseTheListWithVoiceOverLabels]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testTabAndShiftTabTraverseTheListWithVoiceOverLabels]' passed (0.105 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testTextViewCancelsOnCaretMoveTextChangeAndResign]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testTextViewCancelsOnCaretMoveTextChangeAndResign]' passed (0.252 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testTextViewRefusesMetadataNotBoundToItsEditorRevision]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testTextViewRefusesMetadataNotBoundToItsEditorRevision]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testUnclosedEnvironmentSuggestsEndFirst]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testUnclosedEnvironmentSuggestsEndFirst]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testUnsupportedDocumentCommandsAreMarked]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testUnsupportedDocumentCommandsAreMarked]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testVocabularySnippetsFollowArgumentShapes]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testVocabularySnippetsFollowArgumentShapes]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.CompletionTests testWordsNeedTwoLettersAndAreFrequencyRanked]' started.
+Test Case '-[FlashTeXMacTests.CompletionTests testWordsNeedTwoLettersAndAreFrequencyRanked]' passed (0.000 seconds).
+Test Suite 'CompletionTests' passed at 2026-09-12 14:09:38.336.
+	 Executed 27 tests, with 0 failures (0 unexpected) in 2.402 (2.405) seconds
+Test Suite 'ControllerPipelineReviewTests' started at 2026-09-12 14:09:38.336.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCaptureApprovedDuringCompositionIsNotMisplacedOrSilentlyLost]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCaptureApprovedDuringCompositionIsNotMisplacedOrSilentlyLost]' passed (0.595 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCompilerFailureReleasesTheInFlightEditSoTypingStaysDurable]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCompilerFailureReleasesTheInFlightEditSoTypingStaysDurable]' passed (0.385 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCompletionQueryOutstandingAtHelperExitDoesNotSwallowTheRelaunchedHelpersReplies]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testCompletionQueryOutstandingAtHelperExitDoesNotSwallowTheRelaunchedHelpersReplies]' passed (0.395 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testExplicitDetachResumesAwaitingFileStatusAndSave]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testExplicitDetachResumesAwaitingFileStatusAndSave]' passed (0.123 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testProjectDocumentsFlushSurvivesTheModelBeingReleasedMidWait]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testProjectDocumentsFlushSurvivesTheModelBeingReleasedMidWait]' passed (0.586 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testSaveOfAFileNotNamedMainTexWritesThatFileNotTheHelpersSessionCopy]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testSaveOfAFileNotNamedMainTexWritesThatFileNotTheHelpersSessionCopy]' passed (0.104 seconds).
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testWorkerErrorForTheLatestRequestStillCompilesTheQueuedBuffer]' started.
+Test Case '-[FlashTeXMacTests.ControllerPipelineReviewTests testWorkerErrorForTheLatestRequestStillCompilesTheQueuedBuffer]' passed (0.068 seconds).
+Test Suite 'ControllerPipelineReviewTests' passed at 2026-09-12 14:09:40.593.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 2.256 (2.257) seconds
+Test Suite 'ControllerReleaseTests' started at 2026-09-12 14:09:40.593.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testBoundIsTwiceTheLastLatencyClampedTo40And250]' started.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testBoundIsTwiceTheLastLatencyClampedTo40And250]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testHybridReleasesADurableEditAtTheBoundAndHoldDoesNot]' started.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testHybridReleasesADurableEditAtTheBoundAndHoldDoesNot]' passed (0.767 seconds).
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testHybridWithHistoricalPaintsTheSupersededCompileAsHistory]' started.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testHybridWithHistoricalPaintsTheSupersededCompileAsHistory]' passed (0.275 seconds).
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testPolicyDefaultsToHoldAndOptsIntoHybrid]' started.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testPolicyDefaultsToHoldAndOptsIntoHybrid]' passed (0.000 seconds).
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testReleaseNeedsHybridDurableQueuedAndTheBound]' started.
+Test Case '-[FlashTeXMacTests.ControllerReleaseTests testReleaseNeedsHybridDurableQueuedAndTheBound]' passed (0.000 seconds).
+Test Suite 'ControllerReleaseTests' passed at 2026-09-12 14:09:41.636.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 1.043 (1.043) seconds
+Test Suite 'DirtyOpenTests' started at 2026-09-12 14:09:41.636.
+Test Case '-[FlashTeXMacTests.DirtyOpenTests testOpenIsBlockedWhileDirtyAndDiscardKeepsTheBufferRecoverable]' started.
+Test Case '-[FlashTeXMacTests.DirtyOpenTests testOpenIsBlockedWhileDirtyAndDiscardKeepsTheBufferRecoverable]' passed (0.032 seconds).
+Test Suite 'DirtyOpenTests' passed at 2026-09-12 14:09:41.668.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.032 (0.032) seconds
+Test Suite 'DirtySnapshotsControllerTests' started at 2026-09-12 14:09:41.669.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsControllerTests testFileNotNamedMainTexKeepsDirtyTextAcrossReloadDetachAndReattach]' started.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsControllerTests testFileNotNamedMainTexKeepsDirtyTextAcrossReloadDetachAndReattach]' passed (0.242 seconds).
+Test Suite 'DirtySnapshotsControllerTests' passed at 2026-09-12 14:09:41.911.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.242 (0.243) seconds
+Test Suite 'DirtySnapshotsTests' started at 2026-09-12 14:09:41.911.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testAnUnsavedBufferWithoutAFileCannotBeKeptAndSaysSo]' started.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testAnUnsavedBufferWithoutAFileCannotBeKeptAndSaysSo]' passed (0.002 seconds).
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testDirtyTextSurvivesExternalChangeReloadAndRelaunchAndIsOfferedNotApplied]' started.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testDirtyTextSurvivesExternalChangeReloadAndRelaunchAndIsOfferedNotApplied]' passed (0.063 seconds).
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testEveryDirtyMemberIsKeptOnQuitOrDetachAndOfferedWhenTheProjectReopens]' started.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testEveryDirtyMemberIsKeptOnQuitOrDetachAndOfferedWhenTheProjectReopens]' passed (0.026 seconds).
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testStoreKeepsOneSnapshotPerFileAndListsByProject]' started.
+Test Case '-[FlashTeXMacTests.DirtySnapshotsTests testStoreKeepsOneSnapshotPerFileAndListsByProject]' passed (0.007 seconds).
+Test Suite 'DirtySnapshotsTests' passed at 2026-09-12 14:09:42.010.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.099 (0.099) seconds
+Test Suite 'DisplayCandidateTests' started at 2026-09-12 14:09:42.010.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testDecoderAcceptsOnlyContractShapedCandidates]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testDecoderAcceptsOnlyContractShapedCandidates]' passed (0.032 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testGateRefusesStaleForeignAndToggledIdentities]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testGateRefusesStaleForeignAndToggledIdentities]' passed (0.006 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHeldWorkRunsOnCandidateTimeoutOrSupersessionNeverDropped]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHeldWorkRunsOnCandidateTimeoutOrSupersessionNeverDropped]' passed (0.128 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperCandidatesPaintAndBindToEditorRevisions]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperCandidatesPaintAndBindToEditorRevisions]' passed (0.228 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDeclinedProducerKeepsV1Only]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDeclinedProducerKeepsV1Only]' passed (0.114 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDefaultOffProducesOrdinaryV1Only]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDefaultOffProducesOrdinaryV1Only]' passed (0.108 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDisableRestartAndCloseRequireFreshOptIn]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperDisableRestartAndCloseRequireFreshOptIn]' passed (0.259 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperOrderingEnableBeforeLayoutWithDisplayListV2]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperOrderingEnableBeforeLayoutWithDisplayListV2]' passed (0.220 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperRefusesCandidatesWhileCompletedSnapshotsAreNegotiated]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testHelperRefusesCandidatesWhileCompletedSnapshotsAreNegotiated]' passed (0.098 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testModelRefusesCandidatesWhileOffAndKeepsTheV1Result]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testModelRefusesCandidatesWhileOffAndKeepsTheV1Result]' passed (0.008 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testStateKeepsOnePendingAndInvalidationVoidsEverything]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testStateKeepsOnePendingAndInvalidationVoidsEverything]' passed (0.012 seconds).
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testValidatorBindsEnvelopeToExactDurableText]' started.
+Test Case '-[FlashTeXMacTests.DisplayCandidateTests testValidatorBindsEnvelopeToExactDurableText]' passed (0.045 seconds).
+Test Suite 'DisplayCandidateTests' passed at 2026-09-12 14:09:43.269.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 1.257 (1.259) seconds
+Test Suite 'DisplayListDeltaTests' started at 2026-09-12 14:09:43.269.
+Test Case '-[FlashTeXMacTests.DisplayListDeltaTests testAcknowledgingAnOlderSnapshotYieldsFull]' started.
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

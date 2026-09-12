@@ -1,0 +1,15 @@
+note: /F1 LMRoman10-Regular from /private/tmp/flashtex-opus-fonts-takeover/apps/mac/build/FlashTeX.app/Contents/Resources/Fonts/lmroman10-regular.otf: 48 glyph(s), CffSubset, program 6788 bytes
+diagnostic (from the display list): warning: compiler: packages fontenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages inputenc are recognised but not implemented
+diagnostic (from the display list): warning: compiler: packages geometry are recognised but not implemented
+diagnostic (from the display list): error: compiler: \signature is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \address is not supported in the document preamble
+diagnostic (from the display list): error: compiler: \date is not supported in the document preamble
+diagnostic (from the display list): warning: compiler: environment 'letter' is not implemented; its body is typeset as plain text
+diagnostic (from the display list): error: compiler: \opening is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \closing is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \encl is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \cc is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): error: compiler: \ps is not supported by this compiler version; unrestricted TeX math mode is not implemented
+diagnostic (from the display list): warning: overfull_hbox: overfull line: 0.40pt too wide (no hyphenation available)
+note: 1 page(s), 219 glyph run(s), 1149 glyph(s) (0 continued at the natural advance, 0 with an exact TJ kern), 0 rule(s), 94655 bytes -> /private/tmp/flashtex-opus-fonts-takeover/docs/evidence/opus-fonts-takeover-20260912T1800Z/base-app-exports/letter/export.pdf
