@@ -1,0 +1,71 @@
+{
+  "agent_id": "commander-font-resources",
+  "archived_utc": "2026-09-12T09:06:13Z",
+  "assignment": {
+    "acceptance": [
+      "Meaningful bounded behavior tests and strict lint pass",
+      "Preserve exact identities; publish measured evidence and unsupported gates"
+    ],
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "branch": "agent/commander-corpus/font-resources",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "6f02330b5a12c01028549ed61d254f401c2a1f34",
+    "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
+    "owned_paths": [
+      "crates/font-resources"
+    ],
+    "revision": 11,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-024",
+    "timebox_minutes": 30,
+    "updated_utc": "2026-09-12T08:55:45Z"
+  },
+  "report": {
+    "agent_id": "commander-font-resources",
+    "allocation_id": "hosted-openai-product",
+    "assignment_acknowledgements": {
+      "FT-024": {
+        "acknowledged_utc": "2026-09-12T09:04:55Z",
+        "adaptation": "Reviewed r11 paired-cache objective, completed at7812318/60695a3; current Commander dispatch adds explicit collection consumer with missing verified-layout resolver documented. Same owned crate.",
+        "main_sha": "780f1458c125d9702b994ab9df377aed96a1113f",
+        "revision": 11
+      }
+    },
+    "branch": "agent/commander-corpus/font-resources",
+    "capabilities": [
+      "rust-font-resources"
+    ],
+    "code_revision": "bd91b83f1a89783961372c477c12bc48c7f3837a",
+    "eta_minutes": {
+      "likely": 0,
+      "optimistic": 0,
+      "pessimistic": 0
+    },
+    "machine": "linux-primary",
+    "main_integrated_through": "1fc71f31ee1e23eff0f3ab2fa1b04964b776594c",
+    "next_action": "Dependency: original font-engine must expose complete validated collection layout before production resolver. Same branch/worktree owned crate; no peer edits/providers/descendants. ACKr11 reflects completed prior queue and current direct dispatch. Await next product assignment.",
+    "reviewed_peers": {},
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Explicit collection registry consumer complete behind mandatory verified-layout resolver;115 ordinary tests/clippy and pinned installed refusal test pass. Peer8080c90 parser source matches local exactly; lacks validated complete layout enumeration. No duplicate parser/default resolver or production activation. Separate renderer-requested unhinted cache query60695a3 published.",
+    "tool": "Codex Astra",
+    "updated_utc": "2026-09-12T09:06:09Z",
+    "usage": {
+      "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
+      "status": "Hosted allocation; no external provider calls; account remainder unknown."
+    }
+  },
+  "report_age_seconds": 4,
+  "report_path": "coordination/agents/commander-font-resources.json",
+  "review_required": true,
+  "revision": 11,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-024",
+  "worker_branch": "agent/commander-corpus/font-resources",
+  "worker_report_sha": "e6b417fb56b33c63a447821f07c7e4c93f3e139d"
+}

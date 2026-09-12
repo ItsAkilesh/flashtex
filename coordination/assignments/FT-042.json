@@ -3,9 +3,9 @@
   "task_id": "FT-042",
   "agent_id": "daniel-statistics",
   "branch": "agent/daniel-statistics/document-statistics",
-  "revision": 1,
+  "revision": 2,
   "state": "assigned",
-  "objective": "Bounded statistics from explicit rendered text/source items, word/math/page counts and exact revision binding; document lexical limitations. Standalone additive crate only; coordinate consumer contract before integration.",
+  "objective": "Cache document statistics by exact source identity with dependency-aware project aggregation; prove incremental equals fresh and bound scanned bytes.",
   "owned_paths": [
     "crates/document-statistics"
   ],
@@ -18,6 +18,6 @@
   "allocation_id": "daniel-claude20x-shared",
   "timebox_minutes": 40,
   "deadline_utc": null,
-  "input_main_sha": "53fee3012b2902ca05bd31766defa515b3044cec",
-  "updated_utc": "2026-09-12T07:35:07.367827+00:00"
+  "input_main_sha": "83f65e08ae60b312609f49ec0a2b6cae25c8e353",
+  "updated_utc": "2026-09-12T09:08:31.372212+00:00"
 }

@@ -1,32 +1,32 @@
 {
   "agent_id": "commander-font-resources",
-  "next_index": 1,
+  "next_index": 0,
   "schema_version": 1,
   "steps": [
     {
+      "name": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
+      "objective": "Declarative font encoding loading: bounded adversarial and stale-identity acceptance tests",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
       "acceptance": [
         "Meaningful bounded behavior tests and strict lint pass",
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Paired pinned-font query performance and cached/direct exact equivalence",
-      "objective": "Paired pinned-font query performance and cached/direct exact equivalence",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
       "timebox_minutes": 30
     },
     {
+      "name": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
+      "objective": "Declarative font encoding loading: actual existing consumer fixture and exact measured limitations",
+      "owned_paths": [
+        "crates/font-resources"
+      ],
       "acceptance": [
         "Meaningful bounded behavior tests and strict lint pass",
         "Preserve exact identities; publish measured evidence and unsupported gates"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
-      "objective": "Cache eviction, unsupported outcomes and stale registry/device generation tests",
-      "owned_paths": [
-        "crates/font-resources"
-      ],
       "timebox_minutes": 30
     }
   ],
