@@ -14,7 +14,7 @@
 
 use flashtex_compiler::json::{self, Value};
 
-use crate::display::{self, DisplayList, Provenance, Severity, SourceRange};
+use crate::display::{self, DisplayList, Severity, SourceRange};
 
 pub const CAP_RULES: &str = "rules-v1";
 pub const CAP_FONT_HINTS: &str = "font-hints-v1";
@@ -130,9 +130,14 @@ fn hint_for(font: &display::FontResource) -> FontHint {
 }
 
 fn union(sources: &[SourceRange]) -> Option<SourceRange> {
-    let first = sources.first()?;
+    union_of(sources.iter())
+}
+
+/// The smallest range covering every source in the first source's document.
+fn union_of<'a>(mut sources: impl Iterator<Item = &'a SourceRange>) -> Option<SourceRange> {
+    let first = sources.next()?;
     let mut out = first.clone();
-    for s in sources.iter().filter(|s| s.path == first.path) {
+    for s in sources.filter(|s| s.path == first.path) {
         out.start_byte = out.start_byte.min(s.start_byte);
         out.end_byte = out.end_byte.max(s.end_byte);
     }
@@ -153,16 +158,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                     let size = run.font_size.to_bp();
                     match run.role {
                         display::RunRole::Text => {
-                            let sources: Vec<SourceRange> = run
-                                .clusters
-                                .iter()
-                                .filter_map(|c| match &c.provenance {
-                                    Provenance::Sources(s) => Some(s.iter().cloned()),
-                                    Provenance::Synthetic(_) => None,
-                                })
-                                .flatten()
-                                .collect();
-                            let (Some(source), Some(first)) = (union(&sources), run.glyphs.first()) else { continue };
+                            let (Some(source), Some(first)) = (union_of(run.clusters.iter().flat_map(|c| c.provenance.sources())), run.glyphs.first()) else { continue };
                             items.push(V1Item::Text {
                                 text: run.text.clone(),
                                 x_pt: first.origin_x.to_bp(),
@@ -175,8 +171,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                         display::RunRole::Math => {
                             for g in &run.glyphs {
                                 let Some(c) = run.clusters.get(g.cluster as usize) else { continue };
-                                let Provenance::Sources(s) = &c.provenance else { continue };
-                                let Some(source) = union(s) else { continue };
+                                let Some(source) = union(c.provenance.sources()) else { continue };
                                 items.push(V1Item::Text {
                                     text: run.text[c.text_start_byte..c.text_end_byte].to_string(),
                                     x_pt: g.origin_x.to_bp(),
@@ -190,8 +185,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
                     }
                 }
                 display::Item::Rule(rule) => {
-                    let Provenance::Sources(s) = &rule.provenance else { continue };
-                    let Some(source) = union(s) else { continue };
+                    let Some(source) = union(rule.provenance.sources()) else { continue };
                     let (x, top, w, h) = (rule.x.to_bp(), rule.top.to_bp(), rule.width.to_bp(), rule.height.to_bp());
                     if caps.rules {
                         items.push(V1Item::Rule {
@@ -244,7 +238,7 @@ pub fn fallback(v2: &DisplayList, caps: Capabilities, accepted: Option<Vec<Strin
 
 fn source_json(s: &SourceRange) -> Value {
     let mut o = Value::obj();
-    o.set("path", json::str_(s.path.clone()));
+    o.set("path", json::str_(s.path.to_string()));
     o.set("start_byte", json::num(s.start_byte as f64));
     o.set("end_byte", json::num(s.end_byte as f64));
     o
@@ -564,7 +558,7 @@ mod tests {
     #[test]
     fn writer_matches_value_tree() {
         let src = |path: &str, a: usize, b: usize| SourceRange {
-            path: path.into(),
+            path: std::rc::Rc::from(path),
             start_byte: a,
             end_byte: b,
         };

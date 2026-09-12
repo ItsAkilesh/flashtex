@@ -14,6 +14,7 @@ pub mod cff;
 pub mod display;
 pub mod fonts;
 pub mod ids;
+pub mod incremental;
 pub mod mathfont;
 pub mod mathtex;
 pub mod pagebuild;
@@ -28,6 +29,7 @@ pub mod v1;
 
 pub use display::DisplayList;
 pub use fonts::FontSet;
+pub use incremental::RenderCache;
 pub use style::Stylesheet;
 
 use flashtex_compiler::parser::SourceDocument;
@@ -85,6 +87,21 @@ pub fn render(
     fonts: &FontSet,
     options: &RenderOptions,
 ) -> Rendered {
+    render_cached(documents, entry_path, revision, project_id, fonts, options, None)
+}
+
+/// [`render`] with a block cache that outlives requests (`RenderCache`):
+/// unchanged paragraphs are reused, the output is byte-identical.
+#[allow(clippy::too_many_arguments)]
+pub fn render_cached(
+    documents: &[SourceDocument<'_>],
+    entry_path: &str,
+    revision: u64,
+    project_id: &str,
+    fonts: &FontSet,
+    options: &RenderOptions,
+    cache: Option<&RenderCache>,
+) -> Rendered {
     let started = std::time::Instant::now();
     let parsed = flashtex_compiler::parser::parse_project(documents, entry_path);
     let texts: Vec<&str> = documents.iter().map(|d| d.text).collect();
@@ -103,7 +120,7 @@ pub fn render(
             .collect();
         diagnostics.extend(doc.diagnostics.iter().cloned());
         let mut ctx = typeset::Context::new(fonts, &doc.style, &paths);
-        let laid = typeset::build(&mut ctx, &doc);
+        let laid = typeset::build(&mut ctx, &doc, cache);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {
             let pages = typeset::label_pages(&laid);

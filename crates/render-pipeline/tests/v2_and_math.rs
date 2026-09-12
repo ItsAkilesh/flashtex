@@ -32,8 +32,8 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
                         assert_eq!(c.text_start_byte, pos);
                         assert!(c.text_end_byte > c.text_start_byte);
                         assert!(run.text.is_char_boundary(c.text_end_byte));
-                        assert!(!c.hit_rects.is_empty());
-                        assert!(matches!(&c.provenance, Provenance::Sources(s) if !s.is_empty()));
+                        assert!(!c.hit_rects().is_empty());
+                        assert!(!c.provenance.sources().is_empty());
                         pos = c.text_end_byte;
                     }
                     assert_eq!(pos, run.text.len());
@@ -47,7 +47,7 @@ fn v1_items_are_positioned_exactly_where_v2_glyph_runs_start() {
                 Item::Rule(rule) => {
                     v2_rules += 1;
                     assert!(rule.width.0 > 0 && rule.height.0 > 0);
-                    assert!(matches!(&rule.provenance, Provenance::Sources(s) if s[0].path == "main.tex"));
+                    assert!(matches!(rule.provenance.sources(), [s] if &*s.path == "main.tex"));
                 }
             }
         }
@@ -104,7 +104,8 @@ fn fraction_bars_are_explicit_rules_in_v2_and_negotiated_in_v1() {
     // design size, the \frac rule thickness pdflatex draws (0.398bp).
     let want = Tick::from_tex_pt(flashtex_math_layout::tfm::scale(41943, 10.0));
     assert!((rule.height.0 - want.0).abs() <= 32, "fixword 41943 at 10pt: {:?} vs {:?} (tolerance: one scaled point)", rule.height, want);
-    let Provenance::Sources(s) = &rule.provenance else { panic!() };
+    let s = rule.provenance.sources();
+    assert_eq!(s.len(), 1);
     assert!(s[0].start_byte <= math_span && s[0].end_byte >= math_span + "\\frac{1}{2}".len());
 
     // Legacy route: U+2500 approximation, no typed rule.
@@ -134,7 +135,7 @@ fn fraction_bars_are_explicit_rules_in_v2_and_negotiated_in_v1() {
         .expect("typed rule");
     assert!((typed_rule.1 - rule.top.to_bp()).abs() < 1e-9);
     assert!((typed_rule.3 - rule.height.to_bp()).abs() < 1e-9);
-    assert_eq!(typed_rule.4.path, "main.tex");
+    assert_eq!(&*typed_rule.4.path, "main.tex");
     assert!(typed.pages[0].items.iter().all(|i| !matches!(i, V1Item::Text { text, .. } if text.contains('\u{2500}'))));
     // No font hints unless accepted.
     assert!(typed.pages[0].items.iter().all(|i| !matches!(i, V1Item::Text { font: Some(_), .. })));

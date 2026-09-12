@@ -11,7 +11,7 @@ use flashtex_compiler::parser::SourceDocument;
 use flashtex_compiler::protocol::{error_envelope, PROTOCOL_VERSION};
 
 use crate::v1::Capabilities;
-use crate::{render, FontSet, RenderOptions, Rendered};
+use crate::{render_cached, FontSet, RenderCache, RenderOptions, Rendered};
 
 pub const MAX_LINE_BYTES: usize = flashtex_compiler::protocol::MAX_LINE_BYTES;
 /// Largest reply line the Mac reader accepts (`JSONLines.maxLineBytes`);
@@ -81,7 +81,7 @@ fn result_envelope(id: &str, payload: Value) -> Value {
 }
 
 /// Handles one request line.
-pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Reply {
+pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: Option<&RenderCache>) -> Reply {
     let err = |id: &str, code: &str, msg: &str| Reply {
         line: json::write(&error_envelope(id, code, msg)),
         extra_lines: Vec::new(),
@@ -223,7 +223,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
             text: t.as_str(),
         })
         .collect();
-    let rendered = render(&sources, &entry_path, revision.max(0) as u64, &project_id, fonts, options);
+    let rendered = render_cached(&sources, &entry_path, revision.max(0) as u64, &project_id, fonts, options, cache);
     let limit = max_reply_bytes();
     let mut v1 = crate::v1::fallback(&rendered.v2, caps, accepted.clone());
     // display-list-v2: the envelope is serialised first because declining it
@@ -231,23 +231,27 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions) -> Repl
     // of the compile_result that precedes it.
     let mut extra_lines = Vec::new();
     if caps.display_list && v1.status != "failed" {
-        let dl = json::write(&rendered.v2.to_json(&id));
-        if dl.len() > limit {
-            v1.accepted = v1.accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect());
-            v1.diagnostics.push(crate::display::Diagnostic::warning(
-                "display_list_declined",
-                format!(
-                    "display-list-v2 declined: the display_list line would be {} bytes for {} pages, over the {limit}-byte line limit",
-                    dl.len(),
-                    rendered.v2.pages.len()
-                ),
-                Vec::new(),
-            ));
-            if v1.status == "ok" {
-                v1.status = "recovered";
+        // Size first (an upper-bound estimate, then the exact line), so an
+        // oversized frame is declined without serialising 16+ MB in vain.
+        let estimate = rendered.v2.estimated_json_bytes();
+        let dl = if estimate > limit { None } else { Some(json::write(&rendered.v2.to_json(&id))) };
+        let too_big = dl.as_ref().map_or(estimate, String::len);
+        match dl {
+            Some(dl) if dl.len() <= limit => extra_lines.push(dl),
+            _ => {
+                v1.accepted = v1.accepted.map(|a| a.into_iter().filter(|c| c != crate::v1::CAP_DISPLAY_LIST).collect());
+                v1.diagnostics.push(crate::display::Diagnostic::warning(
+                    "display_list_declined",
+                    format!(
+                        "display-list-v2 declined: the display_list line would be about {too_big} bytes for {} pages, over the {limit}-byte line limit",
+                        rendered.v2.pages.len()
+                    ),
+                    Vec::new(),
+                ));
+                if v1.status == "ok" {
+                    v1.status = "recovered";
+                }
             }
-        } else {
-            extra_lines.push(dl);
         }
     }
     let accepted = v1.accepted.clone();

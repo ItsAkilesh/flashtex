@@ -20,7 +20,7 @@ use std::path::PathBuf;
 
 use flashtex_compiler::json;
 use flashtex_compiler::protocol::{error_envelope, read_request_line, RequestLine};
-use flashtex_render_pipeline::{protocol, FontSet, RenderOptions};
+use flashtex_render_pipeline::{protocol, FontSet, RenderCache, RenderOptions};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -60,6 +60,9 @@ fn main() {
         }
     }
     let fonts = FontSet::with_default_dirs(&dirs);
+    // Block cache across requests (`incremental`): a keystroke retypesets
+    // only the paragraph it touched; output is identical to a fresh compile.
+    let cache = RenderCache::new();
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut out = stdout.lock();
@@ -68,7 +71,7 @@ fn main() {
         let reply = match read_request_line(&mut input) {
             Ok(Some(RequestLine::Data(bytes))) => match std::str::from_utf8(&bytes) {
                 Ok(line) if line.trim().is_empty() => continue,
-                Ok(line) => protocol::handle_line(line, &fonts, &options),
+                Ok(line) => protocol::handle_line(line, &fonts, &options, Some(&cache)),
                 Err(_) => protocol::Reply {
                     line: json::write(&error_envelope("", "invalid_utf8", "request line is not valid UTF-8")),
                     extra_lines: Vec::new(),

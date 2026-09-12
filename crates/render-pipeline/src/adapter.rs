@@ -196,7 +196,7 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
     };
     let style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Vec<(usize, usize, StyleKind)>> = texts.iter().map(|t| style_intervals(t)).collect();
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
     let mut blocks = Vec::new();
     let mut after_heading = false;
     for unit in split_at_page_breaks(texts, parsed) {
@@ -220,10 +220,10 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                             end: number_span.end,
                         })
                         .collect();
-                    push_segment(&mut items, number.clone(), chars, TextStyle::default());
+                    push_segment(&mut items, number.to_string(), chars, TextStyle::default());
                     items.push(Item::Quad { em: 1.0 });
                 }
-                items.extend(items_from_inlines(texts, &content, &styles, labels));
+                items.extend(items_from_inlines(texts, content, &styles, labels));
                 blocks.push(Block::Heading {
                     level,
                     items,
@@ -232,7 +232,6 @@ pub fn adapt(texts: &[&str], entry: usize, parsed: &Parsed, options: &RenderOpti
                 after_heading = true;
             }
             UnitKind::Paragraph { inlines, caption } => {
-                let inlines = &inlines[..];
                 let items = items_from_inlines(texts, inlines, &styles, labels);
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
@@ -295,20 +294,20 @@ fn inline_span(i: &Inline) -> Span {
 /// A compiler block, or the piece of a paragraph between page-break
 /// commands (`\newpage` ends the paragraph in LaTeX; the compiler keeps the
 /// text in one block and reports the command as unsupported).
-struct Unit {
-    kind: UnitKind,
+struct Unit<'p> {
+    kind: UnitKind<'p>,
     eject_before: bool,
 }
 
-enum UnitKind {
+enum UnitKind<'p> {
     Heading {
         level: u8,
-        number: String,
+        number: &'p str,
         number_span: Span,
-        content: Vec<Inline>,
+        content: &'p [Inline],
     },
     Paragraph {
-        inlines: Vec<Inline>,
+        inlines: &'p [Inline],
         caption: bool,
     },
 }
@@ -325,7 +324,7 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks(texts: &[&str], parsed: &Parsed) -> Vec<Unit> {
+fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     for block in &parsed.blocks {
@@ -344,33 +343,34 @@ fn split_at_page_breaks(texts: &[&str], parsed: &Parsed) -> Vec<Unit> {
                 units.push(Unit {
                     kind: UnitKind::Heading {
                         level: *level,
-                        number: number.clone(),
+                        number,
                         number_span: *number_span,
-                        content: content.clone(),
+                        content,
                     },
                     eject_before: eject,
                 });
             }
             CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
-                let mut current: Vec<Inline> = Vec::new();
-                for inline in inlines {
-                    if let Some(last) = current.last() {
-                        if gap_has_page_break(texts, inline_span(last), inline_span(inline)) {
-                            units.push(Unit {
-                                kind: UnitKind::Paragraph {
-                                    inlines: std::mem::take(&mut current),
-                                    caption,
-                                },
-                                eject_before: eject,
-                            });
-                            eject = true;
-                        }
+                let mut start = 0usize;
+                for i in 1..inlines.len() {
+                    if gap_has_page_break(texts, inline_span(&inlines[i - 1]), inline_span(&inlines[i])) {
+                        units.push(Unit {
+                            kind: UnitKind::Paragraph {
+                                inlines: &inlines[start..i],
+                                caption,
+                            },
+                            eject_before: eject,
+                        });
+                        eject = true;
+                        start = i;
                     }
-                    current.push(inline.clone());
                 }
                 units.push(Unit {
-                    kind: UnitKind::Paragraph { inlines: current, caption },
+                    kind: UnitKind::Paragraph {
+                        inlines: &inlines[start..],
+                        caption,
+                    },
                     eject_before: eject,
                 });
             }
@@ -624,18 +624,61 @@ fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
     None
 }
 
-fn style_at(intervals: &[(usize, usize, StyleKind)], at: usize) -> TextStyle {
-    let mut s = TextStyle::default();
-    for (start, end, kind) in intervals {
-        if *start <= at && at < *end {
-            match kind {
-                StyleKind::Bold => s.bold = true,
-                StyleKind::Italic => s.italic = true,
-                StyleKind::Emph => s.italic = !s.italic,
+/// The style groups of one document, indexed for point queries: the
+/// intervals in source order (sorted by start, properly nested), the
+/// running maximum of their ends (so a backward scan can stop as soon as no
+/// earlier group can still contain the position), and the ends sorted.
+#[derive(Debug, Clone, Default)]
+struct Styles {
+    intervals: Vec<(usize, usize, StyleKind)>,
+    max_end: Vec<usize>,
+    ends: Vec<usize>,
+}
+
+impl Styles {
+    fn new(intervals: Vec<(usize, usize, StyleKind)>) -> Styles {
+        let mut max_end = Vec::with_capacity(intervals.len());
+        let mut m = 0;
+        for (_, end, _) in &intervals {
+            m = m.max(*end);
+            max_end.push(m);
+        }
+        let mut ends: Vec<usize> = intervals.iter().map(|(_, e, _)| *e).collect();
+        ends.sort_unstable();
+        Styles { intervals, max_end, ends }
+    }
+
+    /// The style in force at byte `at` (bold/italic set, emph toggles:
+    /// order-independent, so the groups are visited from the nearest).
+    fn at(&self, at: usize) -> TextStyle {
+        let mut s = TextStyle::default();
+        let p = self.intervals.partition_point(|(start, _, _)| *start <= at);
+        let mut i = p;
+        while i > 0 {
+            i -= 1;
+            if self.max_end[i] <= at {
+                break;
+            }
+            let (_, end, kind) = self.intervals[i];
+            if at < end {
+                match kind {
+                    StyleKind::Bold => s.bold = true,
+                    StyleKind::Italic => s.italic = true,
+                    StyleKind::Emph => s.italic = !s.italic,
+                }
             }
         }
+        s
     }
-    s
+
+    /// Whether a style group's content ends exactly at `at`.
+    fn closes_at(&self, at: usize) -> bool {
+        self.ends.binary_search(&at).is_ok()
+    }
+}
+
+fn style_at(styles: &Styles, at: usize) -> TextStyle {
+    styles.at(at)
 }
 
 /// Whether the bytes between two consecutive inlines contain an interword
@@ -726,10 +769,10 @@ fn accent(mark: char, base: char) -> Option<char> {
 
 /// Converts the compiler inlines into words, spaces, math and line breaks.
 /// `texts` and `styles` are indexed by `DocumentId`.
-fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, usize, StyleKind)>], labels: &Labels) -> Vec<Item> {
+fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels) -> Vec<Item> {
     // `\ref`/`\pageref` become ordinary text attributed to the command's
     // bytes; `\label` becomes a zero-width marker.
-    let mut resolved: Vec<Inline> = Vec::with_capacity(inlines.len());
+    let mut resolved: Vec<std::borrow::Cow<Inline>> = Vec::with_capacity(inlines.len());
     let mut reference_spans: Vec<Span> = Vec::new();
     for inline in inlines {
         match inline {
@@ -741,20 +784,19 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                 }
                 .unwrap_or_else(|| "??".to_string());
                 reference_spans.push(*span);
-                resolved.push(Inline::Text { text, span: *span });
+                resolved.push(std::borrow::Cow::Owned(Inline::Text { text, span: *span }));
             }
-            other => resolved.push(other.clone()),
+            other => resolved.push(std::borrow::Cow::Borrowed(other)),
         }
     }
-    let inlines = &resolved[..];
     let mut items: Vec<Item> = Vec::new();
     let mut prev_end: Option<usize> = None;
     let mut prev_span: Option<Span> = None;
     let mut factor = 1000u32;
     let mut pending_accent: Option<(char, CharSrc)> = None;
     let text_of = |d: DocumentId| -> &str { texts.get(d.0).copied().unwrap_or("") };
-    let no_styles: Vec<(usize, usize, StyleKind)> = Vec::new();
-    let styles_of = |d: DocumentId| -> &[(usize, usize, StyleKind)] { styles.get(d.0).map_or(&no_styles[..], |v| &v[..]) };
+    let no_styles = Styles::default();
+    let styles_of = |d: DocumentId| -> &Styles { styles.get(d.0).unwrap_or(&no_styles) };
 
     // Emits an interword space if the source between `prev` and `span` had one.
     let space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span| -> bool {
@@ -780,8 +822,8 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
         }
     };
 
-    for inline in inlines {
-        match inline {
+    for inline in resolved.iter() {
+        match &**inline {
             Inline::Label { key, .. } => items.push(Item::Label { key: key.clone() }),
             Inline::Reference { .. } => unreachable!("references were resolved above"),
             Inline::LineBreak { span } => {
@@ -909,7 +951,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
                 // \text@command appends \/ (`\maybe@ic`) unless the next
                 // token is in \nocorrlist (`,` and `.`) or the enclosing
                 // font is itself slanted (`\fontdimen1 > 0`).
-                if styles_of(span.document).iter().any(|(_, end, _)| *end == span.end)
+                if styles_of(span.document).closes_at(span.end)
                     && source.as_bytes().get(span.end) == Some(&b'}')
                     && !matches!(source.as_bytes().get(span.end + 1), Some(b'.') | Some(b','))
                     && !style_at(styles_of(span.document), span.end + 1).italic
@@ -931,15 +973,15 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Vec<(usize, 
 /// `fallback` when the gap cannot be located.
 fn space_style(
     texts: &[&str],
-    styles: &[Vec<(usize, usize, StyleKind)>],
+    styles: &[Styles],
     prev_end: Option<usize>,
     span: Span,
     fallback: TextStyle,
 ) -> TextStyle {
     let Some(pe) = prev_end else { return fallback };
     let Some(src) = texts.get(span.document.0) else { return fallback };
-    let no_styles: Vec<(usize, usize, StyleKind)> = Vec::new();
-    let intervals = styles.get(span.document.0).map_or(&no_styles[..], |v| &v[..]);
+    let no_styles = Styles::default();
+    let intervals = styles.get(span.document.0).unwrap_or(&no_styles);
     let Some(gap) = src.get(pe..span.start) else { return fallback };
     match gap.find(|c: char| c.is_whitespace()) {
         Some(off) => style_at(intervals, pe + off),

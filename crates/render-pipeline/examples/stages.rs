@@ -14,6 +14,7 @@ fn main() {
     let text = std::fs::read_to_string(&path).expect("read");
     let fonts = FontSet::with_default_dirs(&[]);
     let options = RenderOptions::default();
+    let cache = flashtex_render_pipeline::RenderCache::new();
     for _ in 0..repeat {
         let t0 = Instant::now();
         let docs = [SourceDocument { path: "main.tex", text: &text }];
@@ -26,7 +27,7 @@ fn main() {
         eprintln!("packages {:?} family {:?}", parsed.packages, doc.style.family);
         let t2 = Instant::now();
         let mut ctx = typeset::Context::new(&fonts, &doc.style, &paths);
-        let laid = typeset::build(&mut ctx, &doc);
+        let laid = typeset::build(&mut ctx, &doc, Some(&cache));
         let t3 = Instant::now();
         let diagnostics = ctx.take_diagnostics();
         let v2 = typeset::assemble("p", 1, &docs, &doc.style, &fonts, laid, diagnostics);

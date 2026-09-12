@@ -39,9 +39,12 @@ impl Tick {
     }
 }
 
+/// A byte range in one source document. `path` is shared: a page carries
+/// one range per cluster, so the string is reference-counted rather than
+/// copied a hundred thousand times per compile.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SourceRange {
-    pub path: String,
+    pub path: std::rc::Rc<str>,
     pub start_byte: usize,
     pub end_byte: usize,
 }
@@ -83,17 +86,59 @@ pub struct Caret {
 /// reason when the pipeline synthesised it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Provenance {
+    /// One source range (the common case; no allocation per cluster).
+    Source(SourceRange),
+    /// Several ranges (macro expansion); reserved, unused today.
     Sources(Vec<SourceRange>),
     Synthetic(String),
+}
+
+impl Provenance {
+    /// The source ranges, in order (empty for synthetic content).
+    pub fn sources(&self) -> &[SourceRange] {
+        match self {
+            Provenance::Source(s) => std::slice::from_ref(s),
+            Provenance::Sources(v) => v,
+            Provenance::Synthetic(_) => &[],
+        }
+    }
+}
+
+/// One or two carets per cluster (its start, and the run end on the last
+/// cluster), stored inline: a page carries a caret pair per cluster.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Carets {
+    pub first: Caret,
+    pub last: Option<Caret>,
+}
+
+impl Carets {
+    pub fn iter(&self) -> impl Iterator<Item = &Caret> {
+        std::iter::once(&self.first).chain(self.last.iter())
+    }
+    pub fn len(&self) -> usize {
+        1 + usize::from(self.last.is_some())
+    }
+    pub fn is_empty(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cluster {
     pub text_start_byte: usize,
     pub text_end_byte: usize,
-    pub hit_rects: Vec<Rect>,
-    pub carets: Vec<Caret>,
+    /// The cluster's hit rectangle (the wire format is a list; this
+    /// pipeline emits exactly one per cluster).
+    pub hit_rect: Rect,
+    pub carets: Carets,
     pub provenance: Provenance,
+}
+
+impl Cluster {
+    pub fn hit_rects(&self) -> &[Rect] {
+        std::slice::from_ref(&self.hit_rect)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,7 +271,7 @@ impl Diagnostic {
                 .span
                 .map(|s| {
                     vec![SourceRange {
-                        path: paths.get(s.document.0).copied().unwrap_or("").to_string(),
+                        path: std::rc::Rc::from(paths.get(s.document.0).copied().unwrap_or("")),
                         start_byte: s.start,
                         end_byte: s.end,
                     }]
@@ -248,6 +293,27 @@ pub struct DisplayList {
 }
 
 impl DisplayList {
+    /// An upper-bound estimate of the serialised envelope size, so a
+    /// producer can decline `display-list-v2` for a request without first
+    /// serialising a line it would then throw away (the exact check still
+    /// runs on the serialised line when the estimate is under the limit).
+    pub fn estimated_json_bytes(&self) -> usize {
+        let mut n = 512 + self.fonts.len() * 400 + self.documents.len() * 200;
+        for d in &self.diagnostics {
+            n += 160 + d.message.len() + d.sources.len() * 80;
+        }
+        for p in &self.pages {
+            n += 64;
+            for it in &p.items {
+                n += match it {
+                    Item::GlyphRun(r) => 220 + 2 * r.text.len() + 120 * r.glyphs.len() + 280 * r.clusters.len(),
+                    Item::Rule(_) => 240,
+                };
+            }
+        }
+        n
+    }
+
     pub fn required_features(&self) -> Vec<&'static str> {
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
@@ -328,7 +394,7 @@ fn tick(t: Tick) -> Value {
 
 fn source_json(s: &SourceRange) -> Value {
     let mut o = Value::obj();
-    o.set("path", json::str_(s.path.clone()));
+    o.set("path", json::str_(s.path.to_string()));
     o.set("start_byte", json::num(s.start_byte as f64));
     o.set("end_byte", json::num(s.end_byte as f64));
     o
@@ -336,7 +402,7 @@ fn source_json(s: &SourceRange) -> Value {
 
 fn provenance_into(o: &mut Value, p: &Provenance) {
     match p {
-        Provenance::Sources(s) => o.set("sources", Value::Arr(s.iter().map(source_json).collect())),
+        Provenance::Source(_) | Provenance::Sources(_) => o.set("sources", Value::Arr(p.sources().iter().map(source_json).collect())),
         Provenance::Synthetic(reason) => o.set("synthetic_reason", json::str_(reason.clone())),
     }
 }
@@ -418,7 +484,7 @@ fn page_json(p: &Page) -> Value {
                                         let mut o = Value::obj();
                                         o.set("text_start_byte", json::num(c.text_start_byte as f64));
                                         o.set("text_end_byte", json::num(c.text_end_byte as f64));
-                                        o.set("hit_rects", Value::Arr(c.hit_rects.iter().map(rect_json).collect()));
+                                        o.set("hit_rects", Value::Arr(c.hit_rects().iter().map(rect_json).collect()));
                                         o.set(
                                             "carets",
                                             Value::Arr(

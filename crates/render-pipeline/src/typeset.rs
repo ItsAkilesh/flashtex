@@ -30,6 +30,7 @@ use crate::display::{
     Rect, Rule, SourceRange, Tick,
 };
 use crate::fonts::{Family, FontSet, LoadedFace, Role};
+use crate::incremental::{self, CachedBlock, RenderCache};
 use crate::mathfont::{MathFonts, MathSizes};
 use crate::mathtex::TexMathMetrics;
 use crate::pagebuild::{self, VBlock};
@@ -62,6 +63,7 @@ pub struct ClusterRec {
     pub glyphs: Range<usize>,
 }
 
+#[derive(Clone)]
 pub enum BoxRec {
     Text {
         face: Rc<LoadedFace>,
@@ -77,6 +79,7 @@ pub enum BoxRec {
     Math(usize),
 }
 
+#[derive(Clone)]
 pub struct MathRec {
     pub root: ml::MathBox,
     pub span: Span,
@@ -119,6 +122,7 @@ impl MathProvider {
 /// One vertical-list block: its broken lines, the horizontal list they
 /// index into, the map from item indices to box records, and how it enters
 /// the page builder's vertical list.
+#[derive(Clone)]
 pub struct BuiltBlock {
     pub block: pl::ParagraphBlock,
     /// The horizontal list the block's lines index into.
@@ -184,6 +188,10 @@ pub struct Context<'a> {
     math_fonts: Option<MathProvider>,
     math_unavailable: bool,
     reported: BTreeSet<String>,
+    /// Diagnostics emitted while a cacheable block is being built (with
+    /// their once-only keys, suppressed ones included).
+    capture: Option<Vec<(Option<String>, Diagnostic)>>,
+    path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
 }
 
 impl<'a> Context<'a> {
@@ -199,7 +207,88 @@ impl<'a> Context<'a> {
             math_fonts: None,
             math_unavailable: false,
             reported: BTreeSet::new(),
+            capture: None,
+            path_rcs: std::cell::RefCell::new(BTreeMap::new()),
         }
+    }
+
+    /// Emits a diagnostic; with a key, only the first one per key is kept.
+    fn emit(&mut self, key: Option<String>, d: Diagnostic) {
+        let keep = match &key {
+            Some(k) => self.reported.insert(k.clone()),
+            None => true,
+        };
+        if let Some(c) = &mut self.capture {
+            c.push((key, d.clone()));
+        }
+        if keep {
+            self.diagnostics.push(d);
+        }
+    }
+
+    /// Builds a block through the cache: a hit clones the cached records
+    /// back (offsets relocated to the block's new position) and replays
+    /// its diagnostics; a miss builds and stores. `origin` is the block's
+    /// document and first source byte.
+    fn cached<F>(&mut self, cache: Option<&RenderCache>, key: Option<u64>, origin: Option<(DocumentId, usize)>, build: F) -> Option<BuiltBlock>
+    where
+        F: FnOnce(&mut Self) -> Option<BuiltBlock>,
+    {
+        let (Some(cache), Some(key), Some((document, base))) = (cache, key, origin) else {
+            return build(self);
+        };
+        let path = self.paths.get(document.0).copied().unwrap_or("").to_string();
+        if let Some(c) = cache.get(key) {
+            if c.document == document && *c.path == *path {
+                let rec_delta = self.recs.len() as isize - c.rec_base as isize;
+                let math_delta = self.maths.len() as isize - c.math_base as isize;
+                let mut block = c.block.clone();
+                for r in &mut block.recs {
+                    if let Some(i) = r {
+                        *i = (*i as isize + rec_delta) as usize;
+                    }
+                }
+                let mut recs = c.recs.clone();
+                for r in &mut recs {
+                    if let BoxRec::Math(mi) = r {
+                        *mi = (*mi as isize + math_delta) as usize;
+                    }
+                }
+                let mut maths = c.maths.clone();
+                let mut diags = c.diagnostics.clone();
+                let delta = base as isize - c.base as isize;
+                incremental::relocate_block(&mut block, &mut recs, &mut maths, &mut diags, &path, delta);
+                self.recs.extend(recs);
+                self.maths.extend(maths);
+                for (k, d) in diags {
+                    self.emit(k, d);
+                }
+                return Some(block);
+            }
+        }
+        let rec_base = self.recs.len();
+        let math_base = self.maths.len();
+        let outer = self.capture.replace(Vec::new());
+        let built = build(self);
+        let captured = self.capture.take().unwrap_or_default();
+        self.capture = outer;
+        if let Some(b) = &built {
+            cache.insert(
+                key,
+                CachedBlock {
+                    block: b.clone(),
+                    rec_base,
+                    math_base,
+                    recs: self.recs[rec_base..].to_vec(),
+                    maths: self.maths[math_base..].to_vec(),
+                    diagnostics: captured,
+                    document,
+                    base,
+                    path,
+                },
+            );
+        }
+        built
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
@@ -208,16 +297,25 @@ impl<'a> Context<'a> {
 
     fn source(&self, span: Span) -> SourceRange {
         SourceRange {
-            path: self.paths.get(span.document.0).copied().unwrap_or("").to_string(),
+            path: self.path_rc(span.document),
             start_byte: span.start,
             end_byte: span.end,
         }
     }
 
-    fn report_once(&mut self, key: String, d: Diagnostic) {
-        if self.reported.insert(key) {
-            self.diagnostics.push(d);
+    /// The shared path string of a document (one allocation per document).
+    fn path_rc(&self, document: DocumentId) -> Rc<str> {
+        let mut cache = self.path_rcs.borrow_mut();
+        if let Some(p) = cache.get(&document.0) {
+            return p.clone();
         }
+        let p: Rc<str> = Rc::from(self.paths.get(document.0).copied().unwrap_or(""));
+        cache.insert(document.0, p.clone());
+        p
+    }
+
+    fn report_once(&mut self, key: String, d: Diagnostic) {
+        self.emit(Some(key), d);
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
@@ -327,7 +425,7 @@ impl<'a> Context<'a> {
             (subst, _) => {
                 let src = self.source(span);
                 let reason = subst.unwrap_or_else(|| "face has no MATH table".into());
-                self.diagnostics.push(Diagnostic::error(
+                self.emit(None, Diagnostic::error(
                     "math_font_unavailable",
                     format!("Latin Modern Math unavailable ({reason}); math is not typeset"),
                     vec![src],
@@ -393,7 +491,7 @@ impl<'a> Context<'a> {
         }
         if let Some(reason) = &shaped.refused {
             let src = self.source(span);
-            self.diagnostics.push(Diagnostic::error("unsupported_script", format!("cannot shape {:?}: {reason}", seg.text), vec![src]));
+            self.emit(None, Diagnostic::error("unsupported_script", format!("cannot shape {:?}: {reason}", seg.text), vec![src]));
             return None;
         }
         for (ch, off) in &shaped.missing {
@@ -881,7 +979,7 @@ impl<'a> Context<'a> {
         };
         if width > z + 1e-6 {
             let src = self.source(span);
-            self.diagnostics.push(Diagnostic::warning(
+            self.emit(None, Diagnostic::warning(
                 "overfull_display",
                 format!("display is {:.2}pt wider than the text width", width - z),
                 vec![src],
@@ -930,7 +1028,7 @@ impl<'a> Context<'a> {
                 .next();
             let _ = list;
             let src = span.map(|s| vec![self.source(s)]).unwrap_or_default();
-            self.diagnostics.push(Diagnostic::warning(
+            self.emit(None, Diagnostic::warning(
                 "overfull_hbox",
                 format!("overfull line: {:.2}pt too wide (no hyphenation available)", o.excess),
                 src,
@@ -1018,15 +1116,35 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
     ml::MathList::new(atoms)
 }
 
-/// Lays out every block of `doc` onto pages.
-pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
+/// Lays out every block of `doc` onto pages. With `cache`, blocks whose
+/// items, flags and style match an earlier build are reused (see
+/// `incremental`); the result is identical either way.
+pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let mut after_heading = false;
     let quad = ctx.text_params(TextStyle::default(), ctx.style.body_size_pt).quad;
+    let style_fp = if cache.is_some() { incremental::style_fingerprint(ctx.style) } else { 0 };
+    use std::hash::{Hash, Hasher};
+    let key_for = |tag: u8, items: &[AItem], flags: &[u64]| -> (Option<u64>, Option<(DocumentId, usize)>) {
+        if cache.is_none() {
+            return (None, None);
+        }
+        let Some((document, base)) = incremental::block_origin(items) else {
+            return (None, None);
+        };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        tag.hash(&mut h);
+        style_fp.hash(&mut h);
+        document.0.hash(&mut h);
+        flags.hash(&mut h);
+        incremental::hash_items(items, base, &mut h);
+        (Some(h.finish()), Some((document, base)))
+    };
     for block in &doc.blocks {
         match block {
             Block::Heading { level, items, eject_before } => {
-                if let Some(mut b) = ctx.heading_block(*level, items) {
+                let (key, origin) = key_for(b'H', items, &[u64::from(*level)]);
+                if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.heading_block(*level, items)) {
                     if *eject_before {
                         b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                     }
@@ -1050,7 +1168,9 @@ pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
                             // TeX discards the space token right after a
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
-                            if let Some(mut b) = ctx.paragraph_block(items, *indent && first, first, after_heading && first) {
+                            let (ind, starts, ah) = (*indent && first, first, after_heading && first);
+                            let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah)]);
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah)) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -1072,7 +1192,25 @@ pub fn build(ctx: &mut Context, doc: &Doc) -> Laid {
                                 blocks.push(opener);
                                 pre_display = Some(size);
                             }
-                            if let Some(b) = ctx.display_block(list, *span, pre_display, number.as_ref()) {
+                            let (key, origin) = if cache.is_some() {
+                                let mut h = std::collections::hash_map::DefaultHasher::new();
+                                b'D'.hash(&mut h);
+                                style_fp.hash(&mut h);
+                                span.document.0.hash(&mut h);
+                                incremental::hash_math(list, &mut h);
+                                (span.end - span.start).hash(&mut h);
+                                pre_display.map(f64::to_bits).hash(&mut h);
+                                if let Some((n, ns)) = number {
+                                    n.hash(&mut h);
+                                    (ns.start.wrapping_sub(span.start), ns.end.wrapping_sub(span.start)).hash(&mut h);
+                                }
+                                bracket.hash(&mut h);
+                                (Some(h.finish()), Some((span.document, span.start)))
+                            } else {
+                                (None, None)
+                            };
+                            let pd = pre_display;
+                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref())) {
                                 blocks.push(b);
                             }
                             pre_display = None;
@@ -1199,9 +1337,10 @@ pub fn assemble(
     laid: Laid,
     mut diagnostics: Vec<Diagnostic>,
 ) -> DisplayList {
-    let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
+    let paths: Vec<Rc<str>> = documents.iter().map(|d| Rc::from(d.path)).collect();
+    let empty: Rc<str> = Rc::from("");
     let source_of = |span: Span| SourceRange {
-        path: paths.get(span.document.0).copied().unwrap_or("").to_string(),
+        path: paths.get(span.document.0).cloned().unwrap_or_else(|| empty.clone()),
         start_byte: span.start,
         end_byte: span.end,
     };
@@ -1327,15 +1466,21 @@ fn text_item(
     let box_height = Tick::from_tex_pt(height + depth);
     let mut glyphs = Vec::with_capacity(run.glyphs.len());
     let mut origins = Vec::with_capacity(run.glyphs.len());
+    // Cluster glyph ranges are contiguous and ordered: walk them alongside
+    // the glyphs instead of searching per glyph.
+    let mut ci = 0usize;
     for (i, g) in run.glyphs.iter().enumerate() {
         let rec = recs.get(i)?;
+        while ci + 1 < clusters.len() && i >= clusters[ci].glyphs.end {
+            ci += 1;
+        }
         let x = run.x + g.x_offset + face.pt(i64::from(rec.x_offset_units), size);
         let y = baseline - face.pt(i64::from(rec.y_offset_units), size);
         origins.push((run.x + g.x_offset, g.advance));
         if rec.gid == 0 {
             continue;
         }
-        let cluster = clusters.iter().position(|c| c.glyphs.contains(&i)).unwrap_or(0) as u32;
+        let cluster = if clusters.get(ci).is_some_and(|c| c.glyphs.contains(&i)) { ci as u32 } else { clusters.iter().position(|c| c.glyphs.contains(&i)).unwrap_or(0) as u32 };
         glyphs.push(Glyph {
             gid: rec.gid,
             origin_x: Tick::from_tex_pt(x),
@@ -1357,31 +1502,31 @@ fn text_item(
                 (Some(a), Some(b)) => (a.0, b.0 + b.1),
                 _ => (run.x, run.x),
             };
-            let mut carets = vec![Caret {
-                text_byte: c.text_range.start,
-                x: Tick::from_tex_pt(x0),
-                top,
-                height: box_height,
-            }];
-            if ci == last_index {
-                carets.push(Caret {
+            let carets = display::Carets {
+                first: Caret {
+                    text_byte: c.text_range.start,
+                    x: Tick::from_tex_pt(x0),
+                    top,
+                    height: box_height,
+                },
+                last: (ci == last_index).then(|| Caret {
                     text_byte: c.text_range.end,
                     x: Tick::from_tex_pt(x1),
                     top,
                     height: box_height,
-                });
-            }
+                }),
+            };
             Cluster {
                 text_start_byte: c.text_range.start,
                 text_end_byte: c.text_range.end,
-                hit_rects: vec![Rect {
+                hit_rect: Rect {
                     x: Tick::from_tex_pt(x0),
                     top,
                     width: Tick::from_tex_pt(x1 - x0),
                     height: box_height,
-                }],
+                },
                 carets,
-                provenance: Provenance::Sources(vec![source_of(c.span)]),
+                provenance: Provenance::Source(source_of(c.span)),
             }
         })
         .collect();
@@ -1449,19 +1594,22 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
         r.clusters.push(Cluster {
             text_start_byte: start,
             text_end_byte: r.text.len(),
-            hit_rects: vec![Rect {
+            hit_rect: Rect {
                 x: Tick::from_tex_pt(g.x),
                 top,
                 width: Tick::from_tex_pt(adv),
                 height: hh,
-            }],
-            carets: vec![Caret {
-                text_byte: start,
-                x: Tick::from_tex_pt(g.x),
-                top,
-                height: hh,
-            }],
-            provenance: Provenance::Sources(vec![src.clone()]),
+            },
+            carets: display::Carets {
+                first: Caret {
+                    text_byte: start,
+                    x: Tick::from_tex_pt(g.x),
+                    top,
+                    height: hh,
+                },
+                last: None,
+            },
+            provenance: Provenance::Source(src.clone()),
         });
     }
     flush(&mut current, items);
@@ -1475,7 +1623,7 @@ fn math_items(run: &pl::PositionedRun, m: &MathRec, source_of: &dyn Fn(Span) -> 
             width: Tick::from_tex_pt(rule.w).max(Tick(1)),
             height: Tick::from_tex_pt(rule.h).max(Tick(1)),
             paint: Paint::BLACK,
-            provenance: Provenance::Sources(vec![src.clone()]),
+            provenance: Provenance::Source(src.clone()),
         }));
     }
 }
@@ -1497,11 +1645,9 @@ pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
         for it in &p.items {
             if let display::Item::GlyphRun(r) = it {
                 for c in &r.clusters {
-                    if let Provenance::Sources(s) = &c.provenance {
-                        for s in s {
-                            if let Some(i) = list.documents.iter().position(|d| d.path == s.path) {
-                                out.insert(DocumentId(i));
-                            }
+                    for s in c.provenance.sources() {
+                        if let Some(i) = list.documents.iter().position(|d| *d.path == *s.path) {
+                            out.insert(DocumentId(i));
                         }
                     }
                 }
