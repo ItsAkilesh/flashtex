@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-link-annotations"
+version = "0.1.0"
+edition = "2024"
+description = "Typed, source-mapped hyperlink destination and rectangle model for document export, with bounded allowlist URI validation and explicit internal-target resolution. Models and validates links only; never navigates, resolves, or fetches anything."
+publish = false
+
+[lib]
+name = "flashtex_link_annotations"
+path = "src/lib.rs"
+
+[dependencies]
