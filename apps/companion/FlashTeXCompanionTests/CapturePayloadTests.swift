@@ -86,6 +86,22 @@ final class CapturePayloadTests: XCTestCase {
         XCTAssertGreaterThan(roundTrip.size.height, 0)
     }
 
+    func testPreservesDeclaredJPEGBytes() throws {
+        let image = makeTestImage()
+        let jpeg = try XCTUnwrap(image.jpegData(compressionQuality: 0.8))
+        let envelope = CaptureEnvelope.create(
+            captureID: "jpeg-test",
+            destinationID: "anchor-1",
+            baseRevision: 1,
+            imageData: jpeg,
+            mimeType: "image/jpeg",
+            instructions: "Test"
+        )
+
+        XCTAssertEqual(envelope.payload.image.mimeType, "image/jpeg")
+        XCTAssertEqual(Data(base64Encoded: envelope.payload.image.dataBase64), jpeg)
+    }
+
     func testJSONIsOneLine() throws {
         let image = makeTestImage()
         let envelope = try XCTUnwrap(CaptureEnvelope.create(

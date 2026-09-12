@@ -130,7 +130,7 @@ struct DestinationStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "mappin.circle.fill")
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(Color.accentColor)
                 .font(.caption)
             Text(store.currentDestinationID)
                 .font(.caption.weight(.medium))

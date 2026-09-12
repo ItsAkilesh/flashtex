@@ -16,7 +16,25 @@ struct CaptureEnvelope: Codable {
 
     static func create(captureID: String, destinationID: String, baseRevision: Int, image: UIImage, instructions: String) -> CaptureEnvelope? {
         guard let pngData = image.pngData() else { return nil }
-        let base64 = pngData.base64EncodedString()
+        return create(
+            captureID: captureID,
+            destinationID: destinationID,
+            baseRevision: baseRevision,
+            imageData: pngData,
+            mimeType: "image/png",
+            instructions: instructions
+        )
+    }
+
+    static func create(
+        captureID: String,
+        destinationID: String,
+        baseRevision: Int,
+        imageData: Data,
+        mimeType: String,
+        instructions: String
+    ) -> CaptureEnvelope {
+        let base64 = imageData.base64EncodedString()
 
         return CaptureEnvelope(
             protocolVersion: 1,
@@ -26,7 +44,7 @@ struct CaptureEnvelope: Codable {
                 captureID: captureID,
                 destinationID: destinationID,
                 baseRevision: baseRevision,
-                image: CaptureImage(mimeType: "image/png", dataBase64: base64),
+                image: CaptureImage(mimeType: mimeType, dataBase64: base64),
                 instructions: instructions
             )
         )

@@ -12,6 +12,8 @@ final class ImageValidatorTests: XCTestCase {
         let result = ImageValidator.validate(image)
         XCTAssertTrue(result.isValid)
         XCTAssertNotNil(result.image)
+        XCTAssertNotNil(result.encodedData)
+        XCTAssertEqual(result.mimeType, "image/png")
         XCTAssertNil(result.error)
     }
 

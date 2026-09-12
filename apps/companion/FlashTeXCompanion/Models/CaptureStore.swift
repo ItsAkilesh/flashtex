@@ -35,22 +35,23 @@ final class CaptureStore {
         lastError = nil
 
         let validation = ImageValidator.validate(image)
-        guard validation.isValid, let validImage = validation.image else {
+        guard validation.isValid,
+              let validImage = validation.image,
+              let encodedData = validation.encodedData,
+              let mimeType = validation.mimeType else {
             lastError = validation.error ?? "Image validation failed"
             return
         }
 
         let captureID = "capture-\(UUID().uuidString.prefix(8))"
-        guard let envelope = CaptureEnvelope.create(
+        let envelope = CaptureEnvelope.create(
             captureID: captureID,
             destinationID: currentDestinationID,
             baseRevision: currentBaseRevision,
-            image: validImage,
+            imageData: encodedData,
+            mimeType: mimeType,
             instructions: instructions
-        ) else {
-            lastError = "Failed to create capture envelope"
-            return
-        }
+        )
 
         // Prefer network transport; fall back to stdout (CaptureTransport)
         var networkSent = false

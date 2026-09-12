@@ -16,6 +16,8 @@ enum ImageValidator {
     struct ValidationResult {
         let isValid: Bool
         let image: UIImage?
+        let encodedData: Data?
+        let mimeType: String?
         let error: String?
     }
 
@@ -37,7 +39,7 @@ enum ImageValidator {
 
         // Check data size
         guard let pngData = processed.pngData() else {
-            return ValidationResult(isValid: false, image: nil,
+            return ValidationResult(isValid: false, image: nil, encodedData: nil, mimeType: nil,
                                    error: "Failed to generate PNG data")
         }
 
@@ -47,13 +49,25 @@ enum ImageValidator {
                jpegData.count <= maxDataSize {
                 // Reconstruct as JPEG-backed UIImage
                 if let jpegImage = UIImage(data: jpegData) {
-                    return ValidationResult(isValid: true, image: jpegImage, error: nil)
+                    return ValidationResult(
+                        isValid: true,
+                        image: jpegImage,
+                        encodedData: jpegData,
+                        mimeType: "image/jpeg",
+                        error: nil
+                    )
                 }
             }
-            return ValidationResult(isValid: false, image: nil,
+            return ValidationResult(isValid: false, image: nil, encodedData: nil, mimeType: nil,
                                    error: "Image exceeds \(maxDataSize / 1024 / 1024)MB limit")
         }
 
-        return ValidationResult(isValid: true, image: processed, error: nil)
+        return ValidationResult(
+            isValid: true,
+            image: processed,
+            encodedData: pngData,
+            mimeType: "image/png",
+            error: nil
+        )
     }
 }
