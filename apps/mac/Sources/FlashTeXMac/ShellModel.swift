@@ -321,6 +321,7 @@ final class ShellModel: ObservableObject {
         let old = documents[i].text, base = editorRevision
         documents[i].text = text
         editorRevision += 1
+        TypingBench.shared.noteRevision(editorRevision) // keystroke -> paint instrumentation
         scheduleAutoCompile()
         bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
@@ -552,6 +553,7 @@ final class ShellModel: ObservableObject {
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             let ms = Date().timeIntervalSince(sent.sentAt) * 1000
+            TypingBench.shared.noteCompile(revision: incoming.revision, ms: ms)
             lastLatencyMs = ms
             latenciesMs.append(ms)
             if latenciesMs.count > 100 { latenciesMs.removeFirst(latenciesMs.count - 100) }

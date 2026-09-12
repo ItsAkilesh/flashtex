@@ -50,7 +50,7 @@ struct FlashTeXMacApp: App {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 560)
-                .onAppear { appDelegate.model = model; nearby.attach(sink: model, destinations: model) }
+                .onAppear { appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model) }
         }
         .commands {
             NavigationCommands(model: model) // Navigation.swift

@@ -18,6 +18,7 @@ struct PreviewView: View {
     private var caretPage: Int? { caretItems.filter { !$0.value.isEmpty }.keys.min() }
 
     var body: some View {
+        let _ = TypingBench.shared.willRender(revision: result.revision, pages: result.pages.count)
         GeometryReader { geo in
         ScrollViewReader { proxy in
             let widest = result.pages.map(\.widthPt).max() ?? 612
@@ -134,6 +135,7 @@ private struct HitTestCanvas: View {
                 context.draw(resolved, at: origin, anchor: .topLeading)
                 rects.append((index, rect, t.source, t.text))
             }
+            TypingBench.shared.didDraw(page: page.number) // paint instrumentation (TypingBench.swift)
             DispatchQueue.main.async { hitRects = rects }
         }
         .contentShape(Rectangle())
