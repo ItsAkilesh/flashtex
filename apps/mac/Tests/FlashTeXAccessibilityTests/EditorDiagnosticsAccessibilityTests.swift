@@ -55,4 +55,75 @@ final class EditorDiagnosticsAccessibilityTests: XCTestCase {
         XCTAssertEqual(Nav.current(items, atUTF16: 45)?.ordinal, 3, "a caret at the end of a mark counts")
         XCTAssertNil(Nav.current(items, atUTF16: 30))
     }
+
+    // MARK: the diagnostics-list row against the keyboard navigator
+
+    func diagnostic(_ severity: RuntimeV1.Severity, _ message: String, recovery: String? = nil,
+                    source: (Int, Int)? = (10, 20)) -> RuntimeV1.Diagnostic {
+        RuntimeV1.Diagnostic(severity: severity, message: message,
+                             source: source.map { .init(path: "main.tex", startByte: $0.0, endByte: $0.1) }, recovery: recovery)
+    }
+
+    func testRowLabelValueAndActionsFollowTheResultStatus() {
+        let withNote = diagnostic(.error, "outer", recovery: "rendered plain")
+        let bare = diagnostic(.warning, "late", source: nil)
+        let recovered = DiagnosticRowAccessibility(withNote, index: 0, total: 3, status: .recovered)
+        XCTAssertEqual(recovered.label, "Diagnostic 1 of 3: Error: outer")
+        XCTAssertEqual(recovered.value, "recovery: rendered plain; main.tex bytes 10 to 20")
+        XCTAssertNil(recovered.hint)
+        XCTAssertEqual(recovered.actions, ["Go to source"])
+        // No note: "no provisional rendering" only when the result recovered.
+        let bareRecovered = DiagnosticRowAccessibility(bare, index: 2, total: 3, status: .recovered)
+        XCTAssertEqual(bareRecovered.label, "Diagnostic 3 of 3: Warning: late")
+        XCTAssertEqual(bareRecovered.value, "no provisional rendering")
+        XCTAssertEqual(bareRecovered.hint, "No source mapping; listed only.")
+        XCTAssertEqual(bareRecovered.actions, [])
+        let bareOK = DiagnosticRowAccessibility(bare, index: 2, total: 3, status: .ok)
+        XCTAssertEqual(bareOK.value, "", "an ok result without a note says nothing about recovery")
+        XCTAssertEqual(DiagnosticRowAccessibility(bare, index: 0, total: 1, status: .failed).value, "")
+        XCTAssertEqual(DiagnosticRowAccessibility.recoveryLine(recovery: nil, status: .recovered), "no provisional rendering")
+        XCTAssertNil(DiagnosticRowAccessibility.recoveryLine(recovery: nil, status: .ok))
+        XCTAssertEqual(DiagnosticRowAccessibility.recoveryLine(recovery: "x", status: .ok), "recovery: x")
+    }
+
+    /// The list row, the keyboard navigator's "n of m" announcement and the
+    /// document model's diagnostic element speak the same severity word,
+    /// message and recovery line for the same diagnostic.
+    func testRowAgreesWithNavigatorAnnouncementsAndDocumentModel() throws {
+        let diags = [diagnostic(.error, "outer", recovery: "rendered plain"),
+                     diagnostic(.warning, "inner", source: (10, 12)),
+                     diagnostic(.warning, "late", source: (40, 45))]
+        let status = RuntimeV1.Status.recovered
+        let rows = diags.enumerated().map { DiagnosticRowAccessibility($0.element, index: $0.offset, total: diags.count, status: status) }
+        // Navigator items built the way the shell builds them (recovery line from the same rule).
+        let navItems = diags.enumerated().map { i, d in
+            Nav.Item(id: "r#\(i)", nsRange: NSRange(location: d.source!.startByte, length: d.source!.endByte - d.source!.startByte),
+                     severity: d.severity, message: d.message,
+                     recoveryLine: DiagnosticRowAccessibility.recoveryLine(recovery: d.recovery, status: status))
+        }
+        var step = try XCTUnwrap(Nav.step(navItems, fromUTF16: 0, forward: true))
+        var visited: [String] = []
+        for _ in navItems {
+            visited.append(step.item.id)
+            let i = Int(step.item.id.dropFirst(2))!
+            let row = rows[i]
+            let severityWord = step.item.severity == .error ? "Error" : "Warning"
+            XCTAssertTrue(step.announcement.hasPrefix("\(severityWord) \(step.ordinal) of \(step.total): \(step.item.message)"))
+            XCTAssertEqual(row.label, "Diagnostic \(i + 1) of 3: \(severityWord): \(step.item.message)")
+            // The row's value starts with the exact recovery line the announcement ends with.
+            let line = try XCTUnwrap(step.item.recoveryLine)
+            XCTAssertTrue(step.announcement.contains(" — " + line), step.announcement)
+            XCTAssertTrue(row.value.hasPrefix(line + "; "), row.value)
+            step = try XCTUnwrap(Nav.step(navItems, fromUTF16: step.item.nsRange.location, forward: true, currentID: step.item.id))
+        }
+        XCTAssertEqual(Set(visited).count, 3, "every diagnostic visited once before wrapping")
+        // The document model's element uses the same label and leads with the same recovery line.
+        let result = RuntimeV1.CompileResult(projectId: "t", revision: 1, status: status, pages: [], diagnostics: diags, pdfPath: nil)
+        let model = AccessibleDocumentModel(result: result)
+        for (row, element) in zip(rows, model.diagnostics) {
+            XCTAssertTrue(row.label.hasSuffix(element.label), row.label)
+            XCTAssertTrue(row.value.hasPrefix(element.value.components(separatedBy: ";")[0]), "\(row.value) vs \(element.value)")
+            XCTAssertEqual(row.actions, element.actions)
+        }
+    }
 }
