@@ -1,4 +1,5 @@
 """Synthetic auth/model/Cursor doubles: never consumes actual provider usage."""
+import contextlib
 import importlib.util
 import json
 import hashlib
@@ -23,7 +24,10 @@ class ClaudeWorkerTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
-        self.enterContext(patch.dict(os.environ, {}, clear=True))
+        # See tests/test_worker.py: enterContext is 3.11+, this repo targets 3.9+.
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(patch.dict(os.environ, {}, clear=True))
         self.args = SimpleNamespace(id='tester', machine='fixture', cycle_seconds=60,
             funding='api', api_grant=None)
         self.assignment = dict(schema_version=1,task_id='FT-TEST',revision=1,agent_id='tester',
