@@ -17,8 +17,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Implement only supported current-authority geometry lookup reusing exact compiler geometry and source spans",
-      "objective": "Implement only supported current-authority geometry lookup reusing exact compiler geometry and source spans",
+      "name": "Resolve GH34 licensed10pt metric asset coverage versus exact rooted producer lookup after current hit-query acceptance",
+      "objective": "Resolve GH34 licensed10pt metric asset coverage versus exact rooted producer lookup after current hit-query acceptance",
       "owned_paths": [
         "crates/rendering-core"
       ],
@@ -30,8 +30,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Verify ligature escaped-source and stale session membership behavior or publish exact missing producer geometry without inference",
-      "objective": "Verify ligature escaped-source and stale session membership behavior or publish exact missing producer geometry without inference",
+      "name": "Provide pinned ec-lmr10 metric setup to helper owner and independently verify separately labeled replay diagnostics without replacing recovered evidence",
+      "objective": "Provide pinned ec-lmr10 metric setup to helper owner and independently verify separately labeled replay diagnostics without replacing recovered evidence",
       "owned_paths": [
         "crates/rendering-core"
       ],
