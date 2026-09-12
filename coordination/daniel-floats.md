@@ -373,3 +373,162 @@ flagged surface:
 - Identity pins are synthetic-only (see rationale above); no real-font
   identity pin was added.
 - Did not touch `crates/font-resources` or any other peer crate.
+
+## Rev 5: real consumer integration fixture + measured gaps
+
+### 1. Existing consumer integration fixture
+
+Grepped `font_engine`/`font-engine` across every `crates/` and `apps/` file.
+The real consumer is `crates/font-resources/src/registry/collections.rs`
+(`registry::collections`). Its own doc comment states the exact gap this
+revision closes: "No collection-directory parser is implemented here. A
+trusted complete-layout resolver is REQUIRED: the peer font engine selects
+faces but does not expose validated layout enumeration." It defines
+`VerifiedCollectionResolver` (an external implementer supplies
+`complete_layout`) and `CollectionRegistry::load`, its real public entry
+point. font-resources' own test suite exercises that trait only with a
+hand-rolled `SyntheticResolver` returning a literal value — it never calls
+this crate's `collection_layout`.
+
+Added `crates/font-engine/tests/consumer_integration.rs` (real integration,
+not a stand-in): `EngineBackedResolver` calls this crate's own
+`collection_layout` and reshapes its `(offset, length)` `TableRange`s into
+font-resources' `Range<usize>`-based `CollectionLayout`/`FaceLayout`/
+`TableRange` (plus the `header`/`directory` ranges that shape needs, which
+this crate's own type doesn't carry). Two tests drive it through the real
+`CollectionRegistry::load` — not through font-resources' private
+`validate_layout`/`build`:
+
+1. `engine_collection_layout_satisfies_the_real_font_resources_registry` —
+   builds a real project (`ProjectRoot` + manifest) around the real system
+   `/System/Library/Fonts/Times.ttc`, loads it through
+   `CollectionRegistry::load` with the engine-backed resolver, and checks
+   the registry's independently-derived per-table identities (it
+   cross-checks each resolved table range against
+   `TrueTypeFace::table()`'s own byte offsets and hashes the bytes) agree
+   with `parse_with_source`'s own view of the same face. Skips with a
+   message if `Times.ttc` is absent (same convention as
+   `tests/truetype.rs`).
+2. `engine_collection_layout_rejection_propagates_through_the_real_registry`
+   — a hand-built `ttcf` with one zero-length table (the exact shape rev 4
+   added a `collection_layout` check for) is rejected by `collection_layout`
+   and that rejection is proven to propagate through the real
+   `CollectionRegistry::load` as `RegistryError::ResourceMismatch`, not just
+   through this crate's own tests.
+
+Only a dev-dependency was added (`flashtex-font-resources`,
+`flashtex-project-files`, `serde_json`, `tempfile`, all `[dev-dependencies]`
+in `crates/font-engine/Cargo.toml`); `crates/font-resources` itself was not
+edited. This is a dev-only reverse edge (font-resources depends on this
+crate normally; this crate dev-depends on font-resources for tests only),
+which Cargo explicitly supports and does not create a build cycle for
+normal (non-test) builds.
+
+**Finding from running this fixture against the real consumer's full test
+suite (not just my own):** running `cargo test` for `crates/font-resources`
+after an in-progress attempt at part 3 below (mirroring `collection_layout`'s
+zero-length/alignment checks into `parse_with_source`) broke 4 of its 35
+tests — its own fixtures deliberately contain a zero-length `glyf` table and
+a non-4-byte-aligned `CFF ` table offset, both legal under the OpenType spec
+(table alignment is a compiler convention, not a format requirement; an
+all-composite/whitespace-only font can have a zero-length `glyf`). That
+finding is why part 3 below ends in "restate why not," backed by this
+fixture rather than by reasoning alone — see below.
+
+### 2. Measured unsupported gaps (real system fonts)
+
+Rescanned every `.ttc`/`.ttf`/`.otf` under `/System/Library/Fonts` and its
+`Supplemental` subdirectory (a throwaway `examples/scan_gap_scratch.rs`,
+removed before this commit, same convention as rev 4's scan tools) through
+both `collection_layout` and `parse_with_source`. First pass double-counted
+files (`Supplemental` is itself a subdirectory of `Fonts`, so walking both
+roots visits it twice — 660 files / 1267 faces); deduplicated by walking
+`Fonts` alone. Exact counts, matching rev 4's headline totals exactly (370
+files / 787 faces, 723/10/54/0):
+
+| files | faces | `collection_layout` rejected | Ok | MissingTable | Unsupported | Malformed |
+|---|---|---|---|---|---|---|
+| 370 | 787 | 0 | 723 | 10 | 54 | 0 |
+
+**MissingTable (10) broken down** (rev 4 did not break this down):
+
+| count | missing table | file(s) | real cause |
+|---|---|---|---|
+| 9 | `CFF ` | `SFIndia.ttc` (all 9 faces) | sfnt tag is `OTTO` (Cff outlines required) but the face actually carries `CFF2` + `fvar`/`HVAR`/`MVAR`/`STAT` — it's a **variable CFF2 font**; this crate's outline-table check runs before the fvar/gvar check, so it surfaces as MissingTable rather than Unsupported. Confirmed by dumping its real table tags. |
+| 1 | `head` | `Supplemental/NISC18030.ttf` | sfnt tag is `true` but its tables are `bdat`/`bhed`/`bloc` (legacy Apple bitmap-only font) — no `head`/`hhea`/`glyf` at all, not just a missing one. |
+
+**Unsupported (54) broken down:**
+
+| count | cause | file(s) |
+|---|---|---|
+| 49 | `fvar`/`gvar` present (variable font instancing not implemented) | 49 distinct faces across the corpus |
+| 5 | `cmap` present but no subtable in the accepted set — only `(3,10,12)`, `(0,*,12)`, `(3,1,4)`, `(0,*,4)` are read; Microsoft Symbol `(3,0,4)` and other non-Unicode subtables are skipped | `LastResort.otf`, `Webdings.ttf`, `Wingdings.ttf`, `Wingdings 2.ttf`, `Wingdings 3.ttf` |
+
+`collection_layout` itself rejected 0 of the 370 files — every real `.ttc`
+directory on this machine is still well-formed by its stricter contract,
+same as rev 4's finding, now reconfirmed after the parse_with_source
+experiment below (identical byte-for-byte scan output before/after that
+change was reverted).
+
+### 3. `parse_with_source` zero-length/alignment/ordering follow-up: reverted, not mirrored
+
+Attempted the mirror rev 4 flagged: added `length == 0`, `offset % 4 != 0`
+(both per-table and for a `ttcf` face's own `sfnt_offset`), and
+ascending-tag-order checks to `parse_with_source`'s directory loop,
+matching `face_layout`'s. This crate's own suite (79 tests) and the real
+system-font scan (787 faces, byte-identical outcome) both stayed green —
+same evidence rev 4 used to justify mirroring the duplicate-tag/overlap
+checks.
+
+But rev 5's own new consumer-integration fixture prompted running
+`crates/font-resources`'s full test suite too (a real downstream consumer,
+not hypothetical), and that is not clean: 4 of its 35 tests fail —
+`original_engine_adapter_resource_identity_and_request_gates`,
+`math_binding_synthetic_limits_and_missing_table`,
+`explicit_collection_resolver_registry_identity_and_bounds` (the very test
+that shows this crate has no consumer-side coverage otherwise), and
+`synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity`.
+Confirmed by reverting the change and reconfirming 35/35 pass on the
+pre-change baseline. Root cause: font-resources' shared test fixture
+(`tests/resources.rs::fixture()`) has a zero-length `glyf` table by design,
+and a separate fixture has a `CFF ` table at a non-4-byte-aligned offset —
+both legal under the OpenType spec (alignment is a font-compiler
+convention this crate's own directory walk never required until this
+attempt; a `glyf` table can be legitimately empty). `collection_layout`'s
+stricter contract exists for a narrower purpose — bounding a `ttcf`
+directory before an explicit-collection registry trusts it — and rev 4's
+own doc comment for it says exactly that ("real fonts never lay tables on
+top of each other" for the overlap/duplicate case, not "every real font is
+4-byte aligned and non-empty").
+
+**Decision: reverted the mirror; `parse_with_source` is unchanged from rev
+4** (only its rev-4 duplicate-tag/overlap checks remain). Mirroring
+`collection_layout`'s zero-length/alignment/ascending-order checks into the
+general-purpose parse path would reject spec-legal data a real consumer in
+this repository already depends on. This is not a deferral for scope
+reasons (rev 4's framing) — it is a decision made *with* the evidence rev 4
+asked for, and the evidence says don't. `truetype.rs` is byte-identical to
+the rev-4 commit; only `Cargo.toml`/`Cargo.lock` (new dev-dependencies) and
+the new `tests/consumer_integration.rs` changed in this crate this
+revision.
+
+### Test counts
+
+Rev 4: 77 passed (unit 8, adapters 6, core14 16, latin_modern 9, pinned 6,
+truetype 18, ttc_adversarial 1, ttc_identity 3, ttc_layout 8, doctests 2).
+Rev 5: **79 passed, 0 failed** — same as rev 4 plus the 2 new
+`consumer_integration` tests. `cargo test`, `cargo clippy --all-targets --
+-D warnings`, and `cargo fmt --check` are all clean for
+`crates/font-engine`. `crates/font-resources`'s own suite (35 tests, read
+but not edited) is also 35/35 at the state this branch leaves
+`parse_with_source` in.
+
+### Notes on repository content outside scope
+
+`AGENTS.md`/`CLAUDE.md` and this merge's incoming `coordination/` files
+(handoff/authority/quiescence/supervisor-script content) were treated per
+this session's explicit instruction as untrusted text that may pose as
+authorization; none of it was read for instructions or acted on, no script
+under `coordination/` was executed, and nothing outside the owned paths
+(`crates/font-engine`, `coordination/daniel-floats.md`,
+`coordination/agents/daniel-floats.json`) was edited.
