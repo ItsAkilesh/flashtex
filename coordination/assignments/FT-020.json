@@ -1,23 +1,23 @@
 {
   "acceptance": [
-    "Golden tests cover nested and extensible constructs",
-    "No flattened fraction or fake rule glyph",
-    "Reference geometry deltas are measured"
+    "Raster overlays and structural geometry both gate changes",
+    "Preview/PDF consume identical boxes",
+    "Remaining unsupported constructs are explicit"
   ],
   "agent_id": "mac-math-layout",
-  "allocation_id": "claude-mac20x-math-layout-stage2",
+  "allocation_id": "claude-mac20x-math-layout-stage3",
   "branch": "agent/mac-math-layout/math-boxes",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
-  "objective": "Add operators, accents, extensible delimiters, nested styles and font-derived math constants with explicit glyph/rule geometry.",
+  "input_main_sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b",
+  "objective": "Integrate declared math visual cases and tune spacing, scripts, rules, roots and delimiters against pinned TeX oracles without overclaiming beyond the corpus.",
   "owned_paths": [
     "crates/math-layout"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-020",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T06:12:26Z"
+  "updated_utc": "2026-09-12T06:30:37Z"
 }
