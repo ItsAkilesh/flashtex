@@ -30,3 +30,20 @@ previously ignored the failure event until timeout; it now fails immediately.
 The failed cases are preserved separately and excluded from passing burst counts.
 No pages were removed and no source was reduced to make the case pass. Larger-frame
 or streamed-output work is required before this case can participate in the gate.
+
+## GH29 explicit larger-frame configuration
+
+With `--compiler-frame-mib 15`, the unchanged requested500KB workload completes
+in both policies: 40/40 durable acknowledgements, two exact independent clean final
+results, and two exact killed-helper source reopens. The default compiler limit
+remains8MiB. The helper allows an explicit15MiB input ceiling with1MiB typical
+metadata reserve and still checks the entire encoded envelope against16MiB;
+no fixed reserve guarantees fit for arbitrary metadata or JSON reserialization.
+An overflow regression proves one small complete error followed by an intact ACK.
+
+Enabled: one historical and one current frame, final1584.760ms after last send.
+Disabled: one current, three stale and16superseded, final13664.010ms. Mean actual
+send intervals30.052/30.386ms. These are single samples with an unexplained large
+latency difference, not evidence of a stable causal speedup. Both exceed200ms.
+The cap repair establishes delivery for this specific full-result case, not
+responsive rendering, arbitrary-source-size support or native acceptance.

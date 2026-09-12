@@ -26,8 +26,10 @@ use output_buffer::OutputBuffer;
 const MAX_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 const MAX_FRAME: usize = 1024 * 1024;
-// Leave four MiB below the helper frame bound for its wrapping metadata.
-const MAX_COMPILER_FRAME: usize = 12 * 1024 * 1024;
+// Reserve one MiB for typical wrapping metadata; this is not a proof that every
+// compiler frame fits after reserialization. OutputBuffer checks the complete JSONL.
+const COMPILER_ENVELOPE_RESERVE: usize = 1024 * 1024;
+const MAX_COMPILER_FRAME: usize = MAX_OUTPUT_BYTES - COMPILER_ENVELOPE_RESERVE;
 fn compiler_limits(config: &Value) -> Result<Limits, String> {
     let mut limits = Limits::default();
     if let Some(value) = config.get("compiler_max_frame_bytes") {
@@ -35,7 +37,7 @@ fn compiler_limits(config: &Value) -> Result<Limits, String> {
             .as_u64()
             .and_then(|n| usize::try_from(n).ok())
             .filter(|n| (128..=MAX_COMPILER_FRAME).contains(n))
-            .ok_or("compiler_max_frame_bytes must be 128..12582912")?;
+            .ok_or("compiler_max_frame_bytes must be 128..15728640")?;
     }
     Ok(limits)
 }
@@ -690,6 +692,38 @@ mod configuration_tests {
             .as_str()
             .unwrap()
             .contains("durable"));
+    }
+
+    #[test]
+    fn compiler_result_and_metadata_share_complete_output_budget_without_partial_frame() {
+        let (tx, rx) = output_delivery::channel(2);
+        let stopped = AtomicBool::new(false);
+        // A result admitted below the compiler ceiling can still have too much
+        // helper metadata. No fixed reserve can guarantee arbitrary path lengths.
+        let mut payload = json!({"kind":"preview","result":"r".repeat(MAX_COMPILER_FRAME-128)});
+        payload["source_versions"] = json!({"long-path":"m".repeat(COMPILER_ENVELOPE_RESERVE+256)});
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", Value::Null, "update", payload),
+        );
+        emit(
+            &tx,
+            &stopped,
+            wire::envelope("s", json!("saved"), "result", json!({"durable":true})),
+        );
+        let rejected = rx.next(Duration::ZERO).unwrap();
+        assert!(rejected.bytes.capacity() < 4096);
+        let error: Value = serde_json::from_slice(&rejected.bytes).unwrap();
+        assert_eq!(error["type"], "error");
+        assert_eq!(error["session_id"], "s");
+        rx.written(&rejected);
+        let ack = rx.next(Duration::ZERO).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&ack.bytes).unwrap()["id"],
+            "saved"
+        );
+        assert!(!stopped.load(Ordering::SeqCst));
     }
 
     #[test]

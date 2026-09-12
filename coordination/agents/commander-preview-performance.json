@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "b04237d",
+  "code_revision": "2093cd9",
   "eta_minutes": null,
   "machine": "linux-primary",
   "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Native owner consume documented negotiated helper contract; root extend actual-helper burst evidence with separate historical lag/current latency and durable recovery. No native activation or pixelparity claim.",
+  "next_action": "Commander integrate GH29 configuration and native contract; investigate large-document phases without loweringworkload orclaimingstablegain. Nativepainting stillowner gate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Negotiated completed-snapshots-v1 stdio adapter implemented, default off. Original token/version binding, bounded one optional frame behind required traffic, restart reset. Full52 tests with actualcompiler gates and strictlint pass; gated subprocess proves historical/current lifecycle and invalidtoken pre-mutation rejection.",
+  "summary": "GH29 explicit15MiB compiler input ceiling supports unchanged521792B case undercomplete16MiB outputguard; default8 unchanged. Full53tests+strictlint,40ACKs/twoexactcleanfinals/reopens. Finalenabled1584.760ms/default13664.010ms unexplainedsamplevariance; responsiveness unresolved.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:56:22Z",
+  "updated_utc": "2026-09-12T10:03:34Z",
   "usage": {
     "status": "unknown"
   }

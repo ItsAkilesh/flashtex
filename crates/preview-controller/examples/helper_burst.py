@@ -23,7 +23,7 @@ def run(args):
         config = root / "config.json"
         config.write_text(json.dumps(dict(session_id="benchmark", project_id="p", entry_path="main.tex",
             project_root=str(root / "project"), private_ledger_root=str(root / "ledger"),
-            compiler_path=compiler, compiler_max_frame_bytes=12 * 1024 * 1024)))
+            compiler_path=compiler, compiler_max_frame_bytes=args.compiler_frame_mib * 1024 * 1024)))
         client = Client(helper, config)
         writer = None
         try:
@@ -146,6 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--helper", required=True)
     parser.add_argument("--compiler", required=True)
     parser.add_argument("--size", type=int, default=50000)
+    parser.add_argument("--compiler-frame-mib", type=int, choices=range(1,16), default=12)
     parser.add_argument("--historical", action="store_true", help="explicitly negotiate completed-snapshots-v1")
     parser.add_argument("--edits", type=int, default=20)
     parser.add_argument("--interval-ms", type=int, default=30)
