@@ -8,6 +8,7 @@ license = "MIT"
 flashtex-document-runtime = { path = "../document-runtime" }
 flashtex-project-index = { path = "../project-index" }
 flashtex-edit-ledger = { path = "../edit-ledger" }
+flashtex-project-files = { path = "../project-files" }
 serde_json = "1"
 getrandom = "0.4"
 

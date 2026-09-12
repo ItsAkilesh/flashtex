@@ -93,11 +93,16 @@ version = "0.1.0"
 dependencies = [
  "flashtex-document-runtime",
  "flashtex-edit-ledger",
+ "flashtex-project-files",
  "flashtex-project-index",
  "getrandom",
  "serde_json",
  "tempfile",
 ]
+
+[[package]]
+name = "flashtex-project-files"
+version = "0.1.0"
 
 [[package]]
 name = "flashtex-project-index"

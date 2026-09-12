@@ -64,3 +64,17 @@ return an explicit preview-unavailable status. Call `restart` once an original
 compiler is configured to attach it and compile the latest saved snapshot. A failed
 attachment never overwrites source. `new` is the convenience constructor for a
 known available compiler.
+
+`file_project::FileProject::open(project_root, private_ledger_root, project_id,
+entry)` imports discovered UTF-8 source into private durable stores. Existing
+ledger source always wins on reopen, including when the entry was deleted from
+disk. Bindings include canonical root and project identity, so identical project
+IDs under different roots do not share stores. `inspect` explicitly distinguishes
+matching source, changed disk content, missing files and unavailable reads; it
+never updates the source or silently treats a disk change as accepted.
+
+File discovery uses the shared project-files graph. Entry canonicalization adds a
+consumer preflight for its unchecked initial path, but is not a race-proof rooted
+IO capability. Export is explicitly disabled pending shared rooted-save issue GH18.
+Import is durable per document, not an atomic project-wide transaction. The shared
+graph's discovery IO limits and native file UI integration remain outstanding.

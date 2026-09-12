@@ -1,4 +1,5 @@
 //! Worker-thread editor controller. Durable source precedes disposable caches.
+pub mod file_project;
 use flashtex_document_runtime::{Document as InputDocument, Event, Limits, Request, Session};
 use flashtex_edit_ledger::history::{GroupedEdit, HistoryMove, HistoryResult, HistoryStatus};
 use flashtex_edit_ledger::{AppliedReceipt, AppliedTransaction, Document, PreparedEdit, Store};
