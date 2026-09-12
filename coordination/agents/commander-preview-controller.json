@@ -3,33 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-027": {
-      "acknowledged_utc": "2026-09-12T06:15:29Z",
-      "adaptation": "Reviewed FT-027r1; own preview-controller only, helper7cc6475 implements bounded actor stdio with explicit approval and durable receipt recovery, continuing guarded editor queries.",
-      "main_sha": "928595ecbd1cf63af5924c7a4df76f12350b52af",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T06:37:45Z",
+      "adaptation": "Reviewed negotiated layout scope in document-runtime plus preview-controller; implemented9786b58 with explicit per-request opt-in, strict validation and no native parity claim.",
+      "main_sha": "38155b125775d84438b5694c9bfb9fb71a2c0556",
+      "revision": 3
     }
   },
   "branch": "agent/commander/preview-controller",
   "capabilities": [
     "rust"
   ],
-  "code_revision": "faaadb9f672074a87dbd8e6af89d46948edd0b7a",
+  "code_revision": "9786b5897497d5a6c9373bb18013026f8297ffa9",
   "eta_minutes": {
-    "likely": 10,
-    "optimistic": 5,
-    "pessimistic": 20
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 35
   },
   "machine": "linux-primary",
   "main_integrated_through": "87d20e8fa3c80bffcb223a503dc5da0f4784eb58",
-  "next_action": "Integrate nativehelper and dispatch next nonoverlapping product stage; nativepaint remainsunmeasured.",
+  "next_action": "Consume published bounded project-index search API; preserve4localagentlimit andGH18exportgate.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Helper throughfaaadb9 plus pendingfaulttests:17tests incl original compiler, real process kill/receipt+undo retry, stalled output bound and wrong-session isolation; strictClippy pass.",
+  "summary": "9786b58 negotiatedrules/font hints published;14runtime+22controller tests andstrictClippy pass. Defaultlegacy unchanged.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T06:21:40Z",
+  "updated_utc": "2026-09-12T06:37:45Z",
   "usage": {
-    "evidence": "Live hosted /root Astra session; helper subprocess tests actually ran, no paid auxiliary calls; quota unknown.",
+    "evidence": "Hosted /root active; no auxiliarypaidcalls; remainingquotaunknown.",
     "status": "unknown"
   }
 }
