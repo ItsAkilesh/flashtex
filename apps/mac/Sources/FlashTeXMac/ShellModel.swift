@@ -26,7 +26,7 @@ final class ShellModel {
     var loadError: String?
     var selection: Selection?
     var navigationNote: String?
-    var darkPreview = false
+    var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
     /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
     var autoClosePairs: Set<Character> = ["{"]
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] == "1" // experimental v2 pane (PreviewV2View.swift)

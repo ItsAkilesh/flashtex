@@ -170,5 +170,6 @@ struct FlashTeXMacApp: App {
         Window("Accessibility Help", id: AccessibilityHelpView.windowID) {
             AccessibilityHelpView() // FlashTeXAccessibility: focus order, VoiceOver notes, command table
         }
+        Settings { EditorPreferencesView() } // EditorPreferences.swift (⌘,)
     }
 }
