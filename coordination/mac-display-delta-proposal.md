@@ -53,6 +53,10 @@ Searched `origin/agent/mac-claude-a/mac-shell` (`apps/mac/Tests/FlashTeXMacTests
 
 ## Status
 
-Proposal written and pushed (see git log for the tip). Final report to the
-parent is in the lane's completion message; the 10-line summary is section 0
-of the proposal.
+Proposal committed as c797c5cf and pushed to
+`origin/agent/mac-render-pipeline/delta-proposal`. Final report to the parent is
+in the lane's completion message; the 10-line summary is section 0 of the
+proposal. Lane complete; no further steps owned here. Limitations: no code, no
+build/test run (nothing to build); digests/vectors are from the Python reference
+only (Rust/Swift implementations are gate items P5/C1); the helper route needs
+an FT-049-owned runtime change before any delta can pass.
