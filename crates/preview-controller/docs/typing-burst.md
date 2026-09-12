@@ -301,3 +301,7 @@ Four deterministic tests verify shared-offset preservation and subsequent exact
 append, partial-tail completion, preserved/refused non-JSON records, and the capture
 bound. They establish the mechanism and repair, not the causes of58242 or68918.
 No additional workload was run while making this change.
+
+Snapshot status starts with captured=false until a positional read succeeds. An
+earlier failure leaving empty saved bytes therefore does not imply an empty stderr
+stream; the status explicitly records that no snapshot was taken.
