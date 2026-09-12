@@ -14,19 +14,23 @@
     "rust",
     "diagnostic-context"
   ],
-  "code_revision": "94c76ee510e7bf043ef6e9a02ffc287581dd921e",
-  "eta_minutes": null,
+  "code_revision": "a5866beeca50dc5ebcc0131304b61cfff84f8c7e",
+  "eta_minutes": {
+    "likely": 20,
+    "optimistic": 10,
+    "pessimistic": 35
+  },
   "machine": "linux-primary",
   "main_integrated_through": "f522cf185f93e67e350ad4590d58afd6c66bc1e7",
-  "next_action": "Integrate bounded assistant helper into native provider flow via owning worker; retain explicit approval and cancellation.",
+  "next_action": "Subprocess interleaving/cancellation adapter and tests; no provider calls.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "Adversarial helper/source checks complete:10tests including real compiler, malformed/oversized process recovery, tampered hashes and outside-snippet edits pass; strict clippy pass.",
+  "state": "in_progress",
+  "summary": "Published a5866be bounded request registry;12 tests including actual compiler and strict clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T07:50:04Z",
+  "updated_utc": "2026-09-12T07:50:46Z",
   "usage": {
-    "evidence": "unknown",
-    "status": "Same existing root hosted slot; no model/provider calls."
+    "evidence": "a5866be;12 tests passed; strict clippy passed",
+    "status": "Hosted OpenAI only; no external billed calls."
   }
 }
