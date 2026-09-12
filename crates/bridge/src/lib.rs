@@ -175,6 +175,11 @@ impl Proposal {
                 "LaTeX must contain 1–65536 UTF-8 bytes without NUL",
             ));
         }
+        // Explicit control-sequence denylist and structural checks (shell
+        // escape, file I/O, catcode/macro redefinition, unbalanced grouping,
+        // embedded `\end{document}`, bidi-override characters, ...). See
+        // `validation::scan_latex` for the full threat model.
+        validation::scan_latex(&self.latex)?;
         for list in [&self.ambiguities, &self.required_dependencies] {
             if list.len() > 32 || list.iter().any(|v| v.len() > 2048 || v.contains('\0')) {
                 return Err(BridgeError::new(
@@ -523,7 +528,19 @@ impl Bridge {
         {
             return Ok(record);
         }
-        let proposal = converter.convert(&record.capture, &context)?;
+        let mut proposal = converter.convert(&record.capture, &context)?;
+        proposal.validate()?;
+        // Hard violations already failed above; surface non-fatal but
+        // reviewer-worthy findings (e.g. deep nesting, `\loop`/`\repeat`)
+        // through the same `ambiguities` channel the review UI already
+        // renders alongside `latex`, so a human sees them before approving
+        // `prepare_insert`. Re-validate afterward so an unreasonable number
+        // of findings cannot silently exceed the proposal's own bounds.
+        for advisory in validation::scan_latex(&proposal.latex)?.advisories {
+            if !proposal.ambiguities.contains(&advisory) {
+                proposal.ambiguities.push(advisory);
+            }
+        }
         proposal.validate()?;
         record.context = Some(context);
         record.proposal = Some(proposal);

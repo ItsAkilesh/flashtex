@@ -18,6 +18,265 @@ const MAX_WIRE: usize = 8 * 1024 * 1024;
 const MAX_STDERR: u64 = 64 * 1024;
 const MAX_SAFE_INTEGER: u64 = (1u64 << 53) - 1;
 
+// --- LaTeX content safety --------------------------------------------------
+//
+// `proposal.latex` is model output: untrusted text that is (a) sent to a real
+// compiler process by `CompilerValidator::validate` below, before any human
+// has approved anything, and (b) spliced verbatim into the user's own source
+// file once a human does approve it. TeX is a full programming language with
+// file I/O and a shell escape, so this text is code flowing into a
+// code-execution context, not just displayed content.
+//
+// This module does not attempt to decide whether a snippet "means" something
+// safe — sanitizing an arbitrary, Turing-complete language by pattern
+// matching can never be complete or sound. Instead it recognizes a small,
+// explicit denylist of named control sequences that are independently known
+// to grant filesystem access, shell execution, or the power to change how
+// the rest of the document is parsed (catcodes, primitive/macro
+// redefinition), plus a few purely structural invariants — balanced
+// grouping, no premature `\end{document}`, no bidi/invisible characters that
+// make the reviewed text display differently than it compiles — that have no
+// legitimate use in a small inserted body snippet. Anything not on this list
+// passes through unchanged; a human still reviews the literal `latex` text
+// (and any `advisories` this scan adds) before `prepare_insert` is approved.
+//
+// Scanning walks `latex` once as a flat `Vec<char>` with plain counters, not
+// recursion, so a maliciously deep `{{{{...` cannot overflow this scanner's
+// own stack regardless of nesting depth.
+
+/// Control words with no legitimate use in an inserted body snippet: shell
+/// escape (`write`/`immediate`), file I/O (`input`/`include`/`openin`/
+/// `openout`/`closein`/`closeout`/`read`), anything that changes how
+/// subsequent characters or names are read or expand (`catcode`, the
+/// `\def`-family, `\let`, `\csname`), the `@`-namespace unlock that reaches
+/// internal kernel commands (`\makeatletter`/`\makeatother`), and the
+/// top-level document declarations (`\documentclass`/`\usepackage`) that a
+/// body-only edit has no business emitting (packages belong in
+/// `required_dependencies` for a human to add).
+const DENIED_CONTROL_WORDS: &[&str] = &[
+    "write",
+    "immediate",
+    "input",
+    "include",
+    "openin",
+    "openout",
+    "closein",
+    "closeout",
+    "read",
+    "catcode",
+    "def",
+    "edef",
+    "gdef",
+    "xdef",
+    "let",
+    "futurelet",
+    "chardef",
+    "mathchardef",
+    "countdef",
+    "dimendef",
+    "skipdef",
+    "muskipdef",
+    "toksdef",
+    "csname",
+    "endcsname",
+    "makeatletter",
+    "makeatother",
+    "documentclass",
+    "usepackage",
+];
+/// Control words that are only ever a hang risk (not file/shell access) and
+/// are occasionally legitimate in hand-written macros, so they are surfaced
+/// to the human reviewer via `ambiguities` instead of being hard-rejected.
+const SOFT_CONTROL_WORDS: &[&str] = &["loop", "repeat"];
+/// Above this depth, flag for human review: implausible for ordinary math
+/// but not yet clearly abusive.
+const SOFT_GROUP_DEPTH: usize = 20;
+/// Above this depth, reject outright: no legitimate inserted snippet nests
+/// this deep, and TeX engines themselves have finite save-stack/input-stack
+/// capacity that this size is meant to stay well clear of.
+const HARD_GROUP_DEPTH: usize = 2000;
+
+/// A single explicit-denylist/structural safety pass over a proposed LaTeX
+/// snippet. See the module-level comment above for the threat model and
+/// scope of what this is (and is not) meant to catch.
+pub struct LatexScan {
+    pub advisories: Vec<String>,
+}
+pub fn scan_latex(latex: &str) -> Result<LatexScan> {
+    fn unsafe_char(c: char) -> bool {
+        // Raw control characters (NUL is already rejected earlier, but this
+        // is defense in depth) have no place in LaTeX source. Bidi
+        // direction-override/isolate controls and the explicit
+        // left-to-right/right-to-left marks let inserted text *display* in
+        // a different order than it compiles in (the "Trojan Source" class
+        // of attack) and are never needed to transcribe a figure or
+        // formula.
+        (c.is_control() && !matches!(c, '\t' | '\n' | '\r'))
+            || matches!(
+                c,
+                '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}'
+            )
+    }
+    fn invisible_char(c: char) -> bool {
+        // Zero-width/joiner characters and a stray BOM are not direction
+        // spoofing, but a body snippet from an image-to-LaTeX conversion has
+        // no legitimate reason to contain invisible formatting characters
+        // either; flag rather than silently drop them.
+        matches!(
+            c,
+            '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}'
+        )
+    }
+    fn invalid(message: impl Into<String>) -> BridgeError {
+        BridgeError::new("invalid_proposal", message)
+    }
+
+    let chars: Vec<char> = latex.chars().collect();
+    let mut advisories = Vec::new();
+    let mut seen_soft_words = std::collections::BTreeSet::new();
+    let mut saw_invisible = false;
+    let mut depth: usize = 0;
+    let mut max_depth: usize = 0;
+    let mut envs: Vec<String> = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        if unsafe_char(c) {
+            return Err(invalid(format!(
+                "LaTeX contains a disallowed control or bidi-override character (U+{:04X})",
+                c as u32
+            )));
+        }
+        if invisible_char(c) {
+            saw_invisible = true;
+            i += 1;
+            continue;
+        }
+        match c {
+            '\\' => {
+                i += 1;
+                let Some(&next) = chars.get(i) else {
+                    return Err(invalid("LaTeX ends with a dangling backslash"));
+                };
+                if next.is_ascii_alphabetic() {
+                    let start = i;
+                    while chars.get(i).is_some_and(char::is_ascii_alphabetic) {
+                        i += 1;
+                    }
+                    let word: String = chars[start..i].iter().collect();
+                    if DENIED_CONTROL_WORDS.contains(&word.as_str()) {
+                        return Err(invalid(format!(
+                            "LaTeX uses \\{word}, which is not permitted in an inserted snippet"
+                        )));
+                    }
+                    if SOFT_CONTROL_WORDS.contains(&word.as_str()) {
+                        seen_soft_words.insert(word.clone());
+                    }
+                    if word == "begin" || word == "end" {
+                        // Resolve `\begin{name}` / `\end{name}` by looking
+                        // past optional spaces/tabs for a brace-delimited
+                        // name, without introducing state carried across
+                        // loop iterations.
+                        let mut j = i;
+                        while matches!(chars.get(j), Some(' ') | Some('\t')) {
+                            j += 1;
+                        }
+                        if chars.get(j) == Some(&'{') {
+                            let name_start = j + 1;
+                            let mut k = name_start;
+                            while chars
+                                .get(k)
+                                .is_some_and(|c| !matches!(c, '}' | '{' | '\\'))
+                            {
+                                k += 1;
+                            }
+                            if chars.get(k) == Some(&'}') {
+                                let name: String = chars[name_start..k].iter().collect();
+                                i = k + 1;
+                                if name == "document" {
+                                    return Err(invalid(format!(
+                                        "LaTeX contains \\{word}{{document}}, which would truncate or corrupt the surrounding document"
+                                    )));
+                                }
+                                if word == "begin" {
+                                    envs.push(name);
+                                } else {
+                                    match envs.pop() {
+                                        Some(top) if top == name => {}
+                                        _ => {
+                                            return Err(invalid(format!(
+                                            "LaTeX has \\end{{{name}}} with no matching \\begin{{{name}}} in this snippet"
+                                        )))
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                // Control symbol: exactly one non-letter character, which is
+                // a literal (e.g. `\{`, `\}`, `\\`, `\%`), not grouping or a
+                // comment marker.
+                i += 1;
+            }
+            '{' => {
+                depth += 1;
+                max_depth = max_depth.max(depth);
+                if depth > HARD_GROUP_DEPTH {
+                    return Err(invalid(format!(
+                        "LaTeX nests groups {depth} deep, far beyond any legitimate snippet (possible resource-exhaustion attempt)"
+                    )));
+                }
+                i += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    return Err(invalid("LaTeX has an unmatched closing brace `}`"));
+                }
+                depth -= 1;
+                i += 1;
+            }
+            '%' => {
+                // Default-catcode line comment. Sound only because `\catcode`
+                // itself is denied above, so `%` cannot have been redefined
+                // by this same snippet before this point.
+                while chars.get(i).is_some_and(|&c| c != '\n') {
+                    i += 1;
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    if depth != 0 {
+        return Err(invalid(format!(
+            "LaTeX has {depth} unclosed group(s) (`{{` without a matching `}}`)"
+        )));
+    }
+    if let Some(name) = envs.last() {
+        return Err(invalid(format!(
+            "LaTeX has an unclosed \\begin{{{name}}} with no matching \\end{{{name}}}"
+        )));
+    }
+    if max_depth > SOFT_GROUP_DEPTH {
+        advisories.push(format!(
+            "LaTeX nests grouping {max_depth} levels deep; verify this is intentional before approving"
+        ));
+    }
+    for word in seen_soft_words {
+        advisories.push(format!(
+            "LaTeX uses \\{word}; verify it has a genuine terminating condition before approving (an infinite loop will hang compilation)"
+        ));
+    }
+    if saw_invisible {
+        advisories.push(
+            "LaTeX contains invisible/zero-width Unicode characters; verify they are intentional before approving".into(),
+        );
+    }
+    Ok(LatexScan { advisories })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SnapshotIdentity {
     pub path: String,
