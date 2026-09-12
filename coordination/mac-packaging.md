@@ -18,10 +18,10 @@
   report (`README-packaging.diff` in the parent's scratchpad), not applied.
 - Branch / code revision / main integrated through:
   `agent/mac-packaging/signing` from `origin/agent/mac-claude-a/mac-shell`
-  6f4ee94; merged mac-shell 7c11d65 and origin/main eed1847 at the final
+  6f4ee94; merged mac-shell 7c11d65 and origin/main d1bd76b at the final
   checkpoint (both clean; neither touches `apps/mac/scripts`,
   `apps/mac/Resources` or this lane's coordination files) / see `git log` /
-  origin/main eed1847.
+  origin/main d1bd76b.
 - State: ready for integration (into `agent/mac-claude-a/mac-shell` by the parent).
 - Ready behavior and evidence:
   - **`make-app.sh`** (`apps/mac/scripts/make-app.sh`): table-driven helper
@@ -141,7 +141,7 @@
   - README packaging section + `apps/mac/docs/packaging.md` step 2/3 text
     (entitlements are now the empty documented file, `--deep` no longer used
     for distribution signing): parent-owned, diff supplied.
-- Reviewed peer revisions / resulting adaptations: `origin/main` eed1847 —
+- Reviewed peer revisions / resulting adaptations: `origin/main` d1bd76b (eed1847 + one coordination dispatch commit) —
   no `apps/mac` changes, merged, nothing to adapt; `origin/agent/mac-claude-a/mac-shell`
   7c11d65 — new Swift (delimiter pairs, hybrid preview) but no script/Resources
   changes, merged, packaging re-verified on the merged tip (`--sign - --dmg`

@@ -15,7 +15,7 @@
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0",
+  "main_integrated_through": "d1bd76bb23ae94a293d3346806d50facd0732d33",
   "next_action": "Parent merges agent/mac-packaging/signing into agent/mac-claude-a/mac-shell and applies the README/packaging.md diffs from the final report",
   "reviewed_peers": {
     "origin/agent/mac-claude-a/mac-shell": {
@@ -24,14 +24,14 @@
       "sha": "7c11d6535cfd0dead20cb9dfb70ca719b6eacf02"
     },
     "origin/main": {
-      "adaptation": "no apps/mac changes; merged (6c31d4e); main advanced again afterwards (d1bd76b) still without touching this lane's paths",
+      "adaptation": "no apps/mac changes (eed1847 diff read; d1bd76b adds one coordination dispatch commit); merged (6c31d4e)",
       "reviewed_utc": "2026-09-12T11:12:00Z",
-      "sha": "eed1847e923b42dbbc02d25309e9e432bd6e3aa0"
+      "sha": "d1bd76bb23ae94a293d3346806d50facd0732d33"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "make-app.sh: --sign/--notarize hardened-runtime signing (helpers first, app with empty documented Resources/FlashTeX.entitlements, codesign --verify --deep --strict, spctl, notarytool submit --wait, stapler), --sign - test path, pre-build non-secret failures when identity/profile absent (0 identities here), Info.plist template, 10 optional helpers incl. --assistant/--explain, components.json helper sha256 == shipped bytes (baseline mismatch fixed) + build block with SOURCE_DATE_EPOCH-pinnable timestamp, --install-dir, pid-only install verification; launch-check.sh: open -n --env FLASHTEX_NO_ACTIVATE=1, pid+path instance detection, NSRunningApplication.terminate quit, no name-based kills, --dmg mount/launch/detach; repro-check.sh + packaging-selftest.sh (fast 18/18, --full 23/23 with main-checkout helpers); re-verified after merging mac-shell 7c11d65 and main eed1847",
+  "summary": "make-app.sh: --sign/--notarize hardened-runtime signing (helpers first, app with empty documented Resources/FlashTeX.entitlements, codesign --verify --deep --strict, spctl, notarytool submit --wait, stapler), --sign - test path, pre-build non-secret failures when identity/profile absent (0 identities here), Info.plist template, 10 optional helpers incl. --assistant/--explain, components.json helper sha256 == shipped bytes (baseline mismatch fixed) + build block with SOURCE_DATE_EPOCH-pinnable timestamp, --install-dir, pid-only install verification; launch-check.sh: open -n --env FLASHTEX_NO_ACTIVATE=1, pid+path instance detection, NSRunningApplication.terminate quit, no name-based kills, --dmg mount/launch/detach; repro-check.sh + packaging-selftest.sh (fast 18/18, --full 23/23 with main-checkout helpers); re-verified after merging mac-shell 7c11d65 and main d1bd76b",
   "tool": "Claude Code subagent (parent mac-claude-a)",
   "updated_utc": "2026-09-12T11:02:18Z",
   "usage": {
