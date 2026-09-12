@@ -73,6 +73,12 @@ final class ShellModel {
     @ObservationIgnored var controllerState = ControllerState()
     /// Status of the helper route (attached / ready / durable revision / errors).
     var controllerStatus: String = "no preview controller attached"
+    /// Set while the displayed result is a completed OLDER snapshot from the
+    /// helper (HistoricalPreview.swift): navigation, diagnostic jump, caret
+    /// sync, capture destinations and export are disabled until a current
+    /// preview replaces it. Explicit, never inferred from staleness.
+    var historicalPreview: HistoricalDisplay?
+    @ObservationIgnored var historicalState = HistoricalPreviewState()
     /// Project-index completion vocabulary (labels/citations/commands) bound to
     /// the editor revision it was fetched for (Completion.swift).
     var completionMetadata: Completion.Metadata?
@@ -210,7 +216,8 @@ final class ShellModel {
     /// shown in the footer. Memoized: ContentView reads this on every body
     /// evaluation and the rebase compares the compiled and current texts.
     var editorMarkReport: EditorDiagnostics.Report {
-        guard let result else { return .empty }
+        // Historical spans are inert: not drawn even when their offsets are in bounds.
+        guard let result, historicalPreview == nil else { return .empty }
         let key = EditorMarksKey(resultID: resultID, resultRevision: result.revision, editorRevision: editorRevision, path: activePath,
                                  explanationsCount: explanations[resultID]?.count ?? -1)
         if let cached = editorMarksCache, cached.key == key { return cached.report }
@@ -332,6 +339,7 @@ final class ShellModel {
             self.resultID = res.id
             self.fixtureURL = result
             self.previewSource = .fixture
+            self.historicalPreview = nil
             bindLayout(of: res.payload, requested: requested)
             if let req {
                 documents = req.payload.documents
@@ -384,6 +392,7 @@ final class ShellModel {
         result = nil
         resultID = nil
         previewSource = .none
+        historicalPreview = nil
         negotiation = .legacy
         fontSubstitutions = []
         layoutDiagnostics = []
@@ -646,6 +655,7 @@ final class ShellModel {
             result = incoming
             resultID = env.id
             previewSource = .worker(worker?.executable.lastPathComponent ?? "worker")
+            historicalPreview = nil
             bindLayout(of: incoming, requested: sent.layoutCapabilities)
             compiledDocuments = Dictionary(uniqueKeysWithValues: sent.documents.map { ($0.path, $0.text) })
             fetchExplanations(for: incoming, id: env.id, documents: sent.documents)
@@ -735,6 +745,7 @@ final class ShellModel {
 
     /// Pins the current caret as the insertion destination (`destination_id`).
     func pinAnchorAtCaret() {
+        if let why = historicalRefusal(of: "pinning an insertion point") { captureNote = why; return }
         guard let anchor = Insertion.makeAnchor(id: "mac-anchor-\(nextAnchorNumber)", path: activePath,
                                                 text: activeText, caretUTF16: caretUTF16, revision: editorRevision)
         else { captureNote = "Caret position is not valid."; return }
