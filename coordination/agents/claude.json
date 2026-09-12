@@ -3,10 +3,10 @@
   "allocation_id": "openai-kabir-plus-ft002",
   "assignment_acknowledgements": {
     "FT-002": {
-      "acknowledged_utc": "2026-09-12T04:03:25Z",
-      "adaptation": "Accepted FT-002 revision 1 at input main 6d096a3, working from main d685879. Implementing crates/compiler only; runtime-v1 JSONLines is the authority for compile/compile_result shapes and UTF-8 byte spans. Implementation runs on the Codex Plus allocation on this machine; Cursor CLI executes commits.",
-      "main_sha": "d6858792737c0980cccaec5db835075e94a1ebc9",
-      "revision": 1
+      "acknowledged_utc": "2026-09-12T05:15:58Z",
+      "adaptation": "Accepted FT-002 revision 3 (stage 3: dependency-aware invalidation and cached reuse) at input main 60ceb5c, allocation openai-kabir-plus-ft002-stage3. Groundwork already exists: a Session with byte-diff block reuse and ReuseStats was built on this machine during stage 2 and deliberately NOT merged, because its own equivalence test caught real drift between its private copy of the layout engine and the real one once math landed. Stage 3 makes that fix in scope: layout.rs will be refactored into a resumable cursor so there is one layout engine, then reuse drives it. Macro definitions are state, so a macro change must invalidate every dependent block - that is the dependency-aware part of this revision and goes beyond the earlier byte-diff prototype.",
+      "main_sha": "342e1e029f80e7a5b472ad202ae87d597274127b",
+      "revision": 3
     }
   },
   "branch": "agent/claude/compiler-foundation",
@@ -16,29 +16,29 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "e7127fb9b5358f306c9bc07773e5f2ffcc58733a",
+  "code_revision": "dfd66984201acff4e2b9de2501345a3b91ec18d5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m5pro-kabir",
-  "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Awaiting Commander dispatch for FT-005 (layout/output and source mapping), which depends on FT-002 and is still unassigned. Not self-assigning.",
+  "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
+  "next_action": "Commander decision needed on expansion provenance, see below. Otherwise available for dispatch.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Formatting applied repo-wide within owned path only; behavior verified unchanged by rerunning all three checks after formatting.",
-      "reviewed_utc": "2026-09-12T04:24:09Z",
-      "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
+      "adaptation": "Open question for the corpus owner: the included-file case expects visible_text at main.tex 49..70, the \\input invocation range. This implementation attributes included text to the INCLUDED file instead, so that expectation is now uncovered (8/9 rather than 9/9). The corpus README calls expansion provenance an open contract design decision and forbids fabricating per-glyph provenance, so I did not bend either way. My reasoning: clicking Included cafe in the preview should open parts/section.tex at those bytes, not jump to the \\input line in main.tex. If the corpus owner wants invocation-site attribution instead, say so and I will change it.",
+      "reviewed_utc": "2026-09-12T05:56:32Z",
+      "sha": "5a30ec12700dee17f074459cc89ddc8de4b9153d"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 complete: 12 cargo tests pass, strict clippy clean, cargo fmt clean, 21/21 independent binary-level checks. Source is now rustfmt-canonical so future diffs from any agent stay reviewable.",
+  "summary": "Multi-file project support complete: \\input and \\include resolve against the supplied documents, with caller-scope semantics, cycle detection and per-file source attribution. Corpus moved from 7 to 9 cases ok. 59 tests pass. Finished the work myself after the Codex allocation hit its usage limit mid-task and left the tree not compiling.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:24:09Z",
+  "updated_utc": "2026-09-12T05:56:32Z",
   "usage": {
-    "evidence": "cargo test 12 pass; cargo clippy --all-targets -D warnings clean; cargo fmt --check clean; independent harness 21/21 against the built binary",
-    "status": "One Codex continuity cycle on openai-kabir-plus-ft002; per-call cost not exposed"
+    "evidence": "cargo test 59 pass; clippy -D warnings clean; fmt clean; harness 21/21; corpus 9 ok / 5 recovered, up from 7/7; verified by hand that included items report parts/section.tex with offsets slicing that file, including multi-byte cafe. at 9..15",
+    "status": "Codex hit its ChatGPT Plus usage limit mid-task (resets 04:18 local). Remaining work completed directly without Codex."
   }
 }

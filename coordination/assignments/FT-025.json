@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Meaningful tests and strict lint pass",
+    "Publish truthful execution provenance and exact tested SHA",
+    "No native integration or PDF parity claim without measured evidence"
+  ],
+  "agent_id": "commander-project-index",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander-project-index/source-navigation",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "0a3d8e22fe4abc5cf15c39cce889aaa125f38bb6",
+  "objective": "Dependency-aware unresolved diagnostics",
+  "owned_paths": [
+    "crates/project-index"
+  ],
+  "revision": 2,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-025",
+  "timebox_minutes": 30,
+  "updated_utc": "2026-09-12T06:12:26Z"
+}

@@ -1,0 +1,196 @@
+//! One-writer, atomic capture journal. Receipts are emitted only after fsync.
+use crate::{identifier, BridgeError, CaptureRecord, Result};
+use fs2::FileExt;
+use std::{
+    fs::{self, File, OpenOptions},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+};
+
+pub struct Store {
+    root: PathBuf,
+    _lock: File,
+}
+impl Store {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let root = path.as_ref().to_owned();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&root)?;
+        }
+        #[cfg(not(unix))]
+        fs::create_dir_all(&root)?;
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(root.join(".bridge.lock"))?;
+        lock.try_lock_exclusive().map_err(|_| {
+            BridgeError::new(
+                "store_in_use",
+                "Another bridge process owns this capture journal",
+            )
+        })?;
+        Ok(Self { root, _lock: lock })
+    }
+    pub fn get(&self, id: &str) -> Result<Option<CaptureRecord>> {
+        identifier(id)?;
+        let path = self.root.join(format!("{id}.json"));
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        let mut bytes = Vec::new();
+        file.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+        if bytes.len() > 16 * 1024 * 1024 {
+            return Err(BridgeError::new(
+                "invalid_journal",
+                "Capture journal record exceeds its size limit",
+            ));
+        }
+        let record: CaptureRecord = serde_json::from_slice(&bytes)?;
+        if record.schema_version != 1
+            || record.capture.capture_id != id
+            || record.request_sha256 != crate::digest(&serde_json::to_vec(&record.capture)?)
+        {
+            return Err(BridgeError::new(
+                "invalid_journal",
+                "Capture journal identity or integrity check failed",
+            ));
+        }
+        // Disk recovery must satisfy the same proposal bounds as a fresh
+        // provider response before any cached conversion can bypass validation.
+        if let Some(proposal) = &record.proposal {
+            proposal.validate().map_err(|error| {
+                BridgeError::new(
+                    "invalid_journal",
+                    format!("Saved proposal is invalid: {}", error.message),
+                )
+            })?;
+        }
+        validate_derived_state(&record)?;
+        Ok(Some(record))
+    }
+    pub fn require(&self, id: &str) -> Result<CaptureRecord> {
+        self.get(id)?.ok_or_else(|| {
+            BridgeError::new("capture_missing", "Capture has not been durably received")
+        })
+    }
+    pub fn save(&mut self, record: &CaptureRecord) -> Result<()> {
+        identifier(&record.capture.capture_id)?;
+        let mut temporary = tempfile::NamedTempFile::new_in(&self.root)?;
+        serde_json::to_writer(&mut temporary, record)?;
+        temporary.write_all(b"\n")?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist(
+                self.root
+                    .join(format!("{}.json", record.capture.capture_id)),
+            )
+            .map_err(|e| BridgeError::from(e.error))?;
+        File::open(&self.root)?.sync_all()?;
+        Ok(())
+    }
+}
+
+// Validate durable state before any of it can authorize a replay. Missing legacy
+// context/binding remains readable so the bridge can request safe reselection.
+fn validate_derived_state(record: &CaptureRecord) -> Result<()> {
+    let invalid = || {
+        BridgeError::new(
+            "invalid_journal",
+            "Saved capture state has contradictory or invalid fields",
+        )
+    };
+    let hash_valid = |hash: &str| {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    if record.rejected && (record.prepared.is_some() || record.applied.is_some()) {
+        return Err(invalid());
+    }
+    if let Some(binding) = &record.destination_binding {
+        if identifier(&binding.project_id).is_err()
+            || crate::relative_path(&binding.path).is_err()
+            || binding.start_byte > binding.end_byte
+            || binding.end_byte > crate::MAX_DOCUMENT_BYTES
+            || !hash_valid(&binding.source_sha256)
+            || binding.revision != record.capture.base_revision
+        {
+            return Err(invalid());
+        }
+    }
+    if let Some(context) = &record.context {
+        if identifier(&context.project_id).is_err() || crate::relative_path(&context.path).is_err()
+        {
+            return Err(invalid());
+        }
+        if let Some(binding) = &record.destination_binding {
+            if context.project_id != binding.project_id
+                || context.path != binding.path
+                || context.revision < binding.revision
+            {
+                return Err(invalid());
+            }
+        }
+        let mut paths = std::collections::BTreeSet::new();
+        for dependency in &context.dependencies {
+            if crate::relative_path(&dependency.path).is_err()
+                || !hash_valid(&dependency.source_sha256)
+                || !paths.insert(&dependency.path)
+            {
+                return Err(invalid());
+            }
+        }
+    }
+    if let Some(edit) = &record.prepared {
+        let Some(proposal) = &record.proposal else {
+            return Err(invalid());
+        };
+        if edit.capture_id != record.capture.capture_id
+            || edit.edit_id != format!("capture-{}", record.capture.capture_id)
+            || identifier(&edit.project_id).is_err()
+            || crate::relative_path(&edit.path).is_err()
+            || edit.start_byte > edit.end_byte
+            || edit.end_byte > crate::MAX_DOCUMENT_BYTES
+            || edit.end_byte - edit.start_byte != edit.removed_text.len()
+            || edit.replacement != proposal.latex
+            || !hash_valid(&edit.document_before_sha256)
+        {
+            return Err(invalid());
+        }
+        if let Some(binding) = &record.destination_binding {
+            if edit.project_id != binding.project_id
+                || edit.path != binding.path
+                || edit.expected_revision < binding.revision
+            {
+                return Err(invalid());
+            }
+        }
+        if let Some(context) = &record.context {
+            if edit.project_id != context.project_id
+                || edit.path != context.path
+                || edit.expected_revision < context.revision
+            {
+                return Err(invalid());
+            }
+        }
+    }
+    if let Some(receipt) = &record.applied {
+        let Some(edit) = &record.prepared else {
+            return Err(invalid());
+        };
+        if receipt.edit_id != edit.edit_id || receipt.new_revision <= edit.expected_revision {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
