@@ -67,7 +67,7 @@ cargo clippy --manifest-path crates/edit-ledger/Cargo.toml --all-targets --offli
 cargo build --manifest-path crates/edit-ledger/Cargo.toml --release --offline
 ```
 
-Validation: 41 library tests and seven integration tests pass on Linux. They
+Validation: 48 library tests and seven integration tests pass on Linux. They
 exercise UTF-8 interiors and bad ranges, all snapshot guards, persisted replay,
 undo with durable deduplication, before/after-rename I/O failures, failed receipt
 confirmation, corrupted/unreadable journals, competing handles, stale snapshots,
@@ -145,9 +145,35 @@ and permanent group/undo/redo command IDs remain. New edits conventionally
 invalidate the redo branch but never its command IDs. Limits are 256 retained
 entries, 32 MiB of before/after text and 4096 permanent history command IDs.
 Exceeding a bound returns an error before mutation; no oldest-entry pruning is
-implicit. Stores with history use schema 3 and are rejected by older readers;
+implicit. Stores with history use at least schema 3 and are rejected by older readers;
 payload compaction preserves the newer schema instead of downgrading it.
 Legacy stores gain history for subsequent edits, not invented historical undo.
+
+## Internal checkpoint export and reviewed import
+
+`export_checkpoint` requires `acknowledge_private_source_export: true`; its result
+contains the full private durable source, history and permanent receipt/command
+IDs. It is a version-1 internal backup envelope, bounded to the 128 MiB store cap
+plus 4096 bytes of envelope metadata. SHA-256 covers version, timestamp, identity
+and all state. This is an integrity checksum, not an authenticated signature.
+New stores carry a persistent random 256-bit `store_id` under schema 4. Exporting
+a legacy store durably assigns that identity before returning the checkpoint.
+
+`plan_checkpoint_import` validates the checkpoint and explicit expected
+`{store_id,project_id,path}`. It returns a target-directory-bound plan with source
+comparison and conflicts. Applying requires approving that exact `plan_id` plus
+the relevant `allow_initialize_empty` or `allow_same_source_metadata` flag.
+Any changed target/checkpoint invalidates the reviewed plan.
+
+Restore into an explicitly authorized **empty isolated store** to recover source.
+A live store can import metadata only when its source and revision match exactly,
+and all existing permanent IDs, receipt confirmations, command IDs and retained
+undo/redo payloads are preserved. Older/divergent source or lost/newer receipts
+produce a blocked plan; neither source nor ledger is overwritten. To recover from
+a corrupt live record, leave that directory intact and restore into a new empty
+one, then let the native owner review cutover. This API never reseeds or rolls
+back a live store. Checkpoint backup is separate from opening/saving a native
+project or exporting `.tex` files.
 
 These commands and fields are ledger-local, not transfer-v1 additions. The native
 adapter adopts returned durable source rather than independently applying a
@@ -177,6 +203,9 @@ the helper; startup errors arrive as service error replies. Request operations:
 | `undo`, `redo` | `command: {command_id,expected_revision,expected_sha256}` | current document, original command revision, replay flag, undo/redo availability |
 | `history_status` | none | undo/redo labels, permanent command count, payload bytes |
 | `retain_history` | `policy: {snapshot_token,acknowledge_undo_redo_loss,keep_latest_undo,keep_latest_redo}` | retained counts, dropped payload count, permanent command count |
+| `checkpoint_export` | `authorization: {acknowledge_private_source_export}` | internal checkpoint envelope |
+| `checkpoint_plan` | `checkpoint`, `expected_identity: {store_id,project_id,path}` | reviewed import plan or blocked plan with conflicts |
+| `checkpoint_import` | `checkpoint`, `plan`, `authorization: {approve_plan_id,allow_initialize_empty,allow_same_source_metadata}` | durable document after approved import |
 
 Recovery export/import is a ledger-local API; it does not add bridge wire fields.
 After export, query the bridge for each pending capture. Import observations

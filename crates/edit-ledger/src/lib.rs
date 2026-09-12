@@ -12,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod checkpoint;
 pub mod history;
 pub mod recovery;
 pub mod retention;
@@ -121,6 +122,8 @@ struct State {
     retained_ids: BTreeMap<String, retention::RetainedEditId>,
     #[serde(default)]
     history: history::HistoryState,
+    #[serde(default)]
+    store_id: String,
 }
 
 pub fn digest(text: &str) -> String {
@@ -209,7 +212,7 @@ fn apply_to(document: &Document, edit: &PreparedEdit) -> Result<Document> {
 impl State {
     fn validate(&self) -> Result<()> {
         self.document.validate()?;
-        if !matches!(self.schema_version, 1..=3)
+        if !matches!(self.schema_version, 1..=4)
             || (self.schema_version == 1 && !self.retained_ids.is_empty())
             || self.transactions.len() + self.retained_ids.len() > MAX_EDIT_IDS
         {
@@ -296,6 +299,16 @@ impl State {
             }
         }
         self.history.validate(&self.document)?;
+        if (self.schema_version < 4 && !self.store_id.is_empty())
+            || (self.schema_version == 4
+                && (self.store_id.len() != 64
+                    || !self.store_id.bytes().all(|b| b.is_ascii_hexdigit())))
+        {
+            return Err(Error::new(
+                "invalid_store",
+                "persistent store identity requires schema 4",
+            ));
+        }
         if self.schema_version < 3 && !self.history.is_empty() {
             return Err(Error::new("invalid_store", "history requires schema 3"));
         }
@@ -410,11 +423,12 @@ impl Store {
             };
         }
         self.commit(State {
-            schema_version: 1,
+            schema_version: 4,
             document,
             transactions: BTreeMap::new(),
             retained_ids: BTreeMap::new(),
             history: history::HistoryState::default(),
+            store_id: checkpoint::new_store_id()?,
         })
     }
     /// Atomic source+ledger application. An identical retry returns its original

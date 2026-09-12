@@ -1,6 +1,7 @@
 //! Bounded background adapter. Admission/polling never perform filesystem or
 //! pipe I/O. Native consumers must discard events from superseded session IDs.
 use crate::{
+    checkpoint::{Checkpoint, ExportAuthorization, ImportAuthorization, ImportPlan, StoreIdentity},
     history::{GroupedEdit, HistoryMove, HistoryRetentionPolicy},
     recovery::RecoveryImport,
     retention::RetentionPolicy,
@@ -94,6 +95,18 @@ enum Operation {
         policy: HistoryRetentionPolicy,
     },
     HistoryStatus,
+    CheckpointExport {
+        authorization: ExportAuthorization,
+    },
+    CheckpointPlan {
+        checkpoint: Box<Checkpoint>,
+        expected_identity: StoreIdentity,
+    },
+    CheckpointImport {
+        checkpoint: Box<Checkpoint>,
+        plan: Box<ImportPlan>,
+        authorization: ImportAuthorization,
+    },
 }
 fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
     match operation {
@@ -127,6 +140,22 @@ fn execute(store: &mut Store, operation: Operation) -> Result<Value> {
         Operation::Redo { command } => Ok(json!(store.redo(command)?)),
         Operation::RetainHistory { policy } => Ok(json!(store.retain_history(policy)?)),
         Operation::HistoryStatus => Ok(json!(store.history_status()?)),
+        Operation::CheckpointExport { authorization } => {
+            Ok(json!(store.export_checkpoint(authorization)?))
+        }
+        Operation::CheckpointPlan {
+            checkpoint,
+            expected_identity,
+        } => Ok(json!(
+            store.plan_checkpoint_import(&checkpoint, expected_identity)?
+        )),
+        Operation::CheckpointImport {
+            checkpoint,
+            plan,
+            authorization,
+        } => {
+            Ok(json!({"document":store.apply_checkpoint_import(&checkpoint,&plan,authorization)?}))
+        }
     }
 }
 struct Work {
