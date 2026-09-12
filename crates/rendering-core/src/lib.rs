@@ -794,3 +794,5 @@ pub mod pdf_stream;
 pub mod pipeline_cff;
 
 pub mod pipeline_frame;
+
+pub mod helper_candidate;

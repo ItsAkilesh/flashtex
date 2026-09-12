@@ -45,3 +45,56 @@ and missing siblings, stale edits, close/toggle epochs and sequential dispatch.
 They do not establish native acceptance, optical/font correctness, parity or
 end-to-end typing latency. Helper contract reviewed at c400d0a. Existing decoder
 permit/shutdown tests remain authoritative for its queue invariant.
+
+## Actual producer transport replay
+
+`tools/replay_display_producer.py` verifies every published producer archive file,
+rejects extra source inputs, rebuilds offline, and records exact binary/asset and
+request/reply hashes. It downloads or installs nothing. Run with explicit existing
+producer tree, font directory, rooted TFM directory and a new output directory.
+The ignored `real_display_producer` test is its runtime consumer probe.
+
+Evidence in `benchmarks/display-producer-65dbe7d` uses the unchanged355-file
+archive and pinned official LM assets. Requested output returns one accepted
+source-bound sibling with no diagnostics; legacy output returns only v1; a1500-byte
+producer reply budget declines v2 with a recovered warning; a1-byte budget produces
+an explicit failed v1 result and no sibling. The tiny budget is a producer failure
+trigger, not a claim that its failure reply itself fits one byte. All four direct
+producer results equal the runtime's returned JSON values; emitted font raw-byte
+hashes occur in the recorded assets. Source text is shared via the committed request
+fixture. No metadata correction, font substitution or rendered-output validation
+occurs. This is actual transport evidence, not native visual or timing evidence.
+
+The helper may delay taking the runtime slot while required output is pending.
+Runtime tests retain it across polls, then move it once, or clear it on close. A
+failed mutually exclusive policy enable leaves the prior policy usable. Root's
+unchanged dependency uptake854b041 and forwarding contractc400d0a were reviewed;
+actual helper/native output admission remains their separate integration gate.
+
+## Delayed consumer and cancellation replay
+
+`real_display_producer` also exercises the unchanged actual producer with an
+injected60ms downstream pause (not a measured native validation cost). It cancels
+revision1 before polling, retains/moves revision2 exactly once, toggles policy
+around revision3 while preserving its v1 fallback, and submits revisions4/5 before
+consuming the next candidate. The returned revision5 has its exact edited source
+hash. Revision4 may be stale in flight or coalesced before dispatch depending on
+whether the previous sibling is still draining; evidence records the actual path,
+rather than asserting a scheduler-dependent branch. Both must suppress its preview.
+
+`benchmarks/display-lifecycle-65dbe7d` preserves actual candidates, outcomes and
+provenance referencing the matching four-mode replay. No global retained-byte/RSS
+or native latency claim follows from one runtime candidate slot. An already moved
+revision2 candidate remains immutable and cannot be revoked by the runtime. The
+helper/native consumer must reject it against current source/session epochs before
+painting; helper8876279 checks the controller snapshot before optional admission,
+while native post-validation epoch checking remains a separate requirement.
+
+Integration6c2061c's initial parallel test run failed all seven synthetic cases at
+short60–160ms observation windows; the same suite passed serially. Checkpointc47139ff
+replaces positive wall-time guesses with bounded observable-outcome waits and uses
+explicit /usr/bin/python3 for fake workers. Production timeouts and decoder permits
+are unchanged. The real replay similarly waits for previews/candidates rather than
+assuming a particular compile duration. Test failures are retained by the runner
+before it returns an error. No production boundary defect was established by these
+test scheduling failures.

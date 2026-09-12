@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T09:36:11Z",
-      "adaptation": "Use unchanged pipeline9bb7b27 and committed established-LaTeX PDF; preserve source transformations and ABI limitations.",
-      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T11:12:18Z",
+      "adaptation": "Read84c052b FT023r9. Consume exact b9240b0 runtime and8876279 helper artifacts; explicit compile versus document revision and membership/session source gates, existing immutable CFF export only.",
+      "main_sha": "84c052b49edd6e045618839369dec35051f32880",
+      "revision": 9
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
+  "code_revision": "cdd5e979e87327ba4313b9a7bd8f1479bfb0ec5d",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "c158f4eb8c81551bdc9683075e0b03fb9b8c523f",
-  "next_action": "Use exact b898cfc LMmath asset/license for one bounded actual math producer/reference investigation; no substitute font or parity assumptions.",
+  "main_integrated_through": "44b7779f5b2e171c63827bb3d7ea2d219d965aad",
+  "next_action": "Publish reviewed baseline re-run preserving all five exact PDF hashes and raster/text outcomes; next bounded queue needed.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Single pinned fail-closed original/reference runner implemented and executed: accepted full rooted-assets pipeline replay, refused missingassets, unknown unpinnedtool.",
+  "summary": "FT023r9 actual runtime/helper candidate adapter published cdd5e979; all164Rust tests/lint pass, no metadata repair or native activation.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:24:52Z",
+  "updated_utc": "2026-09-12T11:17:14Z",
   "usage": {
-    "evidence": "Final runner accepted zero-diagnostic untouched65dbe7d\u2192registry\u2192ownerPDF\u2192reference; exacttext and144DPIpixels. Negative statuses2/4 verified. Sources/tools/assets pinned; twojob offline disposable build. First /tmp build failure recovered using repositorytarget scratch; no calls pending.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "Fresh five-fixture runner on cdd5e979 matches every prior PDF hash and0/602/1244/979/337pixel counts; aggregate remains mismatch.6Python gates pass.",
+    "status": "Hosted OpenAI only; no providers/descendants; no quota telemetry."
   }
 }

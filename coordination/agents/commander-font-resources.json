@@ -3,31 +3,31 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T09:43:43Z",
-      "adaptation": "Reviewed current assignment14: official2.004 metric assets obtained, source-hash matching confirmed against pinned ec-lmr10; implementing bounded required-metric failure and exact peer differential replay. No peer changes or fallback.",
-      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
-      "revision": 14
+      "acknowledged_utc": "2026-09-12T10:38:29Z",
+      "adaptation": "Read current16; shared rational interpreter now preserves legacy default/dyadic outcomes and exact171paired LM results, additive rational accepts320 with502OtherSubrs refusals. Matrix/context gate remains closed; no new workers/providers.",
+      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+      "revision": 16
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "da0ab4a1ee8771ced2ee391d0a3af9968bb6e5ae",
+  "code_revision": "43b343e25b2d1522517443c2bc1e34936fb60c72",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "linux-primary",
-  "main_integrated_through": "1b53ec22cb376309e868962fcf2604263cdb3016",
-  "next_action": "Next blockers explicit hint metadata policy and exact division, then OtherSubrs/flex/seac only when separately assigned. TTC awaits existing owner publication; boundary oracle pending. Clean product checkpoint, no peer writes/providers/pending commands.",
+  "main_integrated_through": "79bdadafab843c86525ad85f5c86742783cb5ad3",
+  "next_action": "Next queued bounded rational matrix adapter then standardflex only under explicit profile; preserve actual LM context refusal. No peerwrites/providers/pending commands, product checkpoint clean.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Publishedda0ab4a: exact Type1 width/move/line/cubic/closepath and bounded subroutine subset using shared geometry, preserving glyph/fullresource identity and command sourcechains. Synthetic width/cycle/stack/step/output tests and full suite/clippy pass. Actual pinned822glyph inventory6accepted (one marking path),353hstem/4vstem/4hstem3/455div unsupported; categories pinned. No PS/FontMatrix/PaintType/render activation.",
+  "summary": "FT024r16 ACK; published exact-rational Type1 raw API sharing existing bounded interpreter. Legacy default/dyadic inventories unchanged; real LM320accepted/502callothersubr refused, all171prior dyadic results exact across commands/widths/stems/source/identity. Rational thirds/overflow tests, fullsuite/clippy/pinnedreplay pass. Conditional matrixcontext and PS/OtherSubrs gates unchanged.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:23:37Z",
+  "updated_utc": "2026-09-12T10:39:12Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

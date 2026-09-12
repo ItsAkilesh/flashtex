@@ -165,3 +165,65 @@ Pinned real LM comparison: default6accepted unchanged; explicit policy171accepte
 with455retained stem records.455glyphs refuse non-dyadic division and196reach
 callothersubr (escaped16). This records the first refusal per glyph only. FontMatrix,
 PaintType, flex/OtherSubrs/seac, hint application and renderer activation stay gated.
+
+## Literal FontMatrix/PaintType context and separate transformed output
+
+`type1_matrix::Context::from_resource` reuses the bounded private-record lexer and
+existing exact Rational decimal parser. Its supported clear header is deliberately
+small: literal dictionary begin, one each FontName/FontType/PaintType/FontMatrix,
+then currentdict/end/currentfile/eexec. FontType must be1, PaintType0; no default
+matrix or paint is invented. Duplicate/unknown/executable forms, stroked paint,
+missing context, singular matrices and arithmetic overflow refuse. Only initial
+ASCII PFB records are read, capped64KiB, with full header SHA retained.
+
+`transform(raw, &context)` is distinct from the raw decoder and checks the complete
+font/license identity. It reuses rational matrix geometry: points/control points
+and sidebearings receive translation; widths remain vectors without translation.
+Negative/nonidentity matrices and fractional coefficients remain exact. Raw glyph
+name/charstring digest/stems/policy/source chains are retained alongside transformed
+commands. The result is eligible geometry for further validation, NOT automatic
+render-ready output or native/PDF activation.
+
+Actual pinned lmr10 header has literal PaintType0 and FontMatrix[.001 0 0 .001 0 0],
+but begins with conditional FontDirectory/findfont logic and includes executable
+encoding construction. The strict passive parser refuses before assigning an
+active context; observed declarations alone do not authorize transformation.
+`pfb-matrix-context.json` pins exact header/fullfont hashes and the refusal. A future
+explicitly supported declarative interpretation of that prologue is required; no
+heuristic token search, guessed defaults or PostScript execution was introduced.
+Synthetic tests cover nonidentity/negative/translation, width-vector behavior,
+identity mismatch, singular/stroked/missing/executable context and overflow.
+
+### Separate exact-rational raw outline API
+
+`interpret_rational(records, name, policy)` returns RationalOutline using the existing
+normalized checked Rational/MatrixCommand types in raw character space. It shares
+one opcode interpreter with the legacy dyadic API. Legacy callers retain their
+prior policy and representability checks; no error is replaced by rounding.
+Rational widths, sidebearings, cumulative controls and stem metadata preserve exact
+numerator/denominator values. Arithmetic overflow, zero division and all existing
+stack/call/step/output caps still refuse. Explicit `try_into_dyadic` succeeds only
+when every result is exactly representable and respects retained-output caps.
+
+Actual pinned LM result:320accepted;502first refuse callothersubr. All171previously
+accepted dyadic-policy glyphs match exactly after exact-only conversion: commands,
+sidebearing/advance, stems, sources and identity/digests. Synthetic thirds-based
+width/translation/cubic controls and overflow checks pass. This removes the
+numeric representation gap only: no FontMatrix/PaintType/conditional-header gate,
+OtherSubrs execution, hint application or renderer activation changes.
+
+### Exact-rational matrix adapter
+
+`transform_rational(raw, &context)` accepts the rational decoder output and the
+same verified immutable Context as the dyadic adapter. Both share checked matrix
+arithmetic. Advances are untranslated vectors; sidebearings and path controls are
+points. The complete raw outline, font/license identity, glyph name, charstring
+digest, stem policy and command source chains remain available in the result.
+Identity mismatch, inconsistent source counts, excessive retained output and
+arithmetic overflow fail explicitly.
+
+A synthetic PFB with a genuinely parsed declarative context tests exact thirds,
+translation, negative scaling and width-vector behavior. Exactly representable
+dyadic and rational paths produce identical transformed commands and metrics.
+The real conditional LM header remains refused; this adapter does not authorize
+PostScript execution, native rendering or unverified context substitution.
