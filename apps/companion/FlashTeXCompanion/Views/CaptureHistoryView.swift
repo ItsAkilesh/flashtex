@@ -41,9 +41,16 @@ struct CaptureHistoryView: View {
                                     .foregroundStyle(.tertiary)
                             }
                             Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Image(systemName: capture.networkSent ? "wifi" : "terminal")
+                                    .foregroundStyle(capture.networkSent ? .green : .secondary)
+                                    .font(.caption)
+                                Text(capture.networkSent ? "Sent to Mac" : "Saved locally")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(capture.networkSent ? "Sent to Mac" : "Saved locally")
                         }
                     }
                 }
