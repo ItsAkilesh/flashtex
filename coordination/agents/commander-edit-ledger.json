@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-026": {
-      "acknowledged_utc": "2026-09-12T08:20:06Z",
-      "adaptation": "Resumed preserved checkpoint rotation at 4f96ee1 under explicit seven-agent reset; finish archive recovery and native status with helper kill fixtures.",
-      "main_sha": "f3963bd208a69d85fa4a8d87d4e174fdebe473c0",
-      "revision": 4
+      "acknowledged_utc": "2026-09-12T08:32:09Z",
+      "adaptation": "Published backup stage complete; continuing explicit commander followup to measure persistent-disk costs, remove duplicate checkpoint serialization and test long retention/backpressure sequences in same crate.",
+      "main_sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+      "revision": 5
     }
   },
   "branch": "agent/mac-contract-review/edit-ledger",
@@ -14,7 +14,7 @@
     "rust",
     "linux-tests"
   ],
-  "code_revision": "9bd7663b06c27c28deb4afdefac518d31bc03455",
+  "code_revision": "bded7bd8e8f04dceebf5d63e58ff039ee2e69846",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -22,7 +22,7 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "a41dbc4075dc3ebd209688f51929045f93d3ce63",
-  "next_action": "Commander integration; native consumer can use checkpoint_status/checkpoint_rotate/checkpoint_read. No native save or Xcode claims.",
+  "next_action": "Commander integrate tested code; consumer APIs unchanged. Benchmark documents Btrfs versus tmpfs and shared-host outliers; native paint excluded.",
   "reviewed_peers": {
     "origin/agent/commander/capture-bridge": {
       "adaptation": "Matched PreparedEdit fields; all service/recovery/retention fields are ledger-local and do not alter bridge wire messages.",
@@ -30,9 +30,9 @@
       "sha": "b5ca96bdaca634166a01023cd3321955f2bc5f70"
     },
     "origin/agent/mac-contract-review/edit-ledger": {
-      "adaptation": "FT026 revision4 accepted after seven-agent reset. Preserved dirty work completed within owned crate; durable observed-index sync before orphan pruning; symlink/read errors fail closed. No provider calls.",
-      "reviewed_utc": "2026-09-12T08:23:57Z",
-      "sha": "9bd7663b06c27c28deb4afdefac518d31bc03455"
+      "adaptation": "ACK r5 plus direct same-crate measurement followup. Disk sync dominates small bundles; at500KB serialize6.95ms plus validation5.24ms exceeds isolated write8.02ms; clone0.60ms. Removed duplicate encode serialization only; no durability relaxation, WAL, native or provider writes.",
+      "reviewed_utc": "2026-09-12T08:32:58Z",
+      "sha": "bded7bd8e8f04dceebf5d63e58ff039ee2e69846"
     },
     "origin/agent/mac-contract-review/lock-release": {
       "adaptation": "Merged explicit unlock cleanup after deterministic reproduction; schema 3 preserves history and payload compaction no longer downgrades schema.",
@@ -42,11 +42,11 @@
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "Bounded atomic checkpoint rotation, native metadata status, explicit reviewed import and real helper kill/reopen recovery published at 9bd7663.",
+  "summary": "Measured persistent-disk ledger costs and published validated checkpoint byte reuse at bded7bd; 120-edit abandoned-reply/backpressure/retention regression.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:23:57Z",
+  "updated_utc": "2026-09-12T08:32:58Z",
   "usage": {
-    "evidence": "63 Linux tests pass (55 library, 8 integration); strict all-targets Clippy pass; release build pass; boundary failpoints plus real helper kill with unread rotation and restored identity/source/receipt/history.",
+    "evidence": "64 ordinary Linux tests and strict Clippy pass; opt-in release Btrfs benchmark passes exact full-state restart and every capture replay. Paired checkpoint encode medians improve about19percent with byte equality. Btrfs evidence SHA256 9e3c84dc543877fef6a18fa52447d7fa2e6ec8ee62301de41734c7595afe0ba1; full manifest in crate benchmarks.",
     "status": "unknown"
   }
 }
