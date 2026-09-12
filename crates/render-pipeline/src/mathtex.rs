@@ -22,6 +22,7 @@ use std::rc::Rc;
 use flashtex_math_layout::cm::{self, CmMathMetrics, Family};
 use flashtex_math_layout::cm_tfm;
 use flashtex_math_layout::metrics::Extensible;
+use flashtex_math_layout::tfm as mtfm;
 use flashtex_math_layout::{FontId as MathFontId, Glyph, MathFontMetrics, MathParams, SizeClass};
 
 use crate::fonts::{FontSet, LoadedFace, Role, TfmStatus};
@@ -196,11 +197,48 @@ impl TexMathMetrics {
         })
     }
 
+    /// A symbol-family glyph the math-layout table does not list, from the
+    /// `cmsy` TFM of the size class (metrics) and the symbol's own `char`.
+    fn symbol_family_glyph(&self, code: u8, ch: char, size: SizeClass) -> Option<Glyph> {
+        let font_id = self.cm.glyph('\u{221E}', size)?.font_id;
+        let i = Self::size_index(size);
+        let font = self.cm.families[2][i];
+        let c = font.char(code)?;
+        let at = self.cm.sizes[i];
+        Some(Glyph {
+            font_id,
+            gid: u16::from(code),
+            ch,
+            size: at,
+            width: mtfm::scale(c.width, at),
+            height: mtfm::scale(c.height, at),
+            depth: mtfm::scale(c.depth, at),
+            italic: mtfm::scale(c.italic, at),
+            skew: 0.0,
+        })
+    }
+
     /// The Latin Modern Math glyph id for a placed TFM glyph.
     pub fn otf_gid(&self, font: MathFontId, code: u8, ch: char) -> Option<u16> {
         let name = self.cm.font_name(font);
         let face = self.otf.face();
-        let base = |c: char| face.face().glyph_id(MathFonts::math_char(c)).or_else(|| face.face().glyph_id(c)).map(|g| g.0);
+        let base = |c: char| {
+            // The painted glyph follows the TFM slot, not the Unicode letter
+            // the compiler spelled: cmmi 0x0F/0x1E are TeX's `\epsilon`
+            // (lunate) and `\phi` (straight), 0x22/0x27 the `\var` forms.
+            let c = if name.starts_with("cmmi") {
+                match code {
+                    0x0F => '\u{1D716}',
+                    0x22 => '\u{1D700}',
+                    0x1E => '\u{1D719}',
+                    0x27 => '\u{1D711}',
+                    _ => c,
+                }
+            } else {
+                c
+            };
+            face.face().glyph_id(MathFonts::math_char(c)).or_else(|| face.face().glyph_id(c)).map(|g| g.0)
+        };
         let result = if name.starts_with("cmex") {
             // Size chain in lmex: steps from the character's first cmex code
             // to `code` select the same-index vertical variant in MATH.
@@ -261,7 +299,11 @@ impl MathFontMetrics for TexMathMetrics {
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         match cm::symbol_slot(ch) {
             Some((Family::Roman, code)) => self.roman_glyph(code, ch, size),
-            _ => self.cm.glyph(ch, size),
+            Some(_) => self.cm.glyph(ch, size),
+            None => match extra_symbol_slot(ch) {
+                Some(code) => self.symbol_family_glyph(code, ch, size),
+                None => self.cm.glyph(ch, size),
+            },
         }
     }
 
@@ -302,6 +344,21 @@ impl MathFontMetrics for TexMathMetrics {
         } else {
             self.cm.text_glyph(ch, size)
         }
+    }
+}
+
+/// `\\not` (`fontmath.ltx`: `\\mathrel{\\mathchar"3236}`, the zero-width
+/// negation slash `\\neq`/`\\notin` overprint) and `\\perp` (`symbols "3F`):
+/// cmsy slots math-layout's table does not list. The combining long solidus
+/// overlay stands for `\\not` because it is what Latin Modern Math draws at
+/// U+0338 and no compiler symbol uses it.
+pub const NOT_SLASH: char = '\u{0338}';
+
+fn extra_symbol_slot(ch: char) -> Option<u8> {
+    match ch {
+        NOT_SLASH => Some(0x36),
+        '\u{22A5}' => Some(0x3F),
+        _ => None,
     }
 }
 

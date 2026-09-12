@@ -373,9 +373,19 @@ impl P<'_> {
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
+                // Starred form: \section*{..} is unnumbered and is not added to
+                // any counter, as in LaTeX. Without this the star was not
+                // consumed, so the following brace was never seen and the
+                // heading reported "requires a braced argument" instead of
+                // typesetting: seven such errors on the HW1 source.
+                let starred = self.take_star();
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
-                let number = if level == 1 {
+                let number = if starred {
+                    // Unnumbered: counters do not advance, and a \label inside
+                    // a starred heading has no number to bind to.
+                    String::new()
+                } else if level == 1 {
                     self.section_counter += 1;
                     self.subsection_counter = 0;
                     self.section_counter.to_string()
@@ -383,7 +393,7 @@ impl P<'_> {
                     self.subsection_counter += 1;
                     format!("{}.{}", self.section_counter, self.subsection_counter)
                 };
-                self.current_counter = Some(number.clone());
+                self.current_counter = if starred { None } else { Some(number.clone()) };
                 let content = self.inlines_from_tokens(tokens);
                 if content.is_empty() {
                     // A missing/empty heading is already diagnosed where
@@ -1253,7 +1263,35 @@ impl P<'_> {
                 TokenKind::LineBreak => content.push(Inline::LineBreak {
                     span: input.token.span,
                 }),
-                _ => {}
+                // Issue #38: this arm used to be `_ => {}`, which silently
+                // discarded every command token inside a parsed title. On the
+                // HW1 source that lost fourteen unsupported-command diagnostics
+                // for \hfill and \normalfont: the author was told nothing, and
+                // the baseline diagnostic count dropped from 119 to 98 when only
+                // seven starred-brace errors should have disappeared.
+                //
+                // A command that is not supported must say so wherever it
+                // appears, including inside a section title.
+                TokenKind::Command(name) => {
+                    if !BUILT_INS.contains(&name.as_str()) {
+                        self.unsupported(&name, input.token.span);
+                    }
+                }
+                // Everything else carries no content of its own here: whitespace,
+                // comments, the braces that delimited this group, and the math
+                // and script markers, which are legal in a title and handled by
+                // the caller. Math in a section title is ordinary LaTeX and must
+                // not be reported as a problem.
+                TokenKind::Space
+                | TokenKind::ParBreak
+                | TokenKind::Comment
+                | TokenKind::LBrace
+                | TokenKind::RBrace
+                | TokenKind::MathShift
+                | TokenKind::DisplayMathOpen
+                | TokenKind::DisplayMathClose
+                | TokenKind::Superscript
+                | TokenKind::Subscript => {}
             }
         }
         content
@@ -1332,6 +1370,31 @@ impl P<'_> {
             Some(span),
             Some("skipped the command and did not typeset preamble content".into()),
         ));
+    }
+
+    /// Consumes a `*` immediately following a command, if present.
+    fn take_star(&mut self) -> bool {
+        if let Some(input) = self.t.get(self.i) {
+            if let TokenKind::Word(word) = &input.token.kind {
+                if word == "*" {
+                    self.i += 1;
+                    return true;
+                }
+                if let Some(rest) = word.strip_prefix('*') {
+                    // The tokenizer keeps `*{` style runs together; split the
+                    // star off and leave the remainder in place.
+                    let rest = rest.to_string();
+                    let span = input.token.span;
+                    let mut replacement = input.clone();
+                    replacement.token.kind = TokenKind::Word(rest);
+                    replacement.token.span =
+                        Span::in_document(span.document, span.start + 1, span.end);
+                    self.t[self.i] = replacement;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn unsupported(&mut self, name: &str, span: Span) {

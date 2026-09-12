@@ -206,6 +206,9 @@ pub struct Context<'a> {
     fonts: &'a FontSet,
     style: &'a Stylesheet,
     paths: &'a [&'a str],
+    /// Document sources (indexed like `paths`), read only to re-derive what
+    /// the compiler's math list flattens (`\left`/`\right` fences).
+    texts: &'a [&'a str],
     shaper: &'a Shaper,
     diagnostics: Vec<Diagnostic>,
     recs: Vec<BoxRec>,
@@ -221,10 +224,17 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     pub fn new(fonts: &'a FontSet, style: &'a Stylesheet, paths: &'a [&'a str]) -> Context<'a> {
+        Self::with_texts(fonts, style, paths, &[])
+    }
+
+    /// [`Context::new`] with the document sources, which lets `\left`/`\right`
+    /// fences be recovered from the bytes before each delimiter.
+    pub fn with_texts(fonts: &'a FontSet, style: &'a Stylesheet, paths: &'a [&'a str], texts: &'a [&'a str]) -> Context<'a> {
         Context {
             fonts,
             style,
             paths,
+            texts,
             shaper: fonts.shaper(),
             diagnostics: Vec::new(),
             recs: Vec::new(),
@@ -609,7 +619,9 @@ impl<'a> Context<'a> {
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
         let fonts = self.math_fonts(span)?;
         let mut sink = crate::mathtext::TextSink::default();
-        let ml_list = convert_math_with(list, &mut sink);
+        let texts = self.texts;
+        let fence = |sp: &Span| fence_before(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
+        let ml_list = convert_math_fenced(list, &mut sink, &fence);
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
         let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
         let mut laid = ml::layout_with_report(&ml_list, style, &text_metrics);
@@ -1225,38 +1237,115 @@ pub fn convert_math(list: &flashtex_compiler::math::MathList) -> ml::MathList {
 /// exists only with the `compiler-text-nucleus` feature (the variant is an
 /// isolated compiler candidate, see `Cargo.toml`).
 pub fn convert_math_with(list: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink) -> ml::MathList {
+    convert_math_fenced(list, sink, &|_| None)
+}
+
+/// Which fence, if any, a delimiter atom was introduced by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fence {
+    Left,
+    Right,
+}
+
+/// Whether the bytes of `text` before offset `at` end in `\left` or
+/// `\right` (spaces between the control word and the delimiter allowed).
+/// The compiler (pin `49e6eb43`) pairs the fences but emits each delimiter
+/// as a plain symbol; the fence is re-derived from the source here.
+pub fn fence_before(text: &str, at: usize) -> Option<Fence> {
+    let before = text.get(..at)?.trim_end_matches([' ', '\t', '\n', '\r']);
+    for (word, fence) in [("\\left", Fence::Left), ("\\right", Fence::Right)] {
+        if let Some(stem) = before.strip_suffix(word) {
+            // `\\left` itself (an escaped backslash) is not a control word.
+            let escaped = stem.chars().rev().take_while(|c| *c == '\\').count() % 2 == 1;
+            if !escaped {
+                return Some(fence);
+            }
+        }
+    }
+    None
+}
+
+/// [`convert_math_with`] with `fence` telling which delimiter atoms follow a
+/// `\left`/`\right`; matched pairs become math-layout `Delimited` atoms
+/// (Appendix G Rule 19: sized to the body, `Inner` class). An unmatched
+/// fence stays a plain symbol, as the compiler already reports it.
+pub fn convert_math_fenced(list: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink, fence: &dyn Fn(&Span) -> Option<Fence>) -> ml::MathList {
     use flashtex_compiler::math::Nucleus as N;
+    // Open fences: (left delimiter, atoms converted since it).
+    let mut stack: Vec<(Option<char>, Vec<ml::Atom>)> = Vec::new();
     let mut atoms = Vec::new();
     for a in &list.atoms {
+        let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_fenced(l, sink, fence);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
             #[cfg(feature = "compiler-text-nucleus")]
             N::Text(text) => vec![sink.atom(text)],
             N::Symbol(s) => {
                 let mut chars = s.chars();
-                match (chars.next(), chars.next()) {
-                    (Some(c), None) => vec![ml::Atom::symbol(c)],
-                    (Some(_), Some(_)) => {
-                        // Multi-character symbol (e.g. a literal "\foo"): the
-                        // characters as upright ordinary atoms.
-                        vec![ml::Atom::group(ml::MathList::new(s.chars().map(ml::Atom::ord).collect()))]
+                let single = match (chars.next(), chars.next()) {
+                    (Some(c), None) => Some(Some(c)),
+                    (None, _) => Some(None),
+                    _ => None,
+                };
+                match (single, fence(&a.span)) {
+                    (Some(delim), Some(Fence::Left)) => {
+                        stack.push((delim, Vec::new()));
+                        continue;
                     }
-                    (None, _) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
+                    (Some(delim), Some(Fence::Right)) if !stack.is_empty() => {
+                        let (left, body) = stack.pop().expect("checked non-empty");
+                        vec![ml::Atom::left_right(left, delim, ml::MathList::new(body))]
+                    }
+                    _ => match single {
+                        Some(Some(c)) => symbol_atoms(c),
+                        Some(None) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
+                        None => {
+                            // Multi-character symbol (e.g. a literal "\foo"): the
+                            // characters as upright ordinary atoms.
+                            vec![ml::Atom::group(ml::MathList::new(s.chars().map(ml::Atom::ord).collect()))]
+                        }
+                    },
                 }
             }
-            N::Fraction { numerator, denominator } => vec![ml::Atom::frac(convert_math_with(numerator, sink), convert_math_with(denominator, sink))],
-            N::Radical(r) => vec![ml::Atom::sqrt(convert_math_with(r, sink))],
+            N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
+            N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
         };
         if let Some(last) = out.last_mut() {
             if let Some(sup) = &a.superscript {
-                last.superscript = Some(convert_math_with(sup, sink));
+                last.superscript = Some(sub(sup, sink));
             }
-            if let Some(sub) = &a.subscript {
-                last.subscript = Some(convert_math_with(sub, sink));
+            if let Some(sb) = &a.subscript {
+                last.subscript = Some(sub(sb, sink));
             }
         }
-        atoms.extend(out);
+        match stack.last_mut() {
+            Some((_, body)) => body.extend(out),
+            None => atoms.extend(out),
+        }
+    }
+    // Unclosed \left: the compiler reports it; the delimiter is set as the
+    // plain symbol it would have been without the fence.
+    for (left, body) in stack {
+        if let Some(c) = left {
+            atoms.extend(symbol_atoms(c));
+        }
+        atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// The math-layout atoms for one compiler symbol character: plain.tex's
+/// default classification, with the compiler's spellings that TeX sets as
+/// composites expanded (`fontmath.ltx`: `\neq` is `\not=`, `\notin` is
+/// `\not\in`, the zero-width relation slash before the relation).
+fn symbol_atoms(c: char) -> Vec<ml::Atom> {
+    match c {
+        // The compiler spells \cdot as U+00B7; the Bin class and cmsy slot
+        // are those of U+22C5.
+        '\u{00B7}' => vec![ml::Atom::symbol('\u{22C5}')],
+        '\u{2260}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('=')],
+        '\u{2209}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('\u{2208}')],
+        _ => vec![ml::Atom::symbol(c)],
+    }
 }
 
 /// Lays out every block of `doc` onto pages. With `cache`, blocks whose

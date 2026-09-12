@@ -120,7 +120,7 @@ pub fn render_cached(
             .map(|d| display::Diagnostic::from_compiler(d, &paths))
             .collect();
         diagnostics.extend(doc.diagnostics.iter().cloned());
-        let mut ctx = typeset::Context::new(fonts, &doc.style, &paths);
+        let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
         let laid = typeset::build(&mut ctx, &doc, cache);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {

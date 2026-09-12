@@ -140,11 +140,25 @@ the conversion arm is behind the `compiler-text-nucleus` feature until the
 compiler adopts it and `vendor/compiler` is re-pinned; without it `\text` is
 still the compiler's "not supported in math mode" error.
 
+Math symbols (`src/mathtex.rs`, `tests/math_symbols.rs`,
+`fixtures/math-symbols/`, `docs/evidence/math-symbols/`): every control word
+the compiler pin `49e6eb43` recognises (Greek, `\times`…`\cap`, arrows,
+quantifiers, `\sum`/`\int`/`\prod` with display limits) is placed with its
+plain.tex family/slot metrics and painted from Latin Modern Math (the
+optical `lmroman` faces for the roman family); `\neq`/`\notin` are TeX's
+`\not`+relation composites (zero-width cmsy `"36`), `\perp` is cmsy `"3F`,
+`\left`/`\right` fences are re-derived from the source bytes before each
+delimiter (the compiler flattens them) and sized through the `lmex` chain.
+Against pdflatex+lmodern the trailing word after each fixture formula lands
+within 0.01 bp; `\angle` is LaTeX's constructed `\not`+rule macro, not a
+glyph, and is the one typed `math_limitation` left.
+
 Not implemented (reported, not approximated silently): hyphenation, lists
 (`\item` markers are set as plain paragraphs, no hanging indent), figures
 (`\includegraphics` is dropped by the compiler; captions are plain
-paragraphs), `\left`/`\right`, Greek letters and most control-word math
-symbols (the compiler's math parser rejects them), tables, footnotes,
+paragraphs), `\angle`, `\bigl`/`\bigr`, `\mathbb`, `\mid`, `\setminus`,
+`\quad`/`\qquad` and `array` in math (the compiler's math parser rejects
+them; see `coordination/mac-math-symbols.md`), tables, footnotes,
 two-column, page numbers/headers (`\pagestyle{empty}` behaviour only),
 non-Latin scripts (`unsupported_script`), RTL.
 
