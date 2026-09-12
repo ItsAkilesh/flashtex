@@ -1,6 +1,6 @@
 # mac-packaging handoff — signing groundwork, reproducible bundle, pid-only launch-check, DMG
 
-- Updated UTC: 2026-09-12T11:05Z
+- Updated UTC: 2026-09-12T11:12Z
 - Agent / parent / machine alias: `mac-packaging` (Claude Code subagent) /
   parent `mac-claude-a` / `mac-m1max-a`
 - Task / acceptance gate / owned paths: parent-dispatched packaging lane
@@ -18,9 +18,10 @@
   report (`README-packaging.diff` in the parent's scratchpad), not applied.
 - Branch / code revision / main integrated through:
   `agent/mac-packaging/signing` from `origin/agent/mac-claude-a/mac-shell`
-  6f4ee94 / see `git log` / origin/main 60c40c1 reviewed (touches nothing
-  under `apps/mac`; not merged — the branch base is mac-shell, which is ahead
-  of main for `apps/mac`).
+  6f4ee94; merged mac-shell 7c11d65 and origin/main eed1847 at the final
+  checkpoint (both clean; neither touches `apps/mac/scripts`,
+  `apps/mac/Resources` or this lane's coordination files) / see `git log` /
+  origin/main eed1847.
 - State: ready for integration (into `agent/mac-claude-a/mac-shell` by the parent).
 - Ready behavior and evidence:
   - **`make-app.sh`** (`apps/mac/scripts/make-app.sh`): table-driven helper
@@ -140,8 +141,11 @@
   - README packaging section + `apps/mac/docs/packaging.md` step 2/3 text
     (entitlements are now the empty documented file, `--deep` no longer used
     for distribution signing): parent-owned, diff supplied.
-- Reviewed peer revisions / resulting adaptations: `origin/main` 60c40c1 —
-  no `apps/mac` changes, nothing to adapt; `origin/agent/mac-claude-a/packaging`
+- Reviewed peer revisions / resulting adaptations: `origin/main` eed1847 —
+  no `apps/mac` changes, merged, nothing to adapt; `origin/agent/mac-claude-a/mac-shell`
+  7c11d65 — new Swift (delimiter pairs, hybrid preview) but no script/Resources
+  changes, merged, packaging re-verified on the merged tip (`--sign - --dmg`
+  build 69 s, launch-check `--dmg` 0 FAIL, selftest 18/18); `origin/agent/mac-claude-a/packaging`
   d7fb4fa (older packaging lane: rev-5 gaps doc, superseded make-app.sh) —
   its `components.json` schema and evidence format kept compatible;
   `tools/native-validation/mac-live` (run.sh, open shim, launch_summary.py)
