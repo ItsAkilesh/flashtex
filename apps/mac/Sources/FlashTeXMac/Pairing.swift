@@ -395,6 +395,12 @@ enum PairingFlow {
         /// closed the session while receiving it).
         case captureRefused(pairId: String?, captureId: String?, code: String)
         case forgotten(pairId: String)
+        /// A paired companion (long-term key) said hello, i.e. it reconnected;
+        /// not the one being paired.
+        case companionConnected(pairId: String, companionName: String)
+        /// A paired companion's session closed while no receive from it was
+        /// in progress (the controller sends this only for known pair ids).
+        case companionDisconnected(pairId: String, companionName: String, reason: String)
         /// User actions.
         case cancel
         case resume
@@ -618,6 +624,21 @@ enum PairingFlow {
                     return .ignoredInput
                 }
 
+            case .companionConnected(_, let name):
+                // Reconnects never change the pairing phase; they are announced
+                // so a keyboard/VoiceOver user knows the companion is back.
+                return Outcome(effects: [.announce("\(name) reconnected.")])
+
+            case .companionDisconnected(let pairId, let name, let reason):
+                switch phase {
+                case .receiving(let r) where r.pairId == pairId:
+                    return .ignoredInput // `.peerGone` already reported the failed receive
+                case .failed:
+                    return .ignoredInput
+                default:
+                    return Outcome(effects: [.announce("\(name) disconnected: \(reason).")])
+                }
+
             case .cancel:
                 switch phase {
                 case .codeShown(let a), .verifying(let a):
@@ -750,6 +771,63 @@ extension PairingFlow.Phase {
         case .interrupted(let a, _, let detail):
             return a.isExpired(at: now) ? "\(detail). The code has expired." : "\(detail). Code \(Pairing.spokenCode(a.code)) is still valid."
         default: return detail(now: now)
+        }
+    }
+}
+
+extension PairingFlow {
+    /// Where a phase sits in the pairing sequence, for the window's step
+    /// indicator. Pure: derived from the phase only, so what the indicator
+    /// shows is exactly the listener state the machine holds.
+    struct Step: Equatable {
+        enum Status: String, Equatable { case pending, active, done, interrupted }
+        static let names = ["Show a code", "Companion enters the code", "Verify the companion", "Paired"]
+        static var count: Int { names.count }
+        /// 1-based index of the step the phase is at.
+        var index: Int
+        var status: Status
+
+        var name: String { Self.names[index - 1] }
+
+        /// One label for the whole indicator, e.g. "Pairing step 2 of 4:
+        /// Companion enters the code, in progress. Done: Show a code."
+        var accessibilityLabel: String {
+            let word: String
+            switch status {
+            case .pending: word = "not started"
+            case .active: word = "in progress"
+            case .done: word = "done"
+            case .interrupted: word = "interrupted"
+            }
+            var text = "Pairing step \(index) of \(Self.count): \(name), \(word)."
+            let done = Self.names.prefix(status == .done ? index : index - 1)
+            if !done.isEmpty { text += " Done: \(done.joined(separator: ", "))." }
+            return text
+        }
+
+        /// Status of step `k` (1-based) relative to this step.
+        func status(of k: Int) -> Status {
+            if k < index { return .done }
+            if k > index { return .pending }
+            return status
+        }
+    }
+}
+
+extension PairingFlow.Phase {
+    /// nil while nothing about a pairing is shown (receiving, or an error
+    /// banner, whose reason the status row already names).
+    var step: PairingFlow.Step? {
+        switch self {
+        case .off, .advertising: return .init(index: 1, status: .pending)
+        case .codeShown: return .init(index: 2, status: .active)
+        case .verifying: return .init(index: 3, status: .active)
+        case .paired: return .init(index: 4, status: .done)
+        case .interrupted(_, let why, _):
+            // A peer that opened the bootstrap session got to verification;
+            // a relaunch or a stopped transport interrupted the code itself.
+            return .init(index: why == .peerGone ? 3 : 2, status: .interrupted)
+        case .receiving, .failed: return nil
         }
     }
 }

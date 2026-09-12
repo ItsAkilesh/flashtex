@@ -105,7 +105,11 @@ final class PairingFlowController: ObservableObject {
         case .connectionOpened:
             apply(.bootstrapSessionOpened(generation: g))
         case .hello(let id, let name, let bootstrap):
-            guard bootstrap else { apply(.otherCompanionConnected(generation: g)); return }
+            guard bootstrap else {
+                apply(.otherCompanionConnected(generation: g))
+                apply(.companionConnected(pairId: id, companionName: name))
+                return
+            }
             // The generation that confirmed is persisted with the record
             // (pairs.json v2); a stored value from another attempt is stale.
             let confirmed = nearby?.store.pair(id: id)?.generation
@@ -113,6 +117,11 @@ final class PairingFlowController: ObservableObject {
             apply(.confirmed(pairId: id, companionName: name, generation: confirmed))
         case .connectionClosed(let id, let reason):
             apply(.peerGone(pairId: id, reason: reason, generation: g))
+            // A known companion dropping is announced; unauthenticated peers
+            // (handshake failures, cancelled bootstrap sessions) have no name.
+            if let id, let r = nearby?.store.pair(id: id) {
+                apply(.companionDisconnected(pairId: id, companionName: r.companionName, reason: reason))
+            }
         case .receiving(let id, let bytes, let expected):
             // Unauthenticated peers (before hello) have no identity and no row.
             guard let id else { return }
@@ -401,6 +410,9 @@ struct NearbyFlowView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Pair a companion").font(.headline)
             statusRow
+            if let step = controller.phase.step {
+                PairingStepIndicator(step: step)
+            }
             switch controller.phase {
             case .codeShown(let a), .verifying(let a):
                 codeRow(a, verifying: { if case .verifying = controller.phase { return true }; return false }())
@@ -630,6 +642,54 @@ struct NearbyFlowView: View {
             .accessibilityLabel("Activity log")
             .accessibilityValue(nearby.log.suffix(5).joined(separator: ". "))
             .accessibilityIdentifier("nearby.log")
+        }
+    }
+}
+
+/// Numbered steps of the pairing sequence with the current one highlighted;
+/// one accessibility element ("Pairing step 2 of 4: …") so VoiceOver reads
+/// the position, not four capsules.
+struct PairingStepIndicator: View {
+    var step: PairingFlow.Step
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(1...PairingFlow.Step.count, id: \.self) { k in
+                let status = step.status(of: k)
+                HStack(spacing: 4) {
+                    Image(systemName: symbol(status))
+                        .foregroundStyle(color(status))
+                    Text(PairingFlow.Step.names[k - 1])
+                        .font(.caption.weight(status == .active || status == .interrupted ? .semibold : .regular))
+                        .foregroundStyle(status == .pending ? .secondary : .primary)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(status == .pending ? Color.clear : color(status).opacity(0.12), in: Capsule())
+                if k < PairingFlow.Step.count {
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(step.accessibilityLabel)
+        .accessibilityIdentifier("nearby.pairing.steps")
+    }
+
+    private func symbol(_ s: PairingFlow.Step.Status) -> String {
+        switch s {
+        case .pending: return "circle"
+        case .active: return "circle.fill"
+        case .done: return "checkmark.circle.fill"
+        case .interrupted: return "exclamationmark.circle.fill"
+        }
+    }
+
+    private func color(_ s: PairingFlow.Step.Status) -> Color {
+        switch s {
+        case .pending: return .secondary
+        case .active: return .accentColor
+        case .done: return .green
+        case .interrupted: return .orange
         }
     }
 }

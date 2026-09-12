@@ -175,7 +175,9 @@ they reach the inbox (identical → acknowledged) or the bridge (its journal
 rules), as before.
 
 Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
-`pairing_expired`, `unsupported_version`, `unsupported_image`,
+`pairing_expired`, `pairing_cancelled` (`id: null`; the Mac withdrew the code
+— cancelled, expired, replaced or consumed by another session — while this
+bootstrap session had not yet said hello; a close follows), `unsupported_version`, `unsupported_image`,
 `image_too_large`, `invalid_image`, `unknown_type`, `line_too_long`,
 `too_many_in_flight`, `inbox_full`, `too_many_sessions`, `revision_mismatch`,
 `capture_id_conflict`, `unavailable`. Codes are additive to the ones listed
@@ -382,7 +384,7 @@ app persisted for this Mac's `fp`. Use the Keychain on iOS.)
   `payload.has_proposal`, `payload.applied` (transfer-v1 shape; `durable`
   is true only when the Mac's bridge journaled it).
 - `error` — `id` (may be `null`), `payload.code`, `payload.message`. Codes
-  in §4; `pair_mismatch`, `pairing_expired`, `hello_required`,
+  in §4; `pair_mismatch`, `pairing_expired`, `pairing_cancelled`, `hello_required`,
   `unsupported_version` and `line_too_long` are followed by a close and
   mean "re-pair or fix the client", not "retry".
 
