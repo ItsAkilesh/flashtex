@@ -393,6 +393,95 @@ final class ProjectDocumentsTests: XCTestCase {
         model.detachController()
     }
 
+    func testDirectModeSavesNonEntryDocumentsAndRefusesChangedDisk() async throws {
+        let project = try TempProject()
+        defer { project.remove() }
+        let model = ShellModel()
+        model.detachWorker()
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        let p = model.project
+        let opened = await p.openDiscoveredIncludes()
+        XCTAssertEqual(opened, [.opened(path: "chapter.tex")])
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+        // The entry document is not this API's business.
+        let entry = await p.saveDocument("main.tex")
+        guard case .failed(let why) = entry, why.contains("entry") else { return XCTFail("\(entry)") }
+        // Clean save: the file holds exactly the buffer; the baseline follows.
+        p.switchDocument(to: "chapter.tex")
+        model.updateActiveText("Chapter one, saved.\n")
+        XCTAssertTrue(p.isDirty("chapter.tex"))
+        let saved = await p.saveDocument("chapter.tex")
+        XCTAssertEqual(saved, .saved(path: "chapter.tex", sha256: SourceDigest.sha256Hex("Chapter one, saved.\n")))
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "Chapter one, saved.\n")
+        XCTAssertFalse(p.isDirty("chapter.tex"))
+        XCTAssertEqual(try String(contentsOf: project.main, encoding: .utf8), "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n", "the entry file is untouched")
+        XCTAssertFalse(p.isDirty("main.tex"))
+        // An external change is a conflict: nothing overwritten, buffer kept dirty.
+        try "external chapter\n".write(to: chapterURL, atomically: true, encoding: .utf8)
+        model.updateActiveText("Chapter one, saved twice.\n")
+        let refused = await p.saveDocument("chapter.tex")
+        guard case .conflict(let c) = refused else { return XCTFail("expected a conflict, got \(refused)") }
+        XCTAssertEqual(c.kind, .modifiedExternally)
+        XCTAssertEqual(c.url, chapterURL)
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "external chapter\n")
+        XCTAssertTrue(p.isDirty("chapter.tex"))
+        XCTAssertEqual(p.saveConflict, c)
+        XCTAssertEqual(model.activeText, "Chapter one, saved twice.\n")
+    }
+
+    func testHelperRouteSavesThroughExportAndFlushesOnSwitch() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let project = try TempProject(chapter: "Chapter via helper.\n")
+        defer { project.remove() }
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", project.root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: project.main), .opened)
+        model.attachController(at: helper)
+        try await waitUntil { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil }
+        let p = model.project
+        let opened = await p.openDiscoveredIncludes()
+        XCTAssertEqual(opened, [.opened(path: "chapter.tex")])
+        let chapterURL = project.root.appendingPathComponent("project/chapter.tex")
+
+        // Keystrokes in chapter.tex, then an immediate switch back to main: the
+        // controller's one-slot queue now follows main.tex, but the chapter
+        // buffer is flushed to the ledger explicitly.
+        p.switchDocument(to: "chapter.tex")
+        for i in 1...4 { model.updateActiveText("Chapter via helper \(String(repeating: "y", count: i)).\n") }
+        let chapterText = model.activeText
+        p.switchDocument(to: "main.tex")
+        XCTAssertEqual(model.activePath, "main.tex")
+        try await waitUntil { model.controllerState.textByDurable["chapter.tex"]?[model.controllerState.durable["chapter.tex"]?.revision ?? -1]?.sameBytes(as: chapterText) == true }
+        XCTAssertEqual(model.documents[1].text, chapterText, "the buffer never lost a keystroke")
+        try await waitUntil { model.compiledDocuments["chapter.tex"]?.sameBytes(as: chapterText) == true }
+        XCTAssertEqual(model.result?.revision, model.editorRevision, "the preview compiled from the flushed chapter is current")
+        XCTAssertNil(model.inFlightRevision)
+
+        // Save the (non-active) chapter through export: disk gets the durable text.
+        let saved = await p.saveDocument("chapter.tex")
+        XCTAssertEqual(saved, .saved(path: "chapter.tex", sha256: SourceDigest.sha256Hex(chapterText)))
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), chapterText)
+        XCTAssertFalse(p.isDirty("chapter.tex"))
+        XCTAssertEqual(try String(contentsOf: project.main, encoding: .utf8), "\\begin{document}\nMain.\n\\input{chapter}\n\\end{document}\n")
+        // External change: export is refused with the disk conflict; nothing overwritten.
+        try "external chapter\n".write(to: chapterURL, atomically: true, encoding: .utf8)
+        p.switchDocument(to: "chapter.tex")
+        model.updateActiveText(chapterText + "more\n")
+        let refused = await p.saveDocument("chapter.tex")
+        guard case .conflict(let c) = refused else { return XCTFail("expected a conflict, got \(refused)") }
+        XCTAssertTrue(c.viaHelper)
+        XCTAssertEqual(c.kind, .modifiedExternally)
+        XCTAssertEqual(c.theirs, SourceDigest.sha256Hex("external chapter\n"))
+        XCTAssertEqual(try String(contentsOf: chapterURL, encoding: .utf8), "external chapter\n")
+        XCTAssertTrue(p.isDirty("chapter.tex"))
+        model.detachController()
+    }
+
     private func waitUntil(timeout: TimeInterval = 15, _ cond: () -> Bool) async throws {
         let start = Date()
         while !cond() {

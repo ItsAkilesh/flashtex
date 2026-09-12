@@ -335,6 +335,12 @@ final class ProjectDocuments {
         case refused(String)
     }
 
+    enum SaveOutcome: Equatable {
+        case saved(path: String, sha256: String)
+        case conflict(DocumentConflict)
+        case failed(String)
+    }
+
     enum SwitchOutcome: Equatable {
         case switched(to: String, restoredCaret: NSRange)
         case unchanged
@@ -357,6 +363,11 @@ final class ProjectDocuments {
     @ObservationIgnored private var origins: [String: ProjectDocument.Origin] = [:]
     /// Text each non-entry document had when this lane opened it (dirty baseline).
     @ObservationIgnored private var baselines: [String: String] = [:]
+    /// SHA-256 of the disk file each non-entry document was opened from (nil:
+    /// no file seen), the mandatory expectation of a rooted save.
+    @ObservationIgnored private var diskBaselines: [String: String?] = [:]
+    /// Explicit conflict of the last per-document save (nil once resolved by a later save).
+    private(set) var saveConflict: DocumentConflict?
     /// Caret/selection (UTF-16) last seen in each document.
     @ObservationIgnored private(set) var carets: [String: NSRange] = [:]
     @ObservationIgnored private var armed = false
@@ -379,6 +390,7 @@ final class ProjectDocuments {
         for key in origins.keys where !open.contains(key) { origins.removeValue(forKey: key) }
         for key in baselines.keys where !open.contains(key) { baselines.removeValue(forKey: key) }
         for key in carets.keys where !open.contains(key) { carets.removeValue(forKey: key) }
+        for key in diskBaselines.keys where !open.contains(key) { diskBaselines.removeValue(forKey: key) }
     }
 
     // MARK: membership view
@@ -532,7 +544,7 @@ final class ProjectDocuments {
         guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else {
             return note(.refused("cannot open \(path): not readable as UTF-8"))
         }
-        insert(path: path, text: text, role: role, origin: .disk)
+        insert(path: path, text: text, role: role, origin: .disk, diskSHA256: SourceDigest.sha256Hex(text))
         return note(.opened(path: path))
     }
 
@@ -574,16 +586,21 @@ final class ProjectDocuments {
             return note(.refused("helper document for \(path) is missing fields"))
         }
         if isOpen(path) { return .alreadyOpen(path: path) } // raced with another open
-        insert(path: path, text: text, role: role, origin: .helper)
+        // The ledger text is authoritative; the disk hash (if any) is what a
+        // later rooted save must find, so an external edit is a conflict.
+        let disk = await diskSHA256(of: path)
+        if isOpen(path) { return .alreadyOpen(path: path) }
+        insert(path: path, text: text, role: role, origin: .helper, diskSHA256: disk)
         recordDurable(path: path, revision: revision, sha256: sha, text: text)
         return note(.opened(path: path), extra: " (durable r\(revision), membership g\(membershipGeneration ?? snapshot.generation))")
     }
 
-    private func insert(path: String, text: String, role: ProjectDocument.Role, origin: ProjectDocument.Origin) {
+    private func insert(path: String, text: String, role: ProjectDocument.Role, origin: ProjectDocument.Origin, diskSHA256: String?) {
         model.documents.append(.init(path: path, text: text))
         roles[path] = role
         origins[path] = origin
         baselines[path] = text
+        diskBaselines[path] = diskSHA256
         detachedBuffers.removeValue(forKey: path)
         model.log("project: opened \(path) (\(text.utf8.count) bytes, \(origin)) — \(model.documents.count) documents")
     }
@@ -621,7 +638,8 @@ final class ProjectDocuments {
         }
         if isDirty(path) { detachedBuffers[path] = doc.text }
         model.documents.removeAll { $0.path == path }
-        roles.removeValue(forKey: path); origins.removeValue(forKey: path); baselines.removeValue(forKey: path); carets.removeValue(forKey: path)
+        roles.removeValue(forKey: path); origins.removeValue(forKey: path); baselines.removeValue(forKey: path)
+        carets.removeValue(forKey: path); diskBaselines.removeValue(forKey: path)
         if model.anchor?.path == path { model.anchor = nil }
         model.log("project: detached \(path) — \(model.documents.count) documents")
         return note(.detached(path: path))
@@ -643,8 +661,13 @@ final class ProjectDocuments {
         if let pending = model.pendingEdit {
             return .refused("a capture insertion into \(pending.path) is still pending; try again in a moment")
         }
-        rememberCaret(for: model.activePath)
+        let outgoing = model.activePath
+        rememberCaret(for: outgoing)
         model.activePath = path
+        // The controller's one-slot edit queue follows `activePath`: a keystroke
+        // still queued for the outgoing document would otherwise resubmit the
+        // new one and never reach the ledger. Flush it explicitly.
+        if model.controllerAttached { Task { await flushToHelper(outgoing) } }
         let text = model.activeText
         let restored = Self.clamp(carets[path] ?? NSRange(location: 0, length: 0), to: text)
         model.caretUTF16 = restored.location
@@ -699,6 +722,132 @@ final class ProjectDocuments {
         let start = boundary(range.location)
         let end = boundary(range.location + range.length)
         return end > start ? NSRange(location: start, length: end - start) : NSRange(location: start, length: 0)
+    }
+
+    // MARK: save (non-entry documents)
+
+    /// Saves a non-entry member to its rooted file: through the helper's
+    /// `export` (durable source, mandatory disk expectation, refused on a
+    /// changed/appeared file) when attached, else through the file layer's
+    /// compare-and-replace. The entry document keeps `ShellModel.saveTex`.
+    /// Nothing is written on a conflict; the buffer and baseline are kept.
+    func saveDocument(_ path: String, timeout: TimeInterval = 10) async -> SaveOutcome {
+        prune()
+        guard path != entryPath else { return .failed("\(path) is the entry document; use Save (ShellModel.saveTex)") }
+        guard let doc = model.documents.first(where: { $0.path == path }) else { return .failed("\(path) is not open") }
+        guard let root = projectRoot else { return .failed("no project root") }
+        let url = root.appendingPathComponent(path)
+        let text = doc.text
+        let expectedDisk = diskBaselines[path] ?? nil
+        if model.controllerAttached {
+            guard await flushToHelper(path, timeout: timeout), let durable = model.controllerState.durable[path],
+                  model.controllerState.textByDurable[path]?[durable.revision]?.sameBytes(as: text) == true else {
+                return noteSave(.failed("\(path) did not become durable within \(Int(timeout)) s"))
+            }
+            let reply = await helperRequest("export", ["path": path, "expected_revision": durable.revision,
+                                                       "expected_sha256": durable.sha256, "expected_disk_sha256": expectedDisk ?? NSNull()])
+            switch reply {
+            case .success(let payload):
+                let sha = payload["sha256"] as? String ?? SourceDigest.sha256Hex(text)
+                baselines[path] = text
+                diskBaselines[path] = sha
+                saveConflict = nil
+                return noteSave(.saved(path: path, sha256: sha), extra: " through the preview controller (durable r\(durable.revision))")
+            case .failure(let e):
+                guard let kind = ShellModel.conflictKind(inExportRefusal: e.message) else { return noteSave(.failed(e.message)) }
+                let theirs = await diskSHA256(of: path)
+                let conflict = DocumentConflict(url: url, kind: kind, ours: expectedDisk, theirs: theirs, size: nil, mtimeUnixMs: nil, viaHelper: true)
+                saveConflict = conflict
+                return noteSave(.conflict(conflict))
+            }
+        }
+        let expected: ProjectFilesV1.Expected = expectedDisk.map { .hash($0) } ?? .newFile
+        switch model.files.save(url, text: text, expected: expected, force: false) {
+        case .saved(let sha):
+            baselines[path] = text
+            diskBaselines[path] = sha
+            saveConflict = nil
+            return noteSave(.saved(path: path, sha256: sha))
+        case .conflict(let c):
+            saveConflict = c
+            return noteSave(.conflict(c))
+        case .failed(let why):
+            return noteSave(.failed(why))
+        }
+    }
+
+    private func noteSave(_ outcome: SaveOutcome, extra: String = "") -> SaveOutcome {
+        status = switch outcome {
+        case .saved(let p, let sha): "saved \(p)\(extra) (sha256 \(sha.prefix(12)))"
+        case .conflict(let c): c.summary
+        case .failed(let why): "save failed: \(why)"
+        }
+        FlashTeXLog.write("project: " + status)
+        return outcome
+    }
+
+    /// Makes `path`'s buffer durable on the helper: waits (bounded) for any
+    /// in-flight edit of that path, then submits one `edit` if the buffer
+    /// still differs from the durable text. True when durable.
+    @discardableResult
+    func flushToHelper(_ path: String, timeout: TimeInterval = 10) async -> Bool {
+        guard model.controllerAttached, model.controllerState.ready else { return false }
+        let deadline = Date().addingTimeInterval(timeout)
+        guard await awaitInFlight(of: path, deadline: deadline) else { return false }
+        guard let durable = model.controllerState.durable[path], let text = model.documents.first(where: { $0.path == path })?.text else { return false }
+        if model.controllerState.textByDurable[path]?[durable.revision]?.sameBytes(as: text) == true { return true }
+        if model.activePath == path, model.controllerState.inFlight == nil {
+            // The controller's own queue handles the active document.
+            model.controllerSubmitEdit()
+            guard await awaitInFlight(of: path, deadline: deadline) else { return false }
+            return model.controllerState.textByDurable[path]?[model.controllerState.durable[path]?.revision ?? -1]?.sameBytes(as: text) == true
+        }
+        let reply = await helperRequest("edit", ["path": path, "expected_revision": durable.revision, "expected_sha256": durable.sha256, "text": text])
+        switch reply {
+        case .success(let receipt):
+            guard let d = receipt["document"] as? [String: Any], let r = d["revision"] as? Int, let h = d["source_sha256"] as? String, let t = d["text"] as? String else { return false }
+            recordDurable(path: path, revision: r, sha256: h, text: t)
+            if let e = receipt["preview_error"] as? String { model.log("controller preview_error after flushing \(path): \(e)") }
+            model.log("project: flushed \(path) to the helper as durable r\(r)")
+            return t.sameBytes(as: text)
+        case .failure(let e):
+            status = "helper refused the \(path) buffer: \(e.message)"
+            model.log("project: " + status)
+            if e.message.hasPrefix("document_conflict") { _ = try? model.controller?.document(path: path) }
+            return false
+        }
+    }
+
+    /// Waits (until `deadline`) for the controller's in-flight edit of `path`
+    /// to be released. The controller releases it when the preview for its
+    /// durable revision arrives, judged by the *active* document's version;
+    /// after a switch away from `path` that check can never pass although the
+    /// preview did arrive (its compiled text is the durable text). Release it
+    /// here in that case so the queue moves on (parent diff: judge the
+    /// release by `inFlight.path`, which makes this branch unreachable).
+    private func awaitInFlight(of path: String, deadline: Date) async -> Bool {
+        while let inFlight = model.controllerState.inFlight, inFlight.path == path {
+            if let want = inFlight.durableRevision, model.activePath != path,
+               let durableText = model.controllerState.textByDurable[path]?[want],
+               model.compiledDocuments[path]?.sameBytes(as: durableText) == true {
+                model.log("project: releasing the in-flight edit of \(path) (durable r\(want) previewed while \(model.activePath) is active)")
+                model.controllerState.inFlight = nil
+                model.inFlightRevision = nil
+                if model.controllerState.queued { model.controllerState.queued = false; model.controllerSubmitEdit() }
+                break
+            }
+            if Date() > deadline { return false }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return true
+    }
+
+    /// Disk hash of `path` as the helper sees it (`file_status`), nil when
+    /// the file is missing or the helper cannot answer.
+    private func diskSHA256(of path: String) async -> String? {
+        guard case .success(let payload) = await helperRequest("file_status", ["path": path]),
+              let disk = payload["disk"] as? [String: Any] else { return nil }
+        return (disk["sha256"] as? String) ?? (disk["disk_sha256"] as? String)
     }
 
     // MARK: helper attach / sync
