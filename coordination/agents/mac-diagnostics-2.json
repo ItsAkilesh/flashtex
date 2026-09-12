@@ -1,0 +1,36 @@
+{
+  "agent_id": "mac-diagnostics-2",
+  "allocation_id": "claude-mac20x-diagnostics-2",
+  "assignment_acknowledgements": {},
+  "branch": "agent/mac-diagnostics-2/partial-output",
+  "capabilities": [
+    "swift",
+    "appkit",
+    "swiftui"
+  ],
+  "code_revision": "cd58fc2e",
+  "eta_minutes": {
+    "likely": 60,
+    "optimistic": 45,
+    "pessimistic": 90
+  },
+  "machine": "mac-m1max-a",
+  "main_integrated_through": "c11c005",
+  "next_action": "Coverage audit done (coordination/mac-diagnostics-2.md); implementing HW1 real-compiler partial-output + stale-invalidation tests, failed-result mark retention, identical-diagnostic grouping",
+  "reviewed_peers": {
+    "origin/agent/mac-claude-a/mac-shell": {
+      "adaptation": "Base; earlier diagnostics lanes (exact marks, explanations, quick fix) and navigation lanes are merged, so EditorDiagnostics.swift is edited in place and keyboard navigation is reused rather than re-implemented",
+      "reviewed_utc": "2026-09-12T16:20:00Z",
+      "sha": "cd58fc2e"
+    }
+  },
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "Editor diagnostics item 9 replenishment: audit found keyboard navigation and follow-up 2 (cross-document jump) already covered; uncovered: real-compiler partial-output marks on HW1 (119 diagnostics), failed-result retention of last marks, multi-edit stale invalidation, grouping identical diagnostics",
+  "tool": "Claude Code subagent (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T16:20:00Z",
+  "usage": {
+    "evidence": "none yet",
+    "status": "Shared Claude Max quota with parent mac-claude-a; no purchases"
+  }
+}
