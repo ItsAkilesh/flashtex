@@ -206,3 +206,17 @@ The inbox adds eight tests; 36 all-feature/all-target tests, strict Clippy and
 formatting pass. Cases cover reopen, selection, duplicate/tampered decisions,
 context changes, cancellation, retirement, bounded serialization, corrupt state,
 exclusive ownership and recovery after real storage failure.
+
+Review follow-up: `InboxView::visible_ids(InboxFilter)` returns arrival-ordered
+IDs filtered by project and optional undecided status, without copying proposal
+bodies or reading disk. `navigate` changes selection only; it never accepts a card.
+Selection persists across reopen; reaching an end keeps it unchanged, and navigating
+an empty filtered view clears it. `admit_ready` consumes only the native adapter's
+fresh, durably journaled proposal state and leaves selection/decision empty.
+
+Inbox event subscribers use bounded nonblocking channels. Notifications carry
+capture/project IDs and durable generation, not proposal bodies or approval tokens.
+Full consumers lose notifications; dropped-delivery counts and immutable view
+snapshots support resynchronization. Persistence uncertainty emits a distinct event
+and makes view reads fail until reopen. Thirty-nine tests, strict Clippy and
+formatting pass, including actual native-ready snapshot admission into this inbox.

@@ -1,4 +1,4 @@
-//! Durable proposal-review intentions. Never prepares or applies source edits.
+pub mod navigation;
 use super::native::ContextIdentity;
 use super::*;
 use fs2::FileExt;
@@ -55,6 +55,8 @@ pub struct ReviewEntry {
 #[serde(deny_unknown_fields)]
 pub struct InboxSnapshot {
     pub schema_version: u8,
+    #[serde(default)]
+    pub generation: u64,
     pub selected_capture: Option<String>,
     pub next_sequence: u64,
     pub entries: BTreeMap<String, ReviewEntry>,
@@ -105,6 +107,7 @@ pub struct ReviewInbox {
     limits: InboxLimits,
     state: InboxSnapshot,
     view: InboxView,
+    events: navigation::Hub,
 }
 impl ReviewInbox {
     pub fn open(root: impl AsRef<Path>, limits: InboxLimits) -> InboxResult<Self> {
@@ -146,6 +149,7 @@ impl ReviewInbox {
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => InboxSnapshot {
                 schema_version: 1,
+                generation: 0,
                 selected_capture: None,
                 next_sequence: 0,
                 entries: BTreeMap::new(),
@@ -165,10 +169,27 @@ impl ReviewInbox {
             limits,
             state,
             view,
+            events: navigation::Hub::new(),
         })
     }
     pub fn view(&self) -> InboxView {
         self.view.clone()
+    }
+    /// Consume only a proposal-ready durable snapshot from the native adapter.
+    /// This copies review data; it does not select or accept the card.
+    pub fn admit_ready(&mut self, status: &super::native::StatusSnapshot) -> InboxResult<()> {
+        if !status.capture_durably_received
+            || !matches!(status.intent, super::native::IntentState::ProposalJournaled)
+        {
+            return Err(InboxError::Invalid);
+        }
+        if status.context != status.current_context {
+            return Err(InboxError::StaleContext);
+        }
+        let super::native::ConversionState::ProposalReady(proposal) = &status.conversion else {
+            return Err(InboxError::Invalid);
+        };
+        self.admit(&status.capture_id, status.context.clone(), proposal.clone())
     }
     pub fn admit(
         &mut self,
@@ -376,8 +397,14 @@ impl ReviewInbox {
             Ok(())
         }
     }
-    fn commit(&mut self, next: InboxSnapshot) -> InboxResult<()> {
+    fn commit(&mut self, mut next: InboxSnapshot) -> InboxResult<()> {
+        next.generation = self
+            .state
+            .generation
+            .checked_add(1)
+            .ok_or(InboxError::Capacity)?;
         validate(&next, self.limits)?;
+        let event = navigation::describe(&self.state, &next);
         let mut output = Bounded {
             bytes: Vec::new(),
             limit: self.limits.bytes,
@@ -394,11 +421,18 @@ impl ReviewInbox {
         })();
         if let Err(error) = persisted {
             self.view.1.store(true, Ordering::Release);
+            self.events.emit(navigation::InboxEvent {
+                generation: self.state.generation,
+                capture_id: None,
+                project_id: None,
+                kind: navigation::InboxEventKind::PersistenceUncertain,
+            });
             return Err(error);
         }
         self.state = next;
         let published = Arc::new(self.state.clone());
         *self.view.0.write().unwrap() = published;
+        self.events.emit(event);
         Ok(())
     }
 }
