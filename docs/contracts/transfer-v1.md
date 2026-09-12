@@ -161,3 +161,33 @@ project snapshots before review. Reusing a revision number with changed dependen
 content is detected by the hash. Mac review UI integration and temporary-project
 compiler validation remain separate acceptance gates; a fresh proposal is not proof
 that the proposed TeX compiles successfully.
+
+## Compiler validation before review approval
+
+`capture_validate` payload is `{capture_id,expected_revision}`. Configure the bridge
+with `--compiler ORIGINAL_FLASHTEX_BINARY --compiler-entry main.tex`; both flags
+are required together. Without them, this request returns `compiler_not_configured`.
+The selected binary is the original Rust compiler, never a reference LaTeX engine.
+
+Reply type `capture_validation` contains `capture_id,context_revision,validation`.
+The validation object contains request correlation, project/revision, original
+snapshot path/revision/hash identities, hypothetical snapshot identities, compiler
+`status,diagnostics,pages`, `source_is_hypothetical:true`, and an explicit compiler
+compatibility limitation. Source offsets refer to the hypothetical snapshots;
+they must not navigate unchanged editor text without translating the proposed edit.
+
+Validation requires a current, non-rejected, unapplied proposal with matching
+context dependency fingerprints and current target revision. It constructs copies
+with the proposed replacement, compiles those copies, and checks reply ID, project,
+revision, UTF-8 spans and display geometry. It never prepares an edit, changes
+source, saves approval or calls Grok. Review approval and subsequent insertion remain
+separate. Failed/recovered compiler output is evidence to display, not successful
+full-compatibility certification. The current compiler's multi-file limitations
+remain visible in diagnostics.
+
+Compiler execution has a five-second deadline, an 8 MiB request/response bound and
+a 64 KiB stderr bound. File-backed transport avoids pipe backpressure deadlocks;
+file size is polled, so a misbehaving configured binary may transiently write more
+than the cap before termination. Output is never loaded past the bounded read.
+Run bridge requests away from the Mac UI thread. Compilation for live editor
+preview remains a separate process; proposal validation must not block typing.

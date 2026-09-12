@@ -316,3 +316,61 @@ impl CompilerValidator {
         request.response(&bytes)
     }
 }
+
+impl crate::Bridge {
+    /// Validate an unapproved proposal for display in the review UI. This never
+    /// calls prepare_insert, saves a journal record or advances source revisions.
+    pub fn validate_capture(
+        &self,
+        request_id: &str,
+        capture_id: &str,
+        expected_revision: u64,
+        entry_path: &str,
+        compiler: &CompilerValidator,
+    ) -> Result<ReviewEvidence> {
+        let record = self.store.require(capture_id)?;
+        if record.rejected || record.applied.is_some() {
+            return Err(BridgeError::new(
+                "validation_capture_closed",
+                "Rejected or applied captures cannot be validated for insertion",
+            ));
+        }
+        let proposal = record.proposal.as_ref().ok_or_else(|| {
+            BridgeError::new(
+                "proposal_missing",
+                "Convert the capture before validating it",
+            )
+        })?;
+        proposal.validate()?;
+        self.verify_proposal_context(&record)?;
+        let anchor = self.capture_anchor(&record.capture)?;
+        let doc = self.document(&anchor.project_id, &anchor.path)?;
+        if doc.revision != expected_revision {
+            return Err(BridgeError::new(
+                "revision_conflict",
+                "Validate against the current source revision",
+            ));
+        }
+        let edit = PreparedEdit {
+            capture_id: capture_id.into(),
+            edit_id: format!("validation-{capture_id}"),
+            project_id: anchor.project_id.clone(),
+            path: anchor.path.clone(),
+            expected_revision,
+            start_byte: anchor.start_byte,
+            end_byte: anchor.end_byte,
+            removed_text: doc.text[anchor.start_byte..anchor.end_byte].into(),
+            replacement: proposal.latex.clone(),
+            document_before_sha256: digest(doc.text.as_bytes()),
+        };
+        let documents: Vec<_> = self
+            .documents
+            .values()
+            .filter(|d| d.project_id == anchor.project_id)
+            .cloned()
+            .collect();
+        let correlation = format!("validation-{}", digest(request_id.as_bytes()));
+        let request = ProposedCompilation::new(&correlation, entry_path, &documents, &edit)?;
+        compiler.validate(&request)
+    }
+}
