@@ -72,3 +72,22 @@ to a temporary JSON file and setting `FLASHTEX_HELPER_CAPTURE_CONFIG` to it. Run
 `cargo test --test helper_capture -- --ignored --nocapture` with the runtime
 manifest; optionally set `FLASHTEX_HELPER_RUNTIME_EVIDENCE` to an output JSON path.
 The test executes a captured-byte replay subprocess, not a fresh producer.
+
+## Corrected official 10pt metric capture
+
+The independent data-only follow-up consumes `eca6ab25`. All control/verified
+artifact hashes and resource hashes were checked, including the official LM2.004
+archive's `ec-lmr10.tfm` member and GUST license. The six serialized requests are
+byte-identical across the earlier `e680d2ef` capture, new control and corrected
+capture. Control and corrected binaries match each other; the earlier capture
+used a different helper build, so it is not described as binary-identical to them.
+The original producer binary remains unchanged.
+
+All six corrected compile results are `ok` with empty diagnostics. Every sibling
+retains its exact source digest/length/compile revision; raw helper wrapper bodies
+for2/4/6 match producer bytes. The unchanged captured-byte consumer passes the
+restart and supersession assertions. No runtime/API code changed or full-suite
+rerun was needed for this fixture-only follow-up. Original recovered evidence
+remains intact. See `../benchmarks/helper-source-capture-corrected` for complete
+verified comparison metadata, exact replay config, results and artifact digests.
+This supports the missing-metric resource gate only, not native or visual parity.
