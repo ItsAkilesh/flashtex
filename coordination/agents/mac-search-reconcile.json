@@ -11,7 +11,7 @@
     "preview-controller-stdio",
     "python-test-fixtures"
   ],
-  "code_revision": "pending-commit",
+  "code_revision": "6c50fd75",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -31,9 +31,9 @@
   "state": "ready_for_integration",
   "summary": "GH39: apply_group reconciliation validated against the editor snapshot taken at the send (ProjectSearchPanel.swift EditorSnapshot/controllerRequestTracked/reconcile via controllerAdoptHistoryResult); typing during the round trip is kept and resubmitted on top, unchanged buffers adopt the returned text exactly, uncertain replies retry byte-identically. Deterministic test via a holding stdio proxy in front of the real helper; SearchReconcileTests 3/3 (race test fails with the fix reverted); related suites 52/52 with real helpers.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T15:28:00Z",
+  "updated_utc": "2026-09-12T15:31:00Z",
   "usage": {
-    "evidence": "swift build OK; SearchReconcileTests 3/3 passed with fix, race test failed with fix reverted (lines 140/144/145 + r3 timeout); ProjectSearch|CitationRename|SearchReconcile|EditHistory|PasteRecovery 52/52 with real compiler+preview-controller (load 10-18); docs/evidence/mac-search-reconcile-2026-09-12.md",
+    "evidence": "swift build OK; SearchReconcileTests 3/3 passed with fix, race test failed with fix reverted (lines 140/144/145 + r3 timeout); ProjectSearch|CitationRename|SearchReconcile|EditHistory|PasteRecovery 52/52 with real compiler+preview-controller (load 10-18); docs/evidence/mac-search-reconcile-2026-09-12.md; full swift test at 6c50fd75: 651 tests, 40 skipped (other helper env unset), 0 failures, 168 s, load 8.7-7.0",
     "status": "Shared Claude Max quota with parent mac-claude-a; no purchases; bounded ~75 min lane"
   }
 }

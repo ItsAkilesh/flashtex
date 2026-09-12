@@ -56,8 +56,8 @@ Runs (logs in the lane's scratchpad, summarized here):
   race test), 2 passed.
 - Fix applied, `--filter "ProjectSearch|CitationRename|SearchReconcile|EditHistory|PasteRecovery"`:
   52/52 passed, 0 skipped, with the real helpers (load avg 10–18).
-- Full `swift test` with the two real helpers: see the handoff
-  `coordination/mac-search-reconcile.md` for the actual count (run when 1-min load < 15).
+- Full `swift test` at 6c50fd75 with the two real helpers (other helper env unset →
+  their tests skip), 1-min load 8.7 at start: 651 tests, 40 skipped, 0 failures, 168 s.
 
 ## Observations for other owners (report only, nothing patched)
 

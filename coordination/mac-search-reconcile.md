@@ -66,8 +66,7 @@ part: snapshot-validated reconciliation + a deterministic delayed-reply test.
   skip waiting for r3); control and retry passed unchanged.
 - Related suites with fix (`ProjectSearch|CitationRename|SearchReconcile|EditHistory|PasteRecovery`):
   52/52 passed, 0 skipped, real compiler + preview-controller, load 10–18.
-- Full `swift test` (two real helpers, others skip): see the final report /
-  agents JSON `usage.evidence`.
+- Full `swift test` at 6c50fd75 with the real compiler + preview-controller (bridge/pdf/edit-ledger/project-files/assistant-context env unset → their tests skip): 651 tests, 40 skipped, 0 failures, 168 s, 1-min load 8.7→7.0.
 - No parent-retained file changed; no hook needed (the existing
   `controllerAdoptHistoryResult` sufficed).
 
@@ -76,7 +75,6 @@ part: snapshot-validated reconciliation + a deterministic delayed-reply test.
 - Branch `agent/mac-search-reconcile/gh39`; consumed mac-shell `30785926`.
 - Helpers: built in this worktree with `cargo build --release`
   (`crates/compiler`, `crates/preview-controller`).
-- Dirty files at this checkpoint: the five paths above plus this handoff and
-  `coordination/agents/mac-search-reconcile.json`; next: commit, push, report.
+- Committed 6c50fd75 and pushed to origin; this checkpoint refresh is the only dirty change. Next: final report to parent.
 - Rerun: `cd apps/mac && FLASHTEX_NO_ACTIVATE=1 FLASHTEX_COMPILER=<worktree>/crates/compiler/target/release/flashtex-compiler FLASHTEX_PREVIEW_CONTROLLER=<worktree>/crates/preview-controller/target/release/flashtex-preview-controller swift test --filter SearchReconcileTests`.
 - Resource: shared Claude Max quota with parent mac-claude-a; no purchases.
