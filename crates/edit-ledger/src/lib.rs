@@ -271,6 +271,15 @@ pub struct Store {
     #[cfg(test)]
     failpoint: Option<&'static str>,
 }
+impl Drop for Store {
+    fn drop(&mut self) {
+        // flock belongs to the shared open-file description. A concurrently
+        // forked child may hold that description until exec even with CLOEXEC.
+        // Explicitly relinquish ownership rather than waiting for every inherited
+        // descriptor to close. The child is not an authorized store writer.
+        let _ = FileExt::unlock(&self._lock);
+    }
+}
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let root = path.as_ref().to_path_buf();

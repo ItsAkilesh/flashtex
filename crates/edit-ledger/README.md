@@ -6,6 +6,11 @@ with the Mac owner. This resolves the storage primitive missing from the source
 review in [issue 2](https://github.com/flash-tex/flashtex/issues/2#issuecomment-5643795185).
 Owned paths: `crates/edit-ledger` only. No native app or bridge files are changed.
 
+Lock cleanup explicitly unlocks on Store drop. A Unix fork regression reproduced
+`store_in_use` before this fix when a still-running child inherited the lock's
+open-file description; the same test passes after the explicit unlock, without
+waiting for child exec/exit. This addresses the mechanism investigated in issue 17.
+
 The source document and all applied edit IDs live in **one** `document.json`.
 An apply validates project, path, revision, SHA-256 of UTF-8 source, scalar-aligned
 byte range, and removed text. It commits updated source and the receipt ledger
