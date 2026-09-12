@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Implement explicit metadata-only edit acknowledgement without full-source cloning; preserve default full reply and premutation policy validation",
-      "objective": "Implement explicit metadata-only edit acknowledgement without full-source cloning; preserve default full reply and premutation policy validation",
+      "name": "Implement opt-in metadata-only apply_group acknowledgement using existing bounded UTF8 grouped edits and exact permanent-ID retry semantics",
+      "objective": "Implement opt-in metadata-only apply_group acknowledgement using existing bounded UTF8 grouped edits and exact permanent-ID retry semantics",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Measure same500KB acknowledgement bytes and verify durable edit, stale retry and lost-reply reopen semantics",
-      "objective": "Measure same500KB acknowledgement bytes and verify durable edit, stale retry and lost-reply reopen semantics",
+      "name": "Verify Unicode grouped edit, lost acknowledgement reopen, exact retry, ID conflict and undo equivalence in both response modes",
+      "objective": "Verify Unicode grouped edit, lost acknowledgement reopen, exact retry, ID conflict and undo equivalence in both response modes",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish native opt-in contract with exact source identity and reconciliation behavior; no default activation",
-      "objective": "Publish native opt-in contract with exact source identity and reconciliation behavior; no default activation",
+      "name": "Measure same500KB grouped request and acknowledgement size and retained response copies; publish native opt-in reconciliation contract without default activation",
+      "objective": "Measure same500KB grouped request and acknowledgement size and retained response copies; publish native opt-in reconciliation contract without default activation",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
