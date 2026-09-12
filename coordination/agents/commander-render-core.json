@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "9068d390d7dffe70d644b4260bff76817e94acdb",
+  "code_revision": "8131778accccd88006bf7c2a80fbdf6ac5bbbca5",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "9d09582794299aee7ef751c77167130820d35be4",
-  "next_action": "Consume producer raw-SHA correction when published, rerun exact original/reference export with official matched12TFM; retain strict old wire and no parity claim.",
+  "next_action": "Await producer rawSHA fix while continuing bounded malformed-resource followup; keep exact adapter refusal and no visual claim.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Add opt-in actual pipeline CFF-to-exact-batch adapter with immutable registry/source validation. Corrected-contract test succeeds; unmodified producer SHA claim fails honestly.",
+  "summary": "Replayed current4888a67 with matched/missing TFM and capped optional v2. Added bounded correlated sibling gate and explicit reference-metrics refusal; actual rawSHA defect remains.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:46:56Z",
+  "updated_utc": "2026-09-12T09:50:31Z",
   "usage": {
-    "evidence": "152 ordinary tests and strict all-target clippy pass. Actual matching12TFM rerun pinned. LM12 rawSHA e6be218a differs producer engineSHA d0f39b3e. GH2 comment5645097175. Actual adapter returns CFF resource metadata mismatch; hypothetical corrected-contract probe produces real PDF only as consumer test. No native/schema activation or pending calls.",
-    "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
+    "evidence": "155 tests and strictclippy pass. Current legacy PDF/reference comparison differs; matched actual CFF adapter refuses resource metadata mismatch. GH2 comment5645134718. MissingTFM warning/recovered now verified. No pending calls.",
+    "status": "Hosted OpenAI only; no providers or descendants."
   }
 }

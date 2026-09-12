@@ -792,3 +792,5 @@ pub mod pdf_export;
 pub mod pdf_stream;
 
 pub mod pipeline_cff;
+
+pub mod pipeline_frame;

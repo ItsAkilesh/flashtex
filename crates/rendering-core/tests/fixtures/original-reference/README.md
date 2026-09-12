@@ -90,3 +90,21 @@ GUST license. The automated hypothetical corrected-contract test changes only
 the hash in memory to exercise successful adapter geometry and atomic budget
 refusals. That edited fixture is never labeled original output or used to claim
 original-versus-reference equality. No producer metadata is silently repaired.
+
+## Current producer 4888a67 framing replay
+
+The three `4888-*.jsonl` fixtures are fresh unchanged producer stdout:
+matched metrics accepts a v2 sibling, missing metrics emits `tfm_missing` with
+recovered status, and an 8000-byte reply cap explicitly declines the v2 sibling.
+`pipeline_frame::pair` binds the optional line to the accepted capability,
+request ID, project and revision, rejects unsolicited/missing/oversized siblings,
+and optionally refuses missing TeX metrics for reference acceptance. It is
+transport validation only, never permission to paint or proof of font identity.
+
+The new producer still mislabels the engine hash as the raw font hash; running
+the CFF probe on its actual sibling still returns resource metadata mismatch.
+No current exact original PDF can therefore be produced through this adapter.
+The fresh `4888-legacy.pdf` and `4888-comparison.json` rerun the legacy route
+against the same reference: bytes/operators differ, visual equality unknown.
+Earlier producer comparisons remain separately pinned. Current blocker
+verification: https://github.com/flash-tex/flashtex/issues/2#issuecomment-5645134718.
