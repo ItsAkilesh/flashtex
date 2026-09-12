@@ -12,7 +12,7 @@ SPEC.loader.exec_module(compare)
 
 class BaselineTests(unittest.TestCase):
     def setUp(self):
-        self.artifact = json.loads((compare.ROOT / 'evidence/compiler-9f1033b.json').read_text())
+        self.artifact = json.loads((compare.ROOT / 'evidence/compiler-9f1033b-included-source.json').read_text())
         self.build = self.artifact['build_command']
 
     def verify(self):

@@ -9,15 +9,15 @@
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "bce4982f5db9e0b08063c7bc3200f9a1e5bcf711",
-  "objective": "Simple glyph outline decoding",
+  "input_main_sha": "1befb923fb8c248a704a1ff5148d77b5f581130f",
+  "objective": "Composite transform geometry and exact bounds",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-024",
   "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T06:01:55Z"
+  "updated_utc": "2026-09-12T06:04:38Z"
 }
