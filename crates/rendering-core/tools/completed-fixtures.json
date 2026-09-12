@@ -154,5 +154,11 @@
     "all_five_original_pdf_hashes_unchanged": true,
     "all_five_raster_and_text_metrics_unchanged": true,
     "scope": "Consumed private paired token preserves existing outputs and current source/resource checks; reference gaps remain. No global cache or native activation."
+  },
+  "helper_read_only_hit_checkpoint": {
+    "consumer": "fce554f1acf79a05891c4aca90bdb50e25ae6b3d",
+    "evidence": "evidence/hit-five-fixtures.json",
+    "previous_evidence": "evidence/paired-five-fixtures.json",
+    "all_five_pdf_raster_text_validity_unchanged": true
   }
 }
