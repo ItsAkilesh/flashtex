@@ -234,3 +234,14 @@ and the RULE that unsupported constructs are reported in `ambiguities`, never
 substituted. 20 entries, each ≤128 bytes (the bridge's limits). The live check
 inserts the returned LaTeX at the pin and compiles it with `flashtex-compiler`
 (`compile_gate` in `conversion.json`: status, new diagnostics, new errors).
+
+## Accessibility note (request for the mac-accessibility lane)
+
+The Grok section is shown by the app's `EditorPreferencesView()` and hidden by
+`EditorPreferencesView(preferences:)` unless `showGrok: true`, so the pinned
+Settings table (`PanelFocusOrder.panels[0]`, checked against
+`EditorPreferences.swift` markers) stays exact; its controls are keyboard-walked
+by `PanelAccessibilityTests.testGrokPreferencesSectionControlsTakeKeyboardFocus`
+(11 controls: secure key field, Save/Remove, provider switch, model field, Use,
+Test connection). Adding them to the table needs `Control` markers that can
+point at `GrokPreferencesView.swift` (the table is per-file today).
