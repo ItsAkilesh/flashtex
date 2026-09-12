@@ -1,7 +1,8 @@
 //! FT-002 acceptance tests, stated against docs/contracts/runtime-v1.md.
 
 use flashtex_compiler::json::{self, Value};
-use flashtex_compiler::protocol::handle_line;
+use flashtex_compiler::protocol::{handle_line, read_request_line, RequestLine, MAX_LINE_BYTES};
+use std::io::{BufReader, Cursor};
 
 fn compile_line(id: &str, revision: i64, path: &str, text: &str) -> String {
     let mut doc = Value::obj();
@@ -208,4 +209,28 @@ fn math_and_unsupported_commands_are_reported_never_silent() {
         .collect();
     assert!(messages.iter().any(|m| m.contains("math mode is not implemented")), "got {:?}", messages);
     assert!(messages.iter().any(|m| m.contains("\\tikz is not supported")), "got {:?}", messages);
+}
+
+#[test]
+fn bounded_reader_rejects_an_oversized_line_and_recovers_for_the_next_request() {
+    let valid = compile_line("after-large", 7, "main.tex", "still works\n");
+    let mut input = vec![b'x'; MAX_LINE_BYTES + 1];
+    input.push(b'\n');
+    input.extend_from_slice(valid.as_bytes());
+    input.push(b'\n');
+
+    // A deliberately small BufReader exercises the chunked path rather than
+    // exposing the whole test input in one fill_buf call.
+    let mut reader = BufReader::with_capacity(31, Cursor::new(input));
+    assert_eq!(read_request_line(&mut reader).unwrap(), Some(RequestLine::TooLarge));
+
+    let next = read_request_line(&mut reader).unwrap().expect("next request remains readable");
+    let bytes = match next {
+        RequestLine::Data(bytes) => bytes,
+        RequestLine::TooLarge => panic!("valid request was incorrectly rejected"),
+    };
+    let response = reply(std::str::from_utf8(&bytes).unwrap());
+    assert_eq!(response.get("id").unwrap().as_str(), Some("after-large"));
+    assert_eq!(response.get("type").unwrap().as_str(), Some("compile_result"));
+    assert_eq!(response.get("payload").unwrap().get("revision").unwrap().as_i64(), Some(7));
 }

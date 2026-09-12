@@ -8,10 +8,64 @@ use crate::diagnostics::{Diagnostic, Severity};
 use crate::json::{self, str_, Value};
 use crate::layout::{self, Page};
 use crate::parser;
+use std::io::{self, BufRead};
 
 pub const PROTOCOL_VERSION: i64 = 1;
 /// Documented maximum accepted line size. Oversized payloads are rejected.
 pub const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
+
+/// One request read without allowing an untrusted line to grow memory without
+/// bound. `TooLarge` is returned only after the complete offending line has
+/// been consumed, so the caller can safely continue with the next request.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RequestLine {
+    Data(Vec<u8>),
+    TooLarge,
+}
+
+pub fn read_request_line<R: BufRead>(reader: &mut R) -> io::Result<Option<RequestLine>> {
+    let mut line = Vec::new();
+    let mut oversized = false;
+    let mut saw_input = false;
+
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if !saw_input {
+                return Ok(None);
+            }
+            return Ok(Some(if oversized {
+                RequestLine::TooLarge
+            } else {
+                RequestLine::Data(line)
+            }));
+        }
+
+        saw_input = true;
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let consumed = newline.map_or(available.len(), |index| index + 1);
+        let content = newline.map_or(available, |index| &available[..index]);
+
+        if !oversized {
+            let remaining = MAX_LINE_BYTES.saturating_sub(line.len());
+            if content.len() > remaining {
+                oversized = true;
+                line.clear();
+            } else {
+                line.extend_from_slice(content);
+            }
+        }
+
+        reader.consume(consumed);
+        if newline.is_some() {
+            return Ok(Some(if oversized {
+                RequestLine::TooLarge
+            } else {
+                RequestLine::Data(line)
+            }));
+        }
+    }
+}
 
 pub fn error_envelope(id: &str, code: &str, message: &str) -> Value {
     let mut payload = Value::obj();

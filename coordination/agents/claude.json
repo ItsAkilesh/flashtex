@@ -16,7 +16,7 @@
     "cursor-commit",
     "coordination"
   ],
-  "code_revision": "25fe5c479e4177474ed06281bca7ce4dc992c533",
+  "code_revision": "29221d8b15d412f4feb877879d5bfc02f6086a98",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,21 +24,21 @@
   },
   "machine": "mac-m5pro-kabir",
   "main_integrated_through": "d6858792737c0980cccaec5db835075e94a1ebc9",
-  "next_action": "Await Commander integration review; next implementation step is real font metrics and incremental reuse (FT-005/FT-006)",
+  "next_action": "Request FT-005 dispatch (layout/output and source mapping) from Commander; not self-assigning. Meanwhile hardening within FT-002 scope.",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "Reviewed peer FT-003 ack on origin/agent/mac-claude-a/mac-shell: the Mac shell converts UTF-8 byte spans to Swift indices, so span exactness is a hard consumer requirement; acceptance test asserts every span slices back to its exact item text.",
-      "reviewed_utc": "2026-09-12T04:15:22Z",
-      "sha": "d6858792737c0980cccaec5db835075e94a1ebc9"
+      "adaptation": "Reviewed main 25a92a9 autonomous-worker dispatch. FT-002 remains revision 1 so no new acknowledgement is required. FT-005 and FT-006 are still unassigned and depend on FT-002, which is now ready; requesting dispatch rather than self-assigning.",
+      "reviewed_utc": "2026-09-12T04:21:44Z",
+      "sha": "25a92a9c591a92a3d49071e536ecf8f129112c24"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "FT-002 compiler foundation implemented and verified: crates/compiler, zero external deps, 11 cargo tests pass plus 21/21 independent binary-level acceptance checks. Lexer emits exact UTF-8 byte spans; parser covers a documented finite subset with recovery; layout produces positioned text on 612x792pt pages; runtime-v1 JSONLines compile/compile_result with error envelopes and path rejection.",
+  "summary": "FT-002 complete and hardened. crates/compiler: 12 cargo tests pass, strict clippy clean, 21/21 independent binary-level acceptance checks. Codex continuity agent found and fixed a real defect: the oversized-line limit was enforced only after BufRead::lines had already buffered the whole line, so untrusted input could grow memory unbounded before rejection.",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T04:15:22Z",
+  "updated_utc": "2026-09-12T04:21:44Z",
   "usage": {
-    "evidence": "cargo test: 3 lexer + 8 acceptance pass. Independent harness 21/21 including stdin/stdout JSONLines roundtrip, Unicode span slicing, recovery, two revisions, error envelopes, path rejection.",
-    "status": "Codex probe 4175 tokens; Codex implementation run aborted after stalling twice"
+    "evidence": "cargo test 3 lexer + 9 acceptance pass; cargo clippy --all-targets -D warnings clean; independent harness 21/21 against the built binary over stdin/stdout",
+    "status": "One Codex continuity cycle completed on openai-kabir-plus-ft002; per-call cost not exposed by the CLI"
   }
 }

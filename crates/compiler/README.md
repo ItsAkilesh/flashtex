@@ -26,6 +26,8 @@ Implemented and tested:
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
+- An 8 MiB JSON Lines request limit enforced while reading, without buffering an
+  arbitrarily large line; the worker consumes an oversized line and continues.
 
 Required, outstanding — this is a foundation, not a LaTeX implementation:
 
