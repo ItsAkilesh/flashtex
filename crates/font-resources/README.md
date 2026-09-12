@@ -512,3 +512,32 @@ kerns and ligatures, retention, suppression, cycles, invalid addresses and encod
 mapping. The existing licensed peer `ec-lmr10.tfm` (SHA cd13479f463b9a575d053dd7bf0884daa46bfdeffe4b7f537c193861652ac9e5)
 provides real fi->slot28 and AV kern(-116509 fix_word) regression evidence, but it
 has no boundary marker/program. No real-font boundary oracle is claimed.
+
+`registry::vf_project::ResolvedVfProject` resolves explicit VF dependencies through
+the same rooted reader and immutable project font registry. No published real VF
+fixture was available; the only special fixture contains `ps`, so no special
+semantics were guessed. All specials remain explicit unsupported expansion results.
+
+Dependency schema1 binds `registry_generation`, a root node ID, and physical or
+virtual nodes. Each TFM/VF asset declares path/full SHA/license provenance and
+license hash; physical nodes declare a registry StyleBinding and explicit encoding
+manifest. Virtual nodes map every local font ID to an explicit target node ID.
+There is no path/name/font fallback. Load verifies bytes/licenses, TFM/VF headers,
+local checksum/design size, complete local-ID bindings, unique resource identities,
+missing nodes and dependency cycles before returning an immutable resolved project.
+
+Limits reuse RegistryLimits (128nodes,257reads,1MiB manifest,256MiB total maximum),
+plus131068bytes per TFM,16MiB per VF and32 graph-depth limit. `expand(code,
+registry_generation)` refuses stale context and builds borrowed bindings for the
+existing ResourceGraph exact expansion/source-chain implementation. It does not
+reimplement packet execution. Current physical endpoints use the graph's existing
+TrueType BoundTfmFont profile; CFF endpoints remain explicitly unsupported here.
+
+`generation`, `manifest`, `loaded_bytes` and retained license texts provide
+recoverable provenance. Node/local-ID ordering is normalized before generation
+hashing; explicit encoding declarations are preserved. Caller caches must bind
+project instance, registry/dependency generations, character and implementation
+profile. Synthetic rooted-project tests cover originalGID/source-chain expansion,
+missing/duplicate/cyclic dependencies, changed bytes, missing licenses, symlinks,
+read budgets, retained snapshots and explicit unknown-special rejection. These do
+not establish real VF special or visual reference equivalence.

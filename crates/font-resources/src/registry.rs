@@ -372,3 +372,6 @@ impl CffFontResource {
         crate::engine_adapter::EngineFontAdapter::from_cff(&self.bytes, &cache)
     }
 }
+
+/// Explicit rooted VF/TFM dependency declarations.
+pub mod vf_project;
