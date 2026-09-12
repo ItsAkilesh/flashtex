@@ -84,12 +84,15 @@ fn run(binary: &Path, limits: Limits) -> Result<(), String> {
             documents,
         };
         let id = request.id.clone();
+        let warm_started = Instant::now();
         warm.submit(request.clone())?;
         let (persistent, timing) = response(&mut warm)?;
+        let warm_observed_ms = warm_started.elapsed().as_secs_f64() * 1000.0;
         let cold_started = Instant::now();
         let mut cold = Session::spawn(binary, limits.clone())?;
         cold.submit(request)?;
         let (fresh, _) = response(&mut cold)?;
+        let fresh_observed_ms = cold_started.elapsed().as_secs_f64() * 1000.0;
         let equal = persistent == fresh;
         println!(
             "{}",
@@ -99,12 +102,13 @@ fn run(binary: &Path, limits: Limits) -> Result<(), String> {
             "pages":persistent["payload"]["pages"].as_array().map(Vec::len),
             "diagnostics":persistent["payload"]["diagnostics"].as_array().map(Vec::len),
             "warm_queue_ms":timing[0], "warm_compiler_transport_poll_ms":timing[1],
-            "warm_total_ms":timing[2], "fresh_launch_to_result_ms":cold_started.elapsed().as_secs_f64()*1000.0})
+            "warm_total_ms":timing[2], "warm_call_to_result_ms":warm_observed_ms,
+            "fresh_launch_to_result_ms":fresh_observed_ms})
         );
         if !equal {
             return Err(format!("persistent/fresh result mismatch for {id}"));
         }
-        samples.push(timing[2]);
+        samples.push(warm_observed_ms);
     }
     if samples.is_empty() {
         return Err("no replay edits supplied".into());
@@ -115,7 +119,7 @@ fn run(binary: &Path, limits: Limits) -> Result<(), String> {
         "{}",
         json!({"type":"summary", "max_frame_bytes":limits.max_frame,"edits":samples.len(), "p50_ms":percentile(50),
         "p95_ms":percentile(95), "p99_ms":percentile(99), "max_ms":samples.last(),
-        "measurement":"warm submission through received positioned result; compiler, pipe transport and polling combined",
+        "measurement":"warm submit call through validated positioned result; request cloning/encoding, compiler, transport, JSON validation and polling combined",
         "native_paint_measured":false, "reference_pdf_measured":false})
     );
     Ok(())

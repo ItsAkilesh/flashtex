@@ -33,3 +33,10 @@ runtime's5-second response timeout. First persistent sample247ms; later examples
 retains the incomplete classification;17 successes do not imply20 completed edits.
 This demonstrates that removing the transport cap is insufficient for the200ms
 objective. Compiler incremental-path attribution requires separate investigation.
+
+Timing clarification after the initial reports: runtime `warm_total_ms` starts
+once request encoding is complete; it includes result JSON parsing/validation.
+The updated replay adds `warm_call_to_result_ms`, measured before request cloning
+and submit through observation, and uses that for summary percentiles. Fresh
+launch timing now stops before comparing JSON values. Historical committed reports
+retain their original measurement definitions and are not rewritten as new runs.
