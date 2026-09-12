@@ -323,19 +323,39 @@ func findPage(_ path: String) {
     ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
     guard let data = ctx.data else { fail("no data") }
     let px = data.bindMemory(to: UInt8.self, capacity: ctx.bytesPerRow * h)
-    // Background = the pane colour (light or dark appearance): the most common colour
-    // in a thin band just inside the window's right edge, middle 60% of its height.
+    // Background = the pane colour (light or dark appearance): the most common
+    // non-white colour over the right half of the window below the toolbar. Paper
+    // white is excluded so the page never wins; scrollbars and the divider are far
+    // smaller than the pane area around the page.
     var counts: [UInt32: Int] = [:]
-    for y in stride(from: h / 5, to: h * 4 / 5, by: 2) {
-        for x in (w - 12)..<(w - 4) {
-            let i = (y * ctx.bytesPerRow)  /* memory row 0 = top of the image */ + x * 4
+    for y in stride(from: h / 8, to: h, by: 3) {
+        for x in stride(from: w / 2, to: w, by: 3) {
+            let i = (y * ctx.bytesPerRow) + x * 4
+            if px[i] >= 240 && px[i + 1] >= 240 && px[i + 2] >= 240 { continue }
             counts[UInt32(px[i]) << 16 | UInt32(px[i + 1]) << 8 | UInt32(px[i + 2]), default: 0] += 1
         }
     }
-    let bg = counts.max { $0.value < $1.value }!.key
+    // Try the most frequent colours in turn (a diagnostics panel or the editor can be a
+    // large flat area too); the first candidate whose block is letter-shaped wins.
+    let candidates = counts.sorted { $0.value > $1.value }.prefix(4).map { $0.key }
+    var attempts: [[String: Any]] = []
+    for bg in candidates {
+        let r = detectPage(bg: bg, w: w, h: h, px: px, bytesPerRow: ctx.bytesPerRow)
+        if r["found"] as? Bool == true {
+            print(String(data: try! JSONSerialization.data(withJSONObject: r, options: [.sortedKeys]), encoding: .utf8)!)
+            return
+        }
+        attempts.append(r)
+    }
+    var out = attempts.first ?? ["found": false, "reason": "no candidate background"]
+    out["attempts"] = attempts.map { ["background_rgb": $0["background_rgb"] ?? [], "aspect": $0["aspect"] ?? 0, "w": $0["w"] ?? 0, "h": $0["h"] ?? 0, "reason": $0["reason"] ?? ""] }
+    print(String(data: try! JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), encoding: .utf8)!)
+}
+
+func detectPage(bg: UInt32, w: Int, h: Int, px: UnsafeMutablePointer<UInt8>, bytesPerRow: Int) -> [String: Any] {
     let bgr = Int(bg >> 16 & 0xff), bgg = Int(bg >> 8 & 0xff), bgb = Int(bg & 0xff)
     func isBackground(_ x: Int, _ y: Int) -> Bool {
-        let i = (y * ctx.bytesPerRow)  /* memory row 0 = top of the image */ + x * 4
+        let i = (y * bytesPerRow)  /* memory row 0 = top of the image */ + x * 4
         return abs(Int(px[i]) - bgr) <= 3 && abs(Int(px[i + 1]) - bgg) <= 3 && abs(Int(px[i + 2]) - bgb) <= 3
     }
     // Per row: rightmost run of non-background pixels (gaps <= 12 px bridged) wider than 200 px.
@@ -363,27 +383,31 @@ func findPage(_ path: String) {
         }
     }
     guard let mode = key.max(by: { $0.value < $1.value })?.key else {
-        print("{\"found\":false,\"reason\":\"no wide runs\"}"); return
+        return ["found": false, "reason": "no wide runs", "background_rgb": [bgr, bgg, bgb], "image_px": [w, h]]
     }
     let parts = mode.split(separator: ",").map { Int($0)! * 4 }
     let mx0 = parts[0], mx1 = parts[1]
-    // Rows whose run matches the mode within 6 px; largest contiguous block.
+    // Rows whose run matches the mode within 6 px on the left edge and either matches
+    // on the right edge or extends further right (a scrollbar thumb within 12 px of the
+    // page edge merges into the run on the rows it spans); largest contiguous block.
     var bestBlock = (0, -1), cur = (0, -1)
     for y in 0..<h {
-        if let r = runs[y], abs(r.0 - mx0) <= 6, abs(r.1 - mx1) <= 6 {
-            if cur.1 == y - 1 { cur.1 = y } else { cur = (y, y) }
+        if let r = runs[y], abs(r.0 - mx0) <= 6, abs(r.1 - mx1) <= 6 || r.1 > mx1 + 6 {
+            // Bridge up to 4 rows: ink of the pane's own colour (a black rule on a dark
+            // pane) can cut a single row's run.
+            if cur.1 >= y - 5 && cur.1 >= 0 { cur.1 = y } else { cur = (y, y) }
             if cur.1 - cur.0 > bestBlock.1 - bestBlock.0 { bestBlock = cur }
         }
     }
     var xs0: [Int] = [], xs1: [Int] = []
-    for y in bestBlock.0...max(bestBlock.0, bestBlock.1) { if let r = runs[y] { xs0.append(r.0); xs1.append(r.1) } }
+    for y in bestBlock.0...max(bestBlock.0, bestBlock.1) { if let r = runs[y] { xs0.append(r.0); if abs(r.1 - mx1) <= 6 { xs1.append(r.1) } } }
     xs0.sort(); xs1.sort()
     var x0 = xs0.isEmpty ? mx0 : xs0[xs0.count / 2], x1 = xs1.isEmpty ? mx1 : xs1[xs1.count / 2]
     var y0 = bestBlock.0, y1 = bestBlock.1
     // Refine each edge inward (up to 6 px) until the edge line is mostly paper
     // white; the run detection includes the anti-aliased page border pixels.
     func isWhite(_ x: Int, _ y: Int) -> Bool {
-        let i = (y * ctx.bytesPerRow) + x * 4
+        let i = (y * bytesPerRow) + x * 4
         return px[i] >= 250 && px[i + 1] >= 250 && px[i + 2] >= 250
     }
     func colWhiteFraction(_ x: Int) -> Double {
@@ -403,9 +427,8 @@ func findPage(_ path: String) {
     let pw = x1 - x0 + 1, ph = y1 - y0 + 1
     let aspect = ph > 0 ? Double(pw) / Double(ph) : 0
     let ok = ph > 0 && abs(aspect - 612.0 / 792.0) < 0.03
-    let out: [String: Any] = ["found": ok, "x": x0, "y": y0, "w": pw, "h": ph, "aspect": aspect, "raw_block": [bestBlock.0, bestBlock.1],
+    return ["found": ok, "x": x0, "y": y0, "w": pw, "h": ph, "aspect": aspect, "raw_block": [bestBlock.0, bestBlock.1],
                               "expected_aspect": 612.0 / 792.0, "background_rgb": [bgr, bgg, bgb], "image_px": [w, h]]
-    print(String(data: try! JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), encoding: .utf8)!)
 }
 
 var args = Array(CommandLine.arguments.dropFirst())

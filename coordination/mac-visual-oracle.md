@@ -1,12 +1,39 @@
-# mac-visual-oracle — FT-017 rev 2 (declared fixtures, registration, regions, provenance)
+# mac-visual-oracle — FT-017 rev 3 (GH-24: self-regression vs established-engine gates)
 
 Agent / task / branch: `mac-visual-oracle` (Claude Code subagent, parent `mac-claude-a`,
-machine `mac-m1max-a`) / FT-017 rev 2 (acked 06:30Z, input main 41c4616) /
+machine `mac-m1max-a`) / FT-017 rev 3 (acked, input main 59a49ab; GH-24) /
 `agent/mac-visual-oracle/reference-raster`
-State: ready for integration (rev 2 delivered; evidence with live MacTeX oracles and with reused references)
+State: in progress — GH-24 gate split delivered and evidenced; native-capture evidence run in progress
 Owned paths: `tests/visual-corpus/harness/`, `tests/visual-corpus/evidence/`,
 `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`
-Main integrated through: a949f5b773a1bc7f1be7ae2d79581856af88a97b (merge b45bd17)
+Main integrated through: ddc5bc6 (merge 6e9d14c, this session)
+
+## Durable checkpoint (context-checkpoint policy; written at every push)
+
+- Lane: FT-017 rev 3 / GH-24 "separate self-regression from established-engine raw-byte /
+  zero-pixel gates"; follow-ups: pin all 18 fixtures to exact engines/fonts (done via
+  `harness/oracle-profile.json`), native-capture-vs-export exact mismatch evidence (in progress).
+- Branch `agent/mac-visual-oracle/reference-raster`; worktree
+  `/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c` (local branch name
+  `mvo/rev2`, pushes with `git push origin HEAD:agent/mac-visual-oracle/reference-raster`; the
+  stopped worker's worktree still holds the branch name, so `scripts/coord.py` refuses this
+  worktree — the agents JSON is written with the same schema by hand).
+- Owned paths: `tests/visual-corpus/harness`, `tests/visual-corpus/evidence`,
+  `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`. No other
+  path is touched; transferred crates untouched; no purchases; Claude Max 20x shared quota only.
+- Context usage of this session: ~2% of the 15M-token window at this checkpoint (read from the
+  tool budget counter; no other readout available).
+- Scratch state (not in Git; session scratchpad `…/scratchpad/`): `vc/run-20260912T083316Z/`
+  (work dir of the evidence run: reference/, flashtex/, native/, rasterize), `vc/builds/`
+  (cargo builds by label-SHA), `r2/pinA/` (oracle pin render pass), `r2/*.sh|*.py` helper
+  scripts, `app2-169c2a8…/apps/mac/.build/debug/FlashTeXMac` (app for native capture).
+- Exact next commands if resumed: `git fetch origin && git status`; if
+  `evidence/20260912T083316Z/images` has native overlays and `metrics.json` has
+  `gate_summary.export_native_available` = 54 → commit evidence + handoff + agents JSON and push;
+  otherwise rerun `bash <scratchpad>/r2/capture_and_rediff.sh` (≈30 min) and then commit.
+- Dependency SHAs: origin/main ddc5bc6 (merged); compilers compared: main 5b69110, de1020c,
+  pipeline 79ba728 (origin/agent/mac-render-pipeline/unified); flashtex-pdf 5b5f7b5; app
+  origin/agent/mac-claude-a/mac-shell 169c2a8; MacTeX 2026 full, tlmgr r78301.
 
 ## Session note (resumed after an accidental stop)
 
@@ -17,7 +44,41 @@ reused from the stopped run's renders); the coordinator then installed **MacTeX 
 (`/usr/local/texlive/2026`, tlmgr r78301; `/Library/TeX/texbin` → its bin dir) and the corpus was
 re-run with live oracles (evidence run 20260912T072838Z, the primary rev 2 evidence).
 
-## Ready behavior (rev 2)
+## Ready behavior (rev 3, GH-24)
+
+- **Three separate gates, never merged, nothing normalised** (`diff.py`, report sections
+  "Gate 1/2/3", `metrics.json` → `gates[]`, `gate_summary`, `oracle_self`):
+  1. *FlashTeX self-regression*: candidate `flashtex.pdf` SHA-256 vs the pinned PRIOR FLASHTEX
+     output in `harness/reference-profile.json` — labelled as reproducibility of FlashTeX against
+     itself, "says nothing about LaTeX".
+  2. *Candidate vs established engine*, per oracle variant: raw unmodified PDF bytes vs the pinned
+     MacTeX oracle PDF (`harness/oracle-profile.json`) and vs this run's live oracle render;
+     zero-pixel raster equality of the export raster vs the oracle raster page by page
+     (page-count mismatch = DIFFERENT). pdflatex + pdflatex-lm in the report table, all six
+     variants in metrics.
+  3. *Native/export parity*: export raster = preview-equivalent raster; export raster = native
+     screen capture.
+  A plain statement at the top of the report gives the counts and says parity is NOT claimed
+  while any pair differs. `--gate` fails on any of the three.
+- **Established-engine pin that is a real pin**: `render_reference.sh` runs every engine with
+  `SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1` and gives lualatex an explicit
+  `\pdfvariable trailerid` line (recorded in engine.json, the preamble and the pin). Verified:
+  two independent renders of all 108 fixture/oracle pairs are byte-identical (108/108) and
+  pixel-identical. `pin_oracle.py` / `run.sh --pin-oracle` write `oracle-profile.json` from fresh
+  renders only (engine version, MacTeX distribution + tlmgr revision, texbin realpath, font files
+  from the log, preamble, flags, env, page geometry, fixture SHA-256, PDF SHA-256); the diff
+  verifies on every run that the live oracle bytes still equal the pin (`oracle_live_equals_pin`).
+- **Reference store + reuse** (rev 2, unchanged): runs that render write `<evidence>/references/`;
+  `--reference-from auto` reuses stored PDFs only on fixture-SHA + preamble match when an engine
+  is missing (the env/trailerid change makes older stores non-matching for lualatex — correct).
+- **Native capture** (`capture_native.sh` + `rasterize find-page`): page detection now tries the
+  most frequent non-white colours as pane background (a diagnostics panel or scrollbar no longer
+  outvotes it), tolerates scrollbar-merged rows and single rows cut by ink of the pane's own
+  colour; the app now opens on the Retina display (backing 2×, resample ×1.52 vs rev 1's ×2.84).
+- `selftest.py`: 25 checks (adds a synthetic gate tree: one candidate identical to the oracle,
+  one differing; the three gates judged independently; report sections and no-parity statement).
+
+### Rev 2 behavior still in force
 
 - **18 declared fixtures** (`harness/fixtures/*.tex` + `.meta.json`; SHA-256 of both in every
   `provenance.json`, `metrics.json` entry and PNG footer): 01 plain, 02 wrapping, 03 section
@@ -93,39 +154,27 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Validation
 
-- `selftest.py --rasterize <built rasterize>`: PASS (18 checks; run after every diff.py change).
-- Run 20260912T065946Z (no engine installed): all 108 reference pairs reused from
-  20260912T064032Z after fixture-SHA + preamble checks, 0 unavailable; 648 entries, 0 skipped;
-  276 PNGs, none > 300 KB.
-- Run 20260912T072838Z (MacTeX 2026 full, live): 108/108 oracle renders exit 0 (pdfTeX 1.40.29,
-  XeTeX 0.999998, LuaHBTeX 1.24.0 — same versions as BasicTeX), new reference store written;
-  648 entries, 0 skipped; 276 PNGs ≤ 300 KB; compilers main@5f9f4ec, de1020c, pipeline@c000dad
-  all built.
-- **Live vs recorded references** (`072838Z/reference-vs-recorded.json`): 108/108 pairs
-  pixel-identical at 144 DPI (max differing px 0); 0/108 PDFs byte-identical — differences are
-  CreationDate/ModDate, trailer /ID and compressed object-stream bytes only. The recorded
-  BasicTeX references were therefore a faithful stand-in; the MacTeX provenance is now the
-  primary one and the reuse path stays as fallback.
-- Exact gates (acceptance): export vs preview-equivalent DIFFERENT on all 54 fixture/compiler
-  pairs (as in rev 1), native unavailable, PDF bytes = pin only for de1020c on the 9 pinned
-  fixtures. Diagnostics: 4 threshold failures (pdflatex vs de1020c on 10/12/15/16 — long
-  wrapping text, greedy unjustified breaking).
-- Registration vs rendering error, pdflatex-lm oracle, export side, page 1 (mean|Δ| raw → after
-  registration; shift pt; confidence):
-  - 17-apostrophes: de1020c 0.862 → 0.862, shift (0,0) none — the residual is rendering error
-    (quotesingle vs quoteright glyphs, mean word |dx| 44.6 pt); pipeline 0.674 → 0.631, shift
-    (−0.5,0) moderate 6%; pipeline word sequence = oracle, mean |dx| 0.02 pt.
-  - 09-mixed-document: de1020c 2.252 → 1.901, shift (−0.5,39.5) moderate 16% (display box SSIM₈
-    0.381 → 0.528); pipeline 1.859 → 1.609, shift (0,−16.5) moderate 13%.
-  - 18-ligatures: de1020c 1.315, correlation candidate (−18.5,0) REJECTED (would raise the error)
-    → shift 0, all rendering error (ligature advance widths); pipeline 0.976, shift 0.
-  - 02-wrapping-paragraph: de1020c 7.786, candidate (−8.5,−14.5) rejected; pipeline 4.547 (raw
-    SSIM₈ 0.937 vs de1020c 0.862) — line breaking, not offset.
+- `selftest.py --rasterize <bin>`: PASS (25 checks).
+- Oracle reproducibility: `render_reference.sh` twice → `r2/ra-vs-rb.json`: 108/108 PDFs
+  byte-identical, 108/108 rasters identical (recorded in the commit message of c2619a6).
+- **Evidence run `20260912T083316Z`** (MacTeX 2026 full live; compilers main@5b69110, de1020c,
+  pipeline@79ba728; 648 entries, 0 skipped): `gate_summary` — oracle pins live 108/108
+  (the run's oracle bytes equal the pin, no normalisation); candidate raw bytes = pinned oracle
+  **0/324**; zero-pixel = oracle **0/324**; self-regression EQUAL 9/54 (de1020c on the 9 fixtures
+  pinned in rev 1; main/pipeline differ or unpinned); export = preview-equivalent 0/54.
+  Plain statement in the report: established-engine parity is NOT claimed.
+- Native capture: 54 launches; first pass 44/54 rasters (multi-page fixtures failed page
+  detection — fixed as above, re-capture + diff with `--native` running at this checkpoint;
+  numbers in the next update).
+- Diagnostics (never acceptance): 4 threshold failures (pdflatex vs de1020c on 10/12/15/16);
+  regress vs 072838Z: 9 entries, all label `main` (SHA moved 5f9f4ec → 5b69110).
 
 ## Needs from others
 
-- None blocking. Commander: say whether `reference-profile.json` should be re-pinned to the
-  18-fixture corpus, and whether `pipeline` should be pinned to a SHA rather than the branch tip.
+- None blocking. Commander: `reference-profile.json` (self-regression baseline) is still the rev 1
+  9-fixture pin; say whether to re-baseline it to 18 fixtures × {main, de1020c, pipeline}
+  (`--pin-profile`, labelled baseline-not-pass) and whether `pipeline`/`main` labels should be
+  pinned to SHAs.
 
 ## Resource state
 
@@ -134,8 +183,8 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Next action
 
-Await Commander review. Next if assigned: Retina native capture route, scale-aware registration
-for native captures, per-line region metrics, merge origin/main into this branch.
+Finish native-capture evidence (running), commit/push evidence 083316Z, update this handoff and
+the agents JSON to ready_for_integration; then reply on GH-24 with the evidence path.
 
 ## Peer revisions reviewed and adaptations
 
@@ -150,4 +199,4 @@ for native captures, per-line region metrics, merge origin/main into this branch
   runtime-v1 compile_result and U+2500 rule convention, both still present; a full merge of
   main into this branch is deferred to the next clean checkpoint.
 
-Updated: 2026-09-12T07:42Z
+Updated: 2026-09-12T08:55Z
