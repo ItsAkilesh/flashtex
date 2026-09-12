@@ -11,8 +11,8 @@
   ],
   "branch": "agent/daniel-collaboration/collaboration-core",
   "state": "ready_for_integration",
-  "summary": "FT-044 rev 2: crates/collaboration-core adds Document::checkpoint()/From<Checkpoint> (bounded serializable snapshot of structure + causal frontier, typed TooLarge error past bound) with checkpoint equivalence proven across 3 scenarios (sequential build, Unicode, every causally valid ordering of a 5-op concurrent scenario at every cut point); and PendingOps, an additive buffering layer for interrupted/out-of-order delivery recovery (bounded, PendingBufferFull past bound, missing_dependencies() exposes what to re-request). Document::apply is unchanged from rev 1. 33/33 tests pass, clippy -D warnings clean, zero dependencies.",
-  "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core into main; no follow-up work planned by this agent absent a new assignment revision.",
+  "summary": "FT-044 rev 3: fixed a real OpBuilder counter-overflow defect (checked_add instead of a panicking/wrapping += 1) found while writing adversarial coverage; added crates/collaboration-core/tests/adversarial.rs covering all six required bounded-adversarial categories (operation referencing an unknown replica, counter at u64::MAX, pending buffer at and past capacity, checkpoint at and past its entry bound, truncated/corrupted checkpoint bytes never panicking, insert anchored to a tombstoned element) plus an idempotent-double-delete case, each asserting a typed Err/None result rather than a panic; and published the full typed consumer contract (construct, submit local edit, receive remote op, recover from a gap via PendingOps, checkpoint/restore, read text+frontier) with a worked two-replica offline/reconcile example in coordination/daniel-collaboration.md, verified against the actual public API. Rev 1 convergence/dedup and rev 2 checkpoint equivalence are unchanged and still pass. 44/44 tests pass, clippy --all-targets -D warnings clean, zero dependencies. Repo-wide grep confirms no consumer of this crate exists yet.",
+  "next_action": "Await Commander integration review of agent/daniel-collaboration/collaboration-core (rev 3) into main; no follow-up work planned by this agent absent a new assignment revision.",
   "eta_minutes": {
     "optimistic": 0,
     "likely": 0,
@@ -24,17 +24,17 @@
     "evidence": "Shared Claude Max 20x subscription quota; no purchases, no overages, no API billing. Live consumption not exposed to this agent."
   },
   "reviewed_peers": {
-    "origin/main": "745f32736134583f72ac830453a46abd02994a73"
+    "origin/main": "486b759ce906cf987e4d7ebba9033c56b15a499b"
   },
   "assignment_acknowledgements": {
     "FT-044": {
-      "acknowledged_utc": "2026-09-12T09:42:30Z",
-      "revision": 2,
-      "main_sha": "745f32736134583f72ac830453a46abd02994a73",
-      "adaptation": "Accepted FT-044 rev 2 objective as stated: added bounded durable checkpoints and interrupted-delivery recovery on top of rev-1's convergence/dedup/causal-id core without changing Document::apply's semantics. Chose buffering (PendingOps) over exposure-only for interrupted delivery, while also exposing missing_dependencies() as a complementary, non-primary capability. Checkpoint equivalence checked structurally (via Checkpoint equality itself), not just via visible text, across 3 independent operation sequences including an exhaustive (ordering x cut-point) sweep. No changes to crates/edit-ledger or any other crate; owned paths only."
+      "acknowledged_utc": "2026-09-12T16:44:55Z",
+      "revision": 3,
+      "main_sha": "486b759ce906cf987e4d7ebba9033c56b15a499b",
+      "adaptation": "Accepted FT-044 rev 3's new requirement, an explicit published consumer contract, on top of rev 1's convergence/dedup core and rev 2's checkpoint/recovery layer. Reused and extended the prior interrupted run's work after judging it sound: verified every documented signature against src/lib.rs, checkpoint.rs, and recovery.rs directly rather than trusting the prose, and confirmed by repo-wide grep that no consumer exists today, so none was invented and no other crate was edited. Also added the six required adversarial cases as typed-error tests, which surfaced and fixed a genuine OpBuilder counter-overflow defect. main already contained input_main_sha 6c89f26f as an ancestor; merged origin/main (git merge origin/main --no-edit reported already up to date at 486b759c)."
     }
   },
-  "updated_utc": "2026-09-12T09:42:30Z",
-  "code_revision": "3520284775b919bb87a5178411bee5f1cf931000",
-  "main_integrated_through": "745f32736134583f72ac830453a46abd02994a73"
+  "updated_utc": "2026-09-12T16:44:55Z",
+  "code_revision": "a13aaf3f5caed1887210ac100261d07a9b617680",
+  "main_integrated_through": "486b759ce906cf987e4d7ebba9033c56b15a499b"
 }
