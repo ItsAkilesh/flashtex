@@ -780,4 +780,5 @@ pub mod shaped_replay;
 
 pub mod registry_binding;
 
+pub mod pdf_export;
 pub mod pdf_stream;

@@ -546,3 +546,86 @@ Synthetic checks cover negative heights/values, exact ties, missing corners and
 request/output limits. Pinned STIX replay compares every available corner table
 around its correction-height boundaries against the bound resource API. This
 is exact consumer consistency rather than an independent typesetting oracle.
+
+### Explicit MATH device metrics
+
+`math_devices` is an opt-in query path for constant, glyph and kerning Device
+records. Every request supplies ppem; `PixelScale` separately supplies exact
+horizontal and vertical canonical ticks per pixel. Constants/glyph requests name
+the axis explicitly. Kern selection uses the resource adapter's corrected-height
+policy and retains its selected interval. Nothing infers a device scale from zoom
+or font size.
+
+Each result retains raw design units, base ticks, signed pixel delta, correction
+ticks, optional combined value and Device table hash/offset. Absent accents remain
+absent. The retained base metrics still declare their original unhinted policy;
+this API does not hint outlines or position scripts. Replay binds both ppem axes
+and pixel scales and rejects changed context/provenance. VariationIndex and
+unsupported device data preserve typed resource errors.
+
+Synthetic tests check constant/italic/accent/kern corrections, exact unequal axis
+scales, ppem changes, absent accents and request/output limits. Pinned STIX GID3326
+has a +1pixel top-accent correction at12ppem: the consumer preserves its exact
+7/3 canonical-tick correction and original Device table identity. This does not
+establish device-aware paint or native cache integration.
+
+### Fitted geometry replay and cache consistency
+
+`MathAssemblyFrame::replay_bytes` now joins the exact mixed geometry fixture with
+its source/registry/MATH metrics, part-instance mapping, offsets/overlaps, target,
+strategy, limits, explicit origin and CFF policy. This bounded internal evidence
+has a consumer source hash and geometry hash. `verify_replay` first checks the
+live lease/source and then compares every field with the immutable frame; it does
+not accept an arbitrary font outline just because JSON is well formed.
+
+Synthetic and pinned STIX acceptance compare this complete evidence after fresh
+resource binding and repeated path-cache reuse, with no geometry tolerance.
+Pinned tests print fresh/reused-path elapsed times for one horizontal and one
+vertical construction. These include consumer work and are diagnostic samples,
+not native paint latency or a performance threshold. Source revisions, fit
+metadata and declared origins remain part of the replay identity.
+
+### Registry-bound parsed MATH query cache
+
+`RegistryRenderer::math_cache` creates `RegistryMathCache` borrowing one immutable
+`MathLease`. Its `assembly`, `kerns` and `devices` methods validate the live renderer
+lease before querying the original font cache, then rebuild exact source-bound
+frames through the same conversion paths used by direct calls. Unhinted kerning
+has its own cache query and never invents ppem. Device contexts, rational heights,
+fit strategy and limits remain query keys; page pixel scales and source revisions
+are recomposed and verified on every result. A registry A→B→A transition cannot
+revive an old cache. No persistent cache or native wire activation is introduced.
+
+`MathAssemblyFrame::fit()` now returns the local immutable `AssemblyFit` wrapper,
+with the same `identity()` and `fit()` getters; it preserves the verified parent
+MathIdentity without fabricating a private resource-library BoundMathFit. Consumers
+that explicitly named that former return type must use AssemblyFit instead.
+
+Caller limits bound entry storage, retained query results and parsed tables
+separately. `stats()` exposes the original cache's charged bytes, computations,
+hits and parse counts; oversized outcomes may bypass residency. Caller-retained
+frames and transient parsing allocations are outside these residency counters.
+Synthetic checks exercise eviction, zero parsed-table residency, cached failures,
+changed pixel scales/source, and stale A→B→A leases with retained geometry intact.
+
+The pinned STIX workload compares exact direct/cached assembly, unhinted kerning
+and device replay: one kern parse, one variants parse,945 hits and946 computations
+in the recorded run (178624 query bytes,130528 parsed bytes). These counts prove
+eliminated repeated parsing; they do not establish native paint latency or an
+end-to-end speedup.
+
+### Original PDF backend export
+
+`pdf_export::export` now connects exact mixed/shaped path streams to the PDF
+owner's unchanged `ExactDocument`/`Content::Verbatim` API. It produces actual
+PDF bytes plus bounded provenance evidence, verifies xref/page sizes/content
+readback, and never calls the legacy rounded-number text route. Glyphs remain
+resolved outlines; original GID/font/source identities stay in evidence rather
+than embedded searchable text. Empty glyphs preserve spans without invalid fills.
+Nonterminating decimals and alpha remain explicit unsupported conversions.
+
+`examples/pdf_export.rs` is an executable single-page fixture exporter.
+`shaped_run_probe` additionally emits and checks a real pinned STIX PDF and accepts
+an optional output directory after its font/license arguments. Checked-in
+synthetic and STIX PDF fixtures support deterministic byte/operator replay.
+See `PDF-INTEGRATION.md` for hashes, limits and remaining text/native/oracle gaps.

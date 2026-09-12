@@ -233,6 +233,225 @@ fn pinned_math_registry_equivalence() {
         "STIX kern corner tables {} heights {height_records} device records {device_records}",
         kerns.data().records().len()
     );
+    use flashtex_font_resources::math_device::{ConstantDeviceRecord, DeviceContext};
+    for index in 0..51 {
+        let correction = bound
+            .constant_device(
+                ConstantDeviceRecord::new(index).unwrap(),
+                DeviceContext::new(12).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(correction.identity(), bound.identity());
+        assert_eq!(correction.correction().delta_pixels, 0);
+        assert_eq!(correction.correction().device_table_offset, None);
+    }
+    use flashtex_font_resources::math_device::{GlyphDeviceKind, KernDeviceContext};
+    let context = DeviceContext::new(12).unwrap();
+    let mut glyph_device_records = 0;
+    for gid in 0..bound.glyph_count() {
+        for kind in [
+            GlyphDeviceKind::ItalicCorrection,
+            GlyphDeviceKind::TopAccentAttachment,
+        ] {
+            let result = bound.glyph_device(gid, kind, context).unwrap();
+            assert_eq!(result.identity(), bound.identity());
+            let expected = match kind {
+                GlyphDeviceKind::ItalicCorrection => Some(
+                    face.math()
+                        .unwrap()
+                        .italics_correction(flashtex_font_engine::GlyphId(gid)),
+                ),
+                GlyphDeviceKind::TopAccentAttachment => face
+                    .math()
+                    .unwrap()
+                    .top_accent_attachment(flashtex_font_engine::GlyphId(gid)),
+            };
+            assert_eq!(result.design_units(), expected);
+            if result
+                .correction()
+                .is_some_and(|r| r.device_table_offset.is_some())
+            {
+                let (expected_sha, expected_delta) = match gid {
+                    3309 => (
+                        "ab2eb9ea308cd688fdf24e8195634163507dd7f547f36fb1f98956f83811d741",
+                        0,
+                    ),
+                    3316 => (
+                        "c447e66453f3bd7a9d32f0913d4961fb205bd25ad46ebcef056f26609709b583",
+                        0,
+                    ),
+                    3326 => (
+                        "cd26325e3c7a478bc246d4a9019d275d88037e830e9a581cdc79d1ea5b1c175e",
+                        1,
+                    ),
+                    4010 => (
+                        "5d892fad4a022dfec134f4da2a1f75a9bba80c4f35bbf439bffbb0fb62fcbaf1",
+                        0,
+                    ),
+                    _ => panic!("unexpected device record"),
+                };
+                assert_eq!(
+                    result.correction().unwrap().device_table_sha256.as_deref(),
+                    Some(expected_sha)
+                );
+                assert_eq!(result.correction().unwrap().delta_pixels, expected_delta);
+                println!("device GID {gid} {kind:?}: {:?}", result.correction());
+                glyph_device_records += 1;
+            }
+        }
+    }
+    for (&(gid, corner), table) in kerns.data().records() {
+        let height = Rational::new(0, 1).unwrap();
+        let result = bound
+            .kern_device(
+                gid,
+                corner,
+                height,
+                KernDeviceContext {
+                    horizontal: context,
+                    vertical: context,
+                },
+            )
+            .unwrap();
+        assert_eq!(result.identity(), bound.identity());
+        assert_eq!(
+            result.correction().correction.design_units,
+            table.lookup(height).unwrap().design_units
+        );
+        assert_eq!(result.correction().correction.delta_pixels, 0);
+    }
+    println!("STIX glyph italic/accent device records {glyph_device_records}");
+    assert_eq!(glyph_device_records, 4);
+    let benchmark_start = std::time::Instant::now();
+    let (&(benchmark_gid, benchmark_corner), _) = kerns.data().records().first_key_value().unwrap();
+    for _ in 0..100 {
+        std::hint::black_box(
+            bound
+                .kern_device(
+                    benchmark_gid,
+                    benchmark_corner,
+                    Rational::new(0, 1).unwrap(),
+                    KernDeviceContext {
+                        horizontal: context,
+                        vertical: context,
+                    },
+                )
+                .unwrap(),
+        );
+    }
+    println!(
+        "STIX uncached100 kern-device queries {:?}",
+        benchmark_start.elapsed()
+    );
+    use flashtex_font_resources::math_cache::{
+        Limits, MathQueryCache, Query, Value as CachedValue,
+    };
+    let mut cache = MathQueryCache::new(&bound, Limits::default()).unwrap();
+    let query = Query::Kern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(0, 1).unwrap(),
+        context: KernDeviceContext {
+            horizontal: context,
+            vertical: context,
+        },
+    };
+    let expected = bound
+        .kern_device(
+            benchmark_gid,
+            benchmark_corner,
+            Rational::new(0, 1).unwrap(),
+            KernDeviceContext {
+                horizontal: context,
+                vertical: context,
+            },
+        )
+        .unwrap();
+    println!("STIX cache benchmark GID {benchmark_gid} corner {benchmark_corner:?} height0 ppem12");
+    let cached_start = std::time::Instant::now();
+    for _ in 0..100 {
+        let result = cache.query(bound.identity(), query.clone()).unwrap();
+        let Ok(CachedValue::Kern(value)) = result.outcome.as_ref() else {
+            panic!("kern outcome")
+        };
+        assert_eq!(value, expected.correction());
+    }
+    println!(
+        "STIX cached100 kern-device queries {:?} stats {:?}",
+        cached_start.elapsed(),
+        cache.stats()
+    );
+    assert_eq!(cache.stats().kern_parses, 1);
+    assert_eq!(cache.stats().hits, 99);
+    let unhinted_query = Query::UnhintedKern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(0, 1).unwrap(),
+    };
+    let unhinted = cache
+        .query(bound.identity(), unhinted_query.clone())
+        .unwrap();
+    assert!(
+        matches!(unhinted.outcome.as_ref(),Ok(CachedValue::UnhintedKern{value,height_device_adjustment_present:false}) if value==&kerns.data().lookup(benchmark_gid,benchmark_corner,Rational::new(0,1).unwrap()).unwrap())
+    );
+    cache.query(bound.identity(), unhinted_query).unwrap();
+    assert_eq!(cache.stats().kern_parses, 1);
+    // Different height requires computation but reuses the immutable parsed table.
+    let distinct = Query::Kern {
+        glyph_id: benchmark_gid,
+        corner: benchmark_corner,
+        height: Rational::new(1, 2).unwrap(),
+        context: KernDeviceContext {
+            horizontal: context,
+            vertical: context,
+        },
+    };
+    cache.query(bound.identity(), distinct).unwrap();
+    assert_eq!(cache.stats().kern_parses, 1);
+    for ppem in [12, 13] {
+        let q = Query::Glyph {
+            glyph_id: 3326,
+            kind: GlyphDeviceKind::TopAccentAttachment,
+            context: DeviceContext::new(ppem).unwrap(),
+        };
+        let cached = cache.query(bound.identity(), q).unwrap();
+        let Ok(CachedValue::Glyph {
+            design_units,
+            correction,
+        }) = cached.outcome.as_ref()
+        else {
+            panic!()
+        };
+        let direct = bound
+            .glyph_device(
+                3326,
+                GlyphDeviceKind::TopAccentAttachment,
+                DeviceContext::new(ppem).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(*design_units, direct.design_units());
+        assert_eq!(correction.as_ref(), direct.correction());
+    }
+    let fit_query = Query::Fit {
+        glyph_id: 1064,
+        direction: Direction::Vertical,
+        target: Rational::new(5000, 1).unwrap(),
+        strategy: FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+        limits: FitLimits::default(),
+    };
+    let direct = variants
+        .fit(
+            Direction::Vertical,
+            1064,
+            Rational::new(5000, 1).unwrap(),
+            FitStrategy::EqualExtendersProportionalConnectorFlexibility,
+            FitLimits::default(),
+        )
+        .unwrap();
+    let cached = cache.query(bound.identity(), fit_query.clone()).unwrap();
+    assert!(matches!(cached.outcome.as_ref(),Ok(CachedValue::Fit(v)) if v==direct.fit()));
+    cache.query(bound.identity(), fit_query).unwrap();
+    assert_eq!(cache.stats().variant_parses, 1);
     // Held registry resources remain immutable when the project file changes.
     std::fs::write(dir.path().join(&resource.path), b"changed").unwrap();
     assert_eq!(bound.constants(), &face.math().unwrap().constants);
@@ -243,4 +462,44 @@ fn pinned_math_registry_equivalence() {
         bound.identity().math_table_byte_length,
         bound.glyph_count()
     );
+}
+
+#[test]
+#[ignore = "requires pinned installed Noto Math and license; inventory evidence only"]
+fn installed_noto_math_inventory() {
+    let bytes = std::fs::read("/usr/share/fonts/google-noto/NotoSansMath-Regular.ttf").unwrap();
+    let license = std::fs::read("/usr/share/licenses/google-noto-fonts-common/LICENSE").unwrap();
+    assert_eq!(
+        sha256(&bytes),
+        "d51afd5739c7ba6c44fcab35a88160e25dfb69a2d4ad0bd99533f8d894af1f96"
+    );
+    assert_eq!(
+        sha256(&license),
+        "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    );
+    let face = TrueTypeFace::parse(bytes).unwrap();
+    println!(
+        "Noto Math MATH table present {}",
+        face.table(b"MATH").is_some()
+    );
+    let math = face.table(b"MATH").unwrap();
+    let read = |at: usize| u16::from_be_bytes(math[at..at + 2].try_into().unwrap()) as usize;
+    let base = read(4);
+    let mut present = 0;
+    for index in 0..51 {
+        let offset = read(base + 10 + index * 4);
+        if offset != 0 {
+            present += 1;
+            let table =
+                flashtex_font_resources::math_device::DeviceTable::parse(math, base + offset)
+                    .unwrap();
+            println!("Noto record {index} device range {:?}", table.range());
+        }
+    }
+    assert_eq!(present, 0);
+    assert_eq!(
+        sha256(math),
+        "e6ba971107625ed4c384230b1a84191c745e9a97b1b39ce12692d0d987126909"
+    );
+    println!("Noto MATH SHA {} constants devices {present}", sha256(math));
 }
