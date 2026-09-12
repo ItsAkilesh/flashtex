@@ -141,3 +141,27 @@ font needs. Synthetic tests verify exact cumulative cubic points, closepath/curr
 point behavior, subroutine width/provenance, cycles, operand/output/step caps and
 unsupported operators. Existing broad `Resource::require_outlines` still refuses:
 this opt-in subset does not establish safe whole-font rendering or visual parity.
+
+### Explicit unhinted stems and exact dyadic division
+
+Additive `interpret_with_policy` accepts `Policy { hints: Unhinted,
+exact_division: true }`. Existing `interpret` retains Reject/false defaults and its
+prior inventory. hstem/vstem require2 operands; hstem3/vstem3 require6. Up to4096
+stem records preserve exact relative positions, absolute positions relative to the
+sidebearing, signed widths, axis, triple grouping and source chain/offset. Negative
+widths remain raw metadata (including possible ghost-hint forms); no stem snapping,
+triple-counter constraint solver or hint replacement is applied. This is explicit
+unhinted geometry, not proof of a valid hinted program or device parity.
+
+`div` pops its two operands while preserving earlier stack entries. It reuses the
+existing Rational helper to reduce the quotient and converts only an exact
+power-of-two denominator within Coordinate's precision bound. Division by zero
+and arithmetic overflow fail; non-dyadic results return UnrepresentableDivision.
+There is no floating conversion or rounding. Operand stacks and geometry now carry
+exact Coordinates, while subroutine indices must still be exact nonnegative
+integers. All existing stack/call/step/output/resource bounds remain in force.
+
+Pinned real LM comparison: default6accepted unchanged; explicit policy171accepted
+with455retained stem records.455glyphs refuse non-dyadic division and196reach
+callothersubr (escaped16). This records the first refusal per glyph only. FontMatrix,
+PaintType, flex/OtherSubrs/seac, hint application and renderer activation stay gated.

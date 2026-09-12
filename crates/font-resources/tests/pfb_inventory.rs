@@ -104,6 +104,34 @@ fn pinned_official_type1_container_only() {
         expected["accepted"]
     );
     println!("Type1 inventory {:?}; accepted {:?}", outcomes, accepted);
+    let mut unhinted = std::collections::BTreeMap::<String, usize>::new();
+    let mut stem_count = 0;
+    for name in records.glyphs().keys() {
+        let policy = flashtex_font_resources::type1_outline::Policy {
+            hints: flashtex_font_resources::cff::HintPolicy::Unhinted,
+            exact_division: true,
+        };
+        match flashtex_font_resources::type1_outline::interpret_with_policy(&records, name, policy)
+        {
+            Ok(out) => {
+                *unhinted.entry("accepted".into()).or_default() += 1;
+                stem_count += out.stems.len();
+                assert_eq!(out.policy, policy)
+            }
+            Err(e) => {
+                *unhinted.entry(format!("{e:?}")).or_default() += 1;
+            }
+        }
+    }
+    assert_eq!(
+        serde_json::to_value(&unhinted).unwrap(),
+        expected["explicit_unhinted_exact_division"]["outcomes"]
+    );
+    assert_eq!(stem_count, 455);
+    println!(
+        "Unhinted inventory {:?}, retained stems {}",
+        unhinted, stem_count
+    );
     assert_eq!(
         resource.require_outlines(),
         Err(Error::EncryptedOutlinesUnsupported)

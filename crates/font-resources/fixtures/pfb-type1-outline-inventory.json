@@ -41,5 +41,14 @@
       0
     ]
   ],
-  "scope": "First unsupported opcode per glyph, not complete feature inventory. Exact raw character-space subset; no FontMatrix/PaintType/hint/raster/visual parity."
+  "scope": "First unsupported opcode per glyph, not complete feature inventory. Exact raw character-space subset; no FontMatrix/PaintType/hint/raster/visual parity.",
+  "explicit_unhinted_exact_division": {
+    "outcomes": {
+      "UnrepresentableDivision": 455,
+      "Unsupported(272)": 196,
+      "accepted": 171
+    },
+    "accepted_retained_stems": 455,
+    "scope": "First failing operation; decimal/rational divisions outside dyadic Coordinate refused, callothersubr unsupported. No visual parity."
+  }
 }
