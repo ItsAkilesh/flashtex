@@ -1,19 +1,67 @@
 # daniel-contents handoff
 
-Agent / task / branch: daniel-contents (Claude Code subagent) / FT-034 rev 2:
-bounded deterministic TOC page-reference stabilization with explicit
-unresolved/cycle states and exact source identities /
+Agent / task / branch: daniel-contents (Claude Code subagent) / FT-034 rev 3:
+contents stabilization — adversarial bounds and exact identity regressions /
 `agent/daniel-contents/toc-layout`
 State: ready for integration
 Owned paths: `crates/toc-layout/**`, `coordination/daniel-contents.md`,
 `coordination/agents/daniel-contents.json`
-Exact tested commit SHA (rev 2 implementation): `754c7579baa37b304eca772fbb3dbbbdbd619cb9`
-Main integrated through (merge-base with `origin/main` at this update):
-`85a0b58bb152dda9ddf1c7c52b8b078bae37287f`
-(rev 1's tested SHA was `da20d5cb4872029fd23af4defe64af9ea58bad77`, input_main_sha
-`53fee3012b2902ca05bd31766defa515b3044cec`; this coordination-record commit
-adds one more commit on top of the rev 2 implementation commit above,
+Exact tested commit SHA (rev 3 implementation): `99b233124c833500fbdca7e32951c04c3b37fe78`
+Main integrated through (`origin/main` at this update, working tree already
+current with it — no merge commit was needed):
+`a91fc1015e6884ab4a451d5d32a626271edacbd4`
+(rev 2's tested SHA was `754c7579baa37b304eca772fbb3dbbbdbd619cb9`, input_main_sha
+`85a0b58bb152dda9ddf1c7c52b8b078bae37287f`; rev 1's tested SHA was
+`da20d5cb4872029fd23af4defe64af9ea58bad77`, input_main_sha
+`53fee3012b2902ca05bd31766defa515b3044cec`. This coordination-record commit
+adds one more commit on top of the rev 3 implementation commit above,
 touching only coordination files.)
+
+## Rev 3: adversarial bounds and exact identity regressions
+
+New: `tests/adversarial_bounds.rs` and `tests/exact_identity.rs`, plus a doc
+clarification in `src/converge.rs`. No production-code behavior changed —
+rev 3 is tests plus one comment.
+
+- **Adversarial bounds** (`tests/adversarial_bounds.rs`, 14 tests): attacks
+  `converge_front_matter_pages`/`stabilize_toc`/`layout_entry` with hostile
+  models and data, asserting each resolves to a typed error or a bounded
+  result, never a panic or hang:
+  - a long-period oscillating `FrontMatterModel` at period 5 (inside the
+    8-pass bound, `Cycle`), exactly at period 8 (`Cycle`, wraparound lands on
+    the last history slot), and at period 9 — one longer than the bound
+    (`Unresolved`, not `Cycle`: the fixed 9-candidate history never observes
+    a period-9 wraparound, so a real cycle whose period exceeds the bound is
+    indistinguishable from one that never repeats, and is reported as such —
+    documented in `converge.rs`'s `ConvergenceError::Unresolved` doc comment);
+  - a doubling (`saturating_mul`/`saturating_add`) model that grows without
+    bound and never panics on overflow — `Unresolved` after exactly 9
+    candidates;
+  - an LCG-style wildly-varying model (`wrapping_mul`/`wrapping_add`),
+    asserting only the bound/typed-result invariant (no claim about which
+    variant it lands on);
+  - 30,000 `SourcedEntry` values through `stabilize_toc` with no panic or
+    hang;
+  - a page number at exactly `u32::MAX` (accepted, laid out correctly) and
+    `RelativeEntry::resolve` both landing exactly on `u32::MAX` (accepted)
+    and overflowing past it (typed `PageOverflow`, not a panic);
+  - a 1,000,000-character title (typed `Overflow` when it can't fit a
+    100-unit line) and a 500,000-character title that does fit a
+    correspondingly wide line (measures exactly, no panic);
+  - zero and negative `LineBox` width, asserting the exact `LineBoxError`
+    fields returned;
+  - duplicate `sequence` values in `stabilize_toc` input — no panic; ties are
+    broken by input order (`sort_by_key` is stable), which was already
+    documented as the caller's responsibility, not validated here.
+- **Exact identity regressions** (`tests/exact_identity.rs`, 2 tests): pins
+  `stabilize_toc` and `layout_entry` output for a representative 4-entry
+  document as literal `StabilizedToc`/`LaidOutEntry` values — front-matter
+  pages, resolved pages, leader counts (51/40/40/33), leader widths
+  (76.5/60.0/60.0/49.5), gaps (1.0/0.0/0.0/0.5), indents, and title/page-label
+  widths — checked by exact struct `PartialEq`, not an epsilon comparison.
+  All chosen measurements (2.5/1.5/5.0 units) are exactly representable in
+  `f64`, so this is a real bit-exact regression pin, not a coincidence of
+  rounding.
 
 ## What this crate does
 
@@ -98,9 +146,10 @@ by design, per FT-034's scope.
 
 ## Validation
 
-`cd crates/toc-layout && cargo build && cargo test`: 30 integration tests
-+ 1 doctest pass, 0 unit tests (all behavior is exercised through the
-public API in `tests/toc.rs`). `cargo clippy --all-targets -- -D
+`cd crates/toc-layout && cargo build && cargo test`: 47 integration tests
+(30 in `tests/toc.rs`, 14 in `tests/adversarial_bounds.rs`, 2 in
+`tests/exact_identity.rs`) + 1 doctest pass, 0 unit tests (all behavior is
+exercised through the public API). `cargo clippy --all-targets -- -D
 warnings`: 0 warnings. `cargo fmt --check`: clean.
 
 Tests cover, with real asserted arithmetic (not just `is_ok()`):
@@ -183,4 +232,4 @@ Tests cover, with real asserted arithmetic (not just `is_ok()`):
   up for real.
 
 Resource: allocation `daniel-claude20x-shared`.
-Updated: 2026-09-12 (rev 2)
+Updated: 2026-09-12 (rev 3)

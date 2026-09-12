@@ -1,39 +1,39 @@
 {
+  "schema_version": 1,
   "agent_id": "daniel-contents",
-  "allocation_id": "daniel-claude20x-shared",
-  "assignment_acknowledgements": {
-    "FT-034": {
-      "acknowledged_utc": "2026-09-12T09:23:13Z",
-      "adaptation": "Extended rev 1's converge.rs (bounded fixed-point, 8-pass cap, full history) rather than replacing it: ConvergenceError became an enum with Cycle (found by scanning the completed history for the earliest repeated candidate, proven to loop forever since pages_for is a pure function of its candidate) and Unresolved (no repeat within the bound) variants, still always running the full 8 passes so history length never depends on when a cycle could have been detected early. Added crates/toc-layout/src/stabilize.rs (SourceId, SourcedEntry, StabilizedEntry, StabilizedToc, StabilizationError, stabilize_toc) as a thin layer on top of converge_front_matter_pages plus RelativeEntry::resolve, rather than redesigning the FrontMatterModel trait, to keep the fixed point at one scalar as rev 1 established. Kept rev 1's leader-measurement, malformed-input, and Unicode tests passing unmodified.",
-      "main_sha": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f",
-      "revision": 2
-    }
-  },
-  "branch": "agent/daniel-contents/toc-layout",
+  "machine": "mac-m5pro-dq222",
+  "tool": "Claude Code on Claude Max 20x",
   "capabilities": [
     "rust",
     "toc-layout",
     "fixed-point-convergence"
   ],
-  "code_revision": "c3492c94db9a7e73200ae269438050bd2665c3c6",
+  "branch": "agent/daniel-contents/toc-layout",
+  "state": "ready_for_integration",
+  "summary": "crates/toc-layout rev 3: adversarial-bounds tests (tests/adversarial_bounds.rs, 14 tests) attack converge_front_matter_pages/stabilize_toc/layout_entry with hostile FrontMatterModels (long-period oscillation at period 5/8/9 against the 8-pass bound -- period 9 proves Unresolved, not Cycle, since the fixed-size history never observes a wraparound past the bound; unbounded doubling growth; an LCG-style wildly-varying model) and hostile data (30k entries, page number at u32::MAX, a 1,000,000-char title, zero/negative LineBox width, duplicate sequence numbers) -- every case is a typed error or bounded result, never a panic or hang. converge.rs's ConvergenceError::Unresolved doc comment now states the period-exceeds-bound classification explicitly. tests/exact_identity.rs (2 tests) pins stabilize_toc + layout_entry output for a representative 4-entry document as literal StabilizedToc/LaidOutEntry values (front-matter pages, resolved pages, leader counts 51/40/40/33, leader widths 76.5/60.0/60.0/49.5, gaps 1.0/0.0/0.0/0.5) via exact struct PartialEq, using only binary-exact f64 measurements. 47 tests + 1 doctest pass; clippy clean.",
+  "next_action": "Await Commander integration; open item is unchanged from rev 1/2 scope -- a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout)",
   "eta_minutes": {
-    "likely": 0,
     "optimistic": 0,
+    "likely": 0,
     "pessimistic": 0
   },
-  "machine": "mac-m5pro-dq222",
-  "main_integrated_through": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f",
-  "next_action": "Await Commander integration; open item is a real TextMeasure/FrontMatterModel consumer wiring (font-engine/compiler/native layout), unchanged from rev 1 scope",
-  "reviewed_peers": {
-    "origin/main": "85a0b58bb152dda9ddf1c7c52b8b078bae37287f"
-  },
-  "schema_version": 1,
-  "state": "ready_for_integration",
-  "summary": "crates/toc-layout rev 2: ConvergenceError is now Cycle{cycle_start,cycle}/Unresolved(distinguished by scanning the completed 8-pass history for the earliest repeated candidate); new stabilize.rs adds stabilize_toc, resolving a whole SourcedEntry list against one converged front-matter fixed point, sorted by explicit sequence (not caller iteration order) into a StabilizedToc; every entry carries an exact SourceId{document,revision} and StabilizedEntry::is_stale detects a mismatched revision or document. 30 tests + 1 doctest pass; determinism proven by feeding identical entries through a Vec, a HashMap drain, and a reversed Vec and asserting identical output.",
-  "tool": "Claude Code on Claude Max 20x",
-  "updated_utc": "2026-09-12T09:29:00Z",
+  "allocation_id": "daniel-claude20x-shared",
   "usage": {
-    "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent",
-    "status": "unknown"
-  }
+    "status": "unknown",
+    "evidence": "Shared Claude Max 20x subscription quota; no purchases or overages; per-session token cost not exposed to this agent"
+  },
+  "reviewed_peers": {
+    "origin/main": "a91fc1015e6884ab4a451d5d32a626271edacbd4"
+  },
+  "assignment_acknowledgements": {
+    "FT-034": {
+      "acknowledged_utc": "2026-09-12T16:29:27Z",
+      "revision": 3,
+      "main_sha": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
+      "adaptation": "Attacked rev 2's stabilizer instead of changing its production behavior: added tests/adversarial_bounds.rs (hostile FrontMatterModels -- long-period oscillation at/under/over the 8-pass bound, unbounded doubling growth, an LCG-style wildly-varying model -- plus hostile data: tens of thousands of entries, a page number at u32::MAX, a million-character title, zero/negative LineBox width, duplicate sequence numbers), asserting every case is a typed error or bounded result and never a panic or hang. Confirmed the rev-2 cycle detector (earliest-repeated-value scan over the completed history) still classifies a period-5 and period-8 oscillation as Cycle, and documented in converge.rs that a period-9 oscillation (one longer than MAX_CONVERGENCE_ITERATIONS) is reported as Unresolved rather than Cycle, since the fixed-size history never observes that wraparound -- a real but unobserved cycle is indistinguishable from divergence at this bound. Added tests/exact_identity.rs pinning stabilize_toc + layout_entry output for a representative document as literal expected StabilizedToc/LaidOutEntry values via exact PartialEq (leader counts, widths, gaps, resolved pages), choosing only binary-exact f64 measurements so equality is never epsilon-based. No production code changed beyond one doc-comment clarification in converge.rs."
+    }
+  },
+  "updated_utc": "2026-09-12T16:29:27Z",
+  "code_revision": "99b233124c833500fbdca7e32951c04c3b37fe78",
+  "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4"
 }
