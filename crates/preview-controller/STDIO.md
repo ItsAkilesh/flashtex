@@ -144,3 +144,12 @@ A reply blocked in the output writer for two seconds terminates the helper even
 when the output queue has not filled. The actor checks this deadline between
 operations; it does not interrupt a filesystem call. Recover durable source after
 uncertain delivery instead of assuming that the last operation was rejected.
+
+`project_status:{max_documents?:1..256}` returns sorted active source metadata
+(path, revision, SHA-256, UTF-8 byte count), current membership generation and
+versions, total count and an explicit truncation flag. Default limit is 256.
+`scope:"active_sources_only"` and `disk_tree_enumerated:false` distinguish this
+from a complete disk tree: detached sources, assets and unopened disk paths are
+not enumerated. No source text or disk contents are read by this query.
+Compiler restart now advances index generation instead of resetting it, so a
+previously invalid index snapshot cannot become valid again after restarting.

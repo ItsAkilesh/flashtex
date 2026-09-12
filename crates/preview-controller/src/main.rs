@@ -362,6 +362,26 @@ fn handle(
                 json!({"document":result.document,"preview_error":result.preview_error,"save_and_submit_ms":result.save_and_submit_ms}),
             )
         }
+        "project_status" => {
+            let snapshot = controller.index().snapshot();
+            let max = match p.get("max_documents") {
+                None => 256,
+                Some(value) => value
+                    .as_u64()
+                    .filter(|n| (1..=256).contains(n))
+                    .ok_or("max_documents must be 1..256")? as usize,
+            };
+            let documents = snapshot.documents.keys().take(max).map(|path| {
+                let document = controller.document(path)?;
+                Ok(json!({"path":path,"revision":document.revision,"sha256":document.source_sha256,"bytes":document.text.len()}))
+            }).collect::<Result<Vec<Value>, String>>()?;
+            Ok(
+                json!({"project_id":snapshot.project_id,"source_versions":snapshot.documents,
+                "membership_generation":snapshot.generation,"documents":documents,
+                "total_documents":snapshot.documents.len(),"truncated":snapshot.documents.len()>max,
+                "scope":"active_sources_only","disk_tree_enumerated":false}),
+            )
+        }
         "open_document" | "detach_document" => {
             let expected = controller.index().snapshot();
             if p["source_versions"] != json!(expected.documents)
