@@ -9,7 +9,7 @@
   could not be regenerated on this machine, see "Incomplete behavior").
 - Owned paths: `crates/math-layout/**`, `coordination/mac-math-layout.md`,
   `coordination/agents/mac-math-layout.json`.
-- Main integrated through: `462fb27` (merged into the branch at this
+- Main integrated through: `a089e17` (merged into the branch at this
   checkpoint; main carries `crates/pdf` at `4bd8c2e`, the commit the gate
   pins, and nothing under `crates/math-layout`).
 - Ready behavior:
@@ -71,7 +71,7 @@
   `raster-thresholds.json` from measured numbers with 10–20% headroom, and
   `--pin-oracle` to confirm the pin against a fresh pdflatex run.
 - Peer revisions reviewed and adaptations:
-  - `origin/main` `462fb27`: `crates/pdf` `4bd8c2e` merged (rules-v1 +
+  - `origin/main` `a089e17`: `crates/pdf` `4bd8c2e` merged (rules-v1 +
     font-hints-v1) — identical to the pinned writer, no adaptation; no
     contract change. Merged into the branch.
   - `origin/agent/mac-visual-oracle/reference-raster` `78b9a64` (WIP): diff.py

@@ -14,34 +14,44 @@
     "rust",
     "math"
   ],
-  "code_revision": "2f12a7ed43b9a4613dd03a993a8abacf8ed4a26b",
+  "code_revision": "f75cc201fc62b48ec2eb2e3096a5dc59142eb976",
   "eta_minutes": {
     "likely": 5,
     "optimistic": 0,
-    "pessimistic": 10
+    "pessimistic": 30
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "0b7076ad9f3b8b8ac8e9e7f80960c97af2c8e7b3",
-  "next_action": "Final report to parent; MathFontMetrics on FT-018 Face and OpenType MathVariants once exposed",
+  "main_integrated_through": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61",
+  "next_action": "On MacTeX arrival: oracle-backed run_visual.sh, measured raster thresholds, re-pin the oracle",
   "reviewed_peers": {
     "origin/agent/mac-font-engine/tex-fonts": {
       "adaptation": "font-engine parses MathConstants but not MathVariants; TFM-only extensible path shipped behind trait hooks, MathVariants requested in README",
       "reviewed_utc": "2026-09-12T06:29:52Z",
       "sha": "dca990c74c6d11fa3dc30e7a5e2b9e8c08b05803"
     },
+    "origin/agent/mac-pdf/pdf-output": {
+      "adaptation": "FLASHTEX_LM_DIR and hint resolution read from crates/pdf README/embed.rs; run_visual.sh passes the variable through; writer pinned unmodified",
+      "reviewed_utc": "2026-09-12T07:08:25Z",
+      "sha": "4bd8c2e79f66c161b7fb6438f3262f8d980eb8c9"
+    },
+    "origin/agent/mac-visual-oracle/reference-raster": {
+      "adaptation": "tip 78b9a64 is an untested WIP (projection registration, burned-in footers); the gate stays pinned at db18236, harness not edited",
+      "reviewed_utc": "2026-09-12T07:08:25Z",
+      "sha": "67bfd129a707f232a05afbef696b77eb38776c95"
+    },
     "origin/main": {
-      "adaptation": "main integrated rev-1 math-layout commits unchanged and published FT-020 rev 2; merging main into the branch, no conflicts",
-      "reviewed_utc": "2026-09-12T06:30:03Z",
-      "sha": "a949f5b773a1bc7f1be7ae2d79581856af88a97b"
+      "adaptation": "crates/pdf 4bd8c2e merged on main equals the writer run_visual.sh pins; no contract or math-layout change; merged into the branch",
+      "reviewed_utc": "2026-09-12T07:08:25Z",
+      "sha": "a089e17750ce9a3eeee0bc2a6d34fda70416fb61"
     }
   },
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "FT-020 rev 2 implemented: extensible delimiters/radicals (TFM recipes as stacked glyph boxes), sqrt degree, overline/underline rules, text operators with limits per style, style overrides, scripted-base accents; 34 tests; stage-2 oracle comparison within 0.003 bp",
+  "state": "ready_for_integration",
+  "summary": "FT-020 rev 3: 15-case declared math visual corpus; structural gate 15/15 vs pinned pdfTeX geometry (max 0.0055 bp, --regress clean); preview/PDF box parity 15/15 (PDF writer 0.00096 pt, CoreText 0.00000 pt, tol 0.05 pt); tools/run_visual.sh drives harness db18236 + crates/pdf 4bd8c2e; raster references NOT regenerable (no pdflatex on this machine, stated in the evidence); explicit unsupported table in README",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T06:32:17Z",
+  "updated_utc": "2026-09-12T07:08:25Z",
   "usage": {
-    "evidence": "cargo test 34 passed; docs/comparison.md stage 2 max deviation 0.003 bp vs pdfTeX 1.40.29 incl. extensible pieces",
-    "status": "unknown"
+    "evidence": "crates/math-layout/docs/visual-evidence/20260912T070234Z; docs/comparison.md stage 3; cargo test 37 passed, clippy clean",
+    "status": "unknown from this session (Claude Max 20x on mac-m1max-a, allocation claude-mac20x-math-layout)"
   }
 }
