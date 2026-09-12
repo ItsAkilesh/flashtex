@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "observed_utc": "2026-09-12T05:57:18Z",
+  "machine": "linux-primary",
+  "build_profile": "release",
+  "rustc_version": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "base_commit_before_uncommitted_measurement_code": "972e065ff17a90d22ab299f3b9be45e3029d445c",
+  "source_sha256": {
+    "src/lib.rs": "999329fa10c6fe1b39e2fedb83ec5ce246ac32ccc7f98d561caec46c2e993b70",
+    "examples/reindex_measure.rs": "2f6bb90c52bc7ea0872507a7caf77d93ed0d74607686d14eeedfdfb7b872361e"
+  },
+  "command": [
+    "/home/natkarri/.cargo/bin/cargo",
+    "run",
+    "--release",
+    "--offline",
+    "--manifest-path",
+    "crates/project-index/Cargo.toml",
+    "--example",
+    "reindex_measure"
+  ],
+  "result": {
+    "workload": "24 documents, 80 lines each, 12 definition edits",
+    "synthetic": true,
+    "clean_equivalence_comparisons": 12,
+    "all_equivalent": true,
+    "initial_project_bytes": 69872,
+    "cold_nanos": 3427361,
+    "edit_median_nanos": 85370,
+    "edit_min_nanos": 62886,
+    "edit_max_nanos": 167111,
+    "clean_median_nanos": 596848,
+    "total_edit_input_bytes_reindexed": 32922,
+    "total_document_indexes_reused": 276,
+    "total_reference_documents_rechecked": 144
+  },
+  "limitations": "One bounded synthetic lexical-index sample. No TeX compilation, native editor, package resolution, within-document incremental parsing, latency guarantee, or provider inference. Source hashes bind the measured working-tree code; base_commit is not claimed to contain that code."
+}

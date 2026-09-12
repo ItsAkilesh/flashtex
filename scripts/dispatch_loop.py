@@ -36,6 +36,10 @@ def main_records(root, folder):
     return {p: coord.peer_json(root, 'origin/main', p) for p in paths if p.endswith('.json')}
 
 
+class DispatchAuthorizationError(ValueError):
+    """Ownership or funding failure must stop before any mutation."""
+
+
 def list_of_text(value, field):
     if not isinstance(value, list) or not value or any(not isinstance(s, str) or not s.strip() for s in value):
         raise ValueError(field + ' must be a nonempty list of strings')
@@ -59,7 +63,8 @@ def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
     current = candidates[0]
     task = coord.identifier(current['task_id'])
     branch = current['branch']
-    if not coord.BRANCH.fullmatch(branch) or not branch.startswith(f'agent/{agent}/'):
+    if not coord.BRANCH.fullmatch(branch) or (not branch.startswith(f'agent/{agent}/')
+            and not coord.published_branch_assignment(root, agent, branch)):
         raise ValueError('assignment branch must match its owner')
     revision = current['revision']
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
@@ -107,13 +112,13 @@ def plan_step(root, queue_path, queue, assignments, now, stale_seconds):
     paths = [coord.owned_path(p) for p in list_of_text(step.get('owned_paths'), 'owned_paths')]
     # Revisions may narrow ownership; acquiring new paths requires Commander review.
     if any(not any(p == old or p.startswith(old + '/') for old in current['owned_paths']) for p in paths):
-        raise ValueError('queue cannot expand or transfer path ownership')
+        raise DispatchAuthorizationError('queue cannot expand or transfer path ownership')
     minutes = step.get('timebox_minutes')
     if not isinstance(minutes, int) or isinstance(minutes, bool) or minutes <= 0:
         raise ValueError('queue step requires positive integer timebox_minutes')
     allocation = step.get('allocation_id')
     if not isinstance(allocation, str) or not allocation.strip() or allocation == 'unallocated':
-        raise ValueError('queue step requires explicit authorized allocation_id')
+        raise DispatchAuthorizationError('queue step requires explicit authorized allocation_id')
     dependencies = step.get('dependencies', [])
     if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
         raise ValueError('dependencies must be task ID strings')
@@ -168,7 +173,7 @@ def scan_once(root, args):
         control_path = 'coordination/control.json'
         if not coord.run(['git', 'cat-file', '-e', baseline + ':' + control_path], cwd=root, check=False).returncode:
             control = coord.peer_json(root, baseline, control_path)
-            if control.get('state') in ['user_stopped', 'verified_complete']:
+            if control.get('state') == 'user_stopped':
                 return {'prepared': [], 'skipped': [], 'published': False, 'paths': [],
                         'baseline_main': baseline, 'stopped': True, 'reason': control['state']}
         assignments = main_records(root, 'coordination/assignments')
@@ -176,7 +181,13 @@ def scan_once(root, args):
         plans, skipped = [], []
         now = datetime.now(timezone.utc)
         for path, queue in sorted(queues.items()):
-            plan, reason = plan_step(root, path, queue, assignments, now, args.stale_seconds)
+            try:
+                plan, reason = plan_step(root, path, queue, assignments, now, args.stale_seconds)
+            except DispatchAuthorizationError:
+                raise
+            except (ValueError, KeyError, TypeError) as exc:
+                skipped.append({'queue': path, 'reason': 'invalid queue or worker record: ' + str(exc), 'needs_commander_review': True})
+                continue
             if plan:
                 plans.append(plan)
             else:

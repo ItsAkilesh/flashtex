@@ -1,0 +1,118 @@
+# Deterministic font resources
+
+Original Rust resource loader for rendering-v2 schema revision `41cacfc`. Its
+`FontDescriptor` has exactly the eight wire fields defined there. Paths and
+license records belong to a separate resource manifest (`schema_version: 1`),
+not to the display-list descriptor. No platform font discovery or fallback occurs.
+
+`FontCollection::load(root, &manifest)` reads explicitly named relative resources,
+checks bounded sizes, SHA256 for font and license bytes, declared metrics and
+PostScript name, then retains immutable shared bytes. Duplicate IDs, traversal,
+escaping symlinks, unsupported formats, missing files, digest mismatches and
+metadata mismatches are errors. IDs iterate lexically. Existing resources remain
+unchanged if the underlying files or caller buffers later change.
+
+`FontResource::from_bytes` performs the same digest/metadata checks for already
+provided bytes. `inspect_static_truetype(&[u8]) -> Result<FontMetadata>` exposes
+structural metadata inspection for rendering-core's FontValidator adapter; that
+inspection alone does not establish expected identity or license provenance.
+`bytes()`, `shared_bytes()` and `table(tag)` expose immutable data for consumers.
+
+The current profile accepts single-face static TrueType sfnt version 1 only,
+face index zero. TTC, variable fonts, CFF and WOFF are explicitly unsupported.
+Checks cover directory bounds/alignment/overlap, required table presence, head
+magic and units, maxp glyph counts, loca offsets and glyph header extents, hmtx
+bounds and name record bounds/UTF16 decoding. Raw OS/2 embedding flags are exposed.
+This is not complete glyph-program, composite-outline or cmap validation; name
+format-1 language-tag metadata is not interpreted. Downstream shaping/rasterizers
+must retain their own validation. No shaping or font metrics substitution occurs.
+
+License metadata must identify source, copyright, license identifier, license
+text path/hash and operator-declared embedding permission. The loader preserves
+this provenance and actual text; it does not adjudicate legal rights, approve
+embedding, or override OS/2 restrictions. Export consumers must enforce their
+embedding policy before using bytes.
+
+Run `cargo test --offline --manifest-path crates/font-resources/Cargo.toml`.
+Tests generate structural fonts without claiming typographic fidelity. The
+explicit-path `inspect` example is a smoke tool, not a fallback resolver. On this
+Linux host, LiberationSans-Regular.ttf SHA256
+`76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8`
+(410712 bytes) was accepted with 2048 units/em, 2620 glyphs and name
+`LiberationSans`; no installed font is vendored or implicitly selected.
+
+Integration handoff: rendering-core `fe29901` owns display-list cross references
+and glyph-ID bounds; adapt its FontValidator using `inspect_static_truetype` and
+return units_per_em/glyph_count. No dependency on rendering-core exists here.
+Visual identity, PDF byte identity and typing-to-visible latency remain separate,
+unmeasured integration gates. No reference LaTeX engine is used in this crate.
+
+Unicode access: `glyph_id(char)` returns the original GID or `None` for .notdef.
+It deterministically prefers Unicode format 12 over format 4, then first record
+in directory order; unsupported-only cmaps return an explicit error. It checks
+all selected subtable groups/segments and resulting GIDs before answering. The validated representation is initialized once per immutable resource and shared
+by clones, including cached validation failures. Lookup uses binary search; no
+process-global cache or filename-based identity exists. cmap_cache_key() exposes
+the verified SHA256/face tuple. A maximum of 65536 ranges retains at most 768KiB
+of mapping payload per resource (plus small allocation metadata).
+`horizontal_metrics(gid)` returns original unsigned advance and signed bearing,
+including the repeated final advance for trailing hmtx bearings.
+
+Composite validation runs during metadata inspection and resource loading. It
+bounds component record arguments/transforms/instruction extents, rejects absent
+child GIDs and graph cycles, and caps dependency depth at 32 edges and aggregate
+component references at 1,000,000. Shared acyclic subgraphs are permitted; cached
+subtree heights cannot hide an over-depth ancestor chain. These are explicit
+experimental resource limits, not a claim to accept every valid TrueType font.
+Simple-outline point data and glyph instructions are still not interpreted.
+
+Cache evidence: 23 normal tests pass; an explicitly run release benchmark on this
+Linux host measured 100000 synthetic format-12 lookups at 9.672ms rebuilding
+validation versus 0.358ms cached. This is one tiny synthetic font and excludes
+initialization, shaping, rendering and UI latency. Reproduce with
+`cargo test --offline --release --manifest-path crates/font-resources/Cargo.toml repeated_lookup_benchmark -- --ignored --nocapture`.
+
+`simple_outline(gid)` decodes closed simple-glyph contours into original points
+and inclusive contour endpoints. Coordinates are signed 16.16 fixed-point design
+units; no scaling or rounding is performed. On/off-curve flags, raw bounding box,
+overlap flag and unexecuted instruction bytes are preserved. Limits come from
+signed contour counts and 16-bit point endpoints (at most 65536 points), with
+checked flag repetitions, instruction/coordinate extents and signed coordinate
+accumulation. Missing bytes or invalid endpoints return errors. Composite glyphs
+explicitly return unsupported; implied quadratic midpoint expansion, hinting,
+composite transforms, shaping and rasterization are not implemented here.
+
+Real-font smoke decoded all 1544 simple/empty glyphs of the LiberationSans digest
+above, explicitly skipping 1076 composites. This proves decoder acceptance, not
+visual/byte parity. Reproduce by setting FLASHTEX_SMOKE_FONT to that explicit font
+path and running the ignored installed_simple_glyph_smoke test with --nocapture.
+
+`expanded_outline(gid)` recursively expands supported composite affine transforms
+and explicit XY translations, retaining root font SHA/face/ID and each original
+component GID plus point range. Coordinates are normalized exact dyadic rationals
+(numerator / 2^shift, accessed through methods), checked within i128 and at most
+96 fractional bits. No floating rounding occurs. Expansion caps 4096 visited
+instances, 1000000 leaf points and 32 dependency edges. Nonzero grid-rounded offsets and transformed nonzero offsets without an explicit
+scaled/unscaled policy return unsupported. Instructions remain unexecuted.
+
+Composite smoke on the pinned LiberationSans font accepted 1679 glyphs and
+explicitly rejected 941 requesting nonzero grid-rounded offsets. These are
+unsupported pending a hinting policy, not substituted or counted as complete.
+`ExpandedOutline::quadratic_path()` yields deterministic MoveTo/LineTo/QuadTo/Close
+commands, inserts exact implied midpoints between consecutive off-curve points,
+and handles contours whose first/last points are off-curve. Original root/font
+identity remains on the owning ExpandedOutline. The iterator validates contour
+coverage and materializes a bounded command stream; it does not execute hints,
+choose fill/rasterization rules or assert output parity.
+
+Point-attachment placement now supports existing parent/child contour-point
+indices, decoded as unsigned byte/word values. The child affine transform is
+applied before computing the exact translation that makes the points coincide.
+First-component attachment, missing indices and phantom-point references fail;
+this API does not synthesize phantom points or execute child/parent instructions.
+The semantics are explicitly unhinted design-space geometry, not the rasterizer's
+post-hint placement. Source: [OpenType glyf specification](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf).
+Acceptance tests cover transformed attachment, byte/word indices, malformed
+indices, exact scaled versus unscaled offsets and refusal to guess grid rounding.
+No ppem, device grid or hint state is represented here, so grid-rounded nonzero
+offsets remain unsupported. Real-font smoke remains 1679 accepted / 941 unsupported.

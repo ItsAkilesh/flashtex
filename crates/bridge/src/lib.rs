@@ -2,6 +2,7 @@
 pub mod context;
 pub mod grok;
 pub mod store;
+pub mod validation;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
@@ -186,6 +187,12 @@ impl Proposal {
     }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContextDependency {
+    pub path: String,
+    pub revision: u64,
+    pub source_sha256: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Context {
     pub project_id: String,
     pub path: String,
@@ -195,6 +202,8 @@ pub struct Context {
     pub source_after: String,
     pub definitions: Vec<String>,
     pub supported_features: Vec<String>,
+    #[serde(default)]
+    pub dependencies: Vec<ContextDependency>,
 }
 pub trait Converter {
     fn convert(&self, capture: &CaptureSubmit, context: &Context) -> Result<Proposal>;
@@ -499,16 +508,45 @@ impl Bridge {
                 "This capture was rejected during review",
             ));
         }
-        if record.proposal.is_some() {
+        if record.proposal.is_some() && (record.prepared.is_some() || record.applied.is_some()) {
+            // An issued edit cannot be replaced by another proposal; its receipt
+            // must be reconciled even if source dependencies have since changed.
             return Ok(record);
         }
         let context = self.context(&record.capture, supported)?;
+        if record.proposal.is_some()
+            && record.context.as_ref().is_some_and(|old| {
+                !old.dependencies.is_empty()
+                    && old.dependencies == context.dependencies
+                    && old.supported_features == context.supported_features
+            })
+        {
+            return Ok(record);
+        }
         let proposal = converter.convert(&record.capture, &context)?;
         proposal.validate()?;
         record.context = Some(context);
         record.proposal = Some(proposal);
         self.store.save(&record)?;
         Ok(record)
+    }
+    fn verify_proposal_context(&self, record: &CaptureRecord) -> Result<()> {
+        let Some(saved) = record.context.as_ref() else {
+            return Err(BridgeError::new("proposal_context_stale", "Conversion context is missing; explicitly convert again and review the new proposal"));
+        };
+        let current = self.context(&record.capture, saved.supported_features.clone())?;
+        if saved.dependencies.is_empty() || saved.dependencies != current.dependencies {
+            let action = if record.prepared.is_some() {
+                "An edit was already issued: reconcile its Mac receipt before starting a new capture"
+            } else {
+                "Explicitly convert this capture again and review the new proposal before approval"
+            };
+            return Err(BridgeError::new(
+                "proposal_context_stale",
+                format!("A source dependency changed or is unavailable. {action}"),
+            ));
+        }
+        Ok(())
     }
     pub fn prepare_insert(
         &mut self,
@@ -541,6 +579,7 @@ impl Bridge {
                 && doc.revision == expected_revision
                 && digest(doc.text.as_bytes()) == edit.document_before_sha256
             {
+                self.verify_proposal_context(&record)?;
                 return Ok(edit.clone());
             }
             return Err(BridgeError::new(
@@ -562,6 +601,7 @@ impl Bridge {
                 "Convert the capture before reviewing insertion",
             )
         })?;
+        self.verify_proposal_context(&record)?;
         if doc.text.len() - (a.end_byte - a.start_byte) + proposal.latex.len() > MAX_DOCUMENT_BYTES
         {
             return Err(BridgeError::new(

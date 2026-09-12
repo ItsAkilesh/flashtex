@@ -1,3 +1,36 @@
-{"schema_version":1,"agent_id":"mac-paragraph-layout","task_id":"FT-019","next_index":0,"steps":[
-{"name":"Line-breaking recovery and hyphenation","objective":"Add deterministic hyphenation boundaries, penalties, emergency stretch and overfull/underfull diagnostics with exact box provenance.","acceptance":["Clean and incremental results match","Diagnostics cite source boxes","Reference line breaks are measured"],"owned_paths":["crates/paragraph-layout"],"timebox_minutes":45,"allocation_id":"claude-mac20x-paragraph-layout-stage2"},
-{"name":"Vertical page layout convergence","objective":"Add paragraph spacing, baseline grid, widow/orphan control and deterministic page breaking, then compare page geometry to declared TeX oracles.","acceptance":["Page and baseline metrics have golden tests","Preview/PDF positions agree","Visual deltas are quantified"],"owned_paths":["crates/paragraph-layout"],"timebox_minutes":45,"allocation_id":"claude-mac20x-paragraph-layout-stage3"}]}
+{
+  "agent_id": "mac-paragraph-layout",
+  "next_index": 1,
+  "schema_version": 1,
+  "steps": [
+    {
+      "acceptance": [
+        "Clean and incremental results match",
+        "Diagnostics cite source boxes",
+        "Reference line breaks are measured"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage2",
+      "name": "Line-breaking recovery and hyphenation",
+      "objective": "Add deterministic hyphenation boundaries, penalties, emergency stretch and overfull/underfull diagnostics with exact box provenance.",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Page and baseline metrics have golden tests",
+        "Preview/PDF positions agree",
+        "Visual deltas are quantified"
+      ],
+      "allocation_id": "claude-mac20x-paragraph-layout-stage3",
+      "name": "Vertical page layout convergence",
+      "objective": "Add paragraph spacing, baseline grid, widow/orphan control and deterministic page breaking, then compare page geometry to declared TeX oracles.",
+      "owned_paths": [
+        "crates/paragraph-layout"
+      ],
+      "timebox_minutes": 45
+    }
+  ],
+  "task_id": "FT-019"
+}

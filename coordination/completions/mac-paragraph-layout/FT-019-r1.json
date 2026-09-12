@@ -1,0 +1,85 @@
+{
+  "agent_id": "mac-paragraph-layout",
+  "archived_utc": "2026-09-12T06:08:51Z",
+  "assignment": {
+    "acceptance": [
+      "Golden tests cover justified ragged text, stretch/shrink, hyphenation boundaries, kerning, baseline grid, widows/orphans and page overflow",
+      "Comparison evidence declares reference engine/font/version/DPI and quantifies line/baseline differences",
+      "API consumes font metrics and produces positioned runs usable by preview/PDF without duplicating font logic",
+      "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, shared Max quota/reset/usage and in-flight calls"
+    ],
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph-layout",
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "deadline_utc": null,
+    "dependencies": [],
+    "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
+    "objective": "Implement an original Rust paragraph line-breaking and horizontal/vertical metrics crate on Jaysen mac-m1max-a using Opus. Model boxes, glue, penalties, kerning, baselines, paragraph spacing, and deterministic page breaking behind an integration API; do not edit the active compiler layout files.",
+    "owned_paths": [
+      "crates/paragraph-layout"
+    ],
+    "revision": 1,
+    "schema_version": 1,
+    "state": "assigned",
+    "task_id": "FT-019",
+    "timebox_minutes": 45,
+    "updated_utc": "2026-09-12T05:20:26Z"
+  },
+  "report": {
+    "agent_id": "mac-paragraph-layout",
+    "allocation_id": "claude-mac20x-paragraph",
+    "assignment_acknowledgements": {
+      "FT-019": {
+        "acknowledged_utc": "2026-09-12T05:38:12Z",
+        "adaptation": "Reviewed origin/main 9da7e48 (crates/compiler/src/layout.rs: greedy placeholder breaker, 612x792 bp page, PARAGRAPH_GAP 6, LINE_SPACING 1.2), de1020c metrics.rs (Core-14 AFM widths, no kerns), issue #10 oracle findings (no kerning -> early wraps; +14.75pt after headings; 6pt vs parskip 0; 14.45 bp = 14.5 TeX pt line pitch), and oracle report 20260912T050958Z (wrap-sample variant C word boxes). FT-018 branch agent/mac-font-engine/tex-fonts not yet pushed: defining FontMetricsSource trait + Core-14 Times adapter (widths from de1020c, ASCII kern pairs from Adobe AFM) so work is not blocked. Not editing compiler files.",
+        "main_sha": "1dd26c5e0dd5e04a39f0b8e55c90abebf635c863",
+        "revision": 1
+      }
+    },
+    "branch": "agent/mac-paragraph-layout/linebreak",
+    "capabilities": [
+      "rust",
+      "typesetting"
+    ],
+    "code_revision": "d9841ec461a53a7504f27167dd340be9611b154e",
+    "eta_minutes": {
+      "likely": 5,
+      "optimistic": 0,
+      "pessimistic": 15
+    },
+    "machine": "mac-m1max-a",
+    "main_integrated_through": "9da7e48148d91872dc0514119e1a04568ebfcb51",
+    "next_action": "Await Commander review; available for follow-ups (pattern hyphenator, parshape, per-char heights).",
+    "reviewed_peers": {
+      "origin/agent/mac-font-engine/tex-fonts": {
+        "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+        "reviewed_utc": "2026-09-12T06:08:14Z",
+        "sha": "6a20750efd70e67fe061c321c2cb7ebc99c4b043"
+      },
+      "origin/main": {
+        "adaptation": "main: compiler layout.rs still greedy (1.2 spacing, 6pt gap) with de1020c metrics; paragraph-layout is the proposed replacement, no overlap; added FontId::to_hex for rendering-core hex sha256. FT-018: FontId [u8;32] matches content_sha256; added ShapedGlyph/GlyphRun::from_shaped; adapter documented, not stacked on the unmerged branch.",
+        "reviewed_utc": "2026-09-12T06:08:14Z",
+        "sha": "ae3f4de96282e7ea2c60aa268ed5f0b09c664e06"
+      }
+    },
+    "schema_version": 1,
+    "state": "ready_for_integration",
+    "summary": "Checkpoint 2: 24 tests (7 unit, 15 golden with hand-derived numbers, 2 pdflatex oracle: 102/102 line starts, mean|dx| 0.001 bp), README (API, TeX defaults, coordinates, limits, integration note), docs/comparison.md, GlyphRun::from_shaped for FT-018 output, clippy clean.",
+    "tool": "Claude Code subagent (parent mac-claude-a)",
+    "updated_utc": "2026-09-12T06:08:14Z",
+    "usage": {
+      "evidence": "cargo test: 24 passed; cargo clippy --all-targets: 0 warnings",
+      "status": "Claude Max 20x shared quota; remaining unknown"
+    }
+  },
+  "report_age_seconds": 36,
+  "report_path": "coordination/agents/mac-paragraph-layout.json",
+  "review_required": true,
+  "revision": 1,
+  "schema_version": 1,
+  "stale_completion": false,
+  "state": "reported_ready",
+  "task_id": "FT-019",
+  "worker_branch": "agent/mac-paragraph-layout/linebreak",
+  "worker_report_sha": "7af5c056ff3065586b85929a7004672bea3d9b30"
+}

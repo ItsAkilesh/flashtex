@@ -1,0 +1,35 @@
+\documentclass[12pt,letterpaper]{article}
+\usepackage{amsmath,amssymb}
+\listfiles
+\paperwidth=8.5in
+\paperheight=11in
+\textwidth=6.5in
+\textheight=9in
+\oddsidemargin=0pt
+\evensidemargin=0pt
+\topmargin=0pt
+\headheight=0pt
+\headsep=0pt
+\footskip=0pt
+\parindent=0pt
+\parskip=12pt
+\pagestyle{empty}
+\begin{document}
+Page one starts here.\par
+A normal line before tall inline math $\dfrac{a+b}{c+d}$ followed by text.\par
+Another baseline after the tall formula.
+\vfill
+Bottom marker on page one.
+\newpage
+Page two starts at the same text origin.\par
+\begin{minipage}{240pt}
+A wrapping paragraph on page two makes the measurement independent of a single unbroken line. Its baseline grid and margins match the first page.
+\end{minipage}
+\vfill
+Bottom marker on page two.
+\newpage
+Page three starts here.\par
+\[ \sum_{i=1}^{n} \frac{i^2}{n^2} \]
+\vfill
+Bottom marker on page three.
+\end{document}

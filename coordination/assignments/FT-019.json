@@ -1,24 +1,23 @@
 {
   "acceptance": [
-    "Golden tests cover justified ragged text, stretch/shrink, hyphenation boundaries, kerning, baseline grid, widows/orphans and page overflow",
-    "Comparison evidence declares reference engine/font/version/DPI and quantifies line/baseline differences",
-    "API consumes font metrics and produces positioned runs usable by preview/PDF without duplicating font logic",
-    "Publish exact rev1 ACK plus Opus worker PID/session, branch, current+two followups, shared Max quota/reset/usage and in-flight calls"
+    "Clean and incremental results match",
+    "Diagnostics cite source boxes",
+    "Reference line breaks are measured"
   ],
   "agent_id": "mac-paragraph-layout",
-  "allocation_id": "claude-mac20x-paragraph-layout",
+  "allocation_id": "claude-mac20x-paragraph-layout-stage2",
   "branch": "agent/mac-paragraph-layout/linebreak",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "998e566c3a23bffeca141c0ce6688c217655b87a",
-  "objective": "Implement an original Rust paragraph line-breaking and horizontal/vertical metrics crate on Jaysen mac-m1max-a using Opus. Model boxes, glue, penalties, kerning, baselines, paragraph spacing, and deterministic page breaking behind an integration API; do not edit the active compiler layout files.",
+  "input_main_sha": "5e75574b562fca57bb24803d1e7d557794da43ee",
+  "objective": "Add deterministic hyphenation boundaries, penalties, emergency stretch and overfull/underfull diagnostics with exact box provenance.",
   "owned_paths": [
     "crates/paragraph-layout"
   ],
-  "revision": 1,
+  "revision": 2,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-019",
   "timebox_minutes": 45,
-  "updated_utc": "2026-09-12T05:20:26Z"
+  "updated_utc": "2026-09-12T06:08:51Z"
 }

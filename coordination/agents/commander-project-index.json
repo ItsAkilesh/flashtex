@@ -1,0 +1,36 @@
+{
+  "agent_id": "commander-project-index",
+  "allocation_id": "hosted-openai-product",
+  "assignment_acknowledgements": {
+    "FT-025": {
+      "acknowledged_utc": "2026-09-12T05:59:03Z",
+      "adaptation": "Accepted exact FT-025 revision 1 on the published source-navigation branch. Extend lexical exclusions and explicitly declared bibliography documents in crates/project-index only; preserve source revision and rename guards, no native/compiler semantics or provider calls.",
+      "main_sha": "984b77db504051dbd20b1bbae9f8a9f14e0cf1c7",
+      "revision": 1
+    }
+  },
+  "branch": "agent/commander-project-index/source-navigation",
+  "capabilities": [
+    "rust",
+    "source-navigation"
+  ],
+  "code_revision": "632f0280f01e57fb18d09498792e76fe557815fb",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 10,
+    "pessimistic": 25
+  },
+  "machine": "linux-primary",
+  "main_integrated_through": "15d2e56387bd424e25e2a5b1aa4a462ebd6954c8",
+  "next_action": "Add explicitly declared bibliography-document indexing and source-only citation navigation; retain existing revision/dependency guards.",
+  "reviewed_peers": {},
+  "schema_version": 1,
+  "state": "in_progress",
+  "summary": "FT-025 lexical-exclusion checkpoint: 39 Rust tests and strict Clippy pass. Literal code/comment environments and inline forms excluded from navigation/rename; escaped delimiters and source/group bounds tested.",
+  "tool": "Codex Astra",
+  "updated_utc": "2026-09-12T06:04:54Z",
+  "usage": {
+    "evidence": "Local offline Cargo tests39 pass; fmt and strictClippy clean. No provider or native/package execution.",
+    "status": "unknown"
+  }
+}
