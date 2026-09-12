@@ -8,16 +8,20 @@
     "typesetting"
   ],
   "code_revision": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "eta_minutes": null,
+  "eta_minutes": {
+    "likely": 70,
+    "optimistic": 40,
+    "pessimistic": 120
+  },
   "machine": "mac-m1max-a",
   "main_integrated_through": "5a30ec12700dee17f074459cc89ddc8de4b9153d",
-  "next_action": "Await and acknowledge assignment",
+  "next_action": "wire TeX page builder, refresh sibling pins, README/rendering-abi deviations, oracle evidence table",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
-  "tool": "Claude Code subagent Fable (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T05:52:15Z",
+  "state": "in_progress",
+  "summary": "render-pipeline crate + flashtex-render CLI: v2 display list, runtime-v1 fallback with layout-capability negotiation; 25 tests green; pagebuild not yet wired",
+  "tool": "Claude Code subagent Opus (parent mac-claude-a)",
+  "updated_utc": "2026-09-12T07:20:00Z",
   "usage": {
     "status": "unknown"
   }
