@@ -541,6 +541,88 @@ fn baseline_grid_snaps_every_baseline() {
     }
 }
 
+/// A metrics source with real per-glyph boxes (TFM-style `charht`/`chardp`):
+/// same shape as `TestFont` (500 advance, 700 ascender / -300 descender,
+/// 250 space), except 'T' has an unusually tall box (900) and 'y' an
+/// unusually deep one (500); every other glyph keeps the font default.
+struct BoxTestFont;
+
+impl FontMetricsSource for BoxTestFont {
+    fn font_id(&self) -> FontId {
+        FontId::from_label("test:mono-boxes")
+    }
+    fn units_per_em(&self) -> f64 {
+        1000.0
+    }
+    fn advance(&self, _ch: char) -> f64 {
+        500.0
+    }
+    fn kern(&self, _l: char, _r: char) -> f64 {
+        0.0
+    }
+    fn glyph_id(&self, ch: char) -> u32 {
+        ch as u32
+    }
+    fn ascender(&self) -> f64 {
+        700.0
+    }
+    fn descender(&self) -> f64 {
+        -300.0
+    }
+    fn line_gap(&self) -> f64 {
+        0.0
+    }
+    fn space(&self) -> f64 {
+        250.0
+    }
+    fn glyph_height(&self, ch: char) -> f64 {
+        if ch == 'T' { 900.0 } else { self.ascender() }
+    }
+    fn glyph_depth(&self, ch: char) -> f64 {
+        if ch == 'y' { 500.0 } else { -self.descender() }
+    }
+}
+
+/// A run's height/depth is the tallest/deepest glyph box in it
+/// ([`FontMetricsSource::glyph_height`]/[`glyph_depth`]), and that box feeds
+/// straight into `\baselineskip` placement of the *next* line — exactly like
+/// real TeX metrics (a `y` or a tall capital changes where the following
+/// baseline lands, not just how the current line looks).
+///
+/// "Ty aaaa" at 10pt, width 10pt: the only legal break is the interior space
+/// (the whole line is 32.5pt natural, nowhere near 10pt, so a single line is
+/// infeasible), giving "Ty" then "aaaa" as the two lines. "Ty" is one
+/// unbreakable box: natural width (500+500)*0.01 = 10pt = target, so ratio 0,
+/// badness 0 -- a clean fit with no interior glue to muddy the height/depth
+/// numbers. Its height is max(glyph_height('T')=900, glyph_height('y')=700)
+/// *0.01 = 9pt; its depth is max(glyph_depth('T')=300, glyph_depth('y')=500)
+/// *0.01 = 5pt. "aaaa" has no overridden glyphs: height 7pt, depth 3pt (the
+/// plain `TestFont` numbers, confirmed against
+/// `justified_stretch_uses_total_fit_numbers` below).
+#[test]
+fn glyph_height_and_depth_change_baseline_placement() {
+    let it = items(&BoxTestFont, &NoHyphenation, "Ty aaaa");
+    let out = layout_paragraph(&it, &params(10.0));
+    assert_eq!(out.lines.len(), 2);
+    let l0 = &out.lines[0];
+    assert!(close(l0.natural_width, 10.0));
+    assert_eq!(l0.badness, 0.0);
+    assert!(close(l0.height, 9.0));
+    assert!(close(l0.depth, 5.0));
+    // First baseline sits at the line's own height (TeX: no glue above line 1).
+    assert!(close(l0.baseline_y, 9.0));
+    let l1 = &out.lines[1];
+    assert!(close(l1.height, 7.0));
+    assert!(close(l1.depth, 3.0));
+    // baselineskip 14.5 - prev_depth 5 - height 7 = 2.5 >= lineskiplimit 0, so
+    // the ordinary interline glue applies: y = 9 + 5 + 2.5 + 7 = 23.5. Without
+    // the box overrides (prev_depth 3, height 7) this would be 21.5, as in
+    // `justified_stretch_uses_total_fit_numbers`'s second baseline -- the 2pt
+    // difference is exactly the extra depth 'y' contributed to line 0.
+    assert!(close(l1.baseline_y, 23.5));
+    assert!(close(out.height, 23.5 + 3.0));
+}
+
 /// Same input, same output: the whole `Lines`/`Pages` structures compare equal
 /// across two runs (no hash-map iteration, no randomness, no timing).
 #[test]
