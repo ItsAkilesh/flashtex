@@ -5,8 +5,21 @@
 //! `InProgress`) for the duration of its own evaluation; if resolving it
 //! requires resolving itself again — directly or through any chain of other
 //! names — the second force sees `InProgress` and returns a typed
-//! [`CalcError::CyclicLength`] instead of recursing forever. A hard
-//! [`MAX_RESOLUTION_DEPTH`] backstops any other unbounded nesting.
+//! [`CalcError::CyclicLength`] naming the full chain (see `stack` below)
+//! instead of recursing forever. A hard [`MAX_RESOLUTION_DEPTH`] backstops
+//! any other unbounded nesting.
+//!
+//! The `stack` threaded through [`eval_expr`]/`force` records, in resolution
+//! order, which named lengths are currently being forced. When a cycle is
+//! detected the slice of `stack` from that name's first occurrence to the
+//! present — plus the name repeated once more to show where the loop closes
+//! — becomes the [`CalcError::CyclicLength`] chain, e.g. `[a, b, c, a]`.
+//!
+//! A handful of items below are `pub(crate)` rather than private so
+//! [`crate::deps::LengthTable`] can build a dependency-tracked, incrementally
+//! recomputed table of named lengths directly on top of this same thunk
+//! machinery — sharing its exact arithmetic, cycle detection, and depth
+//! bound rather than re-implementing any of it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -29,14 +42,14 @@ pub enum Value {
     Scalar(i128, i128),
 }
 
-type Env = Rc<RefCell<Frame>>;
+pub(crate) type Env = Rc<RefCell<Frame>>;
 
-struct Frame {
+pub(crate) struct Frame {
     parent: Option<Env>,
     bindings: HashMap<String, Rc<Thunk>>,
 }
 
-struct Thunk {
+pub(crate) struct Thunk {
     expr: Expr,
     env: Env,
     state: RefCell<ThunkState>,
@@ -48,14 +61,14 @@ enum ThunkState {
     Done(Result<Value, CalcError>),
 }
 
-fn new_env(parent: Option<Env>) -> Env {
+pub(crate) fn new_env(parent: Option<Env>) -> Env {
     Rc::new(RefCell::new(Frame {
         parent,
         bindings: HashMap::new(),
     }))
 }
 
-fn lookup(env: &Env, name: &str) -> Option<Rc<Thunk>> {
+pub(crate) fn lookup(env: &Env, name: &str) -> Option<Rc<Thunk>> {
     let mut current = Rc::clone(env);
     loop {
         let next = {
@@ -69,7 +82,41 @@ fn lookup(env: &Env, name: &str) -> Option<Rc<Thunk>> {
     }
 }
 
-fn force(thunk: &Rc<Thunk>, name: &str, depth: usize) -> Result<Value, CalcError> {
+/// Bind `name` to `expr` (as a fresh, not-yet-forced thunk) directly in
+/// `env`, replacing any existing binding of that name in this exact frame.
+/// Used by [`crate::deps::LengthTable`] to build and redefine its table.
+pub(crate) fn define_in(env: &Env, name: &str, expr: Expr) {
+    let thunk = Rc::new(Thunk {
+        expr,
+        env: Rc::clone(env),
+        state: RefCell::new(ThunkState::Pending),
+    });
+    env.borrow_mut().bindings.insert(name.to_string(), thunk);
+}
+
+/// Reset an already-bound thunk back to `Pending`, discarding any cached
+/// value so the next force recomputes it (and, transitively, whatever reads
+/// it). Used by [`crate::deps::LengthTable`] to invalidate exactly the
+/// stale part of its dependency graph after a redefinition.
+pub(crate) fn invalidate(thunk: &Rc<Thunk>) {
+    *thunk.state.borrow_mut() = ThunkState::Pending;
+}
+
+/// Look up and force `name` in `env` from a fresh resolution stack. Used by
+/// [`crate::deps::LengthTable`] as its externally-visible "resolve one named
+/// length" operation.
+pub(crate) fn force_named(env: &Env, name: &str) -> Result<Value, CalcError> {
+    let thunk = lookup(env, name).ok_or_else(|| CalcError::UndefinedLength(name.to_string()))?;
+    let mut stack = Vec::new();
+    force(&thunk, name, 1, &mut stack)
+}
+
+fn force(
+    thunk: &Rc<Thunk>,
+    name: &str,
+    depth: usize,
+    stack: &mut Vec<String>,
+) -> Result<Value, CalcError> {
     if depth > MAX_RESOLUTION_DEPTH {
         return Err(CalcError::ResolutionDepthExceeded);
     }
@@ -77,12 +124,22 @@ fn force(thunk: &Rc<Thunk>, name: &str, depth: usize) -> Result<Value, CalcError
         let state = thunk.state.borrow();
         match &*state {
             ThunkState::Done(v) => return v.clone(),
-            ThunkState::InProgress => return Err(CalcError::CyclicLength(name.to_string())),
+            ThunkState::InProgress => {
+                // `name` is already being forced somewhere below us on
+                // `stack`: the cycle is that suffix, plus `name` once more
+                // to show where it closes, e.g. [a, b, c, a].
+                let start = stack.iter().position(|n| n == name).unwrap_or(0);
+                let mut chain: Vec<String> = stack[start..].to_vec();
+                chain.push(name.to_string());
+                return Err(CalcError::CyclicLength(chain));
+            }
             ThunkState::Pending => {}
         }
     }
     *thunk.state.borrow_mut() = ThunkState::InProgress;
-    let result = eval_expr(&thunk.expr, &thunk.env, depth + 1);
+    stack.push(name.to_string());
+    let result = eval_expr(&thunk.expr, &thunk.env, depth + 1, stack);
+    stack.pop();
     *thunk.state.borrow_mut() = ThunkState::Done(result.clone());
     result
 }
@@ -92,7 +149,16 @@ fn force(thunk: &Rc<Thunk>, name: &str, depth: usize) -> Result<Value, CalcError
 /// a typed [`CalcError::TypeMismatch`], not an implicit `0pt`.
 pub fn eval(expr: &Expr) -> Result<Sp, CalcError> {
     let env = new_env(None);
-    match eval_expr(expr, &env, 0)? {
+    let mut stack = Vec::new();
+    value_to_sp(eval_expr(expr, &env, 0, &mut stack)?)
+}
+
+/// Unwrap a [`Value`] to the exact dimension it must be at the point a named
+/// length (or a whole expression) is expected to have settled to one:
+/// [`CalcError::TypeMismatch`], not an implicit `0pt`, if it is instead a
+/// dimensionless scalar.
+pub(crate) fn value_to_sp(v: Value) -> Result<Sp, CalcError> {
+    match v {
         Value::Dim(sp) => Ok(sp),
         Value::Scalar(n, d) => Err(CalcError::TypeMismatch(format!(
             "expression has no unit (dimensionless value {n}/{d})"
@@ -100,7 +166,12 @@ pub fn eval(expr: &Expr) -> Result<Sp, CalcError> {
     }
 }
 
-fn eval_expr(expr: &Expr, env: &Env, depth: usize) -> Result<Value, CalcError> {
+fn eval_expr(
+    expr: &Expr,
+    env: &Env,
+    depth: usize,
+    stack: &mut Vec<String>,
+) -> Result<Value, CalcError> {
     if depth > MAX_RESOLUTION_DEPTH {
         return Err(CalcError::ResolutionDepthExceeded);
     }
@@ -110,26 +181,38 @@ fn eval_expr(expr: &Expr, env: &Env, depth: usize) -> Result<Value, CalcError> {
         Expr::Name(name) => {
             let thunk =
                 lookup(env, name).ok_or_else(|| CalcError::UndefinedLength(name.clone()))?;
-            force(&thunk, name, depth + 1)
+            force(&thunk, name, depth + 1, stack)
         }
-        Expr::Neg(inner) => match eval_expr(inner, env, depth + 1)? {
+        Expr::Neg(inner) => match eval_expr(inner, env, depth + 1, stack)? {
             Value::Dim(sp) => Ok(Value::Dim(sp.checked_neg()?)),
             Value::Scalar(n, d) => Ok(Value::Scalar(-n, d)),
         },
         Expr::Add(a, b) => {
-            let (a, b) = (eval_expr(a, env, depth + 1)?, eval_expr(b, env, depth + 1)?);
+            let (a, b) = (
+                eval_expr(a, env, depth + 1, stack)?,
+                eval_expr(b, env, depth + 1, stack)?,
+            );
             add_or_sub(a, b, true)
         }
         Expr::Sub(a, b) => {
-            let (a, b) = (eval_expr(a, env, depth + 1)?, eval_expr(b, env, depth + 1)?);
+            let (a, b) = (
+                eval_expr(a, env, depth + 1, stack)?,
+                eval_expr(b, env, depth + 1, stack)?,
+            );
             add_or_sub(a, b, false)
         }
         Expr::Mul(a, b) => {
-            let (a, b) = (eval_expr(a, env, depth + 1)?, eval_expr(b, env, depth + 1)?);
+            let (a, b) = (
+                eval_expr(a, env, depth + 1, stack)?,
+                eval_expr(b, env, depth + 1, stack)?,
+            );
             mul(a, b)
         }
         Expr::Div(a, b) => {
-            let (a, b) = (eval_expr(a, env, depth + 1)?, eval_expr(b, env, depth + 1)?);
+            let (a, b) = (
+                eval_expr(a, env, depth + 1, stack)?,
+                eval_expr(b, env, depth + 1, stack)?,
+            );
             div(a, b)
         }
         Expr::Group(stmts, tail) => {
@@ -142,14 +225,25 @@ fn eval_expr(expr: &Expr, env: &Env, depth: usize) -> Result<Value, CalcError> {
                 });
                 child.borrow_mut().bindings.insert(stmt.name.clone(), thunk);
             }
-            eval_expr(tail, &child, depth + 1)
+            eval_expr(tail, &child, depth + 1, stack)
         }
     }
 }
 
+fn overflow_scalar_op(op: &str, n1: i128, d1: i128, n2: i128, d2: i128) -> CalcError {
+    CalcError::Overflow(crate::sp::OverflowInfo {
+        op: op.to_string(),
+        operands: vec![format!("{n1}/{d1}"), format!("{n2}/{d2}")],
+    })
+}
+
 fn checked_scalar_mul(n1: i128, d1: i128, n2: i128, d2: i128) -> Result<(i128, i128), CalcError> {
-    let n = n1.checked_mul(n2).ok_or(CalcError::Overflow)?;
-    let d = d1.checked_mul(d2).ok_or(CalcError::Overflow)?;
+    let n = n1
+        .checked_mul(n2)
+        .ok_or_else(|| overflow_scalar_op("*", n1, d1, n2, d2))?;
+    let d = d1
+        .checked_mul(d2)
+        .ok_or_else(|| overflow_scalar_op("*", n1, d1, n2, d2))?;
     Ok((n, d))
 }
 
@@ -162,15 +256,17 @@ fn add_or_sub(a: Value, b: Value, is_add: bool) -> Result<Value, CalcError> {
         })),
         (Value::Scalar(n1, d1), Value::Scalar(n2, d2)) => {
             // n1/d1 +/- n2/d2 = (n1*d2 +/- n2*d1) / (d1*d2)
-            let n1d2 = n1.checked_mul(d2).ok_or(CalcError::Overflow)?;
-            let n2d1 = n2.checked_mul(d1).ok_or(CalcError::Overflow)?;
+            let op = if is_add { "+" } else { "-" };
+            let mk_err = || overflow_scalar_op(op, n1, d1, n2, d2);
+            let n1d2 = n1.checked_mul(d2).ok_or_else(mk_err)?;
+            let n2d1 = n2.checked_mul(d1).ok_or_else(mk_err)?;
             let n = if is_add {
                 n1d2.checked_add(n2d1)
             } else {
                 n1d2.checked_sub(n2d1)
             }
-            .ok_or(CalcError::Overflow)?;
-            let d = d1.checked_mul(d2).ok_or(CalcError::Overflow)?;
+            .ok_or_else(mk_err)?;
+            let d = d1.checked_mul(d2).ok_or_else(mk_err)?;
             Ok(Value::Scalar(n, d))
         }
         (Value::Dim(_), Value::Scalar(n, d)) | (Value::Scalar(n, d), Value::Dim(_)) => {
@@ -205,8 +301,9 @@ fn div(a: Value, b: Value) -> Result<Value, CalcError> {
             }
             // (n1/d1) / (n2/d2) = (n1*d2) / (d1*n2), sign normalized so the
             // denominator stays positive.
-            let mut n = n1.checked_mul(d2).ok_or(CalcError::Overflow)?;
-            let mut d = d1.checked_mul(n2).ok_or(CalcError::Overflow)?;
+            let mk_err = || overflow_scalar_op("/", n1, d1, n2, d2);
+            let mut n = n1.checked_mul(d2).ok_or_else(mk_err)?;
+            let mut d = d1.checked_mul(n2).ok_or_else(mk_err)?;
             if d < 0 {
                 n = -n;
                 d = -d;

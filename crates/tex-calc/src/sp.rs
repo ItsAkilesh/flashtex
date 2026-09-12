@@ -100,7 +100,11 @@ impl Unit {
             }
         };
         let signed = magnitude * sign;
-        Sp::from_i128(signed)
+        Sp::from_i128(
+            signed,
+            "literal",
+            vec![format!("{numerator}/{denominator}{}", self.name())],
+        )
     }
 }
 
@@ -120,31 +124,46 @@ impl Sp {
     pub const MAX: Sp = Sp(MAX_DIMEN_SP);
     pub const MIN: Sp = Sp(-MAX_DIMEN_SP);
 
-    fn from_i128(v: i128) -> Result<Sp, CalcError> {
+    fn from_i128(v: i128, op: &str, operands: Vec<String>) -> Result<Sp, CalcError> {
         if v.abs() > MAX_DIMEN_SP as i128 {
-            Err(CalcError::Overflow)
+            Err(CalcError::Overflow(OverflowInfo {
+                op: op.to_string(),
+                operands,
+            }))
         } else {
             Ok(Sp(v as i64))
         }
     }
 
     pub fn checked_add(self, other: Sp) -> Result<Sp, CalcError> {
-        Sp::from_i128(self.0 as i128 + other.0 as i128)
+        Sp::from_i128(
+            self.0 as i128 + other.0 as i128,
+            "+",
+            vec![self.to_string(), other.to_string()],
+        )
     }
 
     pub fn checked_sub(self, other: Sp) -> Result<Sp, CalcError> {
-        Sp::from_i128(self.0 as i128 - other.0 as i128)
+        Sp::from_i128(
+            self.0 as i128 - other.0 as i128,
+            "-",
+            vec![self.to_string(), other.to_string()],
+        )
     }
 
     pub fn checked_neg(self) -> Result<Sp, CalcError> {
-        Sp::from_i128(-(self.0 as i128))
+        Sp::from_i128(-(self.0 as i128), "neg", vec![self.to_string()])
     }
 
     /// Multiply by an exact dimensionless scalar `numerator/denominator`.
     pub fn checked_mul_scalar(self, numerator: i128, denominator: i128) -> Result<Sp, CalcError> {
         debug_assert!(denominator > 0);
         let scaled = (self.0 as i128 * numerator) / denominator;
-        Sp::from_i128(scaled)
+        Sp::from_i128(
+            scaled,
+            "*",
+            vec![self.to_string(), format!("{numerator}/{denominator}")],
+        )
     }
 
     /// Divide by an exact dimensionless scalar `numerator/denominator`,
@@ -155,7 +174,11 @@ impl Sp {
             return Err(CalcError::DivisionByZero);
         }
         let scaled = (self.0 as i128 * denominator) / numerator;
-        Sp::from_i128(scaled)
+        Sp::from_i128(
+            scaled,
+            "/",
+            vec![self.to_string(), format!("{numerator}/{denominator}")],
+        )
     }
 
     /// Convert to the interchange type consumed from `document-style`:
@@ -172,11 +195,17 @@ impl Sp {
     pub fn try_from_style_pt(pt: flashtex_document_style::length::Pt) -> Result<Sp, CalcError> {
         let v = pt.0;
         if !v.is_finite() {
-            return Err(CalcError::Overflow);
+            return Err(CalcError::Overflow(OverflowInfo {
+                op: "from_style_pt".to_string(),
+                operands: vec![format!("{v} (non-finite pt)")],
+            }));
         }
         let sp = (v * SP_PER_PT as f64).trunc();
         if sp.abs() > MAX_DIMEN_SP as f64 {
-            return Err(CalcError::Overflow);
+            return Err(CalcError::Overflow(OverflowInfo {
+                op: "from_style_pt".to_string(),
+                operands: vec![format!("{v}pt")],
+            }));
         }
         Ok(Sp(sp as i64))
     }
@@ -188,13 +217,33 @@ impl fmt::Display for Sp {
     }
 }
 
+/// Diagnostic detail for [`CalcError::Overflow`]: which operation overflowed
+/// and the exact operand values it was applied to, so the error says more
+/// than just "overflow".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OverflowInfo {
+    /// A short name for the operation, e.g. `"+"`, `"-"`, `"*"`, `"/"`,
+    /// `"neg"`, `"literal"` (a dimension literal whose own magnitude is out
+    /// of range), or `"from_style_pt"` (the `document-style` boundary
+    /// conversion).
+    pub op: String,
+    /// Human-readable operand values, in operation order.
+    pub operands: Vec<String>,
+}
+
+impl fmt::Display for OverflowInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "`{}` on {}", self.op, self.operands.join(", "))
+    }
+}
+
 /// Typed evaluator errors. Nothing in this crate panics on malformed,
 /// overflowing, or unsupported input — every failure mode is one of these.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CalcError {
     /// A dimension arithmetic result (or a literal's own magnitude) exceeds
-    /// `MAX_DIMEN_SP` in absolute value.
-    Overflow,
+    /// `MAX_DIMEN_SP` in absolute value. Names the operation and operands.
+    Overflow(OverflowInfo),
     /// A `/` operation's divisor evaluated to exactly zero.
     DivisionByZero,
     /// A unit token was not one of the exact units this crate supports.
@@ -202,8 +251,10 @@ pub enum CalcError {
     /// A named length was referenced but is not bound in any enclosing scope.
     UndefinedLength(String),
     /// A named length's definition refers back to itself, directly or
-    /// through a chain of other named lengths.
-    CyclicLength(String),
+    /// through a chain of other named lengths. Carries the full dependency
+    /// chain in resolution order, ending with the name repeated to show
+    /// where the cycle closes, e.g. `["a", "b", "c", "a"]`.
+    CyclicLength(Vec<String>),
     /// Resolving a named length required more nesting than
     /// [`crate::eval::MAX_RESOLUTION_DEPTH`] allows.
     ResolutionDepthExceeded,
@@ -220,11 +271,16 @@ pub enum CalcError {
 impl fmt::Display for CalcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CalcError::Overflow => write!(f, "dimension exceeds TeX's maximum (16383.99998pt)"),
+            CalcError::Overflow(info) => write!(
+                f,
+                "dimension exceeds TeX's maximum (16383.99998pt): overflow in {info}"
+            ),
             CalcError::DivisionByZero => write!(f, "division by zero"),
             CalcError::UnsupportedUnit(u) => write!(f, "unsupported unit `{u}`"),
             CalcError::UndefinedLength(n) => write!(f, "undefined length `{n}`"),
-            CalcError::CyclicLength(n) => write!(f, "cyclic definition of length `{n}`"),
+            CalcError::CyclicLength(chain) => {
+                write!(f, "cyclic definition of length: {}", chain.join(" -> "))
+            }
             CalcError::ResolutionDepthExceeded => write!(f, "length resolution nested too deeply"),
             CalcError::Parse { message, at } => write!(f, "parse error at byte {at}: {message}"),
             CalcError::TypeMismatch(m) => write!(f, "type mismatch: {m}"),
@@ -306,15 +362,18 @@ mod tests {
 
     #[test]
     fn boundary_one_sp_over_via_sp_unit_overflows() {
-        assert_eq!(
+        assert!(matches!(
             Unit::Sp.to_sp(MAX_DIMEN_SP as i128 + 1, 1),
-            Err(CalcError::Overflow)
-        );
+            Err(CalcError::Overflow(_))
+        ));
     }
 
     #[test]
     fn boundary_16384pt_overflows() {
-        assert_eq!(Unit::Pt.to_sp(16_384, 1), Err(CalcError::Overflow));
+        assert!(matches!(
+            Unit::Pt.to_sp(16_384, 1),
+            Err(CalcError::Overflow(_))
+        ));
     }
 
     #[test]
@@ -324,29 +383,41 @@ mod tests {
 
     #[test]
     fn boundary_negative_one_over_overflows() {
-        assert_eq!(
+        assert!(matches!(
             Unit::Sp.to_sp(-(MAX_DIMEN_SP as i128) - 1, 1),
-            Err(CalcError::Overflow)
-        );
+            Err(CalcError::Overflow(_))
+        ));
     }
 
     #[test]
     fn add_overflow_is_typed_not_panic() {
         let a = Sp::MAX;
         let b = Sp(1);
-        assert_eq!(a.checked_add(b), Err(CalcError::Overflow));
+        match a.checked_add(b) {
+            Err(CalcError::Overflow(info)) => {
+                assert_eq!(info.op, "+");
+                assert_eq!(info.operands, vec![a.to_string(), b.to_string()]);
+            }
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
     }
 
     #[test]
     fn sub_underflow_is_typed_not_panic() {
         let a = Sp::MIN;
         let b = Sp(1);
-        assert_eq!(a.checked_sub(b), Err(CalcError::Overflow));
+        match a.checked_sub(b) {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "-"),
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
     }
 
     #[test]
     fn mul_overflow_is_typed_not_panic() {
-        assert_eq!(Sp::MAX.checked_mul_scalar(2, 1), Err(CalcError::Overflow));
+        match Sp::MAX.checked_mul_scalar(2, 1) {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "*"),
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
     }
 
     #[test]
@@ -379,12 +450,18 @@ mod tests {
     #[test]
     fn from_style_pt_overflow_is_typed() {
         let huge = flashtex_document_style::length::Pt(100_000.0);
-        assert_eq!(Sp::try_from_style_pt(huge), Err(CalcError::Overflow));
+        assert!(matches!(
+            Sp::try_from_style_pt(huge),
+            Err(CalcError::Overflow(_))
+        ));
     }
 
     #[test]
     fn from_style_pt_non_finite_is_typed_overflow() {
         let nan = flashtex_document_style::length::Pt(f64::NAN);
-        assert_eq!(Sp::try_from_style_pt(nan), Err(CalcError::Overflow));
+        assert!(matches!(
+            Sp::try_from_style_pt(nan),
+            Err(CalcError::Overflow(_))
+        ));
     }
 }

@@ -40,15 +40,17 @@
 //! used for arithmetic inside this crate.
 
 pub mod ast;
+pub mod deps;
 pub mod eval;
 pub mod lexer;
 pub mod parser;
 pub mod sp;
 
 pub use ast::Expr;
+pub use deps::LengthTable;
 pub use eval::Value;
 pub use parser::parse;
-pub use sp::{CalcError, MAX_DIMEN_SP, SP_PER_PT, Sp, Unit};
+pub use sp::{CalcError, MAX_DIMEN_SP, OverflowInfo, SP_PER_PT, Sp, Unit};
 
 /// Parse and evaluate a dimension expression in one call: the crate's main
 /// entry point.
@@ -100,13 +102,47 @@ mod tests {
     #[test]
     fn self_referential_length_is_a_typed_cycle_error() {
         let src = r"\setlength{\x}{\x + 1pt}; \x";
-        assert_eq!(evaluate(src), Err(CalcError::CyclicLength("x".to_string())));
+        assert_eq!(
+            evaluate(src),
+            Err(CalcError::CyclicLength(vec![
+                "x".to_string(),
+                "x".to_string()
+            ]))
+        );
     }
 
     #[test]
     fn mutually_cyclic_lengths_are_a_typed_cycle_error() {
         let src = r"\setlength{\a}{\b + 1pt}; \setlength{\b}{\a + 1pt}; \a";
-        assert!(matches!(evaluate(src), Err(CalcError::CyclicLength(_))));
+        match evaluate(src) {
+            Err(CalcError::CyclicLength(chain)) => {
+                assert_eq!(
+                    chain,
+                    vec!["a".to_string(), "b".to_string(), "a".to_string()]
+                );
+            }
+            other => panic!("expected a cyclic-length error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn three_length_cycle_reports_the_full_chain() {
+        let src =
+            r"\setlength{\a}{\b + 1pt}; \setlength{\b}{\c + 1pt}; \setlength{\c}{\a + 1pt}; \a";
+        match evaluate(src) {
+            Err(CalcError::CyclicLength(chain)) => {
+                assert_eq!(
+                    chain,
+                    vec![
+                        "a".to_string(),
+                        "b".to_string(),
+                        "c".to_string(),
+                        "a".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected a cyclic-length error, got {other:?}"),
+        }
     }
 
     #[test]
@@ -166,12 +202,18 @@ mod tests {
 
     #[test]
     fn overflow_from_addition_is_typed() {
-        assert_eq!(evaluate("16383pt + 16383pt"), Err(CalcError::Overflow));
+        match evaluate("16383pt + 16383pt") {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "+"),
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
     }
 
     #[test]
     fn overflow_from_literal_is_typed() {
-        assert_eq!(evaluate("99999pt"), Err(CalcError::Overflow));
+        match evaluate("99999pt") {
+            Err(CalcError::Overflow(info)) => assert_eq!(info.op, "literal"),
+            other => panic!("expected a typed overflow, got {other:?}"),
+        }
     }
 
     #[test]
