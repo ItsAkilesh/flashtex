@@ -126,6 +126,57 @@ diagnostics checks beyond the one-line contract fixture.
   entry shows severity, message, recovery note (or "no provisional rendering"),
   and source bytes; the banner shows error/warning counts and a `recovered` note.
 
+## Nearby companion (proposal nearby-v1)
+
+`Edit > Nearby Companion…` (⌘⇧N) opens a window that advertises this Mac to a
+paired iPad/iPhone companion and receives its `capture_submit` messages over an
+authenticated, encrypted connection. **This is a proposal until the Commander
+publishes `docs/contracts/nearby-v1.md`**; the full text, threat model and
+companion checklist are in `docs/nearby-v1-proposal.md`. The companion side is
+FT-004's. What is implemented here (Mac side only):
+
+- Discovery: Bonjour `_flashtex._tcp`, instance name = the Mac's name, TXT
+  `v=1`, `name=<Mac name>`, `fp=<16 hex, SHA-256 of "flashtex-nearby-v1 mac-id"‖salt>`,
+  `salt=<32 hex>`. Discovery only; nothing in TXT is trusted.
+- Pairing: "Show Pairing Code" displays a 6-digit CSPRNG code for 120 s. Both
+  sides derive a bootstrap PSK and `pair_id` with HKDF-SHA256 from
+  (code, salt) (`Pairing.derive`; pinned vector in `PairingTests`). The first
+  `hello` over that key returns a random 32-byte long-term `pair_psk`; the
+  bootstrap key is then dropped. Pairings persist in
+  `~/Library/Application Support/FlashTeX/pairs.json` (mode 0600, atomic
+  writes, **not the Keychain**); "Forget" removes one and closes its session.
+- Transport (`NearbyListener`): Network.framework `NWListener`, TLS **1.2
+  only**, cipher suite **`TLS_PSK_WITH_AES_128_GCM_SHA256` (0x00A8)** only,
+  PSK identity = `pair_id`, one key per pairing plus the pending bootstrap key,
+  **TLS resumption and tickets disabled** (with resumption on, a removed key
+  could still resume — caught by the tests). Ephemeral port; the listener is
+  rebuilt on the same port when the key table changes and live sessions are
+  adopted, not dropped. An unpaired peer fails the handshake: no line is parsed.
+- Framing: runtime-v1 JSON Lines like the bridge; 12 MiB per line including
+  the newline, oversized complete or unterminated lines get `error
+  line_too_long` and a close. First line must be `hello {pair_id,
+  companion_name, protocol_version:1, nonce, proof}` where `proof` is
+  HMAC-SHA256(PSK, "flashtex-nearby-v1 hello"‖nonce) — needed because
+  Network.framework does not say which table PSK a session used. Reply
+  `hello_ack {mac_name, nonce, destination, pair_psk?}`; `destination_query` →
+  `destination {destination: {destination_id, project_id, path, base_revision} | null}`
+  from the pinned anchor (⌘⇧P), so the companion never types IDs.
+- Captures: `capture_submit` is validated (ids, MIME, instructions ≤ 4096 B)
+  and handed to a `CaptureSink`. The default sink (`ShellModel+Nearby.swift`,
+  `receiveNearbyCapture`) keeps the last 50 captures in an in-memory
+  `NearbyInbox` and answers `capture_received {capture_id, durable:false,
+  has_proposal:false, applied:false}`. `durable:true` can only come from the
+  bridge; the bridge client will swap the sink. Identical retries are
+  acknowledged again; a different payload for a known id is
+  `capture_id_conflict`. Nothing is converted or inserted by this path.
+- Threat model and gaps (see the proposal): the 6-digit code is ~20 bits and
+  the PSK suite has no forward secrecy, so a passive capture of the pairing
+  window can be brute-forced offline — the window is short and one code pairs
+  one device; no certificate PKI, no cloud relay, no Keychain, no peer-to-peer
+  (AWDL), no companion notification beyond `capture_received`. A bundled
+  `.app` will need `NSLocalNetworkUsageDescription`/`NSBonjourServices`; the
+  bare executable and `swift test` did not prompt on macOS 26.3.
+
 ## Launch hooks and evidence
 
 `FLASHTEX_AUTOATTACH=1` attaches the discovered compiler at launch and compiles
@@ -167,6 +218,7 @@ reproducible until runtime-v1 carries a font field; the preview draws Times-Roma
 | ⌘⌥E | Export PDF via Rust writer… (`flashtex-pdf --verify`, always white) |
 | ⌘⇧P | Pin insertion point at caret (capture destination anchor) |
 | ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
+| ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures) |
 | ⌘Z | Undo (including an approved capture insertion) |
 | Click preview text | Select its source (UTF-8 span → UTF-16; refused if edited since compile) |
 
@@ -177,7 +229,16 @@ banner shows; the shell rejects response lines over 16 MiB.
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (44): oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+- Tests (60, 2 gated): nearby listener (TLS-PSK round trip of `hello` /
+  fixture `capture_submit` / `destination_query` through an `NWConnection`
+  client with the same PSK, wrong key and unknown identity refused before any
+  line is parsed, oversized complete and unterminated lines close, message
+  before `hello`, cross-pairing `hello` with the wrong proof, nonce reuse,
+  bootstrap → long-term PSK hand-over with the old key refused after a
+  same-port restart while the live session survives, Bonjour advertising
+  reaches `.ready`, pure session validation), HKDF/proof vectors, pair store
+  round trip with 0600 and corrupt-file handling, `ShellModel` inbox and
+  destination, `NearbyState` pair → capture → forget → same-port restart flow; oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,

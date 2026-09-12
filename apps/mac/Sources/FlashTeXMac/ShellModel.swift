@@ -36,6 +36,7 @@ final class ShellModel: ObservableObject {
     @Published var pendingEdit: PendingEdit?
     @Published var captureNote: String?
     private(set) var appliedCaptureIDs: Set<String> = []
+    let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     private var nextAnchorNumber = 1
     @Published var workerStatus: String = "no worker attached"
     @Published var workerLog: [String] = []

@@ -36,13 +36,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct FlashTeXMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = ShellModel()
+    @StateObject private var nearby = NearbyState()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         WindowGroup("FlashTeX") {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 560)
-                .onAppear { appDelegate.model = model }
+                .onAppear { appDelegate.model = model; nearby.attach(sink: model, destinations: model) }
         }
         .commands {
             CommandGroup(after: .pasteboard) {
@@ -51,6 +53,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Open Capture Proposal…") { model.openProposalPanel() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Nearby Companion…") { openWindow(id: "nearby") }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .newItem) {
                 Button("Open LaTeX File…") { model.openTexPanel() }
@@ -82,5 +86,9 @@ struct FlashTeXMacApp: App {
                     .disabled(!model.workerAttached)
             }
         }
+        Window("Nearby Companion", id: "nearby") {
+            NearbyView().environmentObject(nearby).environmentObject(model)
+        }
+        .windowResizability(.contentSize)
     }
 }
