@@ -186,7 +186,9 @@ So do `\epsilon`, `\varepsilon`, `\zeta`, `\eta`, `\vartheta`, `\iota`, `\kappa`
 `\to`, `\rightarrow`, `\leftarrow`, `\gets`, `\uparrow`, `\downarrow`,
 `\leftrightarrow`, `\implies`, `\Leftarrow`, `\impliedby`, `\Leftrightarrow`,
 `\iff`, `\Uparrow`, `\Downarrow`, `\therefore`, `\angle`, `\aleph`, `\Re`, `\Im`,
-`\wp`, `\langle`, `\rangle`, `\lvert`, `\rvert`, `\lVert`, and `\rVert`.
+`\wp`, `\langle`, `\rangle`, `\lvert`, `\rvert`, `\lVert`, `\rVert`,
+`\setminus`, and `\Longrightarrow`. `\mathbb{A}` through `\mathbb{Z}` map to
+the Unicode double-struck capitals; other arguments are rejected explicitly.
 Symbol has no lunate epsilon, so `\epsilon` shares the open `\varepsilon`
 glyph; it has no double bar, so `\lVert`, `\rVert` and `\|` are two real
 vertical bars. `\iint` and `\iiint` repeat the integral glyph (Symbol has no
@@ -222,7 +224,11 @@ typesets `(mod n)`. `\overset{over}{base}`, `\stackrel{over}{base}` and
 base. The TeX infix forms `{n \choose k}` and `{a \over b}` build the same
 grid and fraction as `\binom` and `\frac`.
 The corresponding Unicode glyph must exist in the Symbol face selected by the
-export mapping; ordinary math letters and digits use Times-Roman. Unknown math
+export mapping, except blackboard bold, `\setminus` and `\Longrightarrow`:
+those are drawn from the pinned Latin Modern Math resource (`lm.math`, see
+`src/lm_math.rs`). Its Unicode-math designs and widths differ from pdfLaTeX's
+msbm10/cmsy10, and the base-14 PDF export reports that it cannot embed them.
+Ordinary math letters and digits use Times-Roman. Unknown math
 commands produce an explicit diagnostic naming the command and are rendered
 literally, never silently dropped.
 

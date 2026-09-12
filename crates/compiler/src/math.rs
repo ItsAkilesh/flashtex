@@ -522,6 +522,29 @@ impl MathParser<'_> {
             "bigl" | "bigr" => self.take_delimiter(&name, span),
             "quad" => space(QUAD_EM, span),
             "qquad" => space(2.0 * QUAD_EM, span),
+            "mathbb" => {
+                let (text, argument_span) = self.required_text_group("mathbb", span);
+                let span = span.merge(argument_span);
+                let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                match letters
+                    .chars()
+                    .map(crate::lm_math::double_struck)
+                    .collect::<Option<String>>()
+                {
+                    Some(glyphs) if !glyphs.is_empty() => symbol(glyphs, span),
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!(
+                                "\\mathbb supports only capital letters A-Z, not {:?}",
+                                letters
+                            ),
+                            Some(span),
+                            Some("typeset the argument without blackboard bold".into()),
+                        ));
+                        symbol(letters, span)
+                    }
+                }
+            }
             _ => match command_glyph(&name) {
                 Some(glyph) => symbol(glyph.into(), span),
                 None => {
@@ -1102,12 +1125,10 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("vee", "∨"),
     ("Rightarrow", "⇒"),
     ("mid", "∣"),
-    // Symbol.afm has no 0x27F8..0x27FF long-arrow range, only the shorter
-    // 0x21D2 double-arrow already used for `\Rightarrow`. Reusing that real
-    // glyph loses only the extra stroke length — the same approximation
-    // class `take_delimiter` already makes for `\bigl`/`\bigr` (real parens,
-    // no size scaling).
-    ("Longrightarrow", "⇒"),
+    // Neither glyph exists in Symbol.afm; both are drawn from the pinned
+    // Latin Modern Math resource (`crate::lm_math`), not approximated.
+    ("setminus", "∖"),
+    ("Longrightarrow", "⟹"),
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
@@ -1300,18 +1321,23 @@ fn layout_nucleus(
                 span: atom.span,
                 rule: None,
             }],
-            width: crate::layout::shaped_width(
-                text,
-                size,
-                if matches!(atom.nucleus, Nucleus::Text(_)) {
-                    crate::layout::Font::TimesRoman
-                } else {
-                    crate::layout::math_font(text)
-                },
-                atom.span,
-                diagnostics,
-            )
-            .0,
+            width: match (&atom.nucleus, crate::lm_math::width_pt(text, size)) {
+                (Nucleus::Symbol(_), Some(width)) => width,
+                _ => {
+                    crate::layout::shaped_width(
+                        text,
+                        size,
+                        if matches!(atom.nucleus, Nucleus::Text(_)) {
+                            crate::layout::Font::TimesRoman
+                        } else {
+                            crate::layout::math_font(text)
+                        },
+                        atom.span,
+                        diagnostics,
+                    )
+                    .0
+                }
+            },
             ascent: size,
             descent: 0.2 * size,
         },

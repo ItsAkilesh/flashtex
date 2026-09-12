@@ -15,6 +15,7 @@ pub mod incremental;
 pub mod json;
 pub mod layout;
 pub mod lexer;
+pub mod lm_math;
 pub mod math;
 pub mod parser;
 pub mod protocol;

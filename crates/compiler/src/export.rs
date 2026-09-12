@@ -180,6 +180,12 @@ pub fn map_char(c: char) -> Glyph {
                      runtime-v1 has no rule item type yet, so they cannot be exported faithfully",
         };
     }
+    if crate::lm_math::advance(c).is_some() {
+        return Glyph::Unrepresentable {
+            reason: "it is drawn from the pinned Latin Modern Math resource (lm.math), \
+                     which the base-14 PDF export cannot embed",
+        };
+    }
     if let Some((_, code)) = SYMBOL_ENCODING.iter().find(|(ch, _)| *ch == c) {
         return Glyph::Encodable {
             font: ExportFont::Symbol,
@@ -247,7 +253,12 @@ mod tests {
                         );
                     }
                     Glyph::Unrepresentable { reason } => {
-                        panic!("\\{command} renders {c:?} which cannot be exported: {reason}");
+                        // The only decided non-base-14 outcome: a glyph bound
+                        // to the pinned Latin Modern Math resource.
+                        assert!(
+                            crate::lm_math::advance(c).is_some() && reason.contains("lm.math"),
+                            "\\{command} renders {c:?} which cannot be exported: {reason}"
+                        );
                     }
                 }
             }
