@@ -7,18 +7,23 @@
     "tex-reference-corpus",
     "mactex"
   ],
-  "code_revision": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "eta_minutes": null,
+  "code_revision": "6b8628ba0752f0c46a3926eb481cde9d8fd10758",
+  "eta_minutes": {
+    "likely": 25,
+    "optimistic": 10,
+    "pessimistic": 45
+  },
   "machine": "mac-m1max-a",
   "main_integrated_through": "a91fc1015e6884ab4a451d5d32a626271edacbd4",
-  "next_action": "Await and acknowledge assignment",
+  "next_action": "Commander integration review and pinned-compiler acceptance scope",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "registered",
-  "summary": "Available for Commander assignment",
+  "state": "ready_for_integration",
+  "summary": "49 reference projects published; 42 PDFs/51 pages, seven negative cases, eight edit scenarios; draft PR42, role issue41",
   "tool": "Codex",
-  "updated_utc": "2026-09-12T16:24:22Z",
+  "updated_utc": "2026-09-12T16:25:49Z",
   "usage": {
+    "evidence": "Seven tests passed; source/PDF hashes validated; no external inference",
     "status": "unknown"
   }
 }
