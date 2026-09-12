@@ -12,8 +12,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
-      "objective": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
+      "name": "Review exact positional-read repair and unobserved partial truncated diagnostic states",
+      "objective": "Review exact positional-read repair and unobserved partial truncated diagnostic states",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -28,8 +28,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Independently check deterministic writer offset append and partial coverage tests against exact published candidate",
-      "objective": "Independently check deterministic writer offset append and partial coverage tests against exact published candidate",
+      "name": "Independently audit next corrected correctness capture immutable source trace completeness reopened result and clean comparison",
+      "objective": "Independently audit next corrected correctness capture immutable source trace completeness reopened result and clean comparison",
       "owned_paths": [
         "crates/document-runtime"
       ],
@@ -44,8 +44,8 @@
         "Publish bounded candidate API for existing helper owner; if deep validation is deferred, the type and contract must remain explicitly untrusted until existing native/core validator accepts it"
       ],
       "allocation_id": "hosted-openai-product",
-      "name": "Preserve failed58242 and68918 uncertainty and audit only existing artifacts without workload rerun",
-      "objective": "Preserve failed58242 and68918 uncertainty and audit only existing artifacts without workload rerun",
+      "name": "Publish bounded acceptance or remaining failure without own workload rerun or original cause inference",
+      "objective": "Publish bounded acceptance or remaining failure without own workload rerun or original cause inference",
       "owned_paths": [
         "crates/document-runtime"
       ],

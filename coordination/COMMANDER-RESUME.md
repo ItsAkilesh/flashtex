@@ -130,3 +130,7 @@ Integrated77c8cab1, independentfivefaulttestsPASS under/home. Best-effortnonbloc
 
 ## Diagnostic snapshot second failure and repair scope
 Corrected58242 TERMINALFAIL before reopen at diagnostics JSONDecodeError. /home/natkarri/flashtex-captures/ft048-corrected-historical retained, no normalprovenance/reopen/cleanPASS. Pre-fix diagnostic TemporaryFile seek/read shareswriterfileoffset; concrete mechanismbug but absentrawstderrprecludes proving58242cause. Root positionalpread/rawbeforeparse/partialstatus fix assigned, deterministicsharedoffsettests, no rerun. Integrated runtimec29d4e95/ff1e8dd6 proxyreview and renderer73401a5a/2293f8df actual recovery boundaries: warning10ptstandaloneexportallowed, required12errorrefused;12ptv2filesnotnegotiatedsiblings. Nativepagecontractreply5646362851 and refreshed3childcensus inRESOURCES.
+
+
+## Positional snapshot repair integrated
+Integratede693368b failed58242archive and pread/rawbeforeparse repair. Four independentdiagnostic snapshot testsPASS under/home. Sharedfdwriteoffsetappendintegrity preserved; partial/nonJSON/truncatedstates explicit, unobservedstatusfollowup pending. BrokenPipeerrno32 sidecar in58242 mayfollowcleanup; no ordering/causeproof. AuthorizeONE correctedsame298/158sourcefullcorrectnessgate afterfollowup/finalreview, under/home, strictsnapshot/tracecompleteness and durable/reopen/clean/receiptchecks; no latencycomparison. Bothpriorfailedarchivesimmutable.

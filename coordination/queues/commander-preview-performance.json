@@ -4,8 +4,8 @@
   "schema_version": 1,
   "steps": [
     {
-      "name": "Replace shared diagnostic file seek reads with bounded positional snapshots preserving raw bytes before parsing",
-      "objective": "Replace shared diagnostic file seek reads with bounded positional snapshots preserving raw bytes before parsing",
+      "name": "Label unobserved diagnostic snapshots explicitly and run one corrected correctness gate after positional-read repair",
+      "objective": "Label unobserved diagnostic snapshots explicitly and run one corrected correctness gate after positional-read repair",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -19,8 +19,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Test shared open-file-description writer offset append integrity and explicit partial truncated nonJSON coverage",
-      "objective": "Test shared open-file-description writer offset append integrity and explicit partial truncated nonJSON coverage",
+      "name": "Verify raw snapshot status complete trace correlation durable reopen clean final and permanent receipts with unchanged binaries and source",
+      "objective": "Verify raw snapshot status complete trace correlation durable reopen clean final and permanent receipts with unchanged binaries and source",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"
@@ -34,8 +34,8 @@
       "timebox_minutes": 40
     },
     {
-      "name": "Publish exact tested repair and failed58242 evidence without rerun or inference about earlier causes",
-      "objective": "Publish exact tested repair and failed58242 evidence without rerun or inference about earlier causes",
+      "name": "Publish exact successful or failed gate while preserving both earlier failures and avoiding performance or cause comparisons",
+      "objective": "Publish exact successful or failed gate while preserving both earlier failures and avoiding performance or cause comparisons",
       "owned_paths": [
         "crates/preview-controller",
         "crates/edit-ledger"

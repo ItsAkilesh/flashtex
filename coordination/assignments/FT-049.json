@@ -11,15 +11,15 @@
   "branch": "agent/commander-runtime-display/display-runtime",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2bb1cc7ac169ddd778dab3314d3310c06fdecb00",
-  "objective": "Review positional diagnostic snapshot invariants and retained raw bytes before parsing",
+  "input_main_sha": "764d57655aa7c87c02b9c33ea8b43b1211244885",
+  "objective": "Review exact positional-read repair and unobserved partial truncated diagnostic states",
   "owned_paths": [
     "crates/document-runtime"
   ],
-  "revision": 38,
+  "revision": 39,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-049",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:05:54.621332+00:00"
+  "updated_utc": "2026-09-12T14:07:28.282919+00:00"
 }

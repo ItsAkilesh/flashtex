@@ -9,16 +9,16 @@
   "branch": "agent/commander-preview-performance/preview-performance",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "2bb1cc7ac169ddd778dab3314d3310c06fdecb00",
-  "objective": "Replace shared diagnostic file seek reads with bounded positional snapshots preserving raw bytes before parsing",
+  "input_main_sha": "764d57655aa7c87c02b9c33ea8b43b1211244885",
+  "objective": "Label unobserved diagnostic snapshots explicitly and run one corrected correctness gate after positional-read repair",
   "owned_paths": [
     "crates/preview-controller",
     "crates/edit-ledger"
   ],
-  "revision": 30,
+  "revision": 31,
   "schema_version": 1,
   "state": "assigned",
   "task_id": "FT-048",
   "timebox_minutes": 40,
-  "updated_utc": "2026-09-12T14:05:54.621332+00:00"
+  "updated_utc": "2026-09-12T14:07:28.282919+00:00"
 }
