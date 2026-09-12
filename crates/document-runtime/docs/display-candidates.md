@@ -98,3 +98,29 @@ are unchanged. The real replay similarly waits for previews/candidates rather th
 assuming a particular compile duration. Test failures are retained by the runner
 before it returns an error. No production boundary defect was established by these
 test scheduling failures.
+
+## Incremental producer cache acceptance
+
+Exact published6e696616cca27a6bff19d88f7e0fd51e64458e81 was built unchanged from its
+archive. The initial debug build failed with Disk quota exceeded while writing
+font-resources and pipeline metadata. Only that task's failed448MB target was
+removed. The successful retry disabled debug symbols and incremental build files;
+its binary/build environment hashes are recorded. The older65dbe7d binary was
+left untouched. This resource constraint is not a producer source failure.
+
+`display-incremental-requests.json` covers six states: initial paragraphs, a UTF8
+comment shifting following source byte offsets, an edited first paragraph, unchanged
+text at a new revision, explicit style change, and original text restored. The
+runtime compares fresh and persistent response Values in both requested and2500-byte
+producer budget modes. The harness also independently compares actual direct
+fresh/persistent stdout bytes:144806 requested bytes and9867 bounded bytes match
+exactly across this sequence. All source hashes/revisions pass runtime binding.
+
+The11pt style case returns a recovered `tfm_missing` warning: ec-lmr10.tfm is
+absent from the supplied root and the producer explicitly reports using OpenType
+advances. The harness performs no substitution or metadata repair; under2500 bytes it
+returns a failed v1 reply. Other bounded cases decline v2 and recover; normal12pt
+cases return ok with one sibling. This faithfully records current producer behavior,
+not broad font compatibility. The four negotiation and cancellation probes also
+pass on this producer. No cache hit count or throughput claim is inferred from
+output equality; this is a bounded correctness test under shared machine load.
