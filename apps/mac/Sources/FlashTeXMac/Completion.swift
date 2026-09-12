@@ -428,7 +428,10 @@ enum Completion {
     /// UTF-8 offset of a UTF-16 caret, or nil when out of range or inside a
     /// surrogate pair.
     static func utf8Offset(of caretUTF16: Int, in text: String) -> Int? {
-        guard caretUTF16 >= 0, caretUTF16 <= text.utf16.count else { return nil }
+        // A negative location traps inside Foundation; past-the-end and
+        // surrogate-interior locations already come back as nil. Avoid
+        // `utf16.count`, which is O(n) on a freshly built native string.
+        guard caretUTF16 >= 0 else { return nil }
         return text.utf8ByteRange(of: NSRange(location: caretUTF16, length: 0))?.start
     }
 

@@ -222,13 +222,14 @@ final class CompletionTests: XCTestCase {
         let caret = (text as NSString).length
         XCTAssertGreaterThan(text.utf8.count, 1_000_000)
 
+        let commandText = text + " \\e"
         let iterations = 20
         var wordMs = 0.0, cmdMs = 0.0
         for _ in 0..<iterations {
             let t0 = DispatchTime.now().uptimeNanoseconds
             let words = Completion.suggestions(in: text, caretUTF16: caret, result: nil)
             let t1 = DispatchTime.now().uptimeNanoseconds
-            let cmds = Completion.suggestions(in: text + " \\e", caretUTF16: caret + 3, result: nil)
+            let cmds = Completion.suggestions(in: commandText, caretUTF16: caret + 3, result: nil)
             let t2 = DispatchTime.now().uptimeNanoseconds
             wordMs += Double(t1 - t0) / 1e6
             cmdMs += Double(t2 - t1) / 1e6
@@ -239,8 +240,10 @@ final class CompletionTests: XCTestCase {
         print("completion latency on \(text.utf8.count)-byte buffer: words \(String(format: "%.2f", wordMs)) ms, commands \(String(format: "%.2f", cmdMs)) ms (avg of \(iterations))")
         XCTAssertLessThan(wordMs, 20)
         XCTAssertLessThan(cmdMs, 20)
+        // XCTest's own metric: one word completion plus one command completion per iteration.
         measure {
             _ = Completion.suggestions(in: text, caretUTF16: caret, result: nil)
+            _ = Completion.suggestions(in: commandText, caretUTF16: caret + 3, result: nil)
         }
     }
 }
