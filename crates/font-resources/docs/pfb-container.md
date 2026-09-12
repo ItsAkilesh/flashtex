@@ -193,3 +193,21 @@ explicitly supported declarative interpretation of that prologue is required; no
 heuristic token search, guessed defaults or PostScript execution was introduced.
 Synthetic tests cover nonidentity/negative/translation, width-vector behavior,
 identity mismatch, singular/stroked/missing/executable context and overflow.
+
+### Separate exact-rational raw outline API
+
+`interpret_rational(records, name, policy)` returns RationalOutline using the existing
+normalized checked Rational/MatrixCommand types in raw character space. It shares
+one opcode interpreter with the legacy dyadic API. Legacy callers retain their
+prior policy and representability checks; no error is replaced by rounding.
+Rational widths, sidebearings, cumulative controls and stem metadata preserve exact
+numerator/denominator values. Arithmetic overflow, zero division and all existing
+stack/call/step/output caps still refuse. Explicit `try_into_dyadic` succeeds only
+when every result is exactly representable and respects retained-output caps.
+
+Actual pinned LM result:320accepted;502first refuse callothersubr. All171previously
+accepted dyadic-policy glyphs match exactly after exact-only conversion: commands,
+sidebearing/advance, stems, sources and identity/digests. Synthetic thirds-based
+width/translation/cubic controls and overflow checks pass. This removes the
+numeric representation gap only: no FontMatrix/PaintType/conditional-header gate,
+OtherSubrs execution, hint application or renderer activation changes.

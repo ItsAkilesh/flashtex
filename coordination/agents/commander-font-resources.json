@@ -3,17 +3,17 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-024": {
-      "acknowledged_utc": "2026-09-12T09:43:43Z",
-      "adaptation": "Reviewed current assignment14: official2.004 metric assets obtained, source-hash matching confirmed against pinned ec-lmr10; implementing bounded required-metric failure and exact peer differential replay. No peer changes or fallback.",
-      "main_sha": "277a0910811fdb27bd156ecd92b92b50f277c750",
-      "revision": 14
+      "acknowledged_utc": "2026-09-12T10:38:29Z",
+      "adaptation": "Read current16; shared rational interpreter now preserves legacy default/dyadic outcomes and exact171paired LM results, additive rational accepts320 with502OtherSubrs refusals. Matrix/context gate remains closed; no new workers/providers.",
+      "main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+      "revision": 16
     }
   },
   "branch": "agent/commander-corpus/font-resources",
   "capabilities": [
     "rust-font-resources"
   ],
-  "code_revision": "5aa9281ea17764e8e5a2f95771b7bc014bad0e42",
+  "code_revision": "c9fa68293a250109d7d2b7ec55840c96320004e5",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
@@ -24,10 +24,10 @@
   "next_action": "Commander chooses explicit isolated-resource semantics before any LMprofile expansion; existing TTC owner reviews82a478f patch. Clean product committed, no peerwrites/providers/benchmark/pending operations.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "ready_for_integration",
+  "state": "accepted",
   "summary": "Published5aa9281: traced pinned LM192byte conditional FontDirectory prologue and restore trailer; full file cannot prove final active matrix without external VM semantics. Kept typed refusal, supplied minimal isolated-profile owner contract and exact hashes. Fixed supported literal Context trailer validation (512zeros+cleartomark only), branch/redefinition/override tests pass; full suite/clippy pass. Fetched17Danielrefs, corrected TTC API not yet published.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T10:34:54Z",
+  "updated_utc": "2026-09-12T10:38:29Z",
   "usage": {
     "evidence": "crates/font-resources/README.md; test suite; installed font SHA pinned.",
     "status": "Hosted allocation; no external provider calls; account remainder unknown."

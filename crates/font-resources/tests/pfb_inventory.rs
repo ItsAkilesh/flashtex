@@ -132,6 +132,44 @@ fn pinned_official_type1_container_only() {
         "Unhinted inventory {:?}, retained stems {}",
         unhinted, stem_count
     );
+    let mut rational_outcomes = std::collections::BTreeMap::<String, usize>::new();
+    let mut paired = 0;
+    let policy = flashtex_font_resources::type1_outline::Policy {
+        hints: flashtex_font_resources::cff::HintPolicy::Unhinted,
+        exact_division: true,
+    };
+    for name in records.glyphs().keys() {
+        match flashtex_font_resources::type1_outline::interpret_rational(&records, name, policy) {
+            Ok(out) => {
+                *rational_outcomes.entry("accepted".into()).or_default() += 1;
+                if let Ok(old) = flashtex_font_resources::type1_outline::interpret_with_policy(
+                    &records, name, policy,
+                ) {
+                    let converted = out.try_into_dyadic().unwrap();
+                    assert_eq!(old.commands, converted.commands);
+                    assert_eq!(old.sources, converted.sources);
+                    assert_eq!(old.sidebearing, converted.sidebearing);
+                    assert_eq!(old.advance, converted.advance);
+                    assert_eq!(old.stems, converted.stems);
+                    assert_eq!(old.identity, converted.identity);
+                    assert_eq!(old.charstring_sha256, converted.charstring_sha256);
+                    paired += 1;
+                }
+            }
+            Err(e) => {
+                *rational_outcomes.entry(format!("{e:?}")).or_default() += 1;
+            }
+        }
+    }
+    assert_eq!(paired, 171);
+    assert_eq!(
+        serde_json::to_value(&rational_outcomes).unwrap(),
+        expected["rational_unhinted_exact_division"]["outcomes"]
+    );
+    println!(
+        "Rational inventory {:?}, paired {}",
+        rational_outcomes, paired
+    );
     assert!(matches!(
         flashtex_font_resources::type1_matrix::Context::from_resource(&resource),
         Err(flashtex_font_resources::type1_matrix::Error::Header(_))
