@@ -136,7 +136,24 @@ impl EmbedPlan {
         }
         let mut to_unicode: BTreeMap<u16, String> = BTreeMap::new();
         for (old, texts) in &self.used {
-            let new = glyph_map[old];
+            // FRAGILE (audited, not exploitable today): `glyph_map` is built
+            // above from `self.glyph_ids()` (the same key set as
+            // `self.used`, which we are iterating), so every `old` here is
+            // expected to be a key of `glyph_map`. That is currently
+            // guaranteed by two functions outside this one: `glyph_ids()`
+            // itself (both loops walk the same `self.used.keys()`), and, on
+            // the `Outlines::Glyf` path above, `subset()` (which either
+            // includes every requested glyph id in its `old_to_new` map or
+            // fails with `Error::GlyphOutOfRange` before we get here); the
+            // `Outlines::Cff` path inserts every id from `gids` into `map`
+            // itself, right above, so it needs no outside help. `.get()`
+            // turns any future gap in that coupling into a typed error
+            // instead of an `Index` panic, at no behavioural cost today.
+            let Some(&new) = glyph_map.get(old) else {
+                return Err(Error::Malformed(format!(
+                    "glyph {old} recorded in EmbedPlan is missing from the assembled glyph map"
+                )));
+            };
             // First recorded text wins; ToUnicode is one-to-one per CID.
             // Ambiguities are still recoverable through per-cluster text.
             if let Some(t) = texts.first() {
