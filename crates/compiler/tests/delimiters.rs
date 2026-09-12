@@ -285,3 +285,28 @@ fn starred_headings_are_unnumbered_and_parse_their_title() {
     );
     assert_spans_slice(&reply, text);
 }
+
+/// An unrecognised delimiter must be reported, not dropped.
+///
+/// Flagged by the outgoing Commander against a held delimiter worktree:
+/// \left\foo produced status ok with zero diagnostics and no delimiter at all,
+/// so the author was told nothing about a glyph that had vanished.
+#[test]
+fn an_unknown_delimiter_is_reported_not_silently_dropped() {
+    let text = "$\\left\\foo x \\right)$\n";
+    let reply = compile("delim-unknown", text);
+    assert_eq!(
+        status(&reply),
+        "recovered",
+        "an unknown delimiter must not read as ok"
+    );
+    assert!(
+        messages(&reply)
+            .iter()
+            .any(|m| m.contains("\\foo") && m.contains("delimiter")),
+        "unknown delimiter dropped silently: {:?}",
+        messages(&reply)
+    );
+    assert!(rendered(&reply).contains('x'), "content was lost");
+    assert_spans_slice(&reply, text);
+}

@@ -284,7 +284,23 @@ impl MathParser<'_> {
             TokenKind::Word(w) => w.clone(),
             TokenKind::LBrace => "{".into(),
             TokenKind::RBrace => "}".into(),
-            TokenKind::Command(c) => command_glyph(c).unwrap_or("").to_string(),
+            TokenKind::Command(c) => match command_glyph(c) {
+                Some(glyph) => glyph.to_string(),
+                None => {
+                    // An unknown delimiter used to be dropped silently here:
+                    // \left\foo produced status ok, zero diagnostics, and no
+                    // delimiter at all, so the author was told nothing. Reported
+                    // by the outgoing Commander against the held delimiter
+                    // worktree. Pairing is still honoured; only the glyph is
+                    // missing, and now it says so.
+                    self.diagnostics.push(Diagnostic::error(
+                        format!("\\{c} is not a delimiter this compiler recognises"),
+                        Some(token.span),
+                        Some("paired the delimiter but typeset no glyph for it".into()),
+                    ));
+                    String::new()
+                }
+            },
             _ => return None,
         };
         self.i += 1;
