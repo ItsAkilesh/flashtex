@@ -1816,3 +1816,49 @@ fn offline_full_and_metadata_edits_ack_save_without_compile_identity() {
         );
     }
 }
+
+#[test]
+fn full_and_metadata_edit_admissions_match_wire_previews() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let compiler = dir.path().join("correlation.py");
+    std::fs::write(&compiler, r#"#!/usr/bin/python3
+import json,sys
+for line in sys.stdin:
+ r=json.loads(line);p=r['payload']
+ print(json.dumps({'protocol_version':1,'type':'compile_result','id':r['id'],'payload':{'project_id':p['project_id'],'revision':p['revision'],'status':'ok','pages':[],'diagnostics':[]}}),flush=True)
+"#).unwrap();
+    std::fs::set_permissions(&compiler, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut client = Client::with_compiler(dir.path(), Some(&compiler));
+    loop {
+        if client.output.recv_timeout(Duration::from_secs(3)).unwrap()["payload"]["kind"]
+            == "preview"
+        {
+            break;
+        }
+    }
+    client.send("extra", "compile", json!({}));
+    assert_eq!(client.reply("extra")["type"], "result");
+    for mode in ["full", "metadata"] {
+        client.send("document", "document", json!({"path":"main.tex"}));
+        let doc = client.reply("document")["payload"]["document"].clone();
+        client.send("edit", "edit", json!({"path":"main.tex","expected_revision":doc["revision"],"expected_sha256":doc["source_sha256"],"text":mode,"response_mode":mode}));
+        let ack = client.reply("edit");
+        let payload = &ack["payload"];
+        assert!(payload["preview_error"].is_null());
+        assert!(payload["compile_request_id"].is_string());
+        assert_ne!(payload["compile_revision"], payload["document"]["revision"]);
+        loop {
+            let event = client.output.recv_timeout(Duration::from_secs(3)).unwrap();
+            if event["payload"]["kind"] == "preview"
+                && event["payload"]["request_id"] == payload["compile_request_id"]
+            {
+                assert_eq!(
+                    event["payload"]["compile_revision"],
+                    payload["compile_revision"]
+                );
+                break;
+            }
+        }
+    }
+}
