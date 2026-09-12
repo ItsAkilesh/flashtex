@@ -26,6 +26,14 @@ authorized. Actual platform denials, missing authentication, and unapproved bill
 remain blockers to report; never claim they have been bypassed or granted remotely.
 Read `docs/autonomous-workers.md` for the executable startup and task loop.
 
+## Designated standby exception
+
+The user additionally authorized ONE NEW Opus standby on Jaysen mac-m1max-a,
+`orchestrator-jaysen-opus`, solely for eventual Commander takeover after verified
+termination and stopped publishers. It stays read-only while Astra is active;
+this does not increase engineering staffing or revive paused agents. Read
+[the exact revival prompt and operational gaps](docs/commander-failover.md).
+
 ## Command and dispatch
 
 Current sole orchestrator: **orchestrator-astra**, hosted agent handle
