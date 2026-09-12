@@ -1000,3 +1000,159 @@ fn original_engine_adapter_resource_identity_and_request_gates() {
     other.revision = 2;
     assert_ne!(adapter.shape(other).unwrap().cache_key(), empty.cache_key());
 }
+
+#[test]
+fn project_registry_snapshots_generation_and_budgets() {
+    use flashtex_font_resources::registry::*;
+    use flashtex_project_files::ProjectRoot;
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let bytes = fixture();
+    let mut resource = entry(&bytes);
+    resource.path = "font.ttf".into();
+    resource.license.text_path = "LICENSE".into();
+    std::fs::write(dir.path().join("font.ttf"), &bytes).unwrap();
+    std::fs::write(dir.path().join("LICENSE"), b"test license").unwrap();
+    let binding = StyleBinding {
+        family: "Demo".into(),
+        weight: 400,
+        style: FontStyle::Upright,
+    };
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: binding.clone(),
+            resource,
+        }],
+    };
+    let write = |m: &RegistryManifest| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(m).unwrap(),
+        )
+        .unwrap()
+    };
+    write(&manifest);
+    let first = ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()).unwrap();
+    let held = first.get(&binding).unwrap();
+    assert_eq!(held.bytes(), bytes);
+    assert_eq!(first.files_read(), 3);
+    assert!(std::sync::Arc::ptr_eq(&held, &first.get(&binding).unwrap()));
+    assert_eq!(first.discovery()[0].binding, binding);
+    let load = || ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default());
+    assert_eq!(load().unwrap().generation(), first.generation());
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(load().unwrap().generation(), first.generation());
+    let mut absent = binding.clone();
+    absent.weight = 700;
+    assert!(matches!(
+        first.get(&absent),
+        Err(RegistryError::MissingBinding(_))
+    ));
+    let mut alias = manifest.entries[0].clone();
+    alias.binding.weight = 600;
+    manifest.entries.push(alias);
+    write(&manifest);
+    let two = load().unwrap();
+    manifest.entries.reverse();
+    write(&manifest);
+    assert_eq!(load().unwrap().generation(), two.generation());
+    manifest.entries.retain(|e| e.binding.weight == 400);
+    manifest.entries[0].binding.weight = 500;
+    write(&manifest);
+    let next = load().unwrap();
+    assert_ne!(first.generation(), next.generation());
+    assert!(next.require_generation(first.generation()).is_err());
+    manifest.entries.push(manifest.entries[0].clone());
+    write(&manifest);
+    assert!(matches!(load(), Err(RegistryError::AmbiguousBinding(_))));
+    manifest.entries.pop();
+    write(&manifest);
+    for limits in [
+        RegistryLimits {
+            max_entries: 0,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_files: 2,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_total_bytes: 1,
+            ..Default::default()
+        },
+        RegistryLimits {
+            max_manifest_bytes: 1,
+            ..Default::default()
+        },
+    ] {
+        assert!(ProjectFontRegistry::load(&root, "fonts.json", limits).is_err());
+    }
+    std::fs::write(dir.path().join("font.ttf"), b"changed").unwrap();
+    assert!(matches!(
+        load(),
+        Err(RegistryError::ResourceMismatch { .. })
+    ));
+    assert_eq!(held.bytes(), bytes);
+    std::fs::remove_file(dir.path().join("font.ttf")).unwrap();
+    assert!(matches!(load(), Err(RegistryError::Missing { .. })));
+    assert!(ProjectFontRegistry::load(&root, "../fonts.json", RegistryLimits::default()).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn project_registry_refuses_rooted_symlinks_and_parent_paths() {
+    use flashtex_font_resources::registry::*;
+    use flashtex_project_files::ProjectRoot;
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let bytes = fixture();
+    std::fs::write(outside.path().join("font.ttf"), &bytes).unwrap();
+    std::fs::write(dir.path().join("LICENSE"), b"test license").unwrap();
+    let mut resource = entry(&bytes);
+    resource.path = "font.ttf".into();
+    resource.license.text_path = "LICENSE".into();
+    let mut manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![RegistryEntry {
+            binding: StyleBinding {
+                family: "Demo".into(),
+                weight: 400,
+                style: FontStyle::Upright,
+            },
+            resource,
+        }],
+    };
+    let write = |m: &RegistryManifest| {
+        std::fs::write(
+            dir.path().join("fonts.json"),
+            serde_json::to_vec(m).unwrap(),
+        )
+        .unwrap()
+    };
+    symlink(outside.path().join("font.ttf"), dir.path().join("font.ttf")).unwrap();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::RootedRead { .. })
+    ));
+    symlink(outside.path(), dir.path().join("linked")).unwrap();
+    manifest.entries[0].resource.path = "linked/font.ttf".into();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::RootedRead { .. })
+    ));
+    manifest.entries[0].resource.path = "linked/../font.ttf".into();
+    write(&manifest);
+    assert!(matches!(
+        ProjectFontRegistry::load(&root, "fonts.json", RegistryLimits::default()),
+        Err(RegistryError::InvalidManifest(_))
+    ));
+}

@@ -418,3 +418,36 @@ LiberationSans bytes/licenses against direct peer shaping. STIX mapping-only:
 GSUB lookup14 type6. LiberationSans default:10 clusters/glyphs,1 ligature,9752 font
 units with combining composition. These are adapter equivalence observations,
 not reference-engine, hinted-raster, PDF-byte or sub200ms typing-visible evidence.
+
+`registry::ProjectFontRegistry::load(&ProjectRoot, "fonts.json", RegistryLimits)`
+loads an explicit project font manifest through the original `project-files`
+rooted read API (reviewed tree d92db378f25cc0b882a7a45e0a83a96f58ca1306), refusing
+symlinks at the file and parent-directory levels. Registry paths must be canonical
+project-relative names with no parent traversal. There is no recursive discovery,
+family-name guessing, case folding, system-font fallback or font-byte vendoring.
+
+Schema1 contains `entries: [{ binding: { family, weight, style }, resource: ... }]`;
+`resource` is the existing `ManifestEntry`, declaring font ID/path/full SHA/face,
+metrics and license path/hash/provenance. Style is `upright`, `italic` or `oblique`,
+weight1..1000, and family lookup is exact. This stage accepts the existing
+`static-truetype` resource profile (face0); CFF registry entries remain explicitly
+unsupported, although the separate CFF adapter can already shape a bound CFF font.
+Declared style is an application binding, not an inferred OpenType style.
+
+Typed outcomes distinguish missing files/bindings, ambiguous duplicate bindings,
+rooted-read refusal, resource mismatch, budget failure and stale generation.
+Hard caps are128 entries,257 reads including manifest,1MiB manifest and256MiB total
+read bytes, with existing64MiB/font and license limits. Repeated declarations are
+charged for each read and immutable retained copy; no unbounded cache is hidden.
+
+`get` returns a shared immutable `Arc<FontResource>` suitable for the existing
+shape/outline adapters. `discovery()` exposes sorted serializable declarations
+without font bytes. `generation()` hashes canonical sorted binding/resource/license
+metadata after verifying all declared bytes. JSON whitespace and entry order do
+not change generation; source identity or style/provenance changes do. Reloading
+builds a fresh snapshot, and `require_generation` checks a consumer's expected
+version. Prior snapshots remain valid immutable objects after external changes;
+callers must reload/check at project-update boundaries. Reads are individually
+rooted, not a transactional snapshot of all project files. Consumer caches should
+bind project-instance identity plus registry generation and their existing exact
+shape/device/build keys; equal generations do not authorize cross-project access.

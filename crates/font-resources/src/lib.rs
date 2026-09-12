@@ -550,3 +550,6 @@ pub mod cff;
 
 /// Identity-preserving adapter to the original sibling font engine.
 pub mod engine_adapter;
+
+/// Explicit project-scoped font registry using the rooted file layer.
+pub mod registry;
