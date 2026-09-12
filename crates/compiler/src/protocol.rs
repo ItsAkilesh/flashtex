@@ -5,14 +5,26 @@
 //! silent success, as the contract requires.
 
 use crate::diagnostics::{Diagnostic, Severity};
+use crate::incremental::Session;
 use crate::json::{self, str_, Value};
-use crate::layout::{self, Page};
-use crate::parser;
+use crate::layout::{LayoutConstraints, Page};
+use std::collections::HashMap;
 use std::io::{self, BufRead};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 pub const PROTOCOL_VERSION: i64 = 1;
 /// Documented maximum accepted line size. Oversized payloads are rejected.
 pub const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Most documents kept warm at once. A worker can be asked to compile any number
+/// of projects over its lifetime, so the cache is bounded and evicts the
+/// least-recently-used document rather than retaining every text it has ever seen.
+const MAX_WARM_SESSIONS: usize = 8;
+
+type WarmSessions = HashMap<(String, String), (u64, Session)>;
+static SESSIONS: OnceLock<Mutex<WarmSessions>> = OnceLock::new();
+static SESSION_TICK: AtomicU64 = AtomicU64::new(0);
 
 /// One request read without allowing an untrusted line to grow memory without
 /// bound. `TooLarge` is returned only after the complete offending line has
@@ -290,10 +302,33 @@ fn compile(id: &str, payload: &Value) -> Value {
         }
     };
 
-    let parsed = parser::parse(&text);
-    let pages = layout::layout(&parsed.blocks);
-
-    let mut diags = parsed.diagnostics;
+    // Session state is internal to runtime-v1: request and response shapes stay
+    // unchanged. Project plus entry path identifies a document across revisions.
+    let sessions = SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut sessions = sessions
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let tick = SESSION_TICK.fetch_add(1, Ordering::Relaxed);
+    let key = (project_id.clone(), path.clone());
+    if !sessions.contains_key(&key) && sessions.len() >= MAX_WARM_SESSIONS {
+        // Evict the least recently used document. Dropping a session only costs
+        // the next compile of that document its reuse; it never changes output,
+        // because every result is equivalent to a clean build by construction.
+        if let Some(oldest) = sessions
+            .iter()
+            .min_by_key(|(_, (used, _))| *used)
+            .map(|(k, _)| k.clone())
+        {
+            sessions.remove(&oldest);
+        }
+    }
+    let slot = sessions
+        .entry(key)
+        .or_insert_with(|| (tick, Session::new()));
+    slot.0 = tick;
+    let incremental = slot.1.compile(&text, LayoutConstraints::default());
+    let pages = incremental.output.pages;
+    let mut diags = incremental.output.diagnostics;
     if docs.len() > 1 {
         diags.push(Diagnostic::warning(
             format!(

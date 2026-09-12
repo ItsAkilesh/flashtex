@@ -5,7 +5,7 @@
 //! expansion, but there is no category-code mutation, register, conditional,
 //! package loading, or general environment implementation.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{tokenize, Token, TokenKind};
@@ -37,6 +37,14 @@ pub enum Block {
     Heading { level: u8, content: Vec<Inline> },
 }
 
+/// A macro definition actually consulted while producing one block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroDependency {
+    pub name: String,
+    pub argument_count: usize,
+    pub replacement: Vec<TokenKind>,
+}
+
 #[derive(Debug)]
 pub struct Parsed {
     pub blocks: Vec<Block>,
@@ -45,6 +53,12 @@ pub struct Parsed {
     pub document_class: Option<String>,
     /// Package names mentioned by valid `\usepackage` commands.
     pub packages: Vec<String>,
+    /// One dependency list per block, in `blocks` order.
+    pub block_dependencies: Vec<Vec<MacroDependency>>,
+    /// Exact preamble bytes. A change invalidates every cached block.
+    pub preamble_source: String,
+    /// False for recovery/unsupported cases whose state effects are not proven.
+    pub incremental_safe: bool,
 }
 
 const BUILT_INS: &[&str] = &[
@@ -98,6 +112,8 @@ pub fn parse(text: &str) -> Parsed {
         document_ended: false,
         document_class: None,
         packages: Vec::new(),
+        block_dependencies: Vec::new(),
+        current_dependencies: BTreeMap::new(),
     };
     let blocks = p.document();
 
@@ -116,11 +132,15 @@ pub fn parse(text: &str) -> Parsed {
         ));
     }
 
+    let incremental_safe = p.diags.is_empty();
     Parsed {
         blocks,
         diagnostics: p.diags,
         document_class: p.document_class,
         packages: p.packages,
+        block_dependencies: p.block_dependencies,
+        preamble_source: preamble_source(text, has_document),
+        incremental_safe,
     }
 }
 
@@ -137,6 +157,8 @@ struct P {
     document_ended: bool,
     document_class: Option<String>,
     packages: Vec<String>,
+    block_dependencies: Vec<Vec<MacroDependency>>,
+    current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
 }
 
 impl P {
@@ -156,7 +178,7 @@ impl P {
                 TokenKind::ParBreak => {
                     self.i += 1;
                     if render {
-                        flush_paragraph(&mut blocks, &mut para);
+                        self.flush_paragraph(&mut blocks, &mut para);
                     }
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
@@ -230,7 +252,7 @@ impl P {
             }
         }
 
-        flush_paragraph(&mut blocks, &mut para);
+        self.flush_paragraph(&mut blocks, &mut para);
         blocks
     }
 
@@ -246,6 +268,7 @@ impl P {
             return;
         }
         if let Some(definition) = self.macros.get(name).cloned() {
+            self.record_macro_read(name, &definition);
             // The command token has already been consumed by the main loop.
             // Remove it before inserting its replacement so math-mode slices
             // cannot accidentally retain and typeset the original command too.
@@ -264,15 +287,16 @@ impl P {
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
                 let (tokens, _) = self.required_group(name, span);
+                self.flush_paragraph(blocks, para);
                 let content = self.inlines_from_tokens(tokens);
-                flush_paragraph(blocks, para);
                 blocks.push(Block::Heading { level, content });
+                self.finish_block_dependencies();
             }
             "textbf" | "emph" | "textit" => {
                 let (tokens, _) = self.required_group(name, span);
                 para.extend(self.inlines_from_tokens(tokens));
             }
-            "par" => flush_paragraph(blocks, para),
+            "par" => self.flush_paragraph(blocks, para),
             other => self.unsupported(other, span),
         }
     }
@@ -527,7 +551,7 @@ impl P {
             )),
         }
         if environment == "document" && self.has_document {
-            flush_paragraph(blocks, para);
+            self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
         }
@@ -617,6 +641,7 @@ impl P {
         let Some(definition) = self.macros.get(name).cloned() else {
             return false;
         };
+        self.record_macro_read(name, &definition);
         self.t.remove(self.i);
         self.expand_macro(name, input.token.span, input.expansion_depth, definition);
         true
@@ -818,6 +843,40 @@ impl P {
         }
     }
 
+    fn record_macro_read(&mut self, name: &str, definition: &MacroDef) {
+        self.current_dependencies.insert(
+            name.to_string(),
+            (
+                definition.argument_count,
+                definition
+                    .body
+                    .iter()
+                    .map(|token| token.kind.clone())
+                    .collect(),
+            ),
+        );
+    }
+
+    fn finish_block_dependencies(&mut self) {
+        self.block_dependencies.push(
+            std::mem::take(&mut self.current_dependencies)
+                .into_iter()
+                .map(|(name, (argument_count, replacement))| MacroDependency {
+                    name,
+                    argument_count,
+                    replacement,
+                })
+                .collect(),
+        );
+    }
+
+    fn flush_paragraph(&mut self, blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
+        if !paragraph.is_empty() {
+            blocks.push(Block::Paragraph(std::mem::take(paragraph)));
+            self.finish_block_dependencies();
+        }
+    }
+
     fn skip_spaces(&mut self) {
         while matches!(
             self.peek().map(|token| &token.kind),
@@ -859,10 +918,43 @@ fn mapped_word(word: &str, span: Span, depth: usize) -> InputToken {
     }
 }
 
-fn flush_paragraph(blocks: &mut Vec<Block>, paragraph: &mut Vec<Inline>) {
-    if !paragraph.is_empty() {
-        blocks.push(Block::Paragraph(std::mem::take(paragraph)));
-    }
+fn preamble_source(text: &str, has_document: bool) -> String {
+    let tokens = tokenize(text);
+    let end = if has_document {
+        tokens.iter().enumerate().find_map(|(index, token)| {
+            if token.kind != TokenKind::Command("begin".into()) {
+                return None;
+            }
+            let significant: Vec<&Token> = tokens[index + 1..]
+                .iter()
+                .filter(|token| !matches!(token.kind, TokenKind::Space | TokenKind::Comment))
+                .take(3)
+                .collect();
+            match significant.as_slice() {
+                [Token {
+                    kind: TokenKind::LBrace,
+                    ..
+                }, Token {
+                    kind: TokenKind::Word(name),
+                    ..
+                }, Token {
+                    kind: TokenKind::RBrace,
+                    span,
+                }] if name == "document" => Some(span.end),
+                _ => None,
+            }
+        })
+    } else if tokens.iter().any(|token| {
+        matches!(
+            &token.kind,
+            TokenKind::Command(name) if name == "documentclass" || name == "usepackage"
+        )
+    }) {
+        Some(text.len())
+    } else {
+        None
+    };
+    end.map_or("", |end| &text[..end]).to_string()
 }
 
 fn token_text(tokens: &[InputToken]) -> String {

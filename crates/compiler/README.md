@@ -31,6 +31,11 @@ Implemented and tested:
   previous typeset-everything behavior.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
+- Dependency-aware incremental layout reuse behind unchanged runtime-v1 messages.
+  A resumable cursor in `src/layout.rs` is the only layout engine used by both
+  clean and incremental builds. Per-block cache validation includes exact macro
+  definitions read, preamble bytes, layout constraints, source mapping, and the
+  flow geometry entering the block; `ReuseStats` reports actual reuse.
 - Diagnostics carrying severity, message, source range, and a recovery note.
 - Greedy line breaking and page breaking onto 612×792 pt pages.
 - Inline math (`$...$`) and display math (`$$...$$` and `\[...\]`), including
@@ -53,8 +58,6 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 - Environments generally are not implemented. Only `document` controls the
   preamble/body boundary; other environments warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.
-- No incremental reuse yet. Every request recompiles the whole document; the
-  revision number is carried through but nothing is cached across revisions.
 - Only the entry document is compiled. Multi-document projects produce a warning
   rather than silently compiling part of the project.
 - `\textbf`, `\emph`, and `\textit` are parsed and their text is typeset, but the
@@ -140,3 +143,50 @@ but text was still positioned, and `failed` when nothing could be produced.
 Recovered cases include unmatched `{`, stray `}`, unterminated environments,
 mismatched `\end`, unknown commands, and empty required arguments. Each carries a
 `recovery` string stating what was rendered provisionally.
+
+## Incremental safety boundary
+
+The parser executes the complete document on every changed revision so macro and
+group state, diagnostics, and recovery are identical to a clean build. Only
+positioned block-layout fragments are reused. Changing a macro definition
+invalidates every block that actually read that definition; unrelated blocks may
+still be reused if their entering flow geometry matches. A changed flow state
+(for example, because an earlier edit adds a line) recomputes the affected suffix
+until geometry matches again.
+
+A first compile, any preamble-byte change through `\begin{document}` (including
+`\documentclass` or `\usepackage`), font-size or measure changes, malformed input,
+or any diagnostic/unsupported construct forces a full layout rebuild. Mutable
+category codes, registers, assignments, conditionals, auxiliary files, output
+routines, external effects, and future constructs are not modeled and therefore
+must also force a full rebuild if introduced. An exactly unchanged snapshot may
+return its already-produced output, including diagnostics, because no execution
+or layout result can differ.
+
+## Measured incremental latency
+
+Measured on `mac-m5pro-kabir` on 2026-09-12 with:
+
+```sh
+cargo run --release --bin incremental_bench
+```
+
+The deterministic `generated-500-paragraphs` fixture is built by the benchmark:
+500 multi-line paragraphs, 118,700 UTF-8 bytes, with one user-macro expansion,
+inline scripted math, a named math symbol, and a fraction in every paragraph.
+Fifty samples produced these actual compiler-only measurements:
+
+| Case | Actual latency | Reuse |
+|---|---:|---:|
+| First cold compile | 35.522 ms | 0 / 500 blocks |
+| Cold compile | median 20.034 ms, p95 21.518 ms | 0 / 500 blocks |
+| Warm unchanged | median 0.639 ms, p95 0.710 ms | 500 / 500 blocks |
+| One-word edit in paragraph 250 | median 21.079 ms, p95 22.578 ms | 499 / 500 blocks |
+| Global macro-definition edit | median 21.219 ms, p95 22.682 ms | 0 / 500 blocks |
+
+The measured compiler work is below the 200 ms ordinary warm-edit target; the
+one-word edit p95 is 22.578 ms, leaving 177.422 ms of that budget. This is not an
+end-to-end keystroke-to-visible measurement: scheduling, JSON transfer, native UI
+drawing, and artifact publication are excluded, so the full product target still
+requires integration measurement. The benchmark intentionally does not claim a
+guarantee for arbitrary documents or TeX programs.

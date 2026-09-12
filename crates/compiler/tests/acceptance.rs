@@ -393,3 +393,53 @@ fn bounded_reader_rejects_an_oversized_line_and_recovers_for_the_next_request() 
         Some(7)
     );
 }
+
+#[test]
+fn warm_session_cache_is_bounded_and_stays_correct_after_eviction() {
+    // Compile more distinct documents than the worker keeps warm, then return to
+    // the first one. Eviction may cost it its reuse, but never its correctness:
+    // the reply must still be the right answer for that document's text.
+    let first = "Alpha paragraph one.\n\nAlpha paragraph two.\n";
+    let r = reply(&compile_line("s0", 1, "a.tex", first));
+    let before = items(&r);
+    assert!(!before.is_empty());
+
+    for n in 1..=12 {
+        let text = format!("Filler document {n} with enough words to lay out.\n");
+        let line = {
+            let mut doc = Value::obj();
+            doc.set("path", json::str_("a.tex"));
+            doc.set("text", json::str_(text.clone()));
+            let mut payload = Value::obj();
+            payload.set("project_id", json::str_(format!("proj-{n}")));
+            payload.set("revision", Value::Num(1.0));
+            payload.set("entry_path", json::str_("a.tex"));
+            payload.set("documents", Value::Arr(vec![doc]));
+            let mut env = Value::obj();
+            env.set("protocol_version", Value::Num(1.0));
+            env.set("id", json::str_(format!("f{n}")));
+            env.set("type", json::str_("compile"));
+            env.set("payload", payload);
+            json::write(&env)
+        };
+        let fr = reply(&line);
+        assert_eq!(status(&fr), "ok", "filler document {n} must still compile");
+    }
+
+    // The original document was almost certainly evicted by now.
+    let again = reply(&compile_line("s0", 2, "a.tex", first));
+    let after = items(&again);
+    assert_eq!(
+        after.len(),
+        before.len(),
+        "eviction must not change how many items a document produces"
+    );
+    for (a, b) in after.iter().zip(before.iter()) {
+        assert_eq!(a.get("text").unwrap(), b.get("text").unwrap());
+        assert_eq!(
+            a.get("source").unwrap().get("start_byte").unwrap(),
+            b.get("source").unwrap().get("start_byte").unwrap(),
+            "spans must survive eviction unchanged"
+        );
+    }
+}

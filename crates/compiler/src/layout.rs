@@ -20,6 +20,22 @@ pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
 
+/// Layout inputs that participate in incremental cache validation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LayoutConstraints {
+    pub font_size_pt: f64,
+    pub measure_pt: f64,
+}
+
+impl Default for LayoutConstraints {
+    fn default() -> Self {
+        Self {
+            font_size_pt: BODY_SIZE_PT,
+            measure_pt: PAGE_WIDTH_PT - 2.0 * MARGIN_PT,
+        }
+    }
+}
+
 /// Retained only so math's script-size boxes can be measured consistently with
 /// body text while math moves onto real metrics too.
 pub fn text_width(text: &str, size: f64, font: Font) -> f64 {
@@ -60,18 +76,50 @@ fn glyph_width(text: &str, size: f64) -> f64 {
     metrics::string_width(font_for_size(size), text, size)
 }
 
-struct Cursor {
+/// Geometry needed to resume the one authoritative layout engine.
+#[derive(Debug, Clone, Copy)]
+pub struct FlowState {
+    page_index: usize,
+    x: f64,
+    y: f64,
+    line_ascent: f64,
+    line_descent: f64,
+    trailing_line_items: usize,
+}
+
+impl FlowState {
+    pub fn same_geometry(self, other: Self) -> bool {
+        self.page_index == other.page_index
+            && self.x.to_bits() == other.x.to_bits()
+            && self.y.to_bits() == other.y.to_bits()
+            && self.line_ascent.to_bits() == other.line_ascent.to_bits()
+            && self.line_descent.to_bits() == other.line_descent.to_bits()
+            && self.trailing_line_items == other.trailing_line_items
+    }
+}
+
+/// One positioned item together with the zero-based page it belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlacedItem {
+    pub page_index: usize,
+    pub item: TextItem,
+}
+
+/// Resumable layout cursor shared by clean and incremental compilation.
+pub struct LayoutCursor {
     pages: Vec<Page>,
     x: f64,
     y: f64,
     line_ascent: f64,
     line_descent: f64,
     line_start: usize,
+    first_block: bool,
+    constraints: LayoutConstraints,
 }
 
-impl Cursor {
-    fn new() -> Self {
-        Cursor {
+impl LayoutCursor {
+    pub fn new(constraints: LayoutConstraints) -> Self {
+        LayoutCursor {
             pages: vec![Page {
                 number: 1,
                 width_pt: PAGE_WIDTH_PT,
@@ -79,15 +127,17 @@ impl Cursor {
                 items: Vec::new(),
             }],
             x: MARGIN_PT,
-            y: MARGIN_PT + BODY_SIZE_PT,
-            line_ascent: BODY_SIZE_PT,
-            line_descent: BODY_SIZE_PT * (LINE_SPACING - 1.0),
+            y: MARGIN_PT + constraints.font_size_pt,
+            line_ascent: constraints.font_size_pt,
+            line_descent: constraints.font_size_pt * (LINE_SPACING - 1.0),
             line_start: 0,
+            first_block: true,
+            constraints,
         }
     }
 
     fn right_edge(&self) -> f64 {
-        PAGE_WIDTH_PT - MARGIN_PT
+        MARGIN_PT + self.constraints.measure_pt
     }
 
     fn newline(&mut self, size: f64) {
@@ -180,9 +230,108 @@ impl Cursor {
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
         self.place_math(b, size);
-        self.newline(BODY_SIZE_PT);
+        self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
     }
+
+    /// Apply the inter-block spacing and return the state used as a cache key.
+    pub fn prepare_block(&mut self, block: &Block) -> FlowState {
+        let body_size = self.constraints.font_size_pt;
+        match block {
+            Block::Paragraph(_) => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT);
+                }
+            }
+            Block::Heading { level, .. } => {
+                let size = heading_size(*level, body_size);
+                if !self.first_block {
+                    self.newline(size);
+                    self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
+                }
+            }
+        }
+        self.first_block = false;
+        self.state()
+    }
+
+    /// Lay out a block after `prepare_block`, returning its reusable fragment.
+    pub fn render_prepared_block(&mut self, block: &Block) -> Vec<PlacedItem> {
+        let starts: Vec<usize> = self.pages.iter().map(|page| page.items.len()).collect();
+        let body_size = self.constraints.font_size_pt;
+        match block {
+            Block::Paragraph(inlines) => emit(self, inlines, body_size),
+            Block::Heading { level, content } => {
+                emit(self, content, heading_size(*level, body_size));
+                self.newline(body_size);
+                self.vertical_gap(PARAGRAPH_GAP_PT);
+                self.x = MARGIN_PT;
+            }
+        }
+        let mut placed = Vec::new();
+        for (page_index, page) in self.pages.iter().enumerate() {
+            let start = starts.get(page_index).copied().unwrap_or(0);
+            placed.extend(
+                page.items[start..]
+                    .iter()
+                    .cloned()
+                    .map(|item| PlacedItem { page_index, item }),
+            );
+        }
+        placed
+    }
+
+    pub fn state(&self) -> FlowState {
+        let page_index = self.pages.len() - 1;
+        FlowState {
+            page_index,
+            x: self.x,
+            y: self.y,
+            line_ascent: self.line_ascent,
+            line_descent: self.line_descent,
+            trailing_line_items: self.pages[page_index].items.len() - self.line_start,
+        }
+    }
+
+    /// Restore a cached block whose prepared state matched the current state.
+    pub fn append_reused(&mut self, placed: &[PlacedItem], end: FlowState) {
+        while self.pages.len() <= end.page_index {
+            let number = self.pages.len() as u32 + 1;
+            self.pages.push(Page {
+                number,
+                width_pt: PAGE_WIDTH_PT,
+                height_pt: PAGE_HEIGHT_PT,
+                items: Vec::new(),
+            });
+        }
+        for placed_item in placed {
+            self.pages[placed_item.page_index]
+                .items
+                .push(placed_item.item.clone());
+        }
+        self.x = end.x;
+        self.y = end.y;
+        self.line_ascent = end.line_ascent;
+        self.line_descent = end.line_descent;
+        self.line_start = self.pages[end.page_index]
+            .items
+            .len()
+            .saturating_sub(end.trailing_line_items);
+    }
+
+    pub fn into_pages(self) -> Vec<Page> {
+        self.pages
+    }
+}
+
+fn heading_size(level: u8, body_size: f64) -> f64 {
+    body_size
+        * if level == 1 {
+            17.0 / BODY_SIZE_PT
+        } else {
+            14.0 / BODY_SIZE_PT
+        }
 }
 
 fn round2(v: f64) -> f64 {
@@ -190,40 +339,19 @@ fn round2(v: f64) -> f64 {
 }
 
 pub fn layout(blocks: &[Block]) -> Vec<Page> {
-    let mut c = Cursor::new();
-    let mut first = true;
-
-    for block in blocks {
-        match block {
-            Block::Paragraph(inlines) => {
-                if !first {
-                    c.newline(BODY_SIZE_PT);
-                    c.vertical_gap(PARAGRAPH_GAP_PT);
-                }
-                emit(&mut c, inlines, BODY_SIZE_PT);
-            }
-            Block::Heading { level, content } => {
-                let size = match level {
-                    1 => 17.0,
-                    _ => 14.0,
-                };
-                if !first {
-                    c.newline(size);
-                    c.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
-                }
-                emit(&mut c, content, size);
-                c.newline(BODY_SIZE_PT);
-                c.vertical_gap(PARAGRAPH_GAP_PT);
-                c.x = MARGIN_PT;
-            }
-        }
-        first = false;
-    }
-
-    c.pages
+    layout_with_constraints(blocks, LayoutConstraints::default())
 }
 
-fn emit(c: &mut Cursor, inlines: &[Inline], size: f64) {
+pub fn layout_with_constraints(blocks: &[Block], constraints: LayoutConstraints) -> Vec<Page> {
+    let mut c = LayoutCursor::new(constraints);
+    for block in blocks {
+        c.prepare_block(block);
+        c.render_prepared_block(block);
+    }
+    c.into_pages()
+}
+
+fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64) {
     for inline in inlines {
         match inline {
             Inline::Text { text, span } => c.place(text.clone(), size, *span),

@@ -10,6 +10,7 @@
 //! revision, per `docs/contracts/runtime-v1.md`.
 
 pub mod diagnostics;
+pub mod incremental;
 pub mod json;
 pub mod layout;
 pub mod lexer;
