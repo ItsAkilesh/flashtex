@@ -8,10 +8,13 @@ import FlashTeXProtocol
 /// helper with a `snapshot` sent on `ready` (before the `document` request
 /// whose reply admits the first compile), a candidate that arrives before a
 /// generation has been learned is refused with the typed
-/// `membership_unknown` reason (v1 stays), and a learned generation is
-/// compared exactly as before (an open/detach between compile and candidate
-/// still refuses: V2ConformanceTests). Detach/exit forgets the generation so
-/// the next helper session learns its own.
+/// `membership_unknown` reason (v1 stays), and a learned generation is the
+/// floor a candidate must reach — the helper's `membership_generation` is
+/// the project-index generation, advancing on every durable edit as well as
+/// on open/detach, and edit replies do not carry it — so a candidate from
+/// before a membership change the shell learned is refused (V2ConformanceTests
+/// covers the real open_document) while the shell's own later edits are not.
+/// Detach/exit forgets the generation so the next helper session learns its own.
 ///
 /// Real-helper cases use the helper and compiler from this tree (the v1
 /// compiler declines display-list-v2, so candidates are injected); the

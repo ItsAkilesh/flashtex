@@ -137,3 +137,12 @@ Test evidence (load 6–8 unless noted):
 - Dirty: coordination files only (this handoff, `coordination/agents/mac-admission-groups.json`).
 - Consumed main: c11c005 via mac-shell cd58fc2e.
 - Next: full `swift test` with every helper from this tree if 1-min load < 15; final report.
+
+## Full suite at 8496956f (every helper built from this tree + flashtex-render 9aaec57a)
+
+`swift test --skip-build --filter FlashTeXMacTests`, load 8.8 at start rising
+to ~20: 601 executed, 11 env-gated skips, 1 failure —
+`RuntimeTranscriptTests.testShellAndValidatorBothRejectUnnegotiatedShapesAndSwitchesAreOrderedByRevision`
+(direct-worker transcript checker; the file references neither the controller,
+display candidates nor `snapshot`); rerun alone: 2/2 passed in 0.7/1.5 s.
+Not attributed to this lane, not proven load-only either — flagged for the parent.
