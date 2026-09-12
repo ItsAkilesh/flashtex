@@ -1,5 +1,5 @@
 //! Durable edit acknowledgement without copying source into the response.
-use crate::Controller;
+use crate::{Controller, HistoryAction};
 use serde::Serialize;
 use std::time::Instant;
 
@@ -48,17 +48,25 @@ impl Controller {
         path: &str,
         group: flashtex_edit_ledger::history::GroupedEdit,
     ) -> Result<MetadataGroupOutcome, String> {
+        self.apply_history_metadata(path, HistoryAction::Group(group))
+    }
+    pub fn apply_history_metadata(
+        &mut self,
+        path: &str,
+        action: HistoryAction,
+    ) -> Result<MetadataGroupOutcome, String> {
         if self.closed {
             return Err("project closed".into());
         }
         let started = Instant::now();
         self.submitted = None;
-        let result = self
-            .stores
-            .get_mut(path)
-            .ok_or("unknown document")?
-            .apply_group(group)
-            .map_err(|e| e.to_string())?;
+        let store = self.stores.get_mut(path).ok_or("unknown document")?;
+        let result = match action {
+            HistoryAction::Group(group) => store.apply_group(group),
+            HistoryAction::Undo(command) => store.undo(command),
+            HistoryAction::Redo(command) => store.redo(command),
+        }
+        .map_err(|e| e.to_string())?;
         let history = MetadataHistory {
             document: DocumentMetadata::from(&result.document),
             command_revision: result.command_revision,

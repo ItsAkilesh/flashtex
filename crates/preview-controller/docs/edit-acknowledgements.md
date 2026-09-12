@@ -3,7 +3,7 @@
 An ordinary `edit` request may include `response_mode:"metadata"`. Omitting it or
 using `"full"` retains the existing full Document response. Unknown/non-string
 values reject before durable source mutation. The grouped-edit extension is described below. This option does not apply to
-capture approval or undo/redo replies. Permanent command semantics are unchanged.
+capture approval replies. Permanent command semantics are unchanged.
 
 A metadata result echoes `response_mode:"metadata"` and contains `document` with
 `project_id`, `path`, durable `revision`, `source_sha256` and UTF-8 `byte_length`.
@@ -75,3 +75,23 @@ The grouped500KB synthetic wire probe is recorded separately in
 `../benchmarks/group-ack-metadata/provenance.json`; it retains all history flags
 and command revision. This measures reply serialization only, not native or
 ledger performance.
+
+## Undo and redo metadata acknowledgement
+
+`undo` and `redo` accept the same response policy and compact `history` shape as
+`apply_group`. Validation occurs before mutation. Their existing command payloads,
+fingerprints, permanent IDs and full-response defaults are unchanged. The shared
+controller adapter avoids its extra source clone while preserving the ledger's
+owned history result and durable snapshots.
+
+A retry of an old undo or redo returns its original command revision alongside the
+current document identity and current undo/redo availability. It does not replay
+the source change. Clients must reconcile a newer document rather than reconstruct
+it from the old operation alone. Changing response mode does not change command
+identity; changing command fields under an existing ID still rejects.
+
+The real helper test exercises undo, redo with an unread application ACK, restart,
+exact redo retry, a conflicting ID, a stale new undo, and both old commands after a
+later ordinary edit. Full and compact replies agree on current hashes/history
+flags; the 500KB redo response is below1KB and reopening preserves exact text.
+This is protocol/recovery evidence, not native undo integration or paint timing.
