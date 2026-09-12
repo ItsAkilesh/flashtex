@@ -316,6 +316,17 @@ fn pre_break(items: &[Item], i: usize) -> Option<&GlyphRun> {
 
 /// First item of the line that starts after a break at `after` (skips
 /// discardables). `None` = paragraph start.
+///
+/// The result may lie *past* the next legal break when everything after
+/// `after` up to that break is discardable (a forced break followed only by
+/// penalties and glue: `\\` at the end of a paragraph, where
+/// [`crate::items::ParagraphBuilder::finish`] appends `\penalty10000
+/// \parfillskip \penalty-10000`; or two consecutive `\\`). Such a line is
+/// empty, as in TeX (§837 `break_width` drops the discardables' widths and
+/// §879 prunes them, but the break at the penalty is still taken, giving the
+/// familiar "Underfull \hbox (badness 10000)" empty line). Every consumer
+/// clamps the start to the break: [`measure`], [`set_line`] and first-fit's
+/// [`resume_after_cut`].
 fn line_start(items: &[Item], after: Option<usize>) -> usize {
     match after {
         None => 0,
@@ -366,6 +377,9 @@ fn measure(
     line_no: usize,
     extra_stretch: f64,
 ) -> Measure {
+    // A break inside the discardable run after the previous break sets an
+    // empty line (see `line_start`); `start > brk` must not read backwards.
+    let start = start.min(brk);
     let right = params.effective_right_skip();
     let left = &params.left_skip;
     let mut natural = p.width[brk] - p.width[start] + left.width + right.width;
@@ -658,7 +672,7 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
                 }
                 cut(b, &mut line_no, &mut breaks, &mut start);
                 last_legal = None;
-                b = start.max(b + 1);
+                b = resume_after_cut(items, b, start);
                 continue;
             }
             if fits {
@@ -670,7 +684,7 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
                 cut(at, &mut line_no, &mut breaks, &mut start);
                 last_legal = None;
                 // Re-examine from the new line start; `b` may still lie ahead.
-                b = start.max(at + 1);
+                b = resume_after_cut(items, at, start);
                 continue;
             }
         }
@@ -678,6 +692,16 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
     }
     let total = breaks.iter().map(|bp| bp.demerits).sum();
     Chosen { breaks, total }
+}
+
+/// Where first-fit resumes scanning after a cut at `at` whose next line
+/// starts at `start`: the discardables in between are never legal first-fit
+/// breaks (an empty line always "fits"), except a forced penalty, which must
+/// still be honoured with an empty line exactly as total-fit and TeX do.
+fn resume_after_cut(items: &[Item], at: usize, start: usize) -> usize {
+    (at + 1..start.min(items.len()))
+        .find(|&i| penalty_value(items, i) <= FORCED_BREAK)
+        .unwrap_or_else(|| start.max(at + 1))
 }
 
 fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measure) {
@@ -851,6 +875,8 @@ fn set_line(
     index: usize,
     m: &Measure,
 ) -> Line {
+    // Same clamp as `measure`: an empty line has `items == brk..brk`.
+    let start = start.min(brk);
     let right = params.effective_right_skip();
     let r = if m.ratio < -1.0 { -1.0 } else { m.ratio };
     let set_glue = |g: &Glue| -> f64 {
