@@ -148,3 +148,27 @@ the already verified producer/assets: requested4434 framed bytes reported parsin
 declined and failed cases have no display profile. This tiny single sample just
 shows the previously hidden phase is observable; it does not justify optimization
 or establish native responsiveness.
+
+## Representative multi-page transport gate
+
+`replay_multipage_producer.py` reuses the verified6e69661 binary/assets without
+building or changing caps. Three source states contain196 natural-flow paragraphs:
+initial, a UTF8 comment shifting all later byte positions, and a middle-paragraph
+edit. All render26 pages. The runtime compares every v1 page/item/diagnostic Value
+against a fresh worker, and verifies the final-document sentinel remains present.
+The direct producer's full fresh and persistent JSONLines bytes also match exactly
+in both default and2000000-byte reply-budget modes. Compressed complete raw replies,
+per-page item counts, complete frame sizes and exact hashes are preserved in
+`benchmarks/display-multipage-6e69661`.
+
+Default frames contain10979,10979,10980 items and1745747,1745768,1745905 bytes
+including newline. The middle edit adds one item without losing later pages.
+Each frame preserves96 existing overfull_hbox warnings. This checks complete
+transport/source relocation, not line-layout correctness or visual parity.
+
+The optional v2 sibling is explicitly declined for all three states: the initial
+estimated27152372-byte display list exceeds the unchanged16777216-byte producer
+limit. The bounded2000000-byte case also declines v2 while preserving all26 v1 pages.
+Thus this gate proves large v1 delivery and truthful optional decline; it does NOT
+prove a large v2 sibling fits or is accepted. No runtime/producer caps were raised,
+no oversized line was truncated, and no latency claim was measured.

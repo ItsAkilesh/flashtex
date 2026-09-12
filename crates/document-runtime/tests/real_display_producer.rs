@@ -221,12 +221,15 @@ fn take_real_candidate(s: &mut Session) -> flashtex_document_runtime::UntrustedD
 #[ignore = "requires exact published producer/assets; run tools/replay_display_producer.py"]
 fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
     let binary = std::env::var("FLASHTEX_REPLAY_PRODUCER").unwrap();
-    let cases: serde_json::Value = serde_json::from_str(include_str!(
-        "../fixtures/display-incremental-requests.json"
-    ))
+    let multipage = std::env::var("FLASHTEX_MULTIPAGE_REPLAY").is_ok();
+    let cases: serde_json::Value = serde_json::from_str(if multipage {
+        include_str!("../fixtures/display-multipage-requests.json")
+    } else {
+        include_str!("../fixtures/display-incremental-requests.json")
+    })
     .unwrap();
     let mut report = vec![];
-    for limit in [None, Some("2500")] {
+    for limit in [None, Some(if multipage { "2000000" } else { "2500" })] {
         let spawn = || {
             let mut c = Command::new(&binary);
             c.env_remove("FLASHTEX_MAX_REPLY_BYTES");
@@ -280,7 +283,25 @@ fn actual_incremental_producer_fresh_and_persistent_runtime_equivalence() {
             let warm = collect(&mut persistent);
             let cold = collect(&mut spawn());
             assert_eq!(warm, cold, "{} limit {:?}", case["case_id"], limit);
-            report.push(serde_json::json!({"case_id":case["case_id"],"reply_limit":limit,"fresh_persistent_equal":true,"response":warm}));
+            if multipage {
+                let pages = warm["result"]["payload"]["pages"].as_array().unwrap();
+                assert!((25..=29).contains(&pages.len()));
+                let joined = pages
+                    .iter()
+                    .flat_map(|p| p["items"].as_array().unwrap())
+                    .filter_map(|item| item["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                assert!(joined.contains("FINAL DOCUMENT SENTINEL."));
+                assert!(warm["candidate"].is_null()); // actual producer declines this oversized sibling
+                report.push(serde_json::json!({"case_id":case["case_id"],"reply_limit":limit,"fresh_persistent_equal":true,
+                    "source_sha256":flashtex_project_files::sha256_hex(request.documents[0].text.as_bytes()),
+                    "result_sha256":flashtex_project_files::sha256_hex(&serde_json::to_vec(&warm["result"]).unwrap()),
+                    "page_item_counts":pages.iter().map(|p|p["items"].as_array().unwrap().len()).collect::<Vec<_>>(),
+                    "final_sentinel_present":true,"candidate":null,"status":warm["result"]["payload"]["status"],"diagnostics":warm["result"]["payload"]["diagnostics"]}));
+            } else {
+                report.push(serde_json::json!({"case_id":case["case_id"],"reply_limit":limit,"fresh_persistent_equal":true,"response":warm}));
+            }
         }
     }
     if let Ok(path) = std::env::var("FLASHTEX_REPLAY_OUTPUT") {
