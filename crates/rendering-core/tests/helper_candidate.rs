@@ -12,9 +12,11 @@ fn resources(display: &Value) -> BTreeMap<String, Arc<CffFontResource>> {
     let text = include_bytes!("fixtures/original-reference/lmroman12-regular.otf");
     let license = include_bytes!("fixtures/math-reference/GUST-FONT-LICENSE.TXT");
     std::fs::write(dir.path().join("LICENSE"), license).unwrap();
+    let text10 = include_bytes!("fixtures/helper-multidoc-eca6ab25/lmroman10-regular.otf");
     let bytes = BTreeMap::from([
         (digest(math), math.as_slice()),
         (digest(text), text.as_slice()),
+        (digest(text10), text10.as_slice()),
     ]);
     let mut entries = Vec::new();
     for (index, f) in display["payload"]["fonts"]
@@ -753,4 +755,126 @@ fn escaped_producer_geometry_in_labelled_helper_adapter_keeps_tex_span() {
         hit_test::LogicalSelection::Caret { text_byte: 0 }
     );
     assert_eq!(span.end_byte - span.start_byte, 2);
+}
+
+#[test]
+fn actual_corrected_multidoc_hit_keeps_chapter_and_bibliography_membership() {
+    let raw = include_bytes!("fixtures/helper-multidoc-eca6ab25/candidate.jsonl");
+    let result = include_bytes!("fixtures/helper-multidoc-eca6ab25/result.jsonl");
+    let producer = include_bytes!("fixtures/helper-multidoc-eca6ab25/producer.jsonl");
+    let metadata: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/helper-multidoc-eca6ab25/metadata.json"
+    ))
+    .unwrap();
+    let manifest: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/helper-multidoc-eca6ab25/manifest.json"
+    ))
+    .unwrap();
+    for (name, bytes) in [
+        ("candidate.jsonl", raw.as_slice()),
+        ("result.jsonl", result.as_slice()),
+        ("producer.jsonl", producer.as_slice()),
+    ] {
+        assert_eq!(digest(bytes), manifest["artifacts"][name]);
+    }
+    for (name, bytes) in [
+        (
+            "metadata.json",
+            include_bytes!("fixtures/helper-multidoc-eca6ab25/metadata.json").as_slice(),
+        ),
+        (
+            "snapshot.json",
+            include_bytes!("fixtures/helper-multidoc-eca6ab25/snapshot.json").as_slice(),
+        ),
+        (
+            "request.jsonl",
+            include_bytes!("fixtures/helper-multidoc-eca6ab25/request.jsonl").as_slice(),
+        ),
+        (
+            "lmroman10-regular.otf",
+            include_bytes!("fixtures/helper-multidoc-eca6ab25/lmroman10-regular.otf").as_slice(),
+        ),
+    ] {
+        assert_eq!(digest(bytes), manifest["artifacts"][name]);
+    }
+    let mut suffix = b"\"display_list\":".to_vec();
+    suffix.extend_from_slice(producer.strip_suffix(b"\n").unwrap());
+    suffix.extend_from_slice(b"}}\n");
+    assert!(raw.ends_with(&suffix));
+    let event: Value = serde_json::from_slice(raw).unwrap();
+    let display = &event["payload"]["display_list"];
+    assert_eq!(display, &serde_json::from_slice::<Value>(producer).unwrap());
+    let current = current_metadata(&metadata);
+    assert_eq!(current.compile_revision, 6);
+    assert_eq!(current.sources.len(), 3);
+    for (path, revision) in [("main.tex", 7), ("chapter.tex", 21), ("refs.bib", 23)] {
+        assert_eq!(current.sources[path].editor_revision, revision);
+    }
+    let snapshot: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/helper-multidoc-eca6ab25/snapshot.json"
+    ))
+    .unwrap();
+    assert_eq!(snapshot["document_kinds"]["refs.bib"], "bibliography");
+    assert_eq!(metadata["result"]["payload"]["status"], "ok");
+    assert_eq!(metadata["result"]["payload"]["diagnostics"], json!([]));
+    let bound = bind(raw, result, &current, &caps(), &resources(display)).unwrap();
+    // Locate an actual supplied chapter rectangle; no inferred glyph widths.
+    let (page, cluster) = display["payload"]["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|p| {
+            p["items"].as_array().unwrap().iter().find_map(|item| {
+                item.get("clusters")?
+                    .as_array()?
+                    .iter()
+                    .find(|c| {
+                        c["sources"]
+                            .as_array()
+                            .is_some_and(|s| s.iter().any(|s| s["path"] == "chapter.tex"))
+                            && c["hit_rects"].as_array().is_some_and(|r| !r.is_empty())
+                    })
+                    .map(|c| (p["number"].as_u64().unwrap() as u32, c))
+            })
+        })
+        .unwrap();
+    let rect = &cluster["hit_rects"][0];
+    let point = transform::ExactPoint::from_point(hit_test::Point {
+        x: Tick(rect["x"].as_i64().unwrap() + 1),
+        y: Tick(rect["top"].as_i64().unwrap() + 1),
+    })
+    .unwrap();
+    let hit = bound
+        .read_only_hit_test(&current, page, point)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&hit.sources).unwrap(),
+        cluster["sources"]
+    );
+    assert_eq!(hit.sources[0].path, "chapter.tex");
+    assert!(bound.export_searchable(&current, 8 * 1024 * 1024).is_ok());
+    for kind in 0..4 {
+        let mut stale = current.clone();
+        match kind {
+            0 => {
+                stale
+                    .sources
+                    .get_mut("chapter.tex")
+                    .unwrap()
+                    .editor_revision += 1
+            }
+            1 => stale.membership_generation += 1,
+            2 => {
+                stale.sources.remove("refs.bib");
+            }
+            _ => stale.sources.get_mut("refs.bib").unwrap().text.push('x'),
+        }
+        assert!(bound.read_only_hit_test(&stale, page, point).is_err());
+        assert!(bound.export_searchable(&stale, 8 * 1024 * 1024).is_err());
+    }
+    assert!(bound
+        .read_only_hit_test(&current, page, point)
+        .unwrap()
+        .is_some());
 }
