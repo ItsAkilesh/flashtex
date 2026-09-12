@@ -233,13 +233,18 @@ FT-004's. What is implemented here (Mac side only):
   `destination {destination: {destination_id, project_id, path, base_revision} | null}`
   from the pinned anchor (⌘⇧P), so the companion never types IDs.
 - Captures: `capture_submit` is validated (ids, MIME, instructions ≤ 4096 B)
-  and handed to a `CaptureSink`. The default sink (`ShellModel+Nearby.swift`,
-  `receiveNearbyCapture`) keeps the last 50 captures in an in-memory
-  `NearbyInbox` and answers `capture_received {capture_id, durable:false,
-  has_proposal:false, applied:false}`. `durable:true` can only come from the
-  bridge; the bridge client will swap the sink. Identical retries are
-  acknowledged again; a different payload for a known id is
-  `capture_id_conflict`. Nothing is converted or inserted by this path.
+  and handed to a `CaptureSink` (`ShellModel+Nearby.swift`). With a capture
+  bridge attached the capture is forwarded through `BridgeSession.submit`
+  and the bridge's `capture_received` (durable) or `error` code is returned
+  to the companion, and it then appears in the bridge capture list for
+  `Convert Capture`. Without a bridge, `receiveNearbyCapture` keeps the last
+  50 captures in an in-memory `NearbyInbox` and answers `capture_received
+  {capture_id, durable:false, has_proposal:false, applied:false}`; identical
+  retries are acknowledged again, a different payload for a known id is
+  `capture_id_conflict`. `hello_ack.destination` is the bridge's valid anchor
+  when attached, else the local pinned anchor. A plaintext (non-TLS) peer —
+  the companion's current `NWParameters.tcp` client — fails the handshake,
+  is logged once, and nothing it sent is parsed.
 - Threat model and gaps (see the proposal): the 6-digit code is ~20 bits and
   the PSK suite has no forward secrecy, so a passive capture of the pairing
   window can be brute-forced offline — the window is short and one code pairs
@@ -364,7 +369,7 @@ banner shows; the shell rejects response lines over 16 MiB.
 - `FlashTeXMac` — the app. `BridgeClient` (JSON Lines transport, id-correlated
   replies, 12 MiB line limit), `BridgeSession` (bridge-side document shadow,
   destination, captures, edit ledger, reconciliation), `ShellModel+Bridge`.
-- Tests (88, of which `RealCompilerTests`, `RustPDFExportTests` and
+- Tests (90, of which `RealCompilerTests`, `RustPDFExportTests` and
   `RealBridgeTests` are gated on `FLASHTEX_COMPILER`, `FLASHTEX_PDF` and
   `FLASHTEX_BRIDGE`): completion (prefix/trigger rules, unclosed `\end{}`,
   unsupported marks, non-ASCII and invalid carets, 1 MB latency) and navigation
@@ -388,7 +393,9 @@ banner shows; the shell rejects response lines over 16 MiB.
   reaches `.ready`, pure session validation), HKDF/proof vectors, pair store
   round trip with 0600 and corrupt-file handling, `ShellModel` inbox and
   destination, `NearbyState` pair → capture → forget → same-port restart
-  flow; plus the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
+  flow, plaintext peer refused without parsing while TLS peers keep working,
+  nearby capture forwarded through the fake bridge (durable ack, error
+  pass-through, inbox fallback after detach); plus the earlier: oversized complete line, trailing bytes at EOF, unsolicited/mismatched result correlation; inline diagnostic marks (byte→UTF-16, rebase/drop, path filter,
   sample slice, temporary-attribute-only); Rust-writer export (gated on
   `FLASHTEX_PDF`), missing-binary error; source mapping (shift/refuse/multi-byte/expected-text), stale
   navigation refusal and rebase, auto-compile debounce/coalescing, latency; PDF export (fixture → 612×792 page containing the item text,

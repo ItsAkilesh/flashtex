@@ -86,7 +86,7 @@ with the parameters above, and the server verifies
 `sec_protocol_metadata_get_negotiated_tls_protocol_version == TLSv12` and the
 negotiated suite == 0x00A8 before creating a session; anything else is closed.
 
-Two facts learned while implementing, both mandatory for implementers:
+Three facts learned while implementing, all mandatory for implementers:
 
 1. **The stack does not report which table PSK a session used.**
    `sec_protocol_metadata_access_pre_shared_keys` returns every configured
@@ -97,6 +97,10 @@ Two facts learned while implementing, both mandatory for implementers:
    client that had connected with a since-removed key resumed successfully
    against a listener that no longer held it. Resumption/tickets must be off
    (regression covered by `testBootstrapPairingHandsOverLongTermPSKAndSurvivesRestart`).
+3. **A failed handshake still needs `cancel()`.** A server-side
+   `NWConnection` that reaches `.failed` (plaintext or wrong-key peer) keeps
+   its socket until cancelled; the peer then hangs instead of seeing a close
+   (`NearbyPlaintextTests`).
 
 ## 4. Framing and messages
 
@@ -141,11 +145,13 @@ Error codes used: `bad_request`, `hello_required`, `pair_mismatch`,
 `line_too_long`, `capture_id_conflict`, `unavailable`.
 
 Acknowledgement semantics: `durable: true` may only be reported when the local
-bridge has journaled the capture (transfer-v1 `capture_received`). The Mac's
-current sink is an in-memory inbox and answers `durable: false`; the bridge
-client replaces it and forwards the bridge's actual acknowledgement. An identical
-retry of a known `capture_id` is acknowledged again; a different payload with a
-known id is `capture_id_conflict`.
+bridge has journaled the capture (transfer-v1 `capture_received`). With a
+bridge attached (`Edit > Attach Capture Bridge`) the Mac forwards the capture
+to it and returns the bridge's acknowledgement or error code verbatim; without
+one, an in-memory inbox answers `durable: false`. In the inbox, an identical
+retry of a known `capture_id` is acknowledged again and a different payload
+with a known id is `capture_id_conflict` (the bridge applies its own journal
+rules).
 
 ## 5. Threat model (honest version)
 
@@ -209,3 +215,161 @@ known id is `capture_id_conflict`.
    payload after a disconnect.
 5. Treat any `error` with a closing code as "re-pair or fix input", never retry
    blindly.
+
+## 8. Delta from the current companion (FT-004, `companion-capture` e7ce5b9)
+
+`apps/companion/FlashTeXCompanion/Services/BonjourTransport.swift` today:
+browses `_flashtex._tcp.`, connects to the **first** browse result with plain
+`NWParameters.tcp`, then after `.ready` sends one `hello` line and
+`capture_submit` lines, `\n`-framed, and parses only `capture_received`
+(`payload.capture_id`) from the replies. Its hello, as observed:
+
+```json
+{"protocol_version":1,"type":"hello","id":"<uuid>","payload":{"role":"companion"}}
+```
+
+Against this listener that connection is **refused at the TLS handshake**:
+the Mac logs one `closed unauthenticated: handshake failed: …` line, parses
+nothing, and keeps serving paired peers (`NearbyPlaintextTests`). The
+companion sees the socket close right after its first write, with no JSON
+reply. What stays and what changes:
+
+**Keep exactly as is**
+- Service type `_flashtex._tcp` (`NWBrowser(for: .bonjour(type:domain:))`).
+- `hello` as the first line, newline framing, one JSON object per line,
+  runtime-v1 envelope `{protocol_version:1, id, type, payload}`.
+- `capture_submit` payload (unchanged runtime-v1; `CapturePayload.swift`).
+
+**Add to `hello.payload`** (`role` may stay; the Mac ignores unknown keys)
+- `pair_id` — 16 hex chars from HKDF (§2), or the stored one after pairing.
+- `companion_name` — `UIDevice.current.name` (≤ 64 chars kept).
+- `protocol_version: 1` — the nearby version; keep the envelope's `1` too.
+- `nonce` — a fresh `UUID().uuidString` per connection.
+- `proof` — base64 HMAC-SHA256 over `"flashtex-nearby-v1 hello"` ‖ nonce,
+  keyed with the PSK this connection was opened with (§4).
+
+**Read from the TXT record** (`NWBrowser.Result.metadata` → `.bonjour(NWTXTRecord)`)
+- `salt` (32 hex) — needed only while pairing, to derive the bootstrap key.
+- `fp` (16 hex) — the key under which to store the pairing; use it to pick
+  the right Mac instead of "first result" (and to show the Mac's `name`).
+- `v` — must be `"1"`; otherwise do not connect.
+
+**Replace `NWParameters.tcp`** with TLS-PSK parameters (copy-pasteable, iOS 14+):
+
+```swift
+import CryptoKit
+import Network
+import Security
+
+enum NearbyCrypto {
+    static func derive(code: String, saltHex: String) -> (pairId: String, psk: SymmetricKey) {
+        let salt = Data(hex: saltHex)                       // 16 bytes from TXT `salt`
+        let ikm = SymmetricKey(data: Data(code.utf8))       // the 6 digits the user typed
+        let psk = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: salt,
+                                         info: Data("flashtex-nearby-v1 psk".utf8), outputByteCount: 32)
+        let id = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: salt,
+                                        info: Data("flashtex-nearby-v1 pair-id".utf8), outputByteCount: 8)
+        return (id.withUnsafeBytes { Data($0) }.map { String(format: "%02x", $0) }.joined(), psk)
+    }
+
+    static func helloProof(psk: SymmetricKey, nonce: String) -> String {
+        Data(HMAC<SHA256>.authenticationCode(for: Data("flashtex-nearby-v1 hello".utf8) + Data(nonce.utf8), using: psk))
+            .base64EncodedString()
+    }
+
+    /// Same parameters the Mac listener uses (NearbyListener.clientParameters).
+    static func parameters(pairId: String, psk: SymmetricKey) -> NWParameters {
+        let tls = NWProtocolTLS.Options()
+        let sec = tls.securityProtocolOptions
+        sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv12)
+        sec_protocol_options_set_max_tls_protocol_version(sec, .TLSv12)
+        sec_protocol_options_append_tls_ciphersuite(sec, tls_ciphersuite_t(rawValue: 0x00A8)!) // TLS_PSK_WITH_AES_128_GCM_SHA256
+        sec_protocol_options_set_tls_resumption_enabled(sec, false)
+        sec_protocol_options_set_tls_tickets_enabled(sec, false)
+        let key = psk.withUnsafeBytes { DispatchData(bytes: $0) }
+        let identity = Data(pairId.utf8).withUnsafeBytes { DispatchData(bytes: $0) }
+        sec_protocol_options_add_pre_shared_key(sec, key as __DispatchData, identity as __DispatchData)
+        let tcp = NWProtocolTCP.Options()
+        tcp.enableKeepalive = true
+        tcp.noDelay = true
+        let params = NWParameters(tls: tls, tcp: tcp)
+        params.allowLocalEndpointReuse = true
+        return params
+    }
+}
+
+// In BonjourTransport.connect(to:), replacing `NWParameters.tcp`:
+let (pairId, psk) = stored ?? NearbyCrypto.derive(code: typedCode, saltHex: txt["salt"]!)
+let conn = NWConnection(to: endpoint, using: NearbyCrypto.parameters(pairId: pairId, psk: psk))
+conn.stateUpdateHandler = { state in
+    if case .ready = state {
+        let nonce = UUID().uuidString
+        let hello: [String: Any] = [
+            "protocol_version": 1, "id": UUID().uuidString, "type": "hello",
+            "payload": ["role": "companion", "pair_id": pairId, "companion_name": UIDevice.current.name,
+                        "protocol_version": 1, "nonce": nonce,
+                        "proof": NearbyCrypto.helloProof(psk: psk, nonce: nonce)]]
+        // JSONSerialization → append "\n" → conn.send; then start receiving.
+    }
+}
+```
+
+(`Data(hex:)` is a 4-line helper; `stored` is the `{pair_id, pair_psk}` the
+app persisted for this Mac's `fp`. Use the Keychain on iOS.)
+
+**Parse these reply lines** (today only `capture_received` is handled):
+- `hello_ack` — `payload.mac_name`, `payload.nonce` (must equal the sent
+  nonce), `payload.destination` (object or `null`; copy `destination_id`
+  and `base_revision` into every `capture_submit`), and, on the pairing
+  connection only, `payload.pair_psk` (base64, 32 bytes) — persist it and
+  use `SymmetricKey(data:)` of it for every later connection.
+- `capture_received` — `payload.capture_id`, `payload.durable`,
+  `payload.has_proposal`, `payload.applied` (transfer-v1 shape; `durable`
+  is true only when the Mac's bridge journaled it).
+- `error` — `id` (may be `null`), `payload.code`, `payload.message`. Codes
+  in §4; `pair_mismatch`, `pairing_expired`, `hello_required`,
+  `unsupported_version` and `line_too_long` are followed by a close and
+  mean "re-pair or fix the client", not "retry".
+
+**Behavioural changes**
+- Connect only to a result whose `fp` matches a stored pairing (or the one
+  the user picked while pairing), never blindly to the first result.
+- One pairing code confirms one device; after `hello_ack.pair_psk` the
+  code-derived key is gone. Reconnect with `pair_psk`.
+- Retry an unacknowledged capture with the same `capture_id` and payload
+  after reconnecting; do not mint a new id for the same image.
+
+## 9. Simulator test (companion in the booted iPad simulator against the Mac)
+
+The iOS simulator shares the Mac's network stack, so Bonjour and TCP work
+over the Mac's own interfaces (loopback included) with no extra setup.
+
+1. Mac: `cd apps/mac && swift build && FLASHTEX_REPO=$(git rev-parse --show-toplevel) .build/debug/FlashTeXMac`,
+   then `Edit > Nearby Companion…` (⌘⇧N) → **Advertise** on → **Show Pairing
+   Code**. The window shows the Bonjour name, port, `fp`, and the code with
+   its countdown. (Attach the bridge first, ⌘⇧U menu group, if you want
+   `durable: true` acknowledgements; otherwise the inbox answers
+   `durable: false`.)
+2. Verify the advertisement from a terminal:
+   `dns-sd -B _flashtex._tcp local.` then
+   `dns-sd -L "<Mac name>" _flashtex._tcp local.` — the TXT line must show
+   `v=1 name=… fp=… salt=…`.
+3. Companion: `xcrun simctl boot "<iPad>"` (or from Xcode), build and run
+   `apps/companion` on it (`apps/companion/build.sh` / the Xcode scheme).
+   Bonjour browsing inside the simulator sees the Mac's service; enter the
+   6-digit code from step 1 when prompted (after the FT-004 changes in §8).
+4. Expected on the Mac window: "paired <device> (<pair_id>)", the device
+   listed under *Paired companions* with a green "connected" badge, and the
+   countdown gone. Expected on the companion: `hello_ack` with
+   `pair_psk` and the current `destination` (pin one first with ⌘⇧P).
+5. Send a capture from the companion; the Mac window's *Received captures*
+   shows its `capture_id` and, with the bridge attached, the capture appears
+   in the bridge list ready for **Convert Capture** (⌘⇧G).
+6. Negative check with the *current* companion (before §8 is implemented):
+   it connects with plain TCP, the Mac's *Activity* log shows one
+   `closed unauthenticated: handshake failed: …` line and the companion's
+   connection drops; nothing is acknowledged.
+
+Without the companion, the same path is exercised by
+`swift test --filter NearbyStateTests` (a Network.framework client in the
+test process pairs, sends the fixture capture, is forgotten, and is refused).
