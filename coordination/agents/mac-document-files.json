@@ -2,36 +2,36 @@
   "agent_id": "mac-document-files",
   "allocation_id": "claude-mac20x-document-files",
   "assignment_acknowledgements": {},
-  "branch": "agent/mac-document-files/rooted-helper",
+  "branch": "agent/mac-document-files/reload",
   "capabilities": [
     "swift",
     "rust",
     "cargo",
     "xctest"
   ],
-  "code_revision": "f72de78bdfdbefcd71260c32e44f65582ce1ccf0",
+  "code_revision": "dfed1599d6552d1edc5826d0e271cc99c0f9cb8e",
   "eta_minutes": {
     "likely": 0,
     "optimistic": 0,
     "pessimistic": 0
   },
   "machine": "mac-m1max-a",
-  "main_integrated_through": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb",
-  "next_action": "Parent: apply the reported minimal diffs (Save menu -> saveTexInteractive, Resolve On-Disk Conflict menu item, checkDiskStatus on didBecomeActive, quit flow); optionally fold files state into ShellModel; route BridgeSession .tex export through files.save",
+  "main_integrated_through": "c35ca8bc4e3801fbbe308ee731d718af7ebe78eb",
+  "next_action": "Parent: apply the reported diffs (Reload From Disk menu -> reloadFromDiskInteractive; didBecomeActive -> Task { await refreshDiskStatus() }; controllerFileStatus diskSHA256 fallback to disk[sha256]); merge agent/mac-document-files/reload into mac-shell",
   "reviewed_peers": {
     "origin/main": {
-      "adaptation": "merged into the task branch cleanly (main does not touch apps/mac beyond the mac-shell base; crates/project-files identical on main, only additions here)",
-      "reviewed_utc": "2026-09-12T08:46:24Z",
-      "sha": "b1f158c4a3ab1301fc9d2340b36705ab21432bbb"
+      "adaptation": "merged cleanly; preview-controller changes (historical previews) rebuilt and used for the controller tests; no changes needed in owned files",
+      "reviewed_utc": "2026-09-12T10:04:36Z",
+      "sha": "02de1162386ba3278e149025dd1d2e623911de0a"
     }
   },
   "schema_version": 1,
   "state": "ready_for_integration",
-  "summary": "DocumentFiles.swift consumes crates/project-files as a child process (new flashtex-project-files --root JSON Lines binary, protocol project-files-v1: ping/read/status/save; conflict is a payload). Saves are hash-checked compare-and-replace with explicit files.conflict (modified externally / appeared where none expected) resolved only by overwriteOnDisk / reloadFromDisk / keep editing; external deletion is a notice and Save recreates via expected-new-file. Direct Foundation fallback only when no helper binary exists, reported in files.status. Lost/late replies never lose the dirty buffer: bounded wait, stuck helper replaced before the next request, late receipt reconciled on the main actor. Multi-file open/detach/reopen across two roots verified with real files and the real helper.",
+  "summary": "Refill lane done on agent/mac-document-files/reload: reload is an explicit review (prepareReload: disk snapshot, bytes/lines summary; confirmReload pinned to the reviewed hash) in both routes. With the preview controller attached the import is its reload {expected_revision, expected_sha256, expected_disk_sha256, user_approved:true}; the returned document is adopted inside the reply waiter (durable state, editor revision mapping, buffer, baseline) and never submitted back; refusals (stale identity, disk changed after review) leave the buffer untouched. refreshDiskStatus() maps onto controllerFileStatus (file_status) with the hash compared against the editor baseline; checkDiskStatus stays for the no-controller case. resolveConflictPanel shows the summary; reloadFromDisk (sync) is direct-only and refuses to bypass a controller.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:46:24Z",
+  "updated_utc": "2026-09-12T10:04:36Z",
   "usage": {
-    "evidence": "crates/project-files: cargo test 38 pass (3 new helper_bin), clippy -D warnings clean, fmt clean. apps/mac: swift test 193 pass (DocumentFilesTests 8 new) with FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER real binaries and FLASHTEX_PROJECT_FILES=crates/project-files/target/release/flashtex-project-files",
+    "evidence": "apps/mac swift test: 384 pass, 6 env-gated skips (PDF exact, nearby, assistant-context, evidence dirs), 0 failures, with real FLASHTEX_COMPILER/PDF/BRIDGE/EDIT_LEDGER + FLASHTEX_PREVIEW_CONTROLLER built from merged main + FLASHTEX_PROJECT_FILES; DocumentFilesControllerTests 1 (real controller) + DocumentFilesTests 10 (2 new) pass",
     "status": "parent's Max 20x quota; per-call usage not exposed; no purchases"
   }
 }
