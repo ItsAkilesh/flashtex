@@ -6,7 +6,11 @@ Authoritative contracts remain `docs/contracts/runtime-v1.md`,
 `docs/contracts/rendering-v2-proposal.md` and
 `protocol/rendering-v2.schema.json` (validated by `crates/rendering-core`).
 Reviewed on `origin/main` `7fea005b0611e2cc565ec38b9a705eff7cc4532c`
-(rendering-core, font-resources, compiler `9026d8a`).
+(rendering-core, font-resources, compiler `9026d8a`); re-checked at `8e2c70a`:
+the schema's `format` is still `const "static-truetype"`, while font-resources
+now carries staged CFF1 parsing (`cff::Cff::parse` over font-engine's
+`cff_table()`, "not production activated") — the request below is the
+activation of that path for the display list.
 
 ## 1. Display list v2 as emitted (`crates/render-pipeline/src/display.rs`)
 
