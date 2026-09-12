@@ -265,7 +265,7 @@ class DispatcherTests(unittest.TestCase):
         queue = dict(self.queue, agent_id='legacy-worker')
         plan, reason = loop.plan_step(self.root, 'coordination/queues/legacy-worker.json', queue, {'TASK': assignment}, datetime.now(timezone.utc), 600)
         self.assertIsNone(plan)
-        self.assertEqual(reason, 'worker structured report not published')
+        self.assertEqual(reason, 'worker branch not published')
         self.assertTrue(coord.published_branch_assignment(self.root, 'legacy-worker', assignment['branch']))
         self.assertFalse(coord.published_branch_assignment(self.root, 'other-worker', assignment['branch']))
 
