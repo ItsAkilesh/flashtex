@@ -13,17 +13,17 @@
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "854b041049c66accd7f253c58f207b4f1f14423e",
+  "code_revision": "e764d2a622ad3660e3041878b3a50aaf6890b160",
   "eta_minutes": null,
   "machine": "linux-primary",
-  "main_integrated_through": "a885b394b50175690cd98965ec6c9c02b5ff03e2",
-  "next_action": "Expand helper malformed sibling, stale edit, oversize and stalled-output acceptance; coordinate actual native renderer validation before enabling product default.",
+  "main_integrated_through": "6e515bef475f14d51a736c94ba4e0adc943d0dc8",
+  "next_action": "Verify candidate optional-output oversize/stall boundaries and coordinate native helper-route consumer measurement.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "FT048r6 helper display candidate forwarding implemented defaultOFF against unchanged FT049f58b656.59 helper tests including real compiler gates and strict Clippy pass. Current controller ID/generation/version/hash guards and optional required-output priority preserved.",
+  "summary": "Added actual helper stale-sibling and corrupt-hash recovery tests. New edit ACK occurs while producer paused between v1/sibling; only fresh candidate escapes. Corrupt candidate fails preview but later durable edit survives helper reopen. Three display subprocess tests and strict Clippy pass.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T11:02:05Z",
+  "updated_utc": "2026-09-12T11:04:01Z",
   "usage": {
     "status": "unknown"
   }

@@ -83,3 +83,10 @@ individual source revisions, explicit confirmation, mutually exclusive policies,
 and restart reset. Its payload intentionally lacks renderer-valid resources: this
 is transport evidence, not rendering evidence. Remaining native and malformed/
 backpressure integration gates above must be completed before release activation.
+
+Additional helper subprocess checks pause the fixture between its v1 result and
+sibling using a filesystem release signal, persist a newer edit before release,
+and verify only the newer source hash/version reaches optional output. A corrupt
+sibling hash triggers preview failure without exposing a candidate; a subsequent
+edit still persists and survives helper kill/reopen. These checks exercise the real
+helper/runtime boundary with a transport fixture, not a real renderer.
