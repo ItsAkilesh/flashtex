@@ -1380,6 +1380,45 @@ fn pinned_stix_math_metric_consumer_replay() {
                     1
                 }] += 1;
             }
+            let replay = frame.replay_bytes(1000000).unwrap();
+            frame
+                .verify_replay(&renderer, "main.tex", &source, &replay)
+                .unwrap();
+            let started = std::time::Instant::now();
+            let warm = renderer
+                .math_assembly(&math, request(), MixedLimits::default())
+                .unwrap();
+            let warm_elapsed = started.elapsed();
+            assert_eq!(warm.replay_bytes(1000000).unwrap(), replay);
+            if seen[if direction == Direction::Vertical {
+                0
+            } else {
+                1
+            }] == 1
+            {
+                let mut fresh = RegistryRenderer::new(
+                    "pinned-math",
+                    registry.clone(),
+                    RegistryRenderLimits {
+                        max_bindings: 1,
+                        max_cache_bytes: 100000,
+                    },
+                )
+                .unwrap();
+                let fresh_lease = fresh
+                    .bind(&selection("math"), registry.generation())
+                    .unwrap();
+                let fresh_math = fresh
+                    .math(&fresh_lease, MathPolicy::UnhintedDesignUnits)
+                    .unwrap();
+                let started = std::time::Instant::now();
+                let cold = fresh
+                    .math_assembly(&fresh_math, request(), MixedLimits::default())
+                    .unwrap();
+                let cold_elapsed = started.elapsed();
+                assert_eq!(cold.replay_bytes(1000000).unwrap(), replay);
+                eprintln!("MATH assembly exact cold/warm replay direction={direction:?} gid={gid} fresh_path_us={} reused_path_us={} bytes={} native_paint=false",cold_elapsed.as_micros(),warm_elapsed.as_micros(),replay.len());
+            }
             frame
                 .require_current(&renderer, "main.tex", &source)
                 .unwrap();
@@ -1552,6 +1591,50 @@ fn fitted_math_exact_origins_overlaps_and_atomic_limits() {
         let frame = renderer
             .math_assembly(&math, request(551), MixedLimits::default())
             .unwrap();
+        let replay = frame.replay_bytes(100000).unwrap();
+        frame
+            .verify_replay(&renderer, "main.tex", &source, &replay)
+            .unwrap();
+        let mut altered: serde_json::Value = serde_json::from_slice(&replay).unwrap();
+        altered["fit"]["shape"]["parts"][1]["offset_design_units"] = serde_json::json!(["0", "1"]);
+        assert!(frame
+            .verify_replay(
+                &renderer,
+                "main.tex",
+                &source,
+                &serde_json::to_vec(&altered).unwrap()
+            )
+            .is_err());
+        let mut fresh = RegistryRenderer::new(
+            "math",
+            registry.clone(),
+            RegistryRenderLimits {
+                max_bindings: 1,
+                max_cache_bytes: 100000,
+            },
+        )
+        .unwrap();
+        let fresh_lease = fresh
+            .bind(&selection("math"), registry.generation())
+            .unwrap();
+        let fresh_math = fresh
+            .math(&fresh_lease, MathPolicy::UnhintedDesignUnits)
+            .unwrap();
+        let cold = fresh
+            .math_assembly(&fresh_math, request(551), MixedLimits::default())
+            .unwrap();
+        assert_eq!(cold.replay_bytes(100000).unwrap(), replay);
+        for _ in 0..4 {
+            assert_eq!(
+                renderer
+                    .math_assembly(&math, request(551), MixedLimits::default())
+                    .unwrap()
+                    .replay_bytes(100000)
+                    .unwrap(),
+                replay
+            );
+        }
+        assert!(frame.replay_bytes(1).is_err());
         let FittedShape::Assembly(a) = &frame.fit().fit().shape else {
             panic!()
         };

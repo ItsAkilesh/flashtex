@@ -568,3 +568,19 @@ scales, ppem changes, absent accents and request/output limits. Pinned STIX GID3
 has a +1pixel top-accent correction at12ppem: the consumer preserves its exact
 7/3 canonical-tick correction and original Device table identity. This does not
 establish device-aware paint or native cache integration.
+
+### Fitted geometry replay and cache consistency
+
+`MathAssemblyFrame::replay_bytes` now joins the exact mixed geometry fixture with
+its source/registry/MATH metrics, part-instance mapping, offsets/overlaps, target,
+strategy, limits, explicit origin and CFF policy. This bounded internal evidence
+has a consumer source hash and geometry hash. `verify_replay` first checks the
+live lease/source and then compares every field with the immutable frame; it does
+not accept an arbitrary font outline just because JSON is well formed.
+
+Synthetic and pinned STIX acceptance compare this complete evidence after fresh
+resource binding and repeated path-cache reuse, with no geometry tolerance.
+Pinned tests print fresh/reused-path elapsed times for one horizontal and one
+vertical construction. These include consumer work and are diagnostic samples,
+not native paint latency or a performance threshold. Source revisions, fit
+metadata and declared origins remain part of the replay identity.
