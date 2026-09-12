@@ -195,6 +195,65 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
         flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
     assert_eq!(unicode.get(&62).map(String::as_str), Some("H"));
     assert!(unicode.values().any(|s| s == "fi"));
+    // Explicit consumer extraction fixture with a real empty-outline space,
+    // repeated original GIDs, and a single-glyph multi-character ligature.
+    use flashtex_font_engine::Face;
+    let face = flashtex_font_engine::TrueTypeFace::parse(font.to_vec()).unwrap();
+    let space = face.glyph_id(' ').unwrap().0;
+    let fi = *unicode.iter().find(|(_, s)| s.as_str() == "fi").unwrap().0;
+    let text = "H H fi";
+    let mut extraction = hypothetical.clone();
+    let mut run = extraction["payload"]["pages"][0]["items"][0].clone();
+    run["text"] = text.into();
+    let spans = [
+        (0, 1, 62u16),
+        (1, 2, space),
+        (2, 3, 62u16),
+        (3, 4, space),
+        (4, 6, fi),
+    ];
+    run["glyphs"]=serde_json::json!(spans.iter().enumerate().map(|(i,(_,_,gid))|serde_json::json!({"gid":gid,"origin_x":75497472+i as i64*10000000,"baseline_y":88033374,"advance_x":10000000,"advance_y":0,"cluster":i})).collect::<Vec<_>>());
+    run["clusters"]=serde_json::json!(spans.iter().enumerate().map(|(i,(a,b,_))|serde_json::json!({"text_start_byte":a,"text_end_byte":b,"hit_rects":[{"x":75497472+i as i64*10000000,"top":78033374,"width":10000000,"height":10000000}],"carets":[{"text_byte":a,"x":75497472+i as i64*10000000,"top":78033374,"height":10000000}],"sources":[{"path":"main.tex","start_byte":a,"end_byte":b}]})).collect::<Vec<_>>());
+    extraction["payload"]["pages"][0]["items"] = serde_json::json!([run]);
+    extraction["payload"]["documents"][0]["byte_length"] = text.len().into();
+    extraction["payload"]["documents"][0]["sha256"] = digest(text.as_bytes()).into();
+    let extraction_docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: text.into(),
+        },
+    )]);
+    let extraction = PipelineCff::bind(
+        &serde_json::to_vec(&extraction).unwrap(),
+        &caps,
+        &extraction_docs,
+        &resources,
+    )
+    .unwrap();
+    let exported = extraction.export_searchable(8 * 1024 * 1024).unwrap();
+    let file = flashtex_pdf::reader::PdfFile::parse(&exported.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let flashtex_pdf::exact::ExactFont::CidCff(cid) =
+        flashtex_pdf::compare::font_from_dict(&file, fonts["F1"]).unwrap()
+    else {
+        unreachable!()
+    };
+    let mapping =
+        flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    let mut extracted = String::new();
+    for op in flashtex_pdf::exact::parse(&file.page_content(page).unwrap()).unwrap() {
+        if let flashtex_pdf::exact::Op::ShowText(bytes) = op {
+            let (gids, remainder) = bytes.as_chunks::<2>();
+            assert!(remainder.is_empty());
+            for g in gids {
+                extracted.push_str(&mapping[&u16::from_be_bytes([g[0], g[1]])]);
+            }
+        }
+    }
+    assert_eq!(extracted, text);
+
     let mut ambiguous = hypothetical.clone();
     let repeated_gid = ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][1]["gid"].clone();
     ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][0]["gid"] = repeated_gid;

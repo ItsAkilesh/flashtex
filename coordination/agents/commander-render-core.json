@@ -14,7 +14,7 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "67afba5a29518e963dfaf4800002bb9d7032aca2",
+  "code_revision": "635db744a3050ae55d213929a5e17dd799fd27c7",
   "eta_minutes": {
     "likely": 15,
     "optimistic": 5,
@@ -22,15 +22,15 @@
   },
   "machine": "linux-primary",
   "main_integrated_through": "dd09e2352ef85ab3769858dc23461a3caeb13b69",
-  "next_action": "Consume producer rawSHA correction once published; rerun actual exact original/reference. No fixture repair as original evidence.",
+  "next_action": "Prioritize unmodified original/reference searchable export once rawSHA fix publishes; preserve explicit ambiguous/empty/multiglyph refusal.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Integrated unchanged PDF654f626 classifier/subsetter via67afba5. Added verified immutable PipelineCff searchable export with exact GIDs and explicit narrow ToUnicode profile.",
+  "summary": "Verified exact PDF CID/ToUnicode reconstruction of repeated H/space and fi ligature through existing owner API; added unimplemented ActualText group contract.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:54:54Z",
+  "updated_utc": "2026-09-12T09:58:18Z",
   "usage": {
-    "evidence": "155 tests pass; strict all-target clippy passed. Seven pdf_compare regressions pass on ownerfix. Corrected-contract consumer test checks CID-CFF/H/fi ToUnicode and rejects ambiguous/multiglyph text. Actualproducer rawSHA still refused. Peer unchanged merge67afba5. No paidcalls.",
+    "evidence": "155 full-suite tests and strictclippy pass, focused5tests repeated after exact CID remainder check. Currentproducer fetched still4888a67 rawSHA unchanged. H H fi extraction exact from emitted PDF owner reader, not independent visual/original compilation evidence.",
     "status": "Hosted OpenAI only; no providers or descendants. Context telemetry/native compaction unavailable."
   }
 }
