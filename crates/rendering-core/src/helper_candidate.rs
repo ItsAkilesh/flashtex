@@ -99,20 +99,20 @@ pub fn bind(
         );
     }
     let bytes = p.display_list.get().as_bytes();
-    let paired = pipeline_frame::pair(result, Some(bytes), true)?
+    let paired = pipeline_frame::pair_retained(result, Some(bytes), true)?
         .ok_or_else(|| ValidationError("missing paired display".into()))?;
     require(
-        paired.id == current.request_id,
+        paired.envelope().id == current.request_id,
         "helper display request mismatch",
     )?;
-    let Message::DisplayList(ref list) = paired.message else {
+    let Message::DisplayList(list) = &paired.envelope().message else {
         return Err(ValidationError("helper display type".into()));
     };
     require(
         list.project_id == current.project_id && list.revision == current.compile_revision,
         "helper display identity mismatch",
     )?;
-    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;
+    let display = PipelineCff::bind_paired(paired, capabilities, &documents, resources)?;
     Ok(BoundHelperCandidate {
         current: current.clone(),
         display,
