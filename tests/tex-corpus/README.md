@@ -314,3 +314,7 @@ integration gates**. All four generated compile requests received correlated
 responses with valid source ranges, while compiler diagnostics remain retained.
 The process exited 1 as intended for the explicit context gap. No real Grok call,
 native document transaction, or OS crash was simulated as a proven success.
+
+### Included-file provenance clarification
+
+Visible included literals point to their actual included source UTF-8 range. The input invocation is execution ancestry, not the glyph source. The previous manifest incorrectly required invocation-site visible-text coverage alongside included-source navigation. The current expectation corrects that contradiction. Historical artifacts are preserved; `compiler-9f1033b-included-source.json` reruns the same pinned original compiler against the corrected manifest (9 unsupported, 5 failing). Comparisons must use the same manifest hash; no historical pass is inferred.
