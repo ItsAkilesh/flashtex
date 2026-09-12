@@ -96,16 +96,25 @@ def main():
     tb = th.get("typing_bench", {})
     tg = tb.get("gates", {})
     producers = [("compiler", "typing-bench"), ("controller", "typing-bench-controller")]
-    runs = {}  # producer -> cell -> summary
+    runs = {}  # producer -> cell -> summary (first attempt wins; a retry pass fills cells the first attempt lost)
+    retried = {}  # producer -> [cells taken from the retry pass]
     for prod, sub in producers:
         runs[prod] = {}
-        for f in sorted(glob.glob(os.path.join(rd, sub, "typing-bench-*", "*.json"))):
-            d = load(f)
-            if not d:
-                continue
-            base = os.path.basename(f)[:-5]  # compiler-demo-30ms (run.sh names the file by its producer flag)
-            parts = base.split("-", 1)
-            runs[prod][parts[1] if len(parts) > 1 else base] = d
+        retried[prod] = []
+        for attempt, pattern in (("first", os.path.join(rd, sub, "typing-bench-*", "*.json")), ("retry", os.path.join(rd, sub, "retry", "typing-bench-*", "*.json"))):
+            for f in sorted(glob.glob(pattern)):
+                d = load(f)
+                if not d:
+                    continue
+                base = os.path.basename(f)[:-5]  # compiler-demo-30ms (run.sh names the file by its producer flag)
+                parts = base.split("-", 1)
+                cell = parts[1] if len(parts) > 1 else base
+                if cell in runs[prod]:
+                    continue
+                d["_attempt"] = attempt
+                runs[prod][cell] = d
+                if attempt == "retry":
+                    retried[prod].append(cell)
     controller_present = bool(runs["controller"]) or os.path.isdir(os.path.join(rd, "typing-bench-controller"))
     for prod, sub in producers:
         sec = "typing-bench/" + prod
@@ -125,7 +134,7 @@ def main():
             if ev.get("typed_equals_script_keystrokes"):
                 gate(sec, "%s: every script keystroke typed" % cell, d.get("typed") == d.get("script_keystrokes") and d.get("keystrokes") == d.get("script_keystrokes"),
                      "typed=%s keystrokes=%s script=%s" % (d.get("typed"), d.get("keystrokes"), d.get("script_keystrokes")))
-            gate(sec, "%s: paints >= %d" % (cell, ev.get("paints_min", 1)), d.get("paints", 0) >= ev.get("paints_min", 1), "paints=%s" % d.get("paints"))
+            gate(sec, "%s: paints >= %d" % (cell, ev.get("paints_min", 1)), d.get("paints", 0) >= ev.get("paints_min", 1), "paints=%s%s" % (d.get("paints"), " (from the retry pass: the first attempt's app died mid-run)" if d.get("_attempt") == "retry" else ""))
             expected_producer = pg.get("expected_producer")
             if expected_producer:
                 gate(sec, "%s: producer reported by the app == %s" % (cell, expected_producer), d.get("producer") == expected_producer, d.get("producer"))
@@ -253,13 +262,15 @@ def main():
             tp50 = targets.get("project_typing_to_visible_p50_ms"); tp95 = targets.get("project_typing_to_visible_p95_ms")
             tmet = (k.get("p50_ms") is not None and tp50 is not None and k["p50_ms"] <= tp50) and (k.get("p95_ms") is not None and tp95 is not None and k["p95_ms"] <= tp95)
             L.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-                d.get("producer", prod), cell, d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
+                d.get("producer", prod), cell + (" (retry)" if d.get("_attempt") == "retry" else ""), d.get("document_bytes_after"), d.get("typed"), d.get("script_keystrokes"), d.get("paints"), d.get("coalesced"), d.get("unpainted"),
                 ms(k.get("p50_ms")), ms(k.get("p95_ms")), ms(k.get("p99_ms")), ms(k.get("max_ms")), ms(c.get("p50_ms")), ms(c.get("p95_ms")), ms(r.get("p50_ms")), ms(r.get("p95_ms")),
                 lim if lim is not None else "— (not gated)", "met" if tmet else "not met"))
     L.append("")
     for prod, sub in producers:
         if runs[prod]:
             L.append("Elapsed per cell, %s (ms): %s." % (prod, ", ".join("%s=%s" % (cell, ms(runs[prod][cell].get("elapsed_ms"))) for cell in tg.get("required_cells", []) if cell in runs[prod])))
+        if retried[prod]:
+            L.append("Cells taken from the retry pass for %s (the first pass lost them when the app process disappeared mid-run — see `logs/%s.log`; other agents run kill/launch checks on this machine): %s." % (prod, sub, ", ".join(retried[prod])))
     L.append("")
 
     L.append("## Launch check: packaged app, child crash, app survival")

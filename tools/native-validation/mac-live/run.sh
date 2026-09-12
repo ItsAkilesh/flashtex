@@ -237,27 +237,42 @@ else
 fi
 
 # ---------------------------------------------------------- 3. typing bench
+EXPECTED_CELLS=$(( $(wc -w <<< "$SEEDS") * $(wc -w <<< "$INTERVALS") ))
+# bench_pass <name> <out-dir>: runs the bench once; if the app was killed
+# mid-run by something outside this runner (other agents run pkill/launch
+# checks on this machine) some cells have no summary — retry the whole pass
+# once into <out-dir>/retry so the report can fill the gaps and say so.
+bench_pass() {
+  local name="$1" out="$2" found
+  mkdir -p "$out"
+  cmd "$name" bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
+      --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/typing-bench.md"
+  note "$name exit $CMD_STATUS"
+  found=$(ls "$out"/typing-bench-*/*.json 2>/dev/null | wc -l | tr -d ' ')
+  if (( found < EXPECTED_CELLS )); then
+    note "$name: $found of $EXPECTED_CELLS cells have a summary (app killed or timed out mid-run); retrying the pass once"
+    printf '[%s] retry: %s of %s cells had a summary\n' "$name" "$found" "$EXPECTED_CELLS" >> "$COMMANDS"
+    mkdir -p "$out/retry"
+    cmd "$name-retry" bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
+        --intervals "$INTERVALS" --seeds "$SEEDS" --out "$out/retry/typing-bench.md"
+    note "$name-retry exit $CMD_STATUS"
+  fi
+}
 if [[ $SKIP_BENCH == 0 && $APP_OK == 1 && $HELPERS_OK == 1 ]]; then
   step "typing bench ($SEEDS × $INTERVALS ms)"
-  mkdir -p "$RUN_DIR/typing-bench"
-  cmd typing-bench bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
-      --intervals "$INTERVALS" --seeds "$SEEDS" --out "$RUN_DIR/typing-bench/typing-bench.md"
-  note "typing-bench exit $CMD_STATUS"
+  bench_pass typing-bench "$RUN_DIR/typing-bench"
   if [[ $SKIP_CONTROLLER == 0 && -x "$(helper_path preview-controller)" ]]; then
     # Same bench, durable helper route: the app attaches flashtex-preview-controller
     # (which owns the ledger and launches the same compiler) instead of the direct
     # worker. run.sh passes the environment through to the app unchanged.
     step "typing bench via flashtex-preview-controller"
-    mkdir -p "$RUN_DIR/typing-bench-controller"
     CTRL_LEDGERS="$WORK/controller-ledgers-$UTC"
     mkdir -p "$CTRL_LEDGERS"
     export FLASHTEX_PREVIEW_CONTROLLER="$(helper_path preview-controller)" FLASHTEX_CONTROLLER_LEDGER_ROOT="$CTRL_LEDGERS"
     printf '[typing-bench-controller] FLASHTEX_PREVIEW_CONTROLLER=%q FLASHTEX_CONTROLLER_LEDGER_ROOT=%q\n' "$FLASHTEX_PREVIEW_CONTROLLER" "$CTRL_LEDGERS" >> "$COMMANDS"
-    cmd typing-bench-controller bash "$APP_SRC/tools/typing-bench/run.sh" --no-render --producers compiler \
-        --intervals "$INTERVALS" --seeds "$SEEDS" --out "$RUN_DIR/typing-bench-controller/typing-bench.md"
+    bench_pass typing-bench-controller "$RUN_DIR/typing-bench-controller"
     unset FLASHTEX_PREVIEW_CONTROLLER FLASHTEX_CONTROLLER_LEDGER_ROOT
     rm -rf "$CTRL_LEDGERS"
-    note "typing-bench (controller) exit $CMD_STATUS"
   fi
 else
   step "typing bench skipped (skip=$SKIP_BENCH app_ok=$APP_OK helpers_ok=$HELPERS_OK)"
