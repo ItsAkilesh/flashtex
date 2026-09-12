@@ -1,3 +1,12 @@
+## Latest local staffing reset
+
+User explicitly reports plan reset and requests6 Astra engineers plus Commander.
+Actual tool roster confirmed7 running after reactivating the preserved bridge,
+index and ledger handles. Numeric remaining allowance remains unknown; existing
+hosted route only, no new purchases or API funding implied. Local cap is7 total.
+Daniel16 and timed Jaysen15 remain separately authorized; no additional remote
+expansion. All three resumed workers keep exclusive product paths and dirty state.
+
 > LATEST STAFFING OVERRIDE: this computer has FOUR active agents total: sole
 > commander orchestrator-astra, root preview-controller, compiler_corpus fonts,
 > supervisor_api_review rendering. Bridge-context, project-index and edit-ledger

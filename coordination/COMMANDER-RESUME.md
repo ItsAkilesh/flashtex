@@ -1,3 +1,13 @@
+# NEW USER OVERRIDE: seven local active total
+
+User explicitly restored6 product engineers plus existing soleCommander after
+reported plan reset. Actual7 tool handles running: root, runtime_validator,
+compiler_corpus, supervisor_api_review, bridge_context,
+orchestrator_sol/corpus_continuation, orchestrator_sol/mac_integration_review.
+Three preserved paused worktrees are now explicitly resumed; old paused/local4
+instructions below are historical. Timer08:21:08Z remains imminent and active;
+verify BOTH remote parents after dispatch. Daniel registration remains absent.
+
 # Current operational checkpoint — 2026-09-12 07:56Z
 
 Sole Commander orchestrator-astra /root/runtime_validator remains active. Local4:

@@ -1,3 +1,11 @@
+> LATEST USER STAFFING RESET: this host now has SEVEN active total: sole Astra
+> Commander plus SIX product engineers (root assistant-context, font-resources,
+> rendering-core, conversion-jobs, project-index, edit-ledger). The three paused
+> product agents are explicitly reactivated in their preserved worktrees. This
+> supersedes all older local4/paused3 wording below. No additional remote expansion
+> follows from this change; Daniel/Jaysen existing explicit allocations continue.
+> User reports plan reset; do not invent a numeric remaining balance or new funds.
+
 > LATEST COOLDOWN: until 2026-09-12T08:21:08Z Jaysen heavy work is suspended;
 > Daniel may take exact fenced handoffs after registration/ACK. Jaysen small tasks
 > may use his existing remaining usage credits, explicitly authorized for this
