@@ -14,15 +14,15 @@
     "xcode",
     "tex-oracle"
   ],
-  "code_revision": "6e9d14c2cf4d355ef6de939119c91117ad51c044",
+  "code_revision": "a1e218660bf283ac6711028657bff451d39247cb",
   "eta_minutes": {
-    "likely": 45,
-    "optimistic": 30,
-    "pessimistic": 90
+    "likely": 0,
+    "optimistic": 0,
+    "pessimistic": 0
   },
   "machine": "mac-m1max-a",
   "main_integrated_through": "ddc5bc6944a56815a4bb6b66a9c7fb2dd52ca8b4",
-  "next_action": "Finish the corpus run, commit evidence + oracle-profile.json, update handoff; then native-capture-vs-export exact mismatch evidence.",
+  "next_action": "Await Commander review of GH-24; re-baseline reference-profile.json to 18 fixtures only if requested (--pin-profile, baseline not pass).",
   "reviewed_peers": {
     "origin/agent/mac-render-pipeline/unified": {
       "adaptation": "Reviewed c000dad (secnumdepth parsing): crates/render-pipeline builds via git archive of crates/; added as pipeline label; finding: matches LM oracle word sequence on 17-apostrophes (|dx| 0.02 pt), display-math boxes weakest region.",
@@ -36,10 +36,10 @@
     }
   },
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "FT-017 rev 3 in progress: GH-24 gate split implemented and self-tested (25 checks); oracle profile pinned from a live MacTeX render pass; corpus re-run with live verification of the pin in progress.",
+  "state": "ready_for_integration",
+  "summary": "FT-017 rev 3 / GH-24 delivered on agent/mac-visual-oracle/reference-raster: report and metrics split into (1) FlashTeX self-regression vs pinned prior FlashTeX bytes, (2) candidate vs established engine \u2014 raw unmodified PDF bytes vs pinned MacTeX 2026 oracle PDF (oracle-profile.json, 108 pairs, pinned render env SOURCE_DATE_EPOCH=0/FORCE_SOURCE_DATE=1 + LuaTeX trailerid, verified byte-reproducible and live 108/108) and zero-pixel raster equality per page, (3) native/export parity; plain statement: parity NOT claimed (0/324 bytes, 0/324 pixels, self-regression 9/54, export=native 0/54 of 54 captures). Evidence tests/visual-corpus/evidence/20260912T083316Z (492 PNGs <= 300 KB, native overlays included). capture_native.sh no longer kills FlashTeXMac by name (a1e2186). selftest.py 25 checks green.",
   "tool": "Claude Code subagent (parent mac-claude-a)",
-  "updated_utc": "2026-09-12T08:32:11Z",
+  "updated_utc": "2026-09-12T09:11:59Z",
   "usage": {
     "evidence": "Claude Max 20x shared quota on mac-m1max-a; no programmatic readout; this session only",
     "status": "unknown"

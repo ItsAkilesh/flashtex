@@ -3,7 +3,7 @@
 Agent / task / branch: `mac-visual-oracle` (Claude Code subagent, parent `mac-claude-a`,
 machine `mac-m1max-a`) / FT-017 rev 3 (acked, input main 59a49ab; GH-24) /
 `agent/mac-visual-oracle/reference-raster`
-State: in progress — GH-24 gate split delivered and evidenced; native-capture evidence run in progress
+State: ready for integration (FT-017 rev 3 / GH-24 delivered with evidence; follow-ups 1 and 2 delivered)
 Owned paths: `tests/visual-corpus/harness/`, `tests/visual-corpus/evidence/`,
 `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`
 Main integrated through: ddc5bc6 (merge 6e9d14c, this session)
@@ -21,16 +21,16 @@ Main integrated through: ddc5bc6 (merge 6e9d14c, this session)
 - Owned paths: `tests/visual-corpus/harness`, `tests/visual-corpus/evidence`,
   `coordination/mac-visual-oracle.md`, `coordination/agents/mac-visual-oracle.json`. No other
   path is touched; transferred crates untouched; no purchases; Claude Max 20x shared quota only.
-- Context usage of this session: ~2% of the 15M-token window at this checkpoint (read from the
+- Context usage of this session: ~2.6% of the 15M-token window at this checkpoint (read from the
   tool budget counter; no other readout available).
 - Scratch state (not in Git; session scratchpad `…/scratchpad/`): `vc/run-20260912T083316Z/`
   (work dir of the evidence run: reference/, flashtex/, native/, rasterize), `vc/builds/`
   (cargo builds by label-SHA), `r2/pinA/` (oracle pin render pass), `r2/*.sh|*.py` helper
   scripts, `app2-169c2a8…/apps/mac/.build/debug/FlashTeXMac` (app for native capture).
-- Exact next commands if resumed: `git fetch origin && git status`; if
-  `evidence/20260912T083316Z/images` has native overlays and `metrics.json` has
-  `gate_summary.export_native_available` = 54 → commit evidence + handoff + agents JSON and push;
-  otherwise rerun `bash <scratchpad>/r2/capture_and_rediff.sh` (≈30 min) and then commit.
+- Exact next commands if resumed: `git fetch origin && git status` (tree should be clean at the
+  pushed SHA); await Commander review of GH-24; if a re-baseline of `reference-profile.json` is
+  requested: `bash tests/visual-corpus/harness/run.sh --scratch <scratchpad>/vc --skip-build
+  --pin-profile` (labelled baseline, not a pass).
 - Dependency SHAs: origin/main ddc5bc6 (merged); compilers compared: main 5b69110, de1020c,
   pipeline 79ba728 (origin/agent/mac-render-pipeline/unified); flashtex-pdf 5b5f7b5; app
   origin/agent/mac-claude-a/mac-shell 169c2a8; MacTeX 2026 full, tlmgr r78301.
@@ -163,9 +163,22 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
   **0/324**; zero-pixel = oracle **0/324**; self-regression EQUAL 9/54 (de1020c on the 9 fixtures
   pinned in rev 1; main/pipeline differ or unpinned); export = preview-equivalent 0/54.
   Plain statement in the report: established-engine parity is NOT claimed.
-- Native capture: 54 launches; first pass 44/54 rasters (multi-page fixtures failed page
-  detection — fixed as above, re-capture + diff with `--native` running at this checkpoint;
-  numbers in the next update).
+- **Native capture vs export, exact** (same run, `gate_summary.export_native_available` 54/54,
+  `export_native_equal` 0/54): every fixture × compiler capture DIFFERS from the export raster —
+  34,297 to 1,294,559 differing px of 1,938,816, max |Δ| 255 (e.g. 01-plain-paragraph/de1020c
+  40,484 px; 02-wrapping-paragraph/de1020c 365,319 px). Classification in the report: the
+  capture is a screen raster (CoreText on a 2× Retina backing, resampled ×1.524 to the 144-DPI
+  raster; caption corner masked) vs a CoreGraphics PDF raster — resampling and text rasterization
+  dominate; reported as-is, never normalised. Native-vs-oracle diagnostics (never acceptance) are
+  in the native table: e.g. 17-apostrophes pipeline native vs pdflatex-lm overlays almost exactly.
+  Capture route: app 169c2a8 (origin/agent/mac-claude-a/mac-shell), Retina display this time
+  (backing 2×; rev 1 was 1× external, ×2.84). First pass 44/54 (multi-page + one math capture
+  failed page detection → detector fixed, see Ready behavior), second pass 54/54.
+- **Process-hygiene incident**: the 54-capture pass that produced this evidence still ran
+  `pkill -x FlashTeXMac` before each launch and terminated another lane's app (the parent's
+  typing bench, exit 143). Fixed immediately in a1e2186 (PID-scoped kill and window lookup,
+  `FLASHTEX_NO_ACTIVATE=1`, verified with one launch); the captures predate the fix and say so
+  in `provenance.json` → `stage_notes`.
 - Diagnostics (never acceptance): 4 threshold failures (pdflatex vs de1020c on 10/12/15/16);
   regress vs 072838Z: 9 entries, all label `main` (SHA moved 5f9f4ec → 5b69110).
 
@@ -183,8 +196,9 @@ None to runtime contracts. Harness CLI: `--reference-from` added to `render_refe
 
 ## Next action
 
-Finish native-capture evidence (running), commit/push evidence 083316Z, update this handoff and
-the agents JSON to ready_for_integration; then reply on GH-24 with the evidence path.
+Await Commander review (GH-24 comment posted with the evidence path). Next if assigned: per-line
+region metrics; scale-aware registration for native captures; re-baseline the self-regression
+profile to 18 fixtures if requested.
 
 ## Peer revisions reviewed and adaptations
 
@@ -199,4 +213,4 @@ the agents JSON to ready_for_integration; then reply on GH-24 with the evidence 
   runtime-v1 compile_result and U+2500 rule convention, both still present; a full merge of
   main into this branch is deferred to the next clean checkpoint.
 
-Updated: 2026-09-12T08:55Z
+Updated: 2026-09-12T09:11Z

@@ -1,0 +1,38 @@
+{
+  "engine": "xelatex-lm",
+  "variant": "lm",
+  "available": true,
+  "reused": false,
+  "path": "/Library/TeX/texbin/xelatex",
+  "exit": 0,
+  "seconds": 0.818,
+  "flags": [
+    "-interaction=batchmode",
+    "-halt-on-error",
+    "-file-line-error"
+  ],
+  "env": [
+    "SOURCE_DATE_EPOCH=0",
+    "FORCE_SOURCE_DATE=1"
+  ],
+  "preamble": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "errors": [],
+  "warnings": [],
+  "fonts_in_log": [
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman10-bolditalic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-bold.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-italic.otf",
+    "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmroman12-regular.otf",
+    "TU/lmroman12-regular.otf",
+    "lmroman10-bolditalic.otf",
+    "lmroman12-bold.otf",
+    "lmroman12-italic.otf",
+    "lmroman12-regular.otf"
+  ],
+  "fontspec_fonts": [],
+  "pdf": true,
+  "fixture_sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+  "pdf_sha256": "e0ba4819bec01fa09d540a93867954fb00d98bb7d0a2d670d46523acd98118b6",
+  "engine_version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)",
+  "rendered_in_run": "20260912T083316Z"
+}

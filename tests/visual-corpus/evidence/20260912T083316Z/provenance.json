@@ -1,0 +1,4463 @@
+{
+ "generated_utc": "20260912T083316Z",
+ "machine": "mac-m1max-a",
+ "os": "macOS 26.3.1 arm64",
+ "swift": "Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)",
+ "cargo": "cargo 1.99.0-nightly (3efb1f477 2026-07-17)",
+ "python": "3.12.0",
+ "pillow": "12.2.0",
+ "suite_branch": "mvo/rev2",
+ "suite_sha": "c2619a6164060c6ed31d903dbd70aeae9215633e",
+ "input_main_sha": "3423970b300e878062f2a124fb8004545626200b",
+ "harness_files_sha256": {
+  "capture_native.sh": "2c5f846be6f565ec74bd557493eedcb83ad391c91cc635fc29c78becc6aab8b3",
+  "diff.py": "c642ee0111de8ba83ca6a7532222522966258d2a63d9d4ad8803a48edc9550c0",
+  "oracle-profile.json": "978bd7c999f4439534d031a44ecb91bcb428046142b376744c2a0c78ce70ccf1",
+  "pin_oracle.py": "faa4a098fdad3cc936551fe53fab69a7818e1eac09f511134f68ad58e376d7eb",
+  "rasterize.swift": "1a6e6e88e1007e2271566e94c2235bb6227f566a4591f3c319385b98cf41380e",
+  "reference-profile.json": "8a4fcb99d6b2f7e61a1fd175fa4ea94fe67866df654f60a11c767299395c4ed8",
+  "render_flashtex.sh": "d919f4418adbad72ed31c65f2db410b34a66bf308e5d71ea42e44f607c482353",
+  "render_reference.sh": "7b2adbbae51c7040cb2afc6d3a6881a8089948b44cc48ddd871e85bad9e7d08c",
+  "run.sh": "17fdb926162794cdcda921524e26ed2102d1ca9cbc421844316e982ccd4fba32",
+  "selftest.py": "0d4584bf07cd8bdb7d004da8e457e4052fa97502ae1d7abe56ee72b05c517b1a",
+  "thresholds.json": "701c9b9324decee0b3263f8dcf2c62b639c45ec65ef476491f6f1ea30515feff"
+ },
+ "engines": {
+  "pdflatex": {
+   "path": "/Library/TeX/texbin/pdflatex",
+   "available": true,
+   "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+  },
+  "xelatex": {
+   "path": "/Library/TeX/texbin/xelatex",
+   "available": true,
+   "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+  },
+  "lualatex": {
+   "path": "/Library/TeX/texbin/lualatex",
+   "available": true,
+   "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+  }
+ },
+ "references": {
+  "fresh": [
+   "01-plain-paragraph/lualatex",
+   "01-plain-paragraph/lualatex-lm",
+   "01-plain-paragraph/pdflatex",
+   "01-plain-paragraph/pdflatex-lm",
+   "01-plain-paragraph/xelatex",
+   "01-plain-paragraph/xelatex-lm",
+   "02-wrapping-paragraph/lualatex",
+   "02-wrapping-paragraph/lualatex-lm",
+   "02-wrapping-paragraph/pdflatex",
+   "02-wrapping-paragraph/pdflatex-lm",
+   "02-wrapping-paragraph/xelatex",
+   "02-wrapping-paragraph/xelatex-lm",
+   "03-section-heading/lualatex",
+   "03-section-heading/lualatex-lm",
+   "03-section-heading/pdflatex",
+   "03-section-heading/pdflatex-lm",
+   "03-section-heading/xelatex",
+   "03-section-heading/xelatex-lm",
+   "04-bold-emph/lualatex",
+   "04-bold-emph/lualatex-lm",
+   "04-bold-emph/pdflatex",
+   "04-bold-emph/pdflatex-lm",
+   "04-bold-emph/xelatex",
+   "04-bold-emph/xelatex-lm",
+   "05-unicode/lualatex",
+   "05-unicode/lualatex-lm",
+   "05-unicode/pdflatex",
+   "05-unicode/pdflatex-lm",
+   "05-unicode/xelatex",
+   "05-unicode/xelatex-lm",
+   "06-math-inline/lualatex",
+   "06-math-inline/lualatex-lm",
+   "06-math-inline/pdflatex",
+   "06-math-inline/pdflatex-lm",
+   "06-math-inline/xelatex",
+   "06-math-inline/xelatex-lm",
+   "07-math-display/lualatex",
+   "07-math-display/lualatex-lm",
+   "07-math-display/pdflatex",
+   "07-math-display/pdflatex-lm",
+   "07-math-display/xelatex",
+   "07-math-display/xelatex-lm",
+   "08-two-page/lualatex",
+   "08-two-page/lualatex-lm",
+   "08-two-page/pdflatex",
+   "08-two-page/pdflatex-lm",
+   "08-two-page/xelatex",
+   "08-two-page/xelatex-lm",
+   "09-mixed-document/lualatex",
+   "09-mixed-document/lualatex-lm",
+   "09-mixed-document/pdflatex",
+   "09-mixed-document/pdflatex-lm",
+   "09-mixed-document/xelatex",
+   "09-mixed-document/xelatex-lm",
+   "10-unicode-paragraph/lualatex",
+   "10-unicode-paragraph/lualatex-lm",
+   "10-unicode-paragraph/pdflatex",
+   "10-unicode-paragraph/pdflatex-lm",
+   "10-unicode-paragraph/xelatex",
+   "10-unicode-paragraph/xelatex-lm",
+   "11-nested-lists/lualatex",
+   "11-nested-lists/lualatex-lm",
+   "11-nested-lists/pdflatex",
+   "11-nested-lists/pdflatex-lm",
+   "11-nested-lists/xelatex",
+   "11-nested-lists/xelatex-lm",
+   "12-justified-paragraphs/lualatex",
+   "12-justified-paragraphs/lualatex-lm",
+   "12-justified-paragraphs/pdflatex",
+   "12-justified-paragraphs/pdflatex-lm",
+   "12-justified-paragraphs/xelatex",
+   "12-justified-paragraphs/xelatex-lm",
+   "13-math-display-rich/lualatex",
+   "13-math-display-rich/lualatex-lm",
+   "13-math-display-rich/pdflatex",
+   "13-math-display-rich/pdflatex-lm",
+   "13-math-display-rich/xelatex",
+   "13-math-display-rich/xelatex-lm",
+   "14-math-inline-dense/lualatex",
+   "14-math-inline-dense/lualatex-lm",
+   "14-math-inline-dense/pdflatex",
+   "14-math-inline-dense/pdflatex-lm",
+   "14-math-inline-dense/xelatex",
+   "14-math-inline-dense/xelatex-lm",
+   "15-three-page-sections/lualatex",
+   "15-three-page-sections/lualatex-lm",
+   "15-three-page-sections/pdflatex",
+   "15-three-page-sections/pdflatex-lm",
+   "15-three-page-sections/xelatex",
+   "15-three-page-sections/xelatex-lm",
+   "16-heading-page-break/lualatex",
+   "16-heading-page-break/lualatex-lm",
+   "16-heading-page-break/pdflatex",
+   "16-heading-page-break/pdflatex-lm",
+   "16-heading-page-break/xelatex",
+   "16-heading-page-break/xelatex-lm",
+   "17-apostrophes/lualatex",
+   "17-apostrophes/lualatex-lm",
+   "17-apostrophes/pdflatex",
+   "17-apostrophes/pdflatex-lm",
+   "17-apostrophes/xelatex",
+   "17-apostrophes/xelatex-lm",
+   "18-ligatures/lualatex",
+   "18-ligatures/lualatex-lm",
+   "18-ligatures/pdflatex",
+   "18-ligatures/pdflatex-lm",
+   "18-ligatures/xelatex",
+   "18-ligatures/xelatex-lm"
+  ],
+  "reused": {},
+  "unavailable": [],
+  "stores": [
+   {
+    "dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c/tests/visual-corpus/evidence/20260912T072838Z",
+    "run": "20260912T072838Z",
+    "engines": {
+     "pdflatex": {
+      "path": "/Library/TeX/texbin/pdflatex",
+      "available": true,
+      "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+     },
+     "xelatex": {
+      "path": "/Library/TeX/texbin/xelatex",
+      "available": true,
+      "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+     },
+     "lualatex": {
+      "path": "/Library/TeX/texbin/lualatex",
+      "available": true,
+      "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+     }
+    },
+    "entries": 108
+   },
+   {
+    "dir": "/Users/jay3332/Projects/flashtex/.claude/worktrees/agent-a8603282c8958a68c/tests/visual-corpus/evidence/20260912T064032Z",
+    "run": "20260912T064032Z",
+    "engines": {
+     "pdflatex": {
+      "path": "/Library/TeX/texbin/pdflatex",
+      "available": true,
+      "version": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"
+     },
+     "xelatex": {
+      "path": "/Library/TeX/texbin/xelatex",
+      "available": true,
+      "version": "XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)"
+     },
+     "lualatex": {
+      "path": "/Library/TeX/texbin/lualatex",
+      "available": true,
+      "version": "This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)"
+     }
+    },
+    "entries": 108
+   }
+  ]
+ },
+ "packages": {
+  "times.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/psnfss/times.sty",
+  "lmodern.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/lmodern.sty",
+  "fontspec.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/fontspec/fontspec.sty",
+  "geometry.sty": "/usr/local/texlive/2026/texmf-dist/tex/latex/geometry/geometry.sty",
+  "t1enc.def": "/usr/local/texlive/2026/texmf-dist/tex/latex/base/t1enc.def",
+  "texlive_root": "/usr/local/texlive/2026",
+  "texbin_realpath": "/usr/local/texlive/2026/bin/universal-darwin",
+  "tlmgr": "tlmgr revision 78301 (2026-03-07 18:41:28 +0100)",
+  "distribution": "MacTeX / TeX Live full (/usr/local/texlive/2026)"
+ },
+ "system_fonts": {
+  "/System/Library/Fonts/Supplemental/Times New Roman.ttf": true,
+  "/System/Library/Fonts/Times.ttc": true
+ },
+ "preambles": {
+  "xelatex-lm": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "pdflatex": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{times}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "lualatex-lm": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{lmroman12-regular.otf}[Path=/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/lm/,BoldFont=lmroman12-bold.otf,ItalicFont=lmroman12-italic.otf,BoldItalicFont=lmroman10-bolditalic.otf]\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "xelatex": "\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "pdflatex-lm": "\\documentclass[12pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n",
+  "lualatex": "\\pdfvariable trailerid{[<00000000000000000000000000000000> <00000000000000000000000000000000>]}\n\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Times New Roman}\n\\usepackage[margin=1in]{geometry}\n\\setlength{\\parindent}{0pt}\n\\setcounter{secnumdepth}{0}\n\\pagestyle{empty}\n"
+ },
+ "engine_flags": [
+  "-interaction=batchmode",
+  "-halt-on-error",
+  "-file-line-error"
+ ],
+ "engine_env": [
+  "SOURCE_DATE_EPOCH=0",
+  "FORCE_SOURCE_DATE=1"
+ ],
+ "compilers": [
+  {
+   "label": "main",
+   "ref": "origin/main",
+   "sha": "5b6911090e2dcbe807c6fb4d9e75cd4f214a2440",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "build_ok": true,
+   "note": "Issue fresh parent assignment revisions for immediate tandem worker pickup"
+  },
+  {
+   "label": "de1020c",
+   "ref": "de1020c",
+   "sha": "de1020cd0be7cede11be2691e00e7f5b15cb2224",
+   "crate": "crates/compiler",
+   "binary": "flashtex-compiler",
+   "build_ok": true,
+   "note": "compiler: add math, real font metrics and PDF output"
+  },
+  {
+   "label": "pipeline",
+   "ref": "origin/agent/mac-render-pipeline/unified",
+   "sha": "79ba728fb825df5b120509c9be2e9f3ba3cd9405",
+   "crate": "crates/render-pipeline",
+   "binary": "flashtex-render",
+   "build_ok": true,
+   "note": "Merge remote-tracking branch 'origin/main' into rp/resume"
+  }
+ ],
+ "pdf_writer": {
+  "ref": "5b5f7b5",
+  "sha": "5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c",
+  "path": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/builds/pdf-5b5f7b5bcbc44ba9376b3a237afe93ba1503d13c/crates/pdf/target/release/flashtex-pdf",
+  "embed": true,
+  "embed_font": "embedding subset of TimesNewRomanPSMT from /System/Library/Fonts/Supplemental/Times New Roman.ttf"
+ },
+ "dpi": 144.0,
+ "color_space": "sRGB IEC61966-2.1",
+ "pixel_format": "RGBA8, white opaque background",
+ "rasterizer": "tests/visual-corpus/harness/rasterize.swift (CoreGraphics CGPDFDocument -> CGBitmapContext; CoreText for preview-equivalent)",
+ "fixtures": [
+  {
+   "name": "01-plain-paragraph.tex",
+   "sha256": "223aac6742bf98c115d7205ebd17f8a1af86af09f40fbfcd706e930b8f40aa3b",
+   "meta_sha256": "69b6ddfcee5697dbf8b7adfad10ebda5dad24be7e4aa6aef2376e0796a352b21",
+   "purpose": "Single short line of body text: baseline position, left margin, glyph advance widths.",
+   "meta": {
+    "fixture": "01-plain-paragraph.tex",
+    "purpose": "Single short line of body text: baseline position, left margin, glyph advance widths.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "Times-Roman metrics"
+    ],
+    "notes": "Fits on one line in every engine; any x drift is pure advance-width error.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "02-wrapping-paragraph.tex",
+   "sha256": "e4f5d58b6d47897375a039282eec473f9c93af3c0569634e1f3585f9f112e624",
+   "meta_sha256": "cc1c9880f9afa1d8ea59a02ee68b584a2d06a7f02e087f3dfd5fab3f566cb750",
+   "purpose": "Two multi-line paragraphs that wrap; exercises line breaking, justification and paragraph skip.",
+   "meta": {
+    "fixture": "02-wrapping-paragraph.tex",
+    "purpose": "Two multi-line paragraphs that wrap; exercises line breaking, justification and paragraph skip.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "greedy line breaking (no justification)"
+    ],
+    "notes": "LaTeX justifies and hyphenates; FlashTeX is ragged-right and greedy, so word x deltas grow along each line.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "03-section-heading.tex",
+   "sha256": "96fa8f8be5ebe02a615691c5b6cf67b9dc75a0aba961a241d60461ad10780c85",
+   "meta_sha256": "e673904cd543a66e5717ce5022f772dce539354b422fc6558cfce0bea1be96ae",
+   "purpose": "Unnumbered section headings (secnumdepth 0): heading size, bold face, vertical skips before/after.",
+   "meta": {
+    "fixture": "03-section-heading.tex",
+    "purpose": "Unnumbered section headings (secnumdepth 0): heading size, bold face, vertical skips before/after.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section"
+    ],
+    "notes": "LaTeX uses \\Large\\bfseries (17.28pt at 12pt base); FlashTeX heading size is what the compiler reports.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "04-bold-emph.tex",
+   "sha256": "19ba4826ae3f479fedfadf597d6d9c68af38731392f4104d903694908b3daf83",
+   "meta_sha256": "1dbbdf364ea5e2bf2756b18205d11680ad8ee89363a8e500b583af424d8e32c6",
+   "purpose": "Inline font switches: bold, italic, nested.",
+   "meta": {
+    "fixture": "04-bold-emph.tex",
+    "purpose": "Inline font switches: bold, italic, nested.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\textbf",
+     "\\emph"
+    ],
+    "notes": "FlashTeX may render every word in Times-Roman regular; the metric then measures the missing face change.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "05-unicode.tex",
+   "sha256": "3656f7c08076a0b2aa4954e16499456657dbd600b44df68e70dd5648a8013309",
+   "meta_sha256": "4fc78860ee7dec8fc02874d8bed0d40a30283e3d0ddc6aa0c2cf5013af1c6886",
+   "purpose": "UTF-8 literals with diacritics and an em dash, plus the equivalent TeX accent commands and ---.",
+   "meta": {
+    "fixture": "05-unicode.tex",
+    "purpose": "UTF-8 literals with diacritics and an em dash, plus the equivalent TeX accent commands and ---.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "utf-8 literal text",
+     "accent commands (currently rendered as separate glyphs)"
+    ],
+    "notes": "Literal and command forms should be visually identical in a real TeX; the second half measures FlashTeX's accent-command gap.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "06-math-inline.tex",
+   "sha256": "f21876a4ef3db1c4f443e8fd4c3d6653390daefb9fbb30a78835d7e4e98cf6b6",
+   "meta_sha256": "2eac281c0fd8d368d8c767d7152b4e3696c647e91e07baa71b52099acd660d2a",
+   "purpose": "Inline math: fraction with rule, Greek letters, square root.",
+   "meta": {
+    "fixture": "06-math-inline.tex",
+    "purpose": "Inline math: fraction with rule, Greek letters, square root.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "$...$",
+     "\\frac",
+     "\\alpha",
+     "\\sqrt"
+    ],
+    "notes": "Compiler build main reports math as unimplemented (recovered); de1020c typesets it with Unicode symbols and U+2500 rules.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "07-math-display.tex",
+   "sha256": "73833d4b239902af54f40f0c252fad1c74f22dc53e053a4ef65df7c99815962a",
+   "meta_sha256": "3ebd3658132408d686e48a5b7c502981f22a1182a6905cb6c11d98c4a99dca55",
+   "purpose": "Displayed equation with sum limits, scripts and a fraction; display centring and vertical skips.",
+   "meta": {
+    "fixture": "07-math-display.tex",
+    "purpose": "Displayed equation with sum limits, scripts and a fraction; display centring and vertical skips.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\[...\\]",
+     "\\sum with limits",
+     "\\frac"
+    ],
+    "notes": "LaTeX places limits above/below a large operator in display style; FlashTeX places scripts as super/subscripts.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "08-two-page.tex",
+   "sha256": "1c7a5355db97a4ef1eb0e2c435702902d0b1704b04af555a86ce353eb9ba0026",
+   "meta_sha256": "9a96581db15502a4b0c4a84cbe069b1e9fcf0eca73f4ed240738f9a46fdd1f25",
+   "purpose": "Enough text to overflow to a second page; page count, page break position, second-page top margin.",
+   "meta": {
+    "fixture": "08-two-page.tex",
+    "purpose": "Enough text to overflow to a second page; page count, page break position, second-page top margin.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "page breaking"
+    ],
+    "notes": "Ten identical six-sentence paragraphs. No \\newpage: the break position is a layout result, not an instruction.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "09-mixed-document.tex",
+   "sha256": "3815168adff5d76cb1bf1bbc043a28cc2a48317d8d007e111d66c05d6e8823c9",
+   "meta_sha256": "73a415dba4819eabc6ec9c710b5cf26108484459c9a01aaabc51d9bb380d5275",
+   "purpose": "Everything together on one page: heading, font switches, Unicode, inline and display math, wrapping.",
+   "meta": {
+    "fixture": "09-mixed-document.tex",
+    "purpose": "Everything together on one page: heading, font switches, Unicode, inline and display math, wrapping.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "\\textbf",
+     "\\emph",
+     "utf-8",
+     "$...$",
+     "\\[...\\]",
+     "\\frac"
+    ],
+    "notes": "Integration case; large deltas here are expected to be the sum of the narrower cases.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "10-unicode-paragraph.tex",
+   "sha256": "c862912f9c40321eeabb00f79bc419d0607ea5ec709963b79cc279a43074c057",
+   "meta_sha256": "516f80d19f36ce828093d605f6a021405431267a7d34d755fba0d770637115f3",
+   "purpose": "Long UTF-8 paragraph: many accented letters, em/en dashes, curly and angle quotes, currency signs; wraps over several lines.",
+   "meta": {
+    "fixture": "10-unicode-paragraph.tex",
+    "purpose": "Long UTF-8 paragraph: many accented letters, em/en dashes, curly and angle quotes, currency signs; wraps over several lines.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "utf-8 literal text",
+     "paragraph"
+    ],
+    "notes": "Measures Unicode glyph coverage/advance widths and line breaking with non-ASCII words; pdflatex needs T1/utf8 — characters outside T1 (e.g. ǅ, ¥ in some encodings) may be reported as missing by the oracle log.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "11-nested-lists.tex",
+   "sha256": "56b9511e1048111d94c841a35e1d658e2de32b6f9f81ce1146206fd65cc439d5",
+   "meta_sha256": "d5b58492c2421b08e8527f471d6dfe4c34b9a959c9f179149fe72bb980ee3a56",
+   "purpose": "Nested itemize/enumerate: list indentation, bullets, numbering, vertical spacing.",
+   "meta": {
+    "fixture": "11-nested-lists.tex",
+    "purpose": "Nested itemize/enumerate: list indentation, bullets, numbering, vertical spacing.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "itemize/enumerate (EXPECTED UNSUPPORTED by both current compiler builds)"
+    ],
+    "expected_unsupported": true,
+    "notes": "The oracle is still rendered; FlashTeX is expected to emit diagnostics and/or render the item text as plain paragraphs. Large deltas are the expected, documented gap.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "12-justified-paragraphs.tex",
+   "sha256": "8b566fe1cee1915d8a23f4c07e698b2a7ff22ebbaa982af87a78f09159431f4b",
+   "meta_sha256": "66a7212c559e794f103ce73263a64bbdda6ebfcf4fff0724dd596671d5d49281",
+   "purpose": "Four justified multi-line paragraphs: interword stretch, hyphenation, paragraph skip accumulation.",
+   "meta": {
+    "fixture": "12-justified-paragraphs.tex",
+    "purpose": "Four justified multi-line paragraphs: interword stretch, hyphenation, paragraph skip accumulation.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "paragraph",
+     "greedy ragged-right breaking (no justification, no hyphenation)"
+    ],
+    "notes": "Isolates justification from everything else; compare with 02-wrapping-paragraph (two paragraphs).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "13-math-display-rich.tex",
+   "sha256": "7a0878277cb454bb9ab95355074865c6b129974a858fada268107ff7ef32541d",
+   "meta_sha256": "be614e2525e5c4fb099be92329aa8dac32373170b8dd1f0dfea43625737e26f7",
+   "purpose": "Display math with \\int and \\sum limits, \\frac, \\sqrt, superscripts and a \\left( ... \\right) pair.",
+   "meta": {
+    "fixture": "13-math-display-rich.tex",
+    "purpose": "Display math with \\int and \\sum limits, \\frac, \\sqrt, superscripts and a \\left( ... \\right) pair.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\[...\\]",
+     "\\int",
+     "\\sum",
+     "\\frac",
+     "\\sqrt",
+     "\\left/\\right (support unknown)"
+    ],
+    "notes": "Display box region metrics use this fixture; \\left( \\right) delimiters may be unsupported by the current compiler.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "14-math-inline-dense.tex",
+   "sha256": "4db4c0efbbe30c80fe412d56b521e697cfb55977d840b17b7a71aa0612189bc9",
+   "meta_sha256": "2ebc56bc902b32a068cc37e4315c4fb7da91d6bb02b9261cd976b44652202e79",
+   "purpose": "Many short inline math fragments in one wrapping line: inline math widths, script placement, line breaking around math.",
+   "meta": {
+    "fixture": "14-math-inline-dense.tex",
+    "purpose": "Many short inline math fragments in one wrapping line: inline math widths, script placement, line breaking around math.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "$...$",
+     "scripts",
+     "\\frac",
+     "\\sqrt",
+     "Greek"
+    ],
+    "notes": "Compiler build main has no math (recovered).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "15-three-page-sections.tex",
+   "sha256": "a40ef2bd5ea8649369965dceb92a4bd2edd099036ac4ed07620bbd5eaba6cfe5",
+   "meta_sha256": "d59ab5c9829386c40a40da3e1bf9429b62dde62b2d07f89b3f557f63b60fe493",
+   "purpose": "Three pages, one section per page, forced with \\newpage: page count, per-page heading position, top margin on pages 2-3.",
+   "meta": {
+    "fixture": "15-three-page-sections.tex",
+    "purpose": "Three pages, one section per page, forced with \\newpage: page count, per-page heading position, top margin on pages 2-3.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "\\newpage (support unknown; if ignored the page breaks come from overflow instead)"
+    ],
+    "notes": "Each section also has enough text to nearly fill a page so the layout is comparable even where \\newpage is ignored.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "16-heading-page-break.tex",
+   "sha256": "08d443b98d6f6f2a95940aaa57ac791c37ee9a96372e8fc76ec348c01ef5761c",
+   "meta_sha256": "8f32461c7649723acde36d68d2752b2679d10bdcad4ed31f0ee1741797f39668",
+   "purpose": "A section heading that lands at the bottom of page 1: LaTeX's club/widow and heading-keep rules move it to page 2.",
+   "meta": {
+    "fixture": "16-heading-page-break.tex",
+    "purpose": "A section heading that lands at the bottom of page 1: LaTeX's club/widow and heading-keep rules move it to page 2.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "\\section",
+     "page breaking (no keep-with-next expected)"
+    ],
+    "notes": "Where the heading falls is the whole point; compare page 1 bottom and page 2 top.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "17-apostrophes.tex",
+   "sha256": "bcfad1ab8a669d3f943755573b8d4f3d608bce1cdafe21a3a92440157dc627ab",
+   "meta_sha256": "5829d26ed8c73c81618817a5e47d09145eb818a40a6f1e3a8e5db504579e35e4",
+   "purpose": "ASCII apostrophes and TeX quote ligatures: quotesingle vs quoteright glyph and advance width (regression for the metrics bug found in issue #2).",
+   "meta": {
+    "fixture": "17-apostrophes.tex",
+    "purpose": "ASCII apostrophes and TeX quote ligatures: quotesingle vs quoteright glyph and advance width (regression for the metrics bug found in issue #2).",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "' -> quoteright",
+     "`` '' -> quotedblleft/right"
+    ],
+    "notes": "In TeX, ' is typeset as quoteright (’), not quotesingle; a compiler using quotesingle metrics drifts by the width difference per apostrophe.",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  },
+  {
+   "name": "18-ligatures.tex",
+   "sha256": "9a9ac05f3eca94365cbf3797e451180540e1684e2bf401936f1e50cf117ade5e",
+   "meta_sha256": "c7c98f444560d753e2a986bf8028081f2f328441d22428cafdf86332b8195c99",
+   "purpose": "ff/fi/fl/ffi/ffl ligature words: TeX substitutes ligature glyphs, changing advance widths and line breaks.",
+   "meta": {
+    "fixture": "18-ligatures.tex",
+    "purpose": "ff/fi/fl/ffi/ffl ligature words: TeX substitutes ligature glyphs, changing advance widths and line breaks.",
+    "expected_engines": [
+     "pdflatex",
+     "xelatex",
+     "lualatex"
+    ],
+    "flashtex_features": [
+     "no ligatures (documented gap)"
+    ],
+    "notes": "Word dx accumulates by the ligature width difference per occurrence; PDFKit may extract ligatures as U+FB00-FB04 (folded by the word normaliser).",
+    "page_size": "US letter 612x792pt (geometry default paper for article is letterpaper)",
+    "preamble_policy": "engine-specific apples-to-apples preamble is substituted by the harness; FlashTeX gets the body only"
+   }
+  }
+ ],
+ "work_dir": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z",
+ "native_preview": {
+  "method": "screencapture -x -o -l <CGWindowList id> of the running FlashTeXMac window; page rectangle detected as the largest white region bounded by the pane background; resampled with CoreGraphics high-quality interpolation to the 144-DPI raster size; the 'page N' caption region (bottom-right of the page) is masked white on the capture only",
+  "app": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/app2-169c2a80ad857c26bbf1e67d3168f5ca5fc03f23/apps/mac/.build/debug/FlashTeXMac",
+  "display": " Resolution: 3024 x 1964 Retina; Resolution: 1920 x 1080 (1080p FHD - Full High Definition);",
+  "dpi": 144.0,
+  "backing_scale_factors": [
+   2.0
+  ],
+  "resample_scale_min": 1.5242839352428394,
+  "resample_scale_max": 1.5242839352428394,
+  "entries": [
+   {
+    "fixture": "01-plain-paragraph",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 104 ms",
+    "window_id": "7189",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/01-plain-paragraph/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "pid": 37795,
+      "id": 7189,
+      "layer": 0,
+      "bounds": {
+       "Height": 948,
+       "Width": 900,
+       "X": 612,
+       "Y": 33
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "01-plain-paragraph",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 112 ms",
+    "window_id": "7206",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/01-plain-paragraph/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7206,
+      "name": "FlashTeX",
+      "pid": 38195,
+      "layer": 0,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "01-plain-paragraph",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 103 ms",
+    "window_id": "7232",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/01-plain-paragraph/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 38510,
+      "layer": 0,
+      "id": 7232,
+      "bounds": {
+       "Y": 33,
+       "Width": 900,
+       "Height": 948,
+       "X": 612
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "02-wrapping-paragraph",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 125 ms",
+    "window_id": "7246",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/02-wrapping-paragraph/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "layer": 0,
+      "bounds": {
+       "Y": 33,
+       "X": 612,
+       "Width": 900,
+       "Height": 948
+      },
+      "pid": 38637,
+      "id": 7246
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "02-wrapping-paragraph",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 105 ms",
+    "window_id": "7259",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/02-wrapping-paragraph/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 38736,
+      "name": "FlashTeX",
+      "bounds": {
+       "X": 612,
+       "Width": 900,
+       "Y": 33,
+       "Height": 948
+      },
+      "layer": 0,
+      "id": 7259
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "02-wrapping-paragraph",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 112 ms",
+    "window_id": "7272",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/02-wrapping-paragraph/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Height": 948,
+       "Width": 900,
+       "Y": 33,
+       "X": 612
+      },
+      "pid": 38783,
+      "name": "FlashTeX",
+      "id": 7272,
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "03-section-heading",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 115 ms",
+    "window_id": "7286",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/03-section-heading/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7286,
+      "layer": 0,
+      "bounds": {
+       "X": 612,
+       "Width": 900,
+       "Y": 33,
+       "Height": 948
+      },
+      "name": "FlashTeX",
+      "pid": 39142
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "03-section-heading",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 119 ms",
+    "window_id": "7299",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/03-section-heading/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "layer": 0,
+      "id": 7299,
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "Width": 900,
+       "X": 612
+      },
+      "name": "FlashTeX",
+      "pid": 39819
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "03-section-heading",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 121 ms",
+    "window_id": "7312",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/03-section-heading/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "layer": 0,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      },
+      "id": 7312,
+      "pid": 39917,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "04-bold-emph",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 112 ms",
+    "window_id": "7325",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/04-bold-emph/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 40011,
+      "layer": 0,
+      "id": 7325,
+      "bounds": {
+       "Height": 948,
+       "X": 612,
+       "Y": 33,
+       "Width": 900
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "04-bold-emph",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 112 ms",
+    "window_id": "7338",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/04-bold-emph/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Height": 948,
+       "X": 612,
+       "Y": 33,
+       "Width": 900
+      },
+      "layer": 0,
+      "name": "FlashTeX",
+      "id": 7338,
+      "pid": 40083
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "04-bold-emph",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 150 ms",
+    "window_id": "7351",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/04-bold-emph/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 40760,
+      "name": "FlashTeX",
+      "layer": 0,
+      "id": 7351,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "05-unicode",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 317 ms",
+    "window_id": "7368",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/05-unicode/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "id": 7368,
+      "layer": 0,
+      "pid": 40985,
+      "bounds": {
+       "Height": 948,
+       "Width": 900,
+       "Y": 33,
+       "X": 612
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "05-unicode",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 117 ms",
+    "window_id": "7382",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/05-unicode/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7382,
+      "pid": 41120,
+      "bounds": {
+       "X": 612,
+       "Height": 948,
+       "Width": 900,
+       "Y": 33
+      },
+      "name": "FlashTeX",
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "05-unicode",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 111 ms",
+    "window_id": "7396",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/05-unicode/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "X": 612,
+       "Y": 33,
+       "Width": 900,
+       "Height": 948
+      },
+      "name": "FlashTeX",
+      "layer": 0,
+      "id": 7396,
+      "pid": 41184
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "06-math-inline",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 118 ms",
+    "window_id": "7409",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/06-math-inline/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "pid": 41290,
+      "bounds": {
+       "Width": 900,
+       "X": 612,
+       "Y": 33,
+       "Height": 948
+      },
+      "id": 7409,
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "06-math-inline",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 204 ms",
+    "window_id": "7426",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/06-math-inline/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "layer": 0,
+      "name": "FlashTeX",
+      "pid": 41949,
+      "id": 7426,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      }
+     },
+     {
+      "name": "FlashTeX",
+      "id": 7424,
+      "pid": 41933,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      },
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "06-math-inline",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 112 ms",
+    "window_id": "7440",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/06-math-inline/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 42728,
+      "name": "FlashTeX",
+      "id": 7440,
+      "layer": 0,
+      "bounds": {
+       "X": 612,
+       "Y": 33,
+       "Height": 948,
+       "Width": 900
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "07-math-display",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 102 ms",
+    "window_id": "7453",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/07-math-display/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Width": 900,
+       "X": 612,
+       "Height": 948,
+       "Y": 33
+      },
+      "pid": 43076,
+      "name": "FlashTeX",
+      "layer": 0,
+      "id": 7453
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "07-math-display",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 103 ms",
+    "window_id": "7466",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/07-math-display/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 43259,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 612,
+       "Width": 900
+      },
+      "name": "FlashTeX",
+      "id": 7466,
+      "layer": 0
+     },
+     {
+      "name": "FlashTeX",
+      "id": 7477,
+      "pid": 43284,
+      "layer": 0,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 612,
+       "Width": 900
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "07-math-display",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 110 ms",
+    "window_id": "7482",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/07-math-display/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7482,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 612,
+       "Width": 900
+      },
+      "name": "FlashTeX",
+      "pid": 43417,
+      "layer": 0
+     },
+     {
+      "id": 7481,
+      "layer": 0,
+      "name": "FlashTeX",
+      "pid": 43410,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "08-two-page",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 126 ms",
+    "window_id": "7496",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      238,
+      1276
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 238
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      238,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/08-two-page/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Y": 33,
+       "Width": 900,
+       "Height": 948,
+       "X": 612
+      },
+      "layer": 0,
+      "id": 7496,
+      "pid": 44639,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "08-two-page",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 114 ms",
+    "window_id": "7510",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      268,
+      1306
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 268
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      268,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/08-two-page/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7510,
+      "name": "FlashTeX",
+      "layer": 0,
+      "pid": 44770,
+      "bounds": {
+       "Y": 33,
+       "X": 612,
+       "Width": 900,
+       "Height": 948
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "08-two-page",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 124 ms",
+    "window_id": "7525",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      238,
+      1276
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 238
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      238,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/08-two-page/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "X": 612,
+       "Y": 33,
+       "Width": 900,
+       "Height": 948
+      },
+      "id": 7525,
+      "name": "FlashTeX",
+      "layer": 0,
+      "pid": 44936
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "09-mixed-document",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 102 ms",
+    "window_id": "7538",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/09-mixed-document/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 45047,
+      "layer": 0,
+      "id": 7538,
+      "bounds": {
+       "Height": 948,
+       "X": 612,
+       "Y": 33,
+       "Width": 900
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "09-mixed-document",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 102 ms",
+    "window_id": "7551",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/09-mixed-document/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7551,
+      "pid": 45401,
+      "layer": 0,
+      "bounds": {
+       "X": 612,
+       "Y": 33,
+       "Height": 948,
+       "Width": 900
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "09-mixed-document",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 106 ms",
+    "window_id": "7564",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/09-mixed-document/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "layer": 0,
+      "name": "FlashTeX",
+      "bounds": {
+       "Height": 948,
+       "Width": 900,
+       "Y": 33,
+       "X": 612
+      },
+      "id": 7564,
+      "pid": 45785
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "10-unicode-paragraph",
+    "compiler": "main",
+    "app_status": "status: revision 2: recovered, 5 diagnostics in 112 ms",
+    "window_id": "7577",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/10-unicode-paragraph/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "Width": 900,
+       "X": 612
+      },
+      "layer": 0,
+      "name": "FlashTeX",
+      "id": 7577,
+      "pid": 45929
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "10-unicode-paragraph",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 101 ms",
+    "window_id": "7590",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/10-unicode-paragraph/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7590,
+      "pid": 46081,
+      "bounds": {
+       "Y": 33,
+       "Width": 900,
+       "X": 612,
+       "Height": 948
+      },
+      "name": "FlashTeX",
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "10-unicode-paragraph",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: recovered, 1 diagnostics in 105 ms",
+    "window_id": "7603",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/10-unicode-paragraph/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 46177,
+      "layer": 0,
+      "id": 7603,
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "X": 612,
+       "Width": 900
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "11-nested-lists",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 107 ms",
+    "window_id": "7616",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/11-nested-lists/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "layer": 0,
+      "id": 7616,
+      "name": "FlashTeX",
+      "pid": 46590,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "11-nested-lists",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: recovered, 7 diagnostics in 112 ms",
+    "window_id": "7631",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      344,
+      1382
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 344
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      344,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/11-nested-lists/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "id": 7631,
+      "pid": 47212,
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "X": 612,
+       "Width": 900
+      },
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "11-nested-lists",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 99 ms",
+    "window_id": "7644",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/11-nested-lists/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7644,
+      "bounds": {
+       "X": 612,
+       "Width": 900,
+       "Y": 33,
+       "Height": 948
+      },
+      "layer": 0,
+      "name": "FlashTeX",
+      "pid": 47319
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "12-justified-paragraphs",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 104 ms",
+    "window_id": "7657",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/12-justified-paragraphs/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "X": 612,
+       "Height": 948,
+       "Width": 900,
+       "Y": 33
+      },
+      "name": "FlashTeX",
+      "id": 7657,
+      "layer": 0,
+      "pid": 47396
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "12-justified-paragraphs",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 111 ms",
+    "window_id": "7672",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/12-justified-paragraphs/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7672,
+      "name": "FlashTeX",
+      "pid": 47522,
+      "layer": 0,
+      "bounds": {
+       "Y": 33,
+       "Width": 900,
+       "X": 612,
+       "Height": 948
+      }
+     },
+     {
+      "name": "FlashTeX",
+      "pid": 47517,
+      "layer": 0,
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "Width": 900,
+       "X": 756
+      },
+      "id": 7670
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "12-justified-paragraphs",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 107 ms",
+    "window_id": "7685",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/12-justified-paragraphs/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 48165,
+      "id": 7685,
+      "name": "FlashTeX",
+      "layer": 0,
+      "bounds": {
+       "Y": 33,
+       "Width": 900,
+       "X": 612,
+       "Height": 948
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "13-math-display-rich",
+    "compiler": "main",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 105 ms",
+    "window_id": "7701",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/13-math-display-rich/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 612,
+       "Width": 900
+      },
+      "layer": 0,
+      "pid": 48309,
+      "id": 7701
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "13-math-display-rich",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 131 ms",
+    "window_id": "7714",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      344,
+      1382
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 344
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      344,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/13-math-display-rich/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Y": 33,
+       "X": 612,
+       "Width": 900,
+       "Height": 948
+      },
+      "id": 7714,
+      "name": "FlashTeX",
+      "layer": 0,
+      "pid": 48502
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "13-math-display-rich",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 171 ms",
+    "window_id": "7727",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/13-math-display-rich/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "id": 7727,
+      "pid": 48618,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "X": 612,
+       "Height": 948
+      },
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "14-math-inline-dense",
+    "compiler": "main",
+    "app_status": "status: revision 2: recovered, 1 diagnostics in 149 ms",
+    "window_id": "7740",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/14-math-inline-dense/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "id": 7740,
+      "pid": 48746,
+      "bounds": {
+       "Width": 900,
+       "X": 612,
+       "Y": 33,
+       "Height": 948
+      },
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "14-math-inline-dense",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: recovered, 1 diagnostics in 143 ms",
+    "window_id": "7753",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      344,
+      1382
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 344
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      344,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/14-math-inline-dense/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7753,
+      "bounds": {
+       "Width": 900,
+       "Height": 948,
+       "X": 612,
+       "Y": 33
+      },
+      "pid": 49436,
+      "layer": 0,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "14-math-inline-dense",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 120 ms",
+    "window_id": "7767",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      329,
+      1367
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 329
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      329,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/14-math-inline-dense/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 49675,
+      "bounds": {
+       "X": 612,
+       "Width": 900,
+       "Height": 948,
+       "Y": 33
+      },
+      "layer": 0,
+      "id": 7767,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "15-three-page-sections",
+    "compiler": "main",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 123 ms",
+    "window_id": "7781",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      268,
+      1306
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 268
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      268,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/15-three-page-sections/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 49891,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "Height": 948,
+       "X": 612
+      },
+      "name": "FlashTeX",
+      "layer": 0,
+      "id": 7781
+     },
+     {
+      "bounds": {
+       "Height": 948,
+       "Width": 900,
+       "X": 756,
+       "Y": 33
+      },
+      "layer": 0,
+      "pid": 49889,
+      "name": "FlashTeX",
+      "id": 7780
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "15-three-page-sections",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 201 ms",
+    "window_id": "7795",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      328,
+      1366
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 328
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      328,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/15-three-page-sections/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 50595,
+      "bounds": {
+       "X": 612,
+       "Y": 33,
+       "Height": 948,
+       "Width": 900
+      },
+      "name": "FlashTeX",
+      "layer": 0,
+      "id": 7795
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "15-three-page-sections",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: recovered, 2 diagnostics in 109 ms",
+    "window_id": "7808",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      268,
+      1306
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 268
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      268,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/15-three-page-sections/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 51004,
+      "bounds": {
+       "Width": 900,
+       "Y": 33,
+       "X": 612,
+       "Height": 948
+      },
+      "id": 7808,
+      "layer": 0,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "16-heading-page-break",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 196 ms",
+    "window_id": "7821",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      238,
+      1276
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 238
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      238,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/16-heading-page-break/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 51539,
+      "layer": 0,
+      "bounds": {
+       "X": 612,
+       "Height": 948,
+       "Width": 900,
+       "Y": 33
+      },
+      "name": "FlashTeX",
+      "id": 7821
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "16-heading-page-break",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 118 ms",
+    "window_id": "7834",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      268,
+      1306
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 268
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      268,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/16-heading-page-break/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "Y": 33,
+       "Height": 948,
+       "Width": 900,
+       "X": 612
+      },
+      "name": "FlashTeX",
+      "pid": 51670,
+      "id": 7834,
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "16-heading-page-break",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 101 ms",
+    "window_id": "7847",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      238,
+      1276
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 238
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      238,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/16-heading-page-break/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7847,
+      "bounds": {
+       "Height": 948,
+       "X": 612,
+       "Width": 900,
+       "Y": 33
+      },
+      "pid": 51900,
+      "layer": 0,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "17-apostrophes",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 198 ms",
+    "window_id": "7860",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/17-apostrophes/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7860,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "Width": 900,
+       "X": 612
+      },
+      "pid": 52089,
+      "name": "FlashTeX",
+      "layer": 0
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "17-apostrophes",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 132 ms",
+    "window_id": "7875",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/17-apostrophes/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7875,
+      "bounds": {
+       "X": 612,
+       "Height": 948,
+       "Y": 33,
+       "Width": 900
+      },
+      "name": "FlashTeX",
+      "pid": 52846,
+      "layer": 0
+     },
+     {
+      "id": 7873,
+      "name": "FlashTeX",
+      "pid": 52840,
+      "layer": 0,
+      "bounds": {
+       "X": 756,
+       "Height": 948,
+       "Y": 33,
+       "Width": 900
+      }
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "17-apostrophes",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 116 ms",
+    "window_id": "7891",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/17-apostrophes/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "name": "FlashTeX",
+      "id": 7891,
+      "layer": 0,
+      "pid": 53780,
+      "bounds": {
+       "Y": 33,
+       "X": 612,
+       "Width": 900,
+       "Height": 948
+      }
+     },
+     {
+      "bounds": {
+       "Width": 900,
+       "X": 756,
+       "Y": 33,
+       "Height": 948
+      },
+      "pid": 53511,
+      "id": 7889,
+      "layer": 0,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "18-ligatures",
+    "compiler": "main",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 118 ms",
+    "window_id": "7906",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/18-ligatures/main/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "pid": 54502,
+      "name": "FlashTeX",
+      "id": 7906,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 612,
+       "Width": 900
+      },
+      "layer": 0
+     },
+     {
+      "layer": 0,
+      "pid": 54480,
+      "id": 7904,
+      "bounds": {
+       "Height": 948,
+       "Y": 33,
+       "X": 756,
+       "Width": 900
+      },
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "18-ligatures",
+    "compiler": "de1020c",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 160 ms",
+    "window_id": "7923",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      516,
+      1554
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 516
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      516,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/18-ligatures/de1020c/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "id": 7923,
+      "pid": 55583,
+      "layer": 0,
+      "bounds": {
+       "Height": 948,
+       "X": 612,
+       "Width": 900,
+       "Y": 33
+      },
+      "name": "FlashTeX"
+     },
+     {
+      "id": 7921,
+      "name": "FlashTeX",
+      "layer": 0,
+      "bounds": {
+       "X": 756,
+       "Y": 33,
+       "Width": 900,
+       "Height": 948
+      },
+      "pid": 55287
+     }
+    ],
+    "native_raster": true
+   },
+   {
+    "fixture": "18-ligatures",
+    "compiler": "pipeline",
+    "app_status": "status: revision 2: ok, 0 diagnostics in 110 ms",
+    "window_id": "7938",
+    "captured": true,
+    "page_rect": {
+     "aspect": 0.7728585178055823,
+     "background_rgb": [
+      30,
+      30,
+      30
+     ],
+     "expected_aspect": 0.7727272727272727,
+     "found": true,
+     "h": 1039,
+     "image_px": [
+      1800,
+      1896
+     ],
+     "raw_block": [
+      501,
+      1539
+     ],
+     "w": 803,
+     "x": 949,
+     "y": 501
+    },
+    "crop": {
+     "caption_masked": true,
+     "color_space": "sRGB IEC61966-2.1",
+     "crop_px": [
+      949,
+      501,
+      803,
+      1039
+     ],
+     "dpi": 0,
+     "format": "RGBA8 row-major top-down",
+     "height": 1584,
+     "page": 1,
+     "renderer": "native preview capture (screencapture), resampled",
+     "resampled_from_px": [
+      803,
+      1039
+     ],
+     "scale_x": 1.5242839352428394,
+     "scale_y": 1.5245428296438883,
+     "source": "/private/tmp/claude-501/-Users-jay3332-Projects-flashtex/e30fd4a4-f46a-4c3f-a28c-cbb8617b4425/scratchpad/vc/run-20260912T083316Z/native/18-ligatures/pipeline/window.png",
+     "width": 1224
+    },
+    "window": [
+     {
+      "bounds": {
+       "X": 612,
+       "Height": 948,
+       "Y": 33,
+       "Width": 900
+      },
+      "name": "FlashTeX",
+      "pid": 56602,
+      "id": 7938,
+      "layer": 0
+     },
+     {
+      "pid": 56306,
+      "layer": 0,
+      "bounds": {
+       "Height": 948,
+       "X": 756,
+       "Y": 33,
+       "Width": 900
+      },
+      "id": 7936,
+      "name": "FlashTeX"
+     }
+    ],
+    "native_raster": true
+   }
+  ],
+  "app_ref": "origin/agent/mac-claude-a/mac-shell",
+  "app_sha": "169c2a80ad857c26bbf1e67d3168f5ca5fc03f23"
+ },
+ "limitations": [
+  "Reference engines and fonts: pdflatex uses the psnfss `times` package (URW Nimbus Roman clone); xelatex and lualatex use the macOS system `Times New Roman` TrueType via fontspec. Neither is byte-identical to the Times-Roman standard-14 face CoreGraphics substitutes when rasterizing the FlashTeX PDF.",
+  "Compiler build `main` (origin/main) has no math support: math fixtures compile with status `recovered` and the math is rendered as plain text; `de1020c` typesets math with Unicode symbols and U+2500 rule runs.",
+  "The preview-equivalent raster re-implements the app's CoreText draw; it is not a capture of the SwiftUI preview.",
+  "Metrics are for these fixtures, this DPI, these builds and this machine only.",
+  "Exact-equality gates are the only acceptance signals; thresholds, SSIM, registration and regression numbers are diagnostics."
+ ],
+ "harness_files_sha256_at_run_start": {
+  "capture_native.sh": "9cde4db246ce33453a3d3959426eddb36bd098e6c43f8a0d2e83101c18391060",
+  "diff.py": "c642ee0111de8ba83ca6a7532222522966258d2a63d9d4ad8803a48edc9550c0",
+  "oracle-profile.json": "978bd7c999f4439534d031a44ecb91bcb428046142b376744c2a0c78ce70ccf1",
+  "pin_oracle.py": "faa4a098fdad3cc936551fe53fab69a7818e1eac09f511134f68ad58e376d7eb",
+  "rasterize.swift": "badbd7000dbabde746eb7600247b188029e7d9603ca7dfb47981bf28144a4079",
+  "reference-profile.json": "8a4fcb99d6b2f7e61a1fd175fa4ea94fe67866df654f60a11c767299395c4ed8",
+  "render_flashtex.sh": "d919f4418adbad72ed31c65f2db410b34a66bf308e5d71ea42e44f607c482353",
+  "render_reference.sh": "7b2adbbae51c7040cb2afc6d3a6881a8089948b44cc48ddd871e85bad9e7d08c",
+  "run.sh": "17fdb926162794cdcda921524e26ed2102d1ca9cbc421844316e982ccd4fba32",
+  "selftest.py": "0d4584bf07cd8bdb7d004da8e457e4052fa97502ae1d7abe56ee72b05c517b1a",
+  "thresholds.json": "701c9b9324decee0b3263f8dcf2c62b639c45ec65ef476491f6f1ea30515feff"
+ },
+ "stage_notes": [
+  "Reference and FlashTeX render stages ran once (run.sh, 20260912T083316Z; oracle-profile.json pinned from an independent render pass just before). The native capture (capture_native.sh, app 169c2a8 built from origin/agent/mac-claude-a/mac-shell, Retina display backing 2x, resample x1.524) was run afterwards on the same work dir and the diff stage re-executed once with --native; images/, metrics.json and report.md come from that execution. The capture pass that produced these rasters still used `pkill -x FlashTeXMac` before each launch (it terminated another lane's instance); capture_native.sh was fixed immediately afterwards (PID-scoped kill and window lookup, FLASHTEX_NO_ACTIVATE=1) and verified with one launch, but the 54 captures here predate that fix. rasterize.swift find-page was fixed between the first (44/54) and second (54/54) capture pass.",
+  "harness_files_sha256 lists the final harness files; harness_files_sha256_at_run_start the files when the render stages ran (diff.py, rasterize.swift find-page, capture_native.sh changed in between; render_reference.sh/render_flashtex.sh/run.sh unchanged)."
+ ]
+}
