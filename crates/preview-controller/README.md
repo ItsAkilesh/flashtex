@@ -40,3 +40,10 @@ FLASHTEX_TEST_COMPILER=/absolute/original/flashtex-compiler \
 Synthetic tests exercise the actual durable ledger and index with a clearly fake
 compiler. The opt-in original-compiler test additionally compiles persisted edited
 source. Neither proves reference-PDF parity or full TeX/package compatibility.
+
+`Preview::controller_total_ms` measures from the controller's successful edit call
+through observed compiler result, including the durable save and index update.
+For explicit compile/restart it starts at compile invocation. This still excludes
+UI event delivery before the worker call and actual painting afterward. Native
+code must also compare its own current editor revision at paint time; a worker
+freshness check alone is not an atomic transaction with the UI rendering thread.

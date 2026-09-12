@@ -20,6 +20,8 @@ pub struct Preview {
     pub source_versions: VersionSnapshot,
     pub result: Value,
     pub runtime_total_ms: f64,
+    /// Controller invocation through observed result, including successful save/index work.
+    pub controller_total_ms: f64,
 }
 #[derive(Debug)]
 pub enum Update {
@@ -35,7 +37,7 @@ pub struct Controller {
     index: ProjectIndex,
     runtime: Session,
     generation: u64,
-    submitted: Option<(String, VersionSnapshot)>,
+    submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
 }
 impl Controller {
@@ -117,6 +119,11 @@ impl Controller {
             Ok(_) => self.compile_current().err(),
             Err(error) => Some(format!("source saved; index recovery required: {error}")),
         };
+        if preview_error.is_none() {
+            if let Some((_, _, submitted_at)) = self.submitted.as_mut() {
+                *submitted_at = started;
+            }
+        }
         Ok(EditOutcome {
             document,
             preview_error,
@@ -124,6 +131,7 @@ impl Controller {
         })
     }
     pub fn compile_current(&mut self) -> Result<(), String> {
+        let started = Instant::now();
         if self.closed {
             return Err("project closed".into());
         }
@@ -156,14 +164,14 @@ impl Controller {
             documents,
         })?;
         self.generation = generation;
-        self.submitted = Some((id, self.index.snapshot()));
+        self.submitted = Some((id, self.index.snapshot(), started));
         Ok(())
     }
     /// Recheck immediately before applying a retained result on the UI thread.
     /// Dispatching a preview event is not permission to paint it after a newer edit.
     pub fn is_current_preview(&self, preview: &Preview) -> bool {
         !self.closed
-            && self.submitted.as_ref().is_some_and(|(id, snapshot)| {
+            && self.submitted.as_ref().is_some_and(|(id, snapshot, _)| {
                 id == &preview.request_id
                     && snapshot == &preview.source_versions
                     && snapshot == &self.index.snapshot()
@@ -183,9 +191,12 @@ impl Controller {
                     ..
                 } => {
                     if !self.closed
-                        && self.submitted.as_ref().is_some_and(|(expected, snapshot)| {
-                            expected == &id && snapshot == &current
-                        })
+                        && self
+                            .submitted
+                            .as_ref()
+                            .is_some_and(|(expected, snapshot, _)| {
+                                expected == &id && snapshot == &current
+                            })
                     {
                         Update::Preview(Preview {
                             request_id: id,
@@ -193,6 +204,14 @@ impl Controller {
                             source_versions: current.clone(),
                             result,
                             runtime_total_ms: total_ms,
+                            controller_total_ms: self
+                                .submitted
+                                .as_ref()
+                                .unwrap()
+                                .2
+                                .elapsed()
+                                .as_secs_f64()
+                                * 1000.0,
                         })
                     } else {
                         Update::Discarded { request_id: id }

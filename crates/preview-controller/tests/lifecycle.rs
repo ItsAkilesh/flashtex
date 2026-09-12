@@ -86,6 +86,8 @@ fn edit_persists_indexes_and_only_previews_current_revision() {
         })
         .collect();
     assert_eq!(previews.len(), 1);
+    assert!(previews[0].controller_total_ms >= previews[0].runtime_total_ms);
+    assert!(previews[0].controller_total_ms >= outcome.save_and_submit_ms);
     assert_eq!(previews[0].source_versions.documents["main.tex"], 2);
     drop(controller);
     assert_eq!(
@@ -205,4 +207,120 @@ fn original_compiler_renders_durable_updated_source() {
         .as_array()
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn retained_preview_is_invalid_after_new_edit_and_after_close() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.compile_current().unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let preview = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(controller.is_current_preview(&preview));
+    let before = controller.document("main.tex").unwrap().clone();
+    controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "new source".into(),
+        )
+        .unwrap();
+    assert!(!controller.is_current_preview(&preview));
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let current = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(controller.is_current_preview(&current));
+    controller.close().unwrap();
+    assert!(!controller.is_current_preview(&current));
+}
+
+#[test]
+fn stale_typing_cannot_overwrite_durable_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![store(dir.path())],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    let before = controller.document("main.tex").unwrap().clone();
+    controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "saved".into(),
+        )
+        .unwrap();
+    assert!(controller
+        .replace_document(
+            "main.tex",
+            before.revision,
+            &before.source_sha256,
+            "stale overwrite".into()
+        )
+        .is_err());
+    assert_eq!(controller.document("main.tex").unwrap().text, "saved");
+    drop(controller);
+    let recovered = store(dir.path());
+    let mut controller = Controller::new(
+        "p".into(),
+        "main.tex".into(),
+        vec![recovered],
+        command(dir.path(), ECHO),
+        Limits::default(),
+    )
+    .unwrap();
+    controller.compile_current().unwrap();
+    let events = wait(&mut controller, |events| {
+        events
+            .iter()
+            .any(|event| matches!(event, Update::Preview(_)))
+    });
+    let preview = events
+        .into_iter()
+        .find_map(|event| {
+            if let Update::Preview(p) = event {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(preview.source_versions.documents["main.tex"], 2);
 }
