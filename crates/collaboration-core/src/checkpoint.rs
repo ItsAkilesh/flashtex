@@ -29,6 +29,7 @@
 //! [`CheckpointError::TooLarge`] instead of producing an unboundedly large
 //! snapshot.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use crate::{Document, Element, OpId, ReplicaId};
@@ -87,9 +88,14 @@ impl Checkpoint {
 
     /// Decode a checkpoint previously produced by [`Checkpoint::to_bytes`].
     /// Bounded and non-panicking on malformed or truncated input: every
-    /// field is read through a length-checked cursor, and an out-of-range
+    /// field is read through a length-checked cursor, an out-of-range
     /// Unicode scalar value is rejected rather than producing an invalid
-    /// `char`.
+    /// `char`, and — see [`Checkpoint::validate`] — the decoded structure's
+    /// referential integrity is checked before it is ever handed back as a
+    /// `Checkpoint`. `bytes` is untrusted input (from a peer or from disk),
+    /// so this is the boundary where it must be fully validated: nothing
+    /// downstream (in particular `From<Checkpoint> for Document`, and the
+    /// restored `Document`'s own `apply`) re-checks it.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, CheckpointDecodeError> {
         let mut r = Reader::new(bytes);
         let max_elements = r.read_u64()? as usize;
@@ -116,11 +122,74 @@ impl Checkpoint {
         for _ in 0..delete_count {
             delete_op_ids.push(read_opid(&mut r)?);
         }
-        Ok(Checkpoint {
+        let checkpoint = Checkpoint {
             elements,
             delete_op_ids,
             max_elements,
-        })
+        };
+        checkpoint.validate()?;
+        Ok(checkpoint)
+    }
+
+    /// Check the referential integrity of a decoded structure before it
+    /// becomes a `Checkpoint` any caller can restore from.
+    ///
+    /// [`Document::apply`] only ever integrates an element whose `left` and
+    /// `right` anchors already resolve to elements present in the document
+    /// (see its `MissingDependency` check), and never lets an id be reused
+    /// across an `Insert` and a `Delete` (see `CrdtError::IdConflict`). A
+    /// `Document` built by replaying operations can therefore never violate
+    /// either invariant. A `Checkpoint` decoded from untrusted bytes has no
+    /// such history to fall back on — the bytes could claim anything — so
+    /// this reconstructs and checks those same invariants directly against
+    /// the decoded structure:
+    ///
+    /// - every `left`/`right` anchor must name an element actually present
+    ///   in this checkpoint ([`CheckpointDecodeError::DanglingAnchor`]),
+    /// - no element may name itself as its own anchor
+    ///   ([`CheckpointDecodeError::SelfReferentialAnchor`]) — the one
+    ///   "cycle" shape the anchor graph can express, since `left`/`right`
+    ///   are single-hop references an honest history can never point at the
+    ///   element being inserted (it doesn't exist yet at its own insertion
+    ///   time), and nothing in this crate ever *follows* an anchor chain
+    ///   recursively (`signed_index`/`right_bound` are one direct lookup
+    ///   each), so a longer cycle (`a.left == b.id && b.right == a.id`)
+    ///   cannot cause non-termination or a panic the way a dangling or
+    ///   self-referential anchor can; validating that such a pair also
+    ///   reflects a causally possible insertion order would need
+    ///   information this wire format does not carry (original insertion
+    ///   time), so it is deliberately not attempted here,
+    /// - no two elements may share an id
+    ///   ([`CheckpointDecodeError::DuplicateElementId`]) — required for
+    ///   "names an element actually present" to even be well-defined, and
+    ///   itself unreachable from any real `apply` history,
+    /// - no delete-operation id may collide with an element id
+    ///   ([`CheckpointDecodeError::DeleteIdReusedAsElementId`]) — the same
+    ///   id-reused-across-payload-kinds shape `CrdtError::IdConflict`
+    ///   rejects in `apply`, checked here for the checkpoint's frontier.
+    fn validate(&self) -> Result<(), CheckpointDecodeError> {
+        let mut element_ids = HashSet::with_capacity(self.elements.len());
+        for e in &self.elements {
+            if !element_ids.insert(e.id) {
+                return Err(CheckpointDecodeError::DuplicateElementId(e.id));
+            }
+        }
+        for e in &self.elements {
+            for anchor in [e.left, e.right].into_iter().flatten() {
+                if anchor == e.id {
+                    return Err(CheckpointDecodeError::SelfReferentialAnchor(e.id));
+                }
+                if !element_ids.contains(&anchor) {
+                    return Err(CheckpointDecodeError::DanglingAnchor(anchor));
+                }
+            }
+        }
+        for id in &self.delete_op_ids {
+            if element_ids.contains(id) {
+                return Err(CheckpointDecodeError::DeleteIdReusedAsElementId(*id));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -157,6 +226,30 @@ pub enum CheckpointDecodeError {
     Truncated,
     /// A stored `char` code point is not a valid Unicode scalar value.
     InvalidChar(u32),
+    /// Two elements in the decoded checkpoint share the same id. Element
+    /// ids must be unique for "an anchor names an element actually
+    /// present" to even be well-defined; no history reachable through
+    /// [`crate::Document::apply`] can produce this.
+    DuplicateElementId(OpId),
+    /// An element's `left` or `right` anchor is that element's own id. No
+    /// element can legitimately anchor to itself: at the time any real
+    /// insert is integrated, its own id has not been assigned to anything
+    /// yet, so it can never be a valid neighbor of itself.
+    SelfReferentialAnchor(OpId),
+    /// An element's `left` or `right` anchor names an id that does not
+    /// belong to any element in this checkpoint. This is the referential-
+    /// integrity gap [`crate::Document::apply`] closes for ordinary
+    /// operations (see `CrdtError::MissingDependency`) but which a decoded
+    /// checkpoint bypassed before this check existed: restoring a
+    /// `Document` with a dangling anchor and then integrating one more
+    /// ordinary operation over it panics.
+    DanglingAnchor(OpId),
+    /// An id recorded in the checkpoint's delete-operation frontier is also
+    /// used by an element, i.e. the same id was used by both an `Insert`
+    /// and a `Delete`. [`crate::Document::apply`] never allows an id to be
+    /// reused across payload kinds (see `CrdtError::IdConflict`); this is
+    /// the same shape of defect, checked for the checkpoint's frontier.
+    DeleteIdReusedAsElementId(OpId),
 }
 
 impl fmt::Display for CheckpointDecodeError {
@@ -168,6 +261,20 @@ impl fmt::Display for CheckpointDecodeError {
             CheckpointDecodeError::InvalidChar(code) => {
                 write!(f, "checkpoint contains an invalid char code point {code}")
             }
+            CheckpointDecodeError::DuplicateElementId(id) => {
+                write!(f, "checkpoint has two elements sharing id {id:?}")
+            }
+            CheckpointDecodeError::SelfReferentialAnchor(id) => {
+                write!(f, "checkpoint element {id:?} anchors to itself")
+            }
+            CheckpointDecodeError::DanglingAnchor(id) => write!(
+                f,
+                "checkpoint anchor references id {id:?}, which names no element"
+            ),
+            CheckpointDecodeError::DeleteIdReusedAsElementId(id) => write!(
+                f,
+                "checkpoint delete-operation id {id:?} is reused as an element id"
+            ),
         }
     }
 }
@@ -209,10 +316,19 @@ impl Document {
 }
 
 impl From<Checkpoint> for Document {
-    /// Resume a document from a checkpoint. Never fails: reconstructing is
+    /// Resume a document from a checkpoint. Never fails — but only because
+    /// every `Checkpoint` that can exist has already been validated by the
+    /// time it reaches here: both of its fields are private and this crate
+    /// exposes exactly two ways to produce one, [`Document::checkpoint`]
+    /// (whose source `Document` already satisfies every invariant `apply`
+    /// enforces) and [`Checkpoint::from_bytes`] (which rejects a decoded
+    /// structure that doesn't satisfy them, see [`Checkpoint::validate`]).
+    /// There is no third, unvalidated path. Given that, reconstructing is
     /// simply reinstating the stored element order and applied-id set
     /// verbatim (see the module docs for why this is exactly what
-    /// checkpoint equivalence requires).
+    /// checkpoint equivalence requires). If this crate ever grows another
+    /// way to construct a `Checkpoint`, that constructor — not this `From`
+    /// impl — is responsible for upholding the same invariant.
     fn from(checkpoint: Checkpoint) -> Self {
         let mut applied: std::collections::HashSet<OpId> =
             checkpoint.elements.iter().map(|e| e.id).collect();
@@ -391,6 +507,199 @@ mod tests {
         let restored = Document::from(cp);
         assert_eq!(restored.text(), "");
         assert_eq!(restored.len_chars(), 0);
+    }
+
+    // --- Referential-integrity validation (regression for the confirmed
+    // panic: a decoded checkpoint's `left`/`right` anchors were never
+    // checked against the actual element set, so `From<Checkpoint> for
+    // Document` — documented as "never fails" — could hand back a
+    // `Document` violating `apply`'s own invariant, and the very next
+    // ordinary edit touching the corrupted anchor crashed inside
+    // `signed_index`'s `.expect(...)` at what is now `lib.rs:294`/`306`.) --
+
+    fn id(counter: u64, replica: u64) -> OpId {
+        OpId {
+            counter,
+            replica: r(replica),
+        }
+    }
+
+    /// Confirms the exact scenario the audit describes actually panicked
+    /// before this fix: a checkpoint round-tripped through
+    /// `to_bytes`/`from_bytes`, restored into a `Document`, then one
+    /// ordinary edit landing in the gap that spans over a corrupted
+    /// tombstone. `integrate()` must inspect the tombstone's own `left`
+    /// field to place the new element, which used to panic via
+    /// `signed_index`'s `.expect(...)`. With the fix, `from_bytes` now
+    /// rejects the malicious bytes outright, so this never reaches restore
+    /// or integration at all.
+    #[test]
+    fn checkpoint_with_dangling_reference_is_rejected_not_left_to_panic_on_a_later_edit() {
+        let ghost = id(99, 7);
+        let id_a = id(1, 1);
+        let id_b = id(2, 1);
+        let id_c = id(3, 1);
+        let malicious = Checkpoint {
+            elements: vec![
+                Element {
+                    id: id_a,
+                    left: None,
+                    right: None,
+                    value: 'a',
+                    deleted: false,
+                },
+                Element {
+                    // Tombstoned so it's invisible to char_id_at, but still
+                    // structurally present between id_a and id_c.
+                    id: id_b,
+                    left: Some(ghost), // dangling: `ghost` names no element
+                    right: None,
+                    value: 'b',
+                    deleted: true,
+                },
+                Element {
+                    id: id_c,
+                    left: None,
+                    right: None,
+                    value: 'c',
+                    deleted: false,
+                },
+            ],
+            delete_op_ids: vec![],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::DanglingAnchor(ghost)),
+            "a dangling left/right anchor must be rejected at decode time"
+        );
+    }
+
+    #[test]
+    fn checkpoint_with_dangling_right_anchor_is_rejected() {
+        let ghost = id(42, 3);
+        let real = id(1, 1);
+        let malicious = Checkpoint {
+            elements: vec![Element {
+                id: real,
+                left: None,
+                right: Some(ghost),
+                value: 'a',
+                deleted: false,
+            }],
+            delete_op_ids: vec![],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::DanglingAnchor(ghost))
+        );
+    }
+
+    #[test]
+    fn checkpoint_element_anchored_to_itself_is_rejected() {
+        let self_id = id(7, 1);
+        let malicious = Checkpoint {
+            elements: vec![Element {
+                id: self_id,
+                left: Some(self_id), // an element cannot be its own neighbor
+                right: None,
+                value: 'a',
+                deleted: false,
+            }],
+            delete_op_ids: vec![],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::SelfReferentialAnchor(self_id))
+        );
+    }
+
+    #[test]
+    fn checkpoint_with_two_elements_sharing_an_id_is_rejected() {
+        let dup = id(5, 1);
+        let malicious = Checkpoint {
+            elements: vec![
+                Element {
+                    id: dup,
+                    left: None,
+                    right: None,
+                    value: 'a',
+                    deleted: false,
+                },
+                Element {
+                    id: dup, // same id as the element above
+                    left: None,
+                    right: None,
+                    value: 'b',
+                    deleted: false,
+                },
+            ],
+            delete_op_ids: vec![],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::DuplicateElementId(dup))
+        );
+    }
+
+    #[test]
+    fn checkpoint_with_delete_id_reused_as_an_element_id_is_rejected() {
+        let shared = id(3, 2);
+        let malicious = Checkpoint {
+            elements: vec![Element {
+                id: shared,
+                left: None,
+                right: None,
+                value: 'a',
+                deleted: false,
+            }],
+            // `shared` also claims to be a Delete operation's id: an id
+            // `apply` would never let be reused across payload kinds.
+            delete_op_ids: vec![shared],
+            max_elements: crate::DEFAULT_MAX_ELEMENTS,
+        };
+        let bytes = malicious.to_bytes();
+        assert_eq!(
+            Checkpoint::from_bytes(&bytes),
+            Err(CheckpointDecodeError::DeleteIdReusedAsElementId(shared))
+        );
+    }
+
+    #[test]
+    fn legitimate_checkpoint_with_deletes_still_round_trips_unchanged() {
+        // A real, `apply`-built document (inserts, a delete, and a tombstone
+        // sitting between two visible characters) must still round-trip
+        // through checkpoint/to_bytes/from_bytes exactly as before: the new
+        // validation must accept every honestly-produced checkpoint.
+        let mut doc = Document::new();
+        let mut b = OpBuilder::new(r(1));
+        for (i, ch) in "abcd".chars().enumerate() {
+            doc.apply(b.insert_at(&doc, i, ch).unwrap()).unwrap();
+        }
+        doc.apply(b.delete_at(&doc, 1).unwrap()).unwrap(); // tombstone 'b'
+        let cp = doc.checkpoint(100).unwrap();
+        let bytes = cp.to_bytes();
+        let decoded = Checkpoint::from_bytes(&bytes).expect("a legitimate checkpoint must decode");
+        assert_eq!(cp, decoded);
+
+        let restored = Document::from(decoded);
+        assert_eq!(restored.text(), doc.text());
+        assert_eq!(restored.text(), "acd");
+
+        // And restoring must still leave a fully functional Document that
+        // can take further ordinary edits without panicking.
+        let mut restored = restored;
+        let mut b2 = OpBuilder::new(r(2));
+        let op = b2.insert_at(&restored, 1, 'X').unwrap();
+        assert_eq!(restored.apply(op).unwrap(), ApplyOutcome::Applied);
+        assert_eq!(restored.text(), "aXcd");
     }
 
     #[test]
