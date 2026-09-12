@@ -41,11 +41,22 @@ seed the editor when present. `⌘R` reloads.
   newer one. `error` envelopes, undecodable lines, unsupported versions, and worker
   exit are reported in the banner. Oversized lines (>16 MiB) terminate the worker.
 
+- Capture review and insertion (contract "Capture and insertion", Mac side):
+  `Edit > Pin Insertion Point` (⌘⇧P) records the caret as a `destination_id`
+  anchor (UTF-8 byte offset + revision + following context). `Edit > Open Capture
+  Proposal…` (⌘⇧I) queues a `capture_proposal`; a review sheet shows editable
+  LaTeX, ambiguities, and required packages. Approve applies exactly one edit
+  through the text view's undo manager (⌘Z reverts). Repeated `capture_id`s never
+  insert twice. If the buffer changed since pinning, the anchor is rebased by its
+  context or, when the destination was deleted/ambiguous, reselection is required.
+  See `Samples/capture-proposal.json`. No network or Grok call is involved here.
+
 ## Targets
 
 - `FlashTeXProtocol` — Codable models for runtime v1 and byte-offset conversion.
 - `FlashTeXMac` — the app.
-- Tests (13): fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
+- Tests (19): anchor/rebase/reselection logic, review flow with duplicate
+  suppression, capture fixture decoding; plus fixture decoding, version/type rejection, unknown kinds, UTF-8→UTF-16
   conversion with multi-byte scalars, `ShellModel` load/navigate/stale behavior,
   line splitting/encoding, and a round trip through `Tests/.../fake_worker.py`
   (a Python test double, not a compiler) including error/garbage/exit paths and

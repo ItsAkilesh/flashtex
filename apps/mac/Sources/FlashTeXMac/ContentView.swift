@@ -91,8 +91,37 @@ struct ContentView: View {
             .padding(8)
             SourceEditorView(
                 text: Binding(get: { model.activeText }, set: { model.updateActiveText($0) }),
-                selection: model.selection
+                selection: model.selection,
+                pendingEdit: model.pendingEdit,
+                onCaretChange: { model.caretUTF16 = $0 },
+                onEditApplied: { model.editApplied($0, newText: $1) }
             )
+            captureBar
+        }
+    }
+
+    private var captureBar: some View {
+        HStack(spacing: 8) {
+            Button("Pin insertion point") { model.pinAnchorAtCaret() }
+                .help("Use the caret as the destination for capture proposals (⌘⇧P)")
+            if let a = model.anchor {
+                Text("anchor \(a.id) · \(a.path) byte \(a.byteOffset) @ rev \(a.revision)")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("no insertion point pinned").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if !model.proposals.isEmpty {
+                Button("Review \(model.proposals.count) proposal\(model.proposals.count == 1 ? "" : "s")") {
+                    model.reviewing = model.proposals.first
+                }
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(.bar)
+        .sheet(item: Binding(get: { model.reviewing.map { ReviewItem(proposal: $0) } },
+                             set: { model.reviewing = $0?.proposal })) { item in
+            ProposalReviewSheet(proposal: item.proposal)
         }
     }
 
@@ -132,11 +161,64 @@ struct ContentView: View {
             Text(model.navigationNote ?? "Click text in the preview to select its source range.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
+            if let note = model.captureNote {
+                Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 4)
     }
 
     private func statusColor(_ s: RuntimeV1.Status) -> Color {
         switch s { case .ok: .green; case .recovered: .orange; case .failed: .red }
+    }
+}
+
+
+private struct ReviewItem: Identifiable {
+    let proposal: RuntimeV1.CaptureProposal
+    var id: String { proposal.captureId }
+}
+
+/// Review sheet: the reviewer sees ambiguities and dependencies, may edit the
+/// LaTeX, and explicitly approves or rejects. Nothing is inserted otherwise.
+private struct ProposalReviewSheet: View {
+    @EnvironmentObject var model: ShellModel
+    @Environment(\.dismiss) private var dismiss
+    let proposal: RuntimeV1.CaptureProposal
+    @State private var latex: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Review capture \(proposal.captureId)").font(.headline)
+            if let a = model.anchor {
+                Text("Inserts at \(a.path) byte \(a.byteOffset) (anchor \(a.id))").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Label("No insertion point pinned — approve will fail until you pin one.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            TextEditor(text: $latex)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 140)
+                .border(.separator)
+            if !proposal.ambiguities.isEmpty {
+                Text("Ambiguities").font(.subheadline.bold())
+                ForEach(proposal.ambiguities, id: \.self) { Text("• \($0)").font(.caption) }
+            }
+            if !proposal.requiredDependencies.isEmpty {
+                Text("Required packages: " + proposal.requiredDependencies.joined(separator: ", ")).font(.caption)
+            }
+            HStack {
+                Button("Reject", role: .destructive) { model.rejectProposal(proposal); dismiss() }
+                Spacer()
+                Button("Approve and insert") {
+                    if case .inserted = model.approveProposal(proposal, latex: latex) { dismiss() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.anchor == nil || latex.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 520)
+        .onAppear { latex = proposal.latex }
     }
 }

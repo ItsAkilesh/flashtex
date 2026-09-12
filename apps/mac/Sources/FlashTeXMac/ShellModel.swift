@@ -23,6 +23,17 @@ final class ShellModel: ObservableObject {
     @Published var navigationNote: String?
     @Published var darkPreview = false
     @Published var previewSource: PreviewSource = .none
+
+    // Capture review / insertion (contract: "Capture and insertion").
+    struct PendingEdit: Equatable { var path: String; var nsRange: NSRange; var text: String; var token: Int }
+    @Published var caretUTF16: Int = 0
+    @Published var anchor: InsertionAnchor?
+    @Published var proposals: [RuntimeV1.CaptureProposal] = []
+    @Published var reviewing: RuntimeV1.CaptureProposal?
+    @Published var pendingEdit: PendingEdit?
+    @Published var captureNote: String?
+    private(set) var appliedCaptureIDs: Set<String> = []
+    private var nextAnchorNumber = 1
     @Published var workerStatus: String = "no worker attached"
     @Published var workerLog: [String] = []
     private var worker: WorkerClient?
@@ -216,6 +227,105 @@ final class ShellModel: ObservableObject {
     private func log(_ line: String) {
         workerLog.append(line)
         if workerLog.count > 200 { workerLog.removeFirst(workerLog.count - 200) }
+    }
+
+    // MARK: capture review and insertion
+
+    /// Pins the current caret as the insertion destination (`destination_id`).
+    func pinAnchorAtCaret() {
+        guard let anchor = Insertion.makeAnchor(id: "mac-anchor-\(nextAnchorNumber)", path: activePath,
+                                                text: activeText, caretUTF16: caretUTF16, revision: editorRevision)
+        else { captureNote = "Caret position is not valid."; return }
+        nextAnchorNumber += 1
+        self.anchor = anchor
+        captureNote = "Pinned \(anchor.id) at \(anchor.path) byte \(anchor.byteOffset) (revision \(anchor.revision))."
+    }
+
+    func openProposalPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose a runtime v1 capture_proposal JSON file"
+        if panel.runModal() == .OK, let url = panel.url { loadProposal(from: url) }
+    }
+
+    func loadProposal(from url: URL) {
+        do {
+            let env = try RuntimeV1.decodeCaptureProposal(Data(contentsOf: url))
+            enqueue(env.payload)
+        } catch {
+            captureNote = "Failed to load proposal: \(error)"
+        }
+    }
+
+    /// Queues a proposal for review. Repeated capture IDs never insert twice.
+    func enqueue(_ proposal: RuntimeV1.CaptureProposal) {
+        if appliedCaptureIDs.contains(proposal.captureId) {
+            captureNote = "Capture \(proposal.captureId) was already inserted; ignoring duplicate."
+            return
+        }
+        if proposals.contains(where: { $0.captureId == proposal.captureId }) {
+            captureNote = "Capture \(proposal.captureId) is already awaiting review."
+            return
+        }
+        proposals.append(proposal)
+        captureNote = "Proposal \(proposal.captureId) awaiting review (\(proposals.count) queued)."
+        if reviewing == nil { reviewing = proposals.first }
+    }
+
+    func rejectProposal(_ proposal: RuntimeV1.CaptureProposal) {
+        proposals.removeAll { $0.captureId == proposal.captureId }
+        if reviewing?.captureId == proposal.captureId { reviewing = proposals.first }
+        captureNote = "Rejected \(proposal.captureId)."
+    }
+
+    enum ApproveOutcome: Equatable { case inserted(byteOffset: Int), needsReselection(String), duplicate, noAnchor }
+
+    /// Applies one undoable edit after explicit approval. `latex` may have been
+    /// edited by the reviewer. Returns what happened so the UI can explain it.
+    @discardableResult
+    func approveProposal(_ proposal: RuntimeV1.CaptureProposal, latex: String) -> ApproveOutcome {
+        guard !appliedCaptureIDs.contains(proposal.captureId) else {
+            rejectProposal(proposal); captureNote = "Capture \(proposal.captureId) already inserted."; return .duplicate
+        }
+        guard let anchor else {
+            captureNote = "Pin an insertion point first (Edit > Pin Insertion Point)."; return .noAnchor
+        }
+        guard let doc = documents.first(where: { $0.path == anchor.path }) else {
+            captureNote = "Anchor document \(anchor.path) is not open."; return .needsReselection("document closed")
+        }
+        let byte: Int
+        switch Insertion.resolve(anchor, in: doc.text, revision: editorRevision) {
+        case .exact(let b), .rebased(let b): byte = b
+        case .needsReselection(let why):
+            self.anchor = nil
+            captureNote = "Cannot insert \(proposal.captureId): \(why). Pin a new insertion point."
+            return .needsReselection(why)
+        }
+        let insert = Insertion.insertionText(latex, into: doc.text, atByte: byte)
+        guard let ns = doc.text.nsRange(utf8Bytes: .init(path: anchor.path, startByte: byte, endByte: byte)) else {
+            captureNote = "Anchor offset is not a valid position."; return .needsReselection("invalid offset")
+        }
+        activePath = anchor.path
+        pendingEdit = .init(path: anchor.path, nsRange: ns, text: insert, token: (pendingEdit?.token ?? 0) + 1)
+        appliedCaptureIDs.insert(proposal.captureId)
+        proposals.removeAll { $0.captureId == proposal.captureId }
+        reviewing = proposals.first
+        // Keep the anchor after the inserted text so successive captures append in order.
+        self.anchor = InsertionAnchor(id: anchor.id, path: anchor.path, byteOffset: byte + insert.utf8.count,
+                                      revision: editorRevision, contextAfter: anchor.contextAfter)
+        captureNote = "Inserted \(proposal.captureId) at byte \(byte) (undo with ⌘Z)."
+        return .inserted(byteOffset: byte)
+    }
+
+    /// Called by the editor once it has applied a pending edit (with undo registered).
+    func editApplied(_ edit: PendingEdit, newText: String) {
+        if pendingEdit == edit { pendingEdit = nil }
+        updateActiveText(newText)
+        // The insertion is the edit that bumped the revision; the anchor is exact for it.
+        if let a = anchor, a.path == edit.path {
+            anchor = InsertionAnchor(id: a.id, path: a.path, byteOffset: a.byteOffset,
+                                     revision: editorRevision, contextAfter: a.contextAfter)
+        }
     }
 
     // MARK: repo discovery

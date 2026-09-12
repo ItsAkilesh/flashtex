@@ -1,0 +1,1 @@
+{"protocol_version": 1, "id": "sample-proposal-1", "type": "capture_proposal", "payload": {"capture_id": "sample-capture-1", "latex": "\\begin{equation}\n  \\int_0^1 x^2 \\, dx = \\frac{1}{3}\n\\end{equation}", "ambiguities": ["The upper limit could be 1 or l."], "required_dependencies": ["amsmath"]}}

@@ -11,6 +11,13 @@ struct FlashTeXMacApp: App {
                 .frame(minWidth: 900, minHeight: 560)
         }
         .commands {
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Open Capture Proposal…") { model.openProposalPanel() }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Compile Result Fixture…") { model.openFixturePanel() }
                     .keyboardShortcut("o")
