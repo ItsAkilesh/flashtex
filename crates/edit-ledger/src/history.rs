@@ -605,4 +605,47 @@ mod tests {
         );
         assert_eq!(store.history_status().unwrap().undo_labels.len(), 1);
     }
+    #[test]
+    fn history_limit_refuses_mutation_until_explicit_retention() {
+        let (_dir, mut store, _) = setup();
+        for index in 0..MAX_HISTORY_ENTRIES {
+            let current = store.document().unwrap().unwrap().clone();
+            store
+                .replace_document(
+                    current.revision,
+                    &current.source_sha256,
+                    format!("entry-{index}"),
+                )
+                .unwrap();
+        }
+        let current = store.document().unwrap().unwrap().clone();
+        assert_eq!(
+            store
+                .replace_document(
+                    current.revision,
+                    &current.source_sha256,
+                    "over limit".into()
+                )
+                .unwrap_err()
+                .code,
+            "history_full"
+        );
+        assert_eq!(store.document().unwrap().unwrap(), &current);
+        let policy = HistoryRetentionPolicy {
+            snapshot_token: store.export_recovery().unwrap().snapshot_token,
+            acknowledge_undo_redo_loss: true,
+            keep_latest_undo: 1,
+            keep_latest_redo: 0,
+        };
+        let report = store.retain_history(policy).unwrap();
+        assert_eq!(report.dropped_payloads, MAX_HISTORY_ENTRIES - 1);
+        store
+            .replace_document(
+                current.revision,
+                &current.source_sha256,
+                "after retention".into(),
+            )
+            .unwrap();
+        assert_eq!(store.history_status().unwrap().undo_labels.len(), 2);
+    }
 }
