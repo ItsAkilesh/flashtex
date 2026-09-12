@@ -1,6 +1,6 @@
 {
   "agent_id": "claude",
-  "next_index": 1,
+  "next_index": 2,
   "schema_version": 1,
   "steps": [
     {
@@ -10,8 +10,8 @@
         "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
       ],
       "allocation_id": "openai-kabir-plus-ft002-stage6",
-      "name": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
-      "objective": "Validate exact incremental-clean and bounded malformed delimiter/Greek fixture behavior with the existing render pipeline consumer",
+      "name": "ACK current session and review HW1 starred sectioning priority in the existing bounded compiler parser",
+      "objective": "ACK current session and review HW1 starred sectioning priority in the existing bounded compiler parser",
       "owned_paths": [
         "crates/compiler"
       ],
@@ -24,8 +24,22 @@
         "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
       ],
       "allocation_id": "openai-kabir-plus-ft002-stage6",
-      "name": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
-      "objective": "Resume one measured layout or allocation improvement only with unchanged full-output fixture equality and pinned timing evidence",
+      "name": "Consume reviewed exact-base candidate preserving numbering labels source spans macro arguments and incremental-clean equality",
+      "objective": "Consume reviewed exact-base candidate preserving numbering labels source spans macro arguments and incremental-clean equality",
+      "owned_paths": [
+        "crates/compiler"
+      ],
+      "timebox_minutes": 45
+    },
+    {
+      "acceptance": [
+        "Reproduce actual reference fixtures13/14 from render-pipeline evidence and remove only demonstrated parser blockers",
+        "Bound nesting and malformed delimiter recovery; preserve UTF8 source ranges and original font/glyph mapping gates",
+        "Full compiler tests and strict lint; no transferred math/paragraph/font edits, no raw PDF or native parity assertion"
+      ],
+      "allocation_id": "openai-kabir-plus-ft002-stage6",
+      "name": "Publish owned compiler implementation and meaningful full regression gates without duplicate producer parser or unsupported parity claims",
+      "objective": "Publish owned compiler implementation and meaningful full regression gates without duplicate producer parser or unsupported parity claims",
       "owned_paths": [
         "crates/compiler"
       ],

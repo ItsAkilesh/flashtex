@@ -181,6 +181,167 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
         .page(0, HintPolicy::Unhinted, MixedLimits::default())
         .unwrap();
     assert!(!batch.primitives().is_empty());
+    let searchable = bound.export_searchable(8 * 1024 * 1024).unwrap();
+    assert!(bound.export_searchable(1).is_err());
+    flashtex_pdf::verify::check_structure(&searchable.bytes).unwrap();
+    let pdf = flashtex_pdf::reader::PdfFile::parse(&searchable.bytes).unwrap();
+    let pages = pdf.pages().unwrap();
+    let fonts = pdf.page_fonts(pages[0]);
+    let exported_font = flashtex_pdf::compare::font_from_dict(&pdf, fonts["F1"]).unwrap();
+    let flashtex_pdf::exact::ExactFont::CidCff(cid) = exported_font else {
+        panic!("expected original-GID CFF subset")
+    };
+    let unicode =
+        flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    assert_eq!(unicode.get(&62).map(String::as_str), Some("H"));
+    assert!(unicode.values().any(|s| s == "fi"));
+    // Published producer65dbe7d, without JSON repair, is now accepted end to end.
+    let published = include_bytes!("fixtures/original-reference/65dbe7d-clean-v2.json");
+    let published_resources =
+        BTreeMap::from([(digest(font), resources.values().next().unwrap().clone())]);
+    let published = PipelineCff::bind(published, &caps, &docs, &published_resources).unwrap();
+    let original_pdf = published.export_searchable(8 * 1024 * 1024).unwrap();
+    let escaped_request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-request.jsonl"
+    ))
+    .unwrap();
+    let escaped_docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: escaped_request["payload"]["documents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .into(),
+        },
+    )]);
+    let escaped = PipelineCff::bind(
+        include_bytes!("fixtures/original-reference/escaped-display.json"),
+        &caps,
+        &escaped_docs,
+        &published_resources,
+    )
+    .unwrap();
+    assert_eq!(
+        escaped.export_searchable(8 * 1024 * 1024).unwrap().bytes,
+        include_bytes!("fixtures/pdf-subset-20e5277/escaped.pdf")
+    );
+
+    let unavailable = PipelineCff::bind(
+        include_bytes!("fixtures/original-reference/65dbe7d-required-unavailable.json"),
+        &caps,
+        &docs,
+        &published_resources,
+    )
+    .unwrap();
+    assert_eq!(
+        unavailable
+            .export_searchable(8 * 1024 * 1024)
+            .err()
+            .unwrap()
+            .0,
+        "error diagnostics prevent searchable export"
+    );
+    assert_eq!(
+        original_pdf.bytes,
+        include_bytes!("fixtures/pdf-subset-20e5277/plain.pdf")
+    );
+
+    // Explicit consumer extraction fixture with a real empty-outline space,
+    // repeated original GIDs, and a single-glyph multi-character ligature.
+    use flashtex_font_engine::Face;
+    let face = flashtex_font_engine::TrueTypeFace::parse(font.to_vec()).unwrap();
+    let space = face.glyph_id(' ').unwrap().0;
+    let fi = *unicode.iter().find(|(_, s)| s.as_str() == "fi").unwrap().0;
+    let text = "H H fi";
+    let mut extraction = hypothetical.clone();
+    let mut run = extraction["payload"]["pages"][0]["items"][0].clone();
+    run["text"] = text.into();
+    let spans = [
+        (0, 1, 62u16),
+        (1, 2, space),
+        (2, 3, 62u16),
+        (3, 4, space),
+        (4, 6, fi),
+    ];
+    run["glyphs"]=serde_json::json!(spans.iter().enumerate().map(|(i,(_,_,gid))|serde_json::json!({"gid":gid,"origin_x":75497472+i as i64*10000000,"baseline_y":88033374,"advance_x":10000000,"advance_y":0,"cluster":i})).collect::<Vec<_>>());
+    run["clusters"]=serde_json::json!(spans.iter().enumerate().map(|(i,(a,b,_))|serde_json::json!({"text_start_byte":a,"text_end_byte":b,"hit_rects":[{"x":75497472+i as i64*10000000,"top":78033374,"width":10000000,"height":10000000}],"carets":[{"text_byte":a,"x":75497472+i as i64*10000000,"top":78033374,"height":10000000}],"sources":[{"path":"main.tex","start_byte":a,"end_byte":b}]})).collect::<Vec<_>>());
+    extraction["payload"]["pages"][0]["items"] = serde_json::json!([run]);
+    extraction["payload"]["documents"][0]["byte_length"] = text.len().into();
+    extraction["payload"]["documents"][0]["sha256"] = digest(text.as_bytes()).into();
+    let extraction_docs = BTreeMap::from([(
+        "main.tex".into(),
+        SourceSnapshot {
+            revision: 1,
+            text: text.into(),
+        },
+    )]);
+    let extraction = PipelineCff::bind(
+        &serde_json::to_vec(&extraction).unwrap(),
+        &caps,
+        &extraction_docs,
+        &resources,
+    )
+    .unwrap();
+    let exported = extraction.export_searchable(8 * 1024 * 1024).unwrap();
+    let file = flashtex_pdf::reader::PdfFile::parse(&exported.bytes).unwrap();
+    let page = file.pages().unwrap()[0];
+    let fonts = file.page_fonts(page);
+    let flashtex_pdf::exact::ExactFont::CidCff(cid) =
+        flashtex_pdf::compare::font_from_dict(&file, fonts["F1"]).unwrap()
+    else {
+        unreachable!()
+    };
+    let mapping =
+        flashtex_pdf::exact::parse_to_unicode(cid.to_unicode_verbatim.as_deref().unwrap()).unwrap();
+    let mut extracted = String::new();
+    for op in flashtex_pdf::exact::parse(&file.page_content(page).unwrap()).unwrap() {
+        if let flashtex_pdf::exact::Op::ShowText(bytes) = op {
+            let (gids, remainder) = bytes.as_chunks::<2>();
+            assert!(remainder.is_empty());
+            for g in gids {
+                extracted.push_str(&mapping[&u16::from_be_bytes([g[0], g[1]])]);
+            }
+        }
+    }
+    assert_eq!(extracted, text);
+
+    let mut ambiguous = hypothetical.clone();
+    let repeated_gid = ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][1]["gid"].clone();
+    ambiguous["payload"]["pages"][0]["items"][0]["glyphs"][0]["gid"] = repeated_gid;
+    let ambiguous = PipelineCff::bind(
+        &serde_json::to_vec(&ambiguous).unwrap(),
+        &caps,
+        &docs,
+        &resources,
+    )
+    .unwrap();
+    assert_eq!(
+        ambiguous
+            .export_searchable(8 * 1024 * 1024)
+            .err()
+            .unwrap()
+            .0,
+        "ambiguous GID text requires ActualText support"
+    );
+    let mut multiple = hypothetical.clone();
+    let g = multiple["payload"]["pages"][0]["items"][0]["glyphs"][0].clone();
+    multiple["payload"]["pages"][0]["items"][0]["glyphs"]
+        .as_array_mut()
+        .unwrap()
+        .push(g);
+    let multiple = PipelineCff::bind(
+        &serde_json::to_vec(&multiple).unwrap(),
+        &caps,
+        &docs,
+        &resources,
+    )
+    .unwrap();
+    assert_eq!(
+        multiple.export_searchable(8 * 1024 * 1024).err().unwrap().0,
+        "multi-glyph cluster requires ActualText support"
+    );
+
     assert!(batch
         .primitives()
         .iter()
@@ -205,4 +366,64 @@ fn explicit_cff_contract_binds_bytes_and_budgets_atomically() {
             }
         )
         .is_err());
+}
+
+#[test]
+fn reviewable_producer_candidate_changes_only_raw_digest() {
+    let base: Value = serde_json::from_slice(
+        include_bytes!("fixtures/original-reference/4888-matched.jsonl")
+            .split(|b| *b == b'\n')
+            .nth(1)
+            .unwrap(),
+    )
+    .unwrap();
+    let candidate: Value = serde_json::from_slice(include_bytes!(
+        "../docs/handoffs/pipeline-4888a67-candidate.json"
+    ))
+    .unwrap();
+    let raw = digest(include_bytes!(
+        "fixtures/original-reference/lmroman12-regular.otf"
+    ));
+    let mut expected = base.clone();
+    expected["payload"]["fonts"][0]["sha256"] = raw.into();
+    assert_eq!(candidate, expected);
+    assert_eq!(
+        candidate["payload"]["fonts"][0]["font_id"],
+        base["payload"]["fonts"][0]["font_id"]
+    );
+}
+
+#[test]
+fn actual_escape_text_is_distinct_from_tex_source_spelling() {
+    let request: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-request.jsonl"
+    ))
+    .unwrap();
+    let source = request["payload"]["documents"][0]["text"].as_str().unwrap();
+    let display: Value = serde_json::from_slice(include_bytes!(
+        "fixtures/original-reference/escaped-display.json"
+    ))
+    .unwrap();
+    assert!(display["payload"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    for symbol in ["%", "_", "&", "#", "{", "}"] {
+        let run = display["payload"]["pages"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["text"] == symbol)
+            .unwrap();
+        let span = &run["clusters"][0]["sources"][0];
+        assert_eq!(
+            &source[span["start_byte"].as_u64().unwrap() as usize
+                ..span["end_byte"].as_u64().unwrap() as usize],
+            format!("\\{symbol}")
+        );
+    }
+    assert_eq!(
+        include_str!("fixtures/original-reference/escaped-extracted.txt"),
+        "Escaped % _ & # { } and office fi.\n\n\u{c}"
+    );
 }

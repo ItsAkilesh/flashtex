@@ -24,6 +24,10 @@ impl HistoricalPreview {
     pub fn source_versions(&self) -> &VersionSnapshot {
         &self.source_versions
     }
+    /// Move the validated result into a wire frame without cloning its display list.
+    pub fn into_result(self) -> Value {
+        self.result
+    }
     pub fn result(&self) -> &Value {
         &self.result
     }

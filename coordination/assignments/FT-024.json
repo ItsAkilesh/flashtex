@@ -1,22 +1,22 @@
 {
   "acceptance": [
-    "Meaningful bounded behavior tests and strict lint pass",
-    "Preserve exact identities; publish measured evidence and unsupported gates"
+    "Meaningful bounded tests and strict lint pass; exact identities and typed unsupported outcomes preserved",
+    "No new worker/provider/native activation, copied reference implementation or unsupported parity claim"
   ],
   "agent_id": "commander-font-resources",
   "allocation_id": "hosted-openai-product",
   "branch": "agent/commander-corpus/font-resources",
   "deadline_utc": null,
   "dependencies": [],
-  "input_main_sha": "6c56263b4f3b8cf85370b6a9cedfd56566b26c1a",
-  "objective": "Validate actual pipeline consumer migration against matching metrics and fix only demonstrated shared-adapter gaps",
+  "input_main_sha": "ca3f9e8e7931245cc3d9d407069a63ae634e1a50",
+  "objective": "Feed exact rational outlines through existing matrix APIs only with verified declarative context; preserve widths and immutable identities",
   "owned_paths": [
     "crates/font-resources"
   ],
-  "revision": 15,
+  "revision": 17,
   "schema_version": 1,
-  "state": "assigned",
+  "state": "cancelled",
   "task_id": "FT-024",
-  "timebox_minutes": 30,
-  "updated_utc": "2026-09-12T09:45:44Z"
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T10:53:39.658079+00:00"
 }

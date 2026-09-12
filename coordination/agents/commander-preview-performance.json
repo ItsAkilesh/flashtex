@@ -3,28 +3,33 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-048": {
-      "acknowledged_utc": "2026-09-12T09:18:15Z",
-      "adaptation": "Current main merged; exclusive document-runtime and preview-controller scope. Prototype bounded opt-in historical completion side channel with immutable identity; no Event::Preview semantics or native wire activation change.",
-      "main_sha": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-      "revision": 3
+      "acknowledged_utc": "2026-09-12T16:24:59Z",
+      "adaptation": "Read r44 owned preview edit/index/submit audit. Static inspection finds metadata replacement already moves source and borrows it for indexing; required full-source clone crosses owned runtime Request API. No speculative implementation or runtime edits; report audit and request owner coordination for substantive ownership change.",
+      "main_sha": "0294d2ca48cbfd497c6b549deb7575fbcec4a4b8",
+      "revision": 44
     }
   },
   "branch": "agent/commander-preview-performance/preview-performance",
   "capabilities": [
     "Preview helper serialization and latency"
   ],
-  "code_revision": "c07f7ba69f18038821c406309e99080675c33b78",
-  "eta_minutes": null,
+  "code_revision": "8dd9170dccc9f2a809c5537ca13c08459d4c91f5",
+  "eta_minutes": {
+    "likely": 15,
+    "optimistic": 5,
+    "pessimistic": 30
+  },
   "machine": "linux-primary",
-  "main_integrated_through": "e5901797e8a7ebdd8d714ecdee6793e1097515a9",
-  "next_action": "Native parent remeasure integratedcompiler/helper on sameMac; await snapshot protocol agreement while maintainingstrictdefault.",
+  "main_integrated_through": "8b676e7212042493c690848026cc33cc1900b0fe",
+  "next_action": "Commander coordinate runtime owner for borrowed/request ownership investigation if prioritized; root can adapt helper to a reviewed API. Await Kabir Text overlap acknowledgement. All owned processes terminal; ready for authority transfer fence.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Samehelper50KB30msburst serializerbaseline1currentpreview\u2192candidate12,40/40durableACKs,2exactcleanfinals/reopens. Final90.477\u219243.166ms;8stale candidateframes remain,no perkeystroke/nativeclaim.",
+  "state": "ready_for_integration",
+  "summary": "FT048r44 static audit completed at8dd9170d: metadata edits move replacement source into durable store, borrow saved source for indexing and return source-free metadata. Remaining full-source copy in compile_current_with_admission supplies runtime-owned InputDocument strings. No material removable source copy found within owned paths; no speculative code changes or benchmark sweep. Current-base Text handoff8b/8dd remains no-build and fenced.",
   "tool": "Codex GPT-6 Astra",
-  "updated_utc": "2026-09-12T09:37:15Z",
+  "updated_utc": "2026-09-12T16:25:15Z",
   "usage": {
-    "status": "unknown"
+    "evidence": "crates/preview-controller/src/metadata_edit.rs; crates/preview-controller/src/lib.rs:312; crates/preview-controller/src/lib.rs:444; crates/document-runtime/src/lib.rs:28",
+    "status": "Existing hosted allocation only; no paid API or CLI calls; remaining quota unknown."
   }
 }

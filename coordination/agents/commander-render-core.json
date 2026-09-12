@@ -3,10 +3,10 @@
   "allocation_id": "hosted-openai-product",
   "assignment_acknowledgements": {
     "FT-023": {
-      "acknowledged_utc": "2026-09-12T09:36:11Z",
-      "adaptation": "Use unchanged pipeline9bb7b27 and committed established-LaTeX PDF; preserve source transformations and ABI limitations.",
-      "main_sha": "284369de3fd2af4384c3de2d2403801dffbcf94b",
-      "revision": 7
+      "acknowledged_utc": "2026-09-12T14:14:35Z",
+      "adaptation": "Read exact assignment at 228c5fa1. Source-pinned rendering invariants and bounded reconstruction handoff only; no wire/native activation.",
+      "main_sha": "228c5fa11b892bf74e5ed5aad86a2013e930e988",
+      "revision": 23
     }
   },
   "branch": "agent/commander-render-core/rendering-core",
@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "8131778accccd88006bf7c2a80fbdf6ac5bbbca5",
+  "code_revision": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
   "eta_minutes": {
-    "likely": 15,
-    "optimistic": 5,
-    "pessimistic": 25
+    "likely": 3,
+    "optimistic": 1,
+    "pessimistic": 5
   },
   "machine": "linux-primary",
-  "main_integrated_through": "9d09582794299aee7ef751c77167130820d35be4",
-  "next_action": "Await producer rawSHA fix while continuing bounded malformed-resource followup; keep exact adapter refusal and no visual claim.",
+  "main_integrated_through": "a5e7fa7c026193e04ca3acf69207d5ef562013b5",
+  "next_action": "Owner correct script evidence and run matching pixel/extraction gates; root reviews compiler/bounds",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "in_progress",
-  "summary": "Replayed current4888a67 with matched/missing TFM and capped optional v2. Added bounded correlated sibling gate and explicit reference-metrics refusal; actual rawSHA defect remains.",
+  "state": "ready_for_integration",
+  "summary": "Reviewed Text owner65ce; targeted metrics fixes evidenced, script unchanged claim disproved by own pair",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T09:50:31Z",
+  "updated_utc": "2026-09-12T16:37:17Z",
   "usage": {
-    "evidence": "155 tests and strictclippy pass. Current legacy PDF/reference comparison differs; matched actual CFF adapter refuses resource metadata mismatch. GH2 comment5645134718. MissingTFM warning/recovered now verified. No pending calls.",
-    "status": "Hosted OpenAI only; no providers or descendants."
+    "evidence": "Nine declared hashes match; five baseline JSON frames match f261; superscript baseline delta122743 ticks",
+    "status": "Read-only existing peer artifacts; no build/provider/descendant"
   }
 }

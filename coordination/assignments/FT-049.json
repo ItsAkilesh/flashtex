@@ -1,0 +1,23 @@
+{
+  "acceptance": [
+    "Preserve exact source hash/byte boundaries including ASCII and UTF8 endpoints",
+    "Preserve failure rollback, stale source proof, fairness and contiguous sibling validation",
+    "No helper/ledger/API adoption before independent review"
+  ],
+  "agent_id": "commander-runtime-display",
+  "allocation_id": "hosted-openai-product",
+  "branch": "agent/commander-runtime-display/display-runtime",
+  "deadline_utc": null,
+  "dependencies": [],
+  "input_main_sha": "ce7b6d0cf32358a379baa1be757d79e74886a3f8",
+  "objective": "Verify captured and mutation stale/current acceptance equivalence before comparing costs",
+  "owned_paths": [
+    "crates/document-runtime"
+  ],
+  "revision": 49,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-049",
+  "timebox_minutes": 40,
+  "updated_utc": "2026-09-12T16:35:39Z"
+}

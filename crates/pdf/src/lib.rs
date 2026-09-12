@@ -28,6 +28,8 @@ pub mod protocol;
 pub mod reader;
 pub mod sha256;
 pub mod truetype;
+pub mod type1;
+pub mod v2;
 pub mod verify;
 pub mod writer;
 

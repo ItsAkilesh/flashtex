@@ -13,7 +13,10 @@ Successful source persistence precedes index update and compilation. An `Ok`
 subsequent cache/compiler failure without pretending the source save failed.
 Storage uncertainty returns an error and requires dropping/reopening the ledger.
 
-`poll` delivers only previews matching the current complete source version vector.
+`poll` delivers only previews matching the current compile generation, request
+identity and complete source version vector. `is_current_preview` checks the same
+compile generation explicitly; matching source revisions alone do not survive a
+compiler restart.
 Before painting a retained event, native code must recheck `is_current_preview` on
 the serialized controller worker: a newer edit may have arrived since delivery.
 `close` cancels publication and further edits. Drop releases source store locks.

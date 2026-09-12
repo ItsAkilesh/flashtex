@@ -21,6 +21,7 @@ use crate::exact::{
 };
 use crate::reader::{Obj, PdfFile, render};
 use crate::sha256;
+use crate::type1::Type1Font;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -61,6 +62,85 @@ pub struct Report {
     pub content_ops_identical: Vec<bool>,
     /// Per page and font resource name: true when program bytes are identical.
     pub font_program_identical: BTreeMap<String, bool>,
+    /// Per paired Type 1 font: true when every glyph both programs embed
+    /// decrypts to the same charstring (the apples-to-apples measure for
+    /// subsets whose bytes differ).
+    pub font_charstrings_identical: BTreeMap<String, bool>,
+}
+
+/// Glyph-level comparison of two embedded Type 1 programs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Type1Comparison {
+    pub identical: Vec<String>,
+    pub differing: Vec<String>,
+    pub only_a: Vec<String>,
+    pub only_b: Vec<String>,
+    /// Every subroutine any common glyph reaches decrypts identically.
+    pub subrs_identical: bool,
+}
+
+fn type1_from_font_dict(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<Type1Font, String> {
+    let desc = f
+        .get(d, "FontDescriptor")
+        .and_then(Obj::as_dict)
+        .ok_or("no FontDescriptor")?;
+    match font_program(f, desc)? {
+        Some(FontProgram::Type1 {
+            bytes,
+            length1,
+            length2,
+            length3,
+        }) => {
+            Type1Font::parse_program(&bytes, length1, length2, length3).map_err(|e| e.to_string())
+        }
+        _ => Err("not a Type 1 FontFile".into()),
+    }
+}
+
+/// Compares the charstrings of two embedded Type 1 programs glyph by glyph.
+pub fn type1_charstrings(
+    fa: &PdfFile,
+    da: &BTreeMap<String, Obj>,
+    fb: &PdfFile,
+    db: &BTreeMap<String, Obj>,
+) -> Result<Type1Comparison, String> {
+    let a = type1_from_font_dict(fa, da)?;
+    let b = type1_from_font_dict(fb, db)?;
+    let names_a: BTreeSet<String> = a.glyph_names().map(String::from).collect();
+    let names_b: BTreeSet<String> = b.glyph_names().map(String::from).collect();
+    let mut out = Type1Comparison {
+        subrs_identical: true,
+        ..Default::default()
+    };
+    let mut common = BTreeSet::new();
+    for n in names_a.union(&names_b) {
+        match (names_a.contains(n), names_b.contains(n)) {
+            (true, true) => {
+                common.insert(n.clone());
+                if a.decrypted_charstring(n) == b.decrypted_charstring(n) {
+                    out.identical.push(n.clone());
+                } else {
+                    out.differing.push(n.clone());
+                }
+            }
+            (true, false) => out.only_a.push(n.clone()),
+            (false, true) => out.only_b.push(n.clone()),
+            (false, false) => {}
+        }
+    }
+    let (_, subrs_a) = a.closure(&common).map_err(|e| e.to_string())?;
+    let (_, subrs_b) = b.closure(&common).map_err(|e| e.to_string())?;
+    if subrs_a != subrs_b {
+        out.subrs_identical = false;
+    } else {
+        for i in subrs_a {
+            if a.decrypted_subr(i) != b.decrypted_subr(i) {
+                out.subrs_identical = false;
+                break;
+            }
+        }
+    }
+    Ok(out)
 }
 
 impl Report {
@@ -180,7 +260,48 @@ fn descriptor(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<FontDescriptor, 
             Some(Obj::String(s)) => Some(String::from_utf8_lossy(s).into_owned()),
             _ => None,
         },
+        extra: {
+            let mut extra = Vec::new();
+            for (k, v) in d {
+                let covered = matches!(
+                    k.as_str(),
+                    "Type"
+                        | "FontName"
+                        | "Flags"
+                        | "FontBBox"
+                        | "ItalicAngle"
+                        | "Ascent"
+                        | "Descent"
+                        | "CapHeight"
+                        | "StemV"
+                        | "XHeight"
+                        | "CharSet"
+                        | "FontFile"
+                        | "FontFile2"
+                        | "FontFile3"
+                        | "CIDSet"
+                );
+                if covered {
+                    continue;
+                }
+                let value = f.resolve(v);
+                if matches!(value, Obj::Stream { .. }) || contains_ref(value) {
+                    return Err(format!("FontDescriptor /{k} refers to indirect objects"));
+                }
+                extra.push((k.clone(), render(value)));
+            }
+            extra
+        },
     })
+}
+
+fn contains_ref(o: &Obj) -> bool {
+    match o {
+        Obj::Ref(..) => true,
+        Obj::Array(a) => a.iter().any(contains_ref),
+        Obj::Dict(d) => d.values().any(contains_ref),
+        _ => false,
+    }
 }
 
 fn encoding(f: &PdfFile, o: &Obj) -> Result<Encoding, String> {
@@ -336,20 +457,28 @@ pub fn font_from_dict(f: &PdfFile, d: &BTreeMap<String, Obj>) -> Result<ExactFon
                 Some(o) => dec(o, "DW")?,
                 None => Decimal::from_i64(1000),
             };
-            let mut to_unicode = BTreeMap::new();
-            if let Some(tu) = f.get(d, "ToUnicode") {
-                let cmap = f.decode_stream(tu)?;
-                for (gid, c) in crate::embed::parse_to_unicode(&cmap).unwrap_or_default() {
-                    to_unicode.insert(gid, c.to_string());
-                }
-            }
+            let to_unicode_verbatim = match f.get(d, "ToUnicode") {
+                Some(tu) => Some(f.decode_stream(tu)?),
+                None => None,
+            };
+            let cid_set = match f.get(dd, "CIDSet") {
+                Some(cs) => Some(f.decode_stream(cs)?),
+                None => None,
+            };
+            let descendant_name = f
+                .get(cid, "BaseFont")
+                .and_then(Obj::as_name)
+                .map(String::from);
             let font = CidFont {
+                descendant_base_font: descendant_name.filter(|n| *n != base_font),
                 base_font,
                 program,
                 widths,
                 default_width,
                 descriptor: descriptor(f, dd)?,
-                to_unicode,
+                to_unicode: BTreeMap::new(),
+                to_unicode_verbatim,
+                cid_set,
                 glyphs: BTreeSet::new(),
             };
             match cid_subtype {
@@ -386,7 +515,9 @@ pub fn reemit(f: &PdfFile) -> Result<ExactDocument, String> {
             ));
         }
         let content = f.page_content(page)?;
+        let mut names = Vec::new();
         for (name, fd) in f.page_fonts(page) {
+            names.push(name.clone());
             if doc.fonts.contains_key(&name) {
                 continue;
             }
@@ -398,6 +529,7 @@ pub fn reemit(f: &PdfFile) -> Result<ExactDocument, String> {
             width: x1,
             height: y1,
             content: Content::Verbatim(content),
+            fonts: Some(names),
         });
     }
     Ok(doc)
@@ -477,6 +609,15 @@ fn font_facts(f: &PdfFile, d: &BTreeMap<String, Obj>) -> FontFacts {
             for k in ["FontFile", "FontFile2", "FontFile3"] {
                 copy.remove(k);
             }
+            // CIDSet is compared by content, not by object number.
+            if let Some(cs) = copy.remove("CIDSet") {
+                copy.insert(
+                    "CIDSet".into(),
+                    Obj::String(
+                        sha256::hex(&f.decode_stream(&cs).unwrap_or_default()).into_bytes(),
+                    ),
+                );
+            }
             render(&Obj::Dict(copy))
         })
         .unwrap_or_else(|| "(none)".into());
@@ -534,19 +675,23 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
         let cb = b.page_content(pb);
         match (&ca, &cb) {
             (Ok(ca), Ok(cb)) => {
-                if ca == cb {
-                    r.same(format!(
-                        "page {n} content stream byte-identical ({} bytes)",
-                        ca.len()
-                    ));
-                    r.content_byte_identical.push(true);
-                    r.content_ops_identical.push(true);
-                } else {
-                    r.content_byte_identical.push(false);
-                    match (exact::parse(ca), exact::parse(cb)) {
-                        (Ok(oa), Ok(ob)) => {
-                            if oa == ob {
-                                r.content_ops_identical.push(true);
+                // Byte equality and parsed-operator equality are separate
+                // facts (issue #28): both sides are always parsed, and a
+                // stream outside the bounded set is reported as unsupported
+                // even when the two files carry identical bytes.
+                let bytes_equal = ca == cb;
+                r.content_byte_identical.push(bytes_equal);
+                match (exact::parse(ca), exact::parse(cb)) {
+                    (Ok(oa), Ok(ob)) => {
+                        if oa == ob {
+                            r.content_ops_identical.push(true);
+                            if bytes_equal {
+                                r.same(format!(
+                                    "page {n} content stream byte-identical ({} bytes, {} operators)",
+                                    ca.len(),
+                                    oa.len()
+                                ));
+                            } else {
                                 r.note(
                                     Category::ContentFormatting,
                                     format!(
@@ -556,55 +701,61 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                                         cb.len()
                                     ),
                                 );
+                            }
+                        } else {
+                            r.content_ops_identical.push(false);
+                            let same_shape = oa.len() == ob.len()
+                                && oa.iter().zip(&ob).all(|(x, y)| {
+                                    std::mem::discriminant(x) == std::mem::discriminant(y)
+                                });
+                            let cat = if same_shape {
+                                Category::ContentOperands
                             } else {
-                                r.content_ops_identical.push(false);
-                                let same_shape = oa.len() == ob.len()
-                                    && oa.iter().zip(&ob).all(|(x, y)| {
-                                        std::mem::discriminant(x) == std::mem::discriminant(y)
-                                    });
-                                let cat = if same_shape {
-                                    Category::ContentOperands
-                                } else {
-                                    Category::ContentOperators
-                                };
-                                let mut shown = 0;
-                                for (k, (x, y)) in oa.iter().zip(&ob).enumerate() {
-                                    if x != y {
-                                        r.note(
-                                            cat,
-                                            format!(
-                                                "page {n} op {k}: {} | {}",
-                                                op_summary(x),
-                                                op_summary(y)
-                                            ),
-                                        );
-                                        shown += 1;
-                                        if shown == 5 {
-                                            break;
-                                        }
-                                    }
-                                }
-                                if oa.len() != ob.len() {
+                                Category::ContentOperators
+                            };
+                            let mut shown = 0;
+                            for (k, (x, y)) in oa.iter().zip(&ob).enumerate() {
+                                if x != y {
                                     r.note(
                                         cat,
                                         format!(
-                                            "page {n} operator count {} vs {}",
-                                            oa.len(),
-                                            ob.len()
+                                            "page {n} op {k}: {} | {}",
+                                            op_summary(x),
+                                            op_summary(y)
                                         ),
                                     );
+                                    shown += 1;
+                                    if shown == 5 {
+                                        break;
+                                    }
                                 }
                             }
+                            if oa.len() != ob.len() {
+                                r.note(
+                                    cat,
+                                    format!("page {n} operator count {} vs {}", oa.len(), ob.len()),
+                                );
+                            }
                         }
-                        (Err(e), _) => {
-                            r.content_ops_identical.push(false);
+                    }
+                    (ra, rb) => {
+                        r.content_ops_identical.push(false);
+                        if bytes_equal {
+                            r.note(
+                                Category::ContentUnsupported,
+                                format!(
+                                    "page {n} content bytes are identical ({} bytes) but outside the bounded operator set, so operator equality is unknown",
+                                    ca.len()
+                                ),
+                            );
+                        }
+                        if let Err(e) = ra {
                             r.note(
                                 Category::ContentUnsupported,
                                 format!("page {n} {label_a}: {e}"),
                             );
                         }
-                        (_, Err(e)) => {
-                            r.content_ops_identical.push(false);
+                        if let Err(e) = rb {
                             r.note(
                                 Category::ContentUnsupported,
                                 format!("page {n} {label_b}: {e}"),
@@ -632,13 +783,67 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
         }
         let fa = a.page_fonts(pa);
         let fb = b.page_fonts(pb);
-        let names: BTreeSet<&String> = fa.keys().chain(fb.keys()).collect();
-        for name in names {
+        // Pair fonts by resource name first; resources left over on both
+        // sides are paired by base font name with any subset tag removed
+        // (two producers rarely agree on /F numbers), and what remains is a
+        // FontResources difference.
+        type Dict = BTreeMap<String, Obj>;
+        let mut pairs: Vec<(String, &Dict, &Dict)> = Vec::new();
+        let mut only_a: BTreeMap<String, &BTreeMap<String, Obj>> = BTreeMap::new();
+        let mut only_b: BTreeMap<String, &BTreeMap<String, Obj>> = BTreeMap::new();
+        for name in fa.keys().chain(fb.keys()).collect::<BTreeSet<_>>() {
             match (fa.get(name), fb.get(name)) {
-                (Some(da), Some(db)) => {
+                (Some(da), Some(db)) => pairs.push((format!("/{name}"), da, db)),
+                (Some(da), None) => {
+                    only_a.insert(name.clone(), da);
+                }
+                (None, Some(db)) => {
+                    only_b.insert(name.clone(), db);
+                }
+                (None, None) => {}
+            }
+        }
+        let family = |f: &PdfFile, d: &BTreeMap<String, Obj>| -> String {
+            let base = f.get(d, "BaseFont").and_then(Obj::as_name).unwrap_or("");
+            let base = match base.split_once('+') {
+                Some((tag, rest))
+                    if tag.len() == 6 && tag.bytes().all(|c| c.is_ascii_uppercase()) =>
+                {
+                    rest
+                }
+                _ => base,
+            };
+            base.trim_end_matches("-Identity-H").to_string()
+        };
+        let mut unmatched_b: Vec<(String, &BTreeMap<String, Obj>)> = only_b.into_iter().collect();
+        let mut unmatched_a: Vec<(String, &BTreeMap<String, Obj>)> = Vec::new();
+        for (na, da) in only_a {
+            let fam = family(a, da);
+            if let Some(pos) = unmatched_b.iter().position(|(_, db)| family(b, db) == fam) {
+                let (nb, db) = unmatched_b.remove(pos);
+                pairs.push((format!("/{na}~/{nb} ({fam})"), da, db));
+            } else {
+                unmatched_a.push((na, da));
+            }
+        }
+        for (na, _) in &unmatched_a {
+            r.note(
+                Category::FontResources,
+                format!("page {n} /{na} only in {label_a}"),
+            );
+        }
+        for (nb, _) in &unmatched_b {
+            r.note(
+                Category::FontResources,
+                format!("page {n} /{nb} only in {label_b}"),
+            );
+        }
+        for (name, da, db) in pairs {
+            {
+                {
                     let x = font_facts(a, da);
                     let y = font_facts(b, db);
-                    let key = format!("page {n} /{name}");
+                    let key = format!("page {n} {name}");
                     if x.subtype != y.subtype {
                         r.note(
                             Category::FontMetadata,
@@ -671,6 +876,47 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                                         pa.0, pa.1, &pa.2[..16], pa.3, pb.0, pb.1, &pb.2[..16], pb.3
                                     ),
                                 );
+                                // Apples to apples for Type 1 subsets: two
+                                // programs differ in bytes whenever the eexec
+                                // prefix, blanked subroutines or clear text
+                                // differ; what matters is whether the glyphs
+                                // both embed decrypt to the same charstrings.
+                                if pa.0 == "FontFile" && pb.0 == "FontFile" {
+                                    match type1_charstrings(a, da, b, db) {
+                                        Ok(t) => {
+                                            r.font_charstrings_identical.insert(
+                                                key.clone(),
+                                                t.differing.is_empty() && !t.identical.is_empty(),
+                                            );
+                                            let line = format!(
+                                                "{key} Type 1 charstrings: {} common glyph(s) identical, {} differ{}, {} only in {label_a}, {} only in {label_b}; subroutines used by the common glyphs {}",
+                                                t.identical.len(),
+                                                t.differing.len(),
+                                                if t.differing.is_empty() {
+                                                    String::new()
+                                                } else {
+                                                    format!(" ({})", t.differing.join(", "))
+                                                },
+                                                t.only_a.len(),
+                                                t.only_b.len(),
+                                                if t.subrs_identical {
+                                                    "identical"
+                                                } else {
+                                                    "DIFFER"
+                                                }
+                                            );
+                                            if t.differing.is_empty() && t.subrs_identical {
+                                                r.same(line);
+                                            } else {
+                                                r.note(Category::FontProgram, line);
+                                            }
+                                        }
+                                        Err(e) => r.note(
+                                            Category::FontProgram,
+                                            format!("{key} Type 1 charstrings not comparable: {e}"),
+                                        ),
+                                    }
+                                }
                             }
                         }
                         (None, None) => r.same(format!(
@@ -696,7 +942,17 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                         }
                     }
                     let norm = |s: &str| s.replace(' ', "");
-                    if norm(&x.widths) != norm(&y.widths) {
+                    let widths_equal = match (font_from_dict(a, da), font_from_dict(b, db)) {
+                        (
+                            Ok(ExactFont::CidCff(p) | ExactFont::CidTrueType(p)),
+                            Ok(ExactFont::CidCff(q) | ExactFont::CidTrueType(q)),
+                        ) => p.widths == q.widths && p.default_width == q.default_width,
+                        (Ok(ExactFont::Simple(p)), Ok(ExactFont::Simple(q))) => {
+                            p.first_char == q.first_char && p.widths == q.widths
+                        }
+                        _ => norm(&x.widths) == norm(&y.widths),
+                    };
+                    if !widths_equal {
                         r.note(Category::FontMetadata, format!("{key} widths differ"));
                     }
                     if norm(&x.encoding) != norm(&y.encoding) {
@@ -725,15 +981,6 @@ pub fn classify(a: &PdfFile, b: &PdfFile, label_a: &str, label_b: &str) -> Repor
                         );
                     }
                 }
-                (Some(_), None) => r.note(
-                    Category::FontResources,
-                    format!("page {n} /{name} only in {label_a}"),
-                ),
-                (None, Some(_)) => r.note(
-                    Category::FontResources,
-                    format!("page {n} /{name} only in {label_b}"),
-                ),
-                (None, None) => {}
             }
         }
     }
