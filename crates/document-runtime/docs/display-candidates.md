@@ -124,3 +124,27 @@ cases return ok with one sibling. This faithfully records current producer behav
 not broad font compatibility. The four negotiation and cancellation probes also
 pass on this producer. No cache hit count or throughput claim is inferred from
 output equality; this is a bounded correctness test under shared machine load.
+
+## Scalar display-stage observability
+
+`last_display_profile()` returns the last current candidate's
+`DisplayResponseProfile`: request/project/revision, Session-local display epoch,
+framed response byte count, JSON parse, raw decode-queue wait, decoded-frame owner
+wait, and source-binding validation milliseconds. Source binding includes raw UTF8
+hashing and document correlation; it excludes native/core font/render validation,
+helper serialization/admission and paint. No document text is included. Durations
+are observations, not calibrated compiler CPU or end-to-end latency measurements.
+
+The profile survives moving its candidate so helpers can observe eventless display
+work. Submit, close, policy reset and failure clear it. Stale/cancelled/old-epoch
+siblings never update it. Existing v1 `last_profile()` and Event/wire fields remain
+unchanged. A new Session begins with no display profile; epoch values are meaningful
+only alongside the caller's session identity. Tests cover exact current identity,
+scalar finite values, candidate take, supersession, same-mode epoch reset and failure.
+
+`benchmarks/display-profile-6e69661/profile.json` pins one actual observation using
+the already verified producer/assets: requested4434 framed bytes reported parsing
+0.167284ms and source binding0.021131ms, with separate queue/owner waits. Legacy,
+declined and failed cases have no display profile. This tiny single sample just
+shows the previously hidden phase is observable; it does not justify optimization
+or establish native responsiveness.

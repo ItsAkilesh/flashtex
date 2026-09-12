@@ -68,7 +68,7 @@ fn published_producer_negotiates_source_bound_candidates() {
         assert_eq!(result["payload"]["status"], expected, "{mode}");
         assert_eq!(candidate.is_some(), mode == "requested");
         assert!(session.is_alive());
-        reports.push(serde_json::json!({"mode":mode,"result":result,"candidate":candidate,"transport_acceptance":true,"rendering_validation":"not performed"}));
+        reports.push(serde_json::json!({"mode":mode,"result":result,"candidate":candidate,"transport_acceptance":true,"rendering_validation":"not performed","display_profile":session.last_display_profile()}));
     }
     if let Ok(path) = std::env::var("FLASHTEX_REPLAY_OUTPUT") {
         std::fs::write(path, serde_json::to_vec_pretty(&reports).unwrap()).unwrap();
