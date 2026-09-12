@@ -95,6 +95,50 @@ final class ControllerPipelineReviewTests: XCTestCase {
         XCTAssertEqual(model.result?.revision, initial)
     }
 
+    /// Finding 2: `openTex` names the entry document `main.tex` whatever the
+    /// file is called, and `attachController` therefore roots the helper in a
+    /// SESSION TEMPORARY project (a copy of the buffer) whenever the file name
+    /// differs. `saveTexInteractive` routed the save through the helper on
+    /// `controllerAttached` alone, so the helper's rooted export wrote the
+    /// temporary copy, the shell reported "Saved paper.tex" and marked the
+    /// buffer clean, and the real file was never written. The file-routing
+    /// predicate the reload/status paths use (`controllerRoutesFiles`) already
+    /// refuses this case; the save path must use it too.
+    func testSaveOfAFileNotNamedMainTexWritesThatFileNotTheHelpersSessionCopy() async throws {
+        guard let helper = Self.helper, FileManager.default.isExecutableFile(atPath: helper.path),
+              ShellModel.locateCompiler() != nil else {
+            throw XCTSkip("set FLASHTEX_PREVIEW_CONTROLLER and FLASHTEX_COMPILER to built binaries")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("pc-review-save-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("project"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tex = root.appendingPathComponent("project/paper.tex")
+        let original = "\\begin{document}\nA paper.\n\\end{document}\n"
+        try original.write(to: tex, atomically: true, encoding: .utf8)
+        setenv("FLASHTEX_CONTROLLER_LEDGER_ROOT", root.appendingPathComponent("ledger").path, 1)
+        defer { unsetenv("FLASHTEX_CONTROLLER_LEDGER_ROOT") }
+
+        let model = ShellModel()
+        model.autoCompile = true
+        XCTAssertEqual(model.openTex(at: tex), .opened)
+        XCTAssertEqual(model.activePath, "main.tex", "the entry document keeps the fixed name")
+        model.attachController(at: helper)
+        defer { model.detachController() }
+        let ready = await settles(15) { model.result?.revision == model.editorRevision && model.controllerState.durable["main.tex"] != nil && model.inFlightRevision == nil }
+        XCTAssertTrue(ready, "initial preview never arrived: \(model.controllerStatus)")
+        XCTAssertFalse(model.controllerRoutesFiles, "a session project never routes the open file's saves through the helper")
+
+        let edited = "\\begin{document}\nA paper, edited.\n\\end{document}\n"
+        model.updateActiveText(edited)
+        XCTAssertTrue(model.isDirty)
+        model.saveTexInteractive()
+        let saved = await settles(10) { !model.isDirty || model.captureNote?.contains("failed") == true }
+        XCTAssertTrue(saved, "the save never completed: \(model.captureNote ?? "-")")
+        XCTAssertEqual(try String(contentsOf: tex, encoding: .utf8), edited, "the open file holds the buffer (note: \(model.captureNote ?? "-"))")
+        XCTAssertFalse(model.isDirty, model.captureNote ?? "-")
+        XCTAssertEqual(model.savedText, edited)
+    }
+
     /// Polls `cond` on the main actor until it holds or `timeout` elapses.
     private func settles(_ timeout: TimeInterval, _ cond: () -> Bool) async -> Bool {
         let start = Date()
