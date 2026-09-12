@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "7d59f218c28c24417cc8bd1df9113c5b64bcdc83",
+  "code_revision": "9cadc6f11fbcc143a7b8af5d3054fc7888836638",
   "eta_minutes": {
-    "likely": 10,
+    "likely": 15,
     "optimistic": 5,
-    "pessimistic": 20
+    "pessimistic": 25
   },
   "machine": "linux-primary",
   "main_integrated_through": "84d581168eed75caa620f66350d629a23b0ce538",
-  "next_action": "Consume published cf427f9 manifest transport unchanged and test renderer registry roundtrip.",
+  "next_action": "Next rendering-core product assignment after this tested checkpoint.",
   "reviewed_peers": {},
   "schema_version": 1,
   "state": "in_progress",
-  "summary": "Exact cluster hit/caret selection and stale insertion destination gates complete.",
+  "summary": "Published selection gates; renderer manifest export/discovery and rooted roundtrip now complete.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T08:00:00Z",
+  "updated_utc": "2026-09-12T08:02:13Z",
   "usage": {
-    "evidence": "126 ordinary tests and strict clippy pass; pinned mixed-font test explicitly passes with Liberation fi ligature range0..2. Empty UTF8 clusters retained, supplied exact geometry only, RTL unsupported, stale registry/source/frame destinations reject; historical reads remain immutable.",
-    "status": "Existing hosted OpenAI only; no paid providers or descendants."
+    "evidence": "127 ordinary tests and strict all-target clippy pass. Separate pinned mixed backend/fi-ligature test passes. cf427f9 merged unchanged; generation-pinned export/discovery and rooted version2 import preserve active leases and exact CFF table identity. No native activation.",
+    "status": "Existing hosted OpenAI allocation only; no paid providers or descendants."
   }
 }

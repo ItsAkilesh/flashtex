@@ -444,3 +444,11 @@ Historical `inspect` remains available after replacement, but `destination` and
 or paths. Call `validate_destination` at the edit boundary: an earlier destination
 is not a permanent authorization to edit a changed document. Exact nearest-caret
 comparison can return a precision-bound error rather than round coordinates.
+
+`RegistryRenderer::export_manifest(expected_generation, max_bytes)` consumes the
+font owner's version2 manifest API without rewriting its format. Bounded
+`metadata_page` exposes exact declared styles and CFF table provenance for an
+explicit user choice. Importing the exported manifest through the rooted registry
+loader preserves the semantic generation and active rendering leases. Saving is
+left to the caller's existing rooted file layer. No system discovery or native
+protocol change is introduced.

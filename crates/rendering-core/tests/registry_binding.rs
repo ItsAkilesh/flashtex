@@ -368,6 +368,30 @@ fn pinned_mixed_backend_registry_replay_and_replacement() {
             &snapshot
         )
         .is_err());
+    let export = renderer
+        .export_manifest(registry.generation(), 1024 * 1024)
+        .unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &export).unwrap();
+    assert!(!renderer.replace(load(&root)).unwrap());
+    let page = renderer
+        .metadata_page(
+            registry.generation(),
+            MetadataFilter {
+                family_prefix: Some("stix"),
+                ..Default::default()
+            },
+            0,
+            1,
+        )
+        .unwrap();
+    let table = page.entries[0].cff_table.as_ref().unwrap();
+    let bound = s.binding().cff_table.as_ref().unwrap();
+    assert_eq!(table.sha256, bound.sha256);
+    assert_eq!(table.offset, bound.offset as u64);
+    assert_eq!(table.byte_length, bound.byte_length as u64);
+    renderer
+        .verify_replay(&stix, &s_bytes, "main.tex", &snapshot)
+        .unwrap();
     // A real ligature retains one indivisible two-byte source cluster.
     use flashtex_rendering_core::registry_binding::selection::*;
     let ligature_source = SourceSnapshot {
@@ -627,4 +651,91 @@ fn source_aware_selection_preserves_empty_clusters_and_rejects_stale_edits() {
             SelectionDirection::LeftToRight
         )
         .is_err());
+}
+#[test]
+fn manifest_roundtrip_preserves_active_render_lease_and_bounded_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = ProjectRoot::open(dir.path()).unwrap();
+    let font = font_fixture::shaping_fixture();
+    let manifest = RegistryManifest {
+        schema_version: 1,
+        entries: vec![
+            entry(&font, "body", "static-truetype", b"test"),
+            entry(&font, "heading", "static-truetype", b"test"),
+        ],
+    };
+    for e in &manifest.entries {
+        std::fs::write(dir.path().join(&e.resource.path), &font).unwrap();
+        std::fs::write(dir.path().join(&e.resource.license.text_path), b"test").unwrap();
+    }
+    save(dir.path(), &manifest);
+    let first = load(&root);
+    let mut renderer = RegistryRenderer::new(
+        "roundtrip",
+        first.clone(),
+        RegistryRenderLimits {
+            max_bindings: 2,
+            max_cache_bytes: 100000,
+        },
+    )
+    .unwrap();
+    let lease = renderer
+        .bind(&selection("body"), first.generation())
+        .unwrap();
+    let held = frame(&renderer, &lease);
+    let bytes = held.replay_bytes(100000).unwrap();
+    let exported = renderer
+        .export_manifest(first.generation(), 100000)
+        .unwrap();
+    let decoded: serde_json::Value = serde_json::from_slice(&exported).unwrap();
+    assert_eq!(decoded["schema_version"], 2);
+    assert_eq!(decoded["generation"], first.generation());
+    std::fs::write(dir.path().join("fonts.json"), &exported).unwrap();
+    assert!(!renderer.replace(load(&root)).unwrap());
+    assert_eq!(renderer.cached_bindings(), 1);
+    assert_eq!(
+        frame(&renderer, &lease).replay_bytes(100000).unwrap(),
+        bytes
+    );
+    let page = renderer
+        .metadata_page(first.generation(), MetadataFilter::default(), 0, 1)
+        .unwrap();
+    assert_eq!(page.total_matches, 2);
+    assert_eq!(page.next_offset, Some(1));
+    assert_eq!(page.entries[0].binding, selection("body"));
+    assert_eq!(page.entries[0].resource, lease.binding().declaration);
+    let next = renderer
+        .metadata_page(first.generation(), MetadataFilter::default(), 1, 1)
+        .unwrap();
+    assert_eq!(next.entries[0].binding, selection("heading"));
+    assert_eq!(next.next_offset, None);
+    let filtered = renderer
+        .metadata_page(
+            first.generation(),
+            MetadataFilter {
+                family_prefix: Some("hea"),
+                ..Default::default()
+            },
+            0,
+            1,
+        )
+        .unwrap();
+    assert_eq!(filtered.total_matches, 1);
+    assert!(renderer.export_manifest(first.generation(), 1).is_err());
+    assert!(renderer.export_manifest(&"f".repeat(64), 100000).is_err());
+    assert!(renderer
+        .metadata_page(first.generation(), MetadataFilter::default(), 0, 65)
+        .is_err());
+    // Retained replay still verifies against the same semantic imported snapshot.
+    renderer
+        .verify_replay(
+            &lease,
+            &bytes,
+            "main.tex",
+            &SourceSnapshot {
+                revision: 1,
+                text: "AA".into(),
+            },
+        )
+        .unwrap();
 }

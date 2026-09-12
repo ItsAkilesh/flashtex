@@ -1,8 +1,10 @@
 //! Explicit project manifest registry; no discovery scans or system fallback.
+mod transport;
 use crate::{sha256, FontResource, ManifestEntry};
 use flashtex_project_files::{ProjectPath, ProjectRoot, SaveError};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::Arc};
+pub use transport::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FontStyle {
@@ -142,13 +144,7 @@ impl ProjectFontRegistry {
             files: 0,
         };
         let raw = reader.read(&path(manifest_path)?, limits.max_manifest_bytes)?;
-        let manifest: RegistryManifest = serde_json::from_slice(&raw)
-            .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
-        if manifest.schema_version != 1 {
-            return Err(RegistryError::InvalidManifest(
-                "unsupported registry schema".into(),
-            ));
-        }
+        let (manifest, claims) = transport::decode(&raw)?;
         if manifest.entries.len() > limits.max_entries {
             return Err(RegistryError::Budget("entry count"));
         }
@@ -212,13 +208,17 @@ impl ProjectFontRegistry {
             serde_json::to_vec(&discovery)
                 .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?,
         );
-        Ok(Self {
+        let registry = Self {
             resources,
             discovery,
             generation: sha256(&canonical),
             loaded_bytes: reader.bytes,
             files_read: reader.files,
-        })
+        };
+        if let Some(claims) = claims {
+            registry.validate_import(claims)?;
+        }
+        Ok(registry)
     }
     pub fn generation(&self) -> &str {
         &self.generation

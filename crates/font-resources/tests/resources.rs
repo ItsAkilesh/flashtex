@@ -1058,6 +1058,58 @@ fn project_registry_snapshots_generation_and_budgets() {
     manifest.entries.push(alias);
     write(&manifest);
     let two = load().unwrap();
+    let page = two
+        .enumerate(two.generation(), MetadataFilter::default(), 0, 1)
+        .unwrap();
+    assert_eq!(page.total_matches, 2);
+    assert_eq!(page.next_offset, Some(1));
+    let last = two
+        .enumerate(two.generation(), MetadataFilter::default(), 1, 1)
+        .unwrap();
+    assert_eq!(last.next_offset, None);
+    let filtered = two
+        .enumerate(
+            two.generation(),
+            MetadataFilter {
+                weight: Some(600),
+                ..Default::default()
+            },
+            0,
+            64,
+        )
+        .unwrap();
+    assert_eq!(filtered.entries.len(), 1);
+    assert!(two
+        .enumerate(first.generation(), MetadataFilter::default(), 0, 1)
+        .is_err());
+    assert!(two
+        .enumerate(two.generation(), MetadataFilter::default(), 0, 65)
+        .is_err());
+    assert!(two
+        .enumerate(two.generation(), MetadataFilter::default(), 129, 1)
+        .is_err());
+    let exported = two.export_json(1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &exported).unwrap();
+    assert_eq!(load().unwrap().export_json(1024 * 1024).unwrap(), exported);
+    assert!(two.export_json(1).is_err());
+    for malformed in [
+        String::from_utf8(exported.clone()).unwrap().replacen(
+            "\"schema_version\":2",
+            "\"schema_version\":2,\"schema_version\":2",
+            1,
+        ),
+        String::from_utf8(exported.clone()).unwrap().replacen(
+            "\"weight\":400",
+            "\"weight\":400,\"weight\":400",
+            1,
+        ),
+        String::from_utf8(exported.clone())
+            .unwrap()
+            .replacen("{", "{\"unknown\":true,", 1),
+    ] {
+        std::fs::write(dir.path().join("fonts.json"), malformed).unwrap();
+        assert!(load().is_err());
+    }
     manifest.entries.reverse();
     write(&manifest);
     assert_eq!(load().unwrap().generation(), two.generation());
@@ -1222,6 +1274,33 @@ fn synthetic_cff_registry_reuses_peer_parser_and_validates_declared_identity() {
     );
     assert!(font.shape_adapter().is_ok());
     assert!(registry.get(&binding).is_err());
+    let exported = registry.export_json(1024 * 1024).unwrap();
+    std::fs::write(dir.path().join("fonts.json"), &exported).unwrap();
+    assert_eq!(load().unwrap().export_json(1024 * 1024).unwrap(), exported);
+    let mut wrong = registry.export_manifest();
+    wrong.entries[0].cff_table.as_mut().unwrap().offset += 1;
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(load().is_err());
+    wrong = registry.export_manifest();
+    wrong.entries[0].cff_table = None;
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(load().is_err());
+    wrong = registry.export_manifest();
+    wrong.generation = "0".repeat(64);
+    std::fs::write(
+        dir.path().join("fonts.json"),
+        serde_json::to_vec(&wrong).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(load(), Err(RegistryError::StaleGeneration { .. })));
     for case in 0..5 {
         manifest.entries[0].resource = resource.clone();
         let item = &mut manifest.entries[0].resource;

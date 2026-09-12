@@ -391,3 +391,32 @@ impl RegistryRenderer {
 }
 
 pub mod selection;
+
+impl RegistryRenderer {
+    /// Deterministic version2 registry manifest; caller owns any rooted save.
+    /// Export pins the same generation used by rendering leases.
+    pub fn export_manifest(
+        &self,
+        expected_generation: &str,
+        max_bytes: usize,
+    ) -> BoundResult<Vec<u8>> {
+        self.registry
+            .require_generation(expected_generation)
+            .map_err(BindingError::Registry)?;
+        self.registry
+            .export_json(max_bytes)
+            .map_err(BindingError::Registry)
+    }
+    /// Explicit bounded font discovery for UI consumers, never an implicit choice.
+    pub fn metadata_page(
+        &self,
+        expected_generation: &str,
+        filter: flashtex_font_resources::registry::MetadataFilter<'_>,
+        offset: usize,
+        limit: usize,
+    ) -> BoundResult<flashtex_font_resources::registry::MetadataPage> {
+        self.registry
+            .enumerate(expected_generation, filter, offset, limit)
+            .map_err(BindingError::Registry)
+    }
+}
