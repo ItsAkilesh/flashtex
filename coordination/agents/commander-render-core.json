@@ -14,23 +14,23 @@
     "rust",
     "rendering"
   ],
-  "code_revision": "3040a0ce37256999db73ac73fd7b9df693aad1a1",
+  "code_revision": "0d7db229f25244ad8ac5e6962c14790a668c6382",
   "eta_minutes": {
-    "likely": 3,
-    "optimistic": 1,
-    "pessimistic": 5
+    "likely": 10,
+    "optimistic": 4,
+    "pessimistic": 18
   },
   "machine": "linux-primary",
-  "main_integrated_through": "8fa2c2b13cc1bdea2265a4c2090535c9e300eb7b",
-  "next_action": "Publish attribution harness/evidence. Next candidate may replace DOM preflight with equivalent serde visitor only after preserving finite/depth/duplicate/current resource tests; no native activation.",
+  "main_integrated_through": "3040a0ce37256999db73ac73fd7b9df693aad1a1",
+  "next_action": "Publish tested candidate; measure same3 raw captures with explicit candidate base, then rerun existing five-fixture baseline because production validation changed. Preserve all typed source/resource gates.",
   "reviewed_peers": {},
   "schema_version": 1,
-  "state": "accepted",
-  "summary": "FT023r13 measured pinned original binder: Value finite/depth preflight is largest single phase, but pairing plus resource binding combined larger; allocation reduction is supported target.",
+  "state": "in_progress",
+  "summary": "FT023r13 equivalent serde Syntax visitor replaces only initial Value preflight; narrow unchanged runtime7817e4e8 reuse, no peer edits.",
   "tool": "Codex Astra",
-  "updated_utc": "2026-09-12T12:11:45Z",
+  "updated_utc": "2026-09-12T12:18:21Z",
   "usage": {
-    "evidence": "3 actual f552 captures, 3warmups+20samples per timing/allocation mode. Largest1.15MB preflight100500 calls/11.85MB requested vs wrapper10 calls. Medians nonmonotonic; no calibrated latency/RSS claim. Production sources unchanged; original/instrumented/script/archive hashes retained.",
-    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Isolated release build/sample18094 terminal; peers released."
+    "evidence": "172 rendering tests pass, 2 ignored; strict all-target Clippy pass. Old Value equivalence covers numeric/depth/Unicode/UTF8 boundary cases. Three raw captures retain pinned PDFs and malformed/stale refusals. No measured candidate improvement claimed yet.",
+    "status": "Hosted OpenAI only; no providers or descendants; quota telemetry unavailable. Candidate tests terminal; measurement not started."
   }
 }

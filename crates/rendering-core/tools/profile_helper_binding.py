@@ -101,9 +101,9 @@ def replace_once(text, old, new):
     return text.replace(old,new,1)
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--report',type=Path,required=True); args=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument('--report',type=Path,required=True); ap.add_argument('--base',default=BASE); args=ap.parse_args()
     root=Path(__file__).resolve().parents[3]
-    base=command(['git','rev-parse',BASE],root).stdout.decode().strip()
+    base=command(['git','rev-parse',args.base],root).stdout.decode().strip()
     archive=command(['git','archive',base,*['crates/'+c for c in CRATES]],root).stdout
     env=dict(os.environ,CARGO_NET_OFFLINE='true',CARGO_BUILD_JOBS='2',CARGO_INCREMENTAL='0')
     (root/'target').mkdir(exist_ok=True)
@@ -113,8 +113,10 @@ def main():
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(tmp,filter='data')
         p=tmp/'crates/rendering-core/src/helper_candidate.rs'; original=p.read_text(); s=original
-        s=replace_once(s,'    let _: serde_json::Value =', '    let mut phases = Vec::with_capacity(6);\n    let mark = attribution::begin();\n    let _: serde_json::Value =')
-        s=replace_once(s,'    let value: RawHelperEvent =', '    phases.push(attribution::finish(mark,"value_preflight_parse_drop"));\n    let mark = attribution::begin();\n    let value: RawHelperEvent =')
+        anchor = '    let _: syntax::Syntax =' if '    let _: syntax::Syntax =' in s else '    let _: serde_json::Value ='
+        preflight = 'syntax_preflight' if 'syntax::Syntax' in anchor else 'value_preflight_parse_drop'
+        s=replace_once(s,anchor, '    let mut phases = Vec::with_capacity(6);\n    let mark = attribution::begin();\n'+anchor)
+        s=replace_once(s,'    let value: RawHelperEvent =', '    phases.push(attribution::finish(mark,"'+preflight+'"));\n    let mark = attribution::begin();\n    let value: RawHelperEvent =')
         s=replace_once(s,'    let p = &value.payload;', '    phases.push(attribution::finish(mark,"typed_wrapper_decode"));\n    let mark = attribution::begin();\n    let p = &value.payload;')
         s=replace_once(s,'    let bytes = p.display_list.get().as_bytes();', '    phases.push(attribution::finish(mark,"policy_source_snapshot"));\n    let mark = attribution::begin();\n    let bytes = p.display_list.get().as_bytes();')
         s=replace_once(s,'    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;', '    phases.push(attribution::finish(mark,"pipeline_pair"));\n    let mark = attribution::begin();\n    let display = PipelineCff::bind(bytes, capabilities, &documents, resources)?;\n    phases.push(attribution::finish(mark,"pipeline_resource_bind"));\n    let mark = attribution::begin();\n    drop(value);\n    phases.push(attribution::finish(mark,"typed_wrapper_drop"));\n    attribution::emit(&phases);')
@@ -129,12 +131,12 @@ def main():
                 if line.startswith('BIND_PROFILE '): records.append(json.loads(line[len('BIND_PROFILE '):]))
         summary=[]
         for case in range(3):
-            for name in ['value_preflight_parse_drop','typed_wrapper_decode','policy_source_snapshot','pipeline_pair','pipeline_resource_bind','typed_wrapper_drop','bound_drop']:
+            for name in [preflight,'typed_wrapper_decode','policy_source_snapshot','pipeline_pair','pipeline_resource_bind','typed_wrapper_drop','bound_drop']:
                 timing=[p for r in records if r['case']==case and not r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
                 alloc=[p for r in records if r['case']==case and r['counted'] and r['sample']>=3 for p in r['phases'] if p['name']==name]
                 if len(timing)!=20 or len(alloc)!=20: raise RuntimeError('incomplete samples')
                 summary.append({'case':case,'phase':name,'samples':20,'median_ns':statistics.median(p['ns'] for p in timing),'min_ns':min(p['ns'] for p in timing),'max_ns':max(p['ns'] for p in timing),'median_allocation_calls':statistics.median(p['allocation_calls'] for p in alloc),'median_requested_bytes':statistics.median(p['requested_bytes'] for p in alloc)})
-        report={'format':'flashtex-binder-attribution-v1','base_commit':base,'original_helper_source_sha256':sha(original.encode()),'instrumented_helper_source_sha256':sha(s.encode()),'script_sha256':sha(Path(__file__).read_bytes()),'archive_sha256':sha(archive),'rustc':command(['rustc','--version'],root).stdout.decode().strip(),'cargo':command(['cargo','--version'],root).stdout.decode().strip(),'scope':'Instrumented release binder phases on existing actual raw helper captures; 3 warmups +20samples per mode. Timing counter updates disabled. Allocations are requested capacity, not retained memory/RSS. Phase timers exclude profiling output; no native or production speedup claim.','summary':summary,'samples':records}
+        report={'format':'flashtex-binder-attribution-v1','base_commit':base,'preflight_kind':preflight,'original_helper_source_sha256':sha(original.encode()),'instrumented_helper_source_sha256':sha(s.encode()),'script_sha256':sha(Path(__file__).read_bytes()),'archive_sha256':sha(archive),'rustc':command(['rustc','--version'],root).stdout.decode().strip(),'cargo':command(['cargo','--version'],root).stdout.decode().strip(),'scope':'Instrumented release binder phases on existing actual raw helper captures; 3 warmups +20samples per mode. Timing counter updates disabled. Allocations are requested capacity, not retained memory/RSS. Phase timers exclude profiling output; no native or production speedup claim.','summary':summary,'samples':records}
         args.report.parent.mkdir(parents=True,exist_ok=True); args.report.write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps({'report':str(args.report),'summaries':summary}))
 

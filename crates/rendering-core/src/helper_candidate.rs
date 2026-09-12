@@ -9,6 +9,7 @@ use crate::{
 use flashtex_font_resources::registry::CffFontResource;
 use serde::{Deserialize, Deserializer};
 use std::sync::Arc;
+mod syntax;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CurrentSource {
@@ -55,10 +56,9 @@ pub fn bind(
         !current.sources.is_empty() && current.sources.len() <= 256,
         "helper source count",
     )?;
-    // Preserve the previous whole-event finite-number/depth syntax gate, including
-    // ignored extension fields. This Value is never serialized or used for binding;
-    // typed decoding below reads ORIGINAL bytes and detects known duplicates.
-    let _: serde_json::Value =
+    // Preserve whole-event finite/depth/Unicode validation without a Value tree,
+    // including ignored extensions. Typed decoding still reads ORIGINAL bytes.
+    let _: syntax::Syntax =
         serde_json::from_slice(event).map_err(|e| ValidationError(format!("helper JSON: {e}")))?;
     let value: RawHelperEvent =
         serde_json::from_slice(event).map_err(|e| ValidationError(format!("helper JSON: {e}")))?;

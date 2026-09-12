@@ -45,3 +45,19 @@ finite/depth syntax without constructing Value. Such a candidate must retain typ
 original-byte duplicate checks, unknown-extension validation, current source and
 immutable resource authority. No replacement has been implemented in this checkpoint.
 Measured report: `tools/evidence/raw-binding-attribution.json` relative to crate root.
+
+## Equivalent visitor candidate
+
+The following implementation narrowly reuses the unchanged private runtime
+`Syntax` serde visitor from 7817e4e8 in rendering-owned
+`src/helper_candidate/syntax.rs`. It replaces only the initial whole-event Value
+preflight. Typed original-byte wrapper/payload decoding and all subsequent source,
+resource, duplicate and export-currentness checks remain intact. Equivalence tests
+compare the old Value gate on finite/nonfinite/extreme numbers, unknown nested
+fields, duplicate keys, invalid Unicode/UTF-8 and the recursion boundary. Existing
+three actual raw captures continue to export the same pinned PDFs.
+
+The profiler now accepts an explicit `--base` commit and labels Value versus
+Syntax preflight separately. Its default still reproduces the original3040a0ce
+baseline. A candidate performance claim requires a separate completed report;
+unit tests alone do not prove allocation or latency improvement.

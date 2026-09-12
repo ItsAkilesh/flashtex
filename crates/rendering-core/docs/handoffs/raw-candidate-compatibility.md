@@ -34,9 +34,10 @@ its own typed correlation/source duplicates before transformation and retain
 opaque render bytes through the helper so the rendering owner can reject nested
 resource/geometry duplicates. No raw transport is activated by this change.
 
-Helper whole-event Value validation preserves the old finite-number and depth
-checks even in ignored extension fields; it is never serialized or used for
-binding. The wire module retains its existing Value inspection only to produce unsupported
+Whole-event serde visitor validation preserves the old finite-number, Unicode and
+depth checks even in ignored extension fields; it retains no Value tree. This
+visitor narrowly reuses runtime7817e4e8 Syntax; the original b797b21a correction
+used a diagnostic-only Value preflight. Typed binding still reads original bytes. The wire module retains its existing Value inspection only to produce unsupported
 primitive diagnostics; final acceptance decodes the original RawValue payload.
 This work makes no parser-speed or native paint claim. The pinned runner was deliberately rebased to b797b21a and rerun on all five
 existing fixtures. Original PDF hashes and raster/text metrics exactly match the
