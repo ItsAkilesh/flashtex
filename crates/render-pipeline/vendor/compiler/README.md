@@ -58,7 +58,12 @@ Implemented and tested:
   class, and `\usepackage[options]{a,b,c}` records the package names and emits
   one warning listing exactly those unimplemented packages. When a document
   environment exists, only its body is typeset; bare fragments retain the
-  previous typeset-everything behavior.
+  previous typeset-everything behavior. A `10pt`, `11pt` or `12pt` class
+  option sets the body size (no option keeps the 12pt default), and preamble
+  `\setlength{\parskip}{..}` replaces the gap between paragraphs, with `em`
+  and `ex` relative to that body size. `\setlength{\parindent}{0pt}` is exact
+  because paragraphs are never indented; any other `\parindent`, any other
+  length, or `\setlength` in the body is reported as not implemented.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
 - Project-relative `\input` expansion across supplied documents, with included
@@ -102,6 +107,10 @@ Implemented and tested:
   and math, but this milestone does not load images or place floating objects.
 - `\begin{itemize}...\item...\end{itemize}` and
   `\begin{enumerate}...\item...\end{enumerate}` with bullet and decimal markers.
+  `\setlist[<env>]{itemsep=<dimen>,topsep=<dimen>}` changes the vertical gap
+  between items and around the list; other enumitem keys (`leftmargin`,
+  `label`, `parsep`, `partopsep`, ...) have no layout equivalent yet and are
+  named in a diagnostic instead.
 - `compile` → `compile_result`, and `error` envelopes for unknown protocol
   versions, unknown message types, and malformed JSON.
 - Rejection of absolute paths and parent traversal in document paths.
@@ -112,8 +121,8 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 
 - No `\def`, `\let`, mutable category codes, registers, or conditionals.
 - Math remains a declared subset: matrices, alignment environments,
-  `\left`/`\right` delimiter sizing, real math-font parameters, and operator
-  spacing classes are not implemented.
+  `\left`/`\right` delimiter sizing and real math-font parameters are not
+  implemented.
 - Package declarations are recognised but packages are not loaded: package
   commands, TikZ, bibliographies, and `\cite` remain missing.
 - Image loading (`\includegraphics`), tables, and float placement remain
@@ -141,11 +150,15 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
 `\textnormal`, the group- and environment-scoped declarations `\bfseries`,
 `\mdseries`, `\itshape`, `\slshape`, `\upshape`, `\ttfamily`, `\rmfamily`,
 `\sffamily`, `\normalfont`, `\em`, and the LaTeX 2.09 forms `\bf`, `\it`,
-`\sl`, `\tt`, `\rm`, `\sf`,
+`\sl`, `\tt`, `\rm`, `\sf`, the group- and environment-scoped size
+declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
+`\normalsize`, `\large`, `\Large`, `\LARGE`, `\huge`, and `\Huge`,
 `\begin`/`\end` for `document`, `equation`, `figure`, `itemize`, and
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
-starred or not; `multline` numbers only its last line), `\item`, `\par`, `\\`,
-`\listfiles`, and `\noindent`. Macro
+starred or not; `multline` numbers only its last line), `\item`, `\par`,
+`\hfill`, `\hfil`, `\hspace{<dimen>}`, `\hspace*{<dimen>}`, `\\`,
+`\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`, and
+`\smallskip`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -156,6 +169,55 @@ package version banners, and this compiler has no log stream to write them to,
 so silently doing nothing is the honest behaviour rather than a fabricated log.
 `\noindent` is likewise always a no-op: no paragraph in this layout model is
 ever given a first-line indent, so there is no indent for it to suppress.
+
+`\tiny` through `\Huge` scale text relative to `\normalsize` using the real
+LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),
+selected by the active `10pt`/`11pt`/`12pt` class option (default 12pt); the
+three tables are not a uniform scale of each other (e.g. `\large` is the same
+absolute size as `\Large` in the 10pt/11pt classes, but the 12pt class's own
+`\normalsize`-plus-one-step). `\normalsize` always resolves to exactly the
+active body size rather than the class table's own value, so text with no
+size declaration in effect is unaffected by this feature existing at all,
+including for the 11pt class, where this compiler's body size is a literal
+11pt rather than real LaTeX's 10.95pt `\normalsize`. Like `\bfseries` and
+friends, a size
+declaration stays in effect until its enclosing group or environment closes;
+`\Large{...}` (a common `\textbf{...}`-style misuse) is a declaration, not an
+argument-taking command, so its size stays active past the immediate group,
+matching real LaTeX.
+
+`\hfill`/`\hfil` are real infinite-stretch horizontal glue: they push the rest
+of the current line to the right margin, and multiple fills on one line share
+the leftover width equally, resolved once the line is known to be complete
+(`layout::LayoutCursor::resolve_hfill`). `\hfil` is not distinguished from
+`\hfill` by TeX's fil/fill stretch order — this layout has only one order of
+infinite glue, an accepted simplification. `\hspace{<dimen>}`/`\hspace*{<dimen>}`
+insert a fixed, non-stretching space instead; both forms behave identically
+here since this layout never discards glue at a line break (the one place real
+TeX treats the starred and unstarred forms differently). A dimension is a
+number followed by `pt`, `em`, `ex`, `in`, `cm`, `mm`, or `bp`
+(`parser::parse_dimen_pt`); `em`/`ex` are relative to the compiler's fixed body
+size, and `ex` uses the common approximation of half an em. `\hfill`/`\hfil`
+inside heading, caption, or `\textbf`-style content (which reaches the page
+through `inlines_from_tokens` rather than `command`'s ordinary dispatch) are
+supported, since that is exactly where `\problem{...}{...}`-style macros put
+them; `\hspace` in that same position is not yet, since it needs a following
+brace argument that function does not consume.
+
+An unsupported command's diagnostic always survives, but a directly following
+`{...}` argument is now sometimes also skipped rather than typeset as text: see
+the recovery-policy comment on `parser::unsupported` for the exact,
+conservative rule (a fixed short list of known-arity commands, or content that
+looks like a bare dimension or a two-or-more-letter lowercase keyword). A
+prose argument to a genuinely unknown command is never swallowed by this.
+
+`\quad` and `\qquad` insert explicit horizontal glue of 1em/2em of the current
+body text size in running text (they are also recognised inside math, where
+they behave the same way). `\bigskip`, `\medskip`, and `\smallskip` end the
+current paragraph and add 12pt/6pt/3pt of vertical space, plain TeX's
+conventional flat amounts; this layout model has no rubber lengths, so their
+usual `plus`/`minus` stretch and shrink are honestly dropped rather than
+approximated.
 
 ## Macro expansion and source mapping
 
@@ -216,7 +278,13 @@ requested delimiter at ordinary size (`.` is the invisible null delimiter).
 `\mathrm`, `\mathit`, `\mathsf`, `\mathtt`, `\boldsymbol` and `\mbox` typeset
 their argument in the current math face (no distinct face yet). `\displaystyle`,
 `\textstyle`, `\limits` and `\nolimits` are accepted without changing size.
-`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces. The math environments
+`\,` `\:` `\>` `\;` `\ ` and `\!` are math spaces, added to TeX's
+inter-atom spacing: atoms are classed ord/op/bin/rel/open/close/punct/inner
+and spaced by the TeXbook Chapter 18 table (thin 3mu, medium 4mu, thick 5mu
+of the current math size; scripts keep only the unparenthesised thin
+entries), and a binary operator with no left operand is ordinary. Fences are
+classed by glyph as open/close rather than inner, `\operatorname{name}` is
+ordinary, and a math `-` is the minus sign U+2212. The math environments
 `split`, `aligned`, `alignedat` and `gathered` lay out as grids.
 
 `\binom{n}{k}` (and `\dbinom`, `\tbinom`) is a two-row grid in parentheses.

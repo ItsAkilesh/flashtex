@@ -151,6 +151,7 @@ impl Session {
         }
 
         let parsed = parser::parse_project(documents, entry_path);
+        let constraints = parsed.preamble_constraints(constraints);
         let same_document_set = self.previous.as_ref().is_some_and(|previous| {
             previous.entry_path == entry_path
                 && previous.documents.len() == snapshot.len()
@@ -341,6 +342,7 @@ pub fn compile_full_project(
     constraints: LayoutConstraints,
 ) -> CompileOutput {
     let parsed = parser::parse_project(documents, entry_path);
+    let constraints = parsed.preamble_constraints(constraints);
     let (pages, mut layout_diagnostics) = layout::layout_converged(&parsed.blocks, constraints);
     let mut diagnostics = parsed.diagnostics;
     diagnostics.append(&mut layout_diagnostics);
@@ -396,6 +398,22 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             style: *style,
             content: shift_inlines(content, changes, deltas)?,
         },
+        Block::ListItem {
+            level,
+            label,
+            content,
+            extra_gap_before_pt,
+            extra_gap_after_pt,
+        } => Block::ListItem {
+            level: *level,
+            label: match label {
+                Some((text, span)) => Some((text.clone(), mapped_span(*span, changes, deltas)?)),
+                None => None,
+            },
+            content: shift_inlines(content, changes, deltas)?,
+            extra_gap_before_pt: *extra_gap_before_pt,
+            extra_gap_after_pt: *extra_gap_after_pt,
+        },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
             span: mapped_span(*span, changes, deltas)?,
@@ -412,12 +430,22 @@ fn shift_inlines(
     inlines
         .iter()
         .map(|inline| match inline {
-            Inline::Text { text, span, style } => Some(Inline::Text {
+            Inline::Text {
+                text,
+                span,
+                style,
+                space_before,
+            } => Some(Inline::Text {
                 style: *style,
                 text: text.clone(),
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::LineBreak { span } => Some(Inline::LineBreak {
+                span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::TextGlue { em, span } => Some(Inline::TextGlue {
+                em: *em,
                 span: mapped_span(*span, changes, deltas)?,
             }),
             Inline::Math {
@@ -426,6 +454,7 @@ fn shift_inlines(
                 number,
                 number_span,
                 span,
+                space_before,
             } => Some(Inline::Math {
                 list: shift_math_list(list, changes, deltas)?,
                 display: *display,
@@ -435,6 +464,7 @@ fn shift_inlines(
                     None => None,
                 },
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::MathRows {
                 rows,
@@ -616,6 +646,7 @@ type BlockSignature = (usize, usize, usize, usize, usize);
 fn block_signature(block: &Block) -> BlockSignature {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
@@ -624,6 +655,7 @@ fn block_signature(block: &Block) -> BlockSignature {
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
@@ -654,6 +686,7 @@ fn shifted_signature(
 ) -> Option<BlockSignature> {
     let inlines: &[Inline] = match block {
         Block::Paragraph(inlines) => inlines,
+        Block::ListItem { content, .. } => content,
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
@@ -662,6 +695,7 @@ fn shifted_signature(
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
         Inline::LineBreak { span } => *span,
+        Inline::TextGlue { span, .. } => *span,
         Inline::Math { span, .. } => *span,
         Inline::MathRows { span, .. } => *span,
         Inline::Label { span, .. } => *span,
@@ -848,6 +882,7 @@ mod tests {
         let constraints = LayoutConstraints {
             font_size_pt: 13.0,
             measure_pt: 320.0,
+            parskip_pt: None,
         };
         let result = session.compile(text, constraints);
         eprintln!("constraint ReuseStats: {:?}", result.stats);

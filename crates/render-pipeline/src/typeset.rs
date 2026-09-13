@@ -24,7 +24,7 @@ use flashtex_font_engine::sha256;
 use flashtex_math_layout as ml;
 use flashtex_paragraph_layout as pl;
 
-use crate::adapter::{self, Block, Doc, Item as AItem, ParaPart, ParaStyle, TextStyle};
+use crate::adapter::{self, Block, Doc, Item as AItem, ListGeom, ListMargin, ParaPart, ParaStyle, TextStyle};
 use crate::display::{
     self, Caret, Cluster, Diagnostic, DisplayList, DocumentResource, FontResource, Glyph, GlyphRun, Paint, Provenance,
     Rect, Rule, SourceRange, Tick,
@@ -1035,7 +1035,7 @@ impl<'a> Context<'a> {
         (out, recs, labels, skips)
     }
 
-    fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle) -> pl::LineBreakParams {
+    fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {
         let s = self.style;
         // `\centering`: `\leftskip`/`\rightskip` `0pt plus 1fil`; `\raggedleft`:
         // `\leftskip` alone; `\raggedright`: `\rightskip` (the crate's ragged
@@ -1050,6 +1050,9 @@ impl<'a> Context<'a> {
             ParaStyle::FlushLeft => (pl::BreakMode::RaggedRight, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
             ParaStyle::Quote => (pl::BreakMode::Justified, margin.clone(), margin),
         };
+        // `\list`: `\parshape` every line `\@totalleftmargin` in (`\rightmargin`
+        // is 0pt), on top of any `quote` margin.
+        let left_skip = if hang_pt != 0.0 { pl::Glue::fixed(left_skip.width + hang_pt) } else { left_skip };
         pl::LineBreakParams {
             line_width: s.text_width_pt,
             mode,
@@ -1075,20 +1078,48 @@ impl<'a> Context<'a> {
     /// A body paragraph (or the part of one before/after a display).
     /// `starts_paragraph` adds `\parskip`; `after_heading` is LaTeX's
     /// `\@afterheading` (`\clubpenalty 10000`).
-    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle) -> Option<BuiltBlock> {
+    fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle, list_geom: Option<&ListGeom>) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
         let (mut list, mut recs, labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
         let trailing_skip = self.drop_trailing_break(items, &mut list, &mut recs, &mut skips, style);
-        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style));
+        // `\item`: the label box `\hskip-\labelwidth \hskip-\labelsep
+        // \hbox to\labelwidth{\hfil <label>} \hskip\labelsep` opens the
+        // first line (`\@item`'s `\everypar`); a label wider than
+        // `\labelwidth` keeps its own width and pushes the text right.
+        let mut hang_pt = 0.0;
+        if let Some(geom) = list_geom {
+            let (hang, labelwidth) = self.list_geometry(geom, size);
+            hang_pt = hang;
+            if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
+                if let Some((run, rec)) = self.label_box(text, *span, size) {
+                    let labelsep = self.style.labelsep_pt;
+                    let lead = [
+                        (pl::Item::kern(-(labelsep + run.width.min(labelwidth))), None),
+                        (pl::Item::Box(run), Some(rec)),
+                        (pl::Item::kern(labelsep), None),
+                    ];
+                    for (i, (item, rec)) in lead.into_iter().enumerate() {
+                        list.insert(i, item);
+                        recs.insert(i, rec);
+                    }
+                    for (at, _) in &mut skips {
+                        *at += 3;
+                    }
+                }
+            }
+        }
+        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style, hang_pt));
         self.report_overfull(&lines, &list, &recs);
+        // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
+        let parskip = if list_geom.is_some() { self.style.parsep } else { self.style.parskip };
         let vertical = VBlock {
             lines: line_extents(&lines),
             penalty_before: None,
             space_before: None,
-            parskip: starts_paragraph.then(|| skip_tuple(self.style.parskip)),
+            parskip: starts_paragraph.then(|| skip_tuple(parskip)),
             interline_penalty: 0,
             club_penalty: if after_heading { pagebuild::INF_PENALTY } else { CLUB_PENALTY },
             widow_penalty: WIDOW_PENALTY,
@@ -1113,6 +1144,54 @@ impl<'a> Context<'a> {
             labels,
             cache_key: None,
         })
+    }
+
+    /// `(\@totalleftmargin, \labelwidth)` of an item paragraph, in points:
+    /// the sum of the enclosing lists' `\leftmargin`s, and the innermost
+    /// list's label width (`\leftmargin - \labelsep` for a class margin;
+    /// the widest label's own width under enumitem's `leftmargin=*`).
+    fn list_geometry(&mut self, geom: &ListGeom, size: f64) -> (f64, f64) {
+        let labelsep = self.style.labelsep_pt;
+        let mut hang = 0.0;
+        let mut labelwidth = 0.0;
+        for margin in &geom.margins {
+            let (m, w) = match margin {
+                ListMargin::Fixed(pt) => (*pt, (pt - labelsep).max(0.0)),
+                ListMargin::Widest(text) => {
+                    let w = self.text_width(text, size, geom.label.as_ref().map_or(Span::new(0, 0), |(_, span)| *span));
+                    (w + labelsep, w)
+                }
+            };
+            hang += m;
+            labelwidth = w;
+        }
+        (hang, labelwidth)
+    }
+
+    /// Width of `text` shaped in the body font at `size`, in points.
+    fn text_width(&mut self, text: &str, size: f64, span: Span) -> f64 {
+        let face = self.face(TextStyle::default(), size, span);
+        let shaped = self.shaper.shape(&face, text);
+        shaped.width_units as f64 * size / shaped.units_per_em as f64
+    }
+
+    /// The `\item` label as a text box whose characters all point at the
+    /// `\item` command's bytes (article's `\labelenumi`/`\labelitemi` in
+    /// the body font).
+    fn label_box(&mut self, text: &str, span: Span, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        let seg = adapter::Segment {
+            text: text.to_string(),
+            chars: text
+                .chars()
+                .map(|_| adapter::CharSrc {
+                    document: span.document,
+                    start: span.start,
+                    end: span.end,
+                })
+                .collect(),
+            style: TextStyle::default(),
+        };
+        self.text_box(&seg, size)
     }
 
     /// A paragraph whose last item is `\\` (TeX: an empty final line,
@@ -1199,7 +1278,7 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt, ParaStyle::Plain));
+        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0));
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
         // (`\Large` is in force inside \@sect's group); the before/after
@@ -2135,10 +2214,18 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 env_close,
                 eject_before,
                 vspace_before,
+                addvspace_before,
+                list,
             } => {
                 let mut first = true;
                 let mut eject = *eject_before;
                 let mut vspace = *vspace_before;
+                // `\addvspace`: only the excess over the skip the previous
+                // block already left (`\@xaddvskip`).
+                if *addvspace_before != 0.0 {
+                    let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
+                    vspace += (addvspace_before - prev_after).max(0.0);
+                }
                 // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
                 // `\partopsep` from vertical mode) before the first paragraph;
                 // `\end{...}` adds the same after the last (`\@endparenv`).
@@ -2163,9 +2250,25 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
                             let (ind, starts, ah) = (*indent && first, first, after_heading && first);
-                            let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64]);
+                            let list_fp = list.as_ref().map_or(0, |g| {
+                                let mut h = std::collections::hash_map::DefaultHasher::new();
+                                g.level.hash(&mut h);
+                                for m in &g.margins {
+                                    match m {
+                                        ListMargin::Fixed(pt) => pt.to_bits().hash(&mut h),
+                                        ListMargin::Widest(text) => text.hash(&mut h),
+                                    }
+                                }
+                                if let Some((text, span)) = &g.label {
+                                    text.hash(&mut h);
+                                    (span.end - span.start).hash(&mut h);
+                                }
+                                h.finish()
+                            });
+                            let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
                             let st = *style;
-                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st)) {
+                            let geom = list.as_ref();
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);

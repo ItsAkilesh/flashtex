@@ -88,6 +88,12 @@ pub struct Stylesheet {
     pub topsep: Skip,
     pub partopsep: Skip,
     pub leftmargini_pt: f64,
+    /// `\parsep` of a level-1 list (`\@listi`): `\list` sets
+    /// `\parskip\parsep`, so it is the gap every `\item` paragraph adds.
+    pub parsep: Skip,
+    /// `\labelsep` (article: `.5em` of `\normalsize`): the gap between a
+    /// list label's right edge and the item text.
+    pub labelsep_pt: f64,
     headings: [HeadingStyle; 3],
 }
 
@@ -175,6 +181,8 @@ impl Stylesheet {
             topsep: Skip::new(list.topsep.pt, list.topsep.plus, list.topsep.minus),
             partopsep: Skip::new(list.partopsep.pt, list.partopsep.plus, list.partopsep.minus),
             leftmargini_pt: list.leftmargin.0,
+            parsep: Skip::new(list.parsep.pt, list.parsep.plus, list.parsep.minus),
+            labelsep_pt: list.labelsep.0,
             headings: [heading(1), heading(2), heading(3)],
         }
     }

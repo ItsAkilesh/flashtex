@@ -179,6 +179,14 @@ pub enum Block {
         /// one (compiler `Block::VSpace`), summed in points; `\addvspace`
         /// glue added before the block.
         vspace_before: f64,
+        /// LaTeX `\addvspace` glue before the block (`\@item`'s `\topsep`/
+        /// `\itemsep`, `\@endparenv`'s `\@topsepadd`), in points: only
+        /// its excess over the previous block's trailing skip (a display's
+        /// `\belowdisplayskip`) is added.
+        addvspace_before: f64,
+        /// The paragraph is (part of) an `itemize`/`enumerate` `\item`
+        /// (compiler `Block::ListItem`): LaTeX's `\list` geometry applies.
+        list: Option<ListGeom>,
     },
     Heading {
         level: u8,
@@ -194,6 +202,40 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+}
+
+/// LaTeX `\list` geometry of one `\item` paragraph (see
+/// [`Block::Paragraph::list`]). `\list` sets `\parshape` so every line of
+/// the item starts `\@totalleftmargin` (the sum of the enclosing lists'
+/// `\leftmargin`s) in from the left margin, and `\@item` sets the label
+/// right-aligned in `\hbox to\labelwidth{\hss <label>}\hskip\labelsep`
+/// before the first line, so its right edge ends `\labelsep` before the
+/// text (article's `\makelabel` is `\hss\llap{#1}`, so a wider label
+/// simply extends further left).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListGeom {
+    /// Nesting level (1 = outermost).
+    pub level: u8,
+    /// `\leftmargin` of every enclosing list, outermost first; the hanging
+    /// indent is their sum.
+    pub margins: Vec<ListMargin>,
+    /// The `\item` marker text and the command's span; `None` for a later
+    /// paragraph of the same item (a blank line inside the item's text).
+    pub label: Option<(String, Span)>,
+}
+
+/// One list level's `\leftmargin`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListMargin {
+    /// article's `\leftmargin<i>` (or an explicit enumitem
+    /// `leftmargin=<dimen>`), in points.
+    Fixed(f64),
+    /// enumitem `leftmargin=*`: `\labelwidth` + `\labelsep`, where
+    /// `\labelwidth` is the width of this label — the widest one the list
+    /// can produce (enumitem's `widest` default: `m`/`M`/`viii`/`VIII`/`0`
+    /// for `\alph`/`\Alph`/`\roman`/`\Roman`/`\arabic`), set in the
+    /// body font.
+    Widest(String),
 }
 
 /// How a paragraph-shape environment began (see [`Block::Paragraph`]).
@@ -226,7 +268,7 @@ pub struct Labels {
 fn inlines_of(block: &CBlock) -> &[Inline] {
     match block {
         CBlock::Paragraph(i) => i,
-        CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
+        CBlock::ListItem { content, .. } | CBlock::Heading { content, .. } | CBlock::FigureCaption { content } | CBlock::Styled { content, .. } => content,
         CBlock::VSpace { .. } | CBlock::Rule { .. } | CBlock::PageBreak => &[],
     }
 }
@@ -303,7 +345,7 @@ pub fn adapt_cached(
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t, size))).collect();
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -321,7 +363,7 @@ pub fn adapt_cached(
     let mut blocks = Vec::new();
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut after_heading = false;
-    for unit in split_at_page_breaks(texts, parsed, size) {
+    for unit in split_at_page_breaks(texts, parsed, size, &style) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -370,6 +412,7 @@ pub fn adapt_cached(
                 styled,
                 env_open,
                 after_env,
+                list,
             } => {
                 for inline in inlines {
                     if let Inline::MathRows { rows, aligned, span } = inline {
@@ -419,16 +462,19 @@ pub fn adapt_cached(
                     continue;
                 }
                 // `\centering` sets `\parindent 0pt`; a list item's first
-                // paragraph carries no indent and `quote` sets
-                // `\listparindent 0pt` for the ones after it.
+                // paragraph carries no indent and `\list` sets
+                // `\parindent\listparindent` (0pt in article) for the
+                // ones after it, `quote` likewise.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && styled.is_none() && !after_env,
+                    indent: !after_heading && !caption && styled.is_none() && !after_env && list.is_none(),
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
                     eject_before,
                     vspace_before,
+                    addvspace_before: unit.addvspace_before,
+                    list,
                 });
                 after_heading = false;
             }
@@ -468,7 +514,8 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Label { span, .. }
         | Inline::Reference { span, .. }
         | Inline::HFill { span }
-        | Inline::HSpace { span, .. } => *span,
+        | Inline::HSpace { span, .. }
+        | Inline::TextGlue { span, .. } => *span,
     }
 }
 
@@ -480,6 +527,8 @@ struct Unit<'p> {
     eject_before: bool,
     /// Summed `\vspace` points from compiler `VSpace` blocks before this unit.
     vspace_before: f64,
+    /// `\addvspace` glue before this unit (list skips; paragraphs only).
+    addvspace_before: f64,
     /// Constructs before this unit the pipeline set approximately.
     limitations: Vec<(&'static str, Span, String)>,
 }
@@ -502,6 +551,8 @@ enum UnitKind<'p> {
         /// LaTeX's `\@endpe`: text that follows `\end{center}`/... without
         /// a blank line continues in the same paragraph, unindented.
         after_env: bool,
+        /// A compiler `ListItem` paragraph: its `\list` geometry.
+        list: Option<ListGeom>,
     },
     Rule {
         span: Span,
@@ -520,7 +571,7 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
@@ -531,6 +582,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
     // The previous unit left TeX in vertical mode (a heading or a rule).
     let mut prev_vmode = false;
     let mut prev_styled = false;
+    // The previous unit was an `\item` paragraph, and whether its list's
+    // `\begin` was read in vertical mode (`\@topsepadd` keeps `\partopsep`
+    // for the closing skip too).
+    let mut prev_list = false;
+    let mut list_vmode = false;
     for block in &parsed.blocks {
         match block {
             CBlock::PageBreak => {
@@ -547,6 +603,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                     kind: UnitKind::Rule { span: *span },
                     eject_before: eject,
                     vspace_before: std::mem::take(&mut pending_vspace),
+                    addvspace_before: 0.0,
                     limitations: std::mem::take(&mut pending_limitations),
                 });
                 prev_end = Some(*span);
@@ -576,6 +633,76 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                 }
             }
         }
+        // The compiler's list model (pin `42557b09`): every `\item`
+        // paragraph is a `ListItem` with its nesting level and, for the
+        // item's first paragraph, the marker text. Its `\setlist`
+        // itemsep/topsep gaps are attached to whichever paragraph the
+        // *next* `\item`/`\end` flushes, so an item holding a display
+        // (which ends the paragraph early) carries them on the wrong
+        // block, and `em` in them is the compiler's fixed 12pt body; the
+        // pipeline sets the list's vertical glue from the source instead:
+        //
+        // `\@item` of the first item: `\addvspace\@topsep` (`\topsep` +
+        // the outer `\parskip`, + `\partopsep` when `\begin` was read in
+        // vertical mode) then `\addvspace{-\parskip}` with `\parskip` now
+        // `\parsep`; the item paragraph then adds `\parsep`
+        // (`paragraph_block`). Right after a heading (`\@nobreak`)
+        // `\@nbitem`'s skip is absorbed by the heading's after-skip, so
+        // only `\parsep` remains. Later items: `\addvspace\itemsep`. A
+        // later paragraph of one item (no label) adds nothing but
+        // `\parsep`. `\end{...}`: `\@endparenv` adds `\@topsepadd`, absorbed
+        // by a following heading's larger before-skip (`\addvspace`).
+        // The hanging indent and the label box are the pipeline's too
+        // (`list_margins`): the compiler reports `leftmargin` as
+        // unimplemented.
+        let gap_before = |f: Span| -> Option<&str> {
+            match prev_end {
+                Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
+                Some(_) => None,
+                None => texts.get(f.document.0).and_then(|t| t.get(..f.start)),
+            }
+        };
+        let is_heading = matches!(block, CBlock::Heading { .. });
+        let mut addvspace_before = 0.0;
+        if prev_list && !is_heading {
+            if let Some(gap) = first.and_then(gap_before) {
+                if let Some(env) = gap_has_list_end(gap) {
+                    let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
+                    let seps = list_seps(src, env, 1, size, style);
+                    addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                }
+            }
+        }
+        let mut list = None;
+        if let CBlock::ListItem { level, label, .. } = block {
+            let anchor = label.as_ref().map(|(_, span)| *span).or(first);
+            if let Some(at) = anchor {
+                let src = texts.get(at.document.0).copied().unwrap_or("");
+                let stack = list_stack_at(src, at.start);
+                let env = stack.last().map_or("enumerate", |(env, _)| env);
+                let seps = list_seps(src, env, stack.len().max(1), size, style);
+                if label.is_some() {
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b)));
+                    match opens {
+                        Some((g, b)) if list_env_after_begin(&g[b..]) => {
+                            let before = &g[..b];
+                            list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+                            addvspace_before += style.parskip.natural - seps.parsep;
+                            if !prev_vmode {
+                                addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                            }
+                        }
+                        _ => addvspace_before += seps.itemsep,
+                    }
+                }
+                list = Some(ListGeom {
+                    level: *level,
+                    margins: list_margins(src, at.start, size),
+                    label: label.clone(),
+                });
+            }
+        }
+        prev_list = list.is_some();
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
             CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
@@ -629,10 +756,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                     },
                     eject_before: eject,
                     vspace_before,
+                    addvspace_before,
                     limitations,
                 });
             }
-            CBlock::Paragraph(inlines) | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
+            CBlock::Paragraph(inlines) | CBlock::ListItem { content: inlines, .. } | CBlock::FigureCaption { content: inlines } | CBlock::Styled { content: inlines, .. } => {
                 let caption = matches!(block, CBlock::FigureCaption { .. });
                 let mut env_open = env_open;
                 let mut start = 0usize;
@@ -647,9 +775,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                                 styled,
                                 env_open: env_open.take(),
                                 after_env,
+                                list: list.clone(),
                             },
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
+                            addvspace_before: std::mem::take(&mut addvspace_before),
                             limitations: std::mem::take(&mut limitations),
                         });
                         eject = true;
@@ -663,9 +793,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32) -> Ve
                         styled,
                         env_open,
                         after_env,
+                        list,
                     },
                     eject_before: eject,
                     vspace_before,
+                    addvspace_before,
                     limitations,
                 });
             }
@@ -855,6 +987,232 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
     })
 }
 
+/// The vertical glue of one list level, in points at the class size:
+/// article's `\@list<i>` values (`document-style`), with the source's
+/// `\setlist[<env>]{topsep=..,itemsep=..,parsep=..,partopsep=..}`
+/// overrides for `env` (enumitem evaluates `em`/`ex` in `\normalsize`).
+#[derive(Debug, Clone, Copy)]
+struct ListSeps {
+    topsep: f64,
+    partopsep: f64,
+    itemsep: f64,
+    parsep: f64,
+}
+
+fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
+    let base = match size {
+        12 => flashtex_document_style::BaseSize::Pt12,
+        11 => flashtex_document_style::BaseSize::Pt11,
+        _ => flashtex_document_style::BaseSize::Pt10,
+    };
+    let class = flashtex_document_style::list_level(base, depth as u8);
+    let mut seps = ListSeps {
+        topsep: class.topsep.pt,
+        partopsep: class.partopsep.pt,
+        itemsep: class.itemsep.pt,
+        parsep: class.parsep.pt,
+    };
+    if depth == 1 {
+        // The stylesheet's level-1 values are the ones `paragraph_block`
+        // adds as the item's `\parskip`; keep both readings identical.
+        seps.topsep = style.topsep.natural;
+        seps.partopsep = style.partopsep.natural;
+        seps.parsep = style.parsep.natural;
+    }
+    for (envs, keys) in setlist_calls(source) {
+        if !setlist_names(envs, env) {
+            continue;
+        }
+        for (key, value) in list_keys(keys) {
+            let Some(pt) = parse_dimen(value, size) else { continue };
+            match key {
+                "topsep" => seps.topsep = pt,
+                "partopsep" => seps.partopsep = pt,
+                "itemsep" => seps.itemsep = pt,
+                "parsep" => seps.parsep = pt,
+                _ => {}
+            }
+        }
+    }
+    seps
+}
+
+/// Whether `rest` (starting at a `\begin`) opens `itemize`/`enumerate`.
+fn list_env_after_begin(rest: &str) -> bool {
+    let after = rest.strip_prefix("\\begin").unwrap_or(rest).trim_start();
+    after.starts_with("{itemize}") || after.starts_with("{enumerate}")
+}
+
+/// The environment of the last `\end{itemize}`/`\end{enumerate}` in `gap`.
+fn gap_has_list_end(gap: &str) -> Option<&'static str> {
+    let end = rfind_command(gap, "end")?;
+    let rest = gap[end + "\\end".len()..].trim_start();
+    ["itemize", "enumerate"].into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
+}
+
+/// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
+/// `(environment list or "" for all, keys)`.
+fn setlist_calls(source: &str) -> Vec<(&str, &str)> {
+    let mut calls = Vec::new();
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "setlist") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = &source[abs + "\\setlist".len()..];
+        let rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+        let (envs, rest) = match rest.strip_prefix('[') {
+            Some(r) => match r.find(']') {
+                Some(close) => (&r[..close], r[close + 1..].trim_start()),
+                None => continue,
+            },
+            None => ("", rest),
+        };
+        if !rest.starts_with('{') {
+            continue;
+        }
+        let Some(close) = matching_brace(rest.as_bytes(), 0) else { continue };
+        calls.push((envs, &rest[1..close]));
+    }
+    calls
+}
+
+/// enumitem `key=value` pairs (a key without `=` gets an empty value).
+fn list_keys(keys: &str) -> impl Iterator<Item = (&str, &str)> {
+    keys.split(',').map(str::trim).filter(|k| !k.is_empty()).map(|k| match k.split_once('=') {
+        Some((key, value)) => (key.trim(), value.trim()),
+        None => (k, ""),
+    })
+}
+
+/// Whether a `\setlist[<envs>]` list names `env` (enumitem also accepts
+/// level numbers there, which apply to every environment).
+fn setlist_names(envs: &str, env: &str) -> bool {
+    envs.trim().is_empty() || envs.split(',').map(str::trim).any(|e| e == env || e.parse::<u8>().is_ok())
+}
+
+/// The `itemize`/`enumerate` environments open at byte `at` of `source`,
+/// outermost first: `(environment, `\begin` optional argument)`.
+fn list_stack_at(source: &str, at: usize) -> Vec<(&str, &str)> {
+    let mut stack: Vec<(&str, &str)> = Vec::new();
+    let mut from = 0;
+    while from < at {
+        let next_begin = find_command(&source[from..at], "begin").map(|i| from + i);
+        let next_end = find_command(&source[from..at], "end").map(|i| from + i);
+        let (pos, is_begin) = match (next_begin, next_end) {
+            (Some(b), Some(e)) if b < e => (b, true),
+            (Some(b), None) => (b, true),
+            (_, Some(e)) => (e, false),
+            (None, None) => break,
+        };
+        from = pos + 1;
+        let rest = &source[pos + if is_begin { "\\begin".len() } else { "\\end".len() }..];
+        let rest = rest.trim_start();
+        let Some(inner) = rest.strip_prefix('{') else { continue };
+        let Some(close) = inner.find('}') else { continue };
+        let env = inner[..close].trim();
+        if !matches!(env, "itemize" | "enumerate") {
+            continue;
+        }
+        if is_begin {
+            let after = inner[close + 1..].trim_start();
+            let options = match after.strip_prefix('[') {
+                Some(o) => o.find(']').map_or("", |c| &o[..c]),
+                None => "",
+            };
+            stack.push((env, options));
+        } else if stack.last().is_some_and(|(open, _)| *open == env) {
+            stack.pop();
+        }
+    }
+    stack
+}
+
+/// article's `\leftmargin<i>` for nesting `depth` (1-based), in em of
+/// the body font (`\leftmarginv`/`vi` are 1em).
+fn article_leftmargin_em(depth: usize) -> f64 {
+    [2.5, 2.2, 1.87, 1.7, 1.0, 1.0][depth.clamp(1, 6) - 1]
+}
+
+/// The widest label enumitem assumes for the `leftmargin=*` computation:
+/// a `label=` key (its `\alph*`-style counter replaced by `m`/`M`/
+/// `viii`/`VIII`/`0`), a shortlabels template (`(a)` -> `(m)`), or the
+/// class's own label for this depth.
+fn widest_label(env: &str, depth: usize, label_key: Option<&str>, template: Option<&str>) -> String {
+    if let Some(label) = label_key {
+        return [("\\alph*", "m"), ("\\Alph*", "M"), ("\\roman*", "viii"), ("\\Roman*", "VIII"), ("\\arabic*", "0")]
+            .iter()
+            .fold(label.to_string(), |text, (command, widest)| text.replace(command, widest));
+    }
+    if env == "itemize" {
+        return match depth {
+            1 => "•",
+            2 => "–",
+            3 => "∗",
+            _ => "·",
+        }
+        .to_string();
+    }
+    if let Some(template) = template {
+        if let Some((index, style)) = template.char_indices().find(|(_, c)| "aAiI1".contains(*c)) {
+            let widest = match style {
+                'a' => "m",
+                'A' => "M",
+                'i' => "viii",
+                'I' => "VIII",
+                _ => "0",
+            };
+            return format!("{}{}{}", &template[..index], widest, &template[index + 1..]);
+        }
+        return template.to_string();
+    }
+    match depth {
+        1 => "0.",
+        2 => "(m)",
+        3 => "viii.",
+        _ => "M.",
+    }
+    .to_string()
+}
+
+/// `\leftmargin` of every list open at byte `at` (outermost first): the
+/// class's `\leftmargin<i>` unless a `\setlist` naming the environment or
+/// the `\begin` options set enumitem's `leftmargin` (`*` = the widest
+/// label's width plus `\labelsep`; a `<dimen>` as given).
+fn list_margins(source: &str, at: usize, size: u32) -> Vec<ListMargin> {
+    let calls = setlist_calls(source);
+    let class_margin = |depth: usize| ListMargin::Fixed(parse_dimen(&format!("{}em", article_leftmargin_em(depth)), size).unwrap_or(0.0));
+    list_stack_at(source, at)
+        .iter()
+        .enumerate()
+        .map(|(i, (env, options))| {
+            let depth = i + 1;
+            let mut leftmargin: Option<&str> = None;
+            let mut label_key: Option<&str> = None;
+            let begin_keys = options.contains('=');
+            let all_keys = calls
+                .iter()
+                .filter(|(envs, _)| setlist_names(envs, env))
+                .map(|(_, keys)| *keys)
+                .chain(begin_keys.then_some(*options));
+            for keys in all_keys {
+                for (key, value) in list_keys(keys) {
+                    match key {
+                        "leftmargin" => leftmargin = Some(value),
+                        "label" => label_key = Some(value),
+                        _ => {}
+                    }
+                }
+            }
+            let template = (!begin_keys && !options.is_empty()).then_some(*options);
+            match leftmargin {
+                Some("*") => ListMargin::Widest(widest_label(env, depth, label_key, template)),
+                Some(dimen) => parse_dimen(dimen, size).map_or_else(|| class_margin(depth), ListMargin::Fixed),
+                None => class_margin(depth),
+            }
+        })
+        .collect()
+}
+
 /// Byte offset of `\name` (as a whole control word, outside comments).
 fn find_command(source: &str, name: &str) -> Option<usize> {
     let needle = format!("\\{name}");
@@ -925,36 +1283,56 @@ enum StyleKind {
     Bold,
     Emph,
     Italic,
-    /// A size declaration, in hundredths of a point.
-    Size(u16),
 }
 
-/// The point size a LaTeX size declaration selects at a class base size
-/// (size10/11/12.clo), in hundredths of a point.
-fn declared_size(name: &str, base: u32) -> Option<u16> {
-    let table: [(&str, [u16; 3]); 10] = [
-        ("tiny", [500, 600, 600]),
-        ("scriptsize", [700, 800, 800]),
-        ("footnotesize", [800, 900, 1000]),
-        ("small", [900, 1000, 1095]),
-        ("normalsize", [1000, 1095, 1200]),
-        ("large", [1200, 1200, 1440]),
-        ("Large", [1440, 1440, 1728]),
-        ("LARGE", [1728, 1728, 2074]),
-        ("huge", [2074, 2074, 2488]),
-        ("Huge", [2488, 2488, 2488]),
+/// The point size a `\tiny`..`\Huge` declaration selects at a class base
+/// size (size10/11/12.clo), in hundredths of a point; 0 for `\normalsize`
+/// (the paragraph's own size). The declaration in force comes from the
+/// compiler's `TextStyle::size` (pin `b38e1884`, declaration-scoped like
+/// bold/italic); the source scan below no longer reads size declarations,
+/// so a size is never applied twice. The compiler's own table is the same
+/// one, but it resolves against its integer class size where the pipeline
+/// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
+fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+    use flashtex_compiler::parser::FontSizeLevel as L;
+    let Some(level) = level else { return 0 };
+    // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
+    let table: [[u16; 3]; 9] = [
+        [500, 600, 600],
+        [700, 800, 800],
+        [800, 900, 1000],
+        [900, 1000, 1095],
+        [1200, 1200, 1440],
+        [1440, 1440, 1728],
+        [1728, 1728, 2074],
+        [2074, 2074, 2488],
+        [2488, 2488, 2488],
     ];
     let col = match base {
         11 => 1,
         12 => 2,
         _ => 0,
     };
-    table.iter().find(|(n, _)| *n == name).map(|(_, sizes)| sizes[col])
+    let row = match level {
+        L::Tiny => 0,
+        L::ScriptSize => 1,
+        L::FootnoteSize => 2,
+        L::Small => 3,
+        L::Large1 => 4,
+        L::Large2 => 5,
+        L::Large3 => 6,
+        L::Huge1 => 7,
+        L::Huge2 => 8,
+    };
+    table[row][col]
 }
 
 /// Brace-group intervals of `\textbf{}`, `\emph{}`, `\textit{}` in source
-/// byte offsets (content only), in document order.
-fn style_intervals(source: &str, base: u32) -> Vec<(usize, usize, StyleKind)> {
+/// byte offsets (content only), in document order. Weight and shape only:
+/// the compiler carries no `\bfseries`/`\itshape` scoping for body text
+/// the pipeline could use, while size declarations are read from the
+/// compiler's `TextStyle::size` (see [`declared_size`]).
+fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
@@ -1019,7 +1397,7 @@ fn style_intervals(source: &str, base: u32) -> Vec<(usize, usize, StyleKind)> {
                     "bfseries" => Some(StyleKind::Bold),
                     "itshape" | "slshape" => Some(StyleKind::Italic),
                     "em" => Some(StyleKind::Emph),
-                    _ => declared_size(name, base).map(StyleKind::Size),
+                    _ => None,
                 };
                 if let Some(k) = decl {
                     let end = match groups.last() {
@@ -1172,7 +1550,7 @@ struct BodyCursor {
 }
 
 /// The bytes TeX read between the previous token and this one, in the
-/// order it read them, so that [`gap_has_space`] and [`gap_fills`] can be
+/// order it read them, so that [`gap_has_space`] can be
 /// applied to them uniformly: the source between two exact spans; the
 /// definition text between two tokens of one replacement (`\hfill
 /// \normalfont[` between `#1` and `[`); and across the boundary between a
@@ -1207,7 +1585,13 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
                 *cursor = Some(BodyCursor { inv: span, at: start });
                 return prev_end.map(|_| " ".to_string());
             };
-            match body.get(start..).and_then(|rest| rest.find(text)) {
+            // A control word (the glue arms pass `\hfill`/`\quad`/...) is
+            // matched as a whole word, so `\hfil` never stops at `\hfill`.
+            let find_text = |rest: &str| match text.strip_prefix('\\') {
+                Some(name) if name.chars().all(|c| c.is_ascii_alphabetic()) => find_command(rest, name),
+                _ => rest.find(text),
+            };
+            match body.get(start..).and_then(find_text) {
                 Some(p) => {
                     let pos = start + p;
                     *cursor = Some(BodyCursor { inv: span, at: pos + text.len() });
@@ -1243,24 +1627,6 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
     }
     *cursor = None;
     prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps))
-}
-
-/// The `\hfill`/`\hfil` control words in a gap (outside comments), each
-/// as its `fill` order, and whether an interword space follows the last
-/// one (`\hfill{} x`; the space right after the control word is eaten).
-fn gap_fills(gap: &str) -> (Vec<bool>, bool) {
-    let mut fills = Vec::new();
-    let mut after = 0usize;
-    let mut from = 0usize;
-    while let Some(at) = find_command(&gap[from..], "hfil").or_else(|| find_command(&gap[from..], "hfill")).map(|a| a + from) {
-        // `find_command` matches the whole word: pick whichever is here.
-        let fill = !is_control_word(gap, at, "hfil");
-        fills.push(fill);
-        after = at + if fill { "\\hfill".len() } else { "\\hfil".len() };
-        from = after;
-    }
-    let space_after = !fills.is_empty() && gap_has_space_after_control_word(&gap[after..]);
-    (fills, space_after)
 }
 
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
@@ -1363,12 +1729,6 @@ impl Styles {
                     StyleKind::Bold => s.bold = true,
                     StyleKind::Italic => s.italic = true,
                     StyleKind::Emph => s.italic = !s.italic,
-                    // Innermost (nearest start) declaration wins.
-                    StyleKind::Size(cpt) => {
-                        if s.size_cpt == 0 {
-                            s.size_cpt = cpt;
-                        }
-                    }
                 }
             }
         }
@@ -1562,6 +1922,10 @@ fn items_cached(
                 7u8.hash(&mut h);
                 pt.to_bits().hash(&mut h);
             }
+            Inline::TextGlue { em, .. } => {
+                8u8.hash(&mut h);
+                em.to_bits().hash(&mut h);
+            }
             Inline::MathRows { rows, aligned, .. } => {
                 5u8.hash(&mut h);
                 aligned.hash(&mut h);
@@ -1611,6 +1975,9 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     text,
                     span: *span,
                     style: Default::default(),
+                    // Interword gaps are read from the source bytes between
+                    // spans here, never from the compiler's flag.
+                    space_before: true,
                 }));
             }
             other => resolved.push(std::borrow::Cow::Borrowed(other)),
@@ -1621,41 +1988,36 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
     let mut prev_span: Option<Span> = None;
     let mut factor = 1000u32;
     let mut pending_accent: Option<(char, CharSrc)> = None;
+    // The compiler's size declaration in force at the previous text
+    // inline, for the interword space read after it.
+    let mut prev_size_cpt = 0u16;
     let text_of = |d: DocumentId| -> &str { texts.get(d.0).copied().unwrap_or("") };
     let no_styles = Styles::default();
     let styles_of = |d: DocumentId| -> &Styles { styles.get(d.0).unwrap_or(&no_styles) };
 
     // Where the reader stands in a macro's replacement text (`token_gap`).
     let mut cursor: Option<BodyCursor> = None;
-    // Emits an interword space if the bytes TeX read between `prev` and
-    // `span` held one (`token_gap`); in a heading, also the `\hfill`
-    // glue the compiler drops from a title (as `Item::HFill`, with the
-    // space before it): `(space, fills, space after the fills)`. `text` is
-    // the current token's text (a word).
-    let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>| -> (bool, Vec<bool>, bool) {
+    // Whether the previous token was a glue control word (`\hfill`,
+    // `\quad`, `\hspace`): TeX eats the whitespace right after it, and
+    // the gap read next starts at that whitespace.
+    let mut after_control_word = false;
+    // Whether the bytes TeX read between `prev` and `span` held an
+    // interword space (`token_gap`). `text` is the current token's text (a
+    // word, or the glue's control word). `\hfill` in a title is the
+    // compiler's own `Inline::HFill` (pin `3d3d5ae3`, also inside macro
+    // bodies), so the gap is never scanned for fills here.
+    let mut space_between = |prev_end: Option<usize>, prev_span: Option<Span>, span: Span, text: Option<&str>, after_control_word: bool| -> bool {
         let src = text_of(span.document);
         match token_gap(src, prev_end, prev_span, span, text, &mut cursor) {
-            None => (false, Vec::new(), false),
-            Some(gap) => {
-                let (fills, space_after) = if heading { gap_fills(&gap) } else { (Vec::new(), false) };
-                let before = match fills.is_empty() {
-                    true => gap.as_str(),
-                    false => &gap[..find_command(&gap, "hfil").or_else(|| find_command(&gap, "hfill")).unwrap_or(0)],
-                };
-                (gap_has_space(before), fills, space_after)
-            }
+            None => false,
+            Some(gap) if after_control_word => gap_has_space_after_control_word(&gap),
+            Some(gap) => gap_has_space(&gap),
         }
     };
-    // Pushes the space/fills `space_between` found.
-    let push_gap = |items: &mut Vec<Item>, (space, fills, space_after): (bool, Vec<bool>, bool), style: TextStyle, factor: u32| {
+    // Pushes the space `space_between` found.
+    let push_gap = |items: &mut Vec<Item>, space: bool, style: TextStyle, factor: u32| {
         if space {
             items.push(Item::Space { style, factor, no_break: false });
-        }
-        for fill in fills {
-            items.push(Item::HFill { fill });
-        }
-        if space_after {
-            items.push(Item::Space { style, factor: 1000, no_break: false });
         }
     };
 
@@ -1669,31 +2031,46 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
+                after_control_word = false;
             }
-            Inline::HFill { span } | Inline::HSpace { span, .. } => {
+            Inline::HFill { span } | Inline::HSpace { span, .. } | Inline::TextGlue { span, .. } => {
                 // Explicit horizontal glue: the interword space read before
-                // it stays (TeX keeps both glue nodes).
-                let gap = space_between(prev_end, prev_span, *span, None);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                // it stays (TeX keeps both glue nodes). `TextGlue` is the
+                // compiler's text-mode `\quad`/`\qquad` (`em` ems of the
+                // current font, like the `\quad` after a section number).
+                // The control word is passed as the token's text so that
+                // a macro-body cursor moves past it (`Problem #1 \hfill
+                // \normalfont[#2 points]`): the compiler gives the glue the
+                // invocation's span, and the next token's gap must start
+                // after the word, not before it.
+                let (item, word) = match &**inline {
+                    Inline::HSpace { pt, .. } => (Item::HSpace { pt: *pt }, "\\hspace"),
+                    Inline::TextGlue { em, .. } => (Item::Quad { em: *em }, if *em >= 2.0 { "\\qquad" } else { "\\quad" }),
+                    _ => {
+                        let fill = !is_control_word(text_of(span.document), span.start, "hfil");
+                        (Item::HFill { fill }, if fill { "\\hfill" } else { "\\hfil" })
+                    }
+                };
+                let gap = space_between(prev_end, prev_span, *span, Some(word), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
-                items.push(match &**inline {
-                    Inline::HSpace { pt, .. } => Item::HSpace { pt: *pt },
-                    _ => Item::HFill {
-                        fill: !is_control_word(text_of(span.document), span.start, "hfil"),
-                    },
-                });
+                items.push(item);
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
                 factor = 1000;
                 pending_accent = None;
+                after_control_word = true;
             }
             Inline::MathRows { rows, span, .. } => {
                 // Each row becomes its own display item (`is_display`
                 // recognises the row spans); the environment's span ends
                 // the preceding text like `\[`.
-                let gap = space_between(prev_end, prev_span, *span, None);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
                 for row in rows {
                     items.push(Item::Math {
                         list: math_row_list(row),
@@ -1706,9 +2083,11 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
             }
             Inline::Math { list, span, .. } => {
                 // The glue is the current font's where the space sits.
-                let gap = space_between(prev_end, prev_span, *span, None);
-                let gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                let gap = space_between(prev_end, prev_span, *span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
                 push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
                 items.push(Item::Math {
                     list: list.clone(),
                     span: *span,
@@ -1736,8 +2115,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 } else {
                     None
                 };
-                let is_accent = accent_char.is_some();
                 let mut style = style_at(styles_of(span.document), span.start);
+                // `\tiny`..`\Huge` come from the compiler's scoping.
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                style.size_cpt = declared_size(compiler_style.size, size);
                 if heading {
                     // `\@startsection` sets `\bfseries`; the compiler's
                     // heading styles start bold and `\normalfont`/
@@ -1746,17 +2127,19 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     style.medium = !cs.bold;
                     style.italic |= cs.italic;
                 }
-                let gap = space_between(prev_end, prev_span, *span, Some(text));
-                let has_space = gap.0 || !gap.1.is_empty();
+                let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
+                after_control_word = false;
                 if has_space {
                     // TeX sizes an interword space with the font current
                     // where the space token is read ("Plain, \textbf{bold}"
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
-                    let gap_style = space_style(texts, styles, prev_end, *span, style);
-                    push_gap(&mut items, gap, gap_style, factor);
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
                 }
+                prev_size_cpt = style.size_cpt;
                 if let Some(mark) = accent_char {
                     pending_accent = Some((
                         mark,
@@ -1851,6 +2234,25 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
         }
     }
     items
+}
+
+/// The size declaration in force where TeX reads the space token between
+/// the previous inline (ending at `prev_end`) and `span`, from the
+/// compiler's sizes of the two neighbours: the previous inline's unless a
+/// closing brace precedes the gap's first whitespace (`{\Large x} y`: the
+/// group has ended, so the space is read at the next inline's size).
+fn space_size(texts: &[&str], prev_end: Option<usize>, span: Span, prev_cpt: u16, next_cpt: u16) -> u16 {
+    if prev_cpt == next_cpt {
+        return prev_cpt;
+    }
+    let Some(pe) = prev_end else { return next_cpt };
+    let Some(gap) = texts.get(span.document.0).and_then(|t| t.get(pe..span.start)) else { return next_cpt };
+    let ws = gap.find(|c: char| c.is_whitespace()).unwrap_or(gap.len());
+    if gap[..ws].contains('}') {
+        next_cpt
+    } else {
+        prev_cpt
+    }
 }
 
 /// The style in force where TeX reads the space token between the previous
@@ -2029,6 +2431,51 @@ mod tests {
         let doc2 = adapt(&[src2], 0, &flashtex_compiler::parser::parse(src2), &RenderOptions::default(), &Labels::default());
         assert_eq!(doc2.style.body_size_pt, 10.0);
         assert_eq!(doc2.style.parindent_pt, 15.0);
+    }
+
+    /// Shorthand for an item list: `W` word, `S` space, `F` fill, `Q` quad.
+    fn shape(items: &[Item]) -> String {
+        items
+            .iter()
+            .map(|i| match i {
+                Item::Word(_) => 'W',
+                Item::Space { .. } => 'S',
+                Item::HFill { .. } => 'F',
+                Item::Quad { .. } => 'Q',
+                Item::HSpace { .. } => 'H',
+                _ => '?',
+            })
+            .collect()
+    }
+
+    #[test]
+    fn compiler_glue_is_taken_once_and_eats_the_space_after_its_control_word() {
+        // The compiler (pin `3d3d5ae3`) emits `Inline::HFill` inside titles,
+        // through macro bodies too, and `Inline::TextGlue` for text-mode
+        // `\quad`/`\qquad`; the pipeline must not add a second fill from
+        // the macro body's bytes, and the whitespace after the control word
+        // is TeX's to eat.
+        let src = "\\documentclass[11pt]{article}\n\\newcommand{\\problem}[2]{\\subsection*{Problem #1 \\hfill \\normalfont[#2 points]}}\n\\begin{document}\n\\problem{1}{4}\n\\subsection*{Bonus \\hfill \\normalfont[1 pt]}\nA \\quad B\\qquad C.\n\\end{document}\n";
+        let doc = adapt(&[src], 0, &flashtex_compiler::parser::parse(src), &RenderOptions::default(), &Labels::default());
+        let shapes: Vec<String> = doc
+            .blocks
+            .iter()
+            .map(|b| match b {
+                Block::Heading { items, .. } => shape(items),
+                Block::Paragraph { parts, .. } => parts
+                    .iter()
+                    .map(|p| match p {
+                        ParaPart::Lines(items) => shape(items),
+                        ParaPart::Display { .. } => "D".to_string(),
+                    })
+                    .collect(),
+                Block::Rule { .. } => "R".to_string(),
+            })
+            .collect();
+        // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.
+        // `A \quad B\qquad C.`: the space before `\quad` stays, the one after
+        // is eaten; `B\qquad` has none before.
+        assert_eq!(shapes, ["WSWSFWSW", "WSFWSW", "WSQWQW"]);
     }
 
     #[test]

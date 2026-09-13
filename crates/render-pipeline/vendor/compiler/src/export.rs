@@ -51,6 +51,7 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{D7}', 0xB4),   // multiply
     ('\u{F7}', 0xB8),   // divide
     ('\u{B1}', 0xB1),   // plusminus
+    ('\u{2212}', 0x2D), // minus (math-mode `-`)
     ('\u{2264}', 0xA3), // lessequal
     ('\u{2265}', 0xB3), // greaterequal
     ('\u{2260}', 0xB9), // notequal
@@ -242,7 +243,8 @@ mod tests {
     /// `COMMAND_GLYPHS` without considering export fails here.
     #[test]
     fn every_math_symbol_has_a_decided_export_outcome() {
-        for (command, glyph) in COMMAND_GLYPHS {
+        let minus = [("-", crate::math::MINUS_SIGN)];
+        for (command, glyph) in COMMAND_GLYPHS.iter().chain(&minus) {
             for c in glyph.chars() {
                 match map_char(c) {
                     Glyph::Encodable { font, .. } => {
