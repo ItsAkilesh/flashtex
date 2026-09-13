@@ -109,7 +109,7 @@ fn main() {
                 eprintln!("flashtex-render: {} rendered in {:.2} ms", reply.id, r.elapsed_ms);
             }
             if let Some(p) = &v2_out {
-                let text = json::write(&r.v2.to_json(&reply.id));
+                let text = r.v2.write_json(&reply.id);
                 if let Err(e) = std::fs::write(p, text) {
                     eprintln!("flashtex-render: cannot write {}: {e}", p.display());
                 }
