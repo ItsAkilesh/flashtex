@@ -922,12 +922,22 @@ pub fn inventory() -> Inventory {
             crate::amssymb::SymbolFont::Msbm => "msbm",
         };
         let class = format!("{:?}", ams.class).to_lowercase();
+        // Which `\usepackage` the document has to load: base LaTeX2e defines
+        // none of these names, and `math::command_atom` diagnoses the command
+        // when its package is absent, so the inventory has to say so.
+        let package = match ams.provider {
+            crate::amssymb::Provider::Amsfonts => "amsfonts",
+            crate::amssymb::Provider::Amssymb => "amssymb",
+        };
         commands.push(Command {
             name,
             mode: Mode::Math,
             origin: Origin::MathSymbol,
             arguments: "",
-            description: format!("symbol {} (\\math{class}, {font} \"{:02X})", ams.text, ams.slot),
+            description: format!(
+                "symbol {} (\\math{class}, {font} \"{:02X}; needs {package})",
+                ams.text, ams.slot
+            ),
             glyph: Some(ams.text),
             renders: true,
         });

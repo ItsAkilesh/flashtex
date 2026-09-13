@@ -429,6 +429,23 @@ pub struct MathPackages {
     /// against pdflatex. Other amsmath redefinitions the audit found are
     /// listed on the pull request; each one that lands reads this same flag.
     pub amsmath: bool,
+    /// `amssymb` is loaded, so the whole `AMSa`/`AMSb` (msam/msbm) inventory
+    /// of `amssymb.sty` exists.
+    ///
+    /// Without it base LaTeX2e has **no definition at all** for 203 of the
+    /// names in `crate::amssymb` (`\square`, `\nleq`, ... — every one probed
+    /// with `\ifcsname` under TeX Live 2025) and pdflatex answers "Undefined
+    /// control sequence". The table used to be applied unconditionally, which
+    /// made every such document silently diverge.
+    pub amssymb: bool,
+    /// `amsfonts` is loaded — by itself, or by `amssymb`, which requires it.
+    ///
+    /// `amsfonts.sty` declares a 22-name subset of the same symbol fonts
+    /// (`\ulcorner`, `\square`, `\yen`, the dashed arrows) plus the
+    /// `\mathbb`/`\mathfrak` alphabets, so `\usepackage{amsfonts}` alone
+    /// provides those and nothing else. Each symbol carries which of the two
+    /// files declares it (`amssymb::Provider`).
+    pub amsfonts: bool,
 }
 
 /// Packages that load amsmath, so that `\usepackage{X}` alone gives amsmath's
@@ -462,19 +479,89 @@ const AMSMATH_PACKAGES: &[&str] = &[
 /// `letter`, `proc`, `slides` and `amsdtx` measured as kernel.
 const AMSMATH_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart", "beamer"];
 
+/// Packages that make the full `amssymb` inventory exist. Measured the same
+/// way: `\documentclass[10pt]{article}\usepackage{X}` compiled with TeX Live
+/// 2025 pdflatex, asking `\ifcsname nleq\endcsname` (an `amssymb.sty`-only
+/// name) and `\ifcsname ulcorner\endcsname` (also in `amsfonts.sty`).
+///
+/// The eight non-AMS names are math *font* packages that really do
+/// `\RequirePackage{amssymb}`, so the commands exist; they then point the
+/// symbol fonts at their own faces, which this compiler does not model — a
+/// separate, pre-existing divergence, not one this gate introduces.
+///
+/// `libertinust1math` is deliberately absent although `\nleq` is defined
+/// under it: it defines part of the inventory itself without loading either
+/// AMS package (`\ulcorner`, `\yen`, `\mathfrak` and the dashed arrows stay
+/// undefined), so neither flag describes it. `fourier` and `siunitx` define
+/// `\square` alone by other means and are absent for the same reason.
+/// `amsthm`, `amsopn`, `amsbsy`, `amscd`, `amstext`, `bm`, `unicode-math`,
+/// `stmaryrd`, `wasysym`, `esint`, `mathrsfs`, `eucal`, `euler`, `mathpazo`,
+/// `mathptmx`, `mathdesign`, `concmath`, `dsfont`, `bbm`, `bbold`, `cmll`,
+/// `physics`, `mathtools` and 20 more measured as providing neither.
+const AMSSYMB_PACKAGES: &[&str] = &[
+    "amssymb",
+    "MnSymbol",
+    "txfonts",
+    "pxfonts",
+    "newtxmath",
+    "newpxmath",
+    "mathabx",
+    "kpfonts",
+    "cool",
+];
+
+/// Classes that load `amssymb` before the preamble runs. `amsart`, `amsbook`
+/// and `amsproc` load only `amsfonts` and are in `AMSFONTS_CLASSES` instead;
+/// `article`, `report`, `book`, `memoir`, `scrartcl`, `scrbook`, `scrreprt`,
+/// `revtex4-2`, `elsarticle`, `IEEEtran`, `letter`, `proc`, `slides` and
+/// `amsdtx` load neither.
+const AMSSYMB_CLASSES: &[&str] = &["acmart", "beamer"];
+
+/// Packages that make the `amsfonts.sty` subset exist without necessarily
+/// bringing the rest of `amssymb`. Every name in `AMSSYMB_PACKAGES` also
+/// measured as loading `amsfonts` (`amssymb.sty` requires it), so those are
+/// folded in by `load_package` rather than repeated here.
+const AMSFONTS_PACKAGES: &[&str] = &["amsfonts"];
+
+/// Classes that load `amsfonts`: the AMS classes load it (and `amsmath`) but
+/// not `amssymb`, so `\usepackage`-less `amsart` gets `\ulcorner` but not
+/// `\nleq` — measured.
+const AMSFONTS_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart", "beamer"];
+
 impl MathPackages {
-    /// Nothing loaded: every command takes its LaTeX kernel definition.
-    pub const KERNEL: Self = Self { amsmath: false };
+    /// Nothing loaded: every command takes its LaTeX kernel definition, and
+    /// every package-provided symbol is undefined.
+    pub const KERNEL: Self = Self {
+        amsmath: false,
+        amssymb: false,
+        amsfonts: false,
+    };
 
     /// Folds one `\documentclass` name in.
     pub fn load_class(&mut self, class: &str) {
         self.amsmath |= AMSMATH_CLASSES.contains(&class);
+        self.amssymb |= AMSSYMB_CLASSES.contains(&class);
+        self.amsfonts |= AMSFONTS_CLASSES.contains(&class);
     }
 
     /// Folds one `\usepackage`/`\RequirePackage` name in. Loading is
     /// cumulative: no package unloads another's redefinitions.
     pub fn load_package(&mut self, package: &str) {
         self.amsmath |= AMSMATH_PACKAGES.contains(&package);
+        let amssymb = AMSSYMB_PACKAGES.contains(&package);
+        self.amssymb |= amssymb;
+        // `amssymb.sty` line 8 is `\RequirePackage{amsfonts}`, so anything
+        // that gives the full inventory gives the subset too.
+        self.amsfonts |= amssymb || AMSFONTS_PACKAGES.contains(&package);
+    }
+
+    /// Whether a symbol of `crate::amssymb` is defined at all: the file that
+    /// declares it has to have been loaded.
+    pub fn provides(&self, symbol: &crate::amssymb::AmsSymbol) -> bool {
+        match symbol.provider {
+            crate::amssymb::Provider::Amsfonts => self.amsfonts,
+            crate::amssymb::Provider::Amssymb => self.amssymb,
+        }
     }
 }
 
@@ -850,7 +937,35 @@ impl MathParser<'_> {
         }
     }
 
+    /// A command whose defining package the document did not load.
+    ///
+    /// pdflatex's own answer is `! Undefined control sequence`, which typesets
+    /// nothing and carries on; this reports the missing `\usepackage` by name
+    /// — the actionable half — and falls back to the same literal recovery
+    /// every unsupported math command already uses, so the divergence is
+    /// visible in the output as well as in the diagnostics.
+    fn missing_package(&mut self, name: &str, package: &str, span: Span) -> MathAtom {
+        self.diagnostics.push(Diagnostic::command_error(
+            name,
+            format!("\\{name} requires \\usepackage{{{package}}}"),
+            Some(span),
+            Some("typeset the command literally and continued".into()),
+        ));
+        symbol(format!("\\{name}"), span)
+    }
+
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
+        // The `amsfonts.sty` math alphabets (`\mathbb` 108, `\mathfrak` 106)
+        // and its two obsolete spellings exist only once the package is
+        // loaded; base LaTeX2e has no definition for any of the four, so
+        // pdflatex answers "Undefined control sequence". `\mathbf`, which
+        // `\bold` stands for, is the kernel's and stays unconditional — the
+        // gate is on the spelling the document wrote, before the alias below.
+        if matches!(name.as_str(), "mathbb" | "mathfrak" | "Bbb" | "bold")
+            && !self.packages.amsfonts
+        {
+            return self.missing_package(&name, "amsfonts", span);
+        }
         // amsfonts' obsolete `\Bbb` and `\bold` (`amsfonts.sty` 111-116) are
         // `\mathbb` and `\mathbf` after an obsolescence warning.
         let name = match name.as_str() {
@@ -1129,7 +1244,44 @@ impl MathParser<'_> {
             "lbrace" => symbol("{".into(), span),
             "rbrace" => symbol("}".into(), span),
             "iiint" => symbol("∫∫∫".into(), span),
-            "bmod" | "mod" => text_atom("mod".into(), span),
+            // `\bmod` is not a bare `\mathbin` (`latex.ltx` 15703-15706):
+            //
+            //   \nonscript\mskip-\medmuskip\mkern5mu
+            //   \mathbin{\operator@font mod}\penalty900
+            //   \mkern5mu\nonscript\mskip-\medmuskip
+            //
+            // so the 4mu the Bin class contributes is cancelled and 5mu put in
+            // its place — 1mu more on each side than the class alone, and the
+            // same under amsmath, which does not touch it. The extra mu is
+            // added around the Bin atom rather than replacing it, so TeX's
+            // Bin-with-no-left-operand rule still applies and the boundary
+            // cases come out right.
+            //
+            // Measured with TeX Live 2025 pdflatex at 10pt, `\mathrm{mod}`
+            // being the same letters as an ordinary atom:
+            //
+            //   $a\bmod b$     34.29970   $a\mathrm{mod}b$   28.74428  (+10mu)
+            //   $\bmod b$      24.56947   $\mathrm{mod}b$    23.45839  (+2mu)
+            //   $\bmod$        20.27782   $\mathrm{mod}$     19.16673  (+2mu)
+            //
+            // and `$a\mkern5mu\mathrm{mod}\mkern5mu b$` is 34.29970 exactly.
+            // The rows with 2mu are the Bin degrading to Ord at a boundary,
+            // where only the explicit 5mu and the -4mu survive.
+            //
+            // Residual: the two `\nonscript`s drop the -4mu in script styles,
+            // where the Bin class contributes nothing either, so pdflatex
+            // keeps the full 5mu there and this keeps 1mu. That needs a
+            // style-aware kern, which no atom here carries.
+            "bmod" => {
+                self.pending.push(text_atom("mod".into(), span));
+                self.pending.push(space(BMOD_EXTRA_MU / 18.0, span));
+                space(BMOD_EXTRA_MU / 18.0, span)
+            }
+            // amsmath's `\mod` (`amsmath.sty` 726-728) is a different command
+            // with a different kern and no parentheses, and is undefined in
+            // base LaTeX2e; it is left exactly as it was, with the rest of the
+            // amsmath-provided constructs.
+            "mod" => text_atom("mod".into(), span),
             // amsmath.sty lines 237-241: `\dfrac` = `\genfrac{}{}{}0`,
             // `\tfrac` = `\genfrac{}{}{}1`, `\binom` = `\genfrac()\z@{}`,
             // `\dbinom` = `\genfrac(){0pt}0`, `\tbinom` = `\genfrac(){0pt}1`.
@@ -1306,13 +1458,36 @@ impl MathParser<'_> {
                     .push(text_atom(label, span.merge(argument_span)));
                 text_space(2.0 * QUAD_EM, span)
             }
+            // The kernel's `\pmod` (`latex.ltx` 15709) opens with
+            // `\mkern18mu`; amsmath renews it through `\pod`, which is
+            // `\if@display\mkern18mu\else\mkern8mu\fi` (`amsmath.sty`
+            // 719-724), so **inline** it is 10mu narrower while display is
+            // byte-identical. Both then set `(mod` + 6mu + the argument + `)`
+            // — the kernel as `\,\,`, amsmath as `\mkern6mu`.
+            //
+            // Measured with TeX Live 2025 pdflatex at 10pt: `\hbox{$a\pmod
+            // {y}$}` is 50.82503pt under the kernel and 45.26960pt under
+            // amsmath, matching `$a\mkern18mu(\mathrm{mod}\mkern6mu y)$` and
+            // `$a\mkern8mu(...)$` exactly; `\hbox{$\pmod{y}$}` alone is
+            // 45.53914 against 39.98372, the same 10mu. Setting
+            // `\@displaytrue` by hand puts amsmath back on 50.82503, which is
+            // what makes the display case identical.
+            //
+            // This compiler has no display flag on the atom, so the inline
+            // definition is the one that moves; every display formula reaches
+            // the same 18mu it does today.
             "pmod" => {
                 let body = self.required_group("pmod", span);
                 self.pending.push(text_atom("(mod".into(), span));
                 self.pending.push(space(6.0 / 18.0, span));
                 self.pending.extend(body.atoms);
                 self.pending.push(text_atom(")".into(), span));
-                space(QUAD_EM, span)
+                let opening = if self.packages.amsmath {
+                    AMSMATH_POD_MU / 18.0
+                } else {
+                    QUAD_EM
+                };
+                space(opening, span)
             }
             // siunitx inside a formula (`crate::siunitx`).
             "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
@@ -1400,6 +1575,11 @@ impl MathParser<'_> {
                 }
             }
             // amssymb: msbm10 char "3F, 0.777781em (cmsy10's \emptyset is 0.5em).
+            // Its own arm rather than a table row, so it needs its own gate;
+            // `\emptyset`, the kernel's cmsy10 "3B, is not affected.
+            "varnothing" if !self.packages.amssymb => {
+                self.missing_package(&name, "amssymb", span)
+            }
             "varnothing" => MathAtom {
                 width_em: Some(VARNOTHING_MSBM_EM),
                 ..symbol("∅".into(), span)
@@ -1416,6 +1596,43 @@ impl MathParser<'_> {
             "grave" => self.accent_atom(Accent::Grave, span),
             "widehat" => self.accent_atom(Accent::WideHat, span),
             "widetilde" => self.accent_atom(Accent::WideTilde, span),
+            // The dashed arrows are drawn from msam pieces `amsfonts.sty`
+            // declares, so without the package there is nothing to draw with
+            // and pdflatex answers "Undefined control sequence".
+            "dashrightarrow" | "dasharrow" | "dashleftarrow" if !self.packages.amsfonts => {
+                self.missing_package(&name, "amsfonts", span)
+            }
+            // `\angle` and `\hbar` are the two commands of this inventory that
+            // base LaTeX2e *does* define and amsfonts replaces with a single
+            // msam/msbm glyph of different metrics, so an unloaded document
+            // gets the kernel composite rather than an error. `fontmath.ltx`
+            // 243 builds `\angle` from an `\ialign` of rules and 241 sets
+            // `\hbar` as `\mathchar'26\mkern-9mu h`; measured with TeX Live
+            // 2025 pdflatex at 10pt, `\hbox{$\angle$}` is 6.37344pt against
+            // amssymb's 7.22223pt and `\hbox{$\hbar$}` 5.76172pt against
+            // 5.40280pt. (The `\hbar` composite reproduces exactly: the
+            // macron is 5.00002pt, `\mkern-9mu` is -4.99988pt and math italic
+            // `h` is 5.76158pt.) `\rightleftharpoons` is the third such
+            // command; this compiler has no row for it at all, so there is
+            // nothing to gate yet.
+            //
+            // Only the advance is forced here: the nearest Latin Modern Math
+            // character stays the glyph either way, because the kernel's
+            // `\angle` is a rule drawing with no character to name and the
+            // barred `h` is what U+210F already shows.
+            "angle" | "hbar" if !self.packages.amsfonts => MathAtom {
+                width_em: Some(if name == "angle" {
+                    KERNEL_ANGLE_EM
+                } else {
+                    KERNEL_HBAR_EM
+                }),
+                ..symbol(
+                    command_glyph(&name)
+                        .expect("\\angle and \\hbar have kernel glyph rows")
+                        .into(),
+                    span,
+                )
+            },
             // amsfonts `\dashrightarrow` = `\mathrel{\dabar@\dabar@\mathchar"0\hexnumber@
             // \symAMSa 4B}` (`\dasharrow` its alias) and `\dashleftarrow` with the
             // "4C head first (`amsfonts.sty` 87-95).
@@ -1439,9 +1656,23 @@ impl MathParser<'_> {
             }
             // amssymb/amsfonts symbols take precedence over the older glyph
             // rows for the same names (`\square`, `\nleq`, ...): they carry
-            // the msam/msbm slot and declared class pdfLaTeX sets.
+            // the msam/msbm slot and declared class pdfLaTeX sets — but only
+            // once the document has loaded the file that declares them.
             _ => match (crate::amssymb::by_name(&name), command_glyph(&name)) {
-                (Some(ams), _) => ams_atom(ams, span),
+                (Some(ams), _) if self.packages.provides(ams) => ams_atom(ams, span),
+                // Base LaTeX2e defines none of these 212 names (every one
+                // probed with `\ifcsname` under TeX Live 2025), so pdflatex
+                // answers "Undefined control sequence" and typesets nothing.
+                // A `COMMAND_GLYPHS` row for the same name must not stand in
+                // for the package: rendering it anyway is the divergence this
+                // gate closes, and it was table-wide.
+                (Some(ams), _) => {
+                    let package = match ams.provider {
+                        crate::amssymb::Provider::Amsfonts => "amsfonts",
+                        crate::amssymb::Provider::Amssymb => "amssymb",
+                    };
+                    self.missing_package(&name, package, span)
+                }
                 (None, Some(glyph)) => symbol(glyph.into(), span),
                 (None, None) => {
                     self.diagnostics.push(Diagnostic::command_error(
@@ -2354,6 +2585,28 @@ fn operator_body(list: MathList) -> MathList {
 
 /// `\varnothing`'s advance in ems: msbm10.tfm character "3F (CHARWD R 0.777781).
 pub(crate) const VARNOTHING_MSBM_EM: f64 = 0.777781;
+
+/// The mu `\bmod` adds on each side beyond the 4mu of its Bin class: its
+/// definition cancels `\medmuskip` and puts an explicit `\mkern5mu` there.
+pub(crate) const BMOD_EXTRA_MU: f64 = 1.0;
+
+/// The mu amsmath's `\pod` opens with in a non-display formula, against the
+/// kernel's 18mu (`QUAD_EM`).
+pub(crate) const AMSMATH_POD_MU: f64 = 8.0;
+
+/// The kernel `\angle`'s advance in ems, without amsfonts: `fontmath.ltx` 243
+/// builds it from an `\ialign` of rules, so it has no character and no font —
+/// `\showthe\wd` of `\hbox{$\angle$}` is 6.37344pt at every size from 10pt,
+/// and the same 6.37344pt in `\scriptstyle`, TeX Live 2025. amsfonts replaces
+/// it with msam "5A, 0.722224em.
+pub(crate) const KERNEL_ANGLE_EM: f64 = 0.637344;
+
+/// The kernel `\hbar`'s advance in ems, without amsfonts: `fontmath.ltx` 241
+/// is `{\mathchar'26\mkern-9mu h}` — the OT1 macron (0.500002em), `\mkern-9mu`
+/// (-0.499988em) and math italic `h` (0.576158em), which sum to the 0.576172em
+/// `\showthe\wd` of `\hbox{$\hbar$}` reports. amsfonts replaces it with msbm
+/// "7E, 0.540280em.
+pub(crate) const KERNEL_HBAR_EM: f64 = 0.576172;
 
 /// The Unicode mathematical alphanumeric symbol that stands for `ch` in the
 /// math alphabet of `command`: `\mathsf` sans-serif (U+1D5A0, digits
@@ -4709,6 +4962,14 @@ mod unbraced_argument_tests {
         }
     }
 
+    /// A document that loaded `amsfonts`: its `\mathbb`/`\mathfrak` alphabets
+    /// exist. Base LaTeX2e defines neither.
+    const AMSFONTS: MathPackages = MathPackages {
+        amsmath: false,
+        amssymb: false,
+        amsfonts: true,
+    };
+
     #[test]
     fn math_alphabets_map_plain_letters_to_unicode_alphanumerics() {
         for (source, expected) in [
@@ -4722,7 +4983,7 @@ mod unbraced_argument_tests {
             let mut diagnostics = Vec::new();
             let list = parse_tokens(
                 &crate::lexer::tokenize(source),
-                MathPackages::KERNEL,
+                AMSFONTS,
                 &mut diagnostics,
             );
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
@@ -4745,7 +5006,7 @@ mod unbraced_argument_tests {
         // The issue's own examples: `\mathbb R` and `\mathbf v`.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\mathbb RS");
-        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
+        let list = parse_tokens(&tokens, AMSFONTS, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         assert_eq!(
@@ -5108,6 +5369,20 @@ mod spacing_tests {
         laid_out(source, size).width
     }
 
+    /// A document that loaded `amssymb`, which requires `amsfonts`: the whole
+    /// msam/msbm inventory exists. Base LaTeX2e defines none of it, so the
+    /// tests below that use those commands have to say so — see
+    /// `amssymb_commands_are_diagnosed_when_the_package_is_not_loaded`.
+    const AMSSYMB: MathPackages = MathPackages {
+        amsmath: false,
+        amssymb: true,
+        amsfonts: true,
+    };
+
+    fn width_with(source: &str, size: f64, packages: MathPackages) -> f64 {
+        laid_out_with(source, size, packages).width
+    }
+
     fn x(b: &MathBox, text: &str) -> f64 {
         b.items.iter().find(|i| i.text == text).unwrap().x
     }
@@ -5207,9 +5482,9 @@ mod spacing_tests {
                 .unwrap_or_else(|| command_glyph(command).unwrap());
             // A space after a control word is swallowed by the lexer (like
             // real TeX), so it safely separates the command from `b`.
-            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            let b = laid_out_with(&format!(r"a\{command} b"), SIZE, AMSSYMB);
             close(x(&b, glyph), width("a", SIZE) + 5.0);
-            let own = width(&format!(r"\{command}"), SIZE);
+            let own = width_with(&format!(r"\{command}"), SIZE, AMSSYMB);
             close(x(&b, "b"), x(&b, glyph) + own + 5.0);
         }
     }
@@ -5317,7 +5592,7 @@ mod spacing_tests {
             "lozenge",
             "checkmark",
         ] {
-            laid_out(&format!(r"\{command}"), SIZE);
+            laid_out_with(&format!(r"\{command}"), SIZE, AMSSYMB);
         }
     }
 
@@ -5437,7 +5712,10 @@ mod spacing_tests {
     /// | `\hbox{$a\colon=b$}` | 24.57747pt | 30.13289pt (+10mu) |
     #[test]
     fn colon_is_kernel_punctuation_until_amsmath_renews_it() {
-        const AMS: MathPackages = MathPackages { amsmath: true };
+        const AMS: MathPackages = MathPackages {
+            amsmath: true,
+            ..MathPackages::KERNEL
+        };
 
         // Kernel: no space before, punctuation's thin space after — exactly
         // what `\mathpunct{:}` gives, and 5mu narrower than a bare `:`.
@@ -5609,5 +5887,300 @@ mod shift_tests {
         }
 
         assert_eq!(min_start(&shifted), min_start(&list) + 10);
+    }
+}
+
+/// The packages a document loads decide which math commands exist at all.
+///
+/// Every expectation here was probed against TeX Live 2025 pdflatex: each
+/// command's `\meaning` under an empty preamble, under `\usepackage{amssymb}`,
+/// under `\usepackage{amsfonts}` and under `\usepackage{amsmath}`, and the box
+/// dimensions with `\showthe\wd`/`\ht` of `\hbox{$...$}`.
+#[cfg(test)]
+mod package_gating_tests {
+    use super::*;
+    use crate::amssymb::Provider;
+
+    /// 1mu = 1pt, so a measured mu reads straight off a coordinate.
+    const SIZE: f64 = 18.0;
+
+    const AMSSYMB: MathPackages = MathPackages {
+        amsmath: false,
+        amssymb: true,
+        amsfonts: true,
+    };
+    const AMSFONTS: MathPackages = MathPackages {
+        amsmath: false,
+        amssymb: false,
+        amsfonts: true,
+    };
+    const AMSMATH: MathPackages = MathPackages {
+        amsmath: true,
+        amssymb: false,
+        amsfonts: false,
+    };
+
+    fn parsed(source: &str, packages: MathPackages) -> (MathList, Vec<Diagnostic>) {
+        let mut diagnostics = Vec::new();
+        let list = parse_tokens(&crate::lexer::tokenize(source), packages, &mut diagnostics);
+        (list, diagnostics)
+    }
+
+    fn laid_out(source: &str, packages: MathPackages) -> MathBox {
+        let (list, diagnostics) = parsed(source, packages);
+        assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+        layout(&list, SIZE, &mut Vec::new())
+    }
+
+    fn x(b: &MathBox, text: &str) -> f64 {
+        b.items
+            .iter()
+            .find(|i| i.text == text)
+            .unwrap_or_else(|| panic!("{text:?} not in {:?}", b.items))
+            .x
+    }
+
+    fn close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    /// Every command of the table needs its declaring package, and gets it
+    /// from `amssymb` — which requires `amsfonts`, so the whole inventory is
+    /// available under either flag combination a real document produces.
+    ///
+    /// This is the divergence the lane exists for: base LaTeX2e has no
+    /// definition for any of these 212 names, so pdflatex answers "Undefined
+    /// control sequence" where this compiler used to render the msam/msbm
+    /// glyph regardless of what the document loaded.
+    #[test]
+    fn every_table_command_is_diagnosed_without_its_package() {
+        let mut checked = 0;
+        for name in crate::amssymb::command_names() {
+            let source = format!("\\{name}");
+            let (_, kernel) = parsed(&source, MathPackages::KERNEL);
+            assert_eq!(kernel.len(), 1, "\\{name} with nothing loaded: {kernel:?}");
+            let package = match crate::amssymb::by_name(name).expect("named symbol").provider {
+                Provider::Amsfonts => "amsfonts",
+                Provider::Amssymb => "amssymb",
+            };
+            assert_eq!(
+                kernel[0].message,
+                format!("\\{name} requires \\usepackage{{{package}}}"),
+                "\\{name}"
+            );
+
+            let (_, loaded) = parsed(&source, AMSSYMB);
+            assert!(loaded.is_empty(), "\\{name} under amssymb: {loaded:?}");
+            checked += 1;
+        }
+        // 212 declarations plus the 6 `\global\let` aliases.
+        assert_eq!(checked, 218, "table command count");
+    }
+
+    /// `amsfonts.sty` alone declares a 15-command subset of the same symbol
+    /// fonts (plus the pieces the dashed arrows and wide accents are built
+    /// from). `\usepackage{amsfonts}` provides exactly those, and `\nleq` and
+    /// the other 197 stay undefined — probed name by name with `\ifcsname`.
+    #[test]
+    fn amsfonts_alone_provides_only_its_own_subset() {
+        let subset: Vec<&str> = crate::amssymb::command_names()
+            .filter(|n| {
+                crate::amssymb::by_name(n).expect("named symbol").provider == Provider::Amsfonts
+            })
+            .collect();
+        assert_eq!(
+            subset,
+            [
+                "square",
+                "lozenge",
+                "rightsquigarrow",
+                "vartriangleright",
+                "vartriangleleft",
+                "trianglerighteq",
+                "trianglelefteq",
+                "ulcorner",
+                "urcorner",
+                "llcorner",
+                "lrcorner",
+                "yen",
+                "checkmark",
+                "circledR",
+                "maltese",
+            ],
+            "the amsfonts.sty declarations (141-147, 74-77, 64-73)"
+        );
+        for name in &subset {
+            let (_, diagnostics) = parsed(&format!("\\{name}"), AMSFONTS);
+            assert!(
+                diagnostics.is_empty(),
+                "\\{name} under amsfonts: {diagnostics:?}"
+            );
+        }
+        for name in ["nleq", "boxdot", "circlearrowright"] {
+            let (_, diagnostics) = parsed(&format!("\\{name}"), AMSFONTS);
+            assert_eq!(diagnostics.len(), 1, "\\{name} under amsfonts");
+        }
+    }
+
+    /// The `\global\let` aliases are all `amssymb.sty`'s, and each resolves to
+    /// a symbol `amssymb.sty` declares, so gating the alias on its target's
+    /// provider gates it on `amssymb` — which is what pdflatex does.
+    #[test]
+    fn every_alias_resolves_to_an_amssymb_declaration() {
+        for (alias, target) in crate::amssymb::ALIASES {
+            let symbol = crate::amssymb::by_name(alias).expect("alias resolves");
+            assert_eq!(symbol.name, *target);
+            assert_eq!(symbol.provider, Provider::Amssymb, "\\{alias}");
+        }
+    }
+
+    /// The two math alphabets and the dashed arrows are `amsfonts.sty`'s too,
+    /// and are gated the same way. `\mathbf`, which the obsolete `\bold`
+    /// stands for, is the kernel's and stays available.
+    #[test]
+    fn amsfonts_alphabets_and_dashed_arrows_need_the_package() {
+        for name in ["mathbb", "mathfrak", "Bbb", "bold"] {
+            let (_, diagnostics) = parsed(&format!("\\{name}{{R}}"), MathPackages::KERNEL);
+            assert_eq!(
+                diagnostics.first().map(|d| d.message.as_str()),
+                Some(format!("\\{name} requires \\usepackage{{amsfonts}}").as_str()),
+                "\\{name}"
+            );
+            let (_, loaded) = parsed(&format!("\\{name}{{R}}"), AMSFONTS);
+            assert!(loaded.is_empty(), "\\{name} under amsfonts: {loaded:?}");
+        }
+        for name in ["dashrightarrow", "dasharrow", "dashleftarrow"] {
+            let (_, diagnostics) = parsed(&format!("\\{name}"), MathPackages::KERNEL);
+            assert_eq!(diagnostics.len(), 1, "\\{name}");
+            let (_, loaded) = parsed(&format!("\\{name}"), AMSFONTS);
+            assert!(loaded.is_empty(), "\\{name} under amsfonts: {loaded:?}");
+        }
+        // The kernel alphabet the obsolete spelling redirects to.
+        let (_, kernel) = parsed(r"\mathbf{v}", MathPackages::KERNEL);
+        assert!(kernel.is_empty(), "{kernel:?}");
+    }
+
+    /// `\angle` and `\hbar` are the two commands here that base LaTeX2e does
+    /// define, as composites amsfonts replaces with one glyph. Measured with
+    /// TeX Live 2025 pdflatex at 10pt: `\hbox{$\angle$}` 6.37344pt without the
+    /// package against 7.22223pt with it, `\hbox{$\hbar$}` 5.76172pt against
+    /// 5.40280pt. Neither changes atom class: `$a\angle b$` grows by exactly
+    /// the width difference (15.95099 -> 16.79977), and `$a\hbar b$` shrinks
+    /// by it (15.33926 -> 14.98035).
+    #[test]
+    fn angle_and_hbar_keep_the_kernel_composite_without_amsfonts() {
+        for (name, em) in [("angle", KERNEL_ANGLE_EM), ("hbar", KERNEL_HBAR_EM)] {
+            let (kernel, diagnostics) = parsed(&format!("\\{name}"), MathPackages::KERNEL);
+            assert!(diagnostics.is_empty(), "\\{name}: {diagnostics:?}");
+            assert_eq!(kernel.atoms[0].width_em, Some(em), "\\{name}");
+
+            // With the package the compiler's glyph row applies unchanged, so
+            // nothing forces the kernel advance any more.
+            let (loaded, diagnostics) = parsed(&format!("\\{name}"), AMSSYMB);
+            assert!(diagnostics.is_empty(), "\\{name}: {diagnostics:?}");
+            assert_eq!(loaded.atoms[0].width_em, None, "\\{name}");
+            assert_eq!(loaded.atoms[0].nucleus, kernel.atoms[0].nucleus, "\\{name}");
+        }
+        // pdflatex's widths at 10pt, which the two constants reproduce.
+        close(KERNEL_ANGLE_EM * 10.0, 6.37344);
+        close(KERNEL_HBAR_EM * 10.0, 5.76172);
+    }
+
+    /// `\bmod` cancels `\medmuskip` and puts an explicit `\mkern5mu` in its
+    /// place, so it is 1mu wider on each side than its Bin class alone — under
+    /// every package, amsmath included. Measured at 10pt: `$a\bmod b$`
+    /// 34.29970pt against `$a\mathrm{mod}b$` 28.74428pt (10mu), and
+    /// `$\bmod b$` 24.56947 against `$\mathrm{mod}b$` 23.45839 (2mu), the
+    /// second being the Bin degrading to Ord with no left operand.
+    #[test]
+    fn bmod_is_five_mu_on_each_side_not_the_four_of_its_class() {
+        for packages in [MathPackages::KERNEL, AMSMATH, AMSSYMB] {
+            let own = laid_out(r"\bmod", packages).width - 2.0 * BMOD_EXTRA_MU;
+
+            let mid = laid_out(r"a\bmod b", packages);
+            let a = laid_out("a", packages).width;
+            close(x(&mid, "mod"), a + 5.0);
+            close(x(&mid, "b"), x(&mid, "mod") + own + 5.0);
+
+            // No left operand: the Bin becomes Ord and only the explicit kern
+            // and the cancelled medmuskip are left.
+            let lead = laid_out(r"\bmod b", packages);
+            close(x(&lead, "mod"), BMOD_EXTRA_MU);
+            close(x(&lead, "b"), x(&lead, "mod") + own + BMOD_EXTRA_MU);
+        }
+    }
+
+    /// The kernel's `\pmod` opens with `\mkern18mu`; amsmath's `\pod` uses
+    /// `\mkern8mu` outside display. Measured at 10pt: `$a\pmod{y}$` is
+    /// 50.82503pt under the kernel and 45.26960pt under amsmath, matching
+    /// `$a\mkern18mu(\mathrm{mod}\mkern6mu y)$` and the 8mu form exactly; the
+    /// 6mu between `mod` and the argument is the same in both. Setting
+    /// `\@displaytrue` by hand puts amsmath back on the kernel's 50.82503,
+    /// which is why display formulas are left alone.
+    #[test]
+    fn pmod_opens_with_eight_mu_under_amsmath_and_eighteen_without() {
+        for (packages, opening) in [
+            (MathPackages::KERNEL, 18.0),
+            (AMSSYMB, 18.0),
+            (AMSMATH, AMSMATH_POD_MU),
+        ] {
+            let b = laid_out(r"a\pmod{y}", packages);
+            let a = laid_out("a", packages).width;
+            close(x(&b, "(mod"), a + opening);
+            // The 6mu before the argument does not move.
+            close(x(&b, "y") - x(&b, "(mod"), {
+                let label = laid_out(r"\pmod{y}", MathPackages::KERNEL);
+                x(&label, "y") - x(&label, "(mod")
+            });
+        }
+    }
+
+    /// Which `\usepackage` and `\documentclass` names set which flag, measured
+    /// by compiling each one and asking `\ifcsname nleq\endcsname` (amssymb
+    /// only), `\ifcsname ulcorner\endcsname` (also amsfonts) and
+    /// `\ifcsname binom\endcsname` (amsmath) under TeX Live 2025.
+    #[test]
+    fn loaders_match_the_measured_packages_and_classes() {
+        let package = |name: &str| {
+            let mut p = MathPackages::KERNEL;
+            p.load_package(name);
+            p
+        };
+        let class = |name: &str| {
+            let mut p = MathPackages::KERNEL;
+            p.load_class(name);
+            p
+        };
+        // amssymb requires amsfonts, so it sets both; amsfonts sets only its own.
+        assert_eq!(package("amssymb"), AMSSYMB);
+        assert_eq!(package("amsfonts"), AMSFONTS);
+        assert_eq!(package("amsmath"), AMSMATH);
+        // A math font package that really does load amssymb.
+        assert_eq!(package("txfonts"), AMSSYMB);
+        // Defines part of the inventory itself without either AMS package, so
+        // neither flag describes it.
+        assert_eq!(package("libertinust1math"), MathPackages::KERNEL);
+        for neither in ["amsthm", "bm", "stmaryrd", "siunitx", "fourier", "unicode-math"] {
+            let p = package(neither);
+            assert!(!p.amssymb && !p.amsfonts, "{neither}");
+        }
+        // The AMS classes load amsfonts and amsmath, but not amssymb.
+        assert_eq!(
+            class("amsart"),
+            MathPackages {
+                amsmath: true,
+                amssymb: false,
+                amsfonts: true
+            }
+        );
+        assert_eq!(
+            class("beamer"),
+            MathPackages {
+                amsmath: true,
+                amssymb: true,
+                amsfonts: true
+            }
+        );
+        assert_eq!(class("article"), MathPackages::KERNEL);
     }
 }

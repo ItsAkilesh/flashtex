@@ -1326,10 +1326,10 @@ impl P<'_> {
                     }
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
-                TokenKind::Word(word) if control_symbol_kern(&word, tok.span).is_some() => {
+                TokenKind::Word(word) if control_symbol_kern(&word, tok.span, self.math_packages.amsmath).is_some() => {
                     self.i += 1;
                     if render {
-                        if let Some(amount) = control_symbol_kern(&word, tok.span) {
+                        if let Some(amount) = control_symbol_kern(&word, tok.span, self.math_packages.amsmath) {
                             para.push(Inline::Kern {
                                 amount,
                                 span: tok.span,
@@ -2033,7 +2033,7 @@ impl P<'_> {
             "TeX" | "LaTeX" | "LaTeXe" => self.text_logo(name, span, para),
             "thinspace" | "negthinspace" | "medspace" | "negmedspace" | "thickspace"
             | "negthickspace" | "enspace" => {
-                if let Some(amount) = text_builtins::text_kern(name) {
+                if let Some(amount) = text_builtins::text_kern(name, self.math_packages.amsmath) {
                     para.push(Inline::Kern {
                         amount,
                         span,
@@ -4312,8 +4312,8 @@ impl P<'_> {
                         style = previous;
                     }
                 }
-                TokenKind::Word(text) if control_symbol_kern(text, input.token.span).is_some() => {
-                    if let Some(amount) = control_symbol_kern(text, input.token.span) {
+                TokenKind::Word(text) if control_symbol_kern(text, input.token.span, self.math_packages.amsmath).is_some() => {
+                    if let Some(amount) = control_symbol_kern(text, input.token.span, self.math_packages.amsmath) {
                         content.push(Inline::Kern {
                             amount,
                             span: input.token.span,
@@ -4321,8 +4321,12 @@ impl P<'_> {
                         });
                     }
                 }
-                TokenKind::Command(name) if text_builtins::text_kern(name).is_some() => {
-                    if let Some(amount) = text_builtins::text_kern(name) {
+                TokenKind::Command(name)
+                    if text_builtins::text_kern(name, self.math_packages.amsmath).is_some() =>
+                {
+                    if let Some(amount) =
+                        text_builtins::text_kern(name, self.math_packages.amsmath)
+                    {
                         content.push(Inline::Kern {
                             amount,
                             span: input.token.span,
@@ -5526,13 +5530,13 @@ fn preamble_source(text: &str, has_document: bool, tokens: &[InputToken]) -> Str
 
 /// The kern a control-symbol token (`\,` lexed as the word `,` with a
 /// two-byte span, the same test `math.rs` uses) stands for in text mode.
-fn control_symbol_kern(word: &str, span: Span) -> Option<TextDimen> {
+fn control_symbol_kern(word: &str, span: Span, amsmath: bool) -> Option<TextDimen> {
     let mut chars = word.chars();
     match (chars.next(), chars.next()) {
         (Some(c), None)
             if span.end - span.start == 2 && text_builtins::KERN_CONTROL_SYMBOLS.contains(&c) =>
         {
-            text_builtins::text_kern(word)
+            text_builtins::text_kern(word, amsmath)
         }
         _ => None,
     }
