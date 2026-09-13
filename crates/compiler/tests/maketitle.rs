@@ -162,6 +162,36 @@ fn and_separated_authors_are_stacked_vertically_with_a_warning() {
 }
 
 #[test]
+fn titlepage_class_option_gets_an_honest_diagnostic_and_still_a_compact_block() {
+    let source =
+        "\\documentclass[titlepage]{article}\\title{T}\\author{A}\\begin{document}\\maketitle\\end{document}";
+    let parsed = parse(source);
+    assert!(
+        parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("titlepage")),
+        "{:?}",
+        parsed.diagnostics
+    );
+    // Still produces the compact block rather than nothing.
+    assert!(parsed
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::TitleBlock { .. })));
+}
+
+#[test]
+fn without_the_titlepage_option_there_is_no_titlepage_diagnostic() {
+    let source = doc("\\title{T}\\author{A}", "\\maketitle");
+    let parsed = parse(&source);
+    assert!(!parsed
+        .diagnostics
+        .iter()
+        .any(|d| d.message.contains("titlepage")));
+}
+
+#[test]
 fn single_author_gets_no_side_by_side_warning() {
     let source = doc("\\title{T}\\author{Solo Author}", "\\maketitle");
     let parsed = parse(&source);

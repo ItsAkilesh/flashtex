@@ -645,6 +645,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         title: None,
         author: None,
         date: None,
+        titlepage_option: false,
     };
     let blocks = p.document();
 
@@ -737,6 +738,13 @@ struct P<'a> {
     /// argument (`\date{}`) suppresses the date line entirely once
     /// `\maketitle` expands it.
     date: Option<(Vec<InputToken>, Span)>,
+    /// Set by `\documentclass[titlepage]{...}`. Real `article.cls` then
+    /// gives `\maketitle` an entirely different definition: a dedicated
+    /// `titlepage` page, `\vfil`-centred vertically, with wider vskips (60pt,
+    /// 3em, 1.5em) and no trailing skip. This compiler has no vertical-fill
+    /// primitive, so `P::maketitle` renders the ordinary compact block and
+    /// says so once, rather than silently ignoring the option.
+    titlepage_option: bool,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1248,15 +1256,22 @@ impl P<'_> {
 
     fn document_class(&mut self, span: Span) {
         let options = self.optional_bracket_argument();
+        let option_list: Vec<&str> = options
+            .as_ref()
+            .map(|(options, _)| options.split(',').map(str::trim).collect())
+            .unwrap_or_default();
         if self.class_size_pt.is_none() {
-            self.class_size_pt = options.and_then(|(options, _)| {
-                options.split(',').find_map(|option| match option.trim() {
-                    "10pt" => Some(10.0),
-                    "11pt" => Some(11.0),
-                    "12pt" => Some(12.0),
-                    _ => None,
-                })
+            self.class_size_pt = option_list.iter().find_map(|option| match *option {
+                "10pt" => Some(10.0),
+                "11pt" => Some(11.0),
+                "12pt" => Some(12.0),
+                _ => None,
             });
+        }
+        // `\maketitle` reads this: the `titlepage` option asks for a
+        // dedicated, vertically centred title page (see `P::maketitle`).
+        if option_list.contains(&"titlepage") {
+            self.titlepage_option = true;
         }
         let (tokens, _) = self.required_group("documentclass", span);
         let class = token_text(&tokens).trim().to_string();
@@ -1519,6 +1534,14 @@ impl P<'_> {
                 }
             }
         };
+
+        if self.titlepage_option {
+            self.diags.push(Diagnostic::warning(
+                "the 'titlepage' document class option asks for a dedicated, vertically centred title page; this compiler has no vertical-fill layout primitive yet",
+                Some(span),
+                Some("rendered the ordinary compact \\@maketitle block instead of a separate title page".into()),
+            ));
+        }
 
         blocks.push(Block::TitleBlock {
             title: title_content,
