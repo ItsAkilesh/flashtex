@@ -27,6 +27,7 @@ struct WorkspaceSidebar: View {
         }
         .listStyle(.sidebar)
         .accessibilityIdentifier(Self.identifier)
+        .modifier(ProjectScaffoldSheets()) // New Project / New File / Rename / Delete (ProjectScaffoldViews.swift)
         .task(id: "\(model.activePath)@\(model.editorRevision)") {
             // Rescan after a short quiet period; the previous scan is cancelled.
             let revision = model.editorRevision, path = model.activePath
@@ -68,6 +69,14 @@ private struct ProjectSection: View {
                 }
                 .help(Self.tooltip(for: doc, kind: kinds.kind(of: doc.path)))
                 .accessibilityLabel(Self.spoken(for: doc, kind: kinds.kind(of: doc.path), active: doc.path == model.activePath))
+                .contextMenu { // ProjectScaffoldViews.swift
+                    Button("New File…") { model.scaffold.presentNewFile() }
+                    if doc.role != .entry {
+                        Divider()
+                        Button("Rename…") { model.scaffold.presentRename(doc.path) }
+                        Button("Delete…") { model.scaffold.presentDelete(doc.path) }
+                    }
+                }
             }
             let closed = closure.nodes.filter { $0.state == .available }
             ForEach(Array(closed.enumerated()), id: \.offset) { _, n in
@@ -82,11 +91,34 @@ private struct ProjectSection: View {
                 .help("\\\(n.reference.kind.rawValue){\(n.reference.argument)} from \(n.from) — click to open")
                 .accessibilityLabel("\(name), not open, included from \(n.from); activate to open")
             }
+            // A literal, rooted reference with no file behind it: one click creates it (ProjectScaffold.swift).
+            let missing = closure.nodes.filter { if case .unresolvable(let why) = $0.state { return why.hasPrefix("no such file") } else { return false } }
+            ForEach(Array(missing.enumerated()), id: \.offset) { _, n in
+                let name = MissingIncludeFix.path(for: n.reference.argument) ?? n.reference.argument
+                SidebarRow(selected: false) {
+                    Task { await model.project.createMissingInclude(n.reference.argument, from: n.from); model.navigationNote = model.project.status }
+                } label: {
+                    Label {
+                        HStack(spacing: 4) {
+                            Text(name).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                            Text("missing — create").font(.caption2).foregroundStyle(.orange)
+                        }
+                    } icon: { Image(systemName: "doc.badge.plus").foregroundStyle(.orange) }
+                }
+                .help("\\\(n.reference.kind.rawValue){\(n.reference.argument)} from \(n.from) has no file — click to create \(name)")
+                .accessibilityLabel("\(name), missing, included from \(n.from); activate to create it")
+            }
         } header: {
             HStack {
                 Label("Project", systemImage: "folder")
                 Spacer()
                 Text("\(listing.count)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                Button { model.scaffold.presentNewFile() } label: { Image(systemName: "plus") } // ProjectScaffoldViews.swift
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .disabled(model.project.projectRoot == nil)
+                    .help("New File… (⌘N): a rooted .tex file in this project, opened in a tab")
+                    .accessibilityLabel("New file")
+                    .accessibilityIdentifier("project.newfile")
             }
         }
     }

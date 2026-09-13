@@ -364,7 +364,7 @@ final class ProjectDocuments {
     /// Text of a detached document that still had unsaved edits (recoverable this session).
     private(set) var detachedBuffers: [String: String] = [:]
 
-    @ObservationIgnored private unowned let model: ShellModel
+    @ObservationIgnored unowned let model: ShellModel // read by ProjectScaffold.swift (New File / Rename / Delete)
     @ObservationIgnored private var roles: [String: ProjectDocument.Role] = [:]
     @ObservationIgnored private var origins: [String: ProjectDocument.Origin] = [:]
     /// Text each non-entry document had when this lane opened it (dirty baseline).
@@ -407,6 +407,18 @@ final class ProjectDocuments {
         for key in baselines.keys where !open.contains(key) { baselines.removeValue(forKey: key) }
         for key in carets.keys where !open.contains(key) { carets.removeValue(forKey: key) }
         for key in diskBaselines.keys where !open.contains(key) { diskBaselines.removeValue(forKey: key) }
+    }
+
+    /// Status line from another file's operation (ProjectScaffold.swift).
+    func noteStatus(_ line: String) { status = line; FlashTeXLog.write("project: " + line) }
+
+    /// Moves a member's metadata to its new path after a rename (ProjectScaffold.swift).
+    func retarget(_ path: String, to newPath: String) {
+        roles[newPath] = roles.removeValue(forKey: path)
+        origins[newPath] = origins.removeValue(forKey: path)
+        baselines[newPath] = baselines.removeValue(forKey: path)
+        if let disk = diskBaselines.removeValue(forKey: path) { diskBaselines[newPath] = disk }
+        carets[newPath] = carets.removeValue(forKey: path)
     }
 
     // MARK: membership view
