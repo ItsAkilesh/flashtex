@@ -198,6 +198,18 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("footnotetext", "[n]{...}", "footnote text without a mark"),
     ("clearpage", "", "forces a page break"),
     ("cleardoublepage", "", "forces a page break (one-sided article)"),
+    ("TeX", "", "latex.ltx logo: T, kern -.1667em, E lowered .5ex, kern -.125em, X"),
+    ("LaTeX", "", "latex.ltx logo: L, kern -.36em, script-size A raised to the T height, kern -.15em, \\TeX"),
+    ("LaTeXe", "", "\\LaTeX, kern .15em, 2 and a text-style subscript varepsilon"),
+    ("rule", "[raise]{width}{height}", "filled rule box; pt/in/cm/mm/bp/dd/cc/pc/sp, em, ex, \\textwidth, \\linewidth, \\columnwidth"),
+    ("thinspace", "", "text kern .16667em (math: thin muskip)"),
+    ("negthinspace", "", "text kern -.16667em"),
+    ("medspace", "", "text kern .2222em"),
+    ("negmedspace", "", "text kern -.2222em"),
+    ("thickspace", "", "text kern .2777em"),
+    ("negthickspace", "", "text kern -.2777em"),
+    ("enspace", "", "text kern .5em"),
+    ("enskip", "", "horizontal glue of .5em"),
     ("pagebreak", "[n]", "forces a page break"),
     ("nopagebreak", "[n]", "accepted no-op; the layout never breaks there on its own"),
     ("linebreak", "[n]", "line break"),
@@ -463,6 +475,11 @@ const CONTROL_SYMBOLS: &[(&str, Mode, &str)] = &[
         Mode::Text,
         "line break; an optional [length] is consumed",
     ),
+    (",", Mode::Text, "text kern .16667em (\\thinspace)"),
+    ("!", Mode::Text, "text kern -.16667em (\\negthinspace)"),
+    (":", Mode::Text, "text kern .2222em (\\medspace)"),
+    (">", Mode::Text, "text kern .2222em (\\medspace)"),
+    (";", Mode::Text, "text kern .2777em (\\thickspace)"),
     (",", Mode::Math, "thin space (3mu)"),
     (":", Mode::Math, "medium space (4mu)"),
     (">", Mode::Math, "medium space (4mu)"),
@@ -511,13 +528,19 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
         "enumerate",
         "numbered list; enumitem [label] templates a, A, i, I, 1",
     ),
-    ("tabular", "table with l/c/r/p columns, rules and multicolumn"),
+    (
+        "tabular",
+        "table with l/c/r/p columns, rules and multicolumn",
+    ),
     ("tabular*", "table of a given width"),
     ("verbatim", "literal monospaced lines"),
     ("verbatim*", "literal monospaced lines with visible spaces"),
     ("lstlisting", "literal monospaced lines (basic listings)"),
     ("proof", "amsthm proof with a closing square"),
-    ("thebibliography", "References section with numbered \\bibitem entries"),
+    (
+        "thebibliography",
+        "References section with numbered \\bibitem entries",
+    ),
 ];
 
 /// Packages `parser::package_matches_layout` accepts without a warning.
@@ -553,7 +576,27 @@ pub const CANONICAL_SETS: &[&str] = &[
     "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz",
 ];
 
-fn text_description(name: &str) -> &'static str {
+fn text_description(name: &str) -> String {
+    if let Some((_, command)) = crate::text_builtins::TEXT_SYMBOLS
+        .iter()
+        .find(|(n, _)| *n == name)
+    {
+        let glyph = |enc| match crate::text_builtins::text_symbol(name, enc) {
+            Some(crate::text_builtins::SymbolOutcome::Char(c)) => c.to_string(),
+            Some(crate::text_builtins::SymbolOutcome::Text(t)) => t,
+            _ => "unavailable".to_string(),
+        };
+        use flashtex_tex_text_encoding::encoding::Encoding;
+        return format!(
+            "text symbol {command}: OT1 {}, T1 {} (tex-text-encoding; unavailable is a LaTeX error)",
+            glyph(Encoding::OT1),
+            glyph(Encoding::T1)
+        );
+    }
+    text_description_static(name).to_string()
+}
+
+fn text_description_static(name: &str) -> &'static str {
     TEXT_COMMANDS
         .iter()
         .find(|(n, ..)| *n == name)
@@ -587,7 +630,7 @@ pub fn inventory() -> Inventory {
             mode: Mode::Text,
             origin,
             arguments: text_arguments(name),
-            description: text_description(name).to_string(),
+            description: text_description(name),
             glyph: None,
             renders: true,
         });
@@ -620,7 +663,10 @@ pub fn inventory() -> Inventory {
         // A `command_atom` arm runs before the glyph table (`\varnothing`
         // keeps `∅` but forces msbm10's advance), so the structure entry
         // above already describes it.
-        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+        if MATH_STRUCTURES
+            .iter()
+            .any(|(names, ..)| names.contains(&name))
+        {
             continue;
         }
         commands.push(Command {

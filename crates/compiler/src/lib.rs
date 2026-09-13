@@ -23,6 +23,7 @@ pub mod parser;
 pub mod protocol;
 pub mod supported;
 pub mod tabular;
+pub mod text_builtins;
 pub mod theorems;
 pub mod vocabulary;
 pub mod xref;

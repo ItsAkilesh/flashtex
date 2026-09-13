@@ -11,8 +11,10 @@ use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
+use crate::text_builtins::{self, SymbolOutcome, TextDimen, TextLogo, TextRule};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
+use flashtex_tex_text_encoding::encoding::Encoding;
 
 mod tabular;
 
@@ -125,6 +127,35 @@ pub enum Inline {
         text: Option<Vec<Inline>>,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+    },
+    /// `\TeX`, `\LaTeX`, `\LaTeXe`: the kernel logo construction (kerns,
+    /// a lowered `E`, a raised script-size `A`; see
+    /// `text_builtins::layout_logo`), laid out against each layout's own
+    /// font metrics. `span` is the command.
+    Logo {
+        logo: TextLogo,
+        span: Span,
+        style: TextStyle,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
+    /// `\rule[<raise>]{<width>}{<height>}` in text: an unbreakable box
+    /// holding a filled rectangle (see `text_builtins::TextRule::resolve`).
+    /// `span` covers the command and its arguments.
+    Rule {
+        rule: TextRule,
+        span: Span,
+        style: TextStyle,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
+    /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; see
+    /// `text_builtins::text_kern`): fixed, not a break point unless glue
+    /// follows it, resolved against the current font's quad at layout time.
+    Kern {
+        amount: TextDimen,
+        span: Span,
+        style: TextStyle,
     },
     /// `tabular`/`tabular*`: an inline box (see `crate::tabular`).
     Tabular(Box<crate::tabular::Tabular>),
@@ -573,6 +604,57 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "thanks",
     "and",
     "today",
+    "TeX",
+    "LaTeX",
+    "LaTeXe",
+    "rule",
+    "thinspace",
+    "negthinspace",
+    "medspace",
+    "negmedspace",
+    "thickspace",
+    "negthickspace",
+    "enspace",
+    "enskip",
+    "AA",
+    "aa",
+    "AE",
+    "ae",
+    "OE",
+    "oe",
+    "O",
+    "o",
+    "L",
+    "l",
+    "ss",
+    "SS",
+    "TH",
+    "th",
+    "DH",
+    "dh",
+    "DJ",
+    "dj",
+    "NG",
+    "ng",
+    "IJ",
+    "ij",
+    "i",
+    "j",
+    "S",
+    "P",
+    "dag",
+    "ddag",
+    "copyright",
+    "pounds",
+    "dots",
+    "ldots",
+    "textsection",
+    "textparagraph",
+    "textdagger",
+    "textdaggerdbl",
+    "textcopyright",
+    "textsterling",
+    "textellipsis",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -743,6 +825,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         class_size_pt: None,
         parskip_pt: None,
         packages: Vec::new(),
+        font_encoding: Encoding::OT1,
         block_dependencies: Vec::new(),
         current_dependencies: BTreeMap::new(),
         documents,
@@ -839,6 +922,9 @@ struct P<'a> {
     class_size_pt: Option<f64>,
     parskip_pt: Option<f64>,
     packages: Vec<String>,
+    /// The current text font encoding: OT1 unless `fontenc` selected another
+    /// (`text_builtins::fontenc_encoding`).
+    font_encoding: Encoding,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
     documents: &'a [SourceDocument<'a>],
@@ -980,6 +1066,18 @@ impl P<'_> {
                     }
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
+                TokenKind::Word(word) if control_symbol_kern(&word, tok.span).is_some() => {
+                    self.i += 1;
+                    if render {
+                        if let Some(amount) = control_symbol_kern(&word, tok.span) {
+                            para.push(Inline::Kern {
+                                amount,
+                                span: tok.span,
+                                style: self.style,
+                            });
+                        }
+                    }
+                }
                 TokenKind::Word(word) => {
                     let space_before = self.space_precedes(self.i);
                     self.i += 1;
@@ -1603,6 +1701,29 @@ impl P<'_> {
             "pagenumbering" => {
                 let _ = self.required_group(name, span);
             }
+            // Kernel text symbols (`text_builtins::TEXT_SYMBOLS`; the
+            // `text_symbol_arms_match_the_builtin_table` test keeps them equal).
+            "AA" | "aa" | "AE" | "ae" | "OE" | "oe" | "O" | "o" | "L" | "l" | "ss" | "SS"
+            | "TH" | "th" | "DH" | "dh" | "DJ" | "dj" | "NG" | "ng" | "IJ" | "ij" | "i" | "j"
+            | "S" | "P" | "dag" | "ddag" | "copyright" | "pounds" | "dots" | "ldots"
+            | "textsection" | "textparagraph" | "textdagger" | "textdaggerdbl"
+            | "textcopyright" | "textsterling" | "textellipsis" => {
+                self.text_symbol(name, span, para)
+            }
+            "TeX" | "LaTeX" | "LaTeXe" => self.text_logo(name, span, para),
+            "thinspace" | "negthinspace" | "medspace" | "negmedspace" | "thickspace"
+            | "negthickspace" | "enspace" => {
+                if let Some(amount) = text_builtins::text_kern(name) {
+                    para.push(Inline::Kern {
+                        amount,
+                        span,
+                        style: self.style,
+                    });
+                }
+            }
+            // `\def\enskip{\hskip.5em\relax}` (latex.ltx 9434): glue, like `\quad`.
+            "enskip" => para.push(Inline::TextGlue { em: 0.5, span }),
+            "rule" => self.text_rule(span, para),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -1892,6 +2013,11 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        if packages.iter().any(|package| package == "fontenc") {
+            if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
+                self.font_encoding = encoding;
+            }
+        }
         let packages: Vec<String> = packages
             .into_iter()
             .filter(|package| !package_matches_layout(package, &options))
@@ -3652,6 +3778,24 @@ impl P<'_> {
                         style = previous;
                     }
                 }
+                TokenKind::Word(text) if control_symbol_kern(text, input.token.span).is_some() => {
+                    if let Some(amount) = control_symbol_kern(text, input.token.span) {
+                        content.push(Inline::Kern {
+                            amount,
+                            span: input.token.span,
+                            style,
+                        });
+                    }
+                }
+                TokenKind::Command(name) if text_builtins::text_kern(name).is_some() => {
+                    if let Some(amount) = text_builtins::text_kern(name) {
+                        content.push(Inline::Kern {
+                            amount,
+                            span: input.token.span,
+                            style,
+                        });
+                    }
+                }
                 TokenKind::Word(text) => content.push(Inline::Text {
                     text: apply_text_ligatures(text),
                     span: input.token.span,
@@ -3682,6 +3826,25 @@ impl P<'_> {
                     span: input.token.span,
                     space_before,
                 }),
+                TokenKind::Command(name)
+                    if text_builtins::TEXT_SYMBOLS.iter().any(|(n, _)| n == name) =>
+                {
+                    if let Some(inline) =
+                        self.symbol_inline(name, input.token.span, style, space_before)
+                    {
+                        content.push(inline);
+                    }
+                }
+                TokenKind::Command(name) if TextLogo::from_command(name).is_some() => {
+                    if let Some(logo) = TextLogo::from_command(name) {
+                        content.push(Inline::Logo {
+                            logo,
+                            span: input.token.span,
+                            style,
+                            space_before,
+                        });
+                    }
+                }
                 // See `TODAY_TEXT`: a fixed, compile-deterministic date
                 // rather than the real wall-clock `\today`.
                 TokenKind::Command(name) if name == "today" => content.push(Inline::Text {
@@ -3694,6 +3857,98 @@ impl P<'_> {
             }
         }
         content
+    }
+
+    /// A kernel text symbol (`\AA`, `\ss`, `\S`, ...) under the current font
+    /// encoding; see `text_builtins::text_symbol`.
+    fn symbol_inline(
+        &mut self,
+        name: &str,
+        span: Span,
+        style: TextStyle,
+        space_before: bool,
+    ) -> Option<Inline> {
+        let text = match text_builtins::text_symbol(name, self.font_encoding)? {
+            SymbolOutcome::Char(ch) => ch.to_string(),
+            SymbolOutcome::Text(text) => text,
+            SymbolOutcome::Unavailable(message) => {
+                self.diags.push(Diagnostic::error(
+                    message,
+                    Some(span),
+                    Some(
+                        "typeset nothing for the command, as pdfLaTeX does after this error".into(),
+                    ),
+                ));
+                return None;
+            }
+        };
+        Some(Inline::Text {
+            text,
+            span,
+            style,
+            space_before,
+        })
+    }
+
+    fn text_symbol(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let style = self.style;
+        if let Some(inline) = self.symbol_inline(name, span, style, space_before) {
+            para.push(inline);
+        }
+    }
+
+    fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        if let Some(logo) = TextLogo::from_command(name) {
+            para.push(Inline::Logo {
+                logo,
+                span,
+                style: self.style,
+                space_before,
+            });
+        }
+    }
+
+    /// `\rule[<raise>]{<width>}{<height>}` (latex.ltx 16359-16367).
+    fn text_rule(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let raise = self.optional_bracket_argument();
+        let (width_tokens, width_span) = self.required_group("rule", span);
+        let (height_tokens, height_span) = self.required_group("rule", span.merge(width_span));
+        let full = span.merge(height_span);
+        let parse = |text: String, what: &str, diags: &mut Vec<Diagnostic>| {
+            let parsed = TextDimen::parse(&text);
+            if parsed.is_none() {
+                diags.push(Diagnostic::error(
+                    format!(
+                        "\\rule requires a recognised {what} dimension, got '{}'",
+                        text.trim()
+                    ),
+                    Some(full),
+                    Some("omitted the rule and continued".into()),
+                ));
+            }
+            parsed
+        };
+        let raise = match raise {
+            Some((text, _)) => parse(text, "raise", &mut self.diags),
+            None => Some(TextDimen::zero()),
+        };
+        let width = parse(dimen_source(&width_tokens), "width", &mut self.diags);
+        let height = parse(dimen_source(&height_tokens), "height", &mut self.diags);
+        if let (Some(raise), Some(width), Some(height)) = (raise, width, height) {
+            para.push(Inline::Rule {
+                rule: TextRule {
+                    raise,
+                    width,
+                    height,
+                },
+                span: full,
+                style: self.style,
+                space_before,
+            });
+        }
     }
 
     /// `\footnote`, `\footnotemark` and `\footnotetext`, following latex.ltx:
@@ -3901,11 +4156,14 @@ impl P<'_> {
         // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
         // use it for their own unrelated `enumitem` template instead, so it
         // only carries a `widest_label` for a `thebibliography` list.
-        let widest_label = self.list_stack.last().and_then(|(kind, _, template, _, _)| {
-            (kind == "thebibliography")
-                .then(|| template.clone())
-                .flatten()
-        });
+        let widest_label = self
+            .list_stack
+            .last()
+            .and_then(|(kind, _, template, _, _)| {
+                (kind == "thebibliography")
+                    .then(|| template.clone())
+                    .flatten()
+            });
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -4303,6 +4561,38 @@ fn preamble_source(text: &str, has_document: bool) -> String {
         None
     };
     end.map_or("", |end| &text[..end]).to_string()
+}
+
+/// The kern a control-symbol token (`\,` lexed as the word `,` with a
+/// two-byte span, the same test `math.rs` uses) stands for in text mode.
+fn control_symbol_kern(word: &str, span: Span) -> Option<TextDimen> {
+    let mut chars = word.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None)
+            if span.end - span.start == 2 && text_builtins::KERN_CONTROL_SYMBOLS.contains(&c) =>
+        {
+            text_builtins::text_kern(word)
+        }
+        _ => None,
+    }
+}
+
+/// A dimension argument's source text with control words kept
+/// (`\textwidth`), unlike `token_text`.
+fn dimen_source(tokens: &[InputToken]) -> String {
+    let mut result = String::new();
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::Word(text) => result.push_str(text),
+            TokenKind::Command(name) => {
+                result.push('\\');
+                result.push_str(name);
+            }
+            TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            _ => {}
+        }
+    }
+    result
 }
 
 fn token_text(tokens: &[InputToken]) -> String {
