@@ -13,6 +13,8 @@ final class HostedWindowSupportTests: XCTestCase {
 
     func testPrepareInstallsANonActivatingPolicy() {
         XCTAssertTrue(HostedWindowSupport.prepare(), "the process refused both .prohibited and .accessory")
+        // Recorded in the run log: which of the two non-activating policies the OS accepted.
+        print("HostedWindowSupport: activation policy in force = \(HostedWindowSupport.currentPolicy.rawValue) (0=regular, 1=accessory, 2=prohibited)")
         XCTAssertTrue(HostedWindowSupport.isNonActivating,
                       "activation policy is \(HostedWindowSupport.currentPolicy.rawValue); a regular app pulls itself forward when a window is ordered in")
     }
