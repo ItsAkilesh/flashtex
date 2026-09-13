@@ -411,6 +411,8 @@ const BUILT_INS: &[&str] = &[
     "pagestyle",
     "listfiles",
     "noindent",
+    "verb",
+    "url",
     "tiny",
     "scriptsize",
     "footnotesize",
@@ -996,6 +998,14 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
+            // `\verb<delim>...<delim>` and `\url{...}` both read their
+            // argument literally from the source: no macro expansion, no `%`
+            // comment, no math shift, no alignment tab. The ordinary
+            // tokenizer runs ahead of this with fixed category codes and does
+            // not know that, so both are read directly from source text
+            // rather than from the pre-lexed tokens; see `verbatim_command`.
+            "verb" => self.verbatim_command(span, para),
+            "url" => self.url_command(span, para),
             // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
             // in math mode (`src/math.rs`); this arm covers the same commands
             // used directly in running text, 1em/2em of the body text size.
@@ -2416,6 +2426,160 @@ impl P<'_> {
         }
     }
 
+    /// After consuming `consumed_end` raw source bytes as one command's
+    /// argument, discards every already-lexed token this span covers. The
+    /// ordinary tokenizer runs ahead of `\verb`/`\url` with fixed category
+    /// codes, so it may already have treated part of the argument as a `%`
+    /// comment, a script marker, or group braces; worst case, a `%`
+    /// comment's span reaches past `consumed_end` into real trailing source
+    /// (`\verb|a%b|.` tokenizes `% b|.` as one `Comment`, swallowing the
+    /// closing `|` and the period with it). That overshoot is re-tokenized
+    /// and spliced back in rather than discarded, so nothing after the
+    /// argument is silently lost.
+    fn discard_raw_span(&mut self, doc: DocumentId, text: &str, consumed_end: usize) {
+        let mut overshoot_end = consumed_end;
+        while self.i < self.t.len() && self.t[self.i].token.span.start < consumed_end {
+            overshoot_end = overshoot_end.max(self.t[self.i].token.span.end);
+            self.i += 1;
+        }
+        if overshoot_end > consumed_end {
+            for token in tokenize_document(&text[consumed_end..overshoot_end], doc)
+                .into_iter()
+                .rev()
+            {
+                let shifted = Token {
+                    kind: token.kind,
+                    span: Span::in_document(
+                        doc,
+                        token.span.start + consumed_end,
+                        token.span.end + consumed_end,
+                    ),
+                };
+                self.t.insert(
+                    self.i,
+                    InputToken {
+                        token: shifted,
+                        expansion_depth: 0,
+                        maps_to_invocation: false,
+                    },
+                );
+            }
+        }
+    }
+
+    /// `\verb<delim>...<delim>`: the delimiter is any non-space, non-`*`
+    /// character immediately following `\verb`; the argument runs to the
+    /// next occurrence of that exact character on the same physical line,
+    /// read completely literally — no macro expansion, no `%` comment, no
+    /// math shift, no alignment tab — and is typeset in the compiler's one
+    /// monospace face, matching `\texttt`. The starred `\verb*` form
+    /// (visible spaces) is not implemented.
+    fn verbatim_command(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let doc = span.document;
+        let text = self.documents[doc.0].text;
+        let after = span.end;
+        let Some(delim) = text[after..].chars().next() else {
+            self.diags.push(Diagnostic::error(
+                "\\verb requires a delimiter character immediately after it",
+                Some(span),
+                Some("ignored \\verb; nothing followed it".into()),
+            ));
+            return;
+        };
+        if delim == '*' || delim.is_whitespace() {
+            self.diags.push(Diagnostic::error(
+                "\\verb* is not supported; only plain \\verb<char>...<char> is implemented",
+                Some(span),
+                Some("skipped the command".into()),
+            ));
+            return;
+        }
+        let content_start = after + delim.len_utf8();
+        let line_end = text[content_start..]
+            .find('\n')
+            .map_or(text.len(), |i| content_start + i);
+        let Some(rel_close) = text[content_start..line_end].find(delim) else {
+            self.diags.push(Diagnostic::error(
+                format!("\\verb{delim}...{delim} has no closing '{delim}' on the same line"),
+                Some(span),
+                Some("typeset nothing for this \\verb".into()),
+            ));
+            return;
+        };
+        let content_end = content_start + rel_close;
+        let consumed_end = content_end + delim.len_utf8();
+        let content = text[content_start..content_end].to_string();
+        self.discard_raw_span(doc, text, consumed_end);
+        para.push(Inline::Text {
+            text: content,
+            span: Span::in_document(doc, content_start, content_end),
+            style: TextStyle {
+                family: TextFamily::Mono,
+                ..self.style
+            },
+            space_before,
+        });
+    }
+
+    /// `\url{...}`: like `\verb` but brace-delimited, matching the common
+    /// case for the real `url`/`hyperref` packages — braces inside the
+    /// argument nest (matching TeX's own group-depth scan) rather than
+    /// ending the argument at the first `}`. The custom-delimiter
+    /// `\url|...|` form is not implemented.
+    fn url_command(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let doc = span.document;
+        let text = self.documents[doc.0].text;
+        let after = span.end;
+        let mut chars = text[after..].char_indices();
+        if !matches!(chars.next(), Some((_, '{'))) {
+            self.diags.push(Diagnostic::error(
+                "\\url requires a {...} argument; other \\url delimiter forms are not supported",
+                Some(span),
+                Some("ignored \\url".into()),
+            ));
+            return;
+        }
+        let mut depth = 1usize;
+        let mut close_rel = None;
+        for (i, c) in chars {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close_rel = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close_rel) = close_rel else {
+            self.diags.push(Diagnostic::error(
+                "\\url has no matching '}'",
+                Some(span),
+                Some("typeset nothing for this \\url".into()),
+            ));
+            return;
+        };
+        let content_start = after + 1;
+        let content_end = after + close_rel;
+        let consumed_end = content_end + 1;
+        let content = text[content_start..content_end].to_string();
+        self.discard_raw_span(doc, text, consumed_end);
+        para.push(Inline::Text {
+            text: content,
+            span: Span::in_document(doc, content_start, content_end),
+            style: TextStyle {
+                family: TextFamily::Mono,
+                ..self.style
+            },
+            space_before,
+        });
+    }
+
     fn unsupported_preamble(&mut self, name: &str, span: Span) {
         self.diags.push(Diagnostic::error(
             format!("\\{} is not supported in the document preamble", name),
@@ -3517,6 +3681,62 @@ mod tests {
         ] {
             assert_eq!(font_of(&items, text), font, "{text}");
         }
+    }
+
+    #[test]
+    fn verb_reads_its_argument_completely_literally() {
+        use layout::Font;
+        // `%`, `_`, `$`, `&`, `{`, `}` would each mean something else to the
+        // ordinary tokenizer (comment start, script marker, math shift,
+        // misplaced alignment tab, group braces); \verb must still read the
+        // whole thing as one literal run and not lose the trailing period
+        // that the errant `%` token would otherwise have swallowed.
+        let source = r"Inline \verb|a_b%#$&{}|.";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let verb = items
+            .iter()
+            .find(|item| item.text == "a_b%#$&{}")
+            .unwrap_or_else(|| panic!("no literal \\verb item in {items:?}"));
+        assert_eq!(verb.font, Font::Courier);
+        assert!(
+            items.iter().any(|item| item.text == "."),
+            "the period after \\verb's closing delimiter must survive: {items:?}"
+        );
+    }
+
+    #[test]
+    fn verb_delimiter_can_be_any_character_and_needs_no_closing_delimiter_diagnostic() {
+        let source = r"\verb!plain! and \verb+x_y+ done";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(items.iter().any(|item| item.text == "plain"));
+        assert!(items.iter().any(|item| item.text == "x_y"));
+    }
+
+    #[test]
+    fn unterminated_verb_is_diagnosed_not_silently_dropped() {
+        let source = "\\verb|missing the closing delimiter";
+        let (parsed, _items) = items(source);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("has no closing '|'")));
+    }
+
+    #[test]
+    fn url_reads_a_braced_argument_literally_including_nested_braces() {
+        use layout::Font;
+        let source = r"See \url{https://example.invalid/a_b?q=1{x}} now unaffected";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let url = items
+            .iter()
+            .find(|item| item.text == "https://example.invalid/a_b?q=1{x}")
+            .unwrap_or_else(|| panic!("no literal \\url item in {items:?}"));
+        assert_eq!(url.font, Font::Courier);
+        assert!(items.iter().any(|item| item.text == "now"));
+        assert!(items.iter().any(|item| item.text == "unaffected"));
     }
 
     fn size_of(items: &[crate::layout::TextItem], text: &str) -> f64 {

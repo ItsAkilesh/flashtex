@@ -157,8 +157,8 @@ declarations `\tiny`, `\scriptsize`, `\footnotesize`, `\small`,
 `enumerate` (plus the amsmath displays `alignat`, `flalign` and `multline`,
 starred or not; `multline` numbers only its last line), `\item`, `\par`,
 `\hfill`, `\hfil`, `\hspace{<dimen>}`, `\hspace*{<dimen>}`, `\\`,
-`\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`, and
-`\smallskip`. Macro
+`\listfiles`, `\noindent`, `\quad`, `\qquad`, `\bigskip`, `\medskip`,
+`\smallskip`, `\verb<delim>...<delim>`, and `\url{...}`. Macro
 argument counts are decimal integers from 0 through 9, and replacement
 parameters are `#1` through `#9`. Paragraphs are separated by blank lines.
 `%` begins a comment. Any other command produces an explicit "not supported by
@@ -169,6 +169,14 @@ package version banners, and this compiler has no log stream to write them to,
 so silently doing nothing is the honest behaviour rather than a fabricated log.
 `\noindent` is likewise always a no-op: no paragraph in this layout model is
 ever given a first-line indent, so there is no indent for it to suppress.
+
+`\verb<delim>...<delim>` reads its argument straight from the source, ahead of
+the ordinary tokenizer's fixed category codes, so a `%`, `_`, `$`, `&`, `{`, or
+`}` inside it is always literal rather than a comment, script marker, math
+shift, alignment tab, or group brace; it is typeset in the compiler's one
+monospace face. `\url{...}` is the same reading, brace-delimited (braces
+inside the argument nest); the starred `\verb*` form and `\url`'s
+custom-delimiter form are not implemented.
 
 `\tiny` through `\Huge` scale text relative to `\normalsize` using the real
 LaTeX class files' own tables (`size10.clo`/`size11.clo`/`size12.clo`),

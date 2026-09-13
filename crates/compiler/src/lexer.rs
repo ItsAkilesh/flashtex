@@ -58,11 +58,17 @@ fn is_special(c: char) -> bool {
 /// example four hyphens give an em dash followed by a literal hyphen, not two
 /// en dashes).
 ///
-/// Callers must only apply this to genuine text-mode words. This crate has no
-/// verbatim, `\texttt`, or `\ttfamily` state yet (see the README's honest
-/// boundary), and math is parsed through an entirely separate path that never
-/// calls this function, so every [`TokenKind::Word`] reachable from ordinary
-/// paragraph text or a supported command's text argument is fair game.
+/// Callers must only apply this to genuine text-mode words. `\texttt`/
+/// `\ttfamily` are plain font-family declarations here, not a separate
+/// tokenizer state, so their words still pass through this function exactly
+/// like any other text (real TeX ligatures are a font property, not a
+/// category-code one, so this matches real behaviour). `\verb`/`\url` are
+/// the one genuine exception: their arguments are read directly from source
+/// in `parser::verbatim_command`/`url_command`, bypassing this function
+/// entirely. Math is parsed through an entirely separate path that never
+/// calls this function either, so every other [`TokenKind::Word`] reachable
+/// from ordinary paragraph text or a supported command's text argument is
+/// fair game.
 pub fn apply_text_ligatures(word: &str) -> String {
     if !word
         .bytes()
