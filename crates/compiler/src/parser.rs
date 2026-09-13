@@ -151,6 +151,10 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+    /// `\vfill`: vertical glue that stretches to fill whatever room is left
+    /// on the current page, computed at layout time from the cursor's
+    /// actual position (unlike `VSpace`'s flat, parse-time amount).
+    VFill,
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -408,9 +412,19 @@ const BUILT_INS: &[&str] = &[
     "vspace",
     "hrule",
     "newpage",
+    "clearpage",
+    "cleardoublepage",
+    "pagebreak",
+    "nopagebreak",
+    "linebreak",
+    "nolinebreak",
+    "vfill",
     "pagestyle",
+    "thispagestyle",
+    "pagenumbering",
     "listfiles",
     "noindent",
+    "indent",
     "tiny",
     "scriptsize",
     "footnotesize",
@@ -969,6 +983,25 @@ impl P<'_> {
             }
             _ if style_declaration(name) => self.style = apply_style(self.style, name),
             "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            // `\linebreak[n]`/`\nolinebreak[n]`: real TeX's 0-4 priority only
+            // ever hints a badness-based line-breaking algorithm this greedy
+            // layout does not have. An absent bracket or an explicit `4` is
+            // TeX's own "you must break here", which is exactly what `\\`
+            // already forces (see `Inline::LineBreak`), so that priority
+            // alone gets a real break; anything lower is honestly left alone
+            // rather than guessing whether a real engine would have broken
+            // there. `\nolinebreak` can only ever discourage a break this
+            // layout was never going to insert on its own initiative, so
+            // honouring it exactly means doing nothing beyond consuming its
+            // bracket.
+            "linebreak" => {
+                if self.mandatory_break_requested() {
+                    para.push(Inline::LineBreak { span });
+                }
+            }
+            "nolinebreak" => {
+                let _ = self.optional_bracket_argument();
+            }
             "hspace" => {
                 // The star only affects whether the glue survives being
                 // discarded at a line break in real TeX, which this layout
@@ -996,6 +1029,16 @@ impl P<'_> {
             // model, so there is nothing for \noindent to suppress: an honest
             // no-op rather than a fabricated indent to cancel.
             "noindent" => {}
+            // The opposite request: unlike \noindent above, this one is not a
+            // coincidental match with real LaTeX's output — \indent asks for
+            // a first-line indent that this layout has no way to draw (see
+            // `set_length`'s `\parindent` handling), so it is named honestly
+            // via a diagnostic rather than silently accepted.
+            "indent" => self.diags.push(Diagnostic::warning(
+                "\\indent is recognised but paragraph indentation is not implemented",
+                Some(span),
+                Some("the paragraph was not given a first-line indent".into()),
+            )),
             // Text-mode horizontal glue. `\quad`/`\qquad` are also implemented
             // in math mode (`src/math.rs`); this arm covers the same commands
             // used directly in running text, 1em/2em of the body text size.
@@ -1019,6 +1062,14 @@ impl P<'_> {
                 self.finish_block_dependencies();
             }
             "vspace" => {
+                // The star only affects whether the glue survives being
+                // discarded at a page break in real TeX, which this layout
+                // never does anyway (see `hspace`'s identical star), so both
+                // forms are parsed identically. Consuming it here (as
+                // `hspace` already does for itself) is the fix: left alone,
+                // `required_group` sees `*` where it expects `{` and reports
+                // a missing argument instead of reading the dimension after it.
+                let _starred = self.take_optional_star();
                 let (tokens, argument_span) = self.required_group(name, span);
                 let raw = token_text(&tokens);
                 match parse_dimen_pt(&raw) {
@@ -1047,11 +1098,57 @@ impl P<'_> {
                 blocks.push(Block::PageBreak);
                 self.finish_block_dependencies();
             }
+            // `\clearpage`/`\cleardoublepage` also flush any queued floats
+            // and, for `\cleardoublepage` in a `twoside` class, insert a
+            // blank page to land back on an odd one. Neither float queuing
+            // nor the oneside/twoside distinction exists in this compiler
+            // (article defaults to oneside, where the two commands are
+            // already identical in real LaTeX), so both reduce honestly to
+            // the same unconditional break as `\newpage`.
+            "clearpage" | "cleardoublepage" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::PageBreak);
+                self.finish_block_dependencies();
+            }
+            // `\pagebreak[n]`: see the `\linebreak[n]` comment above for why
+            // only the mandatory priority (absent or `4`) forces a break.
+            "pagebreak" => {
+                if self.mandatory_break_requested() {
+                    self.flush_paragraph(blocks, para);
+                    blocks.push(Block::PageBreak);
+                    self.finish_block_dependencies();
+                }
+            }
+            "nopagebreak" => {
+                let _ = self.optional_bracket_argument();
+            }
+            "vfill" => {
+                self.flush_paragraph(blocks, para);
+                blocks.push(Block::VFill);
+                self.finish_block_dependencies();
+            }
             "pagestyle" => {
                 // No header/footer rendering exists yet, so every style is
                 // accepted with the same (honest) effect: none. `empty` and
                 // `plain` both describe "no footer content beyond a page
                 // number", which is already what happens.
+                let _ = self.required_group(name, span);
+            }
+            // `\thispagestyle` differs from `\pagestyle` only in scope
+            // (current page vs. every later one); since no style ever
+            // renders anything either way, the same honest no-op covers it.
+            "thispagestyle" => {
+                let _ = self.required_group(name, span);
+            }
+            // `\pagenumbering{arabic|roman}` resets the page counter and its
+            // display style. With no footer rendering to show a number in
+            // (see `\pagestyle` above) and no separate "displayed page
+            // number" distinct from `Page::number` for `\pageref` to read,
+            // there is nothing observable left for it to change; accepted
+            // with the same honest no-op rather than faking a counter reset
+            // whose only visible effect would be through those two missing
+            // features.
+            "pagenumbering" => {
                 let _ = self.required_group(name, span);
             }
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
@@ -2170,6 +2267,20 @@ impl P<'_> {
         Some((content, span))
     }
 
+    /// `\pagebreak[n]`/`\linebreak[n]`'s priority argument: real TeX's `n`
+    /// (0-4) only ever hints a badness-based breaking algorithm this greedy
+    /// layout does not implement. An absent bracket defaults, as in real
+    /// TeX, to `4` — "you must break here" — which this layout can honour
+    /// exactly as a forced break; any other value is honestly left alone
+    /// rather than guessing whether a real engine would have broken there.
+    /// The bracket, present or not, is always consumed.
+    fn mandatory_break_requested(&mut self) -> bool {
+        match self.optional_bracket_argument() {
+            None => true,
+            Some((content, _)) => content.trim() == "4",
+        }
+    }
+
     fn take_optional_star(&mut self) -> bool {
         self.skip_spaces();
         if matches!(
@@ -2884,6 +2995,203 @@ mod tests {
                 parsed.diagnostics
             );
         }
+    }
+
+    #[test]
+    fn thispagestyle_is_accepted_without_a_diagnostic() {
+        for style in ["empty", "plain"] {
+            let parsed = parse(&format!(r"\thispagestyle{{{style}}}Body text"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "\\thispagestyle{{{style}}}: {:?}",
+                parsed.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn pagenumbering_is_accepted_without_a_diagnostic() {
+        for style in ["arabic", "roman"] {
+            let parsed = parse(&format!(r"\pagenumbering{{{style}}}Body text"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "\\pagenumbering{{{style}}}: {:?}",
+                parsed.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn clearpage_and_cleardoublepage_force_a_fresh_page() {
+        for command in [r"\clearpage", r"\cleardoublepage"] {
+            let (parsed, pages) = pages(&format!("First page{command} Second page"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{command}: {:?}",
+                parsed.diagnostics
+            );
+            assert_eq!(
+                pages.len(),
+                2,
+                "{command} must force exactly one page break"
+            );
+            assert!(pages[0].items.iter().any(|item| item.text == "First"));
+            assert!(pages[1].items.iter().any(|item| item.text == "Second"));
+        }
+    }
+
+    #[test]
+    fn pagebreak_at_default_or_explicit_priority_four_forces_a_fresh_page() {
+        for command in [r"\pagebreak", r"\pagebreak[4]"] {
+            let (parsed, pages) = pages(&format!("First page{command} Second page"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{command}: {:?}",
+                parsed.diagnostics
+            );
+            assert_eq!(
+                pages.len(),
+                2,
+                "{command} must force exactly one page break"
+            );
+            assert!(pages[0].items.iter().any(|item| item.text == "First"));
+            assert!(pages[1].items.iter().any(|item| item.text == "Second"));
+        }
+    }
+
+    #[test]
+    fn pagebreak_below_priority_four_is_a_no_op_hint() {
+        let (parsed, pages) = pages(r"First page\pagebreak[1] Second page");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(
+            pages.len(),
+            1,
+            "a priority below 4 is only a hint this compiler has no badness model to honour"
+        );
+        assert!(
+            pages[0].items.iter().all(|item| item.text != "[1]"),
+            "the priority argument must not leak onto the page as text"
+        );
+    }
+
+    #[test]
+    fn nopagebreak_is_accepted_without_a_diagnostic_and_has_no_visible_effect() {
+        for command in [r"\nopagebreak", r"\nopagebreak[3]"] {
+            let with = pages(&format!("First page{command} Second page"));
+            assert!(
+                with.0.diagnostics.is_empty(),
+                "{command}: {:?}",
+                with.0.diagnostics
+            );
+            assert_eq!(with.1.len(), 1);
+            assert!(with.1[0].items.iter().all(|item| item.text != "[3]"));
+        }
+    }
+
+    #[test]
+    fn linebreak_at_default_or_explicit_priority_four_starts_a_new_line() {
+        for command in [r"\linebreak", r"\linebreak[4]"] {
+            let (parsed, items) = items(&format!("AAA{command} BBB"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{command}: {:?}",
+                parsed.diagnostics
+            );
+            let aaa = items.iter().find(|i| i.text == "AAA").unwrap();
+            let bbb = items.iter().find(|i| i.text == "BBB").unwrap();
+            assert!(
+                bbb.baseline_y_pt > aaa.baseline_y_pt,
+                "{command} must move to a new line, not just insert a space"
+            );
+            assert_eq!(
+                bbb.x_pt,
+                layout::MARGIN_PT,
+                "{command} must return to the left margin on its new line"
+            );
+        }
+    }
+
+    #[test]
+    fn linebreak_below_priority_four_is_a_no_op_hint() {
+        let (parsed, items) = items(r"AAA\linebreak[1] BBB");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let aaa = items.iter().find(|i| i.text == "AAA").unwrap();
+        let bbb = items.iter().find(|i| i.text == "BBB").unwrap();
+        assert_eq!(
+            bbb.baseline_y_pt, aaa.baseline_y_pt,
+            "a priority below 4 must not force a line break"
+        );
+        assert!(items.iter().all(|item| item.text != "[1]"));
+    }
+
+    #[test]
+    fn nolinebreak_is_accepted_without_a_diagnostic_and_has_no_visible_effect() {
+        for command in [r"\nolinebreak", r"\nolinebreak[2]"] {
+            let (parsed, items) = items(&format!("AAA{command} BBB"));
+            assert!(
+                parsed.diagnostics.is_empty(),
+                "{command}: {:?}",
+                parsed.diagnostics
+            );
+            let aaa = items.iter().find(|i| i.text == "AAA").unwrap();
+            let bbb = items.iter().find(|i| i.text == "BBB").unwrap();
+            assert_eq!(bbb.baseline_y_pt, aaa.baseline_y_pt);
+            assert!(items.iter().all(|item| item.text != "[2]"));
+        }
+    }
+
+    #[test]
+    fn vspace_star_behaves_exactly_like_unstarred_vspace() {
+        let unstarred = items(r"One\vspace{50pt}Two").1;
+        let (parsed, starred) = items(r"One\vspace*{50pt}Two");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let positions = |items: &[crate::layout::TextItem]| -> Vec<(String, f64, f64)> {
+            items
+                .iter()
+                .map(|item| (item.text.clone(), item.x_pt, item.baseline_y_pt))
+                .collect()
+        };
+        assert_eq!(
+            positions(&unstarred),
+            positions(&starred),
+            "\\vspace* must lay out identically to \\vspace on this non-breaking layout"
+        );
+    }
+
+    #[test]
+    fn vfill_consumes_the_rest_of_the_page_pushing_what_follows_to_a_new_page() {
+        let baseline = pages("Top.\n\nBottom.").1;
+        assert_eq!(
+            baseline.len(),
+            1,
+            "two short paragraphs alone must fit on one page"
+        );
+        let (parsed, filled) = pages(r"Top.\vfill Bottom.");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(
+            filled.len(),
+            2,
+            "\\vfill should consume the remaining room on the page, pushing what follows onto a new one"
+        );
+        assert!(filled[0].items.iter().any(|item| item.text == "Top."));
+        assert!(filled[1].items.iter().any(|item| item.text == "Bottom."));
+    }
+
+    #[test]
+    fn indent_is_named_honestly_since_first_line_indentation_is_not_implemented() {
+        let (parsed, items) = items(r"\indent Indented paragraph");
+        assert!(
+            parsed
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("\\indent") && d.message.contains("not implemented")),
+            "{:?}",
+            parsed.diagnostics
+        );
+        assert!(
+            items.iter().any(|item| item.text == "Indented"),
+            "the paragraph text must still be typeset even though the indent itself is not"
+        );
     }
 
     #[test]
