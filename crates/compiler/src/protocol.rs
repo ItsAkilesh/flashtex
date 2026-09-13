@@ -493,6 +493,8 @@ fn compile(id: &str, payload: &Value) -> Value {
                 message: format!("rejected document path '{}': paths must be project-relative with no parent traversal", p),
                 span: None,
                 recovery: None,
+                code: None,
+                suggestion: None,
             };
             return failed(
                 id,
@@ -513,6 +515,8 @@ fn compile(id: &str, payload: &Value) -> Value {
             ),
             span: None,
             recovery: None,
+            code: None,
+            suggestion: None,
         };
         return failed(
             id,
@@ -559,6 +563,8 @@ fn compile(id: &str, payload: &Value) -> Value {
                 message: "no documents supplied to compile".into(),
                 span: None,
                 recovery: None,
+                code: None,
+                suggestion: None,
             };
             return failed(
                 id,

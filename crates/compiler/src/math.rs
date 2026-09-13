@@ -164,7 +164,7 @@ pub enum Frame {
 
 /// Math-mode environments implemented as grids: (name, default column
 /// alignment repeated for every column, left fence, right fence).
-const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
+pub(crate) const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
     ("array", 'c', "", ""),
     ("matrix", 'c', "", ""),
     ("smallmatrix", 'c', "", ""),
@@ -658,7 +658,8 @@ impl MathParser<'_> {
             _ => match command_glyph(&name) {
                 Some(glyph) => symbol(glyph.into(), span),
                 None => {
-                    self.diagnostics.push(Diagnostic::error(
+                    self.diagnostics.push(Diagnostic::command_error(
+                        &name,
                         format!("\\{} is not supported in math mode", name),
                         Some(span),
                         Some("typeset the command literally and continued".into()),
@@ -892,7 +893,8 @@ impl MathParser<'_> {
                     text.push_str("\\\\");
                 }
                 TokenKind::Command(name) => {
-                    self.diagnostics.push(Diagnostic::error(
+                    self.diagnostics.push(Diagnostic::command_error(
+                        &name,
                         format!("\\{name} is not supported inside \\{command}"),
                         Some(token.span),
                         Some("typeset the command name literally and continued".into()),
@@ -972,7 +974,8 @@ impl MathParser<'_> {
         let Some(&(_, default_align, left, right)) =
             GRID_ENVIRONMENTS.iter().find(|(env, ..)| *env == name)
         else {
-            self.diagnostics.push(Diagnostic::error(
+            self.diagnostics.push(Diagnostic::environment_error(
+                &name,
                 unsupported(&name),
                 Some(span),
                 Some("typeset the environment body inline".into()),
@@ -1271,14 +1274,14 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
-const OPERATOR_NAMES: &[&str] = &[
+pub(crate) const OPERATOR_NAMES: &[&str] = &[
     "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
     "coth", "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det",
     "gcd", "deg", "dim", "ker", "arg", "hom", "Pr", "sgn",
 ];
 
 /// Named commands that `\left`, `\right` and `\big...` accept as fences.
-const DELIMITER_COMMANDS: &[&str] = &[
+pub(crate) const DELIMITER_COMMANDS: &[&str] = &[
     "langle",
     "rangle",
     "lvert",

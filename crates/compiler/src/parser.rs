@@ -351,7 +351,7 @@ impl Parsed {
     }
 }
 
-const BUILT_INS: &[&str] = &[
+pub(crate) const BUILT_INS: &[&str] = &[
     "section",
     "subsection",
     "textbf",
@@ -1589,7 +1589,8 @@ impl P<'_> {
                 self.list_stack
                     .push((environment.clone(), 0, template, spacing));
             } else if self.in_body {
-                self.diags.push(Diagnostic::warning(
+                self.diags.push(Diagnostic::environment_warning(
+                    &environment,
                     format!(
                         "environment '{}' is not implemented; its body is typeset as plain text",
                         environment
@@ -2417,7 +2418,8 @@ impl P<'_> {
     }
 
     fn unsupported_preamble(&mut self, name: &str, span: Span) {
-        self.diags.push(Diagnostic::error(
+        self.diags.push(Diagnostic::command_error(
+            name,
             format!("\\{} is not supported in the document preamble", name),
             Some(span),
             Some("skipped the command and did not typeset preamble content".into()),
@@ -2457,7 +2459,8 @@ impl P<'_> {
     fn unsupported(&mut self, name: &str, span: Span) {
         debug_assert!(!BUILT_INS.contains(&name));
         let skipped = self.skip_recoverable_argument(name);
-        self.diags.push(Diagnostic::error(
+        self.diags.push(Diagnostic::command_error(
+            name,
             format!(
                 "\\{} is not supported by this compiler version; unrestricted TeX math mode is not implemented",
                 name
