@@ -645,6 +645,41 @@ fn shift_math_list(
                         Nucleus::Group(inner) => {
                             Nucleus::Group(shift_math_list(inner, changes, deltas)?)
                         }
+                        Nucleus::GenFraction {
+                            numerator,
+                            denominator,
+                            thickness_pt,
+                            left,
+                            right,
+                            style,
+                        } => Nucleus::GenFraction {
+                            numerator: shift_math_list(numerator, changes, deltas)?,
+                            denominator: shift_math_list(denominator, changes, deltas)?,
+                            thickness_pt: *thickness_pt,
+                            left: left.clone(),
+                            right: right.clone(),
+                            style: *style,
+                        },
+                        Nucleus::Phantom {
+                            body,
+                            horizontal,
+                            vertical,
+                        } => Nucleus::Phantom {
+                            body: shift_math_list(body, changes, deltas)?,
+                            horizontal: *horizontal,
+                            vertical: *vertical,
+                        },
+                        Nucleus::Operator { body, limits } => Nucleus::Operator {
+                            body: shift_math_list(body, changes, deltas)?,
+                            limits: *limits,
+                        },
+                        Nucleus::SubArray { rows, align } => Nucleus::SubArray {
+                            rows: rows
+                                .iter()
+                                .map(|row| shift_math_list(row, changes, deltas))
+                                .collect::<Option<Vec<_>>>()?,
+                            align: *align,
+                        },
                     },
                     class_override: atom.class_override,
                     width_em: atom.width_em,

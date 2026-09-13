@@ -489,6 +489,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "setlist",
     "newcommand",
     "renewcommand",
+    "DeclareMathOperator",
     "input",
     "include",
     "label",
@@ -1104,6 +1105,7 @@ impl P<'_> {
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
+            "DeclareMathOperator" => self.declare_math_operator(span),
             "newtheorem" => self.new_theorem(span),
             "theoremstyle" => self.set_theorem_style(span),
             "begin" | "end" => self.environment(name, span, blocks, para),
@@ -2066,6 +2068,65 @@ impl P<'_> {
             i = j;
         }
         out
+    }
+
+    /// amsopn.sty lines 49-54: `\DeclareMathOperator{\cmd}{text}` defines
+    /// `\cmd` as `\qopname\newmcodes@ o{text}` (`m`, limits, when starred),
+    /// which is exactly `\operatorname{text}` (`\operatorname*{text}`), so the
+    /// command is recorded as a parameterless macro with that body.
+    fn declare_math_operator(&mut self, span: Span) {
+        let starred = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*");
+        if starred {
+            self.i += 1;
+        }
+        let (name_tokens, name_span) = self.long_required_group("DeclareMathOperator", span);
+        let names: Vec<&InputToken> = name_tokens
+            .iter()
+            .filter(|t| !matches!(t.token.kind, TokenKind::Space | TokenKind::Comment))
+            .collect();
+        let name = match names.as_slice() {
+            [InputToken {
+                token:
+                    Token {
+                        kind: TokenKind::Command(name),
+                        ..
+                    },
+                ..
+            }] if !name.is_empty() => name.clone(),
+            _ => {
+                self.diags.push(Diagnostic::error(
+                    "\\DeclareMathOperator requires a single command name as its first argument",
+                    Some(name_span),
+                    Some("ignored the invalid operator declaration".into()),
+                ));
+                let _ = self.long_required_group("DeclareMathOperator", span);
+                return;
+            }
+        };
+        let (text, text_span) = self.long_required_group("DeclareMathOperator", span);
+        if self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str()) {
+            self.diags.push(Diagnostic::error(
+                format!("\\DeclareMathOperator cannot redefine existing command \\{name}"),
+                Some(span.merge(name_span)),
+                Some("kept the existing command definition".into()),
+            ));
+            return;
+        }
+        let at = |kind: TokenKind, span: Span| Token { kind, span };
+        let mut body = vec![at(TokenKind::Command("operatorname".into()), span)];
+        if starred {
+            body.push(at(TokenKind::Word("*".into()), span));
+        }
+        body.push(at(TokenKind::LBrace, text_span));
+        body.extend(text.into_iter().map(|t| t.token));
+        body.push(at(TokenKind::RBrace, text_span));
+        self.set_macro(
+            name,
+            MacroDef {
+                argument_count: 0,
+                body,
+            },
+        );
     }
 
     fn define_macro(&mut self, kind: &str, span: Span) {

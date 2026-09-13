@@ -59,32 +59,46 @@ struct Engine<'a> {
 pub fn effective_classes(atoms: &[Atom]) -> Vec<AtomClass> {
     use AtomClass::*;
     let mut out: Vec<AtomClass> = Vec::with_capacity(atoms.len());
+    // Index in `out` of the last noad; glue is skipped like TeX's `r_type`.
+    let mut last: Option<usize> = None;
     for atom in atoms {
         let mut class = atom.class;
+        if is_glue(atom) {
+            out.push(class);
+            continue;
+        }
         match class {
             Bin => {
-                let prev = out.last().copied();
+                let prev = last.map(|i| out[i]);
                 if matches!(prev, None | Some(Bin | Op | Rel | Open | Punct)) {
                     class = Ord;
                 }
             }
             Rel | Close | Punct => {
-                if let Some(last) = out.last_mut()
-                    && *last == Bin
+                if let Some(i) = last
+                    && out[i] == Bin
                 {
-                    *last = Ord;
+                    out[i] = Ord;
                 }
             }
             _ => {}
         }
         out.push(class);
+        last = Some(out.len() - 1);
     }
-    if let Some(last) = out.last_mut()
-        && *last == Bin
+    if let Some(i) = last
+        && out[i] == Bin
     {
-        *last = Ord;
+        out[i] = Ord;
     }
     out
+}
+
+/// A bare glue atom (no scripts), which takes no part in atom spacing.
+fn is_glue(atom: &Atom) -> bool {
+    matches!(atom.nucleus, Nucleus::Glue { .. })
+        && atom.superscript.is_none()
+        && atom.subscript.is_none()
 }
 
 impl Engine<'_> {
@@ -99,6 +113,12 @@ impl Engine<'_> {
         let mut items: Vec<MathBox> = Vec::with_capacity(list.atoms.len() * 2);
         let mut prev: Option<AtomClass> = None;
         for (atom, class) in list.atoms.iter().zip(classes) {
+            if is_glue(atom) {
+                if let Nucleus::Glue { mu: g, pt } = atom.nucleus {
+                    items.push(MathBox::glue(g * mu + pt, g));
+                }
+                continue;
+            }
             let b = self.atom(atom, class, style);
             if let Some(p) = prev {
                 let space = between(p, class, style);
@@ -149,8 +169,31 @@ impl Engine<'_> {
                 numerator,
                 denominator,
                 thickness,
+                left,
+                right,
             } => (
-                self.make_fraction(numerator, denominator, *thickness, style),
+                self.make_fraction(numerator, denominator, *thickness, (*left, *right), style),
+                0.0,
+                false,
+            ),
+            Nucleus::BigDelimiter { delim, factor } => {
+                (self.make_big_delimiter(*delim, *factor), 0.0, false)
+            }
+            Nucleus::Phantom {
+                body,
+                horizontal,
+                vertical,
+            } => (
+                self.make_phantom(body, *horizontal, *vertical, style),
+                0.0,
+                false,
+            ),
+            Nucleus::SubArray { rows, align } => {
+                (self.make_subarray(rows, *align, style), 0.0, false)
+            }
+            // Scripted glue (not a TeX construct): a kern carrying the scripts.
+            Nucleus::Glue { mu, pt } => (
+                MathBox::kern(mu * self.params(style).mu() + pt),
                 0.0,
                 false,
             ),
@@ -460,6 +503,7 @@ impl Engine<'_> {
         num: &MathList,
         den: &MathList,
         thickness: Option<f64>,
+        delims: (Option<char>, Option<char>),
         style: Style,
     ) -> MathBox {
         let p = self.params(style);
@@ -529,11 +573,117 @@ impl Engine<'_> {
             height,
             depth,
         };
-        MathBox::hlist(vec![
-            MathBox::kern(p.null_delimiter_space),
+        // Rule 15e: delimiters of size `\delim1` (display) or `\delim2`,
+        // centred on the axis; a null delimiter is `\nulldelimiterspace`.
+        let delta = if style.is_display() { p.delim1 } else { p.delim2 };
+        let open = self.left_right_delimiter(delims.0, delta, style, &p);
+        let close = self.left_right_delimiter(delims.1, delta, style, &p);
+        MathBox::hlist(vec![open, body, close])
+    }
+
+    /// amsmath `\bBigg@` (`amsmath.sty`: `\left#2\vcenter to#1\big@size{}\right.`
+    /// inside `\@mathmeasure` with `\nulldelimiterspace\z@`; `\big@size` =
+    /// 1.2`\ht\Mathstrutbox@` + 1.2`\dp\Mathstrutbox@`, the text font's `(`).
+    /// The inner formula is text style whatever the outer style is.
+    fn make_big_delimiter(&mut self, delim: Option<char>, factor: f64) -> MathBox {
+        let p = self.params(Style::TEXT);
+        let strut = self
+            .m
+            .text_glyph('(', crate::metrics::SizeClass::Text)
+            .map(|g| g.height + g.depth)
+            .unwrap_or(p.size);
+        let size = factor * 1.2 * strut;
+        let a = p.axis_height;
+        // The empty `\vcenter to size`: height size/2 + a, depth size/2 - a.
+        let (vh, vd) = (size / 2.0 + a, size / 2.0 - a);
+        let mut items = Vec::new();
+        if let Some(ch) = delim {
+            // Rule 19 with δ = size/2 exactly.
+            let wanted = (size * p.delimiter_factor).max(size - p.delimiter_shortfall);
+            let d = self.left_right_delimiter(Some(ch), wanted, Style::TEXT, &p);
+            items.push(d);
+        }
+        let mut b = MathBox::hlist(items);
+        b.height = b.height.max(vh);
+        b.depth = b.depth.max(vd);
+        b
+    }
+
+    /// `\finph@nt`: an empty box taking the chosen dimensions of `body`,
+    /// which `\mathpalette` sets in the current style without cramping.
+    fn make_phantom(
+        &mut self,
+        body: &MathList,
+        horizontal: bool,
+        vertical: bool,
+        style: Style,
+    ) -> MathBox {
+        let b = self.clean_box(
             body,
-            MathBox::kern(p.null_delimiter_space),
-        ])
+            Style {
+                cramped: false,
+                ..style
+            },
+        );
+        MathBox {
+            kind: BoxKind::HBox(Vec::new()),
+            width: if horizontal { b.width } else { 0.0 },
+            height: if vertical { b.height } else { 0.0 },
+            depth: if vertical { b.depth } else { 0.0 },
+        }
+    }
+
+    /// amsmath `subarray` (see [`Nucleus::SubArray`]): an `\ialign` of
+    /// `\scriptstyle` rows with interline glue, then Rule 8's `\vcenter`
+    /// on the current style's axis.
+    fn make_subarray(&mut self, rows: &[MathList], align: char, style: Style) -> MathBox {
+        let sp = self.params(Style::SCRIPT);
+        let baselineskip = sp.num3 + sp.denom2;
+        let lineskip = 3.0 * sp.default_rule_thickness;
+        let cells: Vec<MathBox> = rows
+            .iter()
+            .map(|r| self.clean_box(r, Style::SCRIPT))
+            .collect();
+        let width = cells.iter().map(|c| c.width).fold(0.0, f64::max);
+        let mut baselines = Vec::with_capacity(cells.len());
+        let mut y = 0.0;
+        for (i, c) in cells.iter().enumerate() {
+            if i == 0 {
+                y = c.height;
+            } else {
+                let prev_depth = cells[i - 1].depth;
+                let glue = baselineskip - prev_depth - c.height;
+                y += prev_depth + c.height + if glue < lineskip { lineskip } else { glue };
+            }
+            baselines.push(y);
+        }
+        let total = y + cells.last().map_or(0.0, |c| c.depth);
+        let a = self.params(style).axis_height;
+        let height = total / 2.0 + a;
+        let depth = total / 2.0 - a;
+        let children = cells
+            .into_iter()
+            .zip(baselines)
+            .map(|(c, base)| {
+                let slack = width - c.width;
+                let dx = match align {
+                    'c' => slack / 2.0,
+                    'r' => slack,
+                    _ => 0.0,
+                };
+                Child {
+                    dx,
+                    dy: base - height,
+                    content: c,
+                }
+            })
+            .collect();
+        MathBox {
+            kind: BoxKind::VBox(children),
+            width,
+            height,
+            depth,
+        }
     }
 
     /// `var_delimiter` without its final axis shift: the first glyph in

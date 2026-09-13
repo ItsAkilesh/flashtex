@@ -419,10 +419,14 @@ fn expected_rules(list: &MathList) -> usize {
             let own = match &a.nucleus {
                 Nucleus::Symbol(_) | Nucleus::Empty | Nucleus::Text(_) => 0,
                 Nucleus::List(l) | Nucleus::Styled { body: l, .. } => expected_rules(l),
+                Nucleus::BigDelimiter { .. } | Nucleus::Glue { .. } => 0,
+                Nucleus::Phantom { .. } => 0,
+                Nucleus::SubArray { rows, .. } => rows.iter().map(expected_rules).sum(),
                 Nucleus::Fraction {
                     numerator,
                     denominator,
                     thickness,
+                    ..
                 } => {
                     usize::from(thickness.is_none_or(|t| t > 0.0))
                         + expected_rules(numerator)
