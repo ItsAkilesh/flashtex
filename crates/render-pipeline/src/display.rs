@@ -386,6 +386,236 @@ impl DisplayList {
         v.set("payload", payload);
         v
     }
+
+    /// `json::write(&self.to_json(id))` without building the `Value` tree
+    /// (FT-065: at HW1 size the tree of per-glyph maps with owned keys cost
+    /// more than layout). Keys are written in the `BTreeMap` order the tree
+    /// serialises in and numbers/strings go through the same json writers,
+    /// so the bytes are identical (`write_json_matches_the_value_tree`).
+    pub fn write_json(&self, id: &str) -> String {
+        let mut o = String::with_capacity(self.estimated_json_bytes());
+        o.push_str("{\"id\":");
+        json::write_string_into(id, &mut o);
+        o.push_str(",\"payload\":{\"color_space\":\"srgb\",\"coordinate_unit\":\"bp_2pow20\",\"diagnostics\":[");
+        for (i, d) in self.diagnostics.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"code\":");
+            json::write_string_into(&d.code, &mut o);
+            o.push_str(",\"message\":");
+            json::write_string_into(&d.message, &mut o);
+            o.push_str(",\"severity\":");
+            o.push_str(match d.severity {
+                Severity::Warning => "\"warning\"",
+                Severity::Error => "\"error\"",
+            });
+            o.push_str(",\"sources\":");
+            write_sources(&mut o, &d.sources);
+            o.push('}');
+        }
+        o.push_str("],\"documents\":[");
+        for (i, d) in self.documents.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"byte_length\":");
+            num(&mut o, d.byte_length as f64);
+            o.push_str(",\"path\":");
+            json::write_string_into(&d.path, &mut o);
+            o.push_str(",\"revision\":");
+            num(&mut o, d.revision as f64);
+            o.push_str(",\"sha256\":");
+            json::write_string_into(&d.sha256, &mut o);
+            o.push('}');
+        }
+        o.push_str("],\"fonts\":[");
+        for (i, f) in self.fonts.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"byte_length\":");
+            num(&mut o, f.byte_length as f64);
+            o.push_str(",\"face_index\":");
+            num(&mut o, f64::from(f.face_index));
+            o.push_str(",\"font_id\":");
+            json::write_string_into(&f.font_id, &mut o);
+            o.push_str(",\"format\":");
+            json::write_string_into(&f.format, &mut o);
+            o.push_str(",\"glyph_count\":");
+            num(&mut o, f64::from(f.glyph_count));
+            o.push_str(",\"postscript_name\":");
+            json::write_string_into(&f.postscript_name, &mut o);
+            o.push_str(",\"sha256\":");
+            json::write_string_into(&f.sha256, &mut o);
+            o.push_str(",\"units_per_em\":");
+            num(&mut o, f64::from(f.units_per_em));
+            o.push('}');
+        }
+        o.push_str("],\"pages\":[");
+        for (i, p) in self.pages.iter().enumerate() {
+            sep(&mut o, i);
+            write_page(&mut o, p);
+        }
+        o.push_str("],\"project_id\":");
+        json::write_string_into(&self.project_id, &mut o);
+        o.push_str(",\"render_format\":\"display-list-v2\",\"required_features\":[");
+        for (i, f) in self.required_features().into_iter().enumerate() {
+            sep(&mut o, i);
+            json::write_string_into(f, &mut o);
+        }
+        o.push_str("],\"revision\":");
+        num(&mut o, self.revision as f64);
+        o.push_str(",\"text_extraction\":\"cluster-actualtext\"},\"protocol_version\":");
+        num(&mut o, PROTOCOL_VERSION as f64);
+        o.push_str(",\"type\":\"display_list\"}");
+        o
+    }
+}
+
+fn sep(o: &mut String, i: usize) {
+    if i > 0 {
+        o.push(',');
+    }
+}
+
+fn num(o: &mut String, n: f64) {
+    json::write_number_into(n, o);
+}
+
+fn write_tick(o: &mut String, t: Tick) {
+    num(o, t.0 as f64);
+}
+
+fn write_sources(o: &mut String, sources: &[SourceRange]) {
+    o.push('[');
+    for (i, s) in sources.iter().enumerate() {
+        sep(o, i);
+        o.push_str("{\"end_byte\":");
+        num(o, s.end_byte as f64);
+        o.push_str(",\"path\":");
+        json::write_string_into(&s.path, o);
+        o.push_str(",\"start_byte\":");
+        num(o, s.start_byte as f64);
+        o.push('}');
+    }
+    o.push(']');
+}
+
+/// `sources` or `synthetic_reason`, preceded by a comma (both sort after
+/// every key written before them and before every key written after).
+fn write_provenance(o: &mut String, p: &Provenance) {
+    match p {
+        Provenance::Source(_) | Provenance::Sources(_) => {
+            o.push_str(",\"sources\":");
+            write_sources(o, p.sources());
+        }
+        Provenance::Synthetic(reason) => {
+            o.push_str(",\"synthetic_reason\":");
+            json::write_string_into(reason, o);
+        }
+    }
+}
+
+fn write_paint(o: &mut String, p: &Paint) {
+    o.push_str("{\"a\":");
+    num(o, p.a);
+    o.push_str(",\"b\":");
+    num(o, p.b);
+    o.push_str(",\"g\":");
+    num(o, p.g);
+    o.push_str(",\"r\":");
+    num(o, p.r);
+    o.push('}');
+}
+
+fn write_page(o: &mut String, p: &Page) {
+    o.push_str("{\"height\":");
+    write_tick(o, p.height);
+    o.push_str(",\"items\":[");
+    for (i, it) in p.items.iter().enumerate() {
+        sep(o, i);
+        match it {
+            Item::GlyphRun(r) => {
+                o.push_str("{\"clusters\":[");
+                for (j, c) in r.clusters.iter().enumerate() {
+                    sep(o, j);
+                    o.push_str("{\"carets\":[");
+                    for (k, caret) in c.carets.iter().enumerate() {
+                        sep(o, k);
+                        o.push_str("{\"height\":");
+                        write_tick(o, caret.height);
+                        o.push_str(",\"text_byte\":");
+                        num(o, caret.text_byte as f64);
+                        o.push_str(",\"top\":");
+                        write_tick(o, caret.top);
+                        o.push_str(",\"x\":");
+                        write_tick(o, caret.x);
+                        o.push('}');
+                    }
+                    o.push_str("],\"hit_rects\":[");
+                    for (k, rect) in c.hit_rects().iter().enumerate() {
+                        sep(o, k);
+                        o.push_str("{\"height\":");
+                        write_tick(o, rect.height);
+                        o.push_str(",\"top\":");
+                        write_tick(o, rect.top);
+                        o.push_str(",\"width\":");
+                        write_tick(o, rect.width);
+                        o.push_str(",\"x\":");
+                        write_tick(o, rect.x);
+                        o.push('}');
+                    }
+                    o.push(']');
+                    write_provenance(o, &c.provenance);
+                    o.push_str(",\"text_end_byte\":");
+                    num(o, c.text_end_byte as f64);
+                    o.push_str(",\"text_start_byte\":");
+                    num(o, c.text_start_byte as f64);
+                    o.push('}');
+                }
+                o.push_str("],\"font_id\":");
+                json::write_string_into(&r.font_id, o);
+                o.push_str(",\"font_size\":");
+                write_tick(o, r.font_size);
+                o.push_str(",\"glyphs\":[");
+                for (j, g) in r.glyphs.iter().enumerate() {
+                    sep(o, j);
+                    o.push_str("{\"advance_x\":");
+                    write_tick(o, g.advance_x);
+                    o.push_str(",\"advance_y\":");
+                    write_tick(o, g.advance_y);
+                    o.push_str(",\"baseline_y\":");
+                    write_tick(o, g.baseline_y);
+                    o.push_str(",\"cluster\":");
+                    num(o, f64::from(g.cluster));
+                    o.push_str(",\"gid\":");
+                    num(o, f64::from(g.gid));
+                    o.push_str(",\"origin_x\":");
+                    write_tick(o, g.origin_x);
+                    o.push('}');
+                }
+                o.push_str("],\"kind\":\"glyph_run\",\"paint\":");
+                write_paint(o, &r.paint);
+                o.push_str(",\"text\":");
+                json::write_string_into(&r.text, o);
+                o.push('}');
+            }
+            Item::Rule(r) => {
+                o.push_str("{\"height\":");
+                write_tick(o, r.height);
+                o.push_str(",\"kind\":\"rule\",\"paint\":");
+                write_paint(o, &r.paint);
+                write_provenance(o, &r.provenance);
+                o.push_str(",\"top\":");
+                write_tick(o, r.top);
+                o.push_str(",\"width\":");
+                write_tick(o, r.width);
+                o.push_str(",\"x\":");
+                write_tick(o, r.x);
+                o.push('}');
+            }
+        }
+    }
+    o.push_str("],\"number\":");
+    num(o, f64::from(p.number));
+    o.push_str(",\"width\":");
+    write_tick(o, p.width);
+    o.push('}');
 }
 
 fn tick(t: Tick) -> Value {
@@ -538,5 +768,122 @@ mod tests {
         assert_eq!(Tick::from_tex_pt(72.27), Tick(72 * 1_048_576));
         assert_eq!(Tick::from_bp(612.0).0, 612 * 1_048_576);
         assert_eq!(Tick::from_tex_pt(0.0), Tick(0));
+    }
+
+    #[test]
+    fn write_json_matches_the_value_tree() {
+        let src = |a, b| SourceRange {
+            path: std::rc::Rc::from("dir/ma\"in.tex"),
+            start_byte: a,
+            end_byte: b,
+        };
+        let caret = |x| Caret {
+            text_byte: 3,
+            x: Tick(x),
+            top: Tick(-7),
+            height: Tick(1 << 40),
+        };
+        let cluster = |provenance| Cluster {
+            text_start_byte: 0,
+            text_end_byte: 4,
+            hit_rect: Rect {
+                x: Tick(1),
+                top: Tick(-2),
+                width: Tick(3),
+                height: Tick(4),
+            },
+            carets: Carets {
+                first: caret(5),
+                last: Some(caret(9)),
+            },
+            provenance,
+        };
+        let run = Item::GlyphRun(GlyphRun {
+            font_id: std::rc::Rc::from("abc"),
+            font_size: Tick(12 << 20),
+            text: "ﬁ \"q\"\\\n\t\u{1}é".into(),
+            glyphs: vec![
+                Glyph {
+                    gid: 65535,
+                    origin_x: Tick(-1),
+                    baseline_y: Tick(2),
+                    advance_x: Tick(3),
+                    advance_y: Tick(0),
+                    cluster: 1,
+                };
+                2
+            ],
+            clusters: vec![
+                cluster(Provenance::Source(src(1, 2))),
+                cluster(Provenance::Sources(vec![src(3, 4), src(5, 6)])),
+                cluster(Provenance::Synthetic("heading number".into())),
+            ],
+            paint: Paint {
+                r: 0.25,
+                g: 0.1,
+                b: 1.0 / 3.0,
+                a: 1.0,
+            },
+            role: RunRole::Text,
+        });
+        let rule = |provenance| {
+            Item::Rule(Rule {
+                x: Tick(10),
+                top: Tick(20),
+                width: Tick(30),
+                height: Tick(40),
+                paint: Paint::BLACK,
+                provenance,
+            })
+        };
+        let list = DisplayList {
+            project_id: "p\\1".into(),
+            revision: 42,
+            documents: vec![DocumentResource {
+                path: "main.tex".into(),
+                revision: 42,
+                sha256: "00ff".into(),
+                byte_length: 5126,
+            }],
+            fonts: vec![FontResource {
+                font_id: std::rc::Rc::from("abc"),
+                sha256: "abc".into(),
+                byte_length: 1 << 33,
+                format: "opentype-cff".into(),
+                face_index: 0,
+                units_per_em: 1000,
+                glyph_count: 821,
+                postscript_name: "LMRoman12-Regular".into(),
+                path: Some("/x".into()),
+            }],
+            pages: vec![
+                Page {
+                    number: 1,
+                    width: Tick(612 << 20),
+                    height: Tick(792 << 20),
+                    items: vec![run, rule(Provenance::Source(src(7, 8))), rule(Provenance::Synthetic("frac".into()))],
+                },
+                Page {
+                    number: 2,
+                    width: Tick(1),
+                    height: Tick(2),
+                    items: Vec::new(),
+                },
+            ],
+            diagnostics: vec![
+                Diagnostic::warning("overfull_hbox", "line \"3\" is 1.5pt too wide", vec![src(1, 9)]),
+                Diagnostic::error("compiler", "x", Vec::new()),
+            ],
+        };
+        assert_eq!(list.write_json("id\"1"), json::write(&list.to_json("id\"1")));
+        let empty = DisplayList {
+            project_id: String::new(),
+            revision: 0,
+            documents: Vec::new(),
+            fonts: Vec::new(),
+            pages: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        assert_eq!(empty.write_json(""), json::write(&empty.to_json("")));
     }
 }
