@@ -21,7 +21,9 @@ The app locates `protocol/fixtures/` via `FLASHTEX_REPO`, the working directory,
 the bundle path, or the source path; `File > Open Compile Result Fixture…` (⌘O)
 loads another `compile_result` JSON, with a sibling `compile-request.json` (or
 `<name>-request.json` for a `<name>-result.json`) used to seed the editor when
-present. `⌘R` reloads.
+present. `File > Reload Fixture` (developer-only, no shortcut) reloads it; loading
+a fixture over a real document confirms first and detaches the file, so Save can
+never overwrite it (#72).
 
 ## Packaging
 
@@ -789,7 +791,7 @@ explain that nothing is loaded.
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
-| ⌘R | Reload fixture |
+| — | Reload Fixture (File menu; developer-only, no shortcut — confirms before replacing a real/unsaved document) |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
 | File > Export PDF (exact, v2)… | Exact route: the loaded v2 display list through `flashtex-pdf-exact from-v2` (`$FLASHTEX_PDF_EXACT`, bundle, or `crates/pdf/target/…`): original GIDs, embedded font programs, typed rules; refusals name the item |
 | ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
