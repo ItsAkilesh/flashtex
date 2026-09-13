@@ -9,6 +9,8 @@
 //! No TeX engine is involved at runtime. The Computer Modern adapter embeds
 //! metrics extracted from TFM files at development time; see `README.md`.
 
+pub mod ams;
+pub mod ams_tfm;
 pub mod boxes;
 pub mod cm;
 pub mod cm_tfm;
