@@ -32,7 +32,7 @@ fn main() {
         let diagnostics = ctx.take_diagnostics();
         let v2 = typeset::assemble("p", 1, &docs, &doc.style, &fonts, laid, diagnostics, Some(&cache), None, None);
         let t4 = Instant::now();
-        let payload = v1::fallback(&v2, Capabilities { rules: true, font_hints: true, display_list: false, images: false, device_color: false }, Some(vec![]));
+        let payload = v1::fallback(&v2, Capabilities { rules: true, font_hints: true, display_list: false, images: false, device_color: false, ..Capabilities::default() }, Some(vec![]));
         let t5 = Instant::now();
         let line = payload.write_envelope("stages");
         let t6 = Instant::now();

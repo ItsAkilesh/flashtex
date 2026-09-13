@@ -30,6 +30,17 @@ pub const CAP_IMAGES: &str = "display-list-v2-images";
 /// carry `device_color` (pdfTeX's exact colour operands). Accepted only
 /// together with `display-list-v2`.
 pub const CAP_DEVICE_COLOR: &str = "display-list-v2-device-color";
+/// PROPOSAL (`docs/proposals/display-list-v2-delta.md` r5): the sibling
+/// line may be one `display_list_delta` against the consumer's acknowledged
+/// installed base. Negotiated only next to `display-list-v2`; echoed only
+/// on the replies that actually carry a delta (`protocol.rs`).
+pub const CAP_DELTA: &str = crate::delta::CAP;
+/// PROPOSAL (`protocol/proposals/display-list-v2-only.md`): when the
+/// sibling (`display_list` or `display_list_delta`) is emitted, the
+/// `compile_result` omits its `pages` items (status, diagnostics, revision
+/// and the echoed capabilities stay). Negotiated only next to
+/// `display-list-v2`; echoed only when the pages were actually elided.
+pub const CAP_V2_ONLY: &str = "display-list-v2-only";
 
 /// Capabilities the producer accepted for one request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -39,6 +50,8 @@ pub struct Capabilities {
     pub display_list: bool,
     pub images: bool,
     pub device_color: bool,
+    pub delta: bool,
+    pub v2_only: bool,
 }
 
 impl Capabilities {
@@ -68,6 +81,14 @@ impl Capabilities {
                 }
                 CAP_IMAGES if !caps.images && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
                     caps.images = true;
+                    accepted.push(r.clone());
+                }
+                CAP_DELTA if !caps.delta && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
+                    caps.delta = true;
+                    accepted.push(r.clone());
+                }
+                CAP_V2_ONLY if !caps.v2_only && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
+                    caps.v2_only = true;
                     accepted.push(r.clone());
                 }
                 _ => {}
