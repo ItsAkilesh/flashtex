@@ -76,7 +76,11 @@ pub enum Inline {
     Reference {
         key: String,
         page: bool,
+        /// amsmath `\eqref`: the value is typeset in parentheses.
+        equation: bool,
         span: Span,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
     },
     /// `\hfill`/`\hfil`: infinite horizontal stretch. Multiple fills on one
     /// line share the line's leftover width equally, as real TeX glue does;
@@ -151,6 +155,12 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+    /// `\tableofcontents`: the article.cls contents list, built from the
+    /// numbered headings of the previous layout pass (see
+    /// `layout::layout_converged`). `span` is the command.
+    TableOfContents {
+        span: Span,
+    },
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -354,6 +364,8 @@ impl Parsed {
 const BUILT_INS: &[&str] = &[
     "section",
     "subsection",
+    "subsubsection",
+    "tableofcontents",
     "textbf",
     "textmd",
     "emph",
@@ -378,6 +390,7 @@ const BUILT_INS: &[&str] = &[
     "label",
     "ref",
     "pageref",
+    "eqref",
     "caption",
     "item",
     "includegraphics",
@@ -571,8 +584,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             .map(|(index, document)| (document.path, index))
             .collect(),
         include_stack: vec![entry],
-        section_counter: 0,
-        subsection_counter: 0,
+        counters: crate::xref::Counters::article(),
         equation_counter: 0,
         figure_counter: 0,
         current_counter: None,
@@ -638,8 +650,8 @@ struct P<'a> {
     documents: &'a [SourceDocument<'a>],
     document_by_path: HashMap<&'a str, usize>,
     include_stack: Vec<usize>,
-    section_counter: u32,
-    subsection_counter: u32,
+    /// Sectioning counters (see `crate::xref`).
+    counters: crate::xref::Counters,
     equation_counter: u32,
     figure_counter: u32,
     current_counter: Option<String>,
@@ -817,20 +829,19 @@ impl P<'_> {
             // diagnostic for a command every corpus fixture's preamble carries.
             "listfiles" => {}
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
-            "section" | "subsection" => {
-                let level = if name == "section" { 1 } else { 2 };
+            "section" | "subsection" | "subsubsection" => {
+                let level = match name {
+                    "section" => 1,
+                    "subsection" => 2,
+                    _ => 3,
+                };
                 let starred = self.take_optional_star();
                 let (tokens, _) = self.required_group(name, span);
                 self.flush_paragraph(blocks, para);
                 let number = if starred {
                     String::new()
-                } else if level == 1 {
-                    self.section_counter += 1;
-                    self.subsection_counter = 0;
-                    self.section_counter.to_string()
                 } else {
-                    self.subsection_counter += 1;
-                    format!("{}.{}", self.section_counter, self.subsection_counter)
+                    self.counters.step(name).unwrap_or_default()
                 };
                 if !starred {
                     self.current_counter = Some(number.clone());
@@ -876,15 +887,24 @@ impl P<'_> {
                     });
                 }
             }
-            "ref" | "pageref" => {
+            "ref" | "pageref" | "eqref" => {
+                let space_before = self.space_precedes(self.i - 1);
                 let (tokens, argument_span) = self.required_group(name, span);
                 let key = token_text(&tokens).trim().to_string();
                 self.document_global_state = true;
                 para.push(Inline::Reference {
                     key,
                     page: name == "pageref",
+                    equation: name == "eqref",
                     span: span.merge(argument_span),
+                    space_before,
                 });
+            }
+            "tableofcontents" => {
+                self.flush_paragraph(blocks, para);
+                self.document_global_state = true;
+                blocks.push(Block::TableOfContents { span });
+                self.finish_block_dependencies();
             }
             "caption" => {
                 let (tokens, _) = self.required_group(name, span);

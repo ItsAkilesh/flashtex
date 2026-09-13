@@ -55,6 +55,30 @@ struct ReferenceValue {
     page: u32,
 }
 
+/// article.cls `\l@section`/`\l@subsection`/`\l@subsubsection` geometry:
+/// (entry indent, `\numberline` box width) in em. Sections use `1.5em`
+/// numbers at the margin; `\@dottedtocline{2}{1.5em}{2.3em}` and
+/// `\@dottedtocline{3}{3.8em}{3.2em}` for the deeper levels.
+const TOC_INDENT_NUMWIDTH_EM: [(f64, f64); 3] = [(0.0, 1.5), (1.5, 2.3), (3.8, 3.2)];
+/// `\@pnumwidth`: the right-aligned page-number box.
+const TOC_PNUMWIDTH_EM: f64 = 1.55;
+/// `\@tocrmarg`: right margin that dotted-line titles wrap before.
+const TOC_RMARG_EM: f64 = 2.55;
+/// `\@dotsep`: each leader box is `\mkern4.5mu . \mkern4.5mu`.
+const TOC_DOTSEP_MU: f64 = 4.5;
+/// `\l@section`'s `\addvspace{1.0em \@plus\p@}` before each section entry.
+const TOC_SECTION_SKIP_EM: f64 = 1.0;
+
+/// One `\addcontentsline` record: a numbered heading and its page.
+#[derive(Debug, Clone, PartialEq)]
+struct TocEntry {
+    level: u8,
+    number: String,
+    number_span: Span,
+    content: Vec<Inline>,
+    page: u32,
+}
+
 /// Layout inputs that participate in incremental cache validation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LayoutConstraints {
@@ -318,6 +342,13 @@ pub struct LayoutCursor {
     constraints: LayoutConstraints,
     resolved_labels: BTreeMap<String, ReferenceValue>,
     collected_labels: BTreeMap<String, ReferenceValue>,
+    /// Contents entries from the previous pass, typeset by
+    /// `Block::TableOfContents`.
+    resolved_toc: Vec<TocEntry>,
+    /// Numbered headings of this pass; collected only when the document has
+    /// a `\tableofcontents`, so other documents keep converging in one pass.
+    collected_toc: Vec<TocEntry>,
+    collect_toc: bool,
     emit_heading_numbers: bool,
     diagnostics: Vec<Diagnostic>,
     /// Active only while rendering a `Block::Styled` paragraph.
@@ -356,6 +387,9 @@ impl LayoutCursor {
             constraints,
             resolved_labels,
             collected_labels: BTreeMap::new(),
+            resolved_toc: Vec::new(),
+            collected_toc: Vec::new(),
+            collect_toc: false,
             emit_heading_numbers,
             diagnostics: Vec::new(),
             style: None,
@@ -642,6 +676,115 @@ impl LayoutCursor {
             .push(item);
     }
 
+    /// One article.cls contents line: the number in its `\numberline` box,
+    /// the title wrapping at `\@pnumwidth` (sections) or `\@tocrmarg`,
+    /// aligned `\leaders` dots for levels below section, and the page number
+    /// flush right. Section entries are bold, with `1em` before each but the
+    /// first. Dots and the page number carry the `\tableofcontents` span;
+    /// number and title keep the heading's own spans.
+    fn toc_entry(&mut self, entry: &TocEntry, toc_span: Span, first: bool) {
+        let size = self.constraints.font_size_pt;
+        let section = entry.level <= 1;
+        let (indent_em, numwidth_em) =
+            TOC_INDENT_NUMWIDTH_EM[usize::from(entry.level.clamp(1, 3)) - 1];
+        let font = if section {
+            Font::TimesBold
+        } else {
+            Font::TimesRoman
+        };
+        self.newline(size);
+        if section && !first {
+            self.vertical_gap(TOC_SECTION_SKIP_EM * size);
+        }
+        self.push_item(
+            entry.number.clone(),
+            MARGIN_PT + indent_em * size,
+            size,
+            entry.number_span,
+            font,
+        );
+
+        // Headings are parsed bold; a contents line below section level is
+        // upright medium, so only the heading's base weight is dropped.
+        let content: Vec<Inline> = entry
+            .content
+            .iter()
+            .filter(|inline| !matches!(inline, Inline::Label { .. }))
+            .cloned()
+            .map(|inline| match inline {
+                Inline::Text {
+                    text,
+                    span,
+                    style,
+                    space_before,
+                } if !section => Inline::Text {
+                    text,
+                    span,
+                    style: TextStyle {
+                        bold: false,
+                        ..style
+                    },
+                    space_before,
+                },
+                other => other,
+            })
+            .collect();
+        let saved = self.constraints;
+        self.constraints.measure_pt -= if section {
+            TOC_PNUMWIDTH_EM
+        } else {
+            TOC_RMARG_EM
+        } * size;
+        self.list_margin_pt = (indent_em + numwidth_em) * size;
+        self.x = self.left_edge();
+        self.content_end = self.x;
+        emit(self, &content, size, font);
+        self.resolve_hfill();
+        self.constraints = saved;
+        self.list_margin_pt = 0.0;
+
+        let right = MARGIN_PT + self.constraints.measure_pt;
+        let page_box = right - TOC_PNUMWIDTH_EM * size;
+        if !section {
+            // `\leaders` align their boxes to multiples of the box width from
+            // the line's left edge, so dots line up across entries.
+            let mu = size / 18.0;
+            let box_width = 2.0 * TOC_DOTSEP_MU * mu + glyph_width(".", size, Font::TimesRoman);
+            let mut slot = ((self.content_end - MARGIN_PT) / box_width).ceil();
+            while MARGIN_PT + (slot + 1.0) * box_width <= page_box {
+                let x = MARGIN_PT + slot * box_width + TOC_DOTSEP_MU * mu;
+                self.push_item(".".to_string(), x, size, toc_span, Font::TimesRoman);
+                slot += 1.0;
+            }
+        }
+        let page = entry.page.to_string();
+        let x = right - glyph_width(&page, size, font);
+        self.push_item(page, x, size, toc_span, font);
+        self.x = right;
+        self.content_end = right;
+    }
+
+    /// Place `text` at an absolute `x` on the current baseline.
+    fn push_item(&mut self, text: String, x: f64, size: f64, span: Span, font: Font) {
+        if text.is_empty() {
+            return;
+        }
+        let y = self.y;
+        self.pages
+            .last_mut()
+            .expect("at least one page")
+            .items
+            .push(TextItem {
+                text,
+                x_pt: round2(x),
+                baseline_y_pt: round2(y),
+                font_size_pt: size,
+                span,
+                font,
+                rule: None,
+            });
+    }
+
     fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
         let text = format!("({number})");
         let width = glyph_width(&text, size, Font::TimesRoman);
@@ -764,6 +907,13 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
+            // Opens with `\section*{\contentsname}`.
+            Block::TableOfContents { .. } => {
+                if !self.first_block {
+                    self.newline(heading_size(1, body_size));
+                    self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
+                }
+            }
             Block::FigureCaption { .. } | Block::Styled { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
@@ -845,14 +995,20 @@ impl LayoutCursor {
                 number_span,
                 content,
             } => {
+                if self.collect_toc && !number.is_empty() {
+                    self.collected_toc.push(TocEntry {
+                        level: *level,
+                        number: number.clone(),
+                        number_span: *number_span,
+                        content: content.clone(),
+                        page: self.pages.len() as u32,
+                    });
+                }
                 if self.emit_heading_numbers && !number.is_empty() {
-                    self.place(
-                        number.clone(),
-                        heading_size(*level, body_size),
-                        *number_span,
-                        Font::TimesBold,
-                        true,
-                    );
+                    let size = heading_size(*level, body_size);
+                    self.place(number.clone(), size, *number_span, Font::TimesBold, true);
+                    // `\@seccntformat`: `\csname the#1\endcsname\quad`.
+                    self.x = self.content_end + size;
                 }
                 emit(
                     self,
@@ -880,6 +1036,24 @@ impl LayoutCursor {
                 self.newline(body_size);
             }
             Block::VSpace { .. } | Block::PageBreak => {}
+            Block::TableOfContents { span } => {
+                self.render_prepared_block(&Block::Heading {
+                    level: 1,
+                    number: String::new(),
+                    number_span: *span,
+                    content: vec![Inline::Text {
+                        text: "Contents".to_string(),
+                        span: *span,
+                        style: TextStyle::BOLD,
+                        space_before: true,
+                    }],
+                });
+                let entries = std::mem::take(&mut self.resolved_toc);
+                for (index, entry) in entries.iter().enumerate() {
+                    self.toc_entry(entry, *span, index == 0);
+                }
+                self.resolved_toc = entries;
+            }
             Block::Rule { span } => {
                 let width = self.constraints.measure_pt;
                 let item = TextItem {
@@ -989,18 +1163,23 @@ impl LayoutCursor {
         (self.pages, self.diagnostics)
     }
 
-    fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+    fn into_result(mut self) -> (Vec<Page>, CrossReferences, Vec<Diagnostic>) {
         self.resolve_hfill();
-        (self.pages, self.collected_labels, self.diagnostics)
+        (
+            self.pages,
+            (self.collected_labels, self.collected_toc),
+            self.diagnostics,
+        )
     }
 }
 
 fn heading_size(level: u8, body_size: f64) -> f64 {
     body_size
-        * if level == 1 {
-            17.0 / BODY_SIZE_PT
-        } else {
-            14.0 / BODY_SIZE_PT
+        * match level {
+            1 => 17.0 / BODY_SIZE_PT,
+            2 => 14.0 / BODY_SIZE_PT,
+            // article.cls `\subsubsection`: `\normalsize\bfseries`.
+            _ => 1.0,
         }
 }
 
@@ -1076,42 +1255,73 @@ pub fn layout_with_constraints(blocks: &[Block], constraints: LayoutConstraints)
     c.into_pages()
 }
 
-/// Lay out repeatedly until both label values and their page numbers stabilize.
+/// Everything one layout pass feeds the next: label values with their pages,
+/// and the contents entries.
+type CrossReferences = (BTreeMap<String, ReferenceValue>, Vec<TocEntry>);
+
+/// Lay out repeatedly until label values, their page numbers and the contents
+/// entries stabilize — LaTeX's rerun cycle, bounded by
+/// `REFERENCE_ITERATION_LIMIT`. Layout is a pure function of its input, so the
+/// result is deterministic; a pass that reproduces an earlier non-adjacent
+/// state is a page-number oscillation and stops early with a warning.
 pub fn layout_converged(
     blocks: &[Block],
     constraints: LayoutConstraints,
 ) -> (Vec<Page>, Vec<Diagnostic>) {
-    let mut labels = BTreeMap::new();
+    let collect_toc = blocks
+        .iter()
+        .any(|block| matches!(block, Block::TableOfContents { .. }));
+    let mut state: CrossReferences = (BTreeMap::new(), Vec::new());
+    let mut history: Vec<CrossReferences> = Vec::new();
     let mut last_pages = Vec::new();
     let mut diagnostics = Vec::new();
     let mut converged = false;
+    let mut oscillating = false;
     for _ in 0..REFERENCE_ITERATION_LIMIT {
-        let mut cursor = LayoutCursor::with_labels(constraints, labels.clone(), true);
+        let mut cursor = LayoutCursor::with_labels(constraints, state.0.clone(), true);
+        cursor.resolved_toc = state.1.clone();
+        cursor.collect_toc = collect_toc;
         for block in blocks {
             cursor.prepare_block(block);
             cursor.render_prepared_block(block);
         }
-        let (pages, next_labels, shape_diagnostics) = cursor.into_result();
+        let (pages, next, shape_diagnostics) = cursor.into_result();
         last_pages = pages;
         diagnostics = shape_diagnostics;
-        if next_labels == labels {
+        if next == state {
             converged = true;
-            labels = next_labels;
             break;
         }
-        labels = next_labels;
+        if history.contains(&next) {
+            oscillating = true;
+            break;
+        }
+        history.push(std::mem::replace(&mut state, next));
     }
 
     visit_references(blocks, &mut |key, span| {
-        if !labels.contains_key(key) {
+        if !state.0.contains_key(key) {
+            let page = last_pages
+                .iter()
+                .find(|page| page.items.iter().any(|item| item.span == span))
+                .map_or_else(String::new, |page| format!(" on page {}", page.number));
             diagnostics.push(Diagnostic::warning(
-                format!("undefined reference '{key}'"),
+                format!("Reference `{key}'{page} undefined"),
                 Some(span),
                 Some("rendered ?? for the unresolved reference".into()),
             ));
         }
     });
-    if !converged {
+    if oscillating {
+        diagnostics.push(Diagnostic::warning(
+            "cross-reference page numbers oscillate between layout passes",
+            None,
+            Some(
+                "returned the last layout pass; its page references may be off by the oscillation"
+                    .into(),
+            ),
+        ));
+    } else if !converged {
         diagnostics.push(Diagnostic::warning(
             format!(
                 "cross-reference values did not converge after {REFERENCE_ITERATION_LIMIT} layout passes"
@@ -1131,7 +1341,10 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
             | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
-            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+            Block::VSpace { .. }
+            | Block::Rule { .. }
+            | Block::PageBreak
+            | Block::TableOfContents { .. } => &[],
         };
         for inline in inlines {
             if let Inline::Reference { key, span, .. } = inline {
@@ -1216,19 +1429,36 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     },
                 );
             }
-            Inline::Reference { key, page, span } => {
-                let text = c.resolved_labels.get(key).map_or_else(
-                    || "??".to_string(),
-                    |value| {
-                        if *page {
-                            value.page.to_string()
-                        } else {
-                            value.number.clone()
-                        }
-                    },
-                );
-                c.place(text, size, *span, font, true);
-            }
+            Inline::Reference {
+                key,
+                page,
+                equation,
+                span,
+                space_before,
+            } => match c.resolved_labels.get(key) {
+                Some(value) => {
+                    let text = if *page {
+                        value.page.to_string()
+                    } else {
+                        value.number.clone()
+                    };
+                    let text = if *equation { format!("({text})") } else { text };
+                    c.place(text, size, *span, font, *space_before);
+                }
+                // `\@setref`: an undefined key typesets a bold `??`.
+                None if *equation => {
+                    c.place("(".to_string(), size, *span, font, *space_before);
+                    c.place("??".to_string(), size, *span, Font::TimesBold, false);
+                    c.place(")".to_string(), size, *span, font, false);
+                }
+                None => c.place(
+                    "??".to_string(),
+                    size,
+                    *span,
+                    Font::TimesBold,
+                    *space_before,
+                ),
+            },
             Inline::HFill { .. } => c.mark_hfill(),
             Inline::HSpace { pt, .. } => c.hspace(*pt),
         }
