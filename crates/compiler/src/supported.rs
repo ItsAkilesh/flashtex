@@ -293,6 +293,20 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("maketitle", "", "article.cls title block"),
     ("newtheorem", "{env}[counter]{name}", "defines a numbered theorem-like environment (amsthm)"),
     ("theoremstyle", "{style}", "selects the amsthm style for following \\newtheorem"),
+    ("num", "[options]{number}", "siunitx number: digit groups, decimal marker, exponent, uncertainty, as an upright formula"),
+    ("unit", "[options]{units}", "siunitx unit: prefixes, powers, \\per as a power, fraction or solidus; literal m/s"),
+    ("si", "[options]{units}", "siunitx v2 name of \\unit"),
+    ("qty", "[options]{number}{units}", "siunitx quantity: number, unbreakable thin space, unit"),
+    ("SI", "[options]{number}[pre-unit]{units}", "siunitx v2 name of \\qty with an optional pre-unit"),
+    ("numlist", "[options]{numbers}", "siunitx list of ;-separated numbers joined by list-separator and \" and \""),
+    ("numrange", "[options]{number}{number}", "siunitx range: two numbers joined by range-phrase \" to \""),
+    ("qtylist", "[options]{numbers}{units}", "siunitx list of quantities, the unit repeated"),
+    ("qtyrange", "[options]{number}{number}{units}", "siunitx range of quantities, the unit repeated"),
+    ("SIlist", "[options]{numbers}{units}", "siunitx v2 name of \\qtylist"),
+    ("SIrange", "[options]{number}{number}{units}", "siunitx v2 name of \\qtyrange"),
+    ("ang", "[options]{degrees;minutes;seconds}", "siunitx angle with degree, minute and second marks"),
+    ("sisetup", "{options}", "siunitx settings for the following commands (document-global in this model)"),
+    ("DeclareSIUnit", "[options]{\\name}{units}", "defines a siunitx unit macro usable inside \\unit and \\qty"),
 ];
 
 const SIZE_DECLARATIONS: &[&str] = &[
@@ -313,6 +327,54 @@ const SIZE_DECLARATIONS: &[&str] = &[
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (&["color"], "[model]{expression}", "colours the rest of the math group", true),
     (&["textcolor"], "[model]{expression}{body}", "math body in a colour", true),
+    (
+        &["num", "numlist"],
+        "[options]{number}",
+        "siunitx number or ;-separated list inside a formula",
+        true,
+    ),
+    (
+        &["unit", "si"],
+        "[options]{units}",
+        "siunitx unit inside a formula",
+        true,
+    ),
+    (
+        &["qty", "numrange"],
+        "[options]{number}{units}",
+        "siunitx quantity (3mu thin space before the unit) or number range inside a formula",
+        true,
+    ),
+    (
+        &["SI"],
+        "[options]{number}[pre-unit]{units}",
+        "siunitx v2 quantity inside a formula",
+        true,
+    ),
+    (
+        &["qtylist", "SIlist"],
+        "[options]{numbers}{units}",
+        "siunitx list of quantities inside a formula",
+        true,
+    ),
+    (
+        &["qtyrange", "SIrange"],
+        "[options]{number}{number}{units}",
+        "siunitx range of quantities inside a formula",
+        true,
+    ),
+    (
+        &["ang"],
+        "[options]{angle}",
+        "siunitx angle inside a formula",
+        true,
+    ),
+    (
+        &["sisetup"],
+        "{options}",
+        "siunitx settings changed inside a formula",
+        true,
+    ),
     (
         &["rule"],
         "[raise]{dimension}{dimension}",
@@ -688,6 +750,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "letterpaper, margin=1in",
         "matches the fixed US Letter page with 1in margins",
     ),
+    (
+        "siunitx",
+        "any \\sisetup keys",
+        "v3 \\num, \\unit, \\qty, lists, ranges, \\ang, \\sisetup and \\DeclareSIUnit; unmodelled keys are diagnosed",
+    ),
 ];
 
 /// The vendored coverage denominator.
@@ -696,6 +763,7 @@ pub const CANONICAL_TSV: &str = include_str!("../supported/canonical-latex.tsv")
 /// Canonical sets, in report order.
 pub const CANONICAL_SETS: &[&str] = &[
     "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz", "xcolor",
+    "siunitx",
 ];
 
 fn text_description(name: &str) -> String {

@@ -24,6 +24,8 @@ pub(crate) const MATH_COMMANDS: &[&str] = &[
     "underline", "tag", "pmod", "text", "bigl", "bigr", "quad", "qquad", "mathbb", "hat", "bar",
     "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde",
     "overbrace", "underbrace", "overrightarrow", "overleftarrow", "overleftrightarrow",
+    "num", "qty", "unit", "si", "SI", "numlist", "numrange", "qtylist", "qtyrange", "SIlist",
+    "SIrange", "ang", "sisetup",
     "underrightarrow", "underleftarrow", "underleftrightarrow", "Bbb", "bold", "dashrightarrow",
     "dasharrow", "dashleftarrow",
 ];
