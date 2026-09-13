@@ -8,6 +8,16 @@ does not ask for this capability stay byte-for-byte as they are. Needs a
 consumer co-sign (Mac painter + PDF export, `mac-claude-a`) before the Mac
 side relies on it.
 
+Consumer: Mac co-signed 2026-09-13, base main fe864d90 (lane `mac-images`,
+branch `agent/mac-images/v2-consumer`): §2 request (`display-list-v2-images`
+alongside `display-list-v2`, `payload.project_root`), §3 item decoding and
+validation, §5.1–5.3 (rooted symlink-refusing read, `byte_length` + SHA-256
+verified before decoding, cache by `sha256`, `image` treated as a required
+feature) and §5.4 for the CoreGraphics `Export PDF (v2)…` route are
+implemented in `apps/mac` (`V2ImageStore.swift`, `V2ImageTests`). Not yet
+co-signed: §5.4 for `flashtex-pdf-exact from-v2` (`crates/pdf` refuses image
+items). Live round trip verified against `flashtex-render` at this SHA.
+
 ## 1. Summary
 
 1. New layout capability string `display-list-v2-images`. It is accepted only

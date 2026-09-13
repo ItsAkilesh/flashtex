@@ -64,6 +64,15 @@ enum DisplayListDelta {
             case .rule(let r):
                 c.bytes.append(0x02); c.i(r.x); c.i(r.top); c.i(r.width); c.i(r.height); c.paint(r.paint)
                 c.provenance(sources: r.sources, synthetic: r.syntheticReason)
+            case .image(let i):
+                // Not part of the delta proposal's canon (r5 predates images):
+                // a page with images digests differently from a producer that
+                // omits them, so the acknowledgement simply fails to match and
+                // a full list follows. Never a wrong reuse.
+                c.bytes.append(0x03); c.i(i.x); c.i(i.top); c.i(i.width); c.i(i.height)
+                c.u(i.transform.count); for v in i.transform { c.s(String(format: "%.3f", v)) }
+                c.s(i.image.imageId); c.s(i.image.path); c.u(i.image.pdfPage ?? 0)
+                c.provenance(sources: i.sources, synthetic: i.syntheticReason)
             }
         }
         return c.sha()
@@ -135,6 +144,10 @@ enum DisplayListDelta {
                 guard let moved = relocate(r.sources, by) else { return nil }
                 r.sources = moved
                 items.append(.rule(r))
+            case .image(var i):
+                guard let moved = relocate(i.sources, by) else { return nil }
+                i.sources = moved
+                items.append(.image(i))
             }
         }
         return RenderingV2.Page(number: p.number, width: p.width, height: p.height, items: items)
@@ -157,6 +170,7 @@ enum DisplayListDelta {
             switch it {
             case .glyphRun(let r): for c in r.clusters where !visit(c.sources) { return nil }
             case .rule(let r): if !visit(r.sources) { return nil }
+            case .image(let i): if !visit(i.sources) { return nil }
             }
         }
         let (total, o) = cached.addingReportingOverflow(delta)

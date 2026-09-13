@@ -226,6 +226,16 @@ FlashTeX compiles through a **producer** process that ships inside the app.
 - **Stale frames**: while a new frame is being prepared the previous one stays
   visible with a STALE mark; a frame that fails validation is never painted
   partially — the pane shows the refusal and offers the v1 preview.
+- **Images: `\includegraphics` png/jpeg/pdf** (v2 pane, `flashtex-render`
+  attached, a project opened from disk). `\includegraphics[width=…,
+  height=…, scale=…, angle=…, page=…]{figures/plot}` inside a `figure` or
+  `table` float paints the file — PNG, JPEG, or one page of a PDF — at the
+  size pdfTeX would give it. The file is read from the project directory
+  (no symlinks, never outside the project) and its bytes must match what the
+  producer sized: if you replace the file, the preview shows "stale image:
+  figures/plot.png" in the header and leaves that box empty until the next
+  compile. Clicking the image selects its `\includegraphics` in the editor.
+  `Export PDF (v2)…` embeds the same images; the exact export does not yet.
 
 ## Problems and quick fixes
 
@@ -258,10 +268,11 @@ What each diagnostic code means is listed in
 | **File › Export PDF (exact, v2)…** | — | The current v2 display list through `flashtex-pdf-exact`: embedded Latin Modern subsets, original glyph IDs, exact positions and typed rules. Needs a v2 frame (i.e. `flashtex-render` attached). Progress and Cancel in the status bar; the file is written atomically. **Use this one.** |
 | File › Export PDF via Rust Writer… | ⌘⌥E | The v1 result through `flashtex-pdf --verify`: base-14/Latin Modern text items; characters outside those encodings become `?` with a warning |
 | File › Export PDF… | ⌘⇧E | A CoreGraphics rendering of the v1 layout (Times/Latin Modern, no images, no links) |
+| Export PDF (v2)… (v2 pane header) | — | A CoreGraphics rendering of the v2 display list: the preview's own draw routine, including `\includegraphics` images |
 
 All exports are black on white regardless of the dark-preview switch. None of
-them is a pdfTeX PDF: only what the engine laid out is written (no
-`\includegraphics`, no hyperlinks, no metadata).
+them is a pdfTeX PDF: only what the engine laid out is written (no hyperlinks,
+no metadata; `\includegraphics` images only through *Export PDF (v2)…* for now).
 
 ## Capture conversion (the only model-backed feature)
 
@@ -381,9 +392,10 @@ order of each pane.
   environment-variable launch described under *Compiling*.
 - Completion does not pop up while typing (open it with ⌃Space / Esc); signature help does.
 - `\begin{X}` ↔ `\end{X}` are not highlighted as a pair (use ⌘⇧D to jump).
-- Images (`\includegraphics`), tables, bibliographies and other constructs
-  listed under [Supported LaTeX](compiler.md#supported-latex) render as
-  diagnostics, not content.
+- `\includegraphics` outside a `figure`/`table` float (and its `trim`/`clip`/
+  `viewport` keys), tables, bibliographies and other constructs listed under
+  [Supported LaTeX](compiler.md#supported-latex) render as diagnostics, not
+  content. Images in floats: see *The preview*.
 - Notarization: the app is ad-hoc signed, hence the right-click › Open step on
   first launch of a browser download.
 - Capture-conversion providers other than xAI (the provider seam is documented

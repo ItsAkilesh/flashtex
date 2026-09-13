@@ -29,6 +29,10 @@ final class V2PageCache {
         /// The font store the page was prepared against (a different store may
         /// resolve the same hash differently or not at all).
         var store: ObjectIdentifier
+        /// The image store and its root: image bytes are keyed by content
+        /// hash, but a refusal (no root, symlink, stale bytes) is per root.
+        var images: ObjectIdentifier
+        var imageRoot: String
     }
 
     struct Entry {
@@ -103,15 +107,16 @@ extension V2Frame {
     /// stored under its own bytes' hash, the whole list is validated, and a
     /// failure anywhere yields no frame. Falls back to the plain path (no
     /// reuse) whenever the fast reader does not accept the input.
-    static func prepare(data: Data, store: V2FontStore = .shared, cache: V2PageCache? = .shared) throws -> V2Frame {
-        guard let cache else { return try prepare(try RenderingV2.decode(data), store: store) }
+    static func prepare(data: Data, store: V2FontStore = .shared, cache: V2PageCache? = .shared, images: V2ImageStore = .shared) throws -> V2Frame {
+        guard let cache else { return try prepare(try RenderingV2.decode(data), store: store, images: images) }
         let storeID = ObjectIdentifier(store)
+        let imagesID = ObjectIdentifier(images), imageRoot = images.rootKey
         var reused: [Int: V2PageCache.Entry] = [:]
         var keys: [Int: V2PageCache.Key] = [:]
         let decoded: RenderingV2Fast.Decoded
         do {
             decoded = try RenderingV2Fast.envelope(data) { index, bytes in
-                let key = V2PageCache.Key(sha256: V2PageCache.sha256(bytes), byteLength: bytes.count, store: storeID)
+                let key = V2PageCache.Key(sha256: V2PageCache.sha256(bytes), byteLength: bytes.count, store: storeID, images: imagesID, imageRoot: imageRoot)
                 keys[index] = key
                 guard let entry = cache.lookup(key) else { return nil }
                 reused[index] = entry
@@ -119,7 +124,7 @@ extension V2Frame {
             }
         } catch {
             // Not accepted by the fast reader: JSONDecoder decides, as on the plain path.
-            return try prepare(try RenderingV2.decode(data), store: store)
+            return try prepare(try RenderingV2.decode(data), store: store, images: images)
         }
         var envelope = decoded.envelope
         try RenderingV2.checkHeader(version: envelope.protocolVersion, type: envelope.type)
@@ -153,7 +158,7 @@ extension V2Frame {
                 tokens.append(entry.token)
                 continue
             }
-            let p = try V2PreparedPage(page: page, fonts: fonts)
+            let p = try V2PreparedPage(page: page, fonts: fonts, images: images)
             let token: String
             if let key = keys[index] {
                 token = V2PageCache.token(sha256: key.sha256, byteLength: key.byteLength, fontsSha256: fontsSha)

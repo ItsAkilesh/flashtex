@@ -728,7 +728,10 @@ final class ShellModel {
             revision: editorRevision,
             entryPath: project.entryPath, // the entry stays first whichever document is being edited
             documents: documents,
-            layoutCapabilities: capabilities.isEmpty ? nil : capabilities)
+            layoutCapabilities: capabilities.isEmpty ? nil : capabilities,
+            // display-list-v2-images: the producer sizes `\includegraphics`
+            // files under the open project's directory (V2ImageStore.swift).
+            projectRoot: capabilities.contains(RenderingV2.imagesCapability) ? project.projectRoot?.path : nil)
         do {
             if TypingBench.isBenchActive { FlashTeXLog.write("compile: sending revision \(editorRevision) at \(MonotonicClock.nowNs())") }
             try worker.send(request, id: id)

@@ -219,9 +219,9 @@ enum V2Loader {
     /// worker's sibling line). Pages whose raw bytes were prepared before
     /// under the same font manifest are reused from `cache` (V2PageCache.swift);
     /// decoding, validation and font resolution are otherwise unchanged.
-    static func prepare(data: Data, store: V2FontStore = .shared, cache: V2PageCache? = .shared) -> Outcome {
+    static func prepare(data: Data, store: V2FontStore = .shared, cache: V2PageCache? = .shared, images: V2ImageStore = .shared) -> Outcome {
         do {
-            return .loaded(try V2Frame.prepare(data: data, store: store, cache: cache))
+            return .loaded(try V2Frame.prepare(data: data, store: store, cache: cache, images: images))
         } catch let error as RenderingV2.ValidationError {
             return .failed(error)
         } catch {
@@ -251,6 +251,9 @@ extension ShellModel {
     /// thread after the state was (or was not) published.
     func loadDisplayListV2(url: URL, completion: (() -> Void)? = nil) {
         previewV2 = true
+        // Image paths of an opened list resolve under the open project, else
+        // under the list file's own directory (still rooted, no symlinks).
+        V2ImageStore.shared.root = project.projectRoot ?? url.deletingLastPathComponent()
         startDisplayListV2(source: .file(url), completion: completion) { V2Loader.prepare(url: url) }
     }
 
@@ -259,9 +262,12 @@ extension ShellModel {
     /// whose change re-requests the current revision under auto-compile. The
     /// v1 pages of every result keep painting the product preview.
     func setLiveV2(_ on: Bool) {
-        let has = requestedLayoutCapabilities.contains(V2Live.capability)
-        if on, !has { requestedLayoutCapabilities.append(V2Live.capability) }
-        if !on, has { requestedLayoutCapabilities.removeAll { $0 == V2Live.capability } }
+        // `display-list-v2-images` rides along (proposal §1: accepted only
+        // with `display-list-v2`); one assignment so a switch re-requests once.
+        var caps = requestedLayoutCapabilities
+        caps.removeAll { $0 == V2Live.capability || $0 == RenderingV2.imagesCapability }
+        if on { caps += [V2Live.capability, RenderingV2.imagesCapability] }
+        if caps != requestedLayoutCapabilities { requestedLayoutCapabilities = caps }
     }
 
     /// Whether the applied result negotiated the live route.
@@ -289,6 +295,7 @@ extension ShellModel {
             return
         }
         V2Live.note(accepted: true)
+        V2ImageStore.shared.root = project.projectRoot // the directory the request's project_root named
         let expectedProject = result.projectId, expectedRevision = result.revision
         let compiled = compiledDocuments // the exact text the applied compile_result was requested with (D1)
         startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision, line: line), completion: completion) {
@@ -874,6 +881,14 @@ private struct V2PaneHeader: View {
                 Button("Open…") { model.openDisplayListV2Panel() }.controlSize(.small).fixedSize()
                 Button("Export PDF (v2)…") { model.exportPDFV2() }.controlSize(.small).fixedSize()
                     .disabled({ if case .loaded = model.displayListV2 { false } else { true } }())
+            }
+            if let notices = model.displayListV2?.frame?.imageNotices, !notices.isEmpty {
+                // display-list-v2-images: refused image bytes (stale hash, symlink,
+                // unreadable). Non-modal; the frame stays, the item painted nothing.
+                Text(notices.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.orange).lineLimit(1).truncationMode(.middle)
+                    .help(notices.joined(separator: "\n"))
+                    .accessibilityIdentifier("v2-image-notice")
             }
             if model.previewDebugStatus, let frame = model.displayListV2?.frame {
                 let fonts = frame.fonts.values.map { "\($0.resource.postscriptName) \($0.resource.sha256.prefix(8))" }.sorted().joined(separator: ", ")
