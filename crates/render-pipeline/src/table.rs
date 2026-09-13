@@ -180,6 +180,11 @@ pub struct TableItem {
     /// The preamble is array.sty's (see the module comment).
     pub array_package: bool,
     pub span: Span,
+    /// colortbl `\arrayrulecolor`/`\doublerulesepcolor` at `\begin`.
+    pub rule_color: Option<ct::ColorSpec>,
+    pub double_rule_sep_color: Option<ct::ColorSpec>,
+    /// longtable (see `crate::longtable`).
+    pub longtable: Option<ct::Longtable>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -189,6 +194,8 @@ pub struct TableColumn {
     pub after: Vec<TableMaterial>,
     /// `\extracolsep{\fill}` `\tabskip` glue after this column.
     pub fill_after: bool,
+    /// colortbl `>{\columncolor}`.
+    pub color: Option<ct::ColorFill>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,6 +205,9 @@ pub enum TableMaterial {
     /// A rule that takes its width (array's `|`, `!{\vrule}`).
     VLine(Span, f64),
     Text(Vec<Item>),
+    /// The `\doublerulesep` between `||` (colortbl `\@classvi`: a
+    /// `\vrule` of `\doublerulesepcolor` when one is set, else a skip).
+    DoubleRuleGap(f64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -207,22 +217,48 @@ pub struct TableCell {
     pub template: Option<TableColumn>,
     /// `\centering`/`\raggedright`/`\raggedleft` of a `p`/`m`/`b` entry.
     pub alignment: Option<ParagraphStyle>,
+    /// colortbl `\cellcolor`.
+    pub color: Option<ct::ColorSpec>,
+    /// multirow `\multirow` (the entry's items are its text).
+    pub multirow: Option<ct::Multirow>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TableEntry {
-    Row { cells: Vec<TableCell>, extra_depth_pt: f64 },
+    Row {
+        cells: Vec<TableCell>,
+        extra_depth_pt: f64,
+        /// colortbl `\rowcolor`.
+        color: Option<ct::ColorFill>,
+        /// longtable `\\*`.
+        nobreak: bool,
+        /// longtable `\kill`: widths only.
+        kill: bool,
+    },
     HLine { span: Span },
     CLine { first: usize, last: usize, span: Span },
     BookRule { kind: BookRule, width_pt: Option<f64>, span: Span },
-    CMidRule { first: usize, last: usize, trim_left: bool, trim_right: bool, width_pt: Option<f64>, span: Span },
+    CMidRule { first: usize, last: usize, trim_left: bool, trim_right: bool, width_pt: Option<f64>, kern_left_pt: Option<f64>, kern_right_pt: Option<f64>, span: Span },
     VSpace { pt: f64 },
+    AddLineSpace { pt: Option<f64> },
+    SpecialRule { width_pt: f64, above_pt: f64, below_pt: f64, span: Span },
+    MoreCmidRules,
+    RuleColor(ct::ColorSpec),
+    DoubleRuleSepColor(ct::ColorSpec),
+    Section(ct::LongtableSection),
+    Caption { items: Vec<Item>, number: Option<u32>, span: Span },
+    PageBreak,
 }
 
 fn material(m: &[ct::Material], lengths: TableLengths, items_of: &mut dyn FnMut(&[Inline], bool) -> Vec<Item>) -> Vec<TableMaterial> {
     let mut out = Vec::with_capacity(m.len());
-    for m in m {
-        out.push(match m {
+    for (i, piece) in m.iter().enumerate() {
+        let is_rule = |k: Option<&ct::Material>| matches!(k, Some(ct::Material::Rule(_) | ct::Material::VLine { .. }));
+        out.push(match piece {
+            // `\@classvi` puts exactly `\doublerulesep` between two rules.
+            ct::Material::Space(pt) if *pt == ct::DOUBLERULESEP_PT && i > 0 && is_rule(m.get(i - 1)) && is_rule(m.get(i + 1)) => {
+                TableMaterial::DoubleRuleGap(lengths.doublerulesep)
+            }
             ct::Material::Space(pt) => TableMaterial::Space(lengths.space(*pt)),
             ct::Material::Rule(span) => TableMaterial::Rule(*span),
             ct::Material::VLine { span, width_pt } => TableMaterial::VLine(*span, width_pt.unwrap_or(lengths.arrayrulewidth)),
@@ -238,6 +274,7 @@ fn column(t: &ct::ColumnTemplate, lengths: TableLengths, items_of: &mut dyn FnMu
         align: t.align,
         after: material(&t.after, lengths, items_of),
         fill_after: t.fill_after,
+        color: t.color.clone(),
     }
 }
 
@@ -258,22 +295,42 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
                         columns: c.columns,
                         template: c.template.as_ref().map(|tp| column(tp, lengths, items_of)),
                         alignment: c.alignment,
+                        color: c.color.clone(),
+                        multirow: c.multirow.clone(),
                     })
                     .collect(),
                 extra_depth_pt: row.extra_depth_pt,
+                color: row.color.clone(),
+                nobreak: row.nobreak,
+                kill: row.kill,
             },
             ct::Entry::HLine { span } => TableEntry::HLine { span: *span },
             ct::Entry::CLine { first, last, span } => TableEntry::CLine { first: *first, last: *last, span: *span },
             ct::Entry::BookRule { kind, width_pt, span } => TableEntry::BookRule { kind: *kind, width_pt: *width_pt, span: *span },
-            ct::Entry::CMidRule { first, last, trim_left, trim_right, width_pt, span } => TableEntry::CMidRule {
+            ct::Entry::CMidRule { first, last, trim_left, trim_right, width_pt, kern_left_pt, kern_right_pt, span } => TableEntry::CMidRule {
                 first: *first,
                 last: *last,
                 trim_left: *trim_left,
                 trim_right: *trim_right,
                 width_pt: *width_pt,
+                kern_left_pt: *kern_left_pt,
+                kern_right_pt: *kern_right_pt,
                 span: *span,
             },
             ct::Entry::VSpace { pt } => TableEntry::VSpace { pt: *pt },
+            ct::Entry::AddLineSpace { pt, .. } => TableEntry::AddLineSpace { pt: *pt },
+            ct::Entry::SpecialRule { width_pt, above_pt, below_pt, span } => TableEntry::SpecialRule {
+                width_pt: *width_pt,
+                above_pt: *above_pt,
+                below_pt: *below_pt,
+                span: *span,
+            },
+            ct::Entry::MoreCmidRules { .. } => TableEntry::MoreCmidRules,
+            ct::Entry::RuleColor { color } => TableEntry::RuleColor(color.clone()),
+            ct::Entry::DoubleRuleSepColor { color } => TableEntry::DoubleRuleSepColor(color.clone()),
+            ct::Entry::Section { kind, .. } => TableEntry::Section(*kind),
+            ct::Entry::Caption { content, number, span } => TableEntry::Caption { items: items_of(content, false), number: *number, span: *span },
+            ct::Entry::PageBreak { .. } => TableEntry::PageBreak,
         });
     }
     TableItem {
@@ -286,6 +343,9 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
         lengths,
         array_package: t.array_package,
         span: t.span,
+        rule_color: t.rule_color.clone(),
+        double_rule_sep_color: t.double_rule_sep_color.clone(),
+        longtable: t.longtable.clone(),
     }
 }
 
