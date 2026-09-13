@@ -232,7 +232,8 @@ final class FinishTests: XCTestCase {
         await model.send(sent.id)
         await waitUntil { model.captures.first { $0.id == sent.id }?.outcome?.latex == "\\beta" }
         // Keychain: one generic-password item per Mac fingerprint, the reference record shape.
-        let stored = try XCTUnwrap(keychain.pair(fingerprint: NearbyCrypto.fingerprint(salt: salt)))
+        let stored = try XCTUnwrap(keychain.pair(fingerprint: NearbyCrypto.fingerprint(salt: salt)),
+                                   "the pairing was not stored: \(model.link.transcript.filter { $0.text.hasPrefix("pairing not stored") }.map(\.text))")
         XCTAssertEqual(stored.pairId, model.pairedMac?.pairId)
         XCTAssertEqual(stored.pairPsk, model.pairedMac?.pairPsk)
         XCTAssertEqual(KeychainPairStore(service: keychain.service).pairs.map(\.fingerprint), [stored.fingerprint], "read back by a fresh instance")
@@ -270,11 +271,16 @@ final class FinishTests: XCTestCase {
         await waitUntil { Set(self.mac.captures.map(\.captureId)).count == 2 }
         XCTAssertEqual(Set(mac.captures.map(\.captureId)), [draft.id, sent.id], "the draft plus the re-delivered received capture (fresh FakeMac memory)")
 
-        // An interrupted send comes back retryable with the same id.
+        // An interrupted send comes back retryable with the same id. Its own
+        // directory: `again` is still polling the draft's outcome and persists
+        // through its own CaptureStore over `tmp` on every poll, and two
+        // instances saving different lists into one directory prune each
+        // other's PNGs (a real relaunch never has two stores over one index).
+        let interruptedDir = tmp.appendingPathComponent("interrupted", isDirectory: true)
         var interrupted = CaptureRecord(id: "cap-interrupted", source: .pencil, png: png, instructions: "mid-flight")
         interrupted.status = .sending(attempt: 2)
-        try store.save([interrupted])
-        let r = try XCTUnwrap(CaptureStore(directory: tmp).load().first)
+        try CaptureStore(directory: interruptedDir).save([interrupted])
+        let r = try XCTUnwrap(CaptureStore(directory: interruptedDir).load().first)
         guard case .disconnected(_, let attempt) = r.status else { return XCTFail("\(r.status)") }
         XCTAssertEqual(attempt, 2)
     }

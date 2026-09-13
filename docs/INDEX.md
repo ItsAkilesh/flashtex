@@ -7,6 +7,7 @@ your task; do not load the entire repository history into every prompt.
 |---|---|---|
 | End-user guides (install, Mac app, iPad companion, CLI tools, supported LaTeX) | [docs/user/README.md](user/README.md) | mac-user-docs (parent mac-claude-a) |
 | Required collaboration behavior | [AGENTS.md](../AGENTS.md) | Integration owner with user direction |
+| Agent onboarding: start prompt, coordination CLI, where handoffs live (formerly the root README's "Working with agents") | [docs/agents/README.md](agents/README.md) | Integration owner |
 | Command, dispatch, reporting, integration | [ORCHESTRATION.md](../ORCHESTRATION.md) | Commander |
 | Actual coordination commands and patch submissions | [Coordination CLI](coordination-cli.md) | Commander |
 | Mac/Rust/capture message contract | [Runtime v1](contracts/runtime-v1.md) | Commander (FT-001) |
