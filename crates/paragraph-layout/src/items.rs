@@ -127,6 +127,13 @@ pub struct Penalty {
     /// True when produced by an automatic hyphenator; ignored in the first
     /// (pretolerance) pass like TeX does.
     pub automatic: bool,
+    /// `\discretionary` post-break text: typeset at the start of the next
+    /// line *only if* the line breaks here. Its width counts toward that line.
+    pub post_break: Option<GlyphRun>,
+    /// `\discretionary` no-break text: the number of items directly after
+    /// this penalty that are typeset only when the line does *not* break here
+    /// (TeX's `replace_count`). They must not contain legal breakpoints.
+    pub replace_count: usize,
 }
 
 /// Fixed horizontal displacement. Discarded at a line break; a legal break
@@ -152,6 +159,8 @@ impl Item {
             flagged: false,
             pre_break: None,
             automatic: false,
+            post_break: None,
+            replace_count: 0,
         })
     }
 
@@ -224,7 +233,17 @@ impl<'h> ParagraphBuilder<'h> {
                 while i < bytes.len() && !is_ws(bytes[i]) {
                     i += 1;
                 }
-                self.word(font, size, &text[start..i], source_start + start)?;
+                // TeX only tries to hyphenate a word that directly follows
+                // glue (§894): never the first word of a paragraph, nor one
+                // after `\\`, a kern or a box.
+                let after_glue = matches!(self.items.last(), Some(Item::Glue(_)));
+                self.word_with(
+                    font,
+                    size,
+                    &text[start..i],
+                    source_start + start,
+                    after_glue,
+                )?;
             }
         }
         Ok(())
@@ -254,6 +273,19 @@ impl<'h> ParagraphBuilder<'h> {
         size: f64,
         word: &str,
         source_start: usize,
+    ) -> Result<(), HyphenatorError> {
+        self.word_with(font, size, word, source_start, true)
+    }
+
+    /// [`Self::word`] with control over automatic points: when
+    /// `allow_automatic` is false, only explicit discretionaries are kept.
+    fn word_with(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        word: &str,
+        source_start: usize,
+        allow_automatic: bool,
     ) -> Result<(), HyphenatorError> {
         let hyphenator = self.hyphenator;
         let points = panic::catch_unwind(AssertUnwindSafe(|| hyphenator.hyphenate(word))).map_err(
@@ -287,8 +319,28 @@ impl<'h> ParagraphBuilder<'h> {
             cursor = end.expect("checked by `valid` above");
         }
 
+        let mut points = points;
+        if !allow_automatic {
+            points.retain(|p| !p.automatic);
+        }
+        // An explicit hyphen character is followed by an empty discretionary
+        // (TeX §1039, `\exhyphenpenalty`): a legal break with no added hyphen.
+        // A run of hyphens (`--`, `---`) gets one, after the run.
+        let bytes = word.as_bytes();
+        let ex_hyphens: Vec<usize> = (0..bytes.len())
+            .filter(|&i| bytes[i] == b'-' && (i == 0 || bytes[i - 1] != b'\\'))
+            .map(|i| i + 1)
+            .filter(|&at| at < bytes.len() && bytes[at] != b'-')
+            .filter(|&at| !points.iter().any(|p| p.offset == at))
+            .collect();
         let mut frag_start = 0;
+        let mut ex_iter = ex_hyphens.into_iter().peekable();
         for p in &points {
+            while let Some(at) = ex_iter.next_if(|&at| at <= p.offset && at > frag_start) {
+                self.fragment(font, size, &word[frag_start..at], source_start + frag_start);
+                self.explicit_hyphen_break();
+                frag_start = at;
+            }
             let frag = &word[frag_start..p.offset];
             self.fragment(font, size, frag, source_start + frag_start);
             // The discretionary: hyphen glyph shown only if the line breaks here.
@@ -308,11 +360,84 @@ impl<'h> ParagraphBuilder<'h> {
                 flagged: true,
                 pre_break: Some(hyphen),
                 automatic: p.automatic,
+                post_break: None,
+                replace_count: 0,
             }));
             frag_start = p.offset + p.marker_len;
+            if p.marker_len > 0 {
+                // An explicit `\-` discretionary node sits between the letters,
+                // so TeX applies no font kern across it; automatic points are
+                // reconstituted with the kern (§903-918).
+                self.last_char = None;
+            }
+        }
+        for at in ex_iter {
+            if at > frag_start {
+                self.fragment(font, size, &word[frag_start..at], source_start + frag_start);
+                self.explicit_hyphen_break();
+                frag_start = at;
+            }
         }
         self.fragment(font, size, &word[frag_start..], source_start + frag_start);
         Ok(())
+    }
+
+    /// The empty discretionary TeX appends after an explicit hyphen.
+    fn explicit_hyphen_break(&mut self) {
+        self.items.push(Item::Penalty(Penalty {
+            value: self.ex_hyphen_penalty,
+            flagged: true,
+            pre_break: None,
+            automatic: false,
+            post_break: None,
+            replace_count: 0,
+        }));
+    }
+
+    /// `\discretionary{pre}{post}{nobreak}` in one font. `pre` ends the line
+    /// and `post` starts the next one if the paragraph breaks here; otherwise
+    /// `nobreak` is typeset. The penalty is `\hyphenpenalty` when `pre` is
+    /// nonempty, else `\exhyphenpenalty` (TeX §869). All three texts carry
+    /// `source` as their span (the command's bytes).
+    pub fn discretionary(
+        &mut self,
+        font: &dyn FontMetricsSource,
+        size: f64,
+        pre: &str,
+        post: &str,
+        no_break: &str,
+        source: Range<usize>,
+    ) {
+        let run = |text: &str| {
+            (!text.is_empty()).then(|| {
+                let mut r = shape_run(font, size, text, source.start);
+                for g in &mut r.glyphs {
+                    g.cluster = source.clone();
+                }
+                r.source = source.clone();
+                r
+            })
+        };
+        let pre_break = run(pre);
+        let post_break = run(post);
+        let no_break_run = run(no_break);
+        let value = if pre_break.is_some() {
+            self.hyphen_penalty
+        } else {
+            self.ex_hyphen_penalty
+        };
+        self.items.push(Item::Penalty(Penalty {
+            value,
+            flagged: true,
+            pre_break,
+            automatic: false,
+            post_break,
+            replace_count: usize::from(no_break_run.is_some()),
+        }));
+        if let Some(r) = no_break_run {
+            self.items.push(Item::Box(r));
+        }
+        self.last_char = None;
     }
 
     fn fragment(

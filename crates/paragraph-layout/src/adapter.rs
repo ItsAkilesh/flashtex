@@ -136,6 +136,9 @@ pub(crate) fn validate_items(items: &[Item]) -> Result<(), LayoutError> {
                 if let Some(hy) = &p.pre_break {
                     check_dimen(hy.width, "penalty.pre_break.width")?;
                 }
+                if let Some(hy) = &p.post_break {
+                    check_dimen(hy.width, "penalty.post_break.width")?;
+                }
             }
             Item::Kern(k) => check_dimen(k.width, "kern.width")?,
         }
