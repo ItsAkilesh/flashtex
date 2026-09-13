@@ -375,6 +375,7 @@ const BUILT_INS: &[&str] = &[
     "renewcommand",
     "input",
     "include",
+    "includeonly",
     "label",
     "ref",
     "pageref",
@@ -588,6 +589,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style_stack: Vec::new(),
         env_styles: Vec::new(),
         list_spacing: HashMap::new(),
+        includeonly: None,
     };
     let blocks = p.document();
 
@@ -668,6 +670,10 @@ struct P<'a> {
     /// runs, so a later `\setlist` does not retroactively change an
     /// already-open list.
     list_spacing: HashMap<String, ListSpacing>,
+    /// `\includeonly{a,b,...}`'s restriction list, if set. Only restricts
+    /// `\include` (never `\input`), matching real LaTeX; `None` means every
+    /// `\include` proceeds, as before this existed.
+    includeonly: Option<Vec<String>>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -814,6 +820,21 @@ impl P<'_> {
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
+            // `\includeonly{a,b,...}` restricts which later `\include`
+            // targets actually get typeset (never `\input`, which real
+            // LaTeX never restricts either); a name left out is silently
+            // skipped by `include`, matching real LaTeX's own silent
+            // omission rather than a diagnostic.
+            "includeonly" => {
+                let (tokens, _) = self.required_group(name, span);
+                let names: Vec<String> = token_text(&tokens)
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                self.includeonly = Some(names);
+            }
             // MacTeX writes package-version banners to the log for `\listfiles`;
             // this compiler has no log stream to write them to, so the honest
             // behaviour is a documented no-op rather than an "unsupported"
@@ -1100,6 +1121,17 @@ impl P<'_> {
     ) {
         let (tokens, _) = self.required_group(command, span);
         let requested = token_text(&tokens).trim().to_string();
+        // `\includeonly` never restricts `\input`, only `\include`; a target
+        // left out of its list is skipped exactly as real LaTeX skips it —
+        // silently, with no diagnostic, since this is normal document
+        // structure, not a recoverable error.
+        if command == "include" {
+            if let Some(allowed) = &self.includeonly {
+                if !allowed.iter().any(|name| name == &requested) {
+                    return;
+                }
+            }
+        }
         if requested.is_empty() {
             self.diags.push(Diagnostic::error(
                 format!("\\{command} requires a non-empty project-relative path"),
@@ -3775,6 +3807,65 @@ mod tests {
         assert!(parsed.diagnostics[0]
             .message
             .contains(r"\DeclarePairedDelimiter is not supported in the document preamble"));
+    }
+
+    #[test]
+    fn includeonly_restricts_which_include_targets_are_typeset() {
+        let documents = [
+            SourceDocument {
+                path: "main.tex",
+                text: r"\includeonly{one}\include{one}\include{two}",
+            },
+            SourceDocument {
+                path: "one.tex",
+                text: "FromOne",
+            },
+            SourceDocument {
+                path: "two.tex",
+                text: "FromTwo",
+            },
+        ];
+        let parsed = parse_project(&documents, "main.tex");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let placed: Vec<_> = layout::layout(&parsed.blocks)
+            .into_iter()
+            .flat_map(|page| page.items)
+            .collect();
+        assert!(
+            placed.iter().any(|item| item.text == "FromOne"),
+            "the listed target must still be typeset: {placed:?}"
+        );
+        assert!(
+            !placed.iter().any(|item| item.text == "FromTwo"),
+            "the target left out of \\includeonly must not be typeset: {placed:?}"
+        );
+    }
+
+    #[test]
+    fn input_is_never_restricted_by_includeonly() {
+        // Real LaTeX's \includeonly restricts \include only; \input always
+        // proceeds regardless of what \includeonly lists.
+        let documents = [
+            SourceDocument {
+                path: "main.tex",
+                text: r"\includeonly{one}\input{two}",
+            },
+            SourceDocument {
+                path: "one.tex",
+                text: "FromOne",
+            },
+            SourceDocument {
+                path: "two.tex",
+                text: "FromTwo",
+            },
+        ];
+        let parsed = parse_project(&documents, "main.tex");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let placed: Vec<_> = layout::layout(&parsed.blocks)
+            .into_iter()
+            .flat_map(|page| page.items)
+            .collect();
+        assert!(placed.iter().any(|item| item.text == "FromTwo"));
     }
 
     fn size_of(items: &[crate::layout::TextItem], text: &str) -> f64 {

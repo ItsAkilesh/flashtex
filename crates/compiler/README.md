@@ -66,8 +66,11 @@ Implemented and tested:
   length, or `\setlength` in the body is reported as not implemented.
 - Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
   required arguments, nested expansion, and an explicit recursion limit.
-- Project-relative `\input` expansion across supplied documents, with included
-  text and diagnostics retaining the included document's path and byte ranges.
+- Project-relative `\input`/`\include` expansion across supplied documents,
+  with included text and diagnostics retaining the included document's path
+  and byte ranges. `\includeonly{a,b,...}` restricts which later `\include`
+  targets are typeset (never `\input`, which real LaTeX never restricts
+  either); a target left out is silently skipped, matching real LaTeX.
 - Dependency-aware incremental layout reuse behind unchanged runtime-v1 messages.
   A resumable cursor in `src/layout.rs` is the only layout engine used by both
   clean and incremental builds. Per-block cache validation includes exact macro
