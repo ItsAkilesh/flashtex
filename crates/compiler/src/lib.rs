@@ -16,6 +16,7 @@ mod color_names;
 pub mod diagnostics;
 pub mod export;
 pub mod expansion;
+pub mod graphics;
 pub mod incremental;
 pub mod json;
 pub mod layout;
