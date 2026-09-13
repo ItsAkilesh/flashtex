@@ -243,6 +243,25 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 8u8.hash(h);
                 pt.to_bits().hash(h);
             }
+            Item::Logo { logo, style, span } => {
+                9u8.hash(h);
+                logo.hash(h);
+                style.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+                (span.end.wrapping_sub(base)).hash(h);
+            }
+            Item::Rule { rule, style, span } => {
+                10u8.hash(h);
+                rule.hash(h);
+                style.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+                (span.end.wrapping_sub(base)).hash(h);
+            }
+            Item::Kern { amount, style } => {
+                11u8.hash(h);
+                amount.hash(h);
+                style.hash(h);
+            }
             Item::Table(t) => {
                 9u8.hash(h);
                 format!("{t:?}").hash(h);
@@ -259,6 +278,10 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
             Nucleus::Symbol(s) => {
                 0u8.hash(h);
                 s.hash(h);
+            }
+            Nucleus::Rule(rule) => {
+                15u8.hash(h);
+                rule.hash(h);
             }
             Nucleus::Fraction { numerator, denominator } => {
                 1u8.hash(h);
@@ -531,7 +554,7 @@ fn shift_math(list: &mut MathList, delta: isize) {
     for a in &mut list.atoms {
         shift_span(&mut a.span, delta);
         match &mut a.nucleus {
-            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } | Nucleus::Bold(_) | Nucleus::SizedDelimiter { .. } => {}
+            Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Space { .. } | Nucleus::Bold(_) | Nucleus::SizedDelimiter { .. } | Nucleus::Rule(_) => {}
             Nucleus::Fraction { numerator, denominator } => {
                 shift_math(numerator, delta);
                 shift_math(denominator, delta);
@@ -592,6 +615,7 @@ pub fn relocate_items(items: &[Item], delta: isize) -> Vec<Item> {
                 shift_span(span, delta);
                 shift_math(list, delta);
             }
+            Item::Logo { span, .. } | Item::Rule { span, .. } => shift_span(span, delta),
             _ => {}
         }
     }

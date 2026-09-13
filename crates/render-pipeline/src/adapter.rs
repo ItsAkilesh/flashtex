@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
+use flashtex_compiler::text_builtins::{TextDimen, TextLogo, TextRule};
 use flashtex_compiler::{DocumentId, Span};
 
 use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput, PageStyle};
@@ -119,6 +120,14 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): latex.ltx's
+    /// construction, set by `typeset` from the face's TFM metrics.
+    Logo { logo: TextLogo, style: TextStyle, span: Span },
+    /// `\rule[<raise>]{<width>}{<height>}` (compiler `Inline::Rule`).
+    Rule { rule: TextRule, style: TextStyle, span: Span },
+    /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; compiler
+    /// `Inline::Kern`), in ems of the current face.
+    Kern { amount: TextDimen, style: TextStyle },
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -1100,7 +1109,10 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::HSpace { span, .. }
         | Inline::Footnote { span, .. }
         | Inline::Verbatim { span, .. }
-        | Inline::TextGlue { span, .. } => *span,
+        | Inline::TextGlue { span, .. }
+        | Inline::Logo { span, .. }
+        | Inline::Rule { span, .. }
+        | Inline::Kern { span, .. } => *span,
         Inline::Tabular(t) => t.span,
     }
 }
@@ -2680,6 +2692,23 @@ fn token_gap(src: &str, prev_end: Option<usize>, prev_span: Option<Span>, span: 
     prev_end.zip(prev_span).and_then(|(pe, ps)| source_gap(pe, ps))
 }
 
+/// The control sequence a compiler `Inline::Kern` was read from: its own
+/// source bytes, or, inside a user macro's replacement (whose tokens carry
+/// the invocation span), the first spelling of that kern in the macro body.
+fn kern_command_text(source: &str, span: Span, amount: &TextDimen) -> Option<String> {
+    if !is_invocation_span(source, span) {
+        return source.get(span.start..span.end).map(str::to_string);
+    }
+    let name = control_word_at(source, span.start, span.end)?;
+    let body = macro_body(source, name, span.start)?;
+    const SPELLINGS: &[&str] = &[",", "!", ":", ">", ";", "thinspace", "negthinspace", "medspace", "negmedspace", "thickspace", "negthickspace", "enspace"];
+    SPELLINGS
+        .iter()
+        .filter(|s| flashtex_compiler::text_builtins::text_kern(s).as_ref() == Some(amount))
+        .map(|s| format!("\\{s}"))
+        .find(|s| body.contains(s.as_str()))
+}
+
 /// [`gap_has_space`] for the bytes after a control word: the whitespace
 /// TeX eats right after the word does not count.
 fn gap_has_space_after_control_word(rest: &str) -> bool {
@@ -3206,6 +3235,21 @@ fn items_cached(
                 11u8.hash(&mut h);
                 text.hash(&mut h);
             }
+            Inline::Logo { logo, style, .. } => {
+                12u8.hash(&mut h);
+                logo.hash(&mut h);
+                style.hash(&mut h);
+            }
+            Inline::Rule { rule, style, .. } => {
+                13u8.hash(&mut h);
+                rule.hash(&mut h);
+                style.hash(&mut h);
+            }
+            Inline::Kern { amount, style, .. } => {
+                14u8.hash(&mut h);
+                amount.hash(&mut h);
+                style.hash(&mut h);
+            }
             Inline::HFill { .. } => 6u8.hash(&mut h),
             Inline::HSpace { pt, .. } => {
                 7u8.hash(&mut h);
@@ -3391,6 +3435,86 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(*span);
                 factor = 1000;
             }
+            Inline::Logo { logo, span, style: compiler_style, .. } => {
+                // `\LaTeX` is a control word: the blanks after it are eaten.
+                let word = format!("\\{}", logo.command());
+                let has_space = space_between(prev_end, prev_span, *span, Some(&word), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if heading {
+                    style.medium = !compiler_style.bold;
+                    style.italic |= compiler_style.italic;
+                }
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::Logo { logo: *logo, style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                // `\TeX` ends with `\@` and `\LaTeXe` with math: factor 1000.
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = true;
+            }
+            Inline::Rule { rule, span, style: compiler_style, .. } => {
+                let has_space = space_between(prev_end, prev_span, *span, Some("\\rule"), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                prev_size_cpt = style.size_cpt;
+                items.push(Item::Rule { rule: rule.clone(), style, span: *span });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = false;
+            }
+            Inline::Kern { amount, span, style: compiler_style } => {
+                let source = text_of(span.document);
+                let word = kern_command_text(source, *span, amount);
+                let has_space = space_between(prev_end, prev_span, *span, word.as_deref(), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                    pending_accent = None;
+                }
+                // A kern leaves the space factor alone (§1061 applies only to
+                // characters and boxes); a control word eats the blanks after it.
+                items.push(Item::Kern { amount: amount.clone(), style });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                after_control_word = word.as_deref().is_some_and(|w| w.len() > 2);
+            }
+            Inline::Text { text, span, .. } if text == " " && text_of(span.document).get(span.start..span.end) == Some("\\ ") => {
+                // `\ ` (control space, lexed as the word " "): interword glue at
+                // space factor 1000 (§1041-1044), after which TeX skips blanks.
+                let has_space = space_between(prev_end, prev_span, *span, Some("\\ "), after_control_word);
+                let mut style = style_at(styles_of(span.document), span.start);
+                let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
+                style.size_cpt = declared_size(compiler_style.size, size);
+                if has_space {
+                    let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
+                    push_gap(&mut items, has_space, gap_style, factor);
+                }
+                items.push(Item::Space { style, factor: 1000, no_break: false });
+                prev_size_cpt = style.size_cpt;
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = true;
+            }
             Inline::Text { text, span, .. } => {
                 let source = text_of(span.document);
                 // The compiler (pin `8c0d65e7`) runs its text-ligature pass
@@ -3506,7 +3630,9 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     run.clear();
                 };
                 for (ch, src) in chars {
-                    if ch == '~' {
+                    // Only a typed `~` is the active tie; `\textasciitilde`
+                    // (the compiler's symbol text) is the character itself.
+                    if ch == '~' && source.get(src.start..src.end) == Some("~") {
                         flush(&mut run, &mut items, &mut factor);
                         items.push(Item::Space {
                             style,
@@ -3531,6 +3657,10 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 {
                     items.push(Item::ItalicCorrection);
                 }
+                // A text symbol the compiler set from a control word (`\AA`,
+                // `\ss`, `\today`): TeX skips the blanks after the word. User
+                // macro replacements keep their own cursor (`token_gap`).
+                after_control_word = control_word_at(source, span.start, span.end).is_some() && !is_invocation_span(source, *span);
                 prev_end = Some(span.end);
                 prev_span = Some(*span);
             }
@@ -3666,6 +3796,20 @@ mod tests {
     }
 
     #[test]
+    fn text_symbols_logos_rules_kerns_and_control_space_become_items() {
+        let src = "\\AA ngstr \\LaTeX{} and \\TeX\\ x \\S\\,4 \\rule[-1pt]{2pt}{3pt} y";
+        let it = items(src);
+        assert_eq!(shape(&it), "WSLSWSLSWSWKWSRSW", "{it:?}");
+        let Item::Word(first) = &it[0] else { panic!() };
+        assert_eq!(first.text(), "\u{00C5}ngstr");
+        // The symbol's source is its control word.
+        let c = &first.segments[0].chars[0];
+        assert_eq!(&src[c.start..c.end], "\\AA");
+        let Item::Word(section) = &it[10] else { panic!() };
+        assert_eq!(section.text(), "\u{00A7}");
+    }
+
+    #[test]
     fn accents_and_dashes_compose_with_exact_sources() {
         let src = "Na\\\"ive caf\\'e --- dash.";
         let it = items(src);
@@ -3746,6 +3890,9 @@ mod tests {
                 Item::HFill { .. } => 'F',
                 Item::Quad { .. } => 'Q',
                 Item::HSpace { .. } => 'H',
+                Item::Logo { .. } => 'L',
+                Item::Rule { .. } => 'R',
+                Item::Kern { .. } => 'K',
                 _ => '?',
             })
             .collect()

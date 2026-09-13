@@ -14,6 +14,7 @@
 //! `\raggedbottom`). This module keeps a record per box so every placed run
 //! maps back to its document, bytes, glyph extents and math box.
 
+use flashtex_compiler::text_builtins::TextLogo;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::rc::Rc;
@@ -98,11 +99,16 @@ pub enum BoxRec {
         /// continues the word box before it on the same line: painted into
         /// that run, so an unbroken word is one glyph run as before.
         continues: bool,
+        /// Baseline shift upward in points (`\LaTeX`'s raised `A`, `\TeX`'s
+        /// lowered `E`); 0 for ordinary text.
+        raise: f64,
     },
     Math(usize),
     /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
     /// baseline (depth 0), painted as a display-list rule.
-    Rule { width: f64, height: f64, span: Span },
+    /// `\rule` boxes set `bottom` (the painted part's bottom above the
+    /// baseline); nothing is painted when `width` or `height` is not positive.
+    Rule { width: f64, height: f64, bottom: f64, span: Span },
     /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
     Picture(Rc<PictureRec>),
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
@@ -158,6 +164,8 @@ pub struct MathRec {
     /// `\text{...}` runs of this formula (`mathtext`), addressed by the
     /// placed glyphs' `font_id` above `RUN_FONT_BASE`.
     pub text_runs: Vec<crate::mathtext::TextRun>,
+    /// Baseline shift upward in points (`\LaTeXe`'s subscript `ε`).
+    pub raise: f64,
 }
 
 impl MathRec {
@@ -617,6 +625,126 @@ impl<'a> Context<'a> {
         pl::Glue::finite(width, p.stretch * f / 1000.0, p.shrink * 1000.0 / f)
     }
 
+    /// `text_builtins::DimenContext` for `style` at `size`: the face's
+    /// `\fontdimen6`/`\fontdimen5`, and the text width for `\textwidth`,
+    /// `\linewidth` and `\columnwidth` (a list's narrower `\linewidth` is
+    /// not tracked at this level).
+    fn dimen_context(&self, style: TextStyle, size: f64) -> flashtex_compiler::text_builtins::DimenContext {
+        use flashtex_compiler::text_builtins::{pt_to_sp, DimenContext};
+        let p = self.text_params(style, size);
+        let width = pt_to_sp(self.style.text_width_pt);
+        DimenContext {
+            quad: pt_to_sp(p.quad),
+            x_height: pt_to_sp(p.x_height),
+            text_width: width,
+            line_width: width,
+            column_width: width,
+        }
+    }
+
+    /// `\rule` (compiler `Inline::Rule`, latex.ltx 16359-16367): an hbox
+    /// `RuleBox::width` wide whose painted part spans `rule_bottom..rule_top`
+    /// above the baseline; zero-width or empty rules are struts.
+    fn rule_box(&mut self, rule: &flashtex_compiler::text_builtins::TextRule, cx: &flashtex_compiler::text_builtins::DimenContext, size: f64, span: Span) -> (pl::GlyphRun, usize) {
+        use flashtex_compiler::text_builtins::sp_to_pt;
+        let b = rule.resolve(cx);
+        let width = sp_to_pt(b.width);
+        let (paint_width, paint_height) = if b.painted() { (width, sp_to_pt(b.rule_top - b.rule_bottom)) } else { (0.0, 0.0) };
+        self.recs.push(BoxRec::Rule {
+            width: paint_width,
+            height: paint_height,
+            bottom: sp_to_pt(b.rule_bottom),
+            span,
+        });
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width,
+            height: sp_to_pt(b.height),
+            depth: sp_to_pt(b.depth),
+            source: span.start..span.end,
+        };
+        (run, self.recs.len() - 1)
+    }
+
+    /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): one box per glyph
+    /// at the x `text_builtins::layout_logo` computes from this face's TFM
+    /// metrics, joined by kerns (not break points: no glue follows them),
+    /// with `E` lowered and `A` raised through the box records. `\LaTeXe`'s
+    /// `ε` is a math box from the formula fonts, shifted like the subscript.
+    fn logo_items(&mut self, logo: TextLogo, style: TextStyle, size: f64, span: Span) -> Vec<(pl::Item, Option<usize>)> {
+        use flashtex_compiler::text_builtins::{self as tb, LogoFont};
+        let sf = tb::sp_to_pt(tb::sf_size(tb::pt_to_sp(size)));
+        let sf_style = TextStyle { size_cpt: (sf * 100.0).round() as u16, ..style };
+        let current = self.face(style, size, span);
+        let small = self.face(sf_style, sf, span);
+        let params = self.text_params(style, size);
+        let mut epsilon: Option<(usize, f64, f64)> = None;
+        if logo == TextLogo::LaTeXe {
+            if let Some(rec) = self.math_box(&flashtex_compiler::math::varepsilon_list(span), span, false) {
+                if let BoxRec::Math(mi) = &self.recs[rec] {
+                    let root = &self.maths[*mi].root;
+                    epsilon = Some((rec, root.width, root.height));
+                }
+            }
+        }
+        let metrics = TfmLogoMetrics {
+            current: current.tfm.clone(),
+            small: small.tfm.clone(),
+            size,
+            sf,
+            quad: params.quad,
+            x_height: params.x_height,
+            epsilon: epsilon.map_or((0.0, 0.0), |(_, w, h)| (w, h)),
+        };
+        let built = tb::layout_logo(logo, &metrics);
+        let mut out = Vec::new();
+        let mut x = 0.0f64;
+        for g in &built.glyphs {
+            let target = tb::sp_to_pt(g.x);
+            if (target - x).abs() > 1e-9 {
+                out.push((pl::Item::kern(target - x), None));
+                x = target;
+            }
+            let raise = tb::sp_to_pt(g.raise);
+            let placed = match g.font {
+                LogoFont::MathItalic => epsilon.and_then(|(rec, ..)| {
+                    let BoxRec::Math(mi) = &self.recs[rec] else { return None };
+                    let mi = *mi;
+                    self.maths[mi].raise = raise;
+                    Some((math_run(&self.maths[mi].root, size, span), rec))
+                }),
+                font => {
+                    let (seg_style, seg_size) = if font == LogoFont::ScriptSize { (sf_style, sf) } else { (style, size) };
+                    let seg = adapter::Segment {
+                        text: g.ch.to_string(),
+                        chars: vec![adapter::CharSrc { document: span.document, start: span.start, end: span.end }],
+                        style: seg_style,
+                    };
+                    let placed = self.text_box(&seg, seg_size);
+                    if let Some((_, rec)) = placed {
+                        if let BoxRec::Text { raise: r, .. } = &mut self.recs[rec] {
+                            *r = raise;
+                        }
+                    }
+                    placed
+                }
+            };
+            if let Some((mut run, rec)) = placed {
+                run.height += raise;
+                run.depth -= raise;
+                x += run.width;
+                out.push((pl::Item::Box(run), Some(rec)));
+            }
+        }
+        let total = tb::sp_to_pt(built.width);
+        if (total - x).abs() > 1e-9 {
+            out.push((pl::Item::kern(total - x), None));
+        }
+        out
+    }
+
     /// Shapes one styled segment into a box record and a paragraph-layout box.
     fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
         let span = seg_span(seg)?;
@@ -720,6 +848,7 @@ impl<'a> Context<'a> {
             height,
             depth,
             continues: false,
+            raise: 0.0,
         });
         Some((run, self.recs.len() - 1))
     }
@@ -920,6 +1049,7 @@ impl<'a> Context<'a> {
             face: fonts.otf().face().clone(),
             metrics: fonts.clone(),
             text_runs,
+            raise: 0.0,
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1459,6 +1589,25 @@ impl<'a> Context<'a> {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                     }
                 }
+                AItem::Kern { amount, style } => {
+                    let style = merge_base(*style, base);
+                    let cx = self.dimen_context(style, style.size_or(size));
+                    let pt = flashtex_compiler::text_builtins::sp_to_pt(amount.resolve(&cx));
+                    push(&mut out, &mut recs, pl::Item::kern(pt), None);
+                }
+                AItem::Rule { rule, style, span } => {
+                    let style = merge_base(*style, base);
+                    let rule_size = style.size_or(size);
+                    let cx = self.dimen_context(style, rule_size);
+                    let (run, rec) = self.rule_box(rule, &cx, rule_size, *span);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
+                AItem::Logo { logo, style, span } => {
+                    let style = merge_base(*style, base);
+                    for (item, rec) in self.logo_items(*logo, style, style.size_or(size), *span) {
+                        push(&mut out, &mut recs, item, rec);
+                    }
+                }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
                     // `\/`: a kern of the last character's TFM italic
@@ -1977,7 +2126,7 @@ impl<'a> Context<'a> {
     /// A rule `width` x `height` whose bottom sits on the line's baseline,
     /// `x` from the line's left edge.
     fn rule_block_sized(&mut self, span: Span, width: f64, height: f64, x: f64) -> BuiltBlock {
-        self.recs.push(BoxRec::Rule { width, height, span });
+        self.recs.push(BoxRec::Rule { width, height, bottom: 0.0, span });
         let rec = self.recs.len() - 1;
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
@@ -3389,6 +3538,78 @@ fn role_of(style: TextStyle) -> Role {
     }
 }
 
+/// A word style under the block's base style (as `AItem::Space` merges it).
+fn merge_base(style: TextStyle, base: TextStyle) -> TextStyle {
+    TextStyle {
+        bold: style.bold || (base.bold && !style.medium),
+        italic: style.italic || base.italic,
+        size_cpt: style.size_cpt,
+        medium: style.medium,
+        slanted: style.slanted || base.slanted,
+    }
+}
+
+/// `text_builtins::LogoMetrics` from the `ec-lm*` TFMs pdfTeX sets the
+/// logo with (T1 codes), the current face's quad/x-height, and the formula
+/// fonts' `ε` box for `\LaTeXe`.
+struct TfmLogoMetrics {
+    current: Option<Rc<crate::tfm::Tfm>>,
+    small: Option<Rc<crate::tfm::Tfm>>,
+    size: f64,
+    sf: f64,
+    quad: f64,
+    x_height: f64,
+    /// Width and height of `\varepsilon` at text style, in points.
+    epsilon: (f64, f64),
+}
+
+impl flashtex_compiler::text_builtins::LogoMetrics for TfmLogoMetrics {
+    fn char_box(&self, font: flashtex_compiler::text_builtins::LogoFont, ch: char) -> flashtex_compiler::text_builtins::CharBox {
+        use crate::ids::{Encoding, EncodingCode};
+        use flashtex_compiler::text_builtins::{pt_to_sp, CharBox, LogoFont};
+        let (tfm, size) = match font {
+            LogoFont::MathItalic => {
+                return CharBox { width: pt_to_sp(self.epsilon.0), height: pt_to_sp(self.epsilon.1), depth: 0, italic: 0 };
+            }
+            LogoFont::ScriptSize => (&self.small, self.sf),
+            LogoFont::Current => (&self.current, self.size),
+        };
+        let m = tfm.as_ref().and_then(|t| EncodingCode::for_char(ch, Encoding::T1).and_then(|code| t.metrics(code.0)));
+        match m {
+            Some(m) => CharBox {
+                width: pt_to_sp(crate::tfm::Tfm::pt(m.width, size)),
+                height: pt_to_sp(crate::tfm::Tfm::pt(m.height, size)),
+                depth: pt_to_sp(crate::tfm::Tfm::pt(m.depth, size)),
+                italic: pt_to_sp(crate::tfm::Tfm::pt(m.italic, size)),
+            },
+            // No TFM (reported by `face`): Latin Modern's cap height stands
+            // in; the boxes still land at their widths' positions.
+            None => CharBox { width: 0, height: pt_to_sp(0.683 * size), depth: 0, italic: 0 },
+        }
+    }
+
+    fn quad(&self) -> i32 {
+        flashtex_compiler::text_builtins::pt_to_sp(self.quad)
+    }
+
+    fn x_height(&self) -> i32 {
+        flashtex_compiler::text_builtins::pt_to_sp(self.x_height)
+    }
+
+    /// lmsy10's `\fontdimen16` (sub1, .15em) and `\fontdimen5` (.430555em)
+    /// at the text size and the script symbol font's `\fontdimen19`
+    /// (sub_drop, .05em at `\sf@size`): the formula `max` is decided by sub1
+    /// at every class size.
+    fn math_sub_params(&self) -> flashtex_compiler::text_builtins::MathSubParams {
+        use flashtex_compiler::text_builtins::{pt_to_sp, MathSubParams};
+        MathSubParams {
+            sub1: pt_to_sp(0.15 * self.size),
+            math_x_height: pt_to_sp(0.430555 * self.size),
+            script_sub_drop: pt_to_sp(0.05 * self.sf),
+        }
+    }
+}
+
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
@@ -3650,6 +3871,15 @@ pub fn convert_math_classed(
                     C::Close => ml::AtomClass::Close,
                 };
                 vec![ml::Atom::new(class, ml::Nucleus::Symbol(crate::mathfont::ams_sentinel(ams)))]
+            }
+            // Math-mode `\rule` (compiler `Nucleus::Rule`): math-layout has no
+            // rule atom, so the box's width is kept as glue and nothing is
+            // painted (reported by `math_approximations`). Font-relative
+            // widths resolve against no font here (0).
+            N::Rule(rule) => {
+                let cx = flashtex_compiler::text_builtins::DimenContext::default();
+                let width = flashtex_compiler::text_builtins::sp_to_pt(rule.width.resolve(&cx));
+                vec![ml::Atom::glue(0.0, width)]
             }
             N::Symbol(s) => {
                 let mut chars = s.chars();
@@ -4001,6 +4231,55 @@ fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Spa
     out
 }
 
+/// Every `array`/`cases`/matrix grid in `list` and its sub-formulas as
+/// `(rows, columns)`; see the `Matrix` arm of [`convert_math_fenced`].
+fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, usize)>) {
+    use flashtex_compiler::math::Nucleus as N;
+    for a in &list.atoms {
+        match &a.nucleus {
+            N::Matrix { rows, .. } => {
+                out.push((rows.len(), rows.iter().map(Vec::len).max().unwrap_or(0)));
+                for cell in rows.iter().flatten() {
+                    math_grids(cell, out);
+                }
+            }
+            N::Fraction { numerator, denominator } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_grids(r, out),
+            N::Rule(_) => {}
+            N::Stacked { base, over, under } => {
+                math_grids(base, out);
+                for part in [over, under].into_iter().flatten() {
+                    math_grids(part, out);
+                }
+            }
+            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_grids(above, out);
+                math_grids(below, out);
+            }
+        }
+        if let Some(s) = &a.superscript {
+            math_grids(s, out);
+        }
+        if let Some(s) = &a.subscript {
+            math_grids(s, out);
+        }
+    }
+}
+
 /// `em` of a compiler `Space` atom in family-2 quads: text-font ems
 /// (`\quad`) are scaled by `ratio`.
 fn space_em(a: &flashtex_compiler::math::MathAtom, em: f64, ratio: f64) -> f64 {
@@ -4027,7 +4306,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                     math_glue_em(base) + [over, under].into_iter().flatten().map(math_glue_em).sum::<f64>()
                 }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
-                N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } => 0.0,
+                N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } | N::Rule(_) => 0.0,
                 #[cfg(feature = "amsmath-inline")]
                 N::GenFraction { numerator, denominator, .. } => math_glue_em(numerator) + math_glue_em(denominator),
                 #[cfg(feature = "amsmath-inline")]
@@ -4103,6 +4382,7 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
     for a in &list.atoms {
         match &a.nucleus {
             N::Bold(text) => out.push(format!("\\mathbf{{{text}}} set in the regular roman face: the math text sink has no bold role")),
+            N::Rule(_) => out.push("math-mode \\rule set as horizontal space of its width: math-layout has no rule atom, nothing painted".to_string()),
             N::Framed { body, frame } => {
                 if *frame == Frame::Box {
                     out.push("\\boxed frame dropped: math-layout has no framed-box atom".to_string());
@@ -5345,10 +5625,11 @@ fn assemble_block(
                     height,
                     depth,
                     continues,
+                    raise,
                     ..
                 } => {
                     used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
-                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of) {
+                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, *raise, source_of) {
                         match (items.last_mut(), item) {
                             (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size => {
                                 join_runs(prev, next);
@@ -5400,11 +5681,16 @@ fn assemble_block(
                         }));
                     }
                 }
-                BoxRec::Rule { width, height, span } => {
-                    // Line-local like text: the rule's bottom is the baseline.
+                BoxRec::Rule { width, height, bottom, span } => {
+                    // Line-local like text: the rule's bottom is `bottom`
+                    // above the baseline (0 for `\hrule`); a strut paints
+                    // nothing.
+                    if *width <= 0.0 || *height <= 0.0 {
+                        continue;
+                    }
                     items.push(display::Item::Rule(Rule {
                         x: Tick::from_tex_pt(local.x),
-                        top: Tick::from_tex_pt(-height),
+                        top: Tick::from_tex_pt(-(bottom + height)),
                         width: Tick::from_tex_pt(*width).max(Tick(1)),
                         height: Tick::from_tex_pt(*height).max(Tick(1)),
                         paint: Paint::BLACK,
@@ -5668,12 +5954,13 @@ fn text_item(
     recs: &[GlyphRec],
     height: f64,
     depth: f64,
+    raise: f64,
     source_of: &dyn Fn(Span) -> SourceRange,
 ) -> Option<display::Item> {
     // Line-local: the baseline is 0 and every y is an offset from it; the
     // page position is added as an integer tick move when the line is
     // placed, so a block placed anywhere yields identical ticks.
-    let baseline = 0.0;
+    let baseline = -raise;
     let top = Tick::from_tex_pt(baseline - height);
     let box_height = Tick::from_tex_pt(height + depth);
     let mut glyphs = Vec::with_capacity(run.glyphs.len());
@@ -5760,7 +6047,7 @@ fn math_items(
     items: &mut Vec<display::Item>,
     used: &mut BTreeMap<Rc<str>, Rc<LoadedFace>>,
 ) {
-    let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height));
+    let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height - m.raise));
     let src = source_of(m.span);
     // Group consecutive glyphs of one face and size into a run; each glyph
     // is a cluster.
