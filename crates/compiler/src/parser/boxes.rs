@@ -261,7 +261,7 @@ impl P<'_> {
         for block in self.box_blocks(tokens) {
             match block {
                 Block::Paragraph(content) => paragraphs.push(BoxParagraph { style: None, content }),
-                Block::Styled { style, content } => paragraphs.push(BoxParagraph { style: Some(style), content }),
+                Block::Styled { style, content, .. } => paragraphs.push(BoxParagraph { style: Some(style), content }),
                 other => {
                     let mut content = Vec::new();
                     self.box_block_limitation(command, &other, span, &mut content);

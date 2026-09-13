@@ -128,11 +128,13 @@ impl P<'_> {
     /// `1a`, `1(a)i`, `1(a)iA`; an enumitem `label=` template's text) and
     /// hyperref's destination `Item.<n>`, counted over the whole document.
     pub(super) fn enumerate_item_hyperref(&mut self, templated_marker: Option<String>, span: Span) {
+        // `\c@enum<i>` of every open enumerate (#147's `OpenList::counter`,
+        // which honours enumitem `start=`/`resume`).
         let counts: Vec<u32> = self
             .list_stack
             .iter()
-            .filter(|(kind, ..)| kind == "enumerate")
-            .map(|(_, count, ..)| *count)
+            .filter(|list| list.kind == "enumerate")
+            .map(|list| u32::try_from(list.counter).unwrap_or(0))
             .collect();
         let value = templated_marker.unwrap_or_else(|| enumerate_reference(&counts));
         self.current_counter = Some(value);

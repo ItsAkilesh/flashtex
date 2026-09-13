@@ -1385,7 +1385,7 @@ impl LayoutCursor {
                 self.justify = true;
                 emit(self, inlines, body_size, Font::TimesRoman);
             }
-            Block::Styled { style, content } => {
+            Block::Styled { style, content, .. } => {
                 self.style = Some(*style);
                 self.justify = *style == ParagraphStyle::Quote;
                 // `left_edge()` depends on `self.style` (the `quote` indent),
@@ -1432,7 +1432,7 @@ impl LayoutCursor {
                     }
                 };
                 self.justify = true;
-                if let Some((text, span)) = label {
+                if let Some((text, span)) = label.as_ref().filter(|(text, _)| !text.is_empty()) {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
                 }
                 // Same reasoning as `Block::Styled`: `left_edge()` now
