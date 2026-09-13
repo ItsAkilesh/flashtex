@@ -17,6 +17,8 @@ import argparse, importlib.util, json, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "tools", "visual-oracle"))
+import fontenv  # noqa: E402
 _spec = importlib.util.spec_from_file_location(
     "amsmath_oracle", os.path.join(REPO, "crates", "compiler", "tests", "amsmath_corpus", "oracle.py"))
 am = importlib.util.module_from_spec(_spec)
@@ -42,7 +44,7 @@ def cmd_refs(args):
     am.cmd_refs(args)
 
 
-def compare(name, render, fonts, work):
+def compare(name, render, env, work):
     pinned = json.load(open(os.path.join(REFS, name + ".json"), encoding="utf-8"))
     ref = pinned["pages"]
     ref_cols = pinned.get("extension_columns") or [[] for _ in ref]
@@ -51,9 +53,18 @@ def compare(name, render, fonts, work):
            "payload": {"project_id": "display-placement", "revision": 1, "entry_path": "main.tex",
                        "documents": [{"path": "main.tex", "text": text}]}}
     v2 = os.path.join(work, name + ".v2.json")
-    env = dict(os.environ, FLASHTEX_FONT_DIRS=fonts, FLASHTEX_TFM_DIRS=fonts)
-    subprocess.run([render, "--v2", v2], input=(json.dumps(req) + "\n").encode(), env=env,
-                   capture_output=True, timeout=120)
+    rp = subprocess.run([render, "--v2", v2], input=(json.dumps(req) + "\n").encode(), env=env,
+                        capture_output=True, timeout=120)
+    font_bad = []
+    for line in rp.stdout.decode("utf-8", "replace").splitlines():
+        try:
+            m = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if m.get("type") == "compile_result":
+            font_bad = fontenv.font_diagnostics(m["payload"].get("diagnostics", []))
+    if font_bad:
+        fontenv.report_font_failure(name, font_bad, env)
     cand = am.cand_pages(v2) if os.path.isfile(v2) else []
     # pdftext leaves the itemize bullet (lmsy `\textbullet`, a glyph name it
     # does not map) as "?"; FlashTeX's run text is U+2022.
@@ -76,16 +87,20 @@ def compare(name, render, fonts, work):
         for rx, cx in zip(rc, cc):
             worst = max(worst, abs(rx - cx))
             cols_ok = cols_ok and abs(rx - cx) <= TOL
-    good = len(ref) == len(cand) and n > 0 and ok == n and unaligned == 0 and cols_ok
+    good = (len(ref) == len(cand) and n > 0 and ok == n and unaligned == 0
+            and cols_ok and not font_bad)
     return {"fixture": name, "pass": good, "pages": [len(ref), len(cand)], "aligned": n, "within_tol": ok,
-            "unaligned": unaligned, "worst_bp": round(worst, 3), "sample": bad}
+            "unaligned": unaligned, "worst_bp": round(worst, 3), "sample": bad,
+            "font_diagnostics": [(d.get("code"), (d.get("message") or "")[:120]) for d in font_bad]}
 
 
 def cmd_check(args):
     rows = []
+    env = fontenv.render_env(args.fonts, args.tfm_dirs)
+    print(fontenv.describe(env))
     with tempfile.TemporaryDirectory() as work:
         for name in fixtures(args.only):
-            r = compare(name, args.render, args.fonts, work)
+            r = compare(name, args.render, env, work)
             rows.append(r)
             print(f"{'PASS' if r['pass'] else 'FAIL'} {name:34} pages {r['pages'][0]}/{r['pages'][1]} "
                   f"words {r['aligned']:3} ok {r['within_tol']:3} unal {r['unaligned']:3} "
@@ -94,7 +109,9 @@ def cmd_check(args):
     print(f"TOTAL {passed}/{len(rows)} within {TOL} bp")
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump({"passed": passed, "total": len(rows), "tolerance_bp": TOL, "fixtures": rows}, f, indent=1)
+            json.dump({"passed": passed, "total": len(rows), "tolerance_bp": TOL,
+                       "font_dirs": env.get("FLASHTEX_FONT_DIRS"), "tfm_dirs": env.get("FLASHTEX_TFM_DIRS"),
+                       "fixtures": rows}, f, indent=1)
             f.write("\n")
     return 0 if passed == len(rows) else 1
 
@@ -107,7 +124,7 @@ def main():
     r.add_argument("only", nargs="*")
     c = sub.add_parser("check")
     c.add_argument("--render", required=True)
-    c.add_argument("--fonts", default=os.path.join(REPO, "apps", "mac", "Fonts"))
+    fontenv.add_font_arguments(c, REPO)
     c.add_argument("--json")
     c.add_argument("only", nargs="*")
     args = ap.parse_args()
