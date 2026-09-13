@@ -24,11 +24,6 @@ use crate::token::Token;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Meaning {
     Macro(Rc<MacroDef>),
-    /// A `\newcommand`/`\newenvironment`-style macro whose first parameter
-    /// is optional (`\newcommand\foo[2][default]{...}`): `body` has arity
-    /// N with `#1` bound either to the bracketed `[...]` given at the call
-    /// site or to `default` when the caller omits it.
-    MacroWithOptional { body: Rc<MacroDef>, default: Vec<Token> },
     Let(Box<Meaning>),
     CharLike(Token),
     Primitive(Primitive),
@@ -58,6 +53,8 @@ pub enum IntParam {
     Escapechar,
     Endlinechar,
     Newlinechar,
+    /// e-TeX `\eTeXversion` (read-only in TeX; 2).
+    ETeXVersion,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +82,12 @@ pub enum Primitive {
     The,
     Unexpanded,
     Detokenize,
+    /// pdfTeX/e-TeX 2019 `\expanded`.
+    Expanded,
+    /// e-TeX `\eTeXrevision` (expands to `.6`).
+    ETeXRevision,
+    /// pdfTeX `\pdfstrcmp` (XeTeX `\strcmp`).
+    Pdfstrcmp,
     Scantokens,
     Afterassignment,
     Uppercase,
@@ -220,6 +223,7 @@ impl Scopes {
         int_params.insert(IntParam::Escapechar, '\\' as i64);
         int_params.insert(IntParam::Endlinechar, 13);
         int_params.insert(IntParam::Newlinechar, -1);
+        int_params.insert(IntParam::ETeXVersion, 2);
         Scopes {
             cs: HashMap::new(),
             active: HashMap::new(),
@@ -245,8 +249,11 @@ impl Scopes {
         self.cs.get(name)
     }
 
+    /// Is `name` currently defined (anything but `undefined`)? A group
+    /// end can restore an entry *to* `Undefined`, so presence in the map
+    /// is not enough (e-TeX `\ifcsname`, LaTeX `\@ifundefined`).
     pub fn is_defined(&self, name: &str) -> bool {
-        self.cs.contains_key(name)
+        !matches!(self.cs.get(name), None | Some(Meaning::Undefined))
     }
 
     pub fn active_meaning(&self, c: char) -> Meaning {
@@ -551,9 +558,6 @@ fn map_macro(d: &MacroDef, f: &dyn Fn(Span) -> Option<Span>) -> Option<MacroDef>
 pub(crate) fn map_meaning(m: &Meaning, f: &dyn Fn(Span) -> Option<Span>) -> Option<Meaning> {
     Some(match m {
         Meaning::Macro(d) => Meaning::Macro(Rc::new(map_macro(d, f)?)),
-        Meaning::MacroWithOptional { body, default } => {
-            Meaning::MacroWithOptional { body: Rc::new(map_macro(body, f)?), default: map_tokens(default, f)? }
-        }
         Meaning::Let(inner) => Meaning::Let(Box::new(map_meaning(inner, f)?)),
         Meaning::CharLike(t) => Meaning::CharLike(map_token(t, f)?),
         other => other.clone(),

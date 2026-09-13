@@ -136,6 +136,11 @@ impl IncrementalExpander {
     /// recording new checkpoints. Returns the convergence point if any.
     fn drive(&mut self, engine: &mut Engine, last_cp: &mut usize, converge: Option<&mut Converge>) -> Option<usize> {
         let mut converge = converge;
+        // The engine's diagnostics/labels vectors start empty after a
+        // restore, so checkpoint counts must be offset to absolute
+        // positions in `self.diagnostics`/`self.labels`.
+        let diag_base = self.diagnostics.len();
+        let label_base = self.labels.len();
         loop {
             let tok = match engine.next_content_token() {
                 Some(t) => t,
@@ -143,8 +148,7 @@ impl IncrementalExpander {
             };
             self.tokens.push(tok);
             if self.tokens.len() as u64 > self.limits.max_output_tokens {
-                engine.take_diagnostics(); // keep order: engine diags first
-                self.diagnostics.push(Diagnostic::error("output token limit exceeded", Span::synthetic()));
+                engine.push_diagnostic(Diagnostic::error("output token limit exceeded", Span::synthetic()));
                 return None;
             }
             if let Some(pos) = engine.safe_point() {
@@ -159,7 +163,10 @@ impl IncrementalExpander {
                     }
                 }
                 if pos - *last_cp >= self.checkpoint_interval {
-                    self.checkpoints.push(engine.snapshot(self.tokens.len()));
+                    let mut cp = engine.snapshot(self.tokens.len());
+                    cp.diag_len += diag_base;
+                    cp.label_len += label_base;
+                    self.checkpoints.push(cp);
                     *last_cp = pos;
                 }
             }

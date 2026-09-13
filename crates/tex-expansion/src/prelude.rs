@@ -14,6 +14,25 @@ pub const PRELUDE: &str = r"\catcode`\@=11
 \def\makeatletter{\catcode`\@=11 }
 \def\makeatother{\catcode`\@=12 }
 \def\@empty{}
+\def\space{ }
+\chardef\@ne=1
+\chardef\tw@=2
+\chardef\thr@@=3
+\chardef\sixt@@n=16
+\chardef\@cclv=255
+\mathchardef\@cclvi=256
+\mathchardef\@m=1000
+\mathchardef\@M=10000
+\mathchardef\@MM=20000
+\newcount\m@ne \m@ne=-1
+\newcount\count@
+\newdimen\dimen@
+\newdimen\z@ \z@=0pt
+\newskip\skip@
+\long\def\@gobblefour#1#2#3#4{}
+\long\def\@car#1#2\@nil{#1}
+\long\def\@cdr#1#2\@nil{#2}
+\long\def\@onlypreamble#1{}
 \long\def\@gobble#1{}
 \long\def\@gobbletwo#1#2{}
 \long\def\@firstofone#1{#1}
@@ -55,6 +74,9 @@ pub const PRELUDE: &str = r"\catcode`\@=11
 \def\:{\let\@sptoken= } \: %
 \def\:{\@xifnch} \expandafter\def\: {\futurelet\@let@token\@ifnch}
 \let\kernel@ifnextchar\@ifnextchar
+\long\def\@testopt#1#2{\kernel@ifnextchar[{#1}{#1[{#2}]}}
+\def\@protected@testopt#1{\ifx\protect\@typeset@protect\expandafter\@testopt\else\@x@protect#1\fi}
+\long\def\@x@protect#1\fi#2#3{\fi\protect#1}
 \def\@ifstar#1{\@ifnextchar *{\@firstoftwo{#1}}}
 \long\def\loop#1\repeat{%
   \def\iterate{#1\relax\expandafter\iterate\fi}%
