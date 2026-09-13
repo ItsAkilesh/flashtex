@@ -72,6 +72,23 @@ mod tests {
         });
     }
 
+    /// Regression: the context limits once allowed only 64 features, so the
+    /// compiler-derived list made every real `capture_convert` fail with
+    /// `context_too_large` before any provider was contacted.
+    #[test]
+    fn derived_list_fits_the_conversion_context_limits() {
+        let derived = supported_features();
+        assert!(derived.len() > 64, "list is larger than the old limit");
+        let doc = crate::Document {
+            project_id: "p".into(),
+            path: "main.tex".into(),
+            revision: 1,
+            text: "x".into(),
+        };
+        crate::context::build(&doc, 0, 1, std::iter::once(&doc), derived)
+            .expect("the compiler-derived feature list must fit the conversion context");
+    }
+
     /// Drift detector: if the compiler ever stops special-casing `\frac`,
     /// `\sqrt`, `^` or `_`, this fails instead of `supported_features()`
     /// silently continuing to claim support Grok can no longer rely on.

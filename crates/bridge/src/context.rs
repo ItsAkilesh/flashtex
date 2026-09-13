@@ -1,6 +1,11 @@
 //! Bounded lexical context, never a TeX interpreter or filesystem loader.
 //! Includes resolve only against snapshots already supplied to the bridge.
 use crate::{BridgeError, Context, ContextDependency, Document, Result, MAX_CONTEXT_BYTES};
+
+/// Upper bound on `supported_features` entries sent to a provider.
+pub const MAX_SUPPORTED_FEATURES: usize = 1024;
+/// Upper bound on the summed byte length of `supported_features`.
+pub const MAX_SUPPORTED_FEATURE_BYTES: usize = 16 * 1024;
 use std::collections::{BTreeMap, BTreeSet};
 
 const SCAN_BYTES: usize = 256 * 1024;
@@ -18,9 +23,13 @@ pub fn build<'a>(
     supported_features: Vec<String>,
 ) -> Result<Context> {
     crate::range(&doc.text, start, end)?;
+    // The feature list is compiler-derived (`features::supported_features`, well
+    // over 100 entries today), so bound it by count and total bytes rather than
+    // the former 64 entries, which rejected every real `capture_convert`.
     if end - start > MAX_CONTEXT_BYTES / 2
-        || supported_features.len() > 64
+        || supported_features.len() > MAX_SUPPORTED_FEATURES
         || supported_features.iter().any(|s| s.len() > 128)
+        || supported_features.iter().map(String::len).sum::<usize>() > MAX_SUPPORTED_FEATURE_BYTES
     {
         return Err(BridgeError::new(
             "context_too_large",
