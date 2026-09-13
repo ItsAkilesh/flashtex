@@ -10,6 +10,8 @@
 //! revision, per `docs/contracts/runtime-v1.md`.
 
 pub mod bib;
+pub mod color;
+mod color_names;
 pub mod diagnostics;
 pub mod export;
 pub mod incremental;
