@@ -54,11 +54,10 @@ preferences are kept.
 
 1. **Open FlashTeX.** The window has a project sidebar on the left, the source
    editor in the middle and the page preview on the right. The editor starts
-   with a one-line sample and the bundled engine attaches automatically.
-   Press **⌘⇧R** (*File › Attach Render Pipeline (Latin Modern)*) once: this
-   switches from the launch-time compatibility engine to the current one with
-   Latin Modern fonts and the exact (v2) preview. Until you do, the default
-   preview pane reports "No v2 display list yet".
+   with a one-line sample and the bundled engine (`flashtex-render`, Latin
+   Modern fonts, exact v2 preview) attaches automatically — the preview
+   header names it. *File › Attach Render Pipeline (Latin Modern)* (⌘⇧R)
+   re-attaches it if you switched engines.
 
 2. **Open your document** with *File › Open LaTeX File…* (⌘O) and pick a
    `.tex` file, or start typing in the sample. The file you open becomes the

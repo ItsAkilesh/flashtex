@@ -127,14 +127,14 @@ folder it lives in.
 
 FlashTeX compiles through a **producer** process that ships inside the app.
 
-- **At launch** the bundled `flashtex-compiler` attaches automatically and the
-  document compiles (status bar route `worker`). This is the older engine
-  with Times metrics. For the current engine — Latin Modern fonts, TeX
-  metrics, the larger LaTeX subset and the v2 preview — choose
-  **File › Attach Render Pipeline (Latin Modern)** (⌘⇧R) once per session.
-  The header then names `flashtex-render`. (Automatic attachment of the render
-  pipeline is not yet implemented; the environment variable
-  `FLASHTEX_AUTOATTACH=0` disables auto-attach altogether.)
+- **At launch** the bundled `flashtex-render` — the current engine: Latin
+  Modern fonts, TeX metrics, the larger LaTeX subset and the v2 preview —
+  attaches automatically and the document compiles (status bar route
+  `worker`; the header names `flashtex-render`). The older Times-metrics
+  `flashtex-compiler` is still bundled and can be attached from the File
+  menu (⌘⇧K) for comparison; **File › Attach Render Pipeline (Latin Modern)**
+  (⌘⇧R) switches back. `FLASHTEX_COMPILER=<path>` names an explicit engine;
+  `FLASHTEX_AUTOATTACH=0` disables auto-attach altogether.
 - **Auto-compile** (toolbar switch, on by default) sends every edit to the
   producer immediately; one request is in flight at a time and the newest
   buffer is coalesced behind it, so the preview never shows an older
@@ -168,10 +168,10 @@ FlashTeX compiles through a **producer** process that ships inside the app.
 
 - **Two panes.** The default is the **v2 pane**: it paints the rendering-v2
   display list (exact glyphs and positions, the same data the exact PDF
-  export uses) that `flashtex-render` sends with every result. With the
-  launch-time `flashtex-compiler` attached there is no display list and the
-  pane says "No v2 display list yet" — press ⌘⇧R, or flip the toolbar's *v2
-  pane* switch off to see the v1 pane (text items drawn with CoreText).
+  export uses) that `flashtex-render` sends with every result. If the older
+  `flashtex-compiler` is attached there is no display list and the pane says
+  "No v2 display list yet" — press ⌘⇧R, or flip the toolbar's *v2 pane*
+  switch off to see the v1 pane (text items drawn with CoreText).
   `FLASHTEX_PREVIEW_V2=0` starts on the v1 pane.
 - **Zoom**: ⌘= / ⌘- step by ×1.25 between 25 % and 400 % of fit-width; ⌘9
   fits the widest page to the pane; ⌘0 shows 1 PDF point per screen point.
