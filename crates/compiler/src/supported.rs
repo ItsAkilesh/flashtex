@@ -405,6 +405,13 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["colon"],
+        "",
+        "punctuation colon: the operators-family \":\" as \\mathpunct, \
+         3mu after it, where a bare \":\" is \\mathrel with 5mu on both sides",
+        true,
+    ),
+    (
         &[
             "mathbin",
             "mathrel",

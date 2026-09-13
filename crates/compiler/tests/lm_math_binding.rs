@@ -310,18 +310,44 @@ fn hw2_math_follow_up_commands_render_with_no_diagnostics() {
 }
 
 #[test]
-fn mathbb_rejects_what_amsfonts_does_not_provide() {
+/// `\mathbb` is a math *alphabet* (`amsfonts.sty` 114,
+/// `\DeclareMathAlphabet{\mathbb}{U}{msb}{m}{n}`), not a blackboard-bold
+/// lookup: only msbm10's slots "41-"5A hold blackboard capitals, and every
+/// other slot holds an unrelated AMSb symbol, which pdfLaTeX sets silently.
+/// `\mathbb{1}` is msbm "31 (`\nVdash`) and `\mathbb{x}` msbm "78
+/// (`\curvearrowleft`) — verified with TeX Live 2025 pdflatex, which prints
+/// no "Missing character" for either and boxes them at 8.66669pt / 12.00003pt
+/// at 12pt (measured, TeX Live 2025).
+fn mathbb_outside_the_blackboard_capitals_is_the_msbm_slot() {
     let reply = compile("$\\mathbb{1}$ $\\mathbb{x}$\n");
     let messages = messages(&reply);
-    assert_eq!(
+    assert!(
         messages
             .iter()
-            .filter(|m| m.contains("\\mathbb supports only capital letters"))
-            .count(),
-        2,
+            .any(|m| m.contains("pdfLaTeX sets \\nVdash there")),
         "{messages:#?}"
     );
-    assert!(!messages.iter().any(|m| m.contains("widths differ")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("pdfLaTeX sets \\curvearrowleft there")),
+        "{messages:#?}"
+    );
+    assert!(!messages
+        .iter()
+        .any(|m| m.contains("\\mathbb supports only capital letters")));
+    // Real glyphs are now emitted, so the resource's own fidelity limitation
+    // applies to them exactly as it does to `\mathbb{R}`.
+    assert!(
+        messages.iter().any(|m| m.contains("widths differ")),
+        "{messages:#?}"
+    );
+    let texts: Vec<String> = page_items(&reply)
+        .into_iter()
+        .filter_map(|item| item.get("text").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    assert!(texts.iter().any(|t| t == "\u{22AE}"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "\u{21B6}"), "{texts:?}");
 }
 
 #[test]

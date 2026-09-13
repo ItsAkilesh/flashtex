@@ -116,6 +116,20 @@ pub const ADVANCES: &[(char, u16)] = &[
     // export if it reaches an item's text (e.g. typed literally by an
     // amsthm-style proof ending).
     ('\u{220E}', 666), // ∎ QED
+    // `fontmath.ltx` 420-431's `largesymbols` (cmex10) variable-size
+    // operators. Adobe Symbol has only the binary `union`/`intersection`/
+    // `logicalor`/`logicaland`/`circleplus`/`circlemultiply` glyphs, never
+    // the n-ary ones, so these eight come from this resource. (The compiler's
+    // own layout sets them at the text-size advance; the render pipeline
+    // boxes them from cmex10 with pdfLaTeX's display-size chain.)
+    ('\u{22C3}', 833),  // \bigcup
+    ('\u{22C2}', 833),  // \bigcap
+    ('\u{22C1}', 833),  // \bigvee
+    ('\u{22C0}', 833),  // \bigwedge
+    ('\u{2A00}', 1111), // \bigodot
+    ('\u{2A01}', 1111), // \bigoplus
+    ('\u{2A02}', 1111), // \bigotimes
+    ('\u{2210}', 944),  // \coprod
 ];
 
 /// The double-struck code point for `\mathbb{letter}`: the Mathematical
@@ -183,7 +197,7 @@ mod tests {
         assert_eq!(double_struck('A'), Some('\u{1D538}'));
         assert_eq!(double_struck('a'), None);
         assert_eq!(double_struck('1'), None);
-        assert_eq!(ADVANCES.len(), 75);
+        assert_eq!(ADVANCES.len(), 83);
     }
 
     #[test]

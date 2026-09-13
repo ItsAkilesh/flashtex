@@ -768,6 +768,25 @@ impl MathParser<'_> {
                 ams_symbol: None,
                 ..symbol("△".into(), span)
             },
+            // `fontmath.ltx` 400: `\DeclareMathSymbol{\colon}{\mathpunct}
+            // {operators}{"3A}`. `\colon` and a bare `:` are the same
+            // operators-family character ("3A), but `:` is `\mathrel`
+            // (`fontmath.ltx` 385) while `\colon` is `\mathpunct`, so
+            // `f\colon A` sets 3mu (Punct-Ord, thin) after the colon where
+            // `f:A` sets 5mu on both sides. `symbol_class` is keyed by glyph,
+            // so the class is forced on the atom exactly like `\bot`/`\perp`.
+            //
+            // amsmath redefines `\colon` as `\nobreak\mskip2mu\mathpunct{}
+            // \nonscript\mkern-\thinmuskip{:}\mskip6muplus1mu` (amsmath.sty
+            // 409-410), which is 2mu before and 6mu after instead. The math
+            // parser has no package context, so the kernel definition is what
+            // is implemented here; see the PR for the measured 5mu difference.
+            "colon" => MathAtom {
+                class_override: Some(AtomClass::Punct),
+                width_em: None,
+                ams_symbol: None,
+                ..symbol(":".into(), span)
+            },
             // TeXbook Chapter 17's `\mathbin`/`\mathrel`/... family: the
             // argument is a full math list, boxed as one atom whose class is
             // forced regardless of what its own contents would imply.
@@ -1159,6 +1178,15 @@ impl MathParser<'_> {
             }
             "quad" => text_space(QUAD_EM, span),
             "qquad" => text_space(2.0 * QUAD_EM, span),
+            // amsfonts.sty 114: `\DeclareMathAlphabet{\mathbb}{U}{msb}{m}{n}`.
+            // A math alphabet only changes the *family*: each character of
+            // the argument keeps its own class and is set at its own slot of
+            // msbm10. Slots "41-"5A are the blackboard capitals; every other
+            // slot holds an unrelated AMSb symbol, which is what pdfLaTeX
+            // silently sets for `\mathbb{k}` (msbm "6B = `\daleth`) or
+            // `\mathbb{1}` (msbm "31 = `\nVdash`). Both are reproduced here,
+            // with a warning rather than the error this used to raise, since
+            // pdfLaTeX prints no "Missing character" for them either.
             "mathbb" => {
                 let (text, argument_span) = self.required_text_group("mathbb", span);
                 let span = span.merge(argument_span);
@@ -1169,16 +1197,55 @@ impl MathParser<'_> {
                     .collect::<Option<String>>()
                 {
                     Some(glyphs) if !glyphs.is_empty() => symbol(glyphs, span),
-                    _ => {
+                    _ if letters.is_empty() => {
                         self.diagnostics.push(Diagnostic::error(
-                            format!(
-                                "\\mathbb supports only capital letters A-Z, not {:?}",
-                                letters
-                            ),
+                            "\\mathbb needs a non-empty argument".to_string(),
                             Some(span),
                             Some("typeset the argument without blackboard bold".into()),
                         ));
                         symbol(letters, span)
+                    }
+                    _ => {
+                        let mut atoms = Vec::new();
+                        for c in letters.chars() {
+                            match (crate::lm_math::double_struck(c), msbm_slot_symbol(c)) {
+                                (Some(glyph), _) => atoms.push(symbol(glyph.to_string(), span)),
+                                // A math alphabet never changes the class, so
+                                // the msbm symbol's own class is replaced by
+                                // the ordinary class of the source character.
+                                (None, Some(ams)) => {
+                                    self.diagnostics.push(Diagnostic::warning(
+                                        format!(
+                                            "\\mathbb{{{c}}}: msbm10 has no blackboard-bold \
+                                             {c} at slot \"{:02X}\"; pdfLaTeX sets \\{} there",
+                                            c as u32, ams.name
+                                        ),
+                                        Some(span),
+                                        Some(format!(
+                                            "set \\{} in its place, as pdfLaTeX does",
+                                            ams.name
+                                        )),
+                                    ));
+                                    atoms.push(MathAtom {
+                                        class_override: Some(AtomClass::Ord),
+                                        ..ams_atom(ams, span)
+                                    });
+                                }
+                                (None, None) => {
+                                    self.diagnostics.push(Diagnostic::error(
+                                        format!(
+                                            "\\mathbb{{{c}}}: msbm10 has no character at slot \
+                                             for {c:?}, so pdfLaTeX sets nothing"
+                                        ),
+                                        Some(span),
+                                        Some(
+                                            "typeset the argument without blackboard bold".into(),
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+                        self.group_atom(MathList { atoms }, span)
                     }
                 }
             }
@@ -2066,6 +2133,18 @@ fn symbol(text: String, span: Span) -> MathAtom {
     }
 }
 
+/// The AMSb (msbm10) symbol a math alphabet switched to `U/msb/m/n` sets for
+/// the source character `c`: msbm's slot is the character code itself, and
+/// the generated `amssymb` table carries every declared slot of that font.
+/// Used by `\mathbb` for the characters outside "41-"5A, where msbm holds an
+/// unrelated symbol rather than a blackboard-bold letter.
+fn msbm_slot_symbol(c: char) -> Option<&'static crate::amssymb::AmsSymbol> {
+    let slot = u8::try_from(u32::from(c)).ok()?;
+    crate::amssymb::SYMBOLS.iter().find(|s| {
+        s.font == crate::amssymb::SymbolFont::Msbm && s.slot == slot && !s.name.contains('@')
+    })
+}
+
 /// Scales a delimiter taken by `\big`..`\Biggm`. The null delimiter (a zero
 /// space) and an empty recovery glyph are left as they are.
 /// An amssymb/amsfonts symbol (`crate::amssymb`): its Unicode text as the
@@ -2365,6 +2444,27 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // `command_atom`), so it is not a second row here.
     ("triangle", "△"),
     ("bigtriangledown", "▽"),
+    // The `largesymbols` (cmex10) variable-size operators of `fontmath.ltx`
+    // 420-431, which `\sum`/`\prod`/`\int`/`\oint` above already come from.
+    // Each is `\mathop`, so `symbol_class` gives it Op spacing and
+    // math-layout's `default_class` puts limits on it in display style.
+    // Adobe Symbol has only the *binary* `\cup`/`\cap`/`\vee`/`\wedge`
+    // glyphs, never the n-ary ones, so all eight are drawn from the pinned
+    // Latin Modern Math resource (`crate::lm_math`) like `\setminus`.
+    ("bigcup", "⋃"),
+    ("bigcap", "⋂"),
+    ("bigvee", "⋁"),
+    ("bigwedge", "⋀"),
+    ("bigodot", "⨀"),
+    ("bigoplus", "⨁"),
+    ("bigotimes", "⨂"),
+    ("coprod", "∐"),
+    // `fontmath.ltx` 372: `\DeclareMathSymbol{\neg}{\mathord}{symbols}{"3A}`,
+    // with `\lnot` the same symbol (373). Adobe Symbol carries it as
+    // `logicalnot` (0xD8), so `crate::export` encodes it rather than
+    // reporting it unrepresentable.
+    ("neg", "¬"),
+    ("lnot", "¬"),
     // `\bot` shares `\perp`'s exact base-14 Symbol glyph above with a forced
     // Ord class (see `command_atom`), so it is not a second row here.
 ];
@@ -2533,7 +2633,8 @@ fn symbol_class(glyph: &str) -> AtomClass {
         "(" | "[" | "{" | "〈" | "⟨" | "⌊" | "⌈" => Open,
         ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" | "⌋" | "⌉" => Close,
         "," | ";" => Punct,
-        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" => Op,
+        // `largesymbols` operators (`fontmath.ltx` 420-431): all `\mathop`.
+        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" | "⋃" | "⋂" | "⋁" | "⋀" | "⨀" | "⨁" | "⨂" | "∐" => Op,
         "⋅⋅⋅" => Inner,
         _ => Ord,
     }
@@ -4802,6 +4903,62 @@ mod spacing_tests {
             close(x(&b, glyph), width("a", SIZE) + 5.0);
             let own = width(&format!(r"\{command}"), SIZE);
             close(x(&b, "b"), x(&b, glyph) + own + 5.0);
+        }
+    }
+
+    /// `fontmath.ltx` 385/400: `:` is `\mathrel` and `\colon` `\mathpunct`,
+    /// both the operators-family "3A. So `f\colon A` is Ord-Punct (0mu) then
+    /// Punct-Ord (3mu, thin), while `f:A` is Ord-Rel (5mu) then Rel-Ord
+    /// (5mu). Checked against TeX Live 2025 pdflatex at 12pt, where the two
+    /// hboxes measure 21.14493pt and 25.81152pt against `f{:}A`'s 19.14496pt
+    /// — exactly the +3mu and +10mu this asserts (12pt math quad, 1mu = 2/3pt).
+    #[test]
+    fn colon_is_punctuation_where_a_bare_colon_is_a_relation() {
+        let punct = laid_out(r"f\colon A", SIZE);
+        close(x(&punct, ":"), width("f", SIZE));
+        close(x(&punct, "A"), x(&punct, ":") + width(":", SIZE) + 3.0);
+        close(
+            punct.width,
+            width("f", SIZE) + width(":", SIZE) + 3.0 + width("A", SIZE),
+        );
+
+        let rel = laid_out("f:A", SIZE);
+        close(x(&rel, ":"), width("f", SIZE) + 5.0);
+        close(
+            rel.width,
+            width("f", SIZE) + 5.0 + width(":", SIZE) + 5.0 + width("A", SIZE),
+        );
+    }
+
+    /// `fontmath.ltx` 420-431 declares every `largesymbols` operator
+    /// `\mathop`, so each takes the 3mu Ord-Op / Op-Ord space `\sum` does.
+    #[test]
+    fn large_operators_get_the_same_space_as_sum() {
+        for command in [
+            "bigcup",
+            "bigcap",
+            "bigvee",
+            "bigwedge",
+            "bigodot",
+            "bigoplus",
+            "bigotimes",
+            "coprod",
+        ] {
+            let glyph = command_glyph(command).unwrap();
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, glyph), width("a", SIZE) + 3.0);
+            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 3.0);
+        }
+    }
+
+    /// `\neg`/`\lnot` are `\mathord` (`fontmath.ltx` 372-373): no space of
+    /// their own, unlike the `\mathbin` operators next to them in the table.
+    #[test]
+    fn negation_is_ordinary_and_takes_no_space() {
+        for command in ["neg", "lnot"] {
+            let b = laid_out(&format!(r"a\{command} b"), SIZE);
+            close(x(&b, "¬"), width("a", SIZE));
+            close(x(&b, "b"), x(&b, "¬") + width("¬", SIZE));
         }
     }
 

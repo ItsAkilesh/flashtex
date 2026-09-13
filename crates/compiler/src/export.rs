@@ -138,6 +138,7 @@ const SYMBOL_ENCODING: &[(char, u8)] = &[
     ('\u{2118}', 0xC3), // weierstrass
     ('\u{2329}', 0xE1), // angleleft
     ('\u{232A}', 0xF1), // angleright
+    ('\u{AC}', 0xD8),   // logicalnot (\neg, \lnot)
 ];
 
 /// WinAnsiEncoding's 0x80..0x9F block, which is NOT Latin-1.

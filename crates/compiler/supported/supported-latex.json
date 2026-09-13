@@ -247,6 +247,7 @@
     {"name": "impliedby", "mode": "math", "origin": "math_structure", "arguments": "", "description": "long double arrow between thick (5mu) spaces", "renders": true},
     {"name": "bot", "mode": "math", "origin": "math_structure", "arguments": "", "description": "shared symbol glyph with its own atom class (Ord / Bin)", "renders": true},
     {"name": "bigtriangleup", "mode": "math", "origin": "math_structure", "arguments": "", "description": "shared symbol glyph with its own atom class (Ord / Bin)", "renders": true},
+    {"name": "colon", "mode": "math", "origin": "math_structure", "arguments": "", "description": "punctuation colon: the operators-family \":\" as \\mathpunct, 3mu after it, where a bare \":\" is \\mathrel with 5mu on both sides", "renders": true},
     {"name": "mathbin", "mode": "math", "origin": "math_structure", "arguments": "{math}", "description": "argument boxed as one atom of the forced class", "renders": true},
     {"name": "mathrel", "mode": "math", "origin": "math_structure", "arguments": "{math}", "description": "argument boxed as one atom of the forced class", "renders": true},
     {"name": "mathord", "mode": "math", "origin": "math_structure", "arguments": "{math}", "description": "argument boxed as one atom of the forced class", "renders": true},
@@ -476,6 +477,16 @@
     {"name": "longleftrightarrow", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⟷", "renders": true, "glyph": "⟷"},
     {"name": "triangle", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol △", "renders": true, "glyph": "△"},
     {"name": "bigtriangledown", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ▽", "renders": true, "glyph": "▽"},
+    {"name": "bigcup", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⋃", "renders": true, "glyph": "⋃"},
+    {"name": "bigcap", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⋂", "renders": true, "glyph": "⋂"},
+    {"name": "bigvee", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⋁", "renders": true, "glyph": "⋁"},
+    {"name": "bigwedge", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⋀", "renders": true, "glyph": "⋀"},
+    {"name": "bigodot", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⨀", "renders": true, "glyph": "⨀"},
+    {"name": "bigoplus", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⨁", "renders": true, "glyph": "⨁"},
+    {"name": "bigotimes", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⨂", "renders": true, "glyph": "⨂"},
+    {"name": "coprod", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ∐", "renders": true, "glyph": "∐"},
+    {"name": "neg", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ¬", "renders": true, "glyph": "¬"},
+    {"name": "lnot", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ¬", "renders": true, "glyph": "¬"},
     {"name": "boxdot", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⊡ (\\mathbin, msam \"00)", "renders": true, "glyph": "⊡"},
     {"name": "boxplus", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⊞ (\\mathbin, msam \"01)", "renders": true, "glyph": "⊞"},
     {"name": "boxtimes", "mode": "math", "origin": "math_symbol", "arguments": "", "description": "symbol ⊠ (\\mathbin, msam \"02)", "renders": true, "glyph": "⊠"},
@@ -793,7 +804,7 @@
       "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 162, "percent": 39.5},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 163, "percent": 39.8},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 39, "percent": 38.2},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
@@ -806,6 +817,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 461, "percent": 46}
+    "total": {"canonical": 1003, "supported": 462, "percent": 46.1}
   }
 }
