@@ -324,6 +324,68 @@ pub struct Page {
     pub items: Vec<TextItem>,
 }
 
+/// `text_builtins::LogoMetrics` over a Core 14 face at `size` points.
+struct Core14LogoMetrics {
+    font: Font,
+    size: f64,
+}
+
+impl Core14LogoMetrics {
+    fn size_of(&self, font: crate::text_builtins::LogoFont) -> f64 {
+        use crate::text_builtins::{self as tb, LogoFont};
+        match font {
+            LogoFont::ScriptSize => tb::sp_to_pt(tb::sf_size(tb::pt_to_sp(self.size))),
+            LogoFont::Current | LogoFont::MathItalic => self.size,
+        }
+    }
+
+    fn cap_pt(&self, size: f64) -> f64 {
+        use flashtex_font_engine::Face as _;
+        f64::from(face(self.font).vertical_metrics().cap_height) / 1000.0 * size
+    }
+}
+
+impl crate::text_builtins::LogoMetrics for Core14LogoMetrics {
+    fn char_box(
+        &self,
+        font: crate::text_builtins::LogoFont,
+        ch: char,
+    ) -> crate::text_builtins::CharBox {
+        use crate::text_builtins::{self as tb, LogoFont};
+        let size = self.size_of(font);
+        let (face_font, height) = match font {
+            LogoFont::MathItalic => (Font::Symbol, x_height_pt(self.font, size)),
+            _ if ch.is_ascii_digit() || ch.is_ascii_uppercase() => (self.font, self.cap_pt(size)),
+            _ => (self.font, x_height_pt(self.font, size)),
+        };
+        tb::CharBox {
+            width: tb::pt_to_sp(text_width(&ch.to_string(), size, face_font)),
+            height: tb::pt_to_sp(height),
+            depth: 0,
+            italic: 0,
+        }
+    }
+
+    fn quad(&self) -> i32 {
+        crate::text_builtins::pt_to_sp(self.size)
+    }
+
+    fn x_height(&self) -> i32 {
+        crate::text_builtins::pt_to_sp(x_height_pt(self.font, self.size))
+    }
+
+    /// Core 14 has no math font parameters; cmsy10's ratios (sub1 .15em,
+    /// sub_drop .05em at 7/10 size, x-height .430555em) stand in.
+    fn math_sub_params(&self) -> crate::text_builtins::MathSubParams {
+        use crate::text_builtins::{self as tb, MathSubParams};
+        MathSubParams {
+            sub1: tb::pt_to_sp(0.15 * self.size),
+            math_x_height: tb::pt_to_sp(0.430555 * self.size),
+            script_sub_drop: tb::pt_to_sp(0.05 * 0.7 * self.size),
+        }
+    }
+}
+
 fn glyph_width(text: &str, size: f64, font: Font) -> f64 {
     text_width(text, size, font)
 }
@@ -701,6 +763,124 @@ impl LayoutCursor {
             .push(item);
         self.content_end = self.x + w;
         self.x += w + word_space(size, font);
+    }
+
+    /// `\TeX`/`\LaTeX`/`\LaTeXe` (`text_builtins::layout_logo`) against this
+    /// layout's Core 14 metrics: the construction's kerns, raise and lower
+    /// are latex.ltx's, while glyph heights are the face's declared cap
+    /// height (AFM carries no per-glyph TFM heights), so only the render
+    /// pipeline's TFM-backed layout reproduces pdfLaTeX's positions.
+    fn place_logo(
+        &mut self,
+        logo: crate::text_builtins::TextLogo,
+        size: f64,
+        span: Span,
+        font: Font,
+        space_before: bool,
+    ) {
+        use crate::text_builtins::{self as tb, LogoFont};
+        if !space_before {
+            self.x = self.content_end;
+        }
+        let metrics = Core14LogoMetrics { font, size };
+        let built = tb::layout_logo(logo, &metrics);
+        let width = tb::sp_to_pt(built.width);
+        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+            self.wrap_line(size);
+        }
+        self.note_space();
+        let ascent = built
+            .glyphs
+            .iter()
+            .map(|g| tb::sp_to_pt(g.raise) + metrics.cap_pt(metrics.size_of(g.font)))
+            .fold(size, f64::max);
+        let descent = built
+            .glyphs
+            .iter()
+            .map(|g| -tb::sp_to_pt(g.raise))
+            .fold(size * (LINE_SPACING - 1.0), f64::max);
+        self.ensure_extents(ascent, descent);
+        let (base_x, base_y) = (self.x, self.y);
+        for glyph in &built.glyphs {
+            let glyph_font = if glyph.font == LogoFont::MathItalic {
+                Font::Symbol
+            } else {
+                font
+            };
+            let glyph_size = metrics.size_of(glyph.font);
+            let text = glyph.ch.to_string();
+            let (_, glyph_span) =
+                shaped_width(&text, glyph_size, glyph_font, span, &mut self.diagnostics);
+            self.pages
+                .last_mut()
+                .expect("at least one page")
+                .items
+                .push(TextItem {
+                    text,
+                    x_pt: round2(base_x + tb::sp_to_pt(glyph.x)),
+                    baseline_y_pt: round2(base_y - tb::sp_to_pt(glyph.raise)),
+                    font_size_pt: glyph_size,
+                    span: glyph_span,
+                    font: glyph_font,
+                    rule: None,
+                });
+        }
+        self.content_end = self.x + width;
+        self.x += width + word_space(size, font);
+    }
+
+    /// `\rule` in running text: a box `RuleBox::width` wide whose painted
+    /// part spans `rule_bottom..rule_top` above the baseline
+    /// (`text_builtins::TextRule::resolve`, latex.ltx 16359-16367).
+    fn place_rule(
+        &mut self,
+        rule: &crate::text_builtins::TextRule,
+        size: f64,
+        span: Span,
+        font: Font,
+        space_before: bool,
+    ) {
+        use crate::text_builtins::{self as tb, DimenContext};
+        if !space_before {
+            self.x = self.content_end;
+        }
+        let cx = DimenContext {
+            quad: tb::pt_to_sp(size),
+            x_height: tb::pt_to_sp(x_height_pt(font, size)),
+            text_width: tb::pt_to_sp(self.constraints.measure_pt),
+            line_width: tb::pt_to_sp(self.right_edge() - self.left_edge()),
+            column_width: tb::pt_to_sp(self.constraints.measure_pt),
+        };
+        let b = rule.resolve(&cx);
+        let width = tb::sp_to_pt(b.width);
+        if self.x > self.left_edge() && self.x + width > self.right_edge() {
+            self.wrap_line(size);
+        }
+        self.note_space();
+        self.ensure_extents(tb::sp_to_pt(b.height), tb::sp_to_pt(b.depth));
+        if b.painted() {
+            let top = self.y - tb::sp_to_pt(b.rule_top);
+            let item = TextItem {
+                text: math::FRACTION_RULE_CHAR.to_string(),
+                x_pt: round2(self.x),
+                baseline_y_pt: round2(self.y),
+                font_size_pt: size,
+                span,
+                font: Font::TimesRoman,
+                rule: Some(RuleGeometry {
+                    y_pt: round2(top),
+                    width_pt: round2(width),
+                    height_pt: round2(tb::sp_to_pt(b.rule_top - b.rule_bottom)),
+                }),
+            };
+            self.pages
+                .last_mut()
+                .expect("at least one page")
+                .items
+                .push(item);
+        }
+        self.content_end = self.x + width;
+        self.x += width + word_space(size, font);
     }
 
     /// Explicit horizontal glue (`\quad`/`\qquad` in text mode): no glyph is
@@ -2041,6 +2221,38 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 space_before,
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
+            Inline::Logo {
+                logo,
+                span,
+                style,
+                space_before,
+            } => {
+                let text_size = style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                c.place_logo(*logo, text_size, *span, style_font(*style), *space_before)
+            }
+            Inline::Kern { amount, style, .. } => {
+                let text_size = style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                let cx = crate::text_builtins::DimenContext {
+                    quad: crate::text_builtins::pt_to_sp(text_size),
+                    ..Default::default()
+                };
+                c.hspace(crate::text_builtins::sp_to_pt(amount.resolve(&cx)))
+            }
+            Inline::Rule {
+                rule,
+                span,
+                style,
+                space_before,
+            } => {
+                let text_size = style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                c.place_rule(rule, text_size, *span, style_font(*style), *space_before)
+            }
         }
     }
 }

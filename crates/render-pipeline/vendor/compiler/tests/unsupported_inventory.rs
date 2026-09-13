@@ -45,11 +45,6 @@ const CASES: &[Case] = &[
         input: "Text \\cite{knuth1984}.\n",
         consequence: "Citations do not resolve; .bib files are not read.",
     },
-    Case {
-        feature: r"\def, \let and category codes",
-        input: "\\def\\x{y}\\x\n",
-        consequence: "Only \\newcommand-style macros exist; raw TeX programmability does not.",
-    },
 ];
 
 fn compile(text: &str) -> Value {

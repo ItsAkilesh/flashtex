@@ -532,6 +532,9 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                     shift_inlines(text, changes, deltas)?;
                 }
             }
+            Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => {
+                map_span(span, changes, deltas)?
+            }
             Inline::Tabular(table) => {
                 // `Tabular` only offers a mapping copy; its nested inlines are
                 // shifted through the same in-place walk.
@@ -563,12 +566,14 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
         subscript,
         class_override: _,
         width_em: _,
+        ams_symbol: _,
     } in &mut list.atoms
     {
         match nucleus {
             Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Bold(_) => {}
             Nucleus::SizedDelimiter { .. } => {}
             Nucleus::Space { .. } => {}
+            Nucleus::Rule(_) => {}
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -717,6 +722,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Footnote { span, .. } => *span,
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
+        Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
