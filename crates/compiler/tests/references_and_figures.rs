@@ -126,10 +126,11 @@ fn figure_caption_label_and_lists_render() {
 }
 
 #[test]
-fn includegraphics_is_explicitly_unsupported() {
+fn includegraphics_without_image_bytes_is_never_silent() {
     let result = compile_full(r"\includegraphics{plot.png}", LayoutConstraints::default());
     assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("includegraphics") && diagnostic.message.contains("unsupported")
+        diagnostic.message.contains("includegraphics")
+            && diagnostic.message.contains("image bytes are not available")
     }));
 }
 

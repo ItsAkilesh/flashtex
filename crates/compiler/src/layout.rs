@@ -21,6 +21,8 @@ use std::sync::OnceLock;
 
 pub use flashtex_font_engine::core14::Core14 as Font;
 
+mod figures;
+
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
 pub const MARGIN_PT: f64 = 72.0;
@@ -326,6 +328,8 @@ pub struct LayoutCursor {
     /// outside one. Unlike `style`, this only ever affects `left_edge` —
     /// lists don't pull in the right margin the way `quote` does.
     list_margin_pt: f64,
+    /// Float placement state for the page being built; see `layout::figures`.
+    floats: figures::FloatState,
 }
 
 impl LayoutCursor {
@@ -360,6 +364,7 @@ impl LayoutCursor {
             diagnostics: Vec::new(),
             style: None,
             list_margin_pt: 0.0,
+            floats: figures::FloatState::default(),
         }
     }
 
@@ -415,15 +420,8 @@ impl LayoutCursor {
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
-        if self.y > PAGE_HEIGHT_PT - MARGIN_PT {
-            let n = self.pages.len() as u32 + 1;
-            self.pages.push(Page {
-                number: n,
-                width_pt: PAGE_WIDTH_PT,
-                height_pt: PAGE_HEIGHT_PT,
-                items: Vec::new(),
-            });
-            self.y = MARGIN_PT + size;
+        if self.y > self.page_bottom() {
+            self.break_page(size);
         }
         self.line_start = self.pages.last().expect("at least one page").items.len();
     }
@@ -488,14 +486,7 @@ impl LayoutCursor {
     fn force_page_break(&mut self) {
         self.x = MARGIN_PT;
         self.content_end = self.x;
-        let n = self.pages.len() as u32 + 1;
-        self.pages.push(Page {
-            number: n,
-            width_pt: PAGE_WIDTH_PT,
-            height_pt: PAGE_HEIGHT_PT,
-            items: Vec::new(),
-        });
-        self.y = MARGIN_PT + self.constraints.font_size_pt;
+        self.break_page(self.constraints.font_size_pt);
         self.line_start = 0;
     }
 
@@ -736,6 +727,8 @@ impl LayoutCursor {
             return self.state();
         }
         match block {
+            // A float takes no room in the text flow until it is placed.
+            Block::Float(_) => return self.state(),
             Block::Paragraph(_) => {
                 if !self.first_block {
                     self.newline(body_size);
@@ -764,7 +757,15 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
-            Block::FigureCaption { .. } | Block::Styled { .. } => {
+            // article.cls `\@makecaption`: `\abovecaptionskip` precedes the
+            // caption even at the top of its float box.
+            Block::FigureCaption { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                }
+                self.vertical_gap(figures::ABOVE_CAPTION_SKIP_PT);
+            }
+            Block::Styled { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
                     self.vertical_gap(PARAGRAPH_GAP_PT);
@@ -864,21 +865,25 @@ impl LayoutCursor {
                 self.vertical_gap(PARAGRAPH_GAP_PT);
                 self.x = MARGIN_PT;
             }
+            // `\@makecaption`: "Figure 1: text" centred when it fits on one
+            // line, otherwise set as an ordinary paragraph.
             Block::FigureCaption { content } => {
-                let width: f64 = content
-                    .iter()
-                    .map(|inline| match inline {
-                        Inline::Text { text, .. } => {
-                            glyph_width(text, body_size, Font::TimesRoman)
-                                + word_space(body_size, Font::TimesRoman)
-                        }
-                        _ => 0.0,
-                    })
-                    .sum();
-                self.x = MARGIN_PT + (self.constraints.measure_pt - width).max(0.0) / 2.0;
+                let page_count = self.pages.len();
+                let start = self.pages.last().expect("at least one page").items.len();
+                self.x = self.left_edge();
+                self.content_end = self.x;
                 emit(self, content, body_size, Font::TimesRoman);
-                self.newline(body_size);
+                if self.pages.len() == page_count && self.line_start <= start {
+                    self.resolve_hfill();
+                    let shift = ((self.right_edge() - self.content_end) / 2.0).max(0.0);
+                    if let Some(page) = self.pages.last_mut() {
+                        for item in &mut page.items[start..] {
+                            item.x_pt = round2(item.x_pt + shift);
+                        }
+                    }
+                }
             }
+            Block::Float(float) => self.render_float(float),
             Block::VSpace { .. } | Block::PageBreak => {}
             Block::Rule { span } => {
                 let width = self.constraints.measure_pt;
@@ -981,16 +986,19 @@ impl LayoutCursor {
         // following block to trigger `newline`'s resolution, so give it one
         // last chance here. Idempotent when nothing is pending.
         self.resolve_hfill();
+        self.flush_floats();
         self.pages
     }
 
     pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
         self.resolve_hfill();
+        self.flush_floats();
         (self.pages, self.diagnostics)
     }
 
     fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
         self.resolve_hfill();
+        self.flush_floats();
         (self.pages, self.collected_labels, self.diagnostics)
     }
 }
@@ -1125,13 +1133,17 @@ pub fn layout_converged(
 
 fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
+        if let Block::Float(float) = block {
+            visit_references(&float.body, visitor);
+            continue;
+        }
         let inlines: &[Inline] = match block {
             Block::Paragraph(inlines) => inlines,
             Block::ListItem { content, .. }
             | Block::Heading { content, .. }
             | Block::FigureCaption { content }
             | Block::Styled { content, .. } => content,
-            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Float(_) => &[],
         };
         for inline in inlines {
             if let Inline::Reference { key, span, .. } = inline {
@@ -1231,6 +1243,20 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
             }
             Inline::HFill { .. } => c.mark_hfill(),
             Inline::HSpace { pt, .. } => c.hspace(*pt),
+            Inline::Graphic {
+                file,
+                size: graphic,
+                span,
+                space_before,
+            } => {
+                let (width, height) = figures::graphic_extent(
+                    *graphic,
+                    c.constraints.measure_pt,
+                    c.right_edge() - c.left_edge(),
+                );
+                let b = figures::graphic_box(file, width, height, size, *span);
+                c.place_math(b, size, *space_before);
+            }
         }
     }
 }

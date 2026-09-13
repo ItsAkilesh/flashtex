@@ -32,7 +32,7 @@ const CASES: &[Case] = &[
     Case {
         feature: r"\includegraphics — image loading",
         input: "\\begin{figure}\\includegraphics{plot.png}\\caption{P}\\end{figure}\n",
-        consequence: "Figures lay out and number, but no image is loaded or drawn.",
+        consequence: "Figures float, number and reserve the requested size, but image bytes are not part of a compile request: a draft-style frame is drawn instead of the image.",
     },
     Case {
         feature: "tabular — tables",

@@ -12,6 +12,9 @@ use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, Tok
 use crate::math::{self, MathList};
 use crate::{DocumentId, Span};
 
+mod figures;
+pub use figures::{Extent, Float, FloatKind, FloatPlacement, GraphicSize};
+
 /// Maximum number of nested user-macro expansions at one use site.
 pub const MACRO_RECURSION_LIMIT: usize = 64;
 /// Maximum number of active nested `\input`/`\include` calls.
@@ -95,6 +98,16 @@ pub enum Inline {
         pt: f64,
         span: Span,
     },
+    /// `\includegraphics`: a box of the requested size. Image bytes are not
+    /// part of a compile request, so layout draws a draft-style frame; see
+    /// `parser::figures`.
+    Graphic {
+        file: String,
+        size: GraphicSize,
+        span: Span,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -151,6 +164,8 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+    /// A `figure`/`table` float with its separately parsed body.
+    Float(Float),
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -575,6 +590,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         subsection_counter: 0,
         equation_counter: 0,
         figure_counter: 0,
+        table_counter: 0,
+        float_frames: Vec::new(),
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
@@ -642,6 +659,8 @@ struct P<'a> {
     subsection_counter: u32,
     equation_counter: u32,
     figure_counter: u32,
+    table_counter: u32,
+    float_frames: Vec<figures::FloatFrame>,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
     /// Environment name, item count, an enumitem label template if given,
@@ -886,31 +905,7 @@ impl P<'_> {
                     span: span.merge(argument_span),
                 });
             }
-            "caption" => {
-                let (tokens, _) = self.required_group(name, span);
-                if self.env_stack.last().map(|(name, _)| name.as_str()) != Some("figure") {
-                    self.diags.push(Diagnostic::error(
-                        "\\caption is only supported inside a figure environment",
-                        Some(span),
-                        Some("typeset the caption text as an ordinary paragraph".into()),
-                    ));
-                    let style = self.style;
-                    para.extend(self.inlines_from_tokens(tokens, style));
-                } else {
-                    self.flush_paragraph(blocks, para);
-                    self.figure_counter += 1;
-                    self.current_counter = Some(self.figure_counter.to_string());
-                    let mut content = vec![Inline::Text {
-                        text: format!("Figure {}:", self.figure_counter),
-                        span,
-                        style: TextStyle::default(),
-                        space_before: true,
-                    }];
-                    content.extend(self.inlines_from_tokens(tokens, TextStyle::default()));
-                    blocks.push(Block::FigureCaption { content });
-                    self.finish_block_dependencies();
-                }
-            }
+            "caption" => self.caption(span, blocks, para),
             "item" => {
                 let gap_before = self
                     .list_stack
@@ -944,15 +939,8 @@ impl P<'_> {
                     )),
                 }
             }
-            "includegraphics" => {
-                let _ = self.optional_bracket_argument();
-                let _ = self.required_group(name, span);
-                self.diags.push(Diagnostic::warning(
-                    "\\includegraphics is unsupported; image loading is not implemented",
-                    Some(span),
-                    Some("omitted the image and continued".into()),
-                ));
-            }
+            "includegraphics" => self.include_graphics(span, para),
+            "centering" if self.float_centering() => {}
             _ if style_command(name) => {
                 self.skip_spaces();
                 let next = apply_style(self.style, name);
@@ -1573,8 +1561,8 @@ impl P<'_> {
             }
             if environment == "document" && self.has_document {
                 self.in_body = true;
-            } else if environment == "figure" && self.in_body {
-                self.flush_paragraph(blocks, para);
+            } else if FloatKind::from_environment(&environment).is_some() && self.in_body {
+                self.begin_float(&environment, span, blocks, para);
             } else if let (Some(style), true) = (paragraph_style(&environment), self.in_body) {
                 self.flush_paragraph(blocks, para);
                 self.paragraph_styles.push(style);
@@ -1643,8 +1631,8 @@ impl P<'_> {
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
             self.list_stack.pop();
-        } else if environment == "figure" {
-            self.flush_paragraph(blocks, para);
+        } else if FloatKind::from_environment(&environment).is_some() {
+            self.end_float(blocks, para);
         }
         if environment == "document" && self.has_document {
             self.flush_paragraph(blocks, para);
@@ -2566,6 +2554,14 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         "fontenc" => options.iter().all(|option| *option == "T1"),
         // Enumerate label templates are implemented; \setlist reports its own gap.
         "enumitem" => options.iter().all(|option| *option == "shortlabels"),
+        // `\includegraphics` sizes a draft-style frame; every use carries its
+        // own warning that image bytes never reach the compiler.
+        "graphicx" => options
+            .iter()
+            .all(|option| matches!(*option, "draft" | "final")),
+        // `[H]` placement is implemented; other float.sty commands report
+        // themselves as unsupported where they are used.
+        "float" => options.is_empty(),
         "geometry" => {
             !options.is_empty()
                 && options.iter().all(|option| match option.split_once('=') {

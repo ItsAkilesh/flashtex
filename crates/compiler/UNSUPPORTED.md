@@ -38,7 +38,7 @@ Diagnostics:
 - `\draw is not supported by this compiler version; unrestricted TeX math mode is not implemented` — recovery: skipped the command; any braced argument was typeset as plain text
 ## \includegraphics — image loading
 
-Figures lay out and number, but no image is loaded or drawn.
+Figures float, number and reserve the requested size, but image bytes are not part of a compile request: a draft-style frame is drawn instead of the image.
 
 Input:
 
@@ -50,7 +50,8 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\includegraphics is unsupported; image loading is not implemented` — recovery: omitted the image and continued
+- `\includegraphics{plot.png}: image bytes are not available to the compiler (compile requests carry text documents only), so the natural size is unknown` — recovery: drew a draft-style frame sized from the width/height/scale options only
+- `'─' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully` — recovery: the preview shows it correctly; the exported PDF will not
 ## tabular — tables
 
 Tables are typeset as plain text without column alignment or rules.

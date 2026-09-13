@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument};
+use crate::parser::{self, Block, Float, Inline, MacroDependency, MathRow, SourceDocument};
 use crate::Span;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -419,6 +419,16 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             span: mapped_span(*span, changes, deltas)?,
         },
         Block::PageBreak => Block::PageBreak,
+        Block::Float(float) => Block::Float(Float {
+            kind: float.kind,
+            placement: float.placement,
+            span: mapped_span(float.span, changes, deltas)?,
+            body: float
+                .body
+                .iter()
+                .map(|block| shift_block(block, changes, deltas))
+                .collect::<Option<Vec<_>>>()?,
+        }),
     })
 }
 
@@ -504,6 +514,17 @@ fn shift_inlines(
             Inline::HSpace { pt, span } => Some(Inline::HSpace {
                 pt: *pt,
                 span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Graphic {
+                file,
+                size,
+                span,
+                space_before,
+            } => Some(Inline::Graphic {
+                file: file.clone(),
+                size: *size,
+                span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
         })
         .collect()
@@ -650,7 +671,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Float(_) => &[],
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -662,6 +683,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Graphic { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -690,7 +712,7 @@ fn shifted_signature(
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Float(_) => &[],
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -702,6 +724,7 @@ fn shifted_signature(
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Graphic { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
