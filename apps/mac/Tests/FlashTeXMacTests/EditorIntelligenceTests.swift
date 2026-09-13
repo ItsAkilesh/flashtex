@@ -61,7 +61,7 @@ final class EditorIntelligenceTests: XCTestCase {
         XCTAssertEqual(EI.definitionTarget(in: s, at: 19), .citation(key: "knuth"))
         XCTAssertEqual(EI.definitionTarget(in: s, at: 36), .file(path: "ch/two", command: "include"))
         XCTAssertEqual(EI.definitionTarget(in: s, at: 47), .environment(name: "align"))
-        XCTAssertNil(EI.definitionTarget(in: s, at: 55)) // \alpha: a command, no definition
+        XCTAssertEqual(EI.definitionTarget(in: s, at: 55), .command(name: "alpha")) // routed to goToDefinition (EditorNavigation.swift), which explains a missing \newcommand
         XCTAssertNil(EI.definitionTarget(in: s, at: 61)) // plain text
     }
 

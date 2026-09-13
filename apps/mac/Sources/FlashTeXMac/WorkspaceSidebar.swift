@@ -167,10 +167,18 @@ private struct OutlineSection: View {
     let outline: [DocumentOutline.Item]
     @Binding var expanded: Set<DocumentOutline.Kind>
     let stale: Bool
+    /// Follow-caret: the id of the section (else environment) the caret is in
+    /// (`DocumentOutline.current`), refreshed by the leaf `CaretFollower` so a
+    /// caret move re-evaluates this section only when the current item changes.
+    @State private var currentID: String?
 
     var body: some View {
         let counts = DocumentOutline.counts(outline)
+        // Structure depth relative to the document's top level: an article's
+        // \section rows sit at depth 0, a report's \chapter rows do.
+        let topLevel = outline.filter { $0.kind == .section }.map(\.level).min() ?? 0
         Section {
+            CaretFollower(outline: outline, currentID: $currentID)
             if outline.isEmpty {
                 Text(stale ? "Scanning…" : "No sections, environments or labels in \(model.activePath)")
                     .font(.caption).foregroundStyle(.secondary)
@@ -181,16 +189,16 @@ private struct OutlineSection: View {
                     DisclosureGroup(isExpanded: Binding(get: { expanded.contains(kind) },
                                                         set: { if $0 { expanded.insert(kind) } else { expanded.remove(kind) } })) {
                         ForEach(items) { item in
-                            SidebarRow(selected: false) {
+                            SidebarRow(selected: item.id == currentID) {
                                 model.reveal(outlineItem: item)
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: Self.icon(item)).foregroundStyle(.secondary).font(.caption)
-                                    Text(item.title.isEmpty ? "(untitled)" : item.title).lineLimit(1)
+                                    Text(item.displayTitle.isEmpty ? "(untitled)" : item.displayTitle).lineLimit(1)
                                     Spacer(minLength: 0)
                                     Text("\(item.line)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
                                 }
-                                .padding(.leading, CGFloat(min(item.level, 4)) * 10)
+                                .padding(.leading, CGFloat(min(max(0, item.kind == .section ? item.level - topLevel : item.level), 4)) * 10)
                             }
                             .help(Self.tooltip(item))
                             .accessibilityLabel(Self.spoken(item))
@@ -215,8 +223,10 @@ private struct OutlineSection: View {
 
     static func icon(_ item: DocumentOutline.Item) -> String {
         switch item.kind {
-        case .section: return item.level <= 1 ? "number" : "number.square"
-        case .environment: return "curlybraces"
+        case .section: return item.command == "part" ? "book.closed" : item.level <= 1 ? "number" : "number.square"
+        case .environment:
+            if DocumentOutline.floatEnvironments.contains(item.title) { return item.title.hasPrefix("table") ? "tablecells" : "photo" }
+            return item.caption != nil ? "text.book.closed" : "curlybraces"
         case .label: return "tag"
         }
     }
@@ -224,7 +234,7 @@ private struct OutlineSection: View {
     static func tooltip(_ item: DocumentOutline.Item) -> String {
         switch item.kind {
         case .section: return "\\\(item.command){\(item.title)} — line \(item.line)"
-        case .environment: return "\\begin{\(item.title)} — line \(item.line)"
+        case .environment: return "\\begin{\(item.title)}" + (item.caption.map { " “\($0)”" } ?? "") + " — line \(item.line)"
         case .label: return "\\label{\(item.title)} — line \(item.line)"
         }
     }
@@ -232,9 +242,28 @@ private struct OutlineSection: View {
     static func spoken(_ item: DocumentOutline.Item) -> String {
         switch item.kind {
         case .section: return "\(item.command) \(item.title), line \(item.line)"
-        case .environment: return "environment \(item.title), line \(item.line)"
+        case .environment: return "environment \(item.title)" + (item.caption.map { ", \($0)" } ?? "") + ", line \(item.line)"
         case .label: return "label \(item.title), line \(item.line)"
         }
+    }
+}
+
+/// Leaf view that tracks the caret (a debounced `.task(id:)` on
+/// `model.caretUTF16`) and publishes the current outline item's id, so the
+/// outline rows re-evaluate only when the current item actually changes.
+private struct CaretFollower: View {
+    @Environment(ShellModel.self) var model
+    let outline: [DocumentOutline.Item]
+    @Binding var currentID: String?
+
+    var body: some View {
+        EmptyView()
+            .task(id: "\(model.caretUTF16)/\(outline.count)/\(outline.first?.utf16.location ?? -1)") {
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                let id = DocumentOutline.current(at: model.caretUTF16, in: outline)?.id
+                if id != currentID { currentID = id }
+            }
     }
 }
 

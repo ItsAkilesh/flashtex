@@ -66,6 +66,9 @@ struct SourceEditorView: NSViewRepresentable {
     /// (`goToMatching`, `project.openDocument`). The caret is placed on the
     /// clicked token first, so `goToMatching` sees it.
     var onDefinitionRequest: (EditorIntelligence.DefinitionTarget) -> Void = { _ in }
+    /// The user's own definition of a command name for the hover peek
+    /// (`ShellModel.definitionSummary`; EditorNavigation.swift).
+    var userDefinition: (String) -> String? = { _ in nil }
 
     /// A navigation selection that would move the caret backwards is deferred
     /// while the last user edit is younger than this.
@@ -154,6 +157,7 @@ struct SourceEditorView: NSViewRepresentable {
         }
         co.marks.update(marks, in: tv, reset: textReset)
         co.gutter?.update(marks: marks)
+        co.errorLens.update(marks: marks)
         if textReset { co.refreshBraceHighlight(tv) }
         if let selection, selection.token != co.appliedToken {
             co.appliedToken = selection.token
@@ -682,6 +686,8 @@ struct SourceEditorView: NSViewRepresentable {
         private(set) var gutter: LineNumberGutter?
         /// Hover quick-info popover.
         let hover = HoverController()
+        /// Inline diagnostic text at line ends (ErrorLens.swift).
+        let errorLens = ErrorLensPainter()
         /// Index of the caret's line, for the current-line band and the gutter.
         private(set) var currentLine: Int?
         /// Definition targets routed to the owner (evidence for tests).
@@ -785,6 +791,9 @@ struct SourceEditorView: NSViewRepresentable {
                 // calls this hook once, right after it places the caret).
                 completing.onCloserInserted = { [weak self] offset in self?.registerPendingCloser(offset) }
             }
+            errorLens.lineTable = { [weak self] in self?.syntax.highlighter ?? SyntaxHighlighter() }
+            errorLens.attach(tv)
+            errorLens.update(marks: parent.marks)
             setLineNumbers(lineNumbers, on: scroll)
             updateCurrentLine(tv)
         }
@@ -813,7 +822,7 @@ struct SourceEditorView: NSViewRepresentable {
             guard let tv = textView else { return nil }
             let text = tv.textStorage?.string as NSString? ?? ""
             let h = syntax.highlighter.length == text.length ? syntax.highlighter : nil
-            return EditorIntelligence.quickInfo(in: text, at: index, marks: marks.marks, highlighter: h)
+            return EditorIntelligence.quickInfo(in: text, at: index, marks: marks.marks, highlighter: h, userDefinition: parent.userDefinition)
         }
 
         /// ⌘-click: place the caret on the token and hand its target to the owner.
@@ -1160,9 +1169,14 @@ struct SourceEditorView: NSViewRepresentable {
             // UTF-16 breadcrumbs behind `match` are O(n) per fresh buffer (1.2 +
             // 1.3 ms at 560 KB, LargeDocumentEditorTests) and a prose keystroke
             // is almost never next to a delimiter.
-            let new = caret.length == 0 && !tv.hasMarkedText()
+            var new = caret.length == 0 && !tv.hasMarkedText()
                 && BraceMatcher.delimiterAdjacent(in: tv.textStorage, caretUTF16: caret.location)
                 ? BraceMatcher.match(in: currentText(of: tv), caretUTF16: caret.location) : nil
+            // `\begin{X}` ↔ `\end{X}` pair (EditorNavigation.swift), only when the
+            // caret's line has one (the pair scan is linear in the buffer).
+            if new == nil, caret.length == 0, !tv.hasMarkedText(), let pair = environmentPair(at: caret.location, in: tv), let end = pair.end {
+                new = BraceMatcher.Match(open: pair.begin, close: end)
+            }
             guard new != braceHighlight else { return }
             let length = tv.textStorage?.length ?? 0
             if let old = braceHighlight {
@@ -1178,11 +1192,22 @@ struct SourceEditorView: NSViewRepresentable {
             braceHighlight = new
         }
 
+        /// The environment pair whose `\begin`/`\end` the caret is on, or nil
+        /// (also when the caret's line has no `\begin{`/`\end{`, without a scan).
+        func environmentPair(at caret: Int, in tv: NSTextView) -> EditorNavigation.EnvironmentPair? {
+            let table = syntax.highlighter
+            guard let storage = tv.textStorage, table.length == storage.length, caret <= table.length else { return nil }
+            let line = table.lineRange(table.line(at: caret))
+            let lineText = (storage.string as NSString).substring(with: line)
+            guard lineText.contains("\\begin{") || lineText.contains("\\end{") || lineText.contains("\\begin {") || lineText.contains("\\end {") else { return nil }
+            return EditorNavigation.environmentPair(at: caret, in: currentText(of: tv) as NSString)
+        }
+
         /// ", matches line L column C" for the delimiter partner farthest from the caret.
         func matchSuffix(in tv: NSTextView) -> String {
             guard let h = braceHighlight else { return "" }
             let caret = tv.selectedRange().location
-            let adjacentToClose = h.close.location == caret || NSMaxRange(h.close) == caret
+            let adjacentToClose = NSLocationInRange(caret, h.close) || NSMaxRange(h.close) == caret // inside `\end{…}` counts too
             let partner = adjacentToClose ? h.open : h.close
             guard let lc = SourceEditorView.lineColumn(text: currentText(of: tv), utf16: partner.location) else { return "" }
             return ", matches line \(lc.line) column \(lc.column)"

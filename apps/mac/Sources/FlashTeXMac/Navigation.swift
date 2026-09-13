@@ -719,6 +719,18 @@ struct NavigationCommands: Commands {
         CommandMenu("Navigate") {
             Button("Go to Matching \\begin/\\end or \\label/\\ref") { model.goToMatching() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+            // Editor navigation lane (ShellModel+EditorNavigation.swift / EditorNavigation.swift).
+            Button("Go to Definition") { model.goToDefinition() }
+                .keyboardShortcut("j", modifiers: [.command, .control])
+            Button("Go to Symbol…") { model.editorNavigation.symbolPickerShown = true }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+            Divider()
+            Button("Select Environment") { model.selectEnvironment() }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+            Button("Wrap Selection in Environment…") { model.editorNavigation.wrapShown = true }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+            Button("Rename Symbol…") { model.presentRenameSymbol() }
+                .keyboardShortcut("r", modifiers: [.option, .shift])
             Divider()
             Button("Next Diagnostic") { model.goToDiagnostic(forward: true) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])

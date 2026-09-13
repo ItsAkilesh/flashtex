@@ -50,6 +50,7 @@ struct ContentView: View {
         }
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
+        .modifier(EditorNavigationSheets()) // Rename Symbol… / Wrap Selection in Environment… / Go to Symbol… (ShellModel+EditorNavigation.swift)
     }
 }
 
@@ -191,10 +192,12 @@ private struct EditorPane: View {
                 showLineNumbers: true,
                 onDefinitionRequest: { target in
                     switch target {
-                    case .label, .citation, .environment: model.goToMatching() // caret already on the token
+                    case .label, .citation: model.goToMatching() // caret already on the token
+                    case .environment, .command: model.goToDefinition() // ShellModel+EditorNavigation.swift: \newcommand/\newenvironment first, else the matching \begin/\end
                     case .file(let path, _): Task { await model.project.openDocument(path, role: .opened) }
                     }
-                }
+                },
+                userDefinition: { model.definitionSummary(forCommand: $0) } // hover peek of \newcommand bodies (EditorNavigation.swift)
             )
             CaptureBar()
             // The bridge line is lifecycle telemetry: shown once a bridge is

@@ -201,6 +201,36 @@ without leaving the app, or open an existing `.tex` file.
 - **Rename Citation** (*Edit › Rename Citation…*, also in the toolbar): plans
   a rename of a citation key across the project, shows every affected place,
   and applies it as one group after you confirm. Helper route only.
+- **Environments**: a caret on `\begin{X}` or `\end{X}` highlights both ends
+  like a bracket pair (nesting of the same name and stray `\end`s are
+  tolerated). **⌘⇧A** (*Navigate › Select Environment*) selects the innermost
+  environment around the caret and, pressed again, the enclosing one.
+  **⌘⇧W** (*Wrap Selection in Environment…*) asks for a name — common
+  environments first, then the ones the document already uses — and wraps
+  the selection: whole lines become an indented block on their own lines,
+  anything else is wrapped inline; one undoable edit, caret at the body.
+- **Go to definition** (⌘-click a `\foo`, or ⌃⌘J): selects the
+  `\newcommand`/`\renewcommand`/`\def`/`\let`/`\DeclareMathOperator`/
+  `\NewDocumentCommand` (for `\begin{X}`: `\newenvironment`/`\newtheorem`)
+  definition in whichever open document holds it. Hovering a user command
+  peeks its definition body under the standard documentation.
+- **Go to symbol** (⌘⇧T): a fuzzy picker over every heading, environment and
+  label of the open documents; Return goes there.
+- **Rename symbol** (⌥⇧R, *Navigate › Rename Symbol…*): with the caret on a
+  `\label{key}` or any `\ref`/`\eqref`/`\pageref`/`\autoref`/`\cref` use of it,
+  or on a command defined by `\newcommand`/`\def`, *Plan Rename* lists the
+  occurrences per open document (word-boundary aware — `\foo` never touches
+  `\foobar` — comments and verbatim skipped; a name that already exists is
+  refused) and *Apply* rewrites them: one undoable edit per document, or one
+  guarded `apply_group` per file (ledger undo) when the durable helper is
+  attached. Buffer-only: files that are not open are not touched.
+- **Outline** (sidebar): parts, chapters, sections and subsections nest by
+  depth; theorem-like environments and figures/tables show their caption or
+  first line; the row of the caret's section is highlighted and clicking any
+  row jumps to it.
+- **Error lens** (Preferences › *Show diagnostics inline*): each line with a
+  diagnostic shows its message dimmed at the end of the line (errors only by
+  default; a second toggle adds warnings), from the same marks as the gutter.
 - **Editor font size**: ⌘⌥= / ⌘⌥- / ⌘⌥0 (8–36 pt, default 13), or pinch over
   the editor.
 
@@ -434,6 +464,11 @@ you trust.
 | ⌘E / ⌘J | Use selection for Find / jump to (center) the current selection |
 | ⌘/ | Comment or uncomment the selected lines |
 | ⌘-click / ⌘⇧D | Go to matching `\label`↔`\ref`, `\begin`↔`\end`, open `\input` file |
+| ⌘-click / ⌃⌘J | Go to definition of a `\newcommand`/`\def`/`\DeclareMathOperator`/`\newenvironment` symbol |
+| ⌘⇧T | Go to symbol… (fuzzy picker over headings, environments and labels of the open documents) |
+| ⌘⇧A | Select environment (innermost `\begin`…`\end` around the caret; again widens) |
+| ⌘⇧W | Wrap selection in environment… |
+| ⌥⇧R | Rename symbol (`\label` key or user command, across the open documents) |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the selected Problems group |
 | ⌘⇧M | Toggle Problems panel |
@@ -468,7 +503,6 @@ order of each pane.
   Project, Rename Citation, Durable History and `\cite` navigation need the
   environment-variable launch described under *Compiling*.
 - Completion does not pop up while typing (open it with ⌃Space / Esc); signature help does.
-- `\begin{X}` ↔ `\end{X}` are not highlighted as a pair (use ⌘⇧D to jump).
 - `\includegraphics` outside a `figure`/`table` float (and its `trim`/`clip`/
   `viewport` keys), tables, bibliographies and other constructs listed under
   [Supported LaTeX](compiler.md#supported-latex) render as diagnostics, not

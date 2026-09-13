@@ -16,6 +16,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
     case completion, completionList, toggleComment, signatureHelp
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
+    case goToDefinition, goToSymbol, selectEnvironment, wrapInEnvironment, renameSymbol
     case selectPreviewItemSource
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch, renameCitation
@@ -194,6 +195,26 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Go to matching", shortcuts: ["⌘⇧D"], menu: "Navigate",
                          description: "Selects the matching \\begin/\\end or \\label/\\ref for the command under the caret; misses are explained in the footer.",
                          menuItem: "Go to Matching \\begin/\\end or \\label/\\ref")
+        case .goToDefinition:
+            return Entry(command: self, title: "Go to definition", shortcuts: ["⌃⌘J"], menu: "Navigate",
+                         description: "Selects the \\newcommand/\\def/\\DeclareMathOperator/\\newenvironment definition of the command or environment under the caret (in any open document; ⌘-click does the same); labels, citations and files keep their Go to Matching routes.",
+                         menuItem: "Go to Definition")
+        case .goToSymbol:
+            return Entry(command: self, title: "Go to symbol", shortcuts: ["⌘⇧T"], menu: "Navigate",
+                         description: "Opens the symbol picker: fuzzy search over every heading, environment and label of the open documents; ↑/↓ choose, Return goes there, Esc closes.",
+                         menuItem: "Go to Symbol…")
+        case .selectEnvironment:
+            return Entry(command: self, title: "Select environment", shortcuts: ["⌘⇧A"], menu: "Navigate",
+                         description: "Selects the innermost \\begin{X}…\\end{X} around the caret (nesting and unbalanced text tolerated); again selects the enclosing one. The caret on a \\begin or \\end also highlights its partner like a bracket.",
+                         menuItem: "Select Environment")
+        case .wrapInEnvironment:
+            return Entry(command: self, title: "Wrap selection in environment", shortcuts: ["⌘⇧W"], menu: "Navigate",
+                         description: "Asks for an environment name (suggestions: common ones, then those the document uses) and wraps the selection in \\begin{X}…\\end{X} — whole lines as an indented block, otherwise inline — as one undoable edit with the caret at the body.",
+                         menuItem: "Wrap Selection in Environment…")
+        case .renameSymbol:
+            return Entry(command: self, title: "Rename symbol", shortcuts: ["⌥⇧R"], menu: "Navigate",
+                         description: "Renames the \\label key (every \\ref/\\eqref/\\pageref/\\autoref/\\cref use) or the user command (every \\foo, word-boundary aware, comments and verbatim skipped) under the caret across the open documents: Plan shows the per-file counts, Apply is one undoable edit per document (one guarded apply_group per file when the durable helper is attached).",
+                         menuItem: "Rename Symbol…")
         case .nextDiagnostic:
             return Entry(command: self, title: "Next diagnostic", shortcuts: ["⌘⇧]"], menu: "Navigate",
                          description: "Selects the next diagnostic with a source in the active document (wrapping); refused if its span was edited since the compile.",

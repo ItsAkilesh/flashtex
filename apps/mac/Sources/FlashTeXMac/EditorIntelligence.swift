@@ -97,8 +97,11 @@ enum EditorIntelligence {
         }
     }
 
+    /// `userDefinition` answers the user's own `\newcommand`/`\def` of a
+    /// command name (ShellModel.definitionSummary); shown as a peek under
+    /// the standard documentation.
     static func quickInfo(in text: NSString, at utf16: Int, marks: [EditorDiagnostics.Mark] = [],
-                          highlighter: SyntaxHighlighter? = nil) -> QuickInfo? {
+                          highlighter: SyntaxHighlighter? = nil, userDefinition: (String) -> String? = { _ in nil }) -> QuickInfo? {
         let hits = marks.filter { NSLocationInRange(utf16, $0.nsRange) }
         let diagnostics = hits.map { m in
             QuickInfo.Diagnostic(severity: m.severity, message: m.message,
@@ -107,8 +110,10 @@ enum EditorIntelligence {
         let token = token(in: text, at: utf16, highlighter: highlighter)
         switch token {
         case .command(let name, let range)?:
-            return QuickInfo(title: "\\" + name, detail: CommandDocs.category(for: name), documentation: CommandDocs.documentation(for: name),
-                             diagnostics: diagnostics, range: range)
+            let user = userDefinition(name)
+            let doc = [CommandDocs.documentation(for: name), user.map { "Defined: " + $0 + " — ⌘-click to go there." }].compactMap { $0 }
+            return QuickInfo(title: "\\" + name, detail: user != nil ? "User command" : CommandDocs.category(for: name),
+                             documentation: doc.isEmpty ? nil : doc.joined(separator: "\n"), diagnostics: diagnostics, range: range)
         case .reference(let command, let key, let range)?:
             let isLabel = command == "label"
             let isCite = CommandDocs.citationCommands.contains(command)
@@ -139,9 +144,11 @@ enum EditorIntelligence {
         case file(path: String, command: String)
         /// `\begin`/`\end` name: the matching partner.
         case environment(name: String)
+        /// A control sequence: its `\newcommand`/`\def`/… definition (EditorNavigation.swift).
+        case command(name: String)
     }
 
-    /// What ⌘-click at `utf16` navigates to, or nil (plain text, a command).
+    /// What ⌘-click at `utf16` navigates to, or nil (plain text).
     static func definitionTarget(in text: NSString, at utf16: Int, highlighter: SyntaxHighlighter? = nil) -> DefinitionTarget? {
         switch token(in: text, at: utf16, highlighter: highlighter) {
         case .reference(let command, let key, _)?:
@@ -150,6 +157,8 @@ enum EditorIntelligence {
             return .file(path: path, command: command)
         case .environment(let name, _)?:
             return .environment(name: name)
+        case .command(let name, _)?:
+            return name == "begin" || name == "end" ? nil : .command(name: name)
         default:
             return nil
         }
