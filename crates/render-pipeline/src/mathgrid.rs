@@ -41,6 +41,37 @@ pub struct GridSpec {
     pub style: Style,
     /// `\openup\jot` (amsmath alignments).
     pub jot: f64,
+    /// The environment's own `\baselineskip`/`\lineskip`/`\lineskiplimit`
+    /// with interline glue between rows (amsmath `smallmatrix`); `None`
+    /// uses the enclosing text's.
+    pub pitch: Option<Pitch>,
+    /// Whether every row carries `\@arstrut`/`\strut@` (`smallmatrix` has none).
+    pub strut: bool,
+    /// Math glue (mu) before and after the `\vcenter` (`smallmatrix`:
+    /// `\null\,` ... `\,`).
+    pub outer_mu: f64,
+}
+
+/// amsgen.sty `\compute@ex@` (lines 104-125): amsmath's `\ex@` at font size
+/// `size` pt, in TeX's scaled-point arithmetic (1pt at 10pt, 1.11472pt at 12pt).
+pub fn amsmath_ex_pt(size: f64) -> f64 {
+    const PT: i64 = 65536;
+    let size_sp = (size * PT as f64).round() as i64;
+    if -size_sp < -20 * PT {
+        return 1.5;
+    }
+    let mut d = (-size_sp + 10 * PT) * 2;
+    let negative = d > 0;
+    d = d.abs() - 1000;
+    // `\vfuzz=.97\vfuzz`: the decimal .97 scans as 63570/65536.
+    let mut vfuzz = PT;
+    while d > 0 {
+        vfuzz = vfuzz * 63570 / PT;
+        d -= PT;
+    }
+    let d = PT - vfuzz;
+    let ex = if negative { PT - d } else { PT + d };
+    ex as f64 / PT as f64
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -69,6 +100,9 @@ impl GridSpec {
             gaps: Gaps::ColSep,
             style: Style::TEXT,
             jot: 0.0,
+            pitch: None,
+            strut: true,
+            outer_mu: 0.0,
         };
         match env.as_str() {
             "cases" => {
@@ -76,12 +110,32 @@ impl GridSpec {
                 spec.gaps = Gaps::Quads(1.0);
                 spec.trim_outer = true;
             }
+            // mathtools.sty `\MT_start_cases:nnnn` (lines 995-1026): `\left\lbrace
+            // \vcenter{\spread@equation \ialign{\strut@$\displaystyle##$\hfil
+            // &\quad\strut@$\displaystyle##$\hfil}}\right.`.
+            "dcases" => {
+                spec.gaps = Gaps::Quads(1.0);
+                spec.trim_outer = true;
+                spec.style = Style::DISPLAY;
+                spec.jot = JOT;
+            }
             "matrix" | "pmatrix" | "bmatrix" | "Bmatrix" | "vmatrix" | "Vmatrix" => spec.trim_outer = true,
+            // amsmath.sty lines 1060-1066: `\null\,\vcenter{\baselineskip6\ex@
+            // \lineskip1.5\ex@ \lineskiplimit\lineskip \ialign{\hfil
+            // $\scriptstyle##$\hfil&&\thickspace\hfil$\scriptstyle##$\hfil}}\,`.
             "smallmatrix" => {
+                let ex = amsmath_ex_pt(size as f64);
                 spec.trim_outer = true;
                 spec.style = Style::SCRIPT;
                 spec.colsep = 0.0;
                 spec.gaps = Gaps::Quads(5.0 / 18.0);
+                spec.pitch = Some(Pitch {
+                    baselineskip: 6.0 * ex,
+                    lineskip: 1.5 * ex,
+                    lineskiplimit: 1.5 * ex,
+                });
+                spec.strut = false;
+                spec.outer_mu = 3.0;
             }
             "aligned" | "alignedat" | "split" => {
                 spec.gaps = Gaps::Pairs;
@@ -145,7 +199,7 @@ fn grid_env(src: &str, span: Span, size: u32) -> Option<(String, Vec<f64>)> {
 
 /// Line pitch parameters of the enclosing text (`\baselineskip`,
 /// `\lineskip`, `\lineskiplimit`), in points.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pitch {
     pub baselineskip: f64,
     pub lineskip: f64,
@@ -158,9 +212,11 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
     let ncols = rows.iter().map(Vec::len).max().unwrap_or(0);
     let cols: Vec<char> = columns.chars().chain(std::iter::repeat('c')).take(ncols).collect();
     let widths: Vec<f64> = (0..ncols).map(|j| rows.iter().filter_map(|r| r.get(j)).map(|b| b.width).fold(0.0, f64::max)).collect();
+    let pitch = spec.pitch.unwrap_or(pitch);
+    let outer = spec.outer_mu * p.mu();
     // Column x origins and the total width.
     let mut xs = Vec::with_capacity(ncols);
-    let mut x = 0.0;
+    let mut x = outer;
     let quad = p.quad;
     match spec.gaps {
         Gaps::ColSep => {
@@ -190,10 +246,10 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
             }
         }
     }
-    let width = x;
+    let width = x + outer;
     // Row extents: the strut, then the cells.
     let bs = pitch.baselineskip + spec.jot;
-    let strut = (spec.stretch * 0.7 * pitch.baselineskip, spec.stretch * 0.3 * pitch.baselineskip);
+    let strut = if spec.strut { (spec.stretch * 0.7 * pitch.baselineskip, spec.stretch * 0.3 * pitch.baselineskip) } else { (0.0, 0.0) };
     let mut extents: Vec<(f64, f64)> = rows
         .iter()
         .enumerate()
@@ -215,9 +271,10 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
     baselines.push(y);
     for i in 1..extents.len() {
         let (prev_d, h) = (extents[i - 1].1, extents[i].0);
-        let dist = if spec.jot > 0.0 {
+        let dist = if spec.jot > 0.0 || spec.pitch.is_some() {
+            // `\openup\jot` advances `\lineskip` and `\lineskiplimit` too.
             let glue = bs - prev_d - h;
-            if glue < pitch.lineskiplimit { prev_d + h + pitch.lineskip } else { bs }
+            if glue < pitch.lineskiplimit + spec.jot { prev_d + h + pitch.lineskip + spec.jot } else { bs }
         } else {
             prev_d + h
         };
@@ -267,10 +324,14 @@ pub fn delimiter(metrics: &dyn MathFontMetrics, ch: Option<char>, height: f64, d
     let wanted = (delta1 * 2.0 * p.delimiter_factor).max(2.0 * delta1 - p.delimiter_shortfall);
     let sizes = metrics.delimiter_sizes(ch, style.size_class());
     let ext = metrics.delimiter_extensible(ch, style.size_class());
+    // `char_box` width includes the italic correction, set as a kern so the
+    // glyph box keeps its TFM width.
     let glyph_box = |g: &Glyph| {
-        let mut b = MathBox::glyph(g);
-        b.width += g.italic;
-        b
+        if g.italic == 0.0 {
+            MathBox::glyph(g)
+        } else {
+            MathBox::hlist(vec![MathBox::glyph(g), MathBox::kern(g.italic)])
+        }
     };
     let (b, short) = if let Some(chosen) = sizes.iter().find(|g| g.total_height() >= wanted) {
         (glyph_box(chosen), None)
@@ -349,6 +410,14 @@ mod tests {
     }
 
     #[test]
+    fn amsmath_ex_follows_compute_ex() {
+        assert_eq!(amsmath_ex_pt(10.0), 1.0);
+        assert!((amsmath_ex_pt(12.0) - 1.11472).abs() < 1e-4, "{}", amsmath_ex_pt(12.0));
+        assert_eq!(amsmath_ex_pt(25.0), 1.5);
+        assert!(amsmath_ex_pt(8.0) < 1.0);
+    }
+
+    #[test]
     fn cases_and_matrices_take_amsmath_shapes() {
         let src = "\\begin{cases} a & b \\\\ c & d \\end{cases}";
         let spec = GridSpec::from_source(src, Span::in_document(Default::default(), 0, 6), 10);
@@ -372,6 +441,9 @@ mod tests {
             gaps: Gaps::ColSep,
             style: Style::TEXT,
             jot: 0.0,
+            pitch: None,
+            strut: true,
+            outer_mu: 0.0,
         };
         let pitch = Pitch {
             baselineskip: 12.0,

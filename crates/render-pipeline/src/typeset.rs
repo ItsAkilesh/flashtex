@@ -739,7 +739,9 @@ impl<'a> Context<'a> {
                 _ => math_glue_em(&flashtex_compiler::math::MathList { atoms: vec![a.clone()] }),
             })
             .sum();
-        if nested_glue_em.abs() > 0.0 {
+        // With math-layout's `Glue` atom (feature `amsmath-inline`) nested
+        // glue is set, not dropped.
+        if nested_glue_em.abs() > 0.0 && cfg!(not(feature = "amsmath-inline")) {
             let src = self.source(span);
             let msg = format!("\\quad/\\qquad glue ({nested_glue_em} em in this formula) inside \\left...\\right or a sub-formula dropped: math-layout has no kern atom and only top-level glue can be split into separate runs");
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
@@ -2759,6 +2761,37 @@ pub fn convert_math_classed(
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
         let mut out: Vec<ml::Atom> = match &a.nucleus {
             N::Text(text) => vec![sink.atom(text)],
+            // Glue inside a sub-formula (`\operatorname*{arg\,max}`, `\;`
+            // inside `\left...\right`): math-layout's `Glue` atom, which
+            // takes no part in atom spacing, like TeX's glue node. Top-level
+            // glue is still split out by `split_at_spaces`.
+            #[cfg(feature = "amsmath-inline")]
+            N::Space { em } if a.superscript.is_none() && a.subscript.is_none() => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            // amsmath `\genfrac` family (`\dfrac`, `\tfrac`, `\binom`, ...):
+            // a Rule 15e fraction with its delimiters, in a group (Ord),
+            // under the explicit style when one is given.
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, thickness_pt, left, right, style } => {
+                let one = |s: &str| {
+                    let mut it = s.chars();
+                    match (it.next(), it.next()) {
+                        (Some(c), None) => Some(c),
+                        _ => None,
+                    }
+                };
+                let frac = ml::Atom::genfrac(sub(numerator, sink), sub(denominator, sink), *thickness_pt, one(left), one(right));
+                match style {
+                    Some(s) => vec![ml::Atom::styled(ml_style(*s), ml::MathList::new(vec![frac]))],
+                    None => vec![frac],
+                }
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body, horizontal, vertical } => vec![ml::Atom::phantom(sub(body, sink), *horizontal, *vertical)],
+            // amsopn `\qopname`: `\mathop{\operator@font ...}\limits` or `\nolimits`.
+            #[cfg(feature = "amsmath-inline")]
+            N::Operator { body, limits } => vec![ml::Atom::new(ml::AtomClass::Op, ml::Nucleus::List(sub(body, sink))).with_limits(if *limits { ml::Limits::Limits } else { ml::Limits::NoLimits })],
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, align } => vec![ml::Atom::subarray(rows.iter().map(|r| sub(r, sink)).collect(), *align)],
             // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
             // math list. math-layout has no kern/glue atom, so the glue is
             // dropped (inter-atom spacing across it is what TeX's mlist_to_hlist
@@ -2776,6 +2809,19 @@ pub fn convert_math_classed(
             N::SizedDelimiter { glyph, role: DelimiterRole::Right, .. } if !stack.is_empty() => {
                 let (left, body) = stack.pop().expect("checked non-empty");
                 vec![ml::Atom::left_right(left, glyph.chars().next(), ml::MathList::new(body))]
+            }
+            // amsmath `\big(`..`\Bigg]` (`\bBigg@`): math-layout's
+            // `BigDelimiter` at 1/1.5/2/2.5 `\big@size` (compiler scale
+            // 1.2/1.8/2.4/3.0), in the command's class.
+            #[cfg(feature = "amsmath-inline")]
+            N::SizedDelimiter { glyph, role, scale } if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) => {
+                let class = match role {
+                    DelimiterRole::Open => ml::AtomClass::Open,
+                    DelimiterRole::Close => ml::AtomClass::Close,
+                    DelimiterRole::Rel => ml::AtomClass::Rel,
+                    _ => ml::AtomClass::Ord,
+                };
+                vec![ml::Atom::big_delimiter(class, glyph.chars().next(), scale / 1.2)]
             }
             // `\big(`..`\Bigg]` (and an unmatched `\right`): math-layout has
             // no fixed-step delimiter atom, so the glyph is set at text size
@@ -2920,6 +2966,18 @@ pub fn convert_math_classed(
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// math-layout's style for a compiler `\genfrac` style argument.
+#[cfg(feature = "amsmath-inline")]
+fn ml_style(s: flashtex_compiler::math::MathStyle) -> ml::Style {
+    use flashtex_compiler::math::MathStyle as S;
+    match s {
+        S::Display => ml::Style::DISPLAY,
+        S::Text => ml::Style::TEXT,
+        S::Script => ml::Style::SCRIPT,
+        S::ScriptScript => ml::Style::SCRIPT_SCRIPT,
+    }
 }
 
 /// Lays out the kern-split runs of one formula (`runs[i]` is followed by
@@ -3112,6 +3170,15 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
                 }
             }
             N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -3138,6 +3205,12 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
                 N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } => 0.0,
+                #[cfg(feature = "amsmath-inline")]
+                N::GenFraction { numerator, denominator, .. } => math_glue_em(numerator) + math_glue_em(denominator),
+                #[cfg(feature = "amsmath-inline")]
+                N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_glue_em(r),
+                #[cfg(feature = "amsmath-inline")]
+                N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -3198,11 +3271,20 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             // stretched by math-layout's own Rule 19, so they are exact.
             N::SizedDelimiter { glyph, scale, role } => {
                 use flashtex_compiler::math::DelimiterRole;
-                if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) && *scale != 1.0 {
+                if !matches!(role, DelimiterRole::Left | DelimiterRole::Right) && *scale != 1.0 && cfg!(not(feature = "amsmath-inline")) {
                     out.push(format!("\\big-family delimiter {glyph:?} (scale {scale}) set at text size: math-layout has no fixed-step delimiter atom"));
                 }
             }
             N::Symbol(_) | N::Text(_) | N::Space { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_approximations(numerator, out);
+                math_approximations(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_approximations(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_approximations(r, out)),
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);
@@ -4617,6 +4699,11 @@ fn math_items(
             role: display::RunRole::Math,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
+        // The advance TeX used: the laid-out glyph box's width (the TFM
+        // width, pdfTeX's `/Widths`), not the painted OpenType glyph's own.
+        #[cfg(feature = "amsmath-inline")]
+        let adv = g.width;
+        #[cfg(not(feature = "amsmath-inline"))]
         let adv = face.pt(i64::from(face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
         let (h, d) = if b.empty {
             (0.0, 0.0)

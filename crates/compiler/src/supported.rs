@@ -124,6 +124,7 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("setlist", "[list]{options}", "enumitem itemsep and topsep; other keys warn"),
     ("newcommand", "{\\name}[n]{body}", "defines a macro with 0-9 arguments; rejects an existing name"),
     ("renewcommand", "{\\name}[n]{body}", "redefines an existing macro"),
+    ("DeclareMathOperator", "*{\\name}{text}", "defines \\name as \\operatorname{text}; the starred form takes limits"),
     ("begin", "{env}", "opens a supported environment"),
     ("end", "{env}", "closes the innermost open environment"),
     ("input", "{path}", "expands a project-relative document in place"),
@@ -241,9 +242,33 @@ const SIZE_DECLARATIONS: &[&str] = &[
 /// (names, arguments, description, renders).
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (
-        &["frac", "dfrac", "tfrac", "cfrac"],
+        &["frac", "cfrac"],
         "{num}{den}",
-        "fraction; the d/t/c forms lay out as \\frac",
+        "fraction; \\cfrac lays out as \\frac",
+        true,
+    ),
+    (
+        &["dfrac", "tfrac"],
+        "{num}{den}",
+        "amsmath \\genfrac fraction in display or text style",
+        true,
+    ),
+    (
+        &["genfrac"],
+        "{left}{right}{thickness}{style}{num}{den}",
+        "amsmath generalized fraction: delimiters, pt rule thickness and a 0-3 style",
+        true,
+    ),
+    (
+        &["phantom", "hphantom", "vphantom"],
+        "{x}",
+        "empty box with the width and/or height and depth of the argument",
+        true,
+    ),
+    (
+        &["substack"],
+        "{a \\\\ b}",
+        "amsmath centred script-style rows for limits",
         true,
     ),
     (
@@ -255,7 +280,7 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (
         &["binom", "dbinom", "tbinom"],
         "{n}{k}",
-        "binomial: two-row grid in parentheses",
+        "amsmath binomial: zero-thickness \\genfrac in parentheses; d/t forms force the style",
         true,
     ),
     (
@@ -271,9 +296,9 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
-        &["operatorname"],
+        &["operatorname", "operatornamewithlimits"],
         "{name}",
-        "upright named operator; starred form too",
+        "upright named operator (\\mathop); starred and withlimits forms take limits",
         true,
     ),
     (&["bmod", "mod"], "", "upright mod", true),

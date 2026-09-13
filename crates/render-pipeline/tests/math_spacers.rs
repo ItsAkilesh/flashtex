@@ -93,6 +93,26 @@ fn inter_atom_spacing_survives_across_the_glue() {
     assert!((gap(&rel, 'a', '=') - (gap(&glyphs("$ab$").0, 'a', 'b') + 5.0 * mu)).abs() < 0.3, "sanity: Ord-Rel spacing is one thick space");
 }
 
+/// With `amsmath-inline`, glue inside a fence pair or a sub-formula is a
+/// math-layout `Glue` atom: set at its width, never reported.
+#[cfg(feature = "amsmath-inline")]
+#[test]
+fn glue_inside_a_fence_pair_is_set() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let (plain, _) = glyphs("$\\left( a b \\right)$");
+    let (g, diags) = glyphs("$\\left( a \\quad b \\right)$");
+    assert!(!diags.iter().any(|d| d.starts_with("math_limitation")), "{diags:?}");
+    // `\quad` is 18mu of the 10pt family-2 quad (10pt).
+    let got = gap(&g, 'a', 'b') - gap(&plain, 'a', 'b');
+    assert!((got - 10.0).abs() < 0.02, "quad inside the fences: {got}");
+    let (_, diags) = glyphs("$\\frac{a\\quad b}{c}$");
+    assert!(!diags.iter().any(|d| d.contains("sub-formula")), "{diags:?}");
+}
+
+#[cfg(not(feature = "amsmath-inline"))]
 #[test]
 fn glue_inside_a_fence_pair_stays_a_typed_limitation() {
     if !lm_available() {

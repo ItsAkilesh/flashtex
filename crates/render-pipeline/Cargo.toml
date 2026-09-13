@@ -26,6 +26,15 @@ path = "src/bin/flashtex-render.rs"
 # it; it builds only against a compiler that carries the variant. Off by
 # default so the crate builds against the pinned vendor.
 compiler-text-nucleus = []
+# FT-061 amsmath inline constructs: the compiler's `GenFraction`
+# (`\dfrac`/`\tfrac`/`\binom`/`\genfrac`), `Phantom`, `Operator`
+# (`\operatorname`, `\DeclareMathOperator`) and `SubArray` (`\substack`)
+# nuclei, set with math-layout's delimited `Fraction`, `BigDelimiter`
+# (`\big`..`\Bigg`), `Phantom`, `SubArray` and `Glue` (nested `\,`/`\quad`).
+# Builds only against a compiler and math-layout that carry them
+# (crates/compiler and crates/math-layout of branch
+# agent/kabir-claude/amsmath-inline); off until vendor/ is re-pinned.
+amsmath-inline = []
 
 [dependencies]
 flashtex-compiler = { path = "vendor/compiler" }
