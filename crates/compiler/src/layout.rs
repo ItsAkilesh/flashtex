@@ -1047,6 +1047,18 @@ impl LayoutCursor {
                     );
                 }
             }
+            Block::TitleBlock { .. } => {
+                // `\@maketitle` opens with `\newpage \null \vskip 2em`. Like
+                // `Block::PageBreak`, the page break is unconditional once
+                // something precedes it, but is skipped when `\maketitle` is
+                // the very first thing in the document — matching real TeX,
+                // whose page builder never ships an empty first page for a
+                // `\newpage` that has nothing queued yet.
+                if !self.first_block {
+                    self.force_page_break();
+                }
+                self.vertical_gap(2.0 * body_size);
+            }
         }
         self.first_block = false;
         self.state()
@@ -1179,6 +1191,59 @@ impl LayoutCursor {
                     self.toc_entry(entry, *span, index == 0);
                 }
                 self.resolved_toc = entries;
+            }
+            Block::TitleBlock {
+                title,
+                authors,
+                date,
+            } => {
+                // `\@maketitle`, transcribed from `article.cls` (see
+                // `crates/title-layout/src/title.rs`, this compiler's own
+                // measured-layout oracle for these same numbers): `\LARGE`
+                // title, `\vskip 1.5em`, `\large` author block, `\vskip
+                // 1em`, `\large` date, trailing `\vskip 1.5em`. All four
+                // `\vskip` amounts are plain, unconditionally additive glue
+                // in the body (`\normalsize`) font, per that crate's own
+                // documented boundary — never `\parskip`, which is why this
+                // uses `vertical_gap`/`newline` directly rather than
+                // `Block::Styled`'s ordinary per-paragraph gap.
+                let title_size = size_declaration_pt(FontSizeLevel::Large3, body_size);
+                let author_size = size_declaration_pt(FontSizeLevel::Large1, body_size);
+                self.style = Some(ParagraphStyle::Center);
+
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                // `prepare_block` positioned `y` with `vertical_gap`, not
+                // `newline`, so the line metrics still reflect whatever
+                // preceded this block (or the cursor's own initial body-size
+                // line, when `\maketitle` is the very first thing in the
+                // document). `place`'s own `ensure_extents` then grows `y` by
+                // the difference to the title's actual (larger) size, the
+                // same self-correction an ordinary first-block `\section`
+                // already relies on to sit below the margin correctly.
+                emit(self, title, title_size, Font::TimesRoman);
+                self.newline(author_size);
+                self.vertical_gap(1.5 * body_size);
+
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                emit(self, authors, author_size, Font::TimesRoman);
+                self.newline(if date.is_some() {
+                    author_size
+                } else {
+                    body_size
+                });
+                self.vertical_gap(body_size);
+
+                if let Some(date) = date {
+                    self.x = self.left_edge();
+                    self.content_end = self.x;
+                    emit(self, date, author_size, Font::TimesRoman);
+                    self.newline(body_size);
+                }
+                self.vertical_gap(1.5 * body_size);
+
+                self.style = None;
             }
             Block::Rule { span } => {
                 let width = self.constraints.measure_pt;
@@ -1630,19 +1695,29 @@ pub fn layout_converged(
 
 fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
-        let inlines: &[Inline] = match block {
-            Block::Paragraph(inlines) => inlines,
+        match block {
+            Block::Paragraph(inlines) => visit_inline_references(inlines, visitor),
             Block::ListItem { content, .. }
             | Block::Heading { content, .. }
             | Block::FigureCaption { content }
-            | Block::Styled { content, .. } => content,
+            | Block::Styled { content, .. } => visit_inline_references(content, visitor),
+            Block::TitleBlock {
+                title,
+                authors,
+                date,
+            } => {
+                visit_inline_references(title, visitor);
+                visit_inline_references(authors, visitor);
+                if let Some(date) = date {
+                    visit_inline_references(date, visitor);
+                }
+            }
             Block::VSpace { .. }
             | Block::Rule { .. }
             | Block::PageBreak
             | Block::Verbatim { .. }
-            | Block::TableOfContents { .. } => &[],
-        };
-        visit_inline_references(inlines, visitor);
+            | Block::TableOfContents { .. } => {}
+        }
     }
 }
 

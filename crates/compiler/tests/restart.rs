@@ -107,6 +107,30 @@ fn diagnostics_are_deterministic_across_restarts() {
 }
 
 #[test]
+fn maketitle_title_block_survives_incremental_edits_without_drift() {
+    // `Block::TitleBlock` needed its own `shift_block`/signature handling
+    // (see `incremental.rs`); this exercises that path directly — editing
+    // body text after `\maketitle` (the title block's spans must shift,
+    // not vanish or duplicate), then the title itself, then the author
+    // list — each checked warm against a clean rebuild.
+    let sequence = [
+        "\\title{Draft Title}\\author{A. Author}\\begin{document}\\maketitle\nBody text.\n\\end{document}",
+        "\\title{Draft Title}\\author{A. Author}\\begin{document}\\maketitle\nBody text edited.\n\\end{document}",
+        "\\title{Final Title}\\author{A. Author}\\begin{document}\\maketitle\nBody text edited.\n\\end{document}",
+        "\\title{Final Title}\\author{A. Author \\and B. Author}\\begin{document}\\maketitle\nBody text edited.\n\\end{document}",
+    ];
+    let mut session = Session::new();
+    for (step, text) in sequence.iter().enumerate() {
+        let warm = render(&mut session, text);
+        assert_eq!(
+            warm,
+            clean(text),
+            "step {step}: warm title-block output diverged from a clean build"
+        );
+    }
+}
+
+#[test]
 fn a_long_editing_session_never_drifts_from_a_clean_build() {
     // Many small edits in one session: drift, if any, accumulates.
     let mut session = Session::new();
