@@ -838,7 +838,10 @@ struct PreviewV2Pane: View {
 
     private func pages(_ frame: V2Frame, stale: Bool) -> some View {
         PreviewV2View(frame: frame, dark: model.darkPreview, stale: stale, caretPath: model.activePath, caretByte: model.caretByte,
-                      zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 }) { hit in
+                      zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 },
+                      // "the pdf moves to where the changes are happening" (CaretFollow.swift)
+                      follow: model.caretFollow.request,
+                      onUserScroll: { model.caretFollow.userDidScrollPreview() }) { hit in
             model.navigateV2(hit)
         }
     }
@@ -960,6 +963,10 @@ struct PreviewV2View: View {
     /// Zoom multiplier over the fit-to-width scale (PreviewZoom.swift).
     var zoom: CGFloat = 1
     var onFitScale: ((CGFloat) -> Void)? = nil
+    /// Latest caret-follow request (CaretFollow.swift); acted on once per token.
+    var follow: CaretFollowController.Request? = nil
+    /// Reported when the reader scrolls this pane by hand.
+    var onUserScroll: (() -> Void)? = nil
     let onSelect: (V2Geometry.Hit) -> Void
     @Environment(\.displayScale) private var displayScale
 
@@ -993,7 +1000,7 @@ struct PreviewV2View: View {
                     }
                 }
                 .padding(24)
-                .background(PreviewAnchorKeeper(layout: layout))
+                .background(PreviewAnchorKeeper(layout: layout, follow: follow, onUserScroll: onUserScroll))
             }
             .onChange(of: fit, initial: true) { _, f in onFitScale?(f) }
         }

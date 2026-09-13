@@ -33,6 +33,7 @@ import SwiftUI
 /// | `autoCloseBraces`       | nothing in AppKit; the editor's typing handler reads the flag            |
 /// | `completionPopup`       | nothing in AppKit; `CompletingTextView.requestCompletion` reads the flag |
 /// | `spellCheck`            | nothing here; `LaTeXSpellChecker` observes the flag                      |
+/// | `followCaretInPreview`  | nothing in AppKit; `CaretFollow` reads the flag before each follow        |
 ///
 /// Reading a property inside `withObservationTracking` (or a SwiftUI body)
 /// registers for its changes; `generation` changes with every property.
@@ -86,6 +87,7 @@ final class EditorPreferences {
         var autoCloseBraces: Bool
         var completionPopup: Bool
         var spellCheck: Bool
+        var followCaretInPreview: Bool
     }
 
     // MARK: defaults and ranges
@@ -95,7 +97,8 @@ final class EditorPreferences {
 
     static let defaultSnapshot = Snapshot(
         fontFamily: nil, fontSize: 13, lineWrapping: true, tabWidth: 4, indentStyle: .spaces,
-        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true)
+        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true,
+        followCaretInPreview: true)
 
     // MARK: storage keys (versioned)
 
@@ -108,6 +111,7 @@ final class EditorPreferences {
 
     enum Key: String, CaseIterable {
         case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck
+        case followCaretInPreview
         var storageKey: String { "FlashTeX.EditorPreferences.v\(EditorPreferences.schemaVersion).\(rawValue)" }
     }
 
@@ -183,11 +187,20 @@ final class EditorPreferences {
         set { update(\.spellCheck, \.spellCheck, newValue, key: .spellCheck) }
     }
 
+    /// Whether the preview scrolls to the caret as you edit (CaretFollow.swift).
+    /// Default ON: the owner asked for the behaviour. Off means no automatic
+    /// preview scrolling at all; ⌘⇧J still reveals the caret on demand.
+    var followCaretInPreview: Bool {
+        get { access(keyPath: \.followCaretInPreview); return storage.followCaretInPreview }
+        set { update(\.followCaretInPreview, \.followCaretInPreview, newValue, key: .followCaretInPreview) }
+    }
+
     /// All properties at once (registers for every property's changes).
     var snapshot: Snapshot {
         Snapshot(fontFamily: fontFamily, fontSize: fontSize, lineWrapping: lineWrapping, tabWidth: tabWidth,
                  indentStyle: indentStyle, appearance: appearance, autoCloseBraces: autoCloseBraces,
-                 completionPopup: completionPopup, spellCheck: spellCheck)
+                 completionPopup: completionPopup, spellCheck: spellCheck,
+                 followCaretInPreview: followCaretInPreview)
     }
 
     // MARK: derived values
@@ -299,6 +312,10 @@ final class EditorPreferences {
             s.spellCheck = value
         } else { repairs.append(.spellCheck) }
 
+        if let value = defaults.object(forKey: Key.followCaretInPreview.storageKey) as? Bool {
+            s.followCaretInPreview = value
+        } else { repairs.append(.followCaretInPreview) }
+
         withMutation(keyPath: \.generation) {
             storage = s
             generation += 1
@@ -313,6 +330,7 @@ final class EditorPreferences {
         fontFamily = d.fontFamily; fontSize = d.fontSize; lineWrapping = d.lineWrapping; tabWidth = d.tabWidth
         indentStyle = d.indentStyle; appearance = d.appearance; autoCloseBraces = d.autoCloseBraces
         completionPopup = d.completionPopup; spellCheck = d.spellCheck
+        followCaretInPreview = d.followCaretInPreview
     }
 
     /// Versioned migration. Absent stamp: nothing was ever stored (or only
@@ -351,6 +369,7 @@ final class EditorPreferences {
         case .autoCloseBraces: defaults.set(storage.autoCloseBraces, forKey: k)
         case .completionPopup: defaults.set(storage.completionPopup, forKey: k)
         case .spellCheck: defaults.set(storage.spellCheck, forKey: k)
+        case .followCaretInPreview: defaults.set(storage.followCaretInPreview, forKey: k)
         }
     }
 
@@ -527,6 +546,8 @@ struct EditorPreferencesView: View {
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
                 Toggle("Check spelling", isOn: $prefs.spellCheck)
                     .accessibilityHint("Underlines misspelled words in prose; commands, math, comments and labels are skipped.")
+                Toggle("Preview follows the caret", isOn: $prefs.followCaretInPreview)
+                    .accessibilityHint("While you edit, the preview scrolls to what you are changing — only when it is off screen, and not while you scroll the preview yourself. Command-Shift-J reveals the caret at any time.")
                 ErrorLensPreferenceRows() // inline diagnostic text at line ends (ErrorLens.swift)
             }
             if showConversion { ConversionPreferencesSection() } // provider picker, model, API key (Keychain) (ConversionPreferencesView.swift)

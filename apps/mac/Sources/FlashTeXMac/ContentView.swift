@@ -281,7 +281,10 @@ private struct PreviewPane: View {
                     .modifier(PreviewMagnify()) // pinch to zoom (PreviewZoom.swift)
             } else if let result = model.result {
                 PreviewView(result: result, dark: model.darkPreview, caretItems: model.caretItems,
-                            zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 }) { source, text in
+                            zoom: model.previewZoom, onFitScale: { model.previewFitScale = $0 },
+                            // "the pdf moves to where the changes are happening" (CaretFollow.swift)
+                            follow: model.caretFollow.request,
+                            onUserScroll: { model.caretFollow.userDidScrollPreview() }) { source, text in
                     guard let source else { model.navigationNote = "This item has no source mapping."; return }
                     model.navigate(to: source, expectedText: text)
                 }

@@ -293,8 +293,18 @@ FlashTeX compiles through a **producer** process that ships inside the app.
   click is refused with "recompile to navigate" rather than selecting the
   wrong text.
 - **Caret sync**: preview text whose source contains the editor caret is
-  highlighted (accent fill + underline) and the page scrolls into view;
+  highlighted (accent fill + underline);
   *Navigate › Reveal Caret in Preview* (⌘⇧J) selects the whole span.
+- **The preview follows what you are editing** (Preferences › *Preview follows
+  the caret*, on by default): shortly after you stop typing — and after the
+  recompiled preview lands — the pane scrolls to the text the caret is in, but
+  only when that text is off screen or within a line of an edge; anything
+  already in view is left exactly where it is, so the preview never twitches
+  while you type. Scrolling the preview yourself (wheel, trackpad, scroller)
+  stops it following until your next edit, and ⌘⇧J always brings it back at
+  once. A caret that maps to nothing — a comment, the preamble, text the
+  compiler has not laid out yet — moves nothing. Short hops are animated;
+  long jumps, and "Reduce motion", are instant.
 - **Dark preview** (toolbar switch): inverts page and text colours on screen
   only; exports are unaffected. Its initial state follows the editor
   appearance preference.
@@ -433,6 +443,7 @@ you trust.
 | Editor appearance: System / Light / Dark (also seeds the dark-preview switch) | System |
 | Auto-close brackets & math | on |
 | Show completion list (off disables ⌃Space / Esc completion) | on |
+| Preview follows the caret while you edit | on |
 | Capture conversion: provider (None / xAI), key in Keychain, model | None |
 | Restore Defaults | |
 
