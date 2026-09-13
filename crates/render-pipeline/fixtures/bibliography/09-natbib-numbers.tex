@@ -1,0 +1,19 @@
+\documentclass{article}
+\usepackage[numbers]{natbib}
+\begin{document}
+With numbers, \citet{knuth84} names the author before the number, while
+\citep{plass81} and \cite{knuth84,plass81} give bracketed numbers only. A
+page note \citep[p.~7]{knuth84} and a prefix \citep[see][]{plass81} follow
+the same rules, and \citealp{hammer14} drops the brackets.
+
+\begin{thebibliography}{3}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting}. Addison-Wesley, 1984.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\bibitem[Hammer et~al.(2014)Hammer, Phang, Hicks, and Foster]{hammer14}
+  Matthew A. Hammer, Khoo Yit Phang, Michael Hicks, and Jeffrey S. Foster.
+  Adapton: composable, demand-driven incremental computation. In \emph{PLDI},
+  2014.
+\end{thebibliography}
+\end{document}

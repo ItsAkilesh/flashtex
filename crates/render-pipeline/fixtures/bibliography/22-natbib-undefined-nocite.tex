@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage[numbers]{natbib}
+\begin{document}
+An undefined key in natbib's numerical mode \citep{knuth84,missing,plass81}
+and in textual form \citet{missing}; \nocite{plass81} adds nothing to the
+text, and neither does \nocite{absent}.
+
+\begin{thebibliography}{2}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting}. Addison-Wesley, 1984.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\end{thebibliography}
+\end{document}

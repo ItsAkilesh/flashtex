@@ -1,0 +1,17 @@
+\documentclass{article}
+\usepackage{natbib}
+\begin{document}
+The authors \citeauthor{plass81} wrote in \citeyear{plass81}
+\citeyearpar{plass81}; without brackets \citealt{knuth84} and
+\citealp{knuth84,plass81}; capitalised \Citet{vanderhoeven} and
+\Citeauthor{vanderhoeven}.
+
+\begin{thebibliography}{3}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting}. Addison-Wesley, 1984.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\bibitem[van~der Hoeven(1995)]{vanderhoeven} Joris van~der Hoeven. Lazy
+  multiplication of formal power series. Technical report, 1995.
+\end{thebibliography}
+\end{document}

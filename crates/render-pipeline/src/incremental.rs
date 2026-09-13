@@ -245,6 +245,16 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 8u8.hash(h);
                 pt.to_bits().hash(h);
             }
+            Item::Penalty { penalty } => {
+                31u8.hash(h);
+                penalty.hash(h);
+            }
+            Item::Glue { em, stretch_em, shrink_em } => {
+                30u8.hash(h);
+                em.to_bits().hash(h);
+                stretch_em.to_bits().hash(h);
+                shrink_em.to_bits().hash(h);
+            }
             Item::Logo { logo, style, span } => {
                 9u8.hash(h);
                 logo.hash(h);

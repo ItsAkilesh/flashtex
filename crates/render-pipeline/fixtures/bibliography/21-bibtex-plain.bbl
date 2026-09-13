@@ -1,0 +1,24 @@
+\begin{thebibliography}{1}
+
+\bibitem{hammer14}
+Matthew~A. Hammer, Khoo~Yit Phang, Michael Hicks, and Jeffrey~S. Foster.
+\newblock Adapton: Composable, demand-driven incremental computation.
+\newblock In {\em Proceedings of the 35th ACM SIGPLAN Conference on Programming
+  Language Design and Implementation}, pages 156--166, 2014.
+
+\bibitem{knuth84}
+Donald~E. Knuth.
+\newblock {\em Computers and Typesetting, Volume A}.
+\newblock Addison-Wesley, Reading, Massachusetts, 1984.
+
+\bibitem{plass81}
+Donald~E. Knuth and Michael~F. Plass.
+\newblock Breaking paragraphs into lines.
+\newblock {\em Software: Practice and Experience}, 11(11):1119--1184, 1981.
+
+\bibitem{lamport94}
+Leslie Lamport.
+\newblock {\em A Document Preparation System}.
+\newblock Addison-Wesley, second edition, 1994.
+
+\end{thebibliography}
