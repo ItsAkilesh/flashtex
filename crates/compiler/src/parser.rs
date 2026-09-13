@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
+use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 
 /// Maximum number of nested user-macro expansions at one use site.
@@ -585,6 +586,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style_stack: Vec::new(),
         env_styles: Vec::new(),
         list_spacing: HashMap::new(),
+        theorems: HashMap::new(),
+        theorem_style: TheoremStyle::default(),
+        theorem_counters: HashMap::new(),
     };
     let blocks = p.document();
 
@@ -665,6 +669,15 @@ struct P<'a> {
     /// runs, so a later `\setlist` does not retroactively change an
     /// already-open list.
     list_spacing: HashMap<String, ListSpacing>,
+    /// `\newtheorem` registrations, keyed by environment name.
+    theorems: HashMap<String, TheoremDef>,
+    /// The style set by the most recent `\theoremstyle`, applied to
+    /// `\newtheorem` declarations from that point on (`plain` until then,
+    /// matching amsthm's own default).
+    theorem_style: TheoremStyle,
+    /// Theorem counters, keyed by `TheoremDef::counter` (an environment's
+    /// own name, or the name of the environment whose counter it shares).
+    theorem_counters: HashMap<String, u32>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -809,6 +822,8 @@ impl P<'_> {
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
+            "newtheorem" => self.new_theorem(span),
+            "theoremstyle" => self.set_theorem_style(span),
             "begin" | "end" => self.environment(name, span, blocks, para),
             "input" | "include" => self.include(name, span, blocks, para),
             // MacTeX writes package-version banners to the log for `\listfiles`;
@@ -827,6 +842,7 @@ impl P<'_> {
                 } else if level == 1 {
                     self.section_counter += 1;
                     self.subsection_counter = 0;
+                    theorems::reset_within_section(&self.theorems, &mut self.theorem_counters);
                     self.section_counter.to_string()
                 } else {
                     self.subsection_counter += 1;
@@ -1588,6 +1604,10 @@ impl P<'_> {
                     .unwrap_or_default();
                 self.list_stack
                     .push((environment.clone(), 0, template, spacing));
+            } else if self.in_body
+                && (self.theorems.contains_key(&environment) || environment == "proof")
+            {
+                self.flush_paragraph(blocks, para);
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1599,8 +1619,15 @@ impl P<'_> {
                 ));
             }
             self.env_stack
-                .push((environment, span.merge(argument_span)));
+                .push((environment.clone(), span.merge(argument_span)));
             self.env_styles.push(self.style);
+            if self.in_body {
+                if let Some(theorem) = self.theorems.get(&environment).cloned() {
+                    self.begin_theorem(&theorem, span, para);
+                } else if environment == "proof" {
+                    self.begin_proof(span, para);
+                }
+            }
             return;
         }
 
@@ -1643,7 +1670,16 @@ impl P<'_> {
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
             self.list_stack.pop();
-        } else if environment == "figure" {
+        } else if environment == "figure" || self.theorems.contains_key(&environment) {
+            self.flush_paragraph(blocks, para);
+        } else if environment == "proof" {
+            para.push(Inline::HFill { span });
+            para.push(Inline::Text {
+                text: "∎".to_string(),
+                span,
+                style: TextStyle::default(),
+                space_before: false,
+            });
             self.flush_paragraph(blocks, para);
         }
         if environment == "document" && self.has_document {
@@ -1651,6 +1687,166 @@ impl P<'_> {
             self.in_body = false;
             self.document_ended = true;
         }
+    }
+
+    /// `\newtheorem{name}{Title}`, its starred (unnumbered) form, the
+    /// shared-counter form `\newtheorem{name}[shared]{Title}`, and the
+    /// reset-on-section form `\newtheorem{name}{Title}[section]`. See
+    /// `theorems::TheoremDef`.
+    fn new_theorem(&mut self, span: Span) {
+        let starred = self.take_optional_star();
+        let (name_tokens, name_span) = self.required_group("newtheorem", span);
+        let name = token_text(&name_tokens).trim().to_string();
+        let shared = self.optional_bracket_argument();
+        let (title_tokens, _) = self.required_group("newtheorem", span);
+        let title = token_text(&title_tokens).trim().to_string();
+        let within = if shared.is_none() {
+            self.optional_bracket_argument()
+        } else {
+            None
+        };
+        if name.is_empty() {
+            self.diags.push(Diagnostic::error(
+                "\\newtheorem was given an empty environment name",
+                Some(span.merge(name_span)),
+                Some("ignored the declaration".into()),
+            ));
+            return;
+        }
+        let (counter, within_section) = match shared {
+            Some((shared_name, shared_span)) => {
+                let shared_name = shared_name.trim().to_string();
+                match self.theorems.get(&shared_name) {
+                    Some(existing) => (existing.counter.clone(), existing.within_section),
+                    None => {
+                        self.diags.push(Diagnostic::error(
+                            format!(
+                                "\\newtheorem{{{name}}}[{shared_name}] shares the counter of \
+                                 undefined theorem environment '{shared_name}'"
+                            ),
+                            Some(shared_span),
+                            Some("ignored the declaration".into()),
+                        ));
+                        return;
+                    }
+                }
+            }
+            None => {
+                let within_section = match within {
+                    None => false,
+                    Some((counter_name, _)) if counter_name.trim() == "section" => true,
+                    Some((counter_name, counter_span)) => {
+                        let counter_name = counter_name.trim().to_string();
+                        self.diags.push(Diagnostic::warning(
+                            format!(
+                                "\\newtheorem counter '[{counter_name}]' is recognised but not implemented"
+                            ),
+                            Some(counter_span),
+                            Some(format!(
+                                "'{name}' is numbered without resetting on '{counter_name}'"
+                            )),
+                        ));
+                        false
+                    }
+                };
+                (name.clone(), within_section)
+            }
+        };
+        self.theorems.insert(
+            name,
+            TheoremDef {
+                title,
+                style: self.theorem_style,
+                numbered: !starred,
+                counter,
+                within_section,
+            },
+        );
+    }
+
+    fn set_theorem_style(&mut self, span: Span) {
+        let (tokens, argument_span) = self.required_group("theoremstyle", span);
+        let name = token_text(&tokens).trim().to_string();
+        match TheoremStyle::from_name(&name) {
+            Some(style) => self.theorem_style = style,
+            None => self.diags.push(Diagnostic::error(
+                format!("\\theoremstyle{{{name}}} is not a recognised amsthm style"),
+                Some(span.merge(argument_span)),
+                Some("kept the previous \\theoremstyle in effect".into()),
+            )),
+        }
+    }
+
+    /// The head run and, for numbered environments, the counter for
+    /// entering a `\newtheorem`-registered environment. Called after
+    /// `self.style` has already been saved onto `env_styles` by the caller
+    /// (see `environment`), so mutating it here to the body's default style
+    /// is correctly restored at the matching `\end`.
+    fn begin_theorem(&mut self, def: &TheoremDef, span: Span, para: &mut Vec<Inline>) {
+        let note = self.optional_bracket_argument();
+        let mut head = def.title.clone();
+        if def.numbered {
+            let counter = self
+                .theorem_counters
+                .entry(def.counter.clone())
+                .or_insert(0);
+            *counter += 1;
+            let n = *counter;
+            let number = if def.within_section {
+                format!("{}.{}", self.section_counter, n)
+            } else {
+                n.to_string()
+            };
+            self.current_counter = Some(number.clone());
+            head.push(' ');
+            head.push_str(&number);
+        }
+        para.push(Inline::Text {
+            text: head,
+            span,
+            style: def.style.head_style(),
+            space_before: true,
+        });
+        if let Some((note_text, note_span)) = note {
+            let note_text = note_text.trim();
+            if !note_text.is_empty() {
+                para.push(Inline::Text {
+                    text: format!(" ({note_text})"),
+                    span: note_span,
+                    style: TextStyle::default(),
+                    space_before: false,
+                });
+            }
+        }
+        para.push(Inline::Text {
+            text: ".".to_string(),
+            span,
+            style: TextStyle::default(),
+            space_before: false,
+        });
+        self.style = def.style.body_style();
+    }
+
+    /// `proof`'s italic "Proof." head (or a custom `[...]` heading, still
+    /// period-terminated) and upright body. The closing "∎" is appended by
+    /// `environment`'s `\end` handling, once the body's last paragraph is
+    /// known.
+    fn begin_proof(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let heading = self
+            .optional_bracket_argument()
+            .map(|(text, _)| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+            .unwrap_or_else(|| "Proof".to_string());
+        para.push(Inline::Text {
+            text: format!("{heading}."),
+            span,
+            style: TextStyle {
+                italic: true,
+                ..TextStyle::default()
+            },
+            space_before: true,
+        });
+        self.style = TextStyle::default();
     }
 
     fn equation_environment(
@@ -2575,7 +2771,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
                     _ => false,
                 })
         }
-        // amsmath/amssymb/amsthm (math typesetting: \mathbb, \forall, gather,
+        // \newtheorem/\theoremstyle/proof are implemented (see theorems.rs);
+        // amsthm takes no package options of its own.
+        "amsthm" => options.is_empty(),
+        // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
         // warning rather than being silently matched here.
