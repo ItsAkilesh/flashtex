@@ -103,6 +103,7 @@ const ITALIC: TextStyle = TextStyle {
     bold: false,
     family: crate::parser::TextFamily::Roman,
     size: None,
+    color: None,
 };
 
 impl TheoremStyleSpec {

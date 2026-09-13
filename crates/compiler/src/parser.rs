@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use crate::bib;
+use crate::color::{Colors, DeviceColor};
 use crate::diagnostics::Diagnostic;
 use crate::expansion::{self, ExpansionSite};
 use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
@@ -26,6 +27,7 @@ use flashtex_tex_text_encoding::encoding::Encoding;
 mod hyperlinks;
 mod boxes;
 mod lists;
+mod colors;
 mod tabular;
 
 pub use lists::{
@@ -88,6 +90,12 @@ pub enum Inline {
         span: Span,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+        /// The text colour where the formula starts (`TextStyle::color`).
+        color: Option<DeviceColor>,
+        /// Source ranges inside the formula recoloured by `\color` or
+        /// `\textcolor`, merged per colour in source order; an atom takes
+        /// the colour of the range containing its span, else `color`.
+        color_ranges: Vec<(Span, DeviceColor)>,
     },
     /// A multi-row amsmath display (`gather`, `align` and their starred forms).
     /// `aligned` cells alternate right/left alignment around shared tab stops.
@@ -209,6 +217,8 @@ pub enum Inline {
         dimen: crate::boxes::BoxDimen,
         span: Span,
     },
+    /// xcolor `\colorbox`/`\fcolorbox` (see [`ColorBox`]).
+    ColorBox(Box<ColorBox>),
 }
 
 /// What an `Inline::Reference` typesets from its label.
@@ -224,6 +234,24 @@ pub enum ReferenceForm {
     Auto { names: Vec<(String, String)> },
     /// nameref `\nameref`: the label's title.
     Name,
+}
+
+/// `\colorbox[model]{fill}{text}` or `\fcolorbox[model]{frame}{fill}{text}`
+/// (xcolor.sty 3.02 `\color@b@x`, `\XC@frameb@x`): `content` in an
+/// unbreakable box, behind it a `fill` rectangle `\fboxsep` larger on
+/// every side, and for `\fcolorbox` a `frame` of `\fboxrule` around that.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorBox {
+    pub fill: DeviceColor,
+    pub frame: Option<DeviceColor>,
+    pub content: Vec<Inline>,
+    /// `\fboxsep` and `\fboxrule` when the box was made, in TeX points.
+    pub fboxsep_pt: f64,
+    pub fboxrule_pt: f64,
+    /// From the command through its last argument's closing brace.
+    pub span: Span,
+    /// See `Inline::Text::space_before`.
+    pub space_before: bool,
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -405,6 +433,10 @@ pub struct TextStyle {
     /// `layout::size_declaration_pt`, against the layout's own body size
     /// rather than here, since that is the one authoritative value.
     pub size: Option<FontSizeLevel>,
+    /// The text colour (`\color`, `\textcolor`), scoped like the face.
+    /// `None` is the page's default colour: pdfTeX writes no operator.
+    /// `Some` carries the exact operator values (`crate::color`).
+    pub color: Option<DeviceColor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -442,6 +474,7 @@ impl TextStyle {
         italic: false,
         family: TextFamily::Roman,
         size: None,
+        color: None,
     };
 }
 
@@ -543,6 +576,8 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         "Huge" => next.size = Some(FontSizeLevel::Huge2),
         _ => {}
     }
+    // Font commands (`\normalfont`, `\bf`) never change the colour.
+    next.color = style.color;
     next
 }
 
@@ -583,6 +618,11 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// `\pagecolor`: the page background, document-wide (`None`: none).
+    pub page_color: Option<DeviceColor>,
+    /// The default text colour when xcolor converts to a target model
+    /// (`0 0 0 rg` under `[rgb]`); `None` is pdfTeX's `0 g`.
+    pub default_color: Option<DeviceColor>,
     /// Every run of macro replacement text in the parser's input, in input
     /// order: the invocation span its tokens carry, and the exact bytes of
     /// the definition they were copied from (see `crate::expansion`).
@@ -639,6 +679,20 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "documentclass",
     "setlength",
     "usepackage",
+    "definecolor",
+    "providecolor",
+    "xdefinecolor",
+    "colorlet",
+    "definecolorset",
+    "DefineNamedColor",
+    "selectcolormodel",
+    "color",
+    "textcolor",
+    "pagecolor",
+    "nopagecolor",
+    "normalcolor",
+    "colorbox",
+    "fcolorbox",
     "newcolumntype",
     "arraybackslash",
     "setlist",
@@ -1091,6 +1145,10 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         saved_boxes: HashMap::new(),
         lengths: std::collections::HashSet::new(),
         column_types: HashMap::new(),
+        colors: None,
+        page_color: None,
+        fboxsep_pt: 3.0,
+        fboxrule_pt: 0.4,
     };
     p.diags.extend(bibliography_diags);
     p.diags.extend(expanded.diagnostics);
@@ -1128,6 +1186,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source,
         incremental_safe,
         document_global_state: p.document_global_state,
+        page_color: p.page_color,
+        default_color: p.colors.as_ref().and_then(|c| c.default_color()),
         expansions,
         hyperref: p.hyperref,
         theorems: p.theorem_records,
@@ -1169,6 +1229,13 @@ struct P<'a> {
     packages: Vec<String>,
     /// array's `\newcolumntype{X}[n]{spec}` definitions (`parser/tabular.rs`).
     column_types: HashMap<char, (usize, Vec<InputToken>)>,
+    /// The loaded colour package (`crate::color`), `None` before one.
+    colors: Option<Colors>,
+    /// `\pagecolor`.
+    page_color: Option<DeviceColor>,
+    /// `\fboxsep`/`\fboxrule` in TeX points (latex.ltx: 3pt, 0.4pt).
+    fboxsep_pt: f64,
+    fboxrule_pt: f64,
     /// The current text font encoding: OT1 unless `fontenc` selected another
     /// (`text_builtins::fontenc_encoding`).
     font_encoding: Encoding,
@@ -1546,6 +1613,14 @@ impl P<'_> {
             "documentclass" => self.document_class(span),
             "setlength" => self.set_length(span, para),
             "usepackage" => self.use_package(span),
+            "definecolor" | "providecolor" | "xdefinecolor" | "colorlet" | "definecolorset"
+            | "DefineNamedColor" => self.define_color(name, span),
+            "selectcolormodel" => self.select_color_model(span),
+            "color" => self.color_declaration(span),
+            "textcolor" => self.text_color(span, para),
+            "pagecolor" | "nopagecolor" => self.page_color_command(name, span),
+            "normalcolor" => self.style.color = None,
+            "colorbox" | "fcolorbox" => self.color_box(name, span, para),
             "newcolumntype" => self.new_column_type(span),
             // array.sty 247: `\let\\\tabularnewline`; this parser already
             // ends table rows at `\\` inside `p`-column entries.
@@ -2320,6 +2395,19 @@ impl P<'_> {
             .trim()
             .trim_start_matches('\\')
             .to_string();
+        // `\fboxsep`/`\fboxrule` feed both #137's box lengths (the
+        // `Inline::SetLength` below) and #150's `\colorbox` capture, so record
+        // them before `set_box_length` claims the assignment.
+        if matches!(target.as_str(), "fboxsep" | "fboxrule") {
+            let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+            if let Some(pt) = parse_dimen_pt_at(&token_text(&value_tokens), body) {
+                if target == "fboxsep" {
+                    self.fboxsep_pt = pt;
+                } else {
+                    self.fboxrule_pt = pt;
+                }
+            }
+        }
         if self.set_box_length(&target, &value_tokens, span, para) {
             return;
         }
@@ -2338,6 +2426,9 @@ impl P<'_> {
         };
         let in_preamble = self.has_document && !self.in_body;
         match target.as_str() {
+            // Read by `\colorbox`/`\fcolorbox` (not group-scoped here).
+            "fboxsep" => self.fboxsep_pt = pt,
+            "fboxrule" => self.fboxrule_pt = pt,
             "parskip" if in_preamble => self.parskip_pt = Some(pt),
             "parindent" if in_preamble && pt == 0.0 => {}
             "parindent" if in_preamble => self.diags.push(Diagnostic::warning(
@@ -2474,6 +2565,9 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        for package in &packages {
+            self.load_color_package(package, &options);
+        }
         if packages.iter().any(|package| package == "fontenc") {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
                 self.font_encoding = encoding;
@@ -3728,7 +3822,10 @@ impl P<'_> {
             ));
         }
         let list = math::parse_tokens(&raw, &mut self.diags);
+        let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges,
             list,
             display: true,
             number: numbered.then_some(number),
@@ -4119,7 +4216,10 @@ impl P<'_> {
         }
         // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
         // print a number or advance the equation counter.
+        let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges,
             list,
             display,
             number: None,
@@ -4481,9 +4581,22 @@ impl P<'_> {
         let mut style = base;
         let mut saved = Vec::new();
         let mut pending = None;
+        let mut skip_to = 0;
         for (index, input) in expanded.iter().enumerate() {
+            if index < skip_to {
+                continue;
+            }
             let space_before = preceded_by_space(&expanded, index);
             match &input.token.kind {
+                TokenKind::Command(name) if name == "color" || name == "textcolor" => {
+                    let (next, color) = self.flat_color(&expanded, index, style.color);
+                    skip_to = next;
+                    match color {
+                        Some(color) if name == "color" => style.color = Some(color),
+                        Some(color) => pending = Some(TextStyle { color: Some(color), ..style }),
+                        None => {}
+                    }
+                }
                 TokenKind::Command(name) if style_command(name) => {
                     pending = Some(apply_style(style, name));
                 }
@@ -5439,6 +5552,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
         // warning rather than being silently matched here.
+        // Colour packages (crate::color) with every option replayed.
+        "xcolor" => crate::color::Colors::xcolor(&options.join(","), None).1.is_empty(),
+        "color" => crate::color::Colors::color_sty(&options.join(",")).1.is_empty(),
         _ => false,
     }
 }

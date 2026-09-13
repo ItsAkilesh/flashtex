@@ -49,6 +49,7 @@ PACKAGES = [
     ("graphicx", "graphicx", ["graphicx.sty", "graphics.sty"]),
     ("hyperref", "hyperref", ["hyperref.sty", "nameref.sty"]),
     ("tikz", "tikz", ["tikz.sty", "tikz.code.tex"]),
+    ("xcolor", "xcolor", ["xcolor.sty"]),
 ]
 
 TOKEN = re.compile(r"\\([A-Za-z]+)")
