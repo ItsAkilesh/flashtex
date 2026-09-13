@@ -1145,6 +1145,14 @@ impl MathParser<'_> {
                 self.pending.push(text_atom(")".into(), span));
                 space(QUAD_EM, span)
             }
+            // siunitx inside a formula (`crate::siunitx`).
+            "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
+            | "qtyrange" | "SIlist" | "SIrange" | "ang" => self.siunitx(&name, span),
+            "sisetup" => {
+                let (keys, argument_span) = self.siunitx_raw_group().unwrap_or((String::new(), span));
+                crate::siunitx::sisetup(&keys, span.merge(argument_span), self.diagnostics);
+                space(0.0, span)
+            }
             "text" => {
                 let (text, argument_span) = self.required_text_group("text", span);
                 MathAtom {
@@ -1277,6 +1285,123 @@ impl MathParser<'_> {
                 }
             },
         }
+    }
+
+    /// A siunitx command in math (`crate::siunitx::typeset`): the first atom
+    /// is returned and the rest queued, so the output joins the formula.
+    fn siunitx(&mut self, name: &str, span: Span) -> MathAtom {
+        let Some((required, pre_unit_bracket)) = crate::siunitx::arity(name) else {
+            return space(0.0, span);
+        };
+        let options = self.siunitx_raw_bracket();
+        let mut full = options.as_ref().map_or(span, |(_, s)| span.merge(*s));
+        let mut pre_unit = None;
+        let mut args = Vec::with_capacity(required);
+        for index in 0..required {
+            if pre_unit_bracket && index == 1 {
+                if let Some((raw, s)) = self.siunitx_raw_bracket() {
+                    full = full.merge(s);
+                    pre_unit = Some(raw);
+                }
+            }
+            match self.siunitx_raw_group() {
+                Some((raw, s)) => {
+                    full = full.merge(s);
+                    args.push(raw);
+                }
+                None => {
+                    if !self.argument_cut_off() {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("\\{name} requires an argument"),
+                            Some(span),
+                            Some("used an empty argument and continued".into()),
+                        ));
+                    }
+                    args.push(String::new());
+                }
+            }
+        }
+        let mut atoms = crate::siunitx::typeset(
+            name,
+            options.as_ref().map(|(o, _)| o.as_str()),
+            pre_unit.as_deref(),
+            &args,
+            true,
+            full,
+            self.diagnostics,
+        )
+        .into_iter();
+        match atoms.next() {
+            Some(first) => {
+                self.pending.extend(atoms);
+                first
+            }
+            None => space(0.0, full),
+        }
+    }
+
+    /// A `[...]` siunitx argument as raw source, braces kept; nothing is
+    /// consumed when no bracket follows.
+    fn siunitx_raw_bracket(&mut self) -> Option<(String, Span)> {
+        let tokens = self.tokens;
+        let mut index = self.i;
+        while matches!(tokens.get(index).map(|t| &t.kind), Some(TokenKind::Space)) {
+            index += 1;
+        }
+        if !matches!(tokens.get(index).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[") {
+            return None;
+        }
+        let start = tokens[index].span;
+        let mut depth = 0usize;
+        for (offset, token) in tokens[index + 1..].iter().enumerate() {
+            match &token.kind {
+                TokenKind::Word(w) if w == "]" && depth == 0 => {
+                    let inner = &tokens[index + 1..index + 1 + offset];
+                    self.i = index + offset + 2;
+                    return Some((crate::siunitx::raw_text(inner), start.merge(token.span)));
+                }
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// A required siunitx argument as raw source: a braced group (outer
+    /// braces removed) or a single token.
+    fn siunitx_raw_group(&mut self) -> Option<(String, Span)> {
+        let tokens = self.tokens;
+        while matches!(tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Space)) {
+            self.i += 1;
+        }
+        let open = tokens.get(self.i)?;
+        match &open.kind {
+            TokenKind::LBrace => {}
+            TokenKind::Word(_) | TokenKind::Command(_) => {
+                self.i += 1;
+                return Some((crate::siunitx::raw_text([open]), open.span));
+            }
+            _ => return None,
+        }
+        let mut depth = 0usize;
+        for (offset, token) in tokens[self.i..].iter().enumerate() {
+            match &token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let inner = &tokens[self.i + 1..self.i + offset];
+                        self.i += offset + 1;
+                        return Some((crate::siunitx::raw_text(inner), open.span.merge(token.span)));
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.unclosed.get_or_insert(open.span);
+        self.i = tokens.len();
+        None
     }
 
     /// Returns the first atom of `body` and queues the rest, so the group

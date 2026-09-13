@@ -15,6 +15,7 @@ use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
 #[cfg(test)]
 use crate::lexer::tokenize;
 use crate::math::{self, MathList};
+use crate::siunitx;
 use crate::text_builtins::{self, SymbolOutcome, TextDimen, TextLogo, TextRule};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
@@ -526,6 +527,20 @@ impl Parsed {
 }
 
 pub(crate) const BUILT_INS: &[&str] = &[
+    "num",
+    "qty",
+    "unit",
+    "si",
+    "SI",
+    "numlist",
+    "numrange",
+    "qtylist",
+    "qtyrange",
+    "SIlist",
+    "SIrange",
+    "ang",
+    "sisetup",
+    "DeclareSIUnit",
     "section",
     "subsection",
     "subsubsection",
@@ -865,6 +880,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             }
         }
     }
+    siunitx::reset();
     let mut p = P {
         t: std::mem::replace(&mut expanded.tokens, Rc::new(Vec::new())),
         entry_path: entry_document.path,
@@ -1302,7 +1318,21 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // siunitx settings are ordinary preamble material (`crate::siunitx`).
+            "sisetup" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let keys = siunitx::raw_text(tokens.iter().map(|t| &t.token));
+                siunitx::sisetup(&keys, span.merge(argument_span), &mut self.diags);
+            }
+            "DeclareSIUnit" => {
+                let _ = self.siunitx_bracket();
+                let unit = self.command_or_group(name, span);
+                let (tokens, _) = self.required_group(name, span);
+                siunitx::declare_unit(&unit, &siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
+            "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
+            | "qtyrange" | "SIlist" | "SIrange" | "ang" => self.siunitx(name, span, para),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
                     "section" => 1,
@@ -2056,6 +2086,13 @@ impl P<'_> {
     }
 
     fn use_package(&mut self, span: Span) {
+        // siunitx keys keep their braces (`output-decimal-marker={,}`).
+        let raw_options = {
+            let start = self.i;
+            let raw = self.siunitx_bracket().map(|(raw, _)| raw);
+            self.i = start;
+            raw
+        };
         let options = self
             .optional_bracket_argument()
             .map(|(options, _)| options)
@@ -2080,6 +2117,9 @@ impl P<'_> {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
                 self.font_encoding = encoding;
             }
+        }
+        if let Some(raw) = raw_options.filter(|_| packages.iter().any(|p| p == "siunitx")) {
+            siunitx::load_package(&raw, span.merge(argument_span), &mut self.diags);
         }
         let packages: Vec<String> = packages
             .into_iter()
@@ -3688,6 +3728,115 @@ impl P<'_> {
         }
     }
 
+    /// A siunitx typesetting command (`crate::siunitx`): its arguments are
+    /// read as raw source and the result is one inline formula spanning the
+    /// command and its arguments.
+    fn siunitx(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let Some((required, pre_unit_bracket)) = siunitx::arity(name) else {
+            return;
+        };
+        let options = self.siunitx_bracket();
+        let mut full = options.as_ref().map_or(span, |(_, s)| span.merge(*s));
+        let mut pre_unit = None;
+        let mut args = Vec::with_capacity(required);
+        for index in 0..required {
+            if pre_unit_bracket && index == 1 {
+                if let Some((raw, s)) = self.siunitx_bracket() {
+                    full = full.merge(s);
+                    pre_unit = Some(raw);
+                }
+            }
+            let (tokens, argument_span) = self.required_group(name, span);
+            if argument_span.document == span.document {
+                full = full.merge(argument_span);
+            }
+            args.push(siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+        }
+        let atoms = siunitx::typeset(
+            name,
+            options.as_ref().map(|(o, _)| o.as_str()),
+            pre_unit.as_deref(),
+            &args,
+            false,
+            full,
+            &mut self.diags,
+        );
+        if atoms.is_empty() {
+            return;
+        }
+        para.push(Inline::Math {
+            list: crate::math::MathList { atoms },
+            display: false,
+            number: None,
+            number_span: None,
+            span: full,
+            space_before,
+        });
+    }
+
+    /// A `[key=value, ...]` argument read as raw source with its braces kept
+    /// (`optional_bracket_argument` drops them, which would split
+    /// `output-decimal-marker={,}` at the comma). Nothing is consumed when
+    /// no bracket follows.
+    fn siunitx_bracket(&mut self) -> Option<(String, Span)> {
+        let mut index = self.i;
+        while matches!(
+            self.t.get(index).map(|t| &t.token.kind),
+            Some(TokenKind::Space)
+        ) {
+            index += 1;
+        }
+        let first = self.t.get(index)?;
+        if !matches!(&first.token.kind, TokenKind::Word(w) if w.starts_with('[')) {
+            return None;
+        }
+        let start = first.token.span;
+        let mut raw = String::new();
+        let mut depth = 0usize;
+        let mut cursor = index;
+        while let Some(input) = self.t.get(cursor) {
+            cursor += 1;
+            match &input.token.kind {
+                TokenKind::LBrace => {
+                    depth += 1;
+                    raw.push('{');
+                }
+                TokenKind::RBrace => {
+                    depth = depth.saturating_sub(1);
+                    raw.push('}');
+                }
+                TokenKind::ParBreak => return None,
+                _ => {
+                    let mut piece = siunitx::raw_text(std::iter::once(&input.token));
+                    if cursor == index + 1 {
+                        piece.remove(0);
+                    }
+                    if depth == 0 {
+                        if let Some(close) = piece.find(']') {
+                            raw.push_str(&piece[..close]);
+                            self.i = cursor;
+                            return Some((raw, start.merge(input.token.span)));
+                        }
+                    }
+                    raw.push_str(&piece);
+                }
+            }
+        }
+        None
+    }
+
+    /// `\DeclareSIUnit\name` or `\DeclareSIUnit{\name}`: the unit's name.
+    fn command_or_group(&mut self, name: &str, span: Span) -> String {
+        self.skip_spaces();
+        if let Some(TokenKind::Command(command)) = self.peek().map(|t| t.kind.clone()) {
+            self.i += 1;
+            return command;
+        }
+        let (tokens, _) = self.required_group(name, span);
+        siunitx::raw_text(tokens.iter().map(|t| &t.token))
+    }
+
     fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
         let space_before = self.space_precedes(self.i - 1);
         if let Some(logo) = TextLogo::from_command(name) {
@@ -4168,6 +4317,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // array.sty's preamble builder, column types and row strut are
         // implemented (parser/tabular.rs, crate::tabular); no options.
         "array" => options.is_empty(),
+        // siunitx v3 numbers, units, quantities, lists, ranges and angles
+        // (crate::siunitx); its options are \sisetup keys, and a key that
+        // is not modelled gets its own diagnostic there.
+        "siunitx" => true,
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep

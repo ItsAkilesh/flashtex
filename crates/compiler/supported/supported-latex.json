@@ -4,6 +4,20 @@
   "compiler_version": "0.1.0",
   "unsupported_behaviour": "any other command produces an explicit 'not supported' diagnostic naming it",
   "commands": [
+    {"name": "num", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}", "description": "siunitx number: digit groups, decimal marker, exponent, uncertainty, as an upright formula", "renders": true},
+    {"name": "qty", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}{units}", "description": "siunitx quantity: number, unbreakable thin space, unit", "renders": true},
+    {"name": "unit", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{units}", "description": "siunitx unit: prefixes, powers, \\per as a power, fraction or solidus; literal m/s", "renders": true},
+    {"name": "si", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{units}", "description": "siunitx v2 name of \\unit", "renders": true},
+    {"name": "SI", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}[pre-unit]{units}", "description": "siunitx v2 name of \\qty with an optional pre-unit", "renders": true},
+    {"name": "numlist", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{numbers}", "description": "siunitx list of ;-separated numbers joined by list-separator and \" and \"", "renders": true},
+    {"name": "numrange", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}{number}", "description": "siunitx range: two numbers joined by range-phrase \" to \"", "renders": true},
+    {"name": "qtylist", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{numbers}{units}", "description": "siunitx list of quantities, the unit repeated", "renders": true},
+    {"name": "qtyrange", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}{number}{units}", "description": "siunitx range of quantities, the unit repeated", "renders": true},
+    {"name": "SIlist", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{numbers}{units}", "description": "siunitx v2 name of \\qtylist", "renders": true},
+    {"name": "SIrange", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{number}{number}{units}", "description": "siunitx v2 name of \\qtyrange", "renders": true},
+    {"name": "ang", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{degrees;minutes;seconds}", "description": "siunitx angle with degree, minute and second marks", "renders": true},
+    {"name": "sisetup", "mode": "text", "origin": "text_dispatch", "arguments": "{options}", "description": "siunitx settings for the following commands (document-global in this model)", "renders": true},
+    {"name": "DeclareSIUnit", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{\\name}{units}", "description": "defines a siunitx unit macro usable inside \\unit and \\qty", "renders": true},
     {"name": "section", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered section heading; starred form unnumbered", "renders": true},
     {"name": "subsection", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered subsection heading; starred form unnumbered", "renders": true},
     {"name": "subsubsection", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered subsubsection heading; starred form unnumbered", "renders": true},
@@ -211,6 +225,19 @@
     {"name": " ", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "control space (6mu)", "renders": true},
     {"name": "!", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "negative thin space (-3mu)", "renders": true},
     {"name": "|", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "double vertical bar", "renders": true},
+    {"name": "num", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}", "description": "siunitx number or ;-separated list inside a formula", "renders": true},
+    {"name": "numlist", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}", "description": "siunitx number or ;-separated list inside a formula", "renders": true},
+    {"name": "unit", "mode": "math", "origin": "math_structure", "arguments": "[options]{units}", "description": "siunitx unit inside a formula", "renders": true},
+    {"name": "si", "mode": "math", "origin": "math_structure", "arguments": "[options]{units}", "description": "siunitx unit inside a formula", "renders": true},
+    {"name": "qty", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}{units}", "description": "siunitx quantity (3mu thin space before the unit) or number range inside a formula", "renders": true},
+    {"name": "numrange", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}{units}", "description": "siunitx quantity (3mu thin space before the unit) or number range inside a formula", "renders": true},
+    {"name": "SI", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}[pre-unit]{units}", "description": "siunitx v2 quantity inside a formula", "renders": true},
+    {"name": "qtylist", "mode": "math", "origin": "math_structure", "arguments": "[options]{numbers}{units}", "description": "siunitx list of quantities inside a formula", "renders": true},
+    {"name": "SIlist", "mode": "math", "origin": "math_structure", "arguments": "[options]{numbers}{units}", "description": "siunitx list of quantities inside a formula", "renders": true},
+    {"name": "qtyrange", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}{number}{units}", "description": "siunitx range of quantities inside a formula", "renders": true},
+    {"name": "SIrange", "mode": "math", "origin": "math_structure", "arguments": "[options]{number}{number}{units}", "description": "siunitx range of quantities inside a formula", "renders": true},
+    {"name": "ang", "mode": "math", "origin": "math_structure", "arguments": "[options]{angle}", "description": "siunitx angle inside a formula", "renders": true},
+    {"name": "sisetup", "mode": "math", "origin": "math_structure", "arguments": "{options}", "description": "siunitx settings changed inside a formula", "renders": true},
     {"name": "rule", "mode": "math", "origin": "math_structure", "arguments": "[raise]{dimension}{dimension}", "description": "latex.ltx \\rule box in a formula, em/ex of the text font", "renders": true},
     {"name": "frac", "mode": "math", "origin": "math_structure", "arguments": "{num}{den}", "description": "fraction; \\cfrac lays out as \\frac", "renders": true},
     {"name": "cfrac", "mode": "math", "origin": "math_structure", "arguments": "{num}{den}", "description": "fraction; \\cfrac lays out as \\frac", "renders": true},
@@ -778,7 +805,8 @@
     {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle and the proof environment"},
     {"name": "array", "silent_options": "", "description": "tabular >{} <{} !{} m b w columns, \\newcolumntype and \\extrarowheight"},
     {"name": "enumitem", "silent_options": "shortlabels", "description": "enumerate label templates; \\setlist itemsep/topsep"},
-    {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"}
+    {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"},
+    {"name": "siunitx", "silent_options": "any \\sisetup keys", "description": "v3 \\num, \\unit, \\qty, lists, ranges, \\ang, \\sisetup and \\DeclareSIUnit; unmodelled keys are diagnosed"}
   ],
   "coverage": {
     "sources": [
@@ -790,7 +818,8 @@
       "Source geometry: tokens of geometry.sty (geometry.sty 2026/03/07 v6.0 Page Geometry); dependency baseline: keyval, ifvtex, iftex",
       "Source graphicx: tokens of graphicx.sty, graphics.sty (graphicx.sty 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR); graphics.sty 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)); dependency baseline: keyval, trig",
       "Source hyperref: tokens of hyperref.sty, nameref.sty (hyperref.sty 2026-01-29 v7.01p Hypertext links for LaTeX; nameref.sty 2026-01-29 v2.58 Cross-referencing by name of section); dependency baseline: iftex, keyval, kvsetkeys, kvdefinekeys, pdfescape, ltxcmds, pdftexcmds, infwarerr, hycolor, refcount, gettitlestring, kvoptions, etoolbox, stringenc, intcalc, url, bitset, bigintcalc, rerunfilecheck, uniquecounter",
-      "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
+      "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath",
+      "Source siunitx: tokens of siunitx.sty (siunitx.sty 2025-07-09 v3.4.14 A comprehensive (SI) units package); dependency baseline: translations, etoolbox, pdftexcmds, infwarerr, iftex, ltxcmds, amstext, amsgen, array"
     ],
     "rows": [
       {"set": "kernel", "kind": "command", "canonical": 410, "supported": 162, "percent": 39.5},
@@ -804,8 +833,9 @@
       {"set": "hyperref", "kind": "command", "canonical": 132, "supported": 2, "percent": 1.5},
       {"set": "hyperref", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
-      {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
+      {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0},
+      {"set": "siunitx", "kind": "command", "canonical": 240, "supported": 15, "percent": 6.3}
     ],
-    "total": {"canonical": 1003, "supported": 461, "percent": 46}
+    "total": {"canonical": 1243, "supported": 476, "percent": 38.3}
   }
 }
