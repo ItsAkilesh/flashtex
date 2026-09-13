@@ -3789,7 +3789,9 @@ impl P<'_> {
         let text = if name == "footnotemark" {
             None
         } else {
-            let (tokens, _) = self.required_group(name, span);
+            // `\@footnotetext` is `\long` (latex.ltx): a blank line inside
+            // the argument is a paragraph break in the note, not its end.
+            let (tokens, _) = self.long_required_group(name, span);
             Some(self.footnote_inlines(tokens, span))
         };
         para.push(Inline::Footnote {
