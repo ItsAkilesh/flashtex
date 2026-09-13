@@ -19,10 +19,12 @@ const WORD_TOL: f64 = 0.5;
 const RULE_TOL: f64 = 0.1;
 
 /// Fixtures that match pdfLaTeX today. The others need constructs outside
-/// the table layout: array-package columns (`>{}`/`<{}`, `m`/`b`, `!{}`,
-/// `\extrarowheight`), math `array`, text-mode `\,`, and `p{}` entries whose
-/// loose lines paragraph-layout's badness rejects.
+/// the table layout: math `array`, text-mode `\,`, and justified `p{}`/`m{}`/
+/// `b{}` entries whose loose lines paragraph-layout's badness rejects (41/42
+/// match in every rule and baseline; only their stretched words' x differ).
 const PASSING: &[&str] = &[
+    "40-array-gtlt", "43-array-extrarowheight", "44-array-bang", "55-array-newcolumntype",
+    "56-array-math-cells", "57-array-w-itshape", "58-array-hline-double", "59-array-m-b-ragged",
     "01-col-l", "02-col-c", "03-col-r", "04-col-lcr", "05-vrule-single", "06-vrule-double", "07-at-empty",
     "08-at-text", "09-at-rule", "10-p-short", "12-p-rules", "13-multicolumn-wide", "14-multicolumn-narrow",
     "15-multicolumn-rules", "16-multicolumn-realign", "17-hline", "18-hline-double", "19-cline", "20-cline-multi",

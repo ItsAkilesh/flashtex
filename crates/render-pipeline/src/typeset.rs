@@ -1316,6 +1316,7 @@ impl<'a> Context<'a> {
     /// kernel's alignment rules. The record keeps the pieces to paint.
     fn table_box(&mut self, t: &crate::table::TableItem, outer_size: f64) -> Option<(pl::GlyphRun, usize)> {
         use crate::table::{self as tb, Dims, MCell, Slot, TableMaterial};
+        use flashtex_compiler::parser::ParagraphStyle;
         use flashtex_compiler::tabular::Align;
         let size = if t.size_cpt == 0 { outer_size } else { f64::from(t.size_cpt) / 100.0 };
         let body_size = self.style.body_size_pt;
@@ -1325,11 +1326,14 @@ impl<'a> Context<'a> {
         } else {
             tb::baselineskip_pt(adapter::class_size_of(body_size), (size * 100.0).round() as u16)
         };
-        let strut_height = tb::sp(t.arraystretch * tb::sp(0.7 * bskip));
+        // `\@arstrutbox` (array.sty 207 adds `\extrarowheight` to the height).
+        let plain_strut_height = tb::sp(0.7 * bskip);
+        let strut_height = tb::sp(t.arraystretch * (plain_strut_height + tb::sp(t.lengths.extrarowheight)));
         let strut_depth = tb::sp(t.arraystretch * tb::sp(0.3 * bskip));
         let body = self.text_params(TextStyle::default(), body_size);
         let quad = self.text_params(TextStyle::default(), size).quad;
         let measure = self.style.text_width_pt;
+        let metrics = tb::Metrics { strut_height, strut_depth, plain_strut_height, em: body.quad, ex: body.x_height, axis: tb::AXIS_EM * size, measure };
         let mut blocks: std::collections::HashMap<(usize, usize, Slot), BuiltBlock> = std::collections::HashMap::new();
         let mut rows: Vec<Vec<MCell>> = Vec::new();
         for entry in &t.entries {
@@ -1342,31 +1346,45 @@ impl<'a> Context<'a> {
                     None => (&[], Align::Left, &[]),
                 };
                 let before = self.table_pieces(before_m, size, (ri, ci), true, &mut blocks);
+                let mut content_offset = (0.0, 0.0);
                 let content = match align {
-                    Align::Paragraph(len) => {
+                    Align::Paragraph(len) | Align::Middle(len) | Align::Bottom(len) => {
                         let width = tb::resolve(len, measure).max(0.0);
-                        match self.table_pbox(&cell.items, size, width, bskip, strut_depth, quad) {
-                            Some((block, dims)) => {
+                        let style = match cell.alignment {
+                            Some(ParagraphStyle::Center) => ParaStyle::Center,
+                            Some(ParagraphStyle::FlushLeft) => ParaStyle::FlushLeft,
+                            Some(ParagraphStyle::FlushRight) => ParaStyle::FlushRight,
+                            Some(ParagraphStyle::Quote) | None => ParaStyle::Plain,
+                        };
+                        let lines = match self.table_pbox(&cell.items, size, width, bskip, quad, style) {
+                            Some((block, lines)) => {
                                 blocks.insert((ri, ci, Slot::Content), block);
-                                dims
+                                lines
                             }
-                            None => Dims { width, height: 0.0, depth: strut_depth },
-                        }
+                            None => tb::ParLines::default(),
+                        };
+                        let (dims, shift) = tb::parbox(align, lines, t.array_package, &metrics);
+                        content_offset.1 = shift;
+                        dims
                     }
                     _ => match self.table_hbox(&cell.items, size) {
-                        Some((block, dims)) => {
+                        Some((block, mut dims)) => {
                             blocks.insert((ri, ci, Slot::Content), block);
+                            if let Align::Fixed(len, pos) = align {
+                                let (width, dx) = tb::fixed_box(pos, tb::resolve(len, measure).max(0.0), dims.width);
+                                dims.width = width;
+                                content_offset.0 = dx;
+                            }
                             dims
                         }
-                        None => Dims::default(),
+                        None => Dims { width: if let Align::Fixed(len, _) = align { tb::resolve(len, measure).max(0.0) } else { 0.0 }, ..Dims::default() },
                     },
                 };
                 let after = self.table_pieces(after_m, size, (ri, ci), false, &mut blocks);
-                out.push(MCell { column, columns, align, before, content, after });
+                out.push(MCell { column, columns, align, before, content, after, content_offset });
             }
             rows.push(out);
         }
-        let metrics = tb::Metrics { strut_height, strut_depth, em: body.quad, ex: body.x_height, axis: tb::AXIS_EM * size, measure };
         let geometry = tb::layout(t, &rows, &metrics);
         let mut pieces = Vec::new();
         for p in &geometry.placed {
@@ -1402,6 +1420,7 @@ impl<'a> Context<'a> {
             out.push(match m {
                 TableMaterial::Space(pt) => MPiece::Space(*pt),
                 TableMaterial::Rule(span) => MPiece::Rule(*span),
+                TableMaterial::VLine(span, width) => MPiece::VLine(*span, *width),
                 TableMaterial::Text(items) => match self.table_hbox(items, size) {
                     Some((block, dims)) => {
                         blocks.insert((key.0, key.1, if before { Slot::Before(i) } else { Slot::After(i) }), block);
@@ -1430,16 +1449,16 @@ impl<'a> Context<'a> {
         Some((table_cell_block(lines, list, recs, labels), dims))
     }
 
-    /// A `p{width}` entry: `\@startpbox` (`\vtop`, `\hsize` width,
-    /// `\@arrayparboxrestore`: no indent, `\normalbaselineskip`, `\sloppy`)
-    /// and `\@endpbox`'s `\@finalstrut` (the last line at least the strut's
-    /// depth). The box's height is its first line's.
-    fn table_pbox(&mut self, items: &[AItem], size: f64, width: f64, baselineskip: f64, strut_depth: f64, em: f64) -> Option<(BuiltBlock, crate::table::Dims)> {
-        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+    /// A `p{width}`/`m{}`/`b{}` entry's paragraph: `\@startpbox` (`\hsize`
+    /// width, `\@arrayparboxrestore`: no indent, `\normalbaselineskip`,
+    /// `\sloppy`), then any `\centering`/`\raggedright` from the entry.
+    /// `table::parbox` makes the box from these lines.
+    fn table_pbox(&mut self, items: &[AItem], size: f64, width: f64, baselineskip: f64, em: f64, style: ParaStyle) -> Option<(BuiltBlock, crate::table::ParLines)> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), style);
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let mut params = self.line_params(false, baselineskip, ParaStyle::Plain, 0.0);
+        let mut params = self.line_params(false, baselineskip, style, 0.0);
         params.line_width = width;
         // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt`.
         // paragraph-layout's `badness` is infinite above a stretch ratio of
@@ -1452,8 +1471,8 @@ impl<'a> Context<'a> {
         let lines = self.break_paragraph(&list, &params, items)?;
         self.report_overfull(&lines, &list, &recs);
         let (first, last) = (lines.lines.first()?, lines.lines.last()?);
-        let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth.max(strut_depth) };
-        Some((table_cell_block(lines, list, recs, labels), dims))
+        let par = crate::table::ParLines { first_height: first.height, inner: last.baseline_y - first.baseline_y, last_depth: last.depth };
+        Some((table_cell_block(lines, list, recs, labels), par))
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {

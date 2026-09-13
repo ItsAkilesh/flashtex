@@ -2977,6 +2977,13 @@ fn items_cached(
 /// from the compiler's own style, since the macro-expanded bytes are not in
 /// the source at the invocation).
 fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels, size: u32, heading: bool) -> Vec<Item> {
+    items_from_inlines_styled(texts, inlines, styles, labels, size, heading, false)
+}
+
+/// `compiler_weight`: bold and italic come from the compiler's own scoping
+/// rather than the source's brace groups (a table entry whose array `>{}`
+/// declarations were inserted from the column specification).
+fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels, size: u32, heading: bool, compiler_weight: bool) -> Vec<Item> {
     // `\ref`/`\pageref` become ordinary text attributed to the command's
     // bytes; `\label` becomes a zero-width marker.
     let mut resolved: Vec<std::borrow::Cow<Inline>> = Vec::with_capacity(inlines.len());
@@ -3037,7 +3044,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 after_control_word = false;
                 let src = text_of(span.document);
                 let lengths = crate::table::TableLengths::read(|name| setlength(src, name, size));
-                let mut items_of = |inlines: &[Inline]| items_from_inlines(texts, inlines, styles, labels, size, false);
+                let mut items_of = |inlines: &[Inline], declared: bool| items_from_inlines_styled(texts, inlines, styles, labels, size, false, declared);
                 let table = crate::table::from_compiler(t, lengths, declared_size(t.style.size, size), &mut items_of);
                 items.push(Item::Table(Box::new(table)));
                 prev_end = Some(span.end);
@@ -3146,6 +3153,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     style.medium = !cs.bold;
                     style.italic |= cs.italic;
                 }
+                if compiler_weight {
+                    style.bold = compiler_style.bold;
+                    style.italic = compiler_style.italic;
+                }
                 let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
                 after_control_word = false;
                 if has_space {
@@ -3154,6 +3165,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    if compiler_weight {
+                        gap_style.bold = style.bold;
+                        gap_style.italic = style.italic;
+                    }
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;

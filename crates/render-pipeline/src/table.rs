@@ -50,13 +50,29 @@
 //!   are those of the body font (the dimensions are assigned when booktabs is
 //!   loaded).
 //!
+//! array.sty v2.6n (TeX Live 2026), when the document loads it, replaces the
+//! preamble builder (the compiler's `array_column_templates`) and changes:
+//!
+//! * `\@array` (array.sty 207): `\@arstrutbox` is `\arraystretch` times
+//!   `\ht\strutbox + \extrarowheight` high (the depth is unchanged);
+//! * `\@arrayrule` (175) is `\vline`, a rule `\arrayrulewidth` wide that takes
+//!   its width; `!{\vrule width d}` likewise;
+//! * `\@startpbox` (189) starts the first paragraph with a strut of
+//!   `\ht\@arstrutbox`; `p` is a `\vtop`, `b` a `\vbox`, and `m` a `\vbox`
+//!   that `\ar@align@mcell` (164) lowers by half of its height less
+//!   `\ht\@arstrutbox` plus `\baselineskip` when it is taller than
+//!   `\ht\strutbox`; `\@array` has set `\baselineskip` to 0 there;
+//! * `\@xhline` (440) puts a second `\hline` `\doublerulesep` below the first
+//!   rule's bottom (the kernel subtracts `\arrayrulewidth`);
+//! * `w{align}{width}` (446) sets the entry in `\makebox[width][align]`.
+//!
 //! Lengths the kernel allows to change (`\tabcolsep`, `\arrayrulewidth`,
 //! `\doublerulesep`) are read from `\setlength` in the source by the adapter:
 //! the compiler bakes the kernel defaults into its templates, so its spaces
 //! of exactly those defaults are mapped back to the document's values.
 
-use flashtex_compiler::parser::Inline;
-use flashtex_compiler::tabular::{self as ct, Align, BookRule, Length, VerticalPosition};
+use flashtex_compiler::parser::{Inline, ParagraphStyle};
+use flashtex_compiler::tabular::{self as ct, Align, BookRule, BoxAlign, Length, VerticalPosition};
 use flashtex_compiler::Span;
 
 use crate::adapter::Item;
@@ -105,6 +121,8 @@ pub struct TableLengths {
     pub tabcolsep: f64,
     pub arrayrulewidth: f64,
     pub doublerulesep: f64,
+    /// array.sty's `\extrarowheight` (0pt by default).
+    pub extrarowheight: f64,
 }
 
 impl Default for TableLengths {
@@ -113,6 +131,7 @@ impl Default for TableLengths {
             tabcolsep: ct::TABCOLSEP_PT,
             arrayrulewidth: ct::ARRAYRULEWIDTH_PT,
             doublerulesep: ct::DOUBLERULESEP_PT,
+            extrarowheight: 0.0,
         }
     }
 }
@@ -126,6 +145,7 @@ impl TableLengths {
             tabcolsep: value("tabcolsep").unwrap_or(d.tabcolsep),
             arrayrulewidth: value("arrayrulewidth").unwrap_or(d.arrayrulewidth),
             doublerulesep: value("doublerulesep").unwrap_or(d.doublerulesep),
+            extrarowheight: value("extrarowheight").unwrap_or(d.extrarowheight),
         }
     }
 
@@ -157,6 +177,8 @@ pub struct TableItem {
     /// the surrounding size).
     pub size_cpt: u16,
     pub lengths: TableLengths,
+    /// The preamble is array.sty's (see the module comment).
+    pub array_package: bool,
     pub span: Span,
 }
 
@@ -173,6 +195,8 @@ pub struct TableColumn {
 pub enum TableMaterial {
     Space(f64),
     Rule(Span),
+    /// A rule that takes its width (array's `|`, `!{\vrule}`).
+    VLine(Span, f64),
     Text(Vec<Item>),
 }
 
@@ -181,6 +205,8 @@ pub struct TableCell {
     pub items: Vec<Item>,
     pub columns: usize,
     pub template: Option<TableColumn>,
+    /// `\centering`/`\raggedright`/`\raggedleft` of a `p`/`m`/`b` entry.
+    pub alignment: Option<ParagraphStyle>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,19 +219,20 @@ pub enum TableEntry {
     VSpace { pt: f64 },
 }
 
-fn material(m: &[ct::Material], lengths: TableLengths, items_of: &mut dyn FnMut(&[Inline]) -> Vec<Item>) -> Vec<TableMaterial> {
+fn material(m: &[ct::Material], lengths: TableLengths, items_of: &mut dyn FnMut(&[Inline], bool) -> Vec<Item>) -> Vec<TableMaterial> {
     let mut out = Vec::with_capacity(m.len());
     for m in m {
         out.push(match m {
             ct::Material::Space(pt) => TableMaterial::Space(lengths.space(*pt)),
             ct::Material::Rule(span) => TableMaterial::Rule(*span),
-            ct::Material::Text(inlines) => TableMaterial::Text(items_of(inlines)),
+            ct::Material::VLine { span, width_pt } => TableMaterial::VLine(*span, width_pt.unwrap_or(lengths.arrayrulewidth)),
+            ct::Material::Text(inlines) => TableMaterial::Text(items_of(inlines, false)),
         });
     }
     out
 }
 
-fn column(t: &ct::ColumnTemplate, lengths: TableLengths, items_of: &mut dyn FnMut(&[Inline]) -> Vec<Item>) -> TableColumn {
+fn column(t: &ct::ColumnTemplate, lengths: TableLengths, items_of: &mut dyn FnMut(&[Inline], bool) -> Vec<Item>) -> TableColumn {
     TableColumn {
         before: material(&t.before, lengths, items_of),
         align: t.align,
@@ -215,8 +242,9 @@ fn column(t: &ct::ColumnTemplate, lengths: TableLengths, items_of: &mut dyn FnMu
 }
 
 /// Converts the compiler's table, turning every inline list into items with
-/// `items_of`.
-pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, items_of: &mut dyn FnMut(&[Inline]) -> Vec<Item>) -> TableItem {
+/// `items_of` (its flag: take weight and shape from the compiler's scoping,
+/// for entries with array `>{}`/`<{}` declarations).
+pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, items_of: &mut dyn FnMut(&[Inline], bool) -> Vec<Item>) -> TableItem {
     let columns = t.columns.iter().map(|c| column(c, lengths, items_of)).collect();
     let mut entries = Vec::with_capacity(t.entries.len());
     for e in &t.entries {
@@ -226,9 +254,10 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
                     .cells
                     .iter()
                     .map(|c| TableCell {
-                        items: items_of(&c.content),
+                        items: items_of(&c.content, c.declarations),
                         columns: c.columns,
                         template: c.template.as_ref().map(|tp| column(tp, lengths, items_of)),
+                        alignment: c.alignment,
                     })
                     .collect(),
                 extra_depth_pt: row.extra_depth_pt,
@@ -255,6 +284,7 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
         arraystretch: t.arraystretch,
         size_cpt,
         lengths,
+        array_package: t.array_package,
         span: t.span,
     }
 }
@@ -272,6 +302,7 @@ pub struct Dims {
 pub enum MPiece {
     Space(f64),
     Rule(Span),
+    VLine(Span, f64),
     Text(Dims),
 }
 
@@ -280,6 +311,7 @@ impl MPiece {
         match self {
             MPiece::Space(pt) => *pt,
             MPiece::Rule(_) => 0.0,
+            MPiece::VLine(_, width) => *width,
             MPiece::Text(d) => d.width,
         }
     }
@@ -292,9 +324,56 @@ pub struct MCell {
     pub columns: usize,
     pub align: Align,
     pub before: Vec<MPiece>,
-    /// The entry: an hbox for `l`/`c`/`r`, the `\vtop` for `p{}`.
+    /// The entry: an hbox for `l`/`c`/`r`, the `\vtop` for `p{}`, the
+    /// (lowered) `\vbox` for `m{}`/`b{}`, the `\makebox` for `w{}{}`.
     pub content: Dims,
     pub after: Vec<MPiece>,
+    /// Where the entry's first line sits relative to the box's reference
+    /// point: x within the box (`w`), y below it (`m`/`b`: negative).
+    pub content_offset: (f64, f64),
+}
+
+/// The lines of a set paragraph entry: the first line's height, the distance
+/// from the first to the last baseline, and the last line's depth.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ParLines {
+    pub first_height: f64,
+    pub inner: f64,
+    pub last_depth: f64,
+}
+
+/// The box of a `p`/`m`/`b` entry and its first baseline's offset below the
+/// box's reference point (`\@startpbox`/`\@endpbox`, `\ar@align@mcell`).
+pub fn parbox(align: Align, lines: ParLines, array_package: bool, m: &Metrics) -> (Dims, f64) {
+    let width = match align.paragraph_width() {
+        Some(len) => resolve(len, m.measure).max(0.0),
+        None => 0.0,
+    };
+    // array: `\everypar{\vrule\@height\ht\@arstrutbox}`; both: the final
+    // strut's depth.
+    let first = if array_package { lines.first_height.max(m.strut_height) } else { lines.first_height };
+    let last = lines.last_depth.max(m.strut_depth);
+    match align {
+        Align::Bottom(_) => (Dims { width, height: first + lines.inner, depth: last }, -lines.inner),
+        Align::Middle(_) => {
+            let height = first + lines.inner;
+            // `\lower.5\dimen@` with `\dimen@ = \ht - \ht\@arstrutbox +
+            // \baselineskip`, and `\baselineskip` is 0 inside `\@array`.
+            let s = if height > m.plain_strut_height { sp(0.5 * sp(height - m.strut_height)) } else { 0.0 };
+            (Dims { width, height: height - s, depth: last + s }, s - lines.inner)
+        }
+        _ => (Dims { width, height: first, depth: lines.inner + last }, 0.0),
+    }
+}
+
+/// `\makebox[width][align]`: the box width and the entry's x within it.
+pub fn fixed_box(align: BoxAlign, width: f64, natural: f64) -> (f64, f64) {
+    let dx = match align {
+        BoxAlign::Left => 0.0,
+        BoxAlign::Center => (width - natural) / 2.0,
+        BoxAlign::Right => width - natural,
+    };
+    (width, dx)
 }
 
 impl MCell {
@@ -362,8 +441,11 @@ pub struct Geometry {
 /// Font- and page-dependent values the geometry needs.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
+    /// `\ht\@arstrutbox`/`\dp\@arstrutbox`.
     pub strut_height: f64,
     pub strut_depth: f64,
+    /// `\ht\strutbox` (`\ar@align@mcell`'s threshold).
+    pub plain_strut_height: f64,
     /// Body font quad and x-height (booktabs' em/ex).
     pub em: f64,
     pub ex: f64,
@@ -428,7 +510,7 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
 
     let mut placed = Vec::new();
     let mut rules: Vec<PlacedRule> = Vec::new();
-    let mut vrules: Vec<(f64, f64, f64, Span)> = Vec::new();
+    let mut vrules: Vec<(f64, f64, f64, f64, Span)> = Vec::new();
     let mut y = 0.0f64;
     let mut first_height: Option<f64> = None;
     let mut last_depth = 0.0;
@@ -473,7 +555,8 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                     let right = right_of(last);
                     let mut place = |piece: &MPiece, x: f64, slot: Slot, placed: &mut Vec<Placed>| match piece {
                         MPiece::Space(_) => {}
-                        MPiece::Rule(span) => vrules.push((x - arw / 2.0, top, top + height + depth, *span)),
+                        MPiece::Rule(span) => vrules.push((x - arw / 2.0, arw, top, top + height + depth, *span)),
+                        MPiece::VLine(span, width) => vrules.push((x, *width, top, top + height + depth, *span)),
                         MPiece::Text(_) => placed.push(Placed { row: ri, cell: ci, slot, x, baseline }),
                     };
                     let mut x = left;
@@ -483,11 +566,17 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                     }
                     let after_width: f64 = cell.after.iter().map(MPiece::width).sum();
                     let content_x = match cell.align {
-                        Align::Left | Align::Paragraph(_) => x,
+                        Align::Left | Align::Paragraph(_) | Align::Middle(_) | Align::Bottom(_) | Align::Fixed(..) => x,
                         Align::Right => right - after_width - cell.content.width,
                         Align::Center => x + (right - after_width - x - cell.content.width) / 2.0,
                     };
-                    placed.push(Placed { row: ri, cell: ci, slot: Slot::Content, x: content_x, baseline });
+                    placed.push(Placed {
+                        row: ri,
+                        cell: ci,
+                        slot: Slot::Content,
+                        x: content_x + cell.content_offset.0,
+                        baseline: baseline + cell.content_offset.1,
+                    });
                     let mut x = right - after_width;
                     for (pi, piece) in cell.after.iter().enumerate() {
                         place(piece, x, Slot::After(pi), &mut placed);
@@ -502,7 +591,7 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                 rule(&mut rules, 0.0, y, box_width, arw, *span);
                 y += arw;
                 if matches!(next, Some(TableEntry::HLine { .. })) {
-                    y += dbl - arw;
+                    y += if table.array_package { dbl } else { dbl - arw };
                 }
             }
             TableEntry::CLine { first, last, span } => {
@@ -565,16 +654,16 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
     }
 
     // One rule per `|` over consecutive rows it runs through.
-    vrules.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-    let mut merged: Vec<(f64, f64, f64, Span)> = Vec::new();
+    vrules.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.2.total_cmp(&b.2)));
+    let mut merged: Vec<(f64, f64, f64, f64, Span)> = Vec::new();
     for r in vrules {
         match merged.last_mut() {
-            Some(last) if last.0 == r.0 && last.3 == r.3 && (last.2 - r.1).abs() < 1e-9 => last.2 = r.2,
+            Some(last) if last.0 == r.0 && last.1 == r.1 && last.4 == r.4 && (last.3 - r.2).abs() < 1e-9 => last.3 = r.3,
             _ => merged.push(r),
         }
     }
-    for (x, top, bottom, span) in merged {
-        rule(&mut rules, x, top, arw, bottom - top, span);
+    for (x, width, top, bottom, span) in merged {
+        rule(&mut rules, x, top, width, bottom - top, span);
     }
 
     let total = y;
@@ -630,13 +719,14 @@ mod tests {
             arraystretch: 1.0,
             size_cpt: 0,
             lengths: TableLengths::default(),
+            array_package: false,
             span: span(),
         }
     }
 
     fn row(n: usize) -> TableEntry {
         TableEntry::Row {
-            cells: (0..n).map(|_| TableCell { items: Vec::new(), columns: 1, template: None }).collect(),
+            cells: (0..n).map(|_| TableCell { items: Vec::new(), columns: 1, template: None, alignment: None }).collect(),
             extra_depth_pt: 0.0,
         }
     }
@@ -656,6 +746,7 @@ mod tests {
                         let piece = |m: &TableMaterial| match m {
                             TableMaterial::Space(pt) => MPiece::Space(*pt),
                             TableMaterial::Rule(s) => MPiece::Rule(*s),
+                            TableMaterial::VLine(s, w) => MPiece::VLine(*s, *w),
                             TableMaterial::Text(_) => MPiece::Text(Dims::default()),
                         };
                         MCell {
@@ -665,6 +756,7 @@ mod tests {
                             before: tp.map_or(Vec::new(), |c| c.before.iter().map(piece).collect()),
                             content: Dims { width: *w, height: 8.0, depth: 2.0 },
                             after: tp.map_or(Vec::new(), |c| c.after.iter().map(piece).collect()),
+                            content_offset: (0.0, 0.0),
                         }
                     })
                     .collect(),
@@ -674,7 +766,7 @@ mod tests {
     }
 
     fn metrics() -> Metrics {
-        Metrics { strut_height: 10.15, strut_depth: 4.35, em: 11.74988, ex: 5.16, axis: 3.0, measure: 469.75 }
+        Metrics { strut_height: 10.15, strut_depth: 4.35, plain_strut_height: 10.15, em: 11.74988, ex: 5.16, axis: 3.0, measure: 469.75 }
     }
 
     fn close(a: f64, b: f64) {
@@ -739,6 +831,42 @@ mod tests {
         close(first.baseline - g.rules[0].top, 0.08 * m.em + 0.65 * m.ex + 10.15);
         close(g.rules[1].top - first.baseline, 4.35 + 0.4 * m.ex);
         close(g.depth + g.height, g.rules[2].top + g.rules[2].height + g.height);
+    }
+
+    /// array.sty geometry against pdfLaTeX (tabular corpus 41-43, 12pt):
+    /// a three-line `m{3cm}` entry makes the row 24.65pt high and 18.85pt
+    /// deep with its first baseline 14.5pt above the row's; `b{3cm}` puts the
+    /// last line on the baseline; `|` takes `\arrayrulewidth`.
+    #[test]
+    fn array_m_and_b_entries_and_width_taking_rules() {
+        let m = metrics();
+        let lines = ParLines { first_height: 8.0, inner: 29.0, last_depth: 2.0 };
+        let (d, shift) = parbox(Align::Middle(Length::Pt(85.0)), lines, true, &m);
+        close(d.height, 24.65);
+        close(d.depth, 18.85);
+        close(shift, -14.5);
+        let (d, shift) = parbox(Align::Bottom(Length::Pt(85.0)), lines, true, &m);
+        close(d.height, 39.15);
+        close(d.depth, 4.35);
+        close(shift, -29.0);
+        // One line no taller than `\strutbox` stays on the baseline.
+        let one = ParLines { first_height: 8.0, inner: 0.0, last_depth: 2.0 };
+        let (d, shift) = parbox(Align::Middle(Length::Pt(85.0)), one, true, &m);
+        close(d.height, 10.15);
+        close(shift, 0.0);
+
+        let mut left = col(Align::Left, false, false);
+        left.before.insert(0, TableMaterial::VLine(span(), 0.4));
+        left.after.push(TableMaterial::VLine(span(), 0.4));
+        let mut t = table(vec![left], vec![row(1), TableEntry::HLine { span: span() }, TableEntry::HLine { span: span() }]);
+        t.array_package = true;
+        let g = layout(&t, &measured(&t, &[&[10.0]]), &m);
+        close(g.width, 22.8);
+        let v: Vec<_> = g.rules.iter().filter(|r| r.width < 1.0).collect();
+        close(v[0].x, 0.0);
+        close(v[1].x, 22.4);
+        let h: Vec<_> = g.rules.iter().filter(|r| r.width > 1.0).collect();
+        close(h[1].top - h[0].top, 0.4 + 2.0);
     }
 
     #[test]
