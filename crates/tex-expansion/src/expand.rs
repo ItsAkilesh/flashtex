@@ -23,6 +23,10 @@ use crate::token::{Token, TokenKind};
 struct Pending {
     tok: Token,
     frozen: bool,
+    /// The source span of the outermost macro invocation whose expansion
+    /// put this token into the input (`None` for tokens read straight from
+    /// a source text). See [`Engine::next_content_token_with_origin`].
+    origin: Option<Span>,
 }
 
 enum Input<'a> {
@@ -54,6 +58,12 @@ pub struct Engine<'a> {
     /// yet (see CONTRACT.md), this is informational only.
     counter_parents: HashMap<String, Option<String>>,
     next_free_register: u16,
+    /// Host option (see [`Engine::set_emit_grouping`]): also emit the
+    /// begin-group/end-group character tokens and `\begingroup`/`\endgroup`
+    /// after performing their grouping side effect.
+    emit_grouping: bool,
+    /// Invocation origin of the most recently read raw token.
+    last_origin: Option<Span>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,7 +206,80 @@ impl<'a> Engine<'a> {
             env_stack: Vec::new(),
             counter_parents: HashMap::new(),
             next_free_register: 1,
+            emit_grouping: false,
+            last_origin: None,
         }
+    }
+
+    /// When `true`, grouping is still performed exactly as before, but the
+    /// catcode-1/2 character tokens and `\begingroup`/`\endgroup` are also
+    /// passed on to the caller (as TeX's main control hands them to the
+    /// stomach), so a host typesetter can see where groups and arguments
+    /// of commands this engine does not implement begin and end. Default
+    /// `false` (the oracle-matching behavior documented in CONTRACT.md).
+    pub fn set_emit_grouping(&mut self, emit: bool) {
+        self.emit_grouping = emit;
+    }
+
+    /// Declare a control sequence that the host implements (e.g. a
+    /// typesetting command such as `\section`). It is emitted unchanged like
+    /// any unknown control sequence, but counts as *defined*: `\newcommand`
+    /// refuses to redefine it and `\renewcommand` accepts it.
+    pub fn declare_host_command(&mut self, name: &str) {
+        self.scopes.assign_cs(name, Meaning::Primitive(Primitive::Host), true);
+    }
+
+    /// Start reading `text` (as TeX's `\input` does): its tokens are read
+    /// before the rest of the current input. Returns the source id its
+    /// token spans carry.
+    pub fn push_input(&mut self, text: &'a str) -> u32 {
+        let id = self.next_source_id;
+        self.next_source_id += 1;
+        self.sources.push(Input::Text(Lexer::new(text, id)));
+        id
+    }
+
+    /// Source ids of the source texts currently open (outermost first).
+    pub fn open_input_ids(&self) -> Vec<u32> {
+        self.sources
+            .iter()
+            .filter_map(|input| match input {
+                Input::Text(lexer) => Some(lexer.source_id()),
+                Input::Toks(..) => None,
+            })
+            .collect()
+    }
+
+    /// The replacement text of a parameterless macro, rendered with
+    /// [`crate::tokens_to_display_string`] rules; `None` when `name` is not
+    /// currently such a macro.
+    pub fn macro_replacement_text(&self, name: &str) -> Option<String> {
+        let def = match self.scopes.meaning(name) {
+            Meaning::Macro(def) => def,
+            _ => return None,
+        };
+        if def.arity != 0 || !def.params.is_empty() {
+            return None;
+        }
+        let mut toks = Vec::new();
+        for part in def.body.iter() {
+            match part {
+                BodyPart::Literal(t) => toks.push(t.clone()),
+                BodyPart::Param(_) => return None,
+            }
+        }
+        Some(crate::tokens_to_display_string(&toks))
+    }
+
+    /// [`Engine::next_content_token`], plus the source span of the outermost
+    /// macro invocation whose expansion produced the token (`None` when the
+    /// token was read directly from a source text). A token substituted
+    /// from a macro argument keeps its own source span; callers can tell it
+    /// apart from replacement-text tokens by comparing that span with the
+    /// invocation's.
+    pub fn next_content_token_with_origin(&mut self) -> Option<(Token, Option<Span>)> {
+        let tok = self.next_content_token()?;
+        Some((tok, self.last_origin))
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
@@ -221,12 +304,21 @@ impl<'a> Engine<'a> {
         if toks.is_empty() {
             return;
         }
-        let pend = toks.into_iter().map(|tok| Pending { tok, frozen: false }).collect();
+        let origin = self.last_origin;
+        self.push_tokens_with_origin(toks, origin);
+    }
+
+    fn push_tokens_with_origin(&mut self, toks: Vec<Token>, origin: Option<Span>) {
+        if toks.is_empty() {
+            return;
+        }
+        let pend = toks.into_iter().map(|tok| Pending { tok, frozen: false, origin }).collect();
         self.sources.push(Input::Toks(pend, 0));
     }
 
     fn push_frozen(&mut self, tok: Token) {
-        self.sources.push(Input::Toks(vec![Pending { tok, frozen: true }], 0));
+        let origin = self.last_origin;
+        self.sources.push(Input::Toks(vec![Pending { tok, frozen: true, origin }], 0));
     }
 
     fn next_raw(&mut self) -> Option<Pending> {
@@ -234,7 +326,8 @@ impl<'a> Engine<'a> {
             match self.sources.last_mut()? {
                 Input::Text(lexer) => {
                     if let Some(tok) = lexer.next_token(self.scopes.cat_table()) {
-                        return Some(Pending { tok, frozen: false });
+                        self.last_origin = None;
+                        return Some(Pending { tok, frozen: false, origin: None });
                     } else {
                         self.sources.pop();
                         continue;
@@ -244,7 +337,10 @@ impl<'a> Engine<'a> {
                     if *pos < toks.len() {
                         let p = &toks[*pos];
                         *pos += 1;
-                        return Some(Pending { tok: p.tok.clone(), frozen: p.frozen });
+                        let origin = p.origin;
+                        let pending = Pending { tok: p.tok.clone(), frozen: p.frozen, origin };
+                        self.last_origin = origin;
+                        return Some(pending);
                     } else {
                         self.sources.pop();
                         continue;
@@ -358,12 +454,14 @@ impl<'a> Engine<'a> {
             match cat {
                 CatCode::BeginGroup => {
                     self.scopes.push_group();
-                    return Some(Step::Continue);
+                    return Some(if self.emit_grouping { Step::Emit(tok.clone()) } else { Step::Continue });
                 }
                 CatCode::EndGroup => {
+                    let origin = self.last_origin;
                     let after = self.scopes.pop_group();
                     self.push_tokens(after);
-                    return Some(Step::Continue);
+                    self.last_origin = origin;
+                    return Some(if self.emit_grouping { Step::Emit(tok.clone()) } else { Step::Continue });
                 }
                 _ => {}
             }
@@ -536,7 +634,7 @@ impl<'a> Engine<'a> {
                 return Some(pending);
             }
             match self.step(pending.tok) {
-                Step::Emit(t) => return Some(Pending { tok: t, frozen: false }),
+                Step::Emit(t) => return Some(Pending { tok: t, frozen: false, origin: self.last_origin }),
                 Step::Continue => continue,
                 Step::Eof => return None,
             }
@@ -583,6 +681,7 @@ impl<'a> Engine<'a> {
     }
 
     fn call_macro(&mut self, call_tok: &Token, def: &Rc<MacroDef>) {
+        let origin = Some(self.last_origin.unwrap_or(call_tok.span));
         let mut args: HashMap<u8, Vec<Token>> = HashMap::new();
         let mut i = 0usize;
         while i < def.params.len() {
@@ -624,14 +723,15 @@ impl<'a> Engine<'a> {
             }
         }
         let expansion = substitute_body(&def.body, &args);
-        self.push_tokens(expansion);
+        self.push_tokens_with_origin(expansion, origin);
     }
 
     /// Call a `\newcommand`-with-optional-first-argument-style macro:
     /// `#1` is either the bracketed `[...]` following the call site, or
     /// `default` when no `[` is present (the call site's next token is
     /// left untouched in that case).
-    fn call_macro_with_optional(&mut self, _call_tok: &Token, def: &Rc<MacroDef>, default: &[Token]) {
+    fn call_macro_with_optional(&mut self, call_tok: &Token, def: &Rc<MacroDef>, default: &[Token]) {
+        let origin = Some(self.last_origin.unwrap_or(call_tok.span));
         let mut args: HashMap<u8, Vec<Token>> = HashMap::new();
         let first = if let Some(t) = self.peek_one() {
             if matches!(t.kind, TokenKind::Char('[', CatCode::Other)) {
@@ -649,7 +749,7 @@ impl<'a> Engine<'a> {
             args.insert(n, arg);
         }
         let expansion = substitute_body(&def.body, &args);
-        self.push_tokens(expansion);
+        self.push_tokens_with_origin(expansion, origin);
     }
 
     /// Scan `[...]` (opening bracket already consumed), tracking nested
@@ -975,13 +1075,24 @@ impl<'a> Engine<'a> {
             }
             Begingroup => {
                 self.scopes.push_group();
-                Step::Continue
+                if self.emit_grouping {
+                    Step::Emit(tok)
+                } else {
+                    Step::Continue
+                }
             }
             Endgroup => {
+                let origin = self.last_origin;
                 let after = self.scopes.pop_group();
                 self.push_tokens(after);
-                Step::Continue
+                self.last_origin = origin;
+                if self.emit_grouping {
+                    Step::Emit(tok)
+                } else {
+                    Step::Continue
+                }
             }
+            Host => Step::Emit(tok),
             Aftergroup => {
                 if let Some(t) = self.next_raw_token() {
                     self.scopes.queue_aftergroup(t);
@@ -1226,7 +1337,7 @@ impl<'a> Engine<'a> {
         // exhausted.
         toks.push(Token::synthetic(TokenKind::ControlSequence("relax".to_string())));
         self.sources.push(Input::Toks(
-            toks.into_iter().map(|tok| Pending { tok, frozen: false }).collect(),
+            toks.into_iter().map(|tok| Pending { tok, frozen: false, origin: None }).collect(),
             0,
         ));
         let v = self.scan_number();
@@ -1322,7 +1433,7 @@ impl<'a> Engine<'a> {
                 _ => BodyPart::Literal(t),
             })
             .collect();
-        if matches!(kind, Primitive::ProvideCommand) && already_defined {
+        if matches!(kind, Primitive::ProvideCommand | Primitive::NewCommand) && already_defined {
             return;
         }
         let meaning = if let Some(default_toks) = default {

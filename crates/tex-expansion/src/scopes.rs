@@ -120,6 +120,9 @@ pub enum Primitive {
     IfStar,
     NameDef,
     NameUse,
+    /// A host-implemented command (`Engine::declare_host_command`): defined,
+    /// but emitted unchanged for the host.
+    Host,
 }
 
 enum SaveItem {
