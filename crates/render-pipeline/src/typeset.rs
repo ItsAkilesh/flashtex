@@ -1149,7 +1149,7 @@ impl<'a> Context<'a> {
         let units: Vec<ml::MathBox> = children.iter().map(|c| c.content.clone()).collect();
         let discardable = |b: &ml::MathBox| matches!(b.kind, ml::BoxKind::Glue { .. } | ml::BoxKind::Kern);
         // (piece, penalty and glue after it)
-        let mut pieces: Vec<(ml::MathBox, Option<(i32, f64)>)> = Vec::new();
+        let mut pieces: Vec<(ml::MathBox, Option<(i32, pl::Glue)>)> = Vec::new();
         let mut start = 0usize;
         for (last, penalty) in breaks {
             if last < start || last >= units.len() {
@@ -1157,9 +1157,20 @@ impl<'a> Context<'a> {
             }
             let piece = ml::MathBox::hlist(units[start..=last].to_vec());
             let mut next = last + 1;
-            let mut glue = 0.0;
+            let mut glue = pl::Glue::fixed(0.0);
             while next < units.len() && discardable(&units[next]) {
-                glue += units[next].width;
+                let u = &units[next];
+                glue.width += u.width;
+                // plain.tex: `\thickmuskip=5mu plus 5mu`, `\medmuskip=4mu
+                // plus 2mu minus 4mu`, `\thinmuskip=3mu`; a kern is fixed.
+                if let ml::BoxKind::Glue { mu } = u.kind {
+                    if mu >= 5.0 {
+                        glue.stretch += u.width;
+                    } else if mu >= 4.0 {
+                        glue.stretch += u.width / 2.0;
+                        glue.shrink += u.width;
+                    }
+                }
                 next += 1;
             }
             pieces.push((piece, Some((penalty, glue))));
@@ -1185,7 +1196,7 @@ impl<'a> Context<'a> {
             out.push((pl::Item::Box(math_run(&self.maths[pm].root, size, span)), Some(piece_rec)));
             if let Some((penalty, glue)) = after {
                 out.push((pl::Item::penalty(penalty), None));
-                out.push((pl::Item::Glue(pl::Glue::fixed(glue)), None));
+                out.push((pl::Item::Glue(glue), None));
             }
         }
         out
@@ -4428,16 +4439,23 @@ fn inline_break_points(root: &mut ml::MathBox, runs: &[ml::MathList], kerned: bo
             }
             let at = ci;
             ci += 1;
-            let penalty = match class {
-                Bin => 700,
-                Rel => 500,
-                _ => continue,
-            };
             let next = l.atoms.get(i + 1);
             let has_next = next.is_some() || r + 1 < runs.len();
             let next_rel = next.is_some_and(|n| n.class == Rel && !is_glue_atom(n));
-            if has_next && !next_rel && at < units.len() {
+            let penalty = match class {
+                Bin if has_next && !next_rel => Some(700),
+                Rel if has_next && !next_rel => Some(500),
+                _ => None,
+            };
+            // `\medmuskip`/`\thickmuskip` after this atom stretch and shrink
+            // with the line (`4mu plus 2mu minus 4mu`, `5mu plus 5mu`): the
+            // formula is cut there too, with no break allowed unless the
+            // atom carries a penalty.
+            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu }) if *mu >= 4.0);
+            if let Some(penalty) = penalty {
                 breaks.push((at, penalty));
+            } else if stretchy_glue_next {
+                breaks.push((at, pl::INFINITE_PENALTY));
             }
         }
         // The walk must land on the run's end, else the pairing is off and
