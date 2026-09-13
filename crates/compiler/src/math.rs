@@ -139,10 +139,16 @@ pub enum Nucleus {
     /// body}` followed by `\limits` (`limits`, the starred forms) or
     /// `\nolimits`. `body` holds upright [`Nucleus::Text`] runs and the math
     /// glue written inside the argument (`arg\,max`).
-    Operator { body: MathList, limits: bool },
+    Operator {
+        body: MathList,
+        limits: bool,
+    },
     /// amsmath `\substack{a \\ b}` (`subarray{c}`, `amsmath.sty` lines
     /// 1030-1059): rows in `\scriptstyle`, centred, `\vcenter`ed.
-    SubArray { rows: Vec<MathList>, align: char },
+    SubArray {
+        rows: Vec<MathList>,
+        align: char,
+    },
 }
 
 /// An explicit math style (`\displaystyle` .. `\scriptscriptstyle`, and the
@@ -2721,7 +2727,16 @@ fn layout_nucleus(
         Nucleus::Operator { body, .. } => layout_list(body, size, root_size, level, diagnostics),
         Nucleus::SubArray { rows, .. } => {
             let rows: Vec<Vec<MathList>> = rows.iter().map(|r| vec![r.clone()]).collect();
-            layout_matrix(atom, &rows, "c", ("", ""), size, root_size, level, diagnostics)
+            layout_matrix(
+                atom,
+                &rows,
+                "c",
+                ("", ""),
+                size,
+                root_size,
+                level,
+                diagnostics,
+            )
         }
     }
 }

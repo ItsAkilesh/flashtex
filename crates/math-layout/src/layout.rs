@@ -192,11 +192,9 @@ impl Engine<'_> {
                 (self.make_subarray(rows, *align, style), 0.0, false)
             }
             // Scripted glue (not a TeX construct): a kern carrying the scripts.
-            Nucleus::Glue { mu, pt } => (
-                MathBox::kern(mu * self.params(style).mu() + pt),
-                0.0,
-                false,
-            ),
+            Nucleus::Glue { mu, pt } => {
+                (MathBox::kern(mu * self.params(style).mu() + pt), 0.0, false)
+            }
             Nucleus::Radical { radicand, degree } => (
                 self.make_radical(radicand, degree.as_ref(), style),
                 0.0,
@@ -575,7 +573,11 @@ impl Engine<'_> {
         };
         // Rule 15e: delimiters of size `\delim1` (display) or `\delim2`,
         // centred on the axis; a null delimiter is `\nulldelimiterspace`.
-        let delta = if style.is_display() { p.delim1 } else { p.delim2 };
+        let delta = if style.is_display() {
+            p.delim1
+        } else {
+            p.delim2
+        };
         let open = self.left_right_delimiter(delims.0, delta, style, &p);
         let close = self.left_right_delimiter(delims.1, delta, style, &p);
         MathBox::hlist(vec![open, body, close])
