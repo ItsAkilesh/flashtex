@@ -856,7 +856,7 @@ explain that nothing is loaded.
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
-| — | Reload Fixture (File menu; developer-only, no shortcut — confirms before replacing a real/unsaved document) |
+| File > Reload Fixture | Reload Fixture (developer-only, no shortcut — confirms before replacing a real/unsaved document) |
 | ⌘⇧K | Attach built compiler (`$FLASHTEX_COMPILER` or `crates/compiler/target/…`) |
 | File > Export PDF (exact, v2)… | Exact route: the loaded v2 display list through `flashtex-pdf-exact from-v2` (`$FLASHTEX_PDF_EXACT`, bundle, or `crates/pdf/target/…`): original GIDs, embedded font programs, typed rules; refusals name the item |
 | ⌘⇧R | Attach render pipeline (`$FLASHTEX_RENDER`, the app bundle, or `crates/render-pipeline/target/…`): the Latin Modern-metric producer, so the preview shows Computer Modern-style text |
@@ -891,11 +891,8 @@ explain that nothing is loaded.
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
-| Tab / ⇧Tab / Esc | While an inserted snippet is active (no list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
-| Tab / ⇧Tab | Otherwise (no list, no active snippet): Tab indents (a multi-line selection: every touched line; a caret or single-line selection: inserts the indent unit at it); ⇧Tab always outdents the touched line(s) by up to one unit |
 | ⌘⇧Space | Signature help for the command whose argument the caret is in (also opens on `{`/`[` typed after a command name; `}`, Esc or leaving the argument closes it) |
 | ⌘/ | Toggle `% ` line comment on the selection's lines |
-| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |
@@ -906,6 +903,21 @@ explain that nothing is loaded.
 
 The compiler rejects request lines over 8 MiB with an `error` envelope, which the
 banner shows; the shell rejects response lines over 16 MiB.
+
+## Editor keys
+
+A few physical keys mean different things depending on editor mode, so no
+single row in the table above could own them (each shortcut cell there names
+exactly one command). They are not menu items or command-palette entries —
+only the meaning that applies once the higher-priority modes below are
+inactive (completion list, then snippet placeholders) reaches the plain
+editor behavior.
+
+| Keys | Behavior |
+|---|---|
+| Tab / ⇧Tab / Esc | While an inserted snippet is active (no completion list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
+| Tab / ⇧Tab | Otherwise (no list, no active snippet): Tab indents (a multi-line selection: every touched line; a caret or single-line selection: inserts the indent unit at it); ⇧Tab always outdents the touched line(s) by up to one unit |
+| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 
 ## Targets
 

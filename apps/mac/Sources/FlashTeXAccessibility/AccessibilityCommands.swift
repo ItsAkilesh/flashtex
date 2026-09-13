@@ -14,7 +14,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case undo
     case commandPalette, toggleProblems
     case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
-    case completion, completionList
+    case completion, completionList, toggleComment, signatureHelp
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case selectPreviewItemSource
     case accessibilityHelp
@@ -68,8 +68,8 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Loads a runtime v1 compile_result JSON into the preview; a sibling -request.json seeds the editor.",
                          menuItem: "Open Compile Result Fixture…")
         case .reloadFixture:
-            return Entry(command: self, title: "Reload fixture", shortcuts: ["⌘R"], menu: "File",
-                         description: "Reloads the current fixture from disk.",
+            return Entry(command: self, title: "Reload fixture", shortcuts: ["File > Reload Fixture"], menu: "File",
+                         description: "Reloads the current fixture from disk (developer-only; confirms via Save/Discard/Cancel before replacing a real or unsaved document).",
                          menuItem: "Reload Fixture")
         case .attachBuiltCompiler:
             return Entry(command: self, title: "Attach built compiler", shortcuts: ["⌘⇧K"], menu: "File",
@@ -171,6 +171,12 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Completion list keys", shortcuts: ["↑", "↓", "Tab", "⇧Tab", "Return"], menu: "Editor",
                          description: "While the completion list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return or Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list and any other caret move closes it.",
                          requires: "an open completion list")
+        case .signatureHelp:
+            return Entry(command: self, title: "Signature help", shortcuts: ["⌘⇧Space"], menu: "Editor",
+                         description: "Shows the signature of the command whose argument the caret is in; also opens on `{`/`[` typed after a command name. `}`, Esc, or leaving the argument closes it.")
+        case .toggleComment:
+            return Entry(command: self, title: "Toggle comment", shortcuts: ["⌘/"], menu: "Editor",
+                         description: "Toggles a `% ` line comment on every line the selection touches: all commented lines are uncommented, otherwise the non-blank lines are commented; one undo step.")
         case .goToMatching:
             return Entry(command: self, title: "Go to matching", shortcuts: ["⌘⇧D"], menu: "Navigate",
                          description: "Selects the matching \\begin/\\end or \\label/\\ref for the command under the caret; misses are explained in the footer.",

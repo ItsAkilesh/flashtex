@@ -8,8 +8,8 @@ import FlashTeXAccessibility
 /// keyboard. The table is the single source: a command that is not in it is
 /// not in the palette, and the palette can only run what a menu item or
 /// window already does (`CommandPaletteModel.perform`). Editor keys
-/// (completion, the preview click, ⌘G in the search window) are listed as
-/// hints and cannot be run from here.
+/// (completion, toggle comment, signature help, the preview click, ⌘G in the
+/// search window) are listed as hints and cannot be run from here.
 enum CommandPaletteModel {
     struct Row: Identifiable, Equatable {
         let entry: AccessibilityCommand.Entry
@@ -19,7 +19,7 @@ enum CommandPaletteModel {
 
     /// Commands the palette cannot run: they are keys inside the editor, a
     /// mouse action on the preview, or a key that only the search window has.
-    static let notRunnable: Set<AccessibilityCommand> = [.completion, .completionList, .selectPreviewItemSource, .nextSearchMatch]
+    static let notRunnable: Set<AccessibilityCommand> = [.completion, .completionList, .toggleComment, .signatureHelp, .selectPreviewItemSource, .nextSearchMatch]
 
     static func isRunnable(_ command: AccessibilityCommand) -> Bool { !notRunnable.contains(command) }
 
@@ -85,7 +85,7 @@ enum CommandPaletteModel {
         case .findPrevious: EditorFindAction.send(.previousMatch)
         case .useSelectionForFind: EditorFindAction.send(.setSearchString)
         case .jumpToSelection: EditorFindAction.centerSelection()
-        case .completion, .completionList, .selectPreviewItemSource, .nextSearchMatch: return false
+        case .completion, .completionList, .toggleComment, .signatureHelp, .selectPreviewItemSource, .nextSearchMatch: return false
         case .goToMatching: model.goToMatching()
         case .nextDiagnostic: model.goToDiagnostic(forward: true)
         case .previousDiagnostic: model.goToDiagnostic(forward: false)

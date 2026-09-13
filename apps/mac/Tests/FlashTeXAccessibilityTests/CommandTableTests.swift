@@ -148,9 +148,10 @@ final class CommandTableTests: XCTestCase {
         XCTAssertGreaterThan(wired.count, 20, "menu items parsed from the shell source")
         for e in AccessibilityCommand.entries {
             guard let item = e.menuItem else {
-                // Undo and Settings (⌘,) are system items; completion, the preview
-                // click and the search window's ⌘G are not menu items.
-                XCTAssertTrue([.undo, .completion, .completionList, .selectPreviewItemSource, .editorPreferences, .nextSearchMatch].contains(e.command), "\(e.command) has no menu item")
+                // Undo and Settings (⌘,) are system items; completion, toggle
+                // comment, signature help, the preview click and the search
+                // window's ⌘G are not menu items.
+                XCTAssertTrue([.undo, .completion, .completionList, .toggleComment, .signatureHelp, .selectPreviewItemSource, .editorPreferences, .nextSearchMatch].contains(e.command), "\(e.command) has no menu item")
                 continue
             }
             let matches = wired.filter { $0.title == item }
