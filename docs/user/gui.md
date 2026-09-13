@@ -171,7 +171,12 @@ without leaving the app, or open an existing `.tex` file.
 - **Hover**: rest the pointer on a token for about half a second to see what
   it is (command with documentation, label, citation key, file, package,
   environment) plus any diagnostic at that position with its recovery note
-  and explanation.
+  and explanation. Resting the pointer on an inline formula (`$…$`, `\(…\)`)
+  instead shows a small preview of the formula as already rendered, cropped
+  out of the current preview page — nothing is re-rendered to show it, so it
+  can go blank right after an edit until the preview catches up, and it
+  doesn't cover display math (`$$…$$`, `\[…\]`) or math environments, or a
+  formula split across more than two lines.
 - **⌘-click** (or ⌘⇧D, *Navigate › Go to Matching*): `\ref{key}` → its
   `\label`; `\label` → cycles through its references; `\begin` ↔ `\end`;
   `\input{file}` → opens the file. `\cite{key}` and user macros resolve

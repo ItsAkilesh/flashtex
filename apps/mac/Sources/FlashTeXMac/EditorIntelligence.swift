@@ -77,6 +77,61 @@ enum EditorIntelligence {
         }
     }
 
+    // MARK: inline math span (hover preview; lane mac-math-hover)
+
+    /// The full span (delimiters included) of the enclosing inline formula
+    /// (`$…$` or `\(…\)`) at `utf16`, or nil when the position is not inside
+    /// one — including display math (`$$…$$`, `\[…\]`) and math environments,
+    /// which the hover preview does not cover. `highlighter` must be in sync
+    /// with `text`; a fresh one is built when nil.
+    ///
+    /// Bounded to at most two lines each way of `utf16`'s line: inline math
+    /// never crosses a blank line (the lexer's rule), and a formula the hover
+    /// preview shows spans at most two lines, so a wider search would only
+    /// ever confirm "too many lines" — which this already reports as nil.
+    static func inlineMathSpan(in text: NSString, at utf16: Int, highlighter: SyntaxHighlighter? = nil) -> NSRange? {
+        guard utf16 >= 0, utf16 <= text.length else { return nil }
+        var h = highlighter ?? SyntaxHighlighter()
+        if highlighter == nil { h.reset(text) }
+        guard h.length == text.length, h.lineCount > 0 else { return nil }
+
+        let line0 = h.line(at: utf16)
+        switch h.modes[line0] {
+        case .text, .inlineMath, .parenMath: break
+        default: return nil // display math, a math environment, or verbatim: not inline
+        }
+
+        // A line at or before `line0`, within two lines of it, that starts in
+        // plain text — a safe restart point, since no open formula's start
+        // can cross a `.text`-mode line start.
+        let lowest = max(0, line0 - 2)
+        guard let ln1 = (lowest...line0).first(where: { h.modes[$0] == .text }) else { return nil } // already unclosed for 2+ lines
+        let lastLine = min(h.lineCount - 1, line0 + 2)
+
+        var open: (run: SyntaxHighlighter.Run, close: String)?
+        for ln in ln1...lastLine {
+            for r in h.runs(in: h.lineRange(ln), text: text) where r.kind == .mathDelimiter {
+                let token = text.substring(with: r.range)
+                if let o = open {
+                    guard token == o.close else { continue } // a display delimiter or stray close: not our pair
+                    let span = NSRange(location: o.run.range.location, length: NSMaxRange(r.range) - o.run.range.location)
+                    if NSLocationInRange(utf16, span) {
+                        let openLine = h.line(at: o.run.range.location)
+                        guard ln - openLine <= 1 else { return nil } // spans more than two lines
+                        return span
+                    }
+                    open = nil
+                } else if token == "$" {
+                    open = (r, "$")
+                } else if token == "\\(" {
+                    open = (r, "\\)")
+                }
+                // "$$", "\[", "\]", and a stray close with no opener: display math; ignored.
+            }
+        }
+        return nil // no pair encloses `utf16` within the window (unclosed, or not inline math)
+    }
+
     // MARK: quick info (hover)
 
     struct QuickInfo: Equatable {
@@ -612,6 +667,13 @@ final class LineNumberGutter: NSRulerView {
 final class HoverController: NSResponder {
     static let delay: TimeInterval = 0.45
     var info: (Int) -> EditorIntelligence.QuickInfo? = { _ in nil }
+    /// Inline math preview (MathHoverPreview.swift): the formula's cropped
+    /// bitmap and its range, when `index` is inside one. Tried before `info`,
+    /// so a formula's crop wins over a command's quick info inside it (e.g.
+    /// `\alpha`); the owner's closure already applies `previewIsStale` and
+    /// the "reads only the current bitmap" rule, so nil here just means "no
+    /// preview" — hover falls back to `info`.
+    var mathPreview: (Int) -> (image: CGImage, range: NSRange)? = { _ in nil }
     private weak var textView: NSTextView?
     private var trackingArea: NSTrackingArea?
     private var timer: Timer?
@@ -620,6 +682,8 @@ final class HoverController: NSResponder {
     private(set) var shownRange: NSRange?
     /// Evidence for tests: infos presented.
     private(set) var presented: [EditorIntelligence.QuickInfo] = []
+    /// Evidence for tests: math-preview ranges presented.
+    private(set) var presentedMathPreviews: [NSRange] = []
     private var lastPoint: NSPoint = .zero
 
     func install(on tv: NSTextView) {
@@ -664,26 +728,44 @@ final class HoverController: NSResponder {
     }
 
     private func fire() {
-        guard let tv = textView, tv.window != nil, !tv.hasMarkedText(), let index = characterIndex(at: lastPoint),
-              let info = info(index) else { return }
-        present(info, in: tv)
+        guard let tv = textView, tv.window != nil, !tv.hasMarkedText(), let index = characterIndex(at: lastPoint) else { return }
+        if let math = mathPreview(index) {
+            presentMathPreview(math.image, range: math.range, in: tv)
+        } else if let info = info(index) {
+            present(info, in: tv)
+        }
     }
 
     func present(_ info: EditorIntelligence.QuickInfo, in tv: NSTextView) {
+        presentContent(NSHostingController(rootView: QuickInfoView(info: info)), range: info.range, in: tv)
+        presented.append(info)
+        if presented.count > 32 { presented.removeFirst(presented.count - 32) }
+    }
+
+    /// Anchors `controller`'s view over `range`, replacing whatever popover
+    /// is open — the one hover-popover slot every hover surface shares (a
+    /// math preview and quick info never show at once).
+    func presentContent(_ controller: NSViewController, range: NSRange, in tv: NSTextView) {
         guard let lm = tv.layoutManager, let container = tv.textContainer else { return }
         dismiss()
-        let glyphs = lm.glyphRange(forCharacterRange: info.range, actualCharacterRange: nil)
+        let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         var anchor = lm.boundingRect(forGlyphRange: glyphs, in: container)
         anchor = anchor.offsetBy(dx: tv.textContainerInset.width, dy: tv.textContainerInset.height)
         let p = NSPopover()
         p.behavior = .applicationDefined
         p.animates = false
-        p.contentViewController = NSHostingController(rootView: QuickInfoView(info: info))
+        p.contentViewController = controller
         popover = p
-        shownRange = info.range
-        presented.append(info)
-        if presented.count > 32 { presented.removeFirst(presented.count - 32) }
+        shownRange = range
         p.show(relativeTo: anchor, of: tv, preferredEdge: .maxY)
+    }
+
+    /// Records a presented math preview for `presentedMathPreviews` (evidence
+    /// for tests); `presentedMathPreviews`'s setter is file-private, so
+    /// `presentMathPreview(_:range:in:)` (MathHoverPreview.swift) goes through this.
+    func recordMathPreview(_ range: NSRange) {
+        presentedMathPreviews.append(range)
+        if presentedMathPreviews.count > 32 { presentedMathPreviews.removeFirst(presentedMathPreviews.count - 32) }
     }
 }
 

@@ -197,7 +197,12 @@ private struct EditorPane: View {
                     case .file(let path, _): Task { await model.project.openDocument(path, role: .opened) }
                     }
                 },
-                userDefinition: { model.definitionSummary(forCommand: $0) } // hover peek of \newcommand bodies (EditorNavigation.swift)
+                userDefinition: { model.definitionSummary(forCommand: $0) }, // hover peek of \newcommand bodies (EditorNavigation.swift)
+                mathPreviewContext: { // inline math hover preview (MathHoverPreview.swift)
+                    model.displayListV2?.frame.map {
+                        MathHoverPreview.Context(path: model.activePath, frame: $0, previewIsStale: model.previewIsStale, dark: model.darkPreview)
+                    }
+                }
             )
             CaptureBar()
             // The bridge line is lifecycle telemetry: shown once a bridge is
