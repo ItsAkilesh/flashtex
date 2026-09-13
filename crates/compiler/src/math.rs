@@ -45,7 +45,13 @@ pub struct MathAtom {
     /// `\mathbin`/`\mathrel`/`\mathord`/`\mathop`/`\mathopen`/`\mathclose`/
     /// `\mathpunct` family, which boxes an arbitrary math list as one atom of
     /// the stated class.
-    pub(crate) class_override: Option<AtomClass>,
+    ///
+    /// Public because the class cannot be recovered downstream: the render
+    /// pipeline re-derives it today by reading the control word back out of
+    /// the source at the atom's span (`typeset::class_override_of`), which
+    /// cannot tell `\colon`'s two definitions apart -- the kernel's is Punct
+    /// and amsmath's is Ord, from the same five characters of source.
+    pub class_override: Option<AtomClass>,
     /// Forces a symbol atom's advance, in ems of its size, when the glyph is
     /// shared by commands whose TeX fonts differ (`\varnothing` is msbm10's
     /// 0.777781em where `\emptyset`'s identical U+2205 is cmsy10's).
@@ -400,8 +406,84 @@ pub struct MathBox {
     pub descent: f64,
 }
 
-pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> MathList {
-    let (list, unclosed) = parse_tokens_reporting_unclosed(tokens, diagnostics, false);
+/// The loaded packages that change what a math command *means*.
+///
+/// Math parsing is otherwise package-blind, which silently picks the LaTeX
+/// kernel's definition for every construct a package redefines — the wrong one
+/// whenever the document loaded the package, which for amsmath is most
+/// documents that use the affected commands. The parser resolves this from the
+/// document class and `\usepackage` (`parser::P::math_packages`) and hands it
+/// to every entry point below; `MathPackages::KERNEL` is "nothing loaded", the
+/// definition in `fontmath.ltx`/`latex.ltx`.
+///
+/// Deliberately a plain `Copy` value passed down the parse, not a global: the
+/// same process compiles many documents, and `siunitx`'s thread-local settings
+/// are the mistake this is not repeating.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MathPackages {
+    /// `amsmath` is loaded, directly or by a package or class that loads it.
+    ///
+    /// Currently this only reaches `\colon`, which amsmath redefines
+    /// (`amsmath.sty` 409-410) from the kernel's `\mathpunct{:}` to
+    /// `\mskip2mu{:}\mskip6mu plus1mu` — 5mu wider in a formula, measured
+    /// against pdflatex. Other amsmath redefinitions the audit found are
+    /// listed on the pull request; each one that lands reads this same flag.
+    pub amsmath: bool,
+}
+
+/// Packages that load amsmath, so that `\usepackage{X}` alone gives amsmath's
+/// definitions. Measured, not assumed: each name was confirmed by compiling
+/// `\documentclass[10pt]{article}\usepackage{X}` with TeX Live 2025 pdflatex
+/// and checking `\hbox{$a a\colon b b$}` against `\hbox{$a a\mathpunct{:}b b$}`
+/// (kernel, 23.5995pt) and `\hbox{$a a\mskip2mu{:}\mskip6mu plus1mu b b$}`
+/// (amsmath, 26.37721pt).
+///
+/// `amsthm`, `amssymb`, `amsfonts`, `amsopn`, `amsbsy`, `amscd`, `amstext`,
+/// `bm`, `unicode-math`, `siunitx`, `esint`, `breqn`, `cases`, `mathdots`,
+/// `thmtools`, `braket`, `cancel`, `tikz-cd` and `diagbox` measured as kernel
+/// and are deliberately absent.
+const AMSMATH_PACKAGES: &[&str] = &[
+    "amsmath",
+    "mathtools",
+    "empheq",
+    "physics",
+    "nccmath",
+    "aligned-overset",
+    "cool",
+    "commath",
+    "mismath",
+    "mhchem",
+    "chemformula",
+];
+
+/// Document classes that load amsmath before the preamble runs, measured the
+/// same way with an empty preamble. `article`, `report`, `book`, `memoir`,
+/// `scrartcl`, `scrbook`, `scrreprt`, `revtex4-2`, `elsarticle`, `IEEEtran`,
+/// `letter`, `proc`, `slides` and `amsdtx` measured as kernel.
+const AMSMATH_CLASSES: &[&str] = &["amsart", "amsbook", "amsproc", "acmart", "beamer"];
+
+impl MathPackages {
+    /// Nothing loaded: every command takes its LaTeX kernel definition.
+    pub const KERNEL: Self = Self { amsmath: false };
+
+    /// Folds one `\documentclass` name in.
+    pub fn load_class(&mut self, class: &str) {
+        self.amsmath |= AMSMATH_CLASSES.contains(&class);
+    }
+
+    /// Folds one `\usepackage`/`\RequirePackage` name in. Loading is
+    /// cumulative: no package unloads another's redefinitions.
+    pub fn load_package(&mut self, package: &str) {
+        self.amsmath |= AMSMATH_PACKAGES.contains(&package);
+    }
+}
+
+pub fn parse_tokens(
+    tokens: &[Token],
+    packages: MathPackages,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> MathList {
+    let (list, unclosed) = parse_tokens_reporting_unclosed(tokens, packages, diagnostics, false);
     if let Some(open) = unclosed {
         diagnostics.push(Diagnostic::error(
             "math group is missing its closing brace",
@@ -425,6 +507,7 @@ pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> Math
 /// not typed yet, covered by the caller's diagnostic, and is not reported.
 pub fn parse_tokens_reporting_unclosed(
     tokens: &[Token],
+    packages: MathPackages,
     diagnostics: &mut Vec<Diagnostic>,
     cut_off: bool,
 ) -> (MathList, Option<Span>) {
@@ -434,6 +517,7 @@ pub fn parse_tokens_reporting_unclosed(
         i: 0,
         depth: 0,
         diagnostics,
+        packages,
         pending: Vec::new(),
         unclosed: None,
         cut_off,
@@ -465,6 +549,8 @@ struct MathParser<'a> {
     i: usize,
     depth: usize,
     diagnostics: &'a mut Vec<Diagnostic>,
+    /// The packages whose redefinitions apply to this list (`MathPackages`).
+    packages: MathPackages,
     /// Atoms produced by the last `atom()` call beyond the one it returned
     /// (a flattened style group, a root index), in order after it.
     pending: Vec<MathAtom>,
@@ -790,6 +876,37 @@ impl MathParser<'_> {
                 self.pending.push(space(5.0 / 18.0, span));
                 space(5.0 / 18.0, span)
             }
+            // `\colon` sets the same character as a bare `:` but never that
+            // character's class. The kernel declares it punctuation
+            // (`fontmath.ltx` 400, `\DeclareMathSymbol{\colon}{\mathpunct}
+            // {operators}{"3A}`) where `:` itself is a relation (line 385):
+            // 0mu before and 3mu after, not 5mu on each side.
+            //
+            // amsmath renews it (`amsmath.sty` 409-410) to
+            // `\nobreak\mskip2mu\mathpunct{}\nonscript\mkern-\thinmuskip{:}%
+            // \mskip6mu plus1mu\relax`. The empty punctuation atom's 3mu is
+            // exactly cancelled by the negative kern behind it, so what is
+            // left is an *ordinary* `:` with 2mu of glue before and 6mu
+            // after — 5mu wider than the kernel's, and most documents that
+            // write `\colon` load amsmath.
+            //
+            // Measured at 10pt against TeX Live 2025 pdflatex, with
+            // `\hbox{$ab$}` = 9.57755pt as the control: `\hbox{$a\colon b$}`
+            // is 14.02196pt without amsmath and 16.79967pt with it. The
+            // three-atom form below reproduces amsmath's box to the scaled
+            // point in text, display, script and scriptscript style.
+            "colon" if self.packages.amsmath => {
+                self.pending.push(MathAtom {
+                    class_override: Some(AtomClass::Ord),
+                    ..symbol(":".into(), span)
+                });
+                self.pending.push(space(6.0 / 18.0, span));
+                space(2.0 / 18.0, span)
+            }
+            "colon" => MathAtom {
+                class_override: Some(AtomClass::Punct),
+                ..symbol(":".into(), span)
+            },
             // `\bot` renders the exact same Symbol glyph as `\perp`
             // (U+22A5), but is Ord where `\perp` is Rel; `symbol_class` is
             // keyed by glyph, so the class must be forced on the atom instead
@@ -1379,6 +1496,7 @@ impl MathParser<'_> {
             pre_unit.as_deref(),
             &args,
             true,
+            self.packages,
             full,
             self.diagnostics,
         )
@@ -1590,6 +1708,7 @@ impl MathParser<'_> {
             i: 0,
             depth: self.depth,
             diagnostics: self.diagnostics,
+            packages: self.packages,
             pending: Vec::new(),
             unclosed: None,
             cut_off: false,
@@ -2665,7 +2784,7 @@ fn takes_display_limits(nucleus: &Nucleus) -> bool {
 
 /// TeX's atom classes (TeXbook Chapter 17), which drive inter-atom spacing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AtomClass {
+pub enum AtomClass {
     Ord,
     Op,
     Bin,
@@ -3834,7 +3953,11 @@ mod parse_tests {
     fn primes_mathrm_and_epsilons_follow_latex() {
         let parse = |src: &str| {
             let mut diagnostics = Vec::new();
-            let list = parse_tokens(&crate::lexer::tokenize(src), &mut diagnostics);
+            let list = parse_tokens(
+                &crate::lexer::tokenize(src),
+                MathPackages::KERNEL,
+                &mut diagnostics,
+            );
             assert!(diagnostics.is_empty(), "{src}: {diagnostics:?}");
             list
         };
@@ -3872,7 +3995,7 @@ mod parse_tests {
         ] {
             let mut diagnostics = Vec::new();
             let tokens = crate::lexer::tokenize(src);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(diagnostics.is_empty(), "{src}: {diagnostics:?}");
             let Nucleus::Matrix { rows, columns, .. } = &list.atoms[0].nucleus else {
                 panic!("{src}: not a grid: {:?}", list.atoms)
@@ -3893,7 +4016,7 @@ mod parse_tests {
     fn big_delimiters_scale_like_cmex_and_keep_tex_classes() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\bigl(x\bigr) \Bigm| \bigg[ \Biggr] \big.");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let sized: Vec<(&str, f64, DelimiterRole)> = list
             .atoms
@@ -3922,7 +4045,11 @@ mod parse_tests {
         ));
 
         let boxed = layout(
-            &parse_tokens(&crate::lexer::tokenize(r"\bigl("), &mut diagnostics),
+            &parse_tokens(
+                &crate::lexer::tokenize(r"\bigl("),
+                MathPackages::KERNEL,
+                &mut diagnostics,
+            ),
             10.0,
             &mut diagnostics,
         );
@@ -3937,7 +4064,7 @@ mod parse_tests {
     fn left_right_hug_ordinary_content_at_scale_one() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\left( x \right)");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let sized: Vec<(&str, f64, DelimiterRole)> = list
             .atoms
@@ -3971,7 +4098,7 @@ mod parse_tests {
     fn left_right_stretch_around_a_fraction_and_agree_on_scale() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\left( \frac{a}{b} \right)");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let size = 10.0;
         let boxed = layout(&list, size, &mut diagnostics);
@@ -3991,7 +4118,7 @@ mod parse_tests {
     fn nested_left_right_pairs_each_hug_their_own_content() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\left[ \left( \frac{a}{b} \right) \right]");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let size = 10.0;
         let boxed = layout(&list, size, &mut diagnostics);
@@ -4018,7 +4145,7 @@ mod parse_tests {
     fn null_left_delimiter_stretches_invisibly_with_its_paired_fence() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\left. \frac{a}{b} \right|");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let size = 10.0;
         let boxed = layout(&list, size, &mut diagnostics);
@@ -4042,7 +4169,7 @@ mod parse_tests {
     fn unmatched_left_delimiter_does_not_panic_and_stays_at_scale_one() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\left( x");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         let _ = layout(&list, 10.0, &mut diagnostics);
         let open = list
             .atoms
@@ -4061,7 +4188,7 @@ mod parse_tests {
     fn logical_commands_are_real_exportable_symbol_atoms() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\in\forall\exists\vee\Rightarrow\mid");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let glyphs: Vec<&str> = list
             .atoms
@@ -4080,7 +4207,7 @@ mod parse_tests {
     fn display_limits_stack_under_lim_but_stay_beside_inline_and_on_integrals() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\lim_{x\to 0} f \int_0^1 g");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         let x_of = |b: &MathBox, text: &str| {
             b.items
                 .iter()
@@ -4119,7 +4246,7 @@ mod parse_tests {
         let tokens = crate::lexer::tokenize(
             r"\overset{?}{=} \underset{x}{\min} {n \choose k} {a \over b} \lim\limits_{x}",
         );
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
         assert_eq!(nuclei.len(), 5, "{nuclei:?}");
@@ -4158,7 +4285,7 @@ mod parse_tests {
         let tokens = crate::lexer::tokenize(
             r"\binom{n}{k} \sqrt[3]{8} \mathbf{F} \boxed{x=4} \overline{AB} a \pmod{n} \tag{2}",
         );
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let nuclei: Vec<&Nucleus> = list.atoms.iter().map(|atom| &atom.nucleus).collect();
         assert!(matches!(
@@ -4201,7 +4328,7 @@ mod parse_tests {
     fn sqrt_draws_its_vinculum_over_the_whole_body() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\sqrt{10-x}");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         let size = 10.0;
         let laid = layout(&list, size, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -4229,7 +4356,7 @@ mod parse_tests {
               \mathrm{d}x \Gamma\Delta\partial\nabla\equiv\propto\cup\subseteq\notin\emptyset
               \iff\langle u\rangle \big\{ \bigr\} \left. \right| \dfrac{1}{2} a\!b\cdots\dots",
         );
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let _ = layout(&list, 12.0, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -4249,7 +4376,7 @@ mod parse_tests {
     fn delimiter_sizes_consume_the_source_delimiter_once() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\bigl(x\bigr)");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let glyphs: Vec<&str> = list
             .atoms
@@ -4274,7 +4401,7 @@ mod parse_tests {
         // misplaced alignment tab.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize("a & b");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert!(diagnostics[0].message.contains("misplaced alignment tab"));
         let glyphs: Vec<&str> = list
@@ -4291,7 +4418,7 @@ mod parse_tests {
     #[test]
     fn quad_is_text_font_em_and_thin_space_is_math_units() {
         let tokens = crate::lexer::tokenize(r"a\quad b\,c");
-        let list = parse_tokens(&tokens, &mut Vec::new());
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut Vec::new());
         let spaces: Vec<(f64, bool)> = list
             .atoms
             .iter()
@@ -4306,7 +4433,7 @@ mod parse_tests {
     #[test]
     fn xrightarrow_takes_optional_below_and_required_above() {
         let tokens = crate::lexer::tokenize(r"A \xrightarrow{f} B \xleftarrow[g]{h} C");
-        let list = parse_tokens(&tokens, &mut Vec::new());
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut Vec::new());
         let arrows: Vec<_> = list
             .atoms
             .iter()
@@ -4332,7 +4459,7 @@ mod parse_tests {
     fn quad_text_and_qquad_have_distinct_semantics() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\quad\text{two words}\qquad");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert!(matches!(list.atoms[0].nucleus, Nucleus::Space { em, .. } if em == 1.0));
         assert!(matches!(&list.atoms[1].nucleus, Nucleus::Text(text) if text == "two words"));
@@ -4358,7 +4485,7 @@ mod parse_tests {
         for source in [r"\bigl", r"\text"] {
             let mut diagnostics = Vec::new();
             let tokens = crate::lexer::tokenize(source);
-            let _ = parse_tokens(&tokens, &mut diagnostics);
+            let _ = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(!diagnostics.is_empty(), "{source:?} must remain diagnostic");
         }
 
@@ -4367,7 +4494,7 @@ mod parse_tests {
         // ordinary math symbols rather than erroring or being swallowed.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\text x");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 1, "{:?}", list.atoms);
         assert!(matches!(list.atoms[0].nucleus, Nucleus::Text(ref text) if text == "x"));
@@ -4388,7 +4515,7 @@ mod unbraced_argument_tests {
         // it, exactly like real TeX (and unlike the pre-fix empty-body bug).
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\hat AB");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         match &list.atoms[0].nucleus {
@@ -4416,7 +4543,7 @@ mod unbraced_argument_tests {
         ] {
             let mut diagnostics = Vec::new();
             let tokens = crate::lexer::tokenize(source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
             match &list.atoms[0].nucleus {
@@ -4449,7 +4576,7 @@ mod unbraced_argument_tests {
             let mut diagnostics = Vec::new();
             let source = format!(r"\{command} x");
             let tokens = crate::lexer::tokenize(&source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(
                 diagnostics
                     .iter()
@@ -4472,7 +4599,7 @@ mod unbraced_argument_tests {
         // `\sqrt 2x`: roots only "2"; "x" is outside the radical.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\sqrt 2x");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         match &list.atoms[0].nucleus {
@@ -4497,7 +4624,7 @@ mod unbraced_argument_tests {
             let mut diagnostics = Vec::new();
             let source = format!(r"\{command}12");
             let tokens = crate::lexer::tokenize(&source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
             match &list.atoms[0].nucleus {
@@ -4537,7 +4664,7 @@ mod unbraced_argument_tests {
             let mut diagnostics = Vec::new();
             let source = format!(r"\{command} nk");
             let tokens = crate::lexer::tokenize(&source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
             match &list.atoms[0].nucleus {
@@ -4575,14 +4702,22 @@ mod unbraced_argument_tests {
             (r"\mathfrak{g1}", "\u{1D524}1"),
         ] {
             let mut diagnostics = Vec::new();
-            let list = parse_tokens(&crate::lexer::tokenize(source), &mut diagnostics);
+            let list = parse_tokens(
+                &crate::lexer::tokenize(source),
+                MathPackages::KERNEL,
+                &mut diagnostics,
+            );
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 1, "{source}: {:?}", list.atoms);
             assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol(expected.into()), "{source}");
         }
         // Any other argument keeps the surrounding math letters.
         let mut diagnostics = Vec::new();
-        let list = parse_tokens(&crate::lexer::tokenize(r"\mathsf{x^2}"), &mut diagnostics);
+        let list = parse_tokens(
+            &crate::lexer::tokenize(r"\mathsf{x^2}"),
+            MathPackages::KERNEL,
+            &mut diagnostics,
+        );
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol("x".into()));
     }
@@ -4592,7 +4727,7 @@ mod unbraced_argument_tests {
         // The issue's own examples: `\mathbb R` and `\mathbf v`.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\mathbb RS");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         assert_eq!(
@@ -4609,7 +4744,7 @@ mod unbraced_argument_tests {
 
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\mathbf vw");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         assert_eq!(list.atoms[0].nucleus, Nucleus::Bold("v".into()));
@@ -4627,11 +4762,15 @@ mod unbraced_argument_tests {
         for command in ["mathrm", "mathit", "mathsf", "mathtt", "boldsymbol", "bm"] {
             let mut braced_diagnostics = Vec::new();
             let braced = crate::lexer::tokenize(&format!(r"\{command}{{d}}x"));
-            let braced_list = parse_tokens(&braced, &mut braced_diagnostics);
+            let braced_list = parse_tokens(&braced, MathPackages::KERNEL, &mut braced_diagnostics);
 
             let mut unbraced_diagnostics = Vec::new();
             let unbraced = crate::lexer::tokenize(&format!(r"\{command} dx"));
-            let unbraced_list = parse_tokens(&unbraced, &mut unbraced_diagnostics);
+            let unbraced_list = parse_tokens(
+                &unbraced,
+                MathPackages::KERNEL,
+                &mut unbraced_diagnostics,
+            );
 
             assert!(
                 braced_diagnostics.is_empty() && unbraced_diagnostics.is_empty(),
@@ -4670,7 +4809,7 @@ mod unbraced_argument_tests {
             let mut diagnostics = Vec::new();
             let source = format!(r"\{command} xy");
             let tokens = crate::lexer::tokenize(&source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
             assert_eq!(list.atoms.len(), 2, "{source}: {:?}", list.atoms);
             match &list.atoms[0].nucleus {
@@ -4689,7 +4828,7 @@ mod unbraced_argument_tests {
     fn unbraced_text_takes_one_character_leaving_the_rest_as_math() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"\text nR");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         assert!(matches!(&list.atoms[0].nucleus, Nucleus::Text(text) if text == "n"));
@@ -4708,7 +4847,7 @@ mod unbraced_argument_tests {
         for source in [r"\mathbf\alpha", r"\mathbf{\alpha}"] {
             let mut diagnostics = Vec::new();
             let tokens = crate::lexer::tokenize(source);
-            let list = parse_tokens(&tokens, &mut diagnostics);
+            let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
             assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:?}");
             assert!(
                 diagnostics[0]
@@ -4727,7 +4866,7 @@ mod unbraced_argument_tests {
         // `x^ab` is `x^a` followed by an ordinary "b", not `x^{ab}`.
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(r"x^ab");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(list.atoms.len(), 2, "{:?}", list.atoms);
         assert_eq!(list.atoms[0].nucleus, Nucleus::Symbol("x".into()));
@@ -4745,7 +4884,7 @@ mod accent_tests {
     fn laid_out(source: &str, size: f64) -> (MathBox, Vec<Diagnostic>) {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize(source);
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         let b = layout(&list, size, &mut diagnostics);
         (b, diagnostics)
     }
@@ -4936,8 +5075,12 @@ mod spacing_tests {
     const SIZE: f64 = 18.0; // 1mu = 1pt
 
     fn laid_out(source: &str, size: f64) -> MathBox {
+        laid_out_with(source, size, MathPackages::KERNEL)
+    }
+
+    fn laid_out_with(source: &str, size: f64, packages: MathPackages) -> MathBox {
         let mut diagnostics = Vec::new();
-        let list = parse_tokens(&crate::lexer::tokenize(source), &mut diagnostics);
+        let list = parse_tokens(&crate::lexer::tokenize(source), packages, &mut diagnostics);
         let b = layout(&list, size, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
         b
@@ -5235,6 +5378,118 @@ mod spacing_tests {
         close(x(&group, "B"), x(&group, "b") + width("b", SIZE) + 4.0);
     }
 
+    /// `\colon` sets the same `:` as a bare colon, but its class and its
+    /// spacing come from whichever definition is in force.
+    ///
+    /// The kernel declares it punctuation (`fontmath.ltx` 400) where `:`
+    /// itself is a relation (line 385), so it loses the relation's 5mu on
+    /// each side and gains punctuation's 3mu after it only. amsmath renews it
+    /// (`amsmath.sty` 409-410) to an *ordinary* `:` with explicit 2mu and 6mu
+    /// glue around it.
+    ///
+    /// Measured against TeX Live 2025 pdflatex at 10pt, control
+    /// `\hbox{$ab$}` = 9.57755pt:
+    ///
+    /// | box | no amsmath | with amsmath |
+    /// | --- | ---: | ---: |
+    /// | `\hbox{$\colon$}` | 2.77779pt | 7.22212pt (+8mu) |
+    /// | `\hbox{$a\colon b$}` | 14.02196pt | 16.79967pt (+5mu) |
+    /// | `\hbox{$a\colon=b$}` | 24.57747pt | 30.13289pt (+10mu) |
+    #[test]
+    fn colon_is_kernel_punctuation_until_amsmath_renews_it() {
+        const AMS: MathPackages = MathPackages { amsmath: true };
+
+        // Kernel: no space before, punctuation's thin space after — exactly
+        // what `\mathpunct{:}` gives, and 5mu narrower than a bare `:`.
+        let kernel = laid_out(r"a\colon b", SIZE);
+        close(x(&kernel, ":"), width("a", SIZE));
+        close(x(&kernel, "b"), x(&kernel, ":") + width(":", SIZE) + 3.0);
+        close(kernel.width, width(r"a\mathpunct{:}b", SIZE));
+        close(width("a:b", SIZE), kernel.width + 7.0);
+
+        // amsmath: 2mu of glue, an ordinary `:`, then 6mu — no punctuation
+        // space anywhere, so the `=` below still gets its own relation space.
+        let ams = laid_out_with(r"a\colon b", SIZE, AMS);
+        close(x(&ams, ":"), width("a", SIZE) + 2.0);
+        close(x(&ams, "b"), x(&ams, ":") + width(":", SIZE) + 6.0);
+        close(ams.width, kernel.width + 5.0);
+
+        // Before a relation the gap widens to 10mu, and before a binary
+        // operator to 13mu, because the kernel's punctuation atom changes
+        // what comes *after* it and amsmath's ordinary one does not: the
+        // kernel turns the `+` below into an Ord (TeXbook Chapter 17's
+        // Bin-after-Punct rule) where amsmath leaves it a Bin.
+        // pdflatex, 10pt: `a\colon=b` 24.57747pt -> 30.13289pt (+10mu),
+        // `a\colon+b` 21.79976pt -> 29.0218pt (+13mu).
+        close(
+            laid_out_with(r"a\colon=b", SIZE, AMS).width,
+            width(r"a\colon=b", SIZE) + 10.0,
+        );
+        close(
+            laid_out_with(r"a\colon+b", SIZE, AMS).width,
+            width(r"a\colon+b", SIZE) + 13.0,
+        );
+
+        // On its own the explicit glue survives on both sides, where the
+        // kernel's punctuation space has no right neighbour to apply to:
+        // 2.77779pt -> 7.22212pt, +8mu.
+        close(
+            laid_out_with(r"\colon", SIZE, AMS).width,
+            width(r"\colon", SIZE) + 8.0,
+        );
+
+        // Neither definition is a bare `:`, which is a relation (5mu each
+        // side) in both.
+        assert_ne!(kernel.width, width("a:b", SIZE));
+        assert_ne!(ams.width, width("a:b", SIZE));
+    }
+
+    /// The packages that carry amsmath's definitions in, and the ones that
+    /// measured as leaving the kernel's alone. Each name below was checked by
+    /// compiling `\documentclass[10pt]{article}\usepackage{X}` with TeX Live
+    /// 2025 pdflatex and comparing `\hbox{$a a\colon b b$}` (23.5995pt with
+    /// the kernel's definition, 26.37721pt with amsmath's) against the two
+    /// hand-written expansions in the same document.
+    #[test]
+    fn amsmath_arrives_through_the_packages_and_classes_that_load_it() {
+        for name in [
+            "amsmath",
+            "mathtools",
+            "empheq",
+            "physics",
+            "nccmath",
+            "mhchem",
+        ] {
+            let mut packages = MathPackages::KERNEL;
+            packages.load_package(name);
+            assert!(packages.amsmath, "{name} loads amsmath");
+        }
+        for name in [
+            "amsthm",
+            "amssymb",
+            "amsfonts",
+            "amsopn",
+            "bm",
+            "siunitx",
+            "breqn",
+            "unicode-math",
+        ] {
+            let mut packages = MathPackages::KERNEL;
+            packages.load_package(name);
+            assert!(!packages.amsmath, "{name} does not load amsmath");
+        }
+        for class in ["amsart", "amsbook", "amsproc", "acmart", "beamer"] {
+            let mut packages = MathPackages::KERNEL;
+            packages.load_class(class);
+            assert!(packages.amsmath, "{class} loads amsmath");
+        }
+        for class in ["article", "report", "book", "memoir", "IEEEtran"] {
+            let mut packages = MathPackages::KERNEL;
+            packages.load_class(class);
+            assert!(!packages.amsmath, "{class} does not load amsmath");
+        }
+    }
+
     #[test]
     fn qed_glyph_is_in_the_pinned_font_and_carries_no_export_loss() {
         assert!(crate::lm_math::advance('\u{220E}').is_some());
@@ -5253,7 +5508,7 @@ mod shift_tests {
     fn shifting_reaches_nested_spans() {
         let mut diagnostics = Vec::new();
         let tokens = crate::lexer::tokenize("\\frac{a^2}{b}");
-        let list = parse_tokens(&tokens, &mut diagnostics);
+        let list = parse_tokens(&tokens, MathPackages::KERNEL, &mut diagnostics);
         let shifted = shift_list(&list, 10);
 
         fn min_start(list: &MathList) -> usize {
