@@ -298,18 +298,63 @@ extension ShellModel {
         V2ImageStore.shared.root = project.projectRoot // the directory the request's project_root named
         let expectedProject = result.projectId, expectedRevision = result.revision
         let compiled = compiledDocuments // the exact text the applied compile_result was requested with (D1)
+        // display-list-v2-delta: a `display_list_delta` sibling is applied to the
+        // installed base captured here (main thread), off-main; the reconstructed
+        // list then goes through the unchanged full validation. Any refusal drops
+        // the base so the next request asks for a full frame.
+        let isDelta = RenderingV2Fast.header(line)?.type == DisplayListDelta.messageType
+        let installed = deltaInstalled
+        if isDelta {
+            guard negotiation.accepted.contains(DisplayListDelta.capability) else {
+                let msg = "display_list_delta \(id) arrived but \(DisplayListDelta.capability) was not accepted for that result (accepted: \(negotiation.accepted.joined(separator: ", ")))"
+                log("rejected unsolicited " + msg)
+                workerStatus = "protocol violation: " + msg
+                deltaInstalled = nil
+                completion?()
+                return
+            }
+            guard installed != nil else {
+                log("preview-v2: display_list_delta \(id) without an installed base; requesting a full frame")
+                workerStatus = "display_list_delta refused: [delta_base_mismatch] no installed base"
+                completion?()
+                return
+            }
+        }
         startDisplayListV2(source: .worker(requestID: id, projectId: expectedProject, revision: expectedRevision, line: line), completion: completion) {
-            switch V2Loader.prepare(data: line) {
+            let outcome: V2Loader.Outcome
+            if isDelta, let installed {
+                do {
+                    let delta = try RenderingV2Fast.delta(line, maxPages: DisplayListDelta.maxSnapshotPages)
+                    let (envelope, pageBytes, target) = try DisplayListDelta.apply(delta, to: installed)
+                    var frame = try V2Frame.prepare(envelope)
+                    frame.installedBase = DisplayListDelta.installed(from: envelope, pageBytes: pageBytes, lineBytes: target)
+                    frame.reusedPages = delta.pageCount - delta.changedPages.count
+                    outcome = .loaded(frame)
+                } catch let refusal as DisplayListDelta.Refusal {
+                    outcome = .failed(refusal.asValidationError)
+                } catch let error as RenderingV2.ValidationError {
+                    outcome = .failed(error)
+                } catch {
+                    outcome = .failed(RenderingV2.ValidationError(code: "delta_undecodable", message: "\(error)"))
+                }
+            } else {
+                outcome = V2Loader.prepare(data: line)
+            }
+            switch outcome {
             case .loaded(let frame) where frame.list.projectId != expectedProject || frame.list.revision != expectedRevision:
                 return .failed(RenderingV2.ValidationError(code: "correlation_mismatch",
                                                            message: "display_list \(id) is for project \(frame.list.projectId) revision \(frame.list.revision); the compile_result is project \(expectedProject) revision \(expectedRevision)"))
-            case .loaded(let frame):
+            case .loaded(var frame):
                 if let refusal = V2Live.sourceBindingFailure(of: frame.list, requestID: id, compiled: compiled) {
                     V2Live.note(sourceMismatch: true)
                     return .failed(refusal)
                 }
+                if !isDelta, DisplayListDelta.enabled, frame.installedBase == nil, let pageBytes = frame.pageBytes {
+                    let envelope = RenderingV2.Envelope(protocolVersion: RenderingV2.protocolVersion, id: frame.id, type: RenderingV2.messageType, payload: frame.list)
+                    frame.installedBase = DisplayListDelta.installed(from: envelope, pageBytes: pageBytes, lineBytes: line.count)
+                }
                 return .loaded(frame)
-            case let outcome: return outcome
+            case .failed: return outcome
             }
         }
     }
@@ -380,10 +425,13 @@ extension ShellModel {
             // Bitmaps first, so the render pass this publish triggers blits them.
             if let prerastered { V2PageRasterizer.shared.preinstall(prerastered, frame: frame) }
             displayListV2 = .loaded(frame, source)
+            // Installation (proposal r5 §6.1): only a published live frame is a base.
+            if source.isLive { deltaInstalled = frame.installedBase } else { deltaInstalled = nil }
             if TypingBench.isBenchActive { FlashTeXLog.write("preview-v2: published \(source.label) revision \(frame.list.revision) at \(MonotonicClock.nowNs())") }
             captureNote = "\(source.isLive ? "Live display list" : "Loaded display list") \(source.label): \(frame.list.pages.count) page(s), \(frame.fonts.count) font(s) resolved by content hash, \(frame.prepared.reduce(0) { $0 + $1.glyphCount }) glyphs prepared"
             V2ParityEvidence.runIfRequested(frame: frame, source: source)
         case .failed(let error):
+            if source.isLive { deltaInstalled = nil } // full resync on the next request
             if source.isLive, let retained = displayListV2?.retained {
                 // A refused LIVE sibling (D1 source binding, correlation, validation) never
                 // un-verifies the frame already on screen: it stays, and is stale by the

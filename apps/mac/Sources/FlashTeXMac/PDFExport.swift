@@ -84,6 +84,10 @@ extension ShellModel {
             captureNote = "Nothing to export: no compile result loaded."
             return
         }
+        if result.pages.isEmpty, v1PagesElided {
+            captureNote = "The v1 layout pages were elided for the v2 pane (display-list-v2-only); use Export Exact PDF, or switch the v2 pane off and recompile."
+            return
+        }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = "\(result.projectId)-r\(result.revision).pdf"
