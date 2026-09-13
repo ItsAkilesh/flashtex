@@ -1,0 +1,12 @@
+[package]
+name = "flashtex-makeindex"
+version = "0.1.0"
+edition = "2024"
+description = "Original FlashTeX index processor: byte-exact makeindex 2.18 (.idx -> .ind/.ilg), .ist styles, the LaTeX \\index writer, and theindex layout semantics."
+publish = false
+
+[lib]
+name = "flashtex_makeindex"
+path = "src/lib.rs"
+
+[dependencies]
