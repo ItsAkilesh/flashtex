@@ -42,7 +42,7 @@ MAC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$MAC_DIR/../.." && pwd)"
 RESOURCES_SRC="$MAC_DIR/Resources"
 
-APP_VERSION="0.1.0"
+APP_VERSION="0.1.1"
 BUNDLE_ID="tech.jay3332.flashtex.mac"
 
 CONFIG="release"
