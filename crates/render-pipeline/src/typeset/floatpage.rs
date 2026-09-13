@@ -59,6 +59,8 @@ pub struct PreparedGraphic {
     /// `width` and `height` (space is kept, nothing is painted).
     pub resource: Option<Rc<ImageResource>>,
     pub span: Span,
+    /// graphicx `demo`: no file; painted as a black rule of the box's size.
+    pub demo: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -91,7 +93,7 @@ impl FloatParams {
 enum Elem {
     /// A caption line: block/line in `blocks`, baseline from the box top.
     Line { block: usize, line: usize, baseline: f64, height: f64, depth: f64 },
-    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, provenance: Provenance },
+    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, provenance: Provenance, demo: bool },
 }
 
 struct FloatBox {
@@ -133,7 +135,7 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
         let mut x = if centered { ((tw - w) / 2.0).max(0.0) } else { 0.0 };
         let b = add_box(h, d, y, prev);
         for g in pending.drain(..) {
-            elems.push(Elem::Image { x, baseline: b, gbox: g.gbox, resource: g.resource.clone(), provenance: Provenance::Source(ctx.source(g.span)) });
+            elems.push(Elem::Image { x, baseline: b, gbox: g.gbox, resource: g.resource.clone(), provenance: Provenance::Source(ctx.source(g.span)), demo: g.demo });
             x += g.gbox.width;
         }
     };
@@ -211,6 +213,10 @@ struct Placer<'b> {
     bits: Vec<u32>,
     fp: FloatParams,
     colht: f64,
+    /// `\textheight`, and the first page's column count with its reduced
+    /// `\@colht` below a `\twocolumn[...]` box (`\@topnewpage`).
+    full_colht: f64,
+    first_colht: Option<(usize, f64)>,
     parskip: Skip,
     text_x: f64,
     text_y: f64,
@@ -393,10 +399,25 @@ impl Placer<'_> {
         for e in &b.elems {
             match e {
                 Elem::Line { block, line, baseline, height, depth } => lines.push(Placed { payload: (*block, *line), baseline: top + baseline, height: *height, depth: *depth }),
-                Elem::Image { x, baseline, gbox, resource, provenance } => {
-                    let Some(resource) = resource else { continue };
+                Elem::Image { x, baseline, gbox, resource, provenance, demo } => {
                     let left = self.text_x + x;
                     let base = self.text_y + top + baseline;
+                    if *demo {
+                        // graphicx `demo`: `\rule{<width>}{<height>}`.
+                        self.images.push((
+                            page,
+                            display::Item::Rule(display::Rule {
+                                x: Tick::from_tex_pt(left),
+                                top: Tick::from_tex_pt(base - gbox.height),
+                                width: Tick::from_tex_pt(gbox.width).max(Tick(1)),
+                                height: Tick::from_tex_pt(gbox.height + gbox.depth).max(Tick(1)),
+                                paint: display::Paint::BLACK,
+                                provenance: provenance.clone(),
+                            }),
+                        ));
+                        continue;
+                    }
+                    let Some(resource) = resource else { continue };
                     let m = gbox.matrix;
                     let k = BP_PER_PT;
                     self.images.push((
@@ -434,9 +455,19 @@ impl Placer<'_> {
         self.pages.push(BuiltPage { lines, overfull_by: 0.0 });
     }
 
+    /// `\@colht` of the column about to start: `\textheight`, less a
+    /// `\twocolumn[...]` box on the first page's columns.
+    fn set_colht(&mut self) {
+        self.colht = match self.first_colht {
+            Some((n, h)) if self.pages.len() < n => h,
+            _ => self.full_colht,
+        };
+    }
+
     /// `\@opcol` + `\@startcolumn`.
     fn start_column(&mut self) {
         loop {
+            self.set_colht();
             self.col = Col::new(self.colht);
             match self.try_fcolumn(0.5 * self.colht, true) {
                 Some((on_page, rest)) => {
@@ -465,7 +496,9 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
 
 /// Breaks the text into pages with the floats placed. Returns the pages,
 /// the image items per page number and the page of every float `\label`.
-pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams, list: &[VItem], specs: &[FloatSpec]) -> (Vec<BuiltPage>, Vec<(u32, display::Item)>, Vec<(String, u32)>) {
+/// `first_colht`: the first page's column count and `\@colht` below a
+/// `\twocolumn[...]` box.
+pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams, list: &[VItem], specs: &[FloatSpec], first_colht: Option<(usize, f64)>) -> (Vec<BuiltPage>, Vec<(u32, display::Item)>, Vec<(String, u32)>) {
     let text_blocks = blocks.len();
     // Marker positions, before caption blocks are appended.
     let vblocks: Vec<pagebuild::VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
@@ -518,14 +551,16 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
         boxes: &boxes,
         bits: specs.iter().map(|s| s.bits).collect(),
         fp,
-        colht: p.vsize,
+        colht: first_colht.filter(|(n, _)| *n > 0).map_or(p.vsize, |(_, h)| h),
+        full_colht: p.vsize,
+        first_colht,
         parskip: Skip { n: s.parskip.natural, st: s.parskip.stretch, sh: s.parskip.shrink },
         text_x: s.text_x_pt,
         text_y: s.text_y_pt,
         pages: Vec::new(),
         images: Vec::new(),
         labels: Vec::new(),
-        col: Col::new(p.vsize),
+        col: Col::new(first_colht.filter(|(n, _)| *n > 0).map_or(p.vsize, |(_, h)| h)),
         deferred: Vec::new(),
     };
     let mut processed = vec![false; specs.len()];
@@ -752,6 +787,7 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
     rest.append(&mut pl.deferred);
     pl.deferred = rest;
     while !pl.deferred.is_empty() {
+        pl.set_colht();
         match pl.try_fcolumn(f64::NEG_INFINITY, false) {
             Some((on_page, rest)) => {
                 pl.deferred = rest;

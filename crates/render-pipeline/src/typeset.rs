@@ -312,6 +312,9 @@ pub struct Context<'a> {
     /// their once-only keys, suppressed ones included).
     capture: Option<Vec<(Option<String>, Diagnostic)>>,
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
+    /// `\hsize` for paragraphs set outside the column (`\textwidth` for a
+    /// two-column `\twocolumn[\@maketitle]` box); `None` = `\columnwidth`.
+    hsize_override: Option<f64>,
 }
 
 impl<'a> Context<'a> {
@@ -335,6 +338,7 @@ impl<'a> Context<'a> {
             math_unavailable: false,
             reported: BTreeSet::new(),
             capture: None,
+            hsize_override: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
         }
     }
@@ -1475,7 +1479,7 @@ impl<'a> Context<'a> {
         // is 0pt), on top of any `quote` margin.
         let left_skip = if hang_pt != 0.0 { pl::Glue::fixed(left_skip.width + hang_pt) } else { left_skip };
         pl::LineBreakParams {
-            line_width: s.text_width_pt,
+            line_width: self.hsize_override.unwrap_or(s.text_width_pt),
             mode,
             algorithm: pl::Algorithm::TotalFit,
             pretolerance: s.pretolerance,
@@ -3635,6 +3639,20 @@ fn symbol_atoms(c: char, width_em: Option<f64>) -> Vec<ml::Atom> {
 
 /// Adds `\addvspace` glue (a list environment's `\topsep`) to the block's
 /// before-skip; `None` is a no-op.
+/// Moves a float's image or `demo` rule `dy` points down (the first page's
+/// columns below a `\twocolumn[...]` box).
+fn shift_item_y(item: &mut display::Item, dy: f64) {
+    let t = Tick::from_tex_pt(dy);
+    match item {
+        display::Item::Image(image) => {
+            image.top = Tick(image.top.0 + t.0);
+            image.transform[5] += t.to_bp();
+        }
+        display::Item::Rule(rule) => rule.top = Tick(rule.top.0 + t.0),
+        _ => {}
+    }
+}
+
 fn add_skip_before(v: &mut pagebuild::VBlock, skip: Option<(f64, f64, f64)>) {
     let Some((n, s, k)) = skip else { return };
     v.space_before = Some(match v.space_before {
@@ -3698,7 +3716,12 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         incremental::hash_items(items, base, &mut h);
         (Some(h.finish()), Some((document, base)))
     };
-    for block in &doc.blocks {
+    // `\twocolumn[\@maketitle]`: a two-column article's `\maketitle`, when
+    // nothing but page-style commands precede it, is set above both columns.
+    let span_title = geo.is_some_and(|g| g.frame.columns.len() > 1)
+        && doc.title_parts.first().is_some_and(|(first, _)| doc.blocks[..*first].iter().all(|b| matches!(b, Block::Chrome { .. })));
+    let mut title_built: Vec<(usize, adapter::TitlePart)> = Vec::new();
+    for (doc_index, block) in doc.blocks.iter().enumerate() {
         match block {
             Block::Heading {
                 level,
@@ -3782,6 +3805,21 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 endlist_adjust,
                 list,
             } => {
+                if span_title {
+                    if let Some((_, which)) = doc.title_parts.iter().find(|(i, _)| *i == doc_index) {
+                        // `\@topnewpage`: `\vbox{\hsize\textwidth ...}`, centred.
+                        if let Some(ParaPart::Lines(items)) = parts.first() {
+                            ctx.hsize_override = geo.map(|g| crate::style::frame_pt(g.frame.text_width));
+                            let built = ctx.paragraph_block(items, false, false, false, ParaStyle::Center, None);
+                            ctx.hsize_override = None;
+                            if let Some(b) = built {
+                                title_built.push((blocks.len(), *which));
+                                blocks.push(b);
+                            }
+                        }
+                        continue;
+                    }
+                }
                 let mut first = true;
                 let mut eject = *eject_before;
                 let mut vspace = *vspace_before;
@@ -3991,13 +4029,86 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         lineskiplimit: s.lineskiplimit_pt,
         flushbottom: !s.raggedbottom,
     };
+    // `\twocolumn[\@maketitle]` (`\@topnewpage`): the title is a `\vbox` of
+    // `\textwidth` above both columns of the first page, and those columns'
+    // `\@colht` is `\textheight` less its height (the box ends with
+    // `\vskip-\dbltextfloatsep`, which `\@colht` takes off again, so the
+    // columns start right below the material). `\@maketitle`: `\null`,
+    // `\vskip2em`, the title, `\vskip1.5em`, the authors, `\vskip1em`, the
+    // date, `\vskip1.5em`, interline glue from `\null`'s depth 0; the
+    // `center` environment adds no `\topsep` inside this box (pdflatex's
+    // title baseline is 2em + `\LARGE`'s `\baselineskip` below the text
+    // top, and its columns start 2.5em below the last author line's depth:
+    // fixtures/real-world/article-twocolumn).
+    let mut title_lines: Vec<pagebuild::Placed> = Vec::new();
+    let mut title_height = 0.0f64;
+    if !title_built.is_empty() {
+        let before = |w: adapter::TitlePart| match w {
+            adapter::TitlePart::Title => 2.0,
+            adapter::TitlePart::Authors => 3.5,
+            adapter::TitlePart::Date => 4.5,
+        };
+        // `{\LARGE \@title \par}`, `{\large ...}`: their `\baselineskip`.
+        let base = match geo.map(|g| g.options.size) {
+            Some(flashtex_class_geometry::BaseSize::Pt11) => flashtex_document_style::BaseSize::Pt11,
+            Some(flashtex_class_geometry::BaseSize::Pt12) => flashtex_document_style::BaseSize::Pt12,
+            _ => flashtex_document_style::BaseSize::Pt10,
+        };
+        let (mut y, mut prev_depth, mut applied) = (0.0f64, 0.0f64, 0.0f64);
+        for &(bi, which) in &title_built {
+            let v = &blocks[bi].vertical;
+            let size = if which == adapter::TitlePart::Title { flashtex_document_style::SizeName::LARGE3 } else { flashtex_document_style::SizeName::Large };
+            let bs = flashtex_document_style::font_size(base, size).baselineskip.0;
+            y += (before(which) - applied) * quad;
+            applied = before(which);
+            for (li, &(h, d)) in v.lines.iter().enumerate() {
+                let mut g = bs - prev_depth - h;
+                if g < s.lineskiplimit_pt {
+                    g = s.lineskip_pt;
+                }
+                let baseline = y + g + h;
+                title_lines.push(pagebuild::Placed { payload: (bi, li), baseline, height: h, depth: d });
+                y = baseline + d;
+                prev_depth = d;
+                if let Some(&vs) = v.vskip_after.get(li) {
+                    y += vs;
+                }
+            }
+        }
+        title_height = (y + (6.0 - applied) * quad).min(s.text_height_pt);
+        for &(bi, _) in &title_built {
+            blocks[bi].vertical.lines.clear();
+        }
+    }
+    let first_colht = (title_height > 0.0).then(|| (geo.map_or(1, |g| g.frame.columns.len().max(1)), s.text_height_pt - title_height));
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
-    let (mut built, images, float_labels) = if floats.is_empty() {
-        (pagebuild::break_pages(&params, &list), Vec::new(), Vec::new())
+    let (mut built, mut images, float_labels) = if floats.is_empty() {
+        let vsize = |ci: usize| match first_colht {
+            Some((n, h)) if ci < n => h,
+            _ => params.vsize,
+        };
+        (pagebuild::break_pages_cols(&params, &list, &vsize), Vec::new(), Vec::new())
     } else {
-        floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
+        floatpage::paginate(ctx, &mut blocks, &params, &list, floats, first_colht)
     };
+    if let Some((n, _)) = first_colht {
+        for page in built.iter_mut().take(n) {
+            for l in &mut page.lines {
+                l.baseline += title_height;
+            }
+        }
+        for (column, item) in images.iter_mut() {
+            if (*column as usize) <= n {
+                shift_item_y(item, title_height);
+            }
+        }
+        if built.is_empty() {
+            built.push(pagebuild::BuiltPage::default());
+        }
+        title_lines.append(&mut built[0].lines);
+        built[0].lines = title_lines;
+    }
     // Two-column documents: the page builder fills columns of `\textheight`
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
