@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlashTeX</title>
+<meta name="description" content="A from-scratch Rust LaTeX engine with a native Mac editor, live sub-200ms preview, and handwriting-to-LaTeX capture.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #faf7f0;
+    --paper-2: #f1ecdf;
+    --paper-3: #e9e2cd;
+    --ink: #1c1a16;
+    --ink-soft: #5b5648;
+    --ink-faint: #8b8672;
+    --rule: #ddd4bb;
+    --rule-strong: #c8bc9b;
+    --accent: #21449a;
+    --accent-ink: #f4f7ff;
+    --errata: #a6301f;
+    --errata-bg: #f4e8e2;
+    --ok: #2f6b3f;
+    --code-bg: #17191d;
+    --code-bg-2: #1f2227;
+    --code-ink: #e7e3d6;
+    --code-ink-soft: #9a9689;
+    --code-accent: #7fb0ff;
+    --code-string: #d8b36a;
+    --code-rule: #33363d;
+    --shadow: 0 1px 2px rgba(28,26,22,0.06), 0 12px 32px -16px rgba(28,26,22,0.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #17150f;
+      --paper-2: #1e1b13;
+      --paper-3: #262218;
+      --ink: #ede7d8;
+      --ink-soft: #a79c86;
+      --ink-faint: #7c745f;
+      --rule: #3a3527;
+      --rule-strong: #4a4432;
+      --accent: #8fb4ff;
+      --accent-ink: #0c1526;
+      --errata: #ff8a73;
+      --errata-bg: #2c1a15;
+      --ok: #7bc78f;
+      --code-bg: #0f1114;
+      --code-bg-2: #17191d;
+      --code-ink: #e7e3d6;
+      --code-ink-soft: #85806f;
+      --code-accent: #8fb4ff;
+      --code-string: #e0bf7e;
+      --code-rule: #2a2d33;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 32px -16px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #17150f;
+    --paper-2: #1e1b13;
+    --paper-3: #262218;
+    --ink: #ede7d8;
+    --ink-soft: #a79c86;
+    --ink-faint: #7c745f;
+    --rule: #3a3527;
+    --rule-strong: #4a4432;
+    --accent: #8fb4ff;
+    --accent-ink: #0c1526;
+    --errata: #ff8a73;
+    --errata-bg: #2c1a15;
+    --ok: #7bc78f;
+    --code-bg: #0f1114;
+    --code-bg-2: #17191d;
+    --code-ink: #e7e3d6;
+    --code-ink-soft: #85806f;
+    --code-accent: #8fb4ff;
+    --code-string: #e0bf7e;
+    --code-rule: #2a2d33;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 12px 32px -16px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: "Spectral", ui-serif, Georgia, serif; font-weight: 600; text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", monospace; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding-inline: 28px; }
+
+  /* ---- running header ---- */
+  .masthead {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .masthead-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding-block: 14px;
+    font-size: 0.82rem;
+  }
+  .masthead-mark { font-family: "Spectral", serif; font-weight: 600; font-size: 1.05rem; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+  .masthead-mark em { color: var(--errata); font-style: normal; }
+  .masthead-nav { display: flex; gap: 28px; align-items: baseline; }
+  .masthead-nav a { color: var(--ink-soft); text-decoration: none; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
+  .masthead-nav a:hover { color: var(--accent); }
+  .masthead-nav .cta {
+    color: var(--accent); border: 1px solid var(--rule-strong); padding: 6px 12px; border-radius: 3px;
+  }
+  .masthead-nav .cta:hover { border-color: var(--accent); }
+
+  section { padding-block: 76px; border-bottom: 1px solid var(--rule); }
+  section:last-of-type { border-bottom: none; }
+
+  .kicker {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .kicker::before { content: ""; width: 22px; height: 1px; background: var(--rule-strong); display: inline-block; }
+
+  /* ---- hero ---- */
+  .hero { padding-top: 56px; padding-bottom: 64px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; }
+  .hero h1 { font-size: clamp(2.3rem, 4vw, 3.1rem); line-height: 1.08; }
+  .hero h1 .accent-word { color: var(--accent); font-style: italic; }
+  .hero p.lede { margin-top: 20px; font-size: 1.1rem; color: var(--ink-soft); max-width: 46ch; }
+  .hero-cta { display: flex; gap: 14px; margin-top: 32px; flex-wrap: wrap; }
+  .btn {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 0.9rem;
+    padding: 12px 20px; border-radius: 4px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid transparent; transition: transform 0.12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-secondary { background: transparent; color: var(--ink); border-color: var(--rule-strong); }
+  .hero-meta { display: flex; gap: 22px; margin-top: 30px; font-size: 0.8rem; color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; flex-wrap: wrap; }
+  .hero-meta span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); display: inline-block; }
+
+  /* ---- manuscript / rendered split panel ---- */
+  .panel {
+    background: var(--code-bg); border-radius: 8px; box-shadow: var(--shadow);
+    overflow: hidden; border: 1px solid var(--code-rule);
+  }
+  .panel-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; background: var(--code-bg-2); border-bottom: 1px solid var(--code-rule);
+  }
+  .panel-dots { display: flex; gap: 6px; }
+  .panel-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--code-rule); display: block; }
+  .panel-label { font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; color: var(--code-ink-soft); letter-spacing: 0.04em; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; }
+  .split > div:first-child { border-right: 1px solid var(--code-rule); }
+  .pane { padding: 18px 18px 20px; min-height: 210px; }
+  .pane-head { font-family: "IBM Plex Mono", monospace; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--code-ink-soft); margin-bottom: 12px; }
+  .src { font-family: "IBM Plex Mono", monospace; font-size: 0.79rem; line-height: 1.68; color: var(--code-ink); white-space: pre-wrap; }
+  .src .cmd { color: var(--code-accent); }
+  .src .sym { color: var(--code-string); }
+  .src .cmt { color: var(--code-ink-soft); font-style: italic; }
+  .rendered { font-family: "Spectral", serif; color: var(--code-ink); font-size: 0.98rem; line-height: 1.75; }
+  .rendered .math { font-style: italic; }
+  .panel-foot {
+    display: flex; justify-content: space-between; padding: 8px 14px; border-top: 1px solid var(--code-rule);
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; color: var(--code-ink-soft);
+  }
+  .panel-foot .live { color: var(--ok); display: flex; align-items: center; gap: 6px; }
+
+  /* ---- feature list with marginal labels ---- */
+  .feature-row {
+    display: grid; grid-template-columns: 190px 1fr; gap: 32px;
+    padding-block: 28px; border-top: 1px solid var(--rule);
+  }
+  .feature-row:last-child { border-bottom: none; }
+  .feature-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--ink-faint); padding-top: 3px;
+  }
+  .feature-label .num { color: var(--accent); }
+  .feature-row h3 { font-size: 1.28rem; font-weight: 600; margin-bottom: 8px; }
+  .feature-row p { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+
+  /* ---- diagnostics demo ---- */
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; align-items: start; }
+  .diag-copy h2 { font-size: 1.9rem; }
+  .diag-copy p { color: var(--ink-soft); max-width: 50ch; margin-top: 14px; }
+  .diag-panel { background: var(--code-bg); border-radius: 8px; border: 1px solid var(--code-rule); overflow: hidden; box-shadow: var(--shadow); }
+  .diag-line { display: flex; gap: 14px; padding: 3px 16px; font-family: "IBM Plex Mono", monospace; font-size: 0.79rem; }
+  .diag-line .ln { color: var(--code-ink-soft); width: 1.6em; text-align: right; user-select: none; }
+  .diag-line .code { color: var(--code-ink); white-space: pre; }
+  .diag-line.err-line { background: color-mix(in srgb, var(--errata) 16%, transparent); }
+  .diag-callout {
+    margin: 6px 16px 14px; padding: 10px 12px; border-left: 3px solid var(--errata);
+    background: var(--errata-bg); border-radius: 0 4px 4px 0; color: var(--ink);
+  }
+  .diag-callout .tag { font-family: "IBM Plex Mono", monospace; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--errata); display: block; margin-bottom: 4px; }
+  .diag-callout p { margin: 0; font-size: 0.85rem; color: var(--ink-soft); font-family: "IBM Plex Sans", sans-serif; }
+
+  /* ---- install ---- */
+  #install { background: var(--paper-2); }
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 40px; }
+  .req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--rule-strong); }
+  .req-list li {
+    display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--rule);
+    font-size: 0.92rem;
+  }
+  .req-list li span:first-child { color: var(--ink-soft); }
+  .req-list li span:last-child { font-family: "IBM Plex Mono", monospace; font-size: 0.85rem; }
+
+  .term {
+    background: var(--code-bg); border-radius: 8px; border: 1px solid var(--code-rule);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .term-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--code-bg-2); border-bottom: 1px solid var(--code-rule); }
+  .term-bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--code-rule); display: block; }
+  .term-title { font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; color: var(--code-ink-soft); margin-left: 6px; }
+  .term-body { padding: 18px 18px 20px; font-family: "IBM Plex Mono", monospace; font-size: 0.81rem; line-height: 1.9; }
+  .term-body .step { margin-bottom: 14px; }
+  .term-body .step:last-child { margin-bottom: 0; }
+  .term-body .step-note { color: var(--code-ink-soft); font-size: 0.72rem; margin-bottom: 3px; }
+  .term-body .prompt { color: var(--code-accent); }
+  .term-body .line { color: var(--code-ink); white-space: pre-wrap; word-break: break-word; }
+  .copy-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .copy-btn {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; color: var(--code-ink-soft);
+    background: transparent; border: 1px solid var(--code-rule); border-radius: 4px; padding: 3px 8px; cursor: pointer;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { border-color: var(--code-accent); color: var(--code-accent); }
+  .copy-btn:focus-visible, .btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .note-box { margin-top: 22px; padding: 14px 16px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--paper); }
+  .note-box .tag { font-family: "IBM Plex Mono", monospace; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); display: block; margin-bottom: 6px; }
+  .note-box p { margin: 0; font-size: 0.87rem; color: var(--ink-soft); }
+  .note-box p + p { margin-top: 8px; }
+  .note-box code { background: var(--paper-3); padding: 1px 5px; border-radius: 3px; font-size: 0.83em; }
+
+  .download {
+    display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 40px; margin-top: 36px;
+    padding: 30px; background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 8px;
+  }
+  .download-main h3 { font-size: 1.6rem; }
+  .download-meta { font-size: 0.76rem; color: var(--ink-faint); margin: 6px 0 20px; }
+  .download-alt { display: block; margin-top: 14px; font-size: 0.85rem; text-decoration: none; }
+  .download-alt:hover { text-decoration: underline; }
+  .download-steps { margin: 0; padding-left: 1.3em; display: grid; gap: 14px; color: var(--ink-soft); font-size: 0.93rem; }
+  .download-steps strong { color: var(--ink); font-weight: 600; }
+  .download-steps code, .download-steps em { font-size: 0.9em; }
+  .download-steps code { background: var(--paper-3); padding: 1px 5px; border-radius: 3px; }
+  @media (max-width: 860px) { .download { grid-template-columns: 1fr; gap: 24px; padding: 22px; } }
+
+  footer { padding-block: 36px; }
+  .footer-row { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; color: var(--ink-faint); }
+  .footer-row a { color: var(--ink-soft); }
+
+  @media (max-width: 860px) {
+    .hero-grid, .diag-grid, .install-grid { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; }
+    .split > div:first-child { border-right: none; border-bottom: 1px solid var(--code-rule); }
+    .feature-row { grid-template-columns: 1fr; gap: 8px; }
+    .masthead-nav { gap: 16px; }
+    section { padding-block: 52px; }
+  }
+</style>
+
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap masthead-row">
+    <a href="#top" class="masthead-mark">flash<em>TeX</em></a>
+    <nav class="masthead-nav">
+      <a href="#features">Features</a>
+      <a href="#diagnostics">Diagnostics</a>
+      <a href="#install" class="cta">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="kicker">A LaTeX workspace, rebuilt from the token up</p>
+        <h1>Your source and your proof, <span class="accent-word">typeset live.</span></h1>
+        <p class="lede">FlashTeX is a from-scratch Rust LaTeX engine with a native Mac editor: no <code class="mono">pdflatex</code> shelled out under the hood, no five-second compile wait. Draw a proof on iPad, and it lands in your source as real, editable LaTeX.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#install">Get FlashTeX</a>
+          <a class="btn btn-secondary" href="https://github.com/flash-tex/flashtex">View source →</a>
+        </div>
+        <div class="hero-meta">
+          <span><span class="dot"></span> Original Rust compiler</span>
+          <span>MIT licensed</span>
+          <span>macOS 14+</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-bar">
+          <div class="panel-dots"><i></i><i></i><i></i></div>
+          <span class="panel-label">problem-set-3.tex</span>
+        </div>
+        <div class="split">
+          <div class="pane">
+            <div class="pane-head">Source</div>
+            <div class="src">\item Let <span class="sym">$P$</span> and <span class="sym">$Q$</span> be predicates
+on a set <span class="sym">$S$</span>. Prove that
+<span class="cmd">\[</span>
+  <span class="cmd">\bigl(\forall</span> x<span class="cmd">\in</span> S<span class="cmd">\;</span>P(x)<span class="cmd">\bigr)</span>
+  <span class="cmd">\vee</span>
+  <span class="cmd">\bigl(\forall</span> x<span class="cmd">\in</span> S<span class="cmd">\;</span>Q(x)<span class="cmd">\bigr)</span>
+  <span class="cmd">\quad\Longrightarrow\quad</span>
+  <span class="cmd">\forall</span> x<span class="cmd">\in</span> S<span class="cmd">\;\bigl(</span>P(x)<span class="cmd">\vee</span> Q(x)<span class="cmd">\bigr).</span>
+<span class="cmd">\]</span><span class="cmt"> % renders as you type</span></div>
+          </div>
+          <div class="pane">
+            <div class="pane-head">Preview — 14 ms</div>
+            <div class="rendered">Let <span class="math">P</span> and <span class="math">Q</span> be predicates on a set <span class="math">S</span>. Prove that<br><br>
+            (∀x∈S P(x)) ∨ (∀x∈S Q(x)) ⟹ ∀x∈S (P(x)∨Q(x)).</div>
+          </div>
+        </div>
+        <div class="panel-foot">
+          <span class="live"><span class="dot"></span> live, on every keystroke</span>
+          <span>runtime-v1 · byte-exact spans</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <p class="kicker">What's actually different</p>
+      <h2 style="font-size: 2.1rem; max-width: 32ch;">Built for the document you're staring at right before it's due.</h2>
+
+      <div style="margin-top: 44px;">
+        <div class="feature-row">
+          <div class="feature-label"><span class="num">§1</span> Compiler</div>
+          <div>
+            <h3>An engine, not a wrapper</h3>
+            <p>FlashTeX's compiler is written from scratch in Rust — it tokenizes, expands macros, and lays out glue and boxes itself. No TeX distribution runs behind the scenes; unsupported constructs get an explicit diagnostic instead of a silent guess.</p>
+          </div>
+        </div>
+        <div class="feature-row">
+          <div class="feature-label"><span class="num">§2</span> Preview</div>
+          <div>
+            <h3>Sub-200ms, every keystroke</h3>
+            <p>Edits reuse the previous layout incrementally instead of recompiling the whole document, so the preview updates as fast as you type — and click any rendered word to jump straight to its exact byte range in the source.</p>
+          </div>
+        </div>
+        <div class="feature-row">
+          <div class="feature-label"><span class="num">§3</span> Capture</div>
+          <div>
+            <h3>Draw it, get LaTeX back</h3>
+            <p>Sketch a derivation on iPad with Pencil, or photograph a page of handwritten proof. Grok converts it to editable LaTeX at a destination you pin on Mac — you review the diff before anything lands in your source.</p>
+          </div>
+        </div>
+        <div class="feature-row">
+          <div class="feature-label"><span class="num">§4</span> Recovery</div>
+          <div>
+            <h3>One typo doesn't cost the page</h3>
+            <p>A malformed command or an unclosed brace recovers locally: you get a precise diagnostic and the rest of the document keeps rendering, instead of staring at a blank preview until you find the missing <code class="mono">}</code>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="diagnostics">
+    <div class="wrap diag-grid">
+      <div class="diag-copy">
+        <p class="kicker">Errors that point somewhere</p>
+        <h2>The diagnostic names the byte, not just the line.</h2>
+        <p>Every diagnostic carries the exact source range it came from — the editor underlines it, the message explains what recovery was applied, and the rest of your proof keeps compiling underneath it.</p>
+      </div>
+      <div class="diag-panel">
+        <div class="panel-bar">
+          <div class="panel-dots"><i></i><i></i><i></i></div>
+          <span class="panel-label">problem-set-3.tex — 1 diagnostic</span>
+        </div>
+        <div style="padding-top: 12px;">
+          <div class="diag-line"><span class="ln">44</span><span class="code">Let <span style="color:var(--code-string)">$a,b\in\Z_{&gt;0}$</span>.</span></div>
+          <div class="diag-line err-line"><span class="ln">45</span><span class="code">\begin{enumerate}[(a)]</span></div>
+          <div class="diag-line err-line"><span class="ln">46</span><span class="code">    \item Suppose that $a\mid b\bigl$. Prove that</span></div>
+          <div class="diag-callout">
+            <span class="tag">Unmatched delimiter</span>
+            <p><code>\bigl</code> at 46:35 has no matching <code>\bigr</code> — paired the delimiter as unsized and continued. The rest of the item still typesets.</p>
+          </div>
+          <div class="diag-line"><span class="ln">47</span><span class="code">        a\mid a^2+b^2.</span></div>
+          <div class="diag-line"><span class="ln">48</span><span class="code">    \end{enumerate}</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <p class="kicker">Distribution</p>
+      <h2 style="font-size: 2.1rem;">Install FlashTeX</h2>
+      <p style="color: var(--ink-soft); max-width: 60ch; margin-top: 14px;">Download the prebuilt app, or build it yourself from source. Both give you the same bundle: the Rust compiler, PDF writer and capture bridge ship inside it, so there's no TeX distribution to install.</p>
+
+      <div class="download">
+        <div class="download-main">
+          <p class="kicker" style="margin-bottom: 8px;">Recommended</p>
+          <h3>FlashTeX 0.1.0 for Mac</h3>
+          <p class="download-meta mono">FlashTeX.dmg · 10.4 MB · macOS 14+ · Apple Silicon</p>
+          <a class="btn btn-primary" href="https://github.com/flash-tex/flashtex/releases/download/v0.1.0/FlashTeX.dmg">Download FlashTeX.dmg</a>
+          <a class="download-alt" href="https://github.com/flash-tex/flashtex/releases">All releases &amp; notes →</a>
+        </div>
+        <ol class="download-steps">
+          <li><strong>Open the DMG</strong> and drag <code>FlashTeX</code> into <code>Applications</code>.</li>
+          <li><strong>Right-click the app → Open</strong>, then click <em>Open</em> in the dialog. This is only needed once: the build is ad-hoc signed, not notarized, so Gatekeeper asks the first time.</li>
+          <li><strong>Open any <code>.tex</code> file</strong> with <em>File → Open</em>. The preview compiles as you type, and clicking rendered text jumps to its source.</li>
+        </ol>
+      </div>
+
+      <div class="note-box" style="margin-top: 20px;">
+        <span class="tag">If macOS says the app is damaged</span>
+        <p>That's the quarantine flag on an unnotarized download, not a broken file. Clear it once in Terminal, then open normally:</p>
+        <p><code>xattr -dr com.apple.quarantine /Applications/FlashTeX.app</code></p>
+      </div>
+
+      <p class="kicker" style="margin-top: 56px;">Or build from source</p>
+      <div class="install-grid" style="margin-top: 18px;">
+        <div>
+          <div class="term">
+            <div class="term-bar">
+              <i></i><i></i><i></i>
+              <span class="term-title">Terminal — zsh</span>
+            </div>
+            <div class="term-body">
+              <div class="step">
+                <div class="copy-row">
+                  <div class="step-note">1. Clone the repository</div>
+                  <button class="copy-btn" data-copy="git clone https://github.com/flash-tex/flashtex.git &amp;&amp; cd flashtex">Copy</button>
+                </div>
+                <div class="line"><span class="prompt">$</span> git clone https://github.com/flash-tex/flashtex.git
+<span class="prompt">$</span> cd flashtex</div>
+              </div>
+              <div class="step">
+                <div class="copy-row">
+                  <div class="step-note">2. Build the Rust helpers</div>
+                  <button class="copy-btn" data-copy="cargo build --release --manifest-path crates/compiler/Cargo.toml && cargo build --release --manifest-path crates/pdf/Cargo.toml && cargo build --release --manifest-path crates/bridge/Cargo.toml">Copy</button>
+                </div>
+                <div class="line"><span class="prompt">$</span> cargo build --release \
+    --manifest-path crates/compiler/Cargo.toml
+<span class="prompt">$</span> cargo build --release \
+    --manifest-path crates/pdf/Cargo.toml
+<span class="prompt">$</span> cargo build --release \
+    --manifest-path crates/bridge/Cargo.toml</div>
+              </div>
+              <div class="step">
+                <div class="copy-row">
+                  <div class="step-note">3. Package and launch the app</div>
+                  <button class="copy-btn" data-copy="./apps/mac/scripts/make-app.sh --open --install">Copy</button>
+                </div>
+                <div class="line"><span class="prompt">$</span> ./apps/mac/scripts/make-app.sh --open --install</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="note-box">
+            <span class="tag">First launch</span>
+            <p>The bundle is ad-hoc signed, so Gatekeeper will refuse a plain double-click the first time. Right-click <code>FlashTeX.app</code> in <code>~/Applications</code> → <strong>Open</strong> → confirm once, and it launches normally after that.</p>
+            <p><code>--install</code> copies the built app into <code>~/Applications</code>; drop it if you'd rather run it straight from <code>apps/mac/build/</code>.</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="kicker" style="margin-top: 0;">Requirements</p>
+          <ul class="req-list">
+            <li><span>macOS</span><span>14 Sonoma or later</span></li>
+            <li><span>Chip</span><span>Apple Silicon (arm64)</span></li>
+            <li><span>Xcode / Swift</span><span>Swift 6.2 toolchain</span></li>
+            <li><span>Rust</span><span><code style="font-family: inherit;">rustup</code>, stable channel</span></li>
+            <li><span>Disk</span><span>≈ 1.2 GB build cache</span></li>
+            <li><span>License</span><span>MIT</span></li>
+          </ul>
+
+          <p class="kicker" style="margin-top: 34px;">Optional</p>
+          <ul class="req-list">
+            <li><span>Handwriting capture</span><span>xAI (Grok) API key</span></li>
+            <li><span>iPad companion</span><span>Xcode-signed dev build</span></li>
+          </ul>
+          <p style="font-size: 0.85rem; color: var(--ink-faint); margin-top: 14px;">Neither is required to edit, preview, and export plain <code class="mono">.tex</code> projects.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap footer-row">
+      <span>FlashTeX — an original LaTeX engine, MIT licensed.</span>
+      <span><a href="https://github.com/flash-tex/flashtex">github.com/flash-tex/flashtex</a></span>
+    </div>
+  </footer>
+</main>
+
+<script>
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      var reset = function (label) { setTimeout(function () { btn.textContent = label; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = 'Copied';
+          reset('Copy');
+        }).catch(function () {
+          btn.textContent = 'Select & copy';
+          reset('Copy');
+        });
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
