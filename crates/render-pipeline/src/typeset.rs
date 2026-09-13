@@ -256,11 +256,17 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
     }
 }
 
+pub mod floatpage;
+
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
     pub pages: pl::Pages,
     pub recs: Vec<BoxRec>,
     pub maths: Vec<MathRec>,
+    /// Image items per page number (FT-063 floats).
+    pub images: Vec<(u32, display::Item)>,
+    /// The page of every float `\label`.
+    pub float_labels: Vec<(String, u32)>,
 }
 
 pub struct Context<'a> {
@@ -3046,6 +3052,12 @@ fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
 /// items, flags and style match an earlier build are reused (see
 /// `incremental`); the result is identical either way.
 pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid {
+    build_with_floats(ctx, doc, cache, &[])
+}
+
+/// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
+/// ([`floatpage`]); without floats the page builder is unchanged.
+pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let mut after_heading = false;
     // Whether the open paragraph-shape environment began in vertical mode
@@ -3320,7 +3332,11 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
     };
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
-    let built = pagebuild::break_pages(&params, &list);
+    let (built, images, float_labels) = if floats.is_empty() {
+        (pagebuild::break_pages(&params, &list), Vec::new(), Vec::new())
+    } else {
+        floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
+    };
     let mut pages = pl::Pages {
         pages: Vec::with_capacity(built.len()),
         overflow: Vec::new(),
@@ -3389,6 +3405,8 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
         pages,
         recs: std::mem::take(&mut ctx.recs),
         maths: std::mem::take(&mut ctx.maths),
+        images,
+        float_labels,
     }
 }
 
@@ -3412,6 +3430,9 @@ pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
                 .unwrap_or(1);
             out.insert(key.clone(), page);
         }
+    }
+    for (key, page) in &laid.float_labels {
+        out.insert(key.clone(), *page);
     }
     out
 }
@@ -3473,6 +3494,7 @@ pub fn assemble(
                 items.push(incremental::place_item(it, dy, &a.path, delta));
             }
         }
+        items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
         pages.push(display::Page {
             number: page.number,
             width: Tick::from_tex_pt(page.width),

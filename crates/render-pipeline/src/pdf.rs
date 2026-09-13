@@ -36,6 +36,7 @@ fn hint(h: &v1::FontHint) -> FontHint {
 
 pub fn write_pdf(v2: &DisplayList) -> Result<PdfOut, String> {
     let caps = Capabilities {
+        images: false,
         rules: true,
         font_hints: true,
         display_list: false,
