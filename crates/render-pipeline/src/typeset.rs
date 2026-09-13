@@ -2081,21 +2081,23 @@ impl<'a> Context<'a> {
         use crate::longtable::{self as lt, UnitKind};
         let outer_size = self.style.body_size_pt;
         let size = if t.size_cpt == 0 { outer_size } else { f64::from(t.size_cpt) / 100.0 };
+        let mut blocks_for_captions: std::collections::HashMap<(usize, usize, crate::table::Slot), BuiltBlock> = std::collections::HashMap::new();
+        // `\LT@makecaption` sets each `\caption` in its own parbox before
+        // the alignment is measured, so the table below works on a copy
+        // whose caption entries carry their boxes.
+        let mut owned;
+        let t = if t.entries.iter().any(|e| matches!(e, crate::table::TableEntry::Caption { .. })) {
+            owned = t.clone();
+            self.longtable_captions(&mut owned, lengths, outer_size, &mut blocks_for_captions);
+            &owned
+        } else {
+            t
+        };
         let (metrics, rows, mut blocks) = self.table_measure(t, outer_size);
+        blocks.extend(std::mem::take(&mut blocks_for_captions));
         // `\LT@get@widths` measures every chunk, `\kill` rows included.
         let cols = crate::table::widths(t, &rows, &metrics);
         let parts = lt::parts(t);
-        if t.entries.iter().any(|e| matches!(e, crate::table::TableEntry::Caption { .. })) {
-            let src = vec![self.source(t.span)];
-            self.emit(
-                Some("longtable_caption".into()),
-                Diagnostic::warning(
-                    "table_limitation",
-                    "\\caption inside a longtable is not set yet (\\LT@makecaption's \\LTcapwidth parbox); the rest of the table is",
-                    src,
-                ),
-            );
-        }
         // `\tabskip\LTleft`/`\LTright` carry the difference between the
         // table's natural width and `\hsize` (longtable.sty 167-171).
         let measure = self.style.text_width_pt;
@@ -2288,6 +2290,55 @@ impl<'a> Context<'a> {
             height,
         });
         Some((BuiltBlock { block, items, recs, vertical, labels: Vec::new(), cache_key: None }, region))
+    }
+
+    /// `\LT@makecaption` (longtable.sty 475-485): every `\caption` of a
+    /// longtable is set in a `\parbox[t]\LTcapwidth` that the row centres
+    /// on the table. The whole caption goes on one centred line when it
+    /// fits in `\LTcapwidth` (`\hbox to\hsize{\hfil\box\@tempboxa\hfil}`)
+    /// and is set as a paragraph otherwise, followed by
+    /// `\endgraf\vskip\baselineskip`. The parbox is a `\vtop`, so its
+    /// height is the first line's and its depth everything below.
+    fn longtable_captions(
+        &mut self,
+        t: &mut crate::table::TableItem,
+        lengths: &adapter::LongtableLengths,
+        outer_size: f64,
+        blocks: &mut std::collections::HashMap<(usize, usize, crate::table::Slot), BuiltBlock>,
+    ) {
+        let size = if t.size_cpt == 0 { outer_size } else { f64::from(t.size_cpt) / 100.0 };
+        let body_size = self.style.body_size_pt;
+        let bskip = if (size - body_size).abs() < 1e-9 {
+            self.style.baselineskip_pt
+        } else {
+            crate::table::baselineskip_pt(adapter::class_size_of(body_size), (size * 100.0).round() as u16)
+        };
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        let width = crate::longtable::caption_width(lengths.capwidth);
+        let mut set: Vec<(usize, crate::table::CaptionBox, BuiltBlock)> = Vec::new();
+        for (index, entry) in t.entries.iter().enumerate() {
+            let crate::table::TableEntry::Caption { items, .. } = entry else { continue };
+            // `\sbox\@tempboxa{...}`: does the whole caption fit on a line?
+            let natural = self.table_hbox(items, size).map_or(0.0, |(_, d)| d.width);
+            let style = if natural > width { ParaStyle::Plain } else { ParaStyle::Center };
+            let Some((block, lines)) = self.table_pbox(items, size, width, bskip, quad, style) else { continue };
+            set.push((
+                index,
+                crate::table::CaptionBox {
+                    width,
+                    height: lines.first_height,
+                    depth: lines.inner + lines.last_depth + bskip,
+                },
+                block,
+            ));
+        }
+        for (index, box_, block) in set {
+            if let crate::table::TableEntry::Caption { box_: slot, .. } = &mut t.entries[index] {
+                *slot = Some(box_);
+            }
+            // `table::layout_with` places a caption as `(usize::MAX, index)`.
+            blocks.insert((usize::MAX, index, crate::table::Slot::Content), block);
+        }
     }
 
     /// Resolves colortbl colours to sRGB; an unresolvable colour paints

@@ -3903,7 +3903,7 @@ fn gap_has_space(gap: &str) -> bool {
 /// delimiters and quotes 0 (keep), uppercase 999. A code above 1000 does
 /// not take effect while the factor is below 1000 (after an uppercase
 /// letter "A." keeps 1000), which is why the update runs per character.
-pub(crate) fn space_factor(ch: char, previous: u32) -> u32 {
+pub fn space_factor(ch: char, previous: u32) -> u32 {
     let code = match ch {
         '.' | '?' | '!' => 3000,
         ':' => 2000,
