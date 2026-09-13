@@ -1,0 +1,20 @@
+{
+  "id": "resp_fixture_xai_0001",
+  "object": "response",
+  "model": "grok-fixture-vision",
+  "status": "completed",
+  "output": [
+    {"type": "reasoning", "summary": []},
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\"latex\":\"$\\\\frac{a}{b}$\",\"ambiguities\":[\"AMBIGUOUS: the b could be a 6\"],\"required_dependencies\":[]}"
+        }
+      ]
+    }
+  ],
+  "usage": {"input_tokens": 1834, "output_tokens": 41, "total_tokens": 1875}
+}
