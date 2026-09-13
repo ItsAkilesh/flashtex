@@ -563,7 +563,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
         match nucleus {
             Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Bold(_) => {}
             Nucleus::SizedDelimiter { .. } => {}
-            Nucleus::Space { em: _ } => {}
+            Nucleus::Space { .. } => {}
             Nucleus::Fraction {
                 numerator,
                 denominator,

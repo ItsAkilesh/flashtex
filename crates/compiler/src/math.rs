@@ -68,9 +68,14 @@ pub enum Nucleus {
     },
     /// Literal text with explicit Roman intent, distinct from math symbols.
     Text(String),
-    /// Explicit TeX math glue, measured in ems of the current math style.
+    /// Explicit TeX math glue. `em` is in quads of the math symbol font
+    /// (18 mu: `\,` is 3/18) unless `font_em`, when it is in ems of the
+    /// current text font: `\quad` is `\hskip1em` (latex.ltx), and `em` in
+    /// math mode is `\fontdimen6\font` of the text font selected outside the
+    /// formula, at the text size whatever the math style.
     Space {
         em: f64,
+        font_em: bool,
     },
     Fraction {
         numerator: MathList,
@@ -928,7 +933,7 @@ impl MathParser<'_> {
                 let label = if starred { text } else { format!("({text})") };
                 self.pending
                     .push(text_atom(label, span.merge(argument_span)));
-                space(2.0 * QUAD_EM, span)
+                text_space(2.0 * QUAD_EM, span)
             }
             "pmod" => {
                 let body = self.required_group("pmod", span);
@@ -949,8 +954,8 @@ impl MathParser<'_> {
                     width_em: None,
                 }
             }
-            "quad" => space(QUAD_EM, span),
-            "qquad" => space(2.0 * QUAD_EM, span),
+            "quad" => text_space(QUAD_EM, span),
+            "qquad" => text_space(2.0 * QUAD_EM, span),
             "mathbb" => {
                 let (text, argument_span) = self.required_text_group("mathbb", span);
                 let span = span.merge(argument_span);
@@ -1725,9 +1730,17 @@ fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
     }
 }
 
+/// `\hskip<em>em`: glue in ems of the current text font (`\quad`).
+fn text_space(em: f64, span: Span) -> MathAtom {
+    MathAtom {
+        nucleus: Nucleus::Space { em, font_em: true },
+        ..space(0.0, span)
+    }
+}
+
 fn space(em: f64, span: Span) -> MathAtom {
     MathAtom {
-        nucleus: Nucleus::Space { em },
+        nucleus: Nucleus::Space { em, font_em: false },
         span,
         superscript: None,
         subscript: None,
@@ -2554,7 +2567,7 @@ fn layout_nucleus(
                 descent: b.descent.max(bottom + rule),
             }
         }
-        Nucleus::Space { em } => MathBox {
+        Nucleus::Space { em, .. } => MathBox {
             items: Vec::new(),
             width: em * size,
             ascent: size,
@@ -2981,7 +2994,7 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
             Nucleus::Symbol(s) => Nucleus::Symbol(s.clone()),
             Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
             Nucleus::Text(s) => Nucleus::Text(s.clone()),
-            Nucleus::Space { em } => Nucleus::Space { em: *em },
+            Nucleus::Space { em, font_em } => Nucleus::Space { em: *em, font_em: *font_em },
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -3104,7 +3117,7 @@ mod parse_tests {
         // `\big.` stays the invisible null delimiter.
         assert!(matches!(
             list.atoms.last().map(|a| &a.nucleus),
-            Some(Nucleus::Space { em }) if *em == 0.0
+            Some(Nucleus::Space { em, .. }) if *em == 0.0
         ));
 
         let boxed = layout(
@@ -3480,9 +3493,9 @@ mod parse_tests {
         let tokens = crate::lexer::tokenize(r"\quad\text{two words}\qquad");
         let list = parse_tokens(&tokens, &mut diagnostics);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        assert!(matches!(list.atoms[0].nucleus, Nucleus::Space { em } if em == 1.0));
+        assert!(matches!(list.atoms[0].nucleus, Nucleus::Space { em, .. } if em == 1.0));
         assert!(matches!(&list.atoms[1].nucleus, Nucleus::Text(text) if text == "two words"));
-        assert!(matches!(list.atoms[2].nucleus, Nucleus::Space { em } if em == 2.0));
+        assert!(matches!(list.atoms[2].nucleus, Nucleus::Space { em, .. } if em == 2.0));
 
         let laid_out = layout(&list, 12.0, &mut diagnostics);
         assert_eq!(laid_out.items.len(), 1, "spacing must not emit fake glyphs");

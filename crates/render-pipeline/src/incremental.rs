@@ -266,9 +266,13 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 3u8.hash(h);
                 s.hash(h);
             }
-            Nucleus::Space { em } => {
+            Nucleus::Space { em, .. } => {
                 4u8.hash(h);
                 em.to_bits().hash(h);
+                #[cfg(feature = "amsmath-inline")]
+                if let Nucleus::Space { font_em, .. } = &a.nucleus {
+                    font_em.hash(h);
+                }
             }
             Nucleus::Matrix { rows, columns, left, right } => {
                 5u8.hash(h);

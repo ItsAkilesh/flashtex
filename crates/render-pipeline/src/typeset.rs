@@ -697,6 +697,13 @@ impl<'a> Context<'a> {
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
         let fonts = self.math_fonts(span)?;
         let mut sink = crate::mathtext::TextSink::default();
+        // `\quad` in math is `\hskip1em` of the text font (`\fontdimen6`),
+        // not 18 mu of the math symbol font.
+        let fam2_quad = ml::MathFontMetrics::params(fonts.metrics(), ml::Style::TEXT.size_class()).quad;
+        let text_quad = self.text_params(TextStyle::default(), self.style.body_size_pt).quad;
+        if fam2_quad > 0.0 && text_quad > 0.0 {
+            sink.text_quad = Some((text_quad, text_quad / fam2_quad));
+        }
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
@@ -711,7 +718,7 @@ impl<'a> Context<'a> {
         // `Matrix`) is laid out on this side (`mathgrid`) from its cells,
         // each a formula of its own; a grid nested in a sub-formula (a
         // fraction, a script, inside `\left...\right`) stays reported.
-        let segments = split_at_spaces(list, &fence);
+        let segments = split_at_spaces(list, &fence, sink.font_em_ratio());
         let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_classed(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence, &class)).collect();
         let mut grids = Vec::new();
         for (atoms, _) in &segments {
@@ -2556,7 +2563,11 @@ pub fn convert_math_classed(
             // takes no part in atom spacing, like TeX's glue node. Top-level
             // glue is still split out by `split_at_spaces`.
             #[cfg(feature = "amsmath-inline")]
-            N::Space { em } if a.superscript.is_none() && a.subscript.is_none() => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            N::Space { em, font_em } if a.superscript.is_none() && a.subscript.is_none() => match (*font_em, sink.text_quad) {
+                // `\quad`: text-font ems, the same at every math style.
+                (true, Some((quad, _))) => vec![ml::Atom::glue(0.0, em * quad)],
+                _ => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            },
             // amsmath `\genfrac` family (`\dfrac`, `\tfrac`, `\binom`, ...):
             // a Rule 15e fraction with its delimiters, in a group (Ord),
             // under the explicit style when one is given.
@@ -2867,7 +2878,7 @@ fn grid_pieces(
                             }
                             _ => cell,
                         };
-                        let parts = split_at_spaces(cell, fence);
+                        let parts = split_at_spaces(cell, fence, sink.font_em_ratio());
                         let runs = parts.iter().map(|(atoms, _)| convert_math_classed(&CList { atoms: atoms.clone() }, sink, fence, class)).collect();
                         let glue = parts.iter().map(|(_, em)| *em).collect();
                         (runs, glue)
@@ -2895,14 +2906,18 @@ fn grid_pieces(
 /// pairs): each entry is a run of atoms and the glue after it in ems
 /// (`None` for the last run). Consecutive spaces sum; a formula without
 /// top-level glue is one run.
-fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> {
+///
+/// Glue in text-font ems (`\quad`, compiler `font_em`) is converted to math
+/// symbol font quads with `font_em_ratio` (text quad / family-2 quad).
+fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Span) -> Option<Fence>, font_em_ratio: f64) -> Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> {
     use flashtex_compiler::math::Nucleus as N;
     let mut out: Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> = Vec::new();
     let mut current = Vec::new();
     let mut depth = 0usize;
     for a in &list.atoms {
         match &a.nucleus {
-            N::Space { em } if depth == 0 && a.superscript.is_none() && a.subscript.is_none() => {
+            N::Space { em, .. } if depth == 0 && a.superscript.is_none() && a.subscript.is_none() => {
+                let em = &space_em(a, *em, font_em_ratio);
                 if current.is_empty() {
                     if let Some((_, Some(prev))) = out.last_mut() {
                         *prev += em;
@@ -2979,6 +2994,17 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
     }
 }
 
+/// `em` of a compiler `Space` atom in family-2 quads: text-font ems
+/// (`\quad`) are scaled by `ratio`.
+fn space_em(a: &flashtex_compiler::math::MathAtom, em: f64, ratio: f64) -> f64 {
+    #[cfg(feature = "amsmath-inline")]
+    if matches!(a.nucleus, flashtex_compiler::math::Nucleus::Space { font_em: true, .. }) {
+        return em * ratio;
+    }
+    let _ = (a, ratio);
+    em
+}
+
 /// Total explicit math glue (`\quad`/`\qquad`, in ems) in `list` and its
 /// sub-formulas; see the `Space` arm of [`convert_math_fenced`].
 fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
@@ -2987,7 +3013,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
         .iter()
         .map(|a| {
             let own = match &a.nucleus {
-                N::Space { em } => *em,
+                N::Space { em, .. } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
                 N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_glue_em(r),
                 N::Stacked { base, over, under } => {
