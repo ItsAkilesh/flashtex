@@ -27,8 +27,8 @@ final class ShellModel {
     var selection: Selection?
     var navigationNote: String?
     var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
-    /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
-    var autoClosePairs: Set<Character> = ["{"]
+    /// Openers the editor auto-closes (`{`, `[`, `$`, and `(` for `\(`/`\[`); SourceEditorView.
+    var autoClosePairs: Set<Character> = ["{", "[", "$", "("]
     // Workspace chrome (ContentView.swift, mac-ui-redesign): the bottom
     // Problems panel, its severity filter, and the command palette sheet.
     // The panel state is shared with the palette so Next/Previous

@@ -91,8 +91,30 @@ folder it lives in.
   the document, marked "not supported by this compiler version"; environment
   names after `\begin{`; labels after `\ref{`/`\eqref{`/`\autoref{`; citation
   keys after `\cite{` (from `\bibitem` and from the project index when a
-  bibliography is declared); document words longer than three characters.
-  At most 12 entries.
+  bibliography is declared); package names after `\usepackage{`; the
+  project's files after `\input{`/`\include{`/`\includegraphics{`; a suggested
+  key after `\label{` (`fig:` inside a figure, `tab:` in a table, `eq:` in a
+  math display, `sec:` plus the heading's words otherwise); document words
+  longer than three characters. At most 12 entries. Exact and prefix matches
+  come first; when nothing starts with what you typed, entries containing
+  those letters in order are offered (`\sbs` finds `\subsection`).
+- **Snippets**: a command with arguments is inserted with its braces and the
+  caret in the first one (`\frac{|}{}`); **Tab** / **⇧Tab** move between the
+  placeholders and out of the snippet, **Esc** leaves it. `\begin{itemize}`
+  inserts the list with its first `\item`, `\begin{figure}` a figure skeleton
+  (`\centering`, `\includegraphics`, `\caption`, `\label{fig:}`), `\begin{table}`
+  a table skeleton; other environments an indented empty body line and the
+  matching `\end`.
+- **Signature help**: typing `{` after a command (or pressing **⌘⇧Space**
+  inside a command's argument) shows the argument pattern with the current
+  argument highlighted and a one-line description; it closes on `}`, Esc, or
+  when the caret leaves the argument.
+- **Typing helpers**: `{`, `[`, `$`, `\(` and `\[` are closed automatically and
+  the closer is typed over (switch off with *Auto-close braces* in
+  Preferences); Return keeps the indentation, indents inside a new
+  `\begin{env}` and adds `\end{env}`, and continues a list with a new `\item`;
+  **⌘/** comments or uncomments the selected lines with `%`; the bracket or
+  `$` pair around the caret is highlighted.
 - **Hover**: rest the pointer on a token for about half a second to see what
   it is (command with documentation, label, citation key, file, package,
   environment) plus any diagnostic at that position with its recovery note
@@ -319,6 +341,9 @@ you trust.
 | ⌘Z | Undo (including an applied fix, assistant edit or capture insertion) |
 | Esc / ⌃Space | Open the completion list |
 | ↑ ↓ / Tab ⇧Tab / Return / Esc | While the list is open: choose / insert / close |
+| Tab / ⇧Tab / Esc | After inserting a snippet: next / previous placeholder / leave |
+| ⌘⇧Space | Signature help for the command whose argument the caret is in |
+| ⌘/ | Comment or uncomment the selected lines |
 | ⌘-click / ⌘⇧D | Go to matching `\label`↔`\ref`, `\begin`↔`\end`, open `\input` file |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the selected Problems group |
@@ -353,7 +378,8 @@ order of each pane.
   ⌘⇧R); a menu item for the preview-controller helper route, so Find in
   Project, Rename Citation, Durable History and `\cite` navigation need the
   environment-variable launch described under *Compiling*.
-- Completion does not pop up while typing (open it with ⌃Space / Esc).
+- Completion does not pop up while typing (open it with ⌃Space / Esc); signature help does.
+- `\begin{X}` ↔ `\end{X}` are not highlighted as a pair (use ⌘⇧D to jump).
 - Images (`\includegraphics`), tables, bibliographies and other constructs
   listed under [Supported LaTeX](compiler.md#supported-latex) render as
   diagnostics, not content.

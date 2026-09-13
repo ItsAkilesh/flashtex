@@ -746,10 +746,64 @@ narrowing, arrow and Return latency best-of-N). Sources, in rank order, at most
    diagnostic message when one names the command).
 4. After `\begin{`/`\end{`: environment names (open ones first, then `document`,
    then names seen in the buffer); after `\ref{`/`\eqref{`/`\pageref{`/`\autoref{`:
-   `\label` arguments seen in the buffer.
+   `\label` arguments seen in the buffer plus the project index's labels; after
+   `\cite{` (and the other citation commands, also after a comma in the key
+   list): `\bibitem` keys and the project index's citation keys; after
+   `\usepackage{` (also after a comma): common package names; after
+   `\input{`/`\include{`/`\includegraphics{`: the project's document paths
+   (`SourceEditorView.projectFiles`, the model's `documents`), matched on the
+   path or its basename; after `\label{`: a key whose prefix follows the
+   innermost open environment (`fig:` in `figure`, `tab:` in `table`, `eq:` in
+   a math display, `thm:`, `lst:`, else `sec:`) plus the enclosing heading's
+   slug, made unique against the document and the project index, and the bare
+   prefix alone. Argument keys are scanned as one token including `:`, `-`,
+   `_`, `.`, `/`, `+`, `*` and digits (`\ref{eq:ma` completes `eq:main`).
 5. Prose: words longer than 3 characters from the document, frequency-ranked,
    ASCII case-insensitive prefix, triggered after 2+ letters. The word being
    typed is not counted as its own completion.
+
+Matching is exact, then prefix (each in table/source order); when nothing
+starts with the typed characters, subsequence matches are offered instead
+(`\sbs` → `\subsection`, `\ref{main}` → `eq:main`), never mixed under prefix
+rows (`Completion.matchRank`/`fuzzyFilter`).
+
+**Snippets and tab stops** (`Completion.Snippet.stops`, `SnippetTests`): a
+command with braced arguments inserts its shape with the caret in the first
+braces and a Tab stop at every later one and at the end (`\frac{|}{}` → Tab →
+`\frac{ab}{|}` → Tab → after the snippet); `\left` inserts `\left( \right)`.
+`\begin{…}` inserts the environment's template with the current line's
+indentation: `itemize`/`enumerate` start with `\item `, `description` with
+`\item[] `, `figure` with `\centering`, `\includegraphics[width=0.8\linewidth]{}`,
+`\caption{}` and `\label{fig:}` (three stops), `table` with `\centering`, a
+`tabular`, `\caption{}` and `\label{tab:}`; every other environment an empty
+indented middle line. While the snippet is active Tab / ⇧Tab move between the
+placeholders (typing at a placeholder keeps it at the start of what was typed;
+an edit across a placeholder ends the snippet), Esc or moving the caret out of
+the snippet leaves it, and Tab is a Tab again.
+
+**Signature help** (`SignatureHelp.swift`, `SignatureHelpTests`): typing `{` or
+`[` right after a command name — or ⌘⇧Space anywhere inside a command's
+argument — shows a small panel above the caret with the command's argument
+pattern (`\frac{num}{den}`, the argument the caret is in emphasised, optional
+`[…]` groups counted) and its one-line documentation (`CommandDocs`, falling
+back to the vocabulary description). It follows the caret between arguments
+and closes on `}`, Esc, or when the caret leaves the argument (or the line;
+the scan is bounded to the caret's line and skips commented text). The
+inserted `\frac{|}{}` snippet opens it too. Off when the completion-list
+preference is off.
+
+**Editor niceties** (`SourceEditorView.swift`, `EditorIntelligence.swift`):
+`{`, `[` and `$` are auto-closed and the closer typed over (Backspace between
+an empty pair removes both); `\(` and `\[` auto-close with `\)` / `\]`, both
+halves typed over (`ShellModel.autoClosePairs`, default `{ [ $ (`; the
+Preferences "auto-close braces" switch gates all of them). Return keeps the
+line's indentation, indents once more after `\begin{env}` and adds the
+matching `\end{env}`; Return at the end of a `\item …` line continues the
+list with a new `\item ` (`\item[] ` for a description entry; a bare `\item`
+line just breaks). ⌘/ toggles `% ` on every line the selection touches (all
+commented → uncomment, `%` with or without a space; otherwise comment the
+non-blank lines; one undo step "Toggle Comment"). The delimiter pair around
+the caret is highlighted (`BraceMatcher`).
 
 Commands trigger on `\` (empty prefix lists everything supported). Invalid
 carets (negative, past the end, inside a surrogate pair) and malformed input
@@ -819,6 +873,10 @@ explain that nothing is loaded.
 | ⌘Z | Undo (including an approved capture insertion) |
 | Esc / ⌃Space | Completion popup (supported commands, `\end{…}` for open environments, labels, citation keys, document words; never takes the keyboard from the editor) |
 | ↑ / ↓ / Tab / ⇧Tab / Return | Completion list keys, while the list is open: ↑/↓ or Tab/⇧Tab choose the candidate (wrapping; VoiceOver announces “n of m: candidate, kind, origin”), Return/Enter inserts it over the typed token, Esc closes without inserting; typing narrows the list, any other caret move closes it |
+| Tab / ⇧Tab / Esc | While an inserted snippet is active (no list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
+| ⌘⇧Space | Signature help for the command whose argument the caret is in (also opens on `{`/`[` typed after a command name; `}`, Esc or leaving the argument closes it) |
+| ⌘/ | Toggle `% ` line comment on the selection's lines |
+| Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
 | ⌘⇧D | Go to matching `\begin`/`\end` or `\label`/`\ref` |
 | ⌘⇧] / ⌘⇧[ | Next / previous diagnostic (refused if its span was edited since the compile) |
 | ⌘⌥] / ⌘⌥[ | Next / previous occurrence within the diagnostics panel's selected group (wrapping; the row reads "k of n") |
