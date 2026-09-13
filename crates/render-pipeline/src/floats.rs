@@ -1098,16 +1098,20 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].placement.as_deref(), Some("ht"));
         assert!(!f[0].hmode);
-        assert!(matches!(f[0].pieces[0], Piece::Centering));
-        match &f[0].pieces[1] {
+        // The end of the line after `\includegraphics{...}` is a space
+        // (dropped again where the paragraph ends).
+        assert!(matches!(f[0].pieces[2], Piece::Space));
+        let pieces: Vec<&Piece> = f[0].pieces.iter().filter(|p| !matches!(p, Piece::Space)).collect();
+        assert!(matches!(pieces[0], Piece::Centering));
+        match pieces[1] {
             Piece::Graphic { options, path, .. } => assert_eq!((options.as_str(), path.as_str()), ("width=2in", "a.png")),
             other => panic!("{other:?}"),
         }
-        match &f[0].pieces[2] {
+        match pieces[2] {
             Piece::Caption { arg, .. } => assert_eq!(&src[arg.start..arg.end], "A {nested} cap."),
             other => panic!("{other:?}"),
         }
-        assert!(matches!(&f[0].pieces[3], Piece::Label { key, .. } if key == "fig:a"));
+        assert!(matches!(pieces[3], Piece::Label { key, .. } if key == "fig:a"));
         let masked = mask(src, &f);
         assert_eq!(masked.len(), src.len());
         assert!(!masked.contains("figure") && masked.contains("After."));

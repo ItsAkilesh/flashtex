@@ -1,5 +1,5 @@
 {
- "fixture": "03-description-after-text.tex",
+ "fixture": "03-enumerate-after-text.tex",
  "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
  "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
  "unit": "bp, y from page top; rules [x, top, width, height]",
@@ -81,73 +81,73 @@
     "y_top": 102.718
    },
    {
-    "text": "Alpha",
-    "x": 72.0,
+    "text": "1.",
+    "x": 84.177,
     "y_top": 122.643
    },
    {
     "text": "the",
-    "x": 107.1251,
+    "x": 96.9072,
     "y_top": 122.643
    },
    {
     "text": "first",
-    "x": 124.2807,
+    "x": 114.0628,
     "y_top": 122.643
    },
    {
     "text": "entry.",
-    "x": 144.8406,
+    "x": 134.6226,
     "y_top": 122.643
    },
    {
-    "text": "Beta",
-    "x": 72.0,
+    "text": "2.",
+    "x": 84.177,
     "y_top": 142.569
    },
    {
     "text": "the",
-    "x": 100.4074,
+    "x": 96.9072,
     "y_top": 142.569
    },
    {
     "text": "second",
-    "x": 117.563,
+    "x": 114.0628,
     "y_top": 142.569
    },
    {
     "text": "entry.",
-    "x": 149.7192,
+    "x": 146.2191,
     "y_top": 142.569
    },
    {
     "text": "Figure",
-    "x": 231.418,
+    "x": 229.924,
     "y_top": 172.456
    },
    {
     "text": "1:",
-    "x": 262.854,
+    "x": 261.36,
     "y_top": 172.456
    },
    {
-    "text": "A",
-    "x": 275.0363,
+    "text": "An",
+    "x": 273.5423,
     "y_top": 172.456
    },
    {
-    "text": "description",
-    "x": 285.8258,
+    "text": "enumerate",
+    "x": 289.867,
     "y_top": 172.456
    },
    {
     "text": "after",
-    "x": 336.8293,
+    "x": 338.3211,
     "y_top": 172.456
    },
    {
     "text": "text.",
-    "x": 360.3779,
+    "x": 361.8697,
     "y_top": 172.456
    },
    {

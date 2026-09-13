@@ -51,16 +51,16 @@ FIG_STAR = ("\\begin{figure*}[t]\n\\centering\n\\includegraphics[width=5in,heigh
 END = "\n\\end{document}\n"
 
 FIXTURES = {
-    "01-itemize-in-figure": pre() + BEFORE
+    "01-itemize-in-figure": pre(size="10pt") + BEFORE
     + "\\begin{figure}[h]\n\\begin{itemize}\n\\item First point of the figure.\n\\item Second point, long enough "
     "to wrap onto a second line inside the float box for sure here.\n\\end{itemize}\n"
     "\\caption{A list in a figure.}\n\\end{figure}" + AFTER,
-    "02-enumerate-top-table": pre() + BEFORE
+    "02-enumerate-top-table": pre(size="10pt") + BEFORE
     + "\\begin{table}[t]\n\\begin{enumerate}\n\\item One step.\n\\item Two steps.\n\\item Three steps.\n"
     "\\end{enumerate}\n\\caption{An enumerate at the top of a table.}\n\\end{table}" + AFTER,
-    "03-description-after-text": pre(size="10pt") + BEFORE
-    + "\\begin{figure}[h]\nA paragraph of text opens this figure.\n\\begin{description}\n\\item[Alpha] the first "
-    "entry.\n\\item[Beta] the second entry.\n\\end{description}\n\\caption{A description after text.}\n\\end{figure}"
+    "03-enumerate-after-text": pre(size="10pt") + BEFORE
+    + "\\begin{figure}[h]\nA paragraph of text opens this figure.\n\\begin{enumerate}\n\\item the first "
+    "entry.\n\\item the second entry.\n\\end{enumerate}\n\\caption{An enumerate after text.}\n\\end{figure}"
     + AFTER,
     "04-equation-in-figure": pre() + BEFORE
     + "\\begin{figure}[h]\n\\centering\n\\begin{equation}\nE = mc^2\n\\end{equation}\n"
@@ -110,9 +110,9 @@ FIXTURES = {
     + "\n\n\\begin{figure*}[p]\n\\centering\n\\includegraphics[width=6in,height=5in]{big}\n"
     "\\caption{A wide figure on a page of its own.}\n\\end{figure*}\n\n" + filler(20, seed=13) + END,
     "19-figstar-end-flush": two(DEMO) + filler(2) + "\n\n" + FIG_STAR + filler(2, seed=15) + END,
-    "20-tablestar-list-then-table": two() + filler(2)
-    + "\n\n\\begin{table*}[t]\n\\caption{A wide table with a list.}\n\\begin{itemize}\n\\item Rows are kept in "
-    "order.\n\\item Columns span the page.\n\\end{itemize}\n\\end{table*}\n\n"
+    "20-tablestar-text-then-table": two() + filler(2)
+    + "\n\n\\begin{table*}[t]\n\\caption{A wide table with a paragraph.}\n\\centering\nRows are kept in order and "
+    "the columns span the page.\n\n" + TAB + "\n\\end{table*}\n\n"
     "\\begin{table}[t]\n\\centering\n" + TAB + "\n\\caption{A column table.}\n\\end{table}\n\n"
     + filler(22, seed=17) + END,
 }

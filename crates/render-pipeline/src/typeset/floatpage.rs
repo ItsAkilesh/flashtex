@@ -1023,6 +1023,55 @@ impl Placer<'_> {
     }
 }
 
+/// Glue set ratio of the column box `\vbox to vsize` holding `nodes` (as
+/// `pagebuild`'s page builder: positive stretches, negative shrinks, 0 under
+/// `fil` glue).
+fn column_glue_set(p: &PageParams, vsize: f64, nodes: &[N], list: &[VItem], boxes: &[FloatBox]) -> f64 {
+    let (mut total, mut depth, mut has_box, mut last_box) = (0.0f64, 0.0f64, false, false);
+    let (mut stretch, mut shrink, mut fil) = (0.0f64, 0.0f64, false);
+    for n in nodes {
+        let (bx, glue) = match *n {
+            N::FBox(f) => (Some((boxes[f].height, 0.0)), None),
+            N::V(j) => match list[j] {
+                VItem::Box { height, depth, .. } => (Some((height, depth)), None),
+                VItem::Glue { width, stretch, shrink, fil } => (None, Some((width, stretch, shrink, fil))),
+                VItem::Penalty(_) => (None, None),
+            },
+            N::Glue(w, st, sh) => (None, Some((w, st, sh, false))),
+            _ => (None, None),
+        };
+        if let Some((h, d)) = bx {
+            total = if has_box { total + depth + h } else { (p.topskip - h).max(0.0) + h };
+            depth = d;
+            has_box = true;
+            last_box = true;
+        }
+        if let Some((w, st, sh, fl)) = glue {
+            if has_box {
+                total += depth + w;
+                depth = 0.0;
+                stretch += st;
+                shrink += sh;
+                fil |= fl;
+                last_box = false;
+            }
+        }
+    }
+    let natural = total + if last_box { (depth - p.maxdepth).max(0.0) } else { 0.0 };
+    let excess = vsize - natural;
+    if excess > 0.0 {
+        if fil || stretch <= 0.0 {
+            0.0
+        } else {
+            excess / stretch
+        }
+    } else if excess < 0.0 && shrink > 0.0 {
+        -(-excess / shrink).min(1.0)
+    } else {
+        0.0
+    }
+}
+
 fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize>) -> Vec<Span> {
     items
         .filter_map(|i| b.recs.get(i).copied().flatten())
@@ -1249,6 +1298,16 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
             continue;
         }
         let end = fired.unwrap_or(nodes.len());
+        // `\@makecol`'s `\vbox to\@colroom` (see `pagebuild::break_pages`):
+        // material taller than the column shrinks; a short column stretches
+        // only under `\flushbottom` at an ordinary break.
+        let ejected = matches!(nodes.get(end), Some(N::Penalty(pen)) if *pen <= EJECT_PENALTY);
+        let set = match column_glue_set(p, vsize, &nodes[start..end], list, &boxes) {
+            g if g < 0.0 => g,
+            g if p.flushbottom && fired.is_some() && !ejected => g,
+            _ => 0.0,
+        };
+        let glue_adj = |st: f64, sh: f64| if set > 0.0 { set * st } else { set * sh };
         let page_no = pl.pages.len() as u32 + 1;
         let tops = std::mem::take(&mut pl.col.top);
         let bots = std::mem::take(&mut pl.col.bot);
@@ -1272,18 +1331,18 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
                 N::FBox(f) => Some((boxes[*f].height, 0.0, None, Some(*f))),
                 N::V(j) => match list[*j] {
                     VItem::Box { height, depth, payload } => Some((height, depth, Some(payload), None)),
-                    VItem::Glue { width, .. } => {
+                    VItem::Glue { width, stretch, shrink, .. } => {
                         if has_box {
-                            total += depth + width;
+                            total += depth + width + glue_adj(stretch, shrink);
                             depth = 0.0;
                         }
                         None
                     }
                     VItem::Penalty(_) => None,
                 },
-                N::Glue(w, ..) => {
+                N::Glue(w, st, sh) => {
                     if has_box {
-                        total += depth + w;
+                        total += depth + w + glue_adj(*st, *sh);
                         depth = 0.0;
                     }
                     None
