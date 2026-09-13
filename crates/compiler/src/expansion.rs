@@ -94,11 +94,14 @@ pub struct Expansion {
 /// turns back into `\begin{<env>}` and records for the parser.
 ///
 /// Kernel definitions that would intercept a command the parser typesets
-/// itself (`\\setlength`, `\\label`, and `\\verb`, whose argument the pass
-/// has already hidden) are removed, so they pass through.
+/// itself (`\\setlength`, `\\label`, `\\verb`, whose argument the pass has
+/// already hidden, and `\\:`, which latex.ltx only uses while building
+/// `\\@ifnextchar` before redefining it as a math space) are removed, so they
+/// pass through.
 pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
 \\let\\label\\flashtexundefined
 \\let\\verb\\flashtexundefined
+\\let\\:\\flashtexundefined
 \\def\\arraystretch{1}%
 \\def\\tabular{\\flashtexbegintabular\\expandafter{\\arraystretch}}%
 \\expandafter\\def\\csname tabular*\\endcsname{\\flashtexbegintabularstar\\expandafter{\\arraystretch}}%
