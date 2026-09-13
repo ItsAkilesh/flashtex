@@ -108,12 +108,13 @@ else
   bad "bundle-texmf.py check with apps/mac/Fonts failed: $(grep -E '"(status|reason)"' "$WORK/faces-check.json" | head -2 | tr -s ' \n' ' ')"
 fi
 # Every face the render pipeline can request (fonts.rs latin_modern_file at
-# 9aaec57a) is vendored: 8 regular + 7 bold + 5 italic + 1 bold-italic + math.
+# 9aaec57a) is vendored: 8 regular + 7 bold + 5 italic + 1 bold-italic + math,
+# plus the secondary double-struck math face (NewCMMath-Regular, mathfont::BB_FONT_FILE).
 FACES_MISSING=""
-for f in lmroman{5,6,7,8,9,10,12,17}-regular lmroman{5,6,7,8,9,10,12}-bold lmroman{7,8,9,10,12}-italic lmroman10-bolditalic latinmodern-math; do
+for f in lmroman{5,6,7,8,9,10,12,17}-regular lmroman{5,6,7,8,9,10,12}-bold lmroman{7,8,9,10,12}-italic lmroman10-bolditalic latinmodern-math NewCMMath-Regular; do
   [[ -f "$MAC_DIR/Fonts/$f.otf" ]] || FACES_MISSING="$FACES_MISSING $f.otf"
 done
-if [[ -z "$FACES_MISSING" ]]; then ok "all 22 producer-requestable Latin Modern faces present in apps/mac/Fonts"; else bad "producer-requestable faces missing:$FACES_MISSING"; fi
+if [[ -z "$FACES_MISSING" ]]; then ok "all 23 producer-requestable faces (22 Latin Modern + NewCMMath-Regular for \\mathbb) present in apps/mac/Fonts"; else bad "producer-requestable faces missing:$FACES_MISSING"; fi
 # Faces directory copies: a corrupted face, a missing face and an unpinned
 # extra .otf are each refused BEFORE the build.
 copy_faces() { mkdir -p "$1"; cp "$MAC_DIR/Fonts/"*.otf "$MAC_DIR/Fonts/"*.TXT "$MAC_DIR/Fonts/SUPPLEMENTARY-FACES.json" "$1/"; }

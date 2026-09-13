@@ -158,6 +158,19 @@
       "sha256": "c37a28eed7a6e03f792b98b5e5f637b2fcda378bb4855f99284f1a88fe35f124",
       "byte_length": 118204,
       "source_member": "lm/fonts/opentype/public/lm/lmroman10-bolditalic.otf"
+    },
+    {
+      "path": "NewCMMath-Regular.otf",
+      "sha256": "60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2",
+      "byte_length": 1187476,
+      "source_member": "texmf-dist/fonts/opentype/public/newcomputermodern/NewCMMath-Regular.otf",
+      "family": "New Computer Modern Math",
+      "package": "newcomputermodern 7.1.1 (TeX Live 2026 / MacTeX 2026 tree, file dated 2026-01-07)",
+      "font_version": "name table nameID 5 'Version 4.0'; head fontRevision 3.00",
+      "postscript_name": "NewCMMath-Regular",
+      "copied_from": "/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern/NewCMMath-Regular.otf (byte-for-byte; sha256 verified before and after the copy)",
+      "license": "GUST Font License v1.0 or later (name table nameID 0: 'This work is released under the GUST Font License'; package README: 'GustFLv1 or later'); GUST-FONT-LICENSE.TXT in this directory (sha256 49ea6cb9257bbee0a3979c48a774cd221550ac1c20c95549efe45fc99cc18050) covers it",
+      "role": "secondary math face: flashtex-render (crates/render-pipeline mathfont::BB_FONT) draws every double-struck code point (\\mathbb, U+2102/210D/2115/2119/211A/211D/2124, U+1D538-1D56B) from this face because its design and advances follow AMS msbm10, which pdfLaTeX uses for \\mathbb; Latin Modern Math's double-struck block is the sans-like open face"
     }
   ]
 }
