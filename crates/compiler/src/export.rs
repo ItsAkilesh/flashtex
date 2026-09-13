@@ -29,6 +29,10 @@ pub enum ExportFont {
 pub enum Glyph {
     /// Encodable: use this font and this byte in that font's encoding.
     Encodable { font: ExportFont, code: u8 },
+    /// Drawn from the pinned Latin Modern Math resource (`lm.math`), which the
+    /// PDF writer embeds. When that font is not installed, the writer reports
+    /// its own substitution warning at export time, so the compiler stays quiet.
+    LatinModernMath,
     /// No base-14 glyph exists. The reason is shown to the author.
     Unrepresentable { reason: &'static str },
 }
@@ -182,10 +186,7 @@ pub fn map_char(c: char) -> Glyph {
         };
     }
     if crate::lm_math::advance(c).is_some() {
-        return Glyph::Unrepresentable {
-            reason: "it is drawn from the pinned Latin Modern Math resource (lm.math), \
-                     which the base-14 PDF export cannot embed",
-        };
+        return Glyph::LatinModernMath;
     }
     if let Some((_, code)) = SYMBOL_ENCODING.iter().find(|(ch, _)| *ch == c) {
         return Glyph::Encodable {
@@ -229,7 +230,7 @@ pub fn unrepresentable(text: &str) -> Vec<char> {
 pub fn reason(c: char) -> Option<&'static str> {
     match map_char(c) {
         Glyph::Unrepresentable { reason } => Some(reason),
-        Glyph::Encodable { .. } => None,
+        Glyph::Encodable { .. } | Glyph::LatinModernMath => None,
     }
 }
 
@@ -254,13 +255,11 @@ mod tests {
                             "\\{command} renders {c:?}, which should come from the Symbol font"
                         );
                     }
+                    // The only decided non-base-14 outcome: a glyph bound to
+                    // the pinned Latin Modern Math resource, which is embedded.
+                    Glyph::LatinModernMath => {}
                     Glyph::Unrepresentable { reason } => {
-                        // The only decided non-base-14 outcome: a glyph bound
-                        // to the pinned Latin Modern Math resource.
-                        assert!(
-                            crate::lm_math::advance(c).is_some() && reason.contains("lm.math"),
-                            "\\{command} renders {c:?} which cannot be exported: {reason}"
-                        );
+                        panic!("\\{command} renders {c:?} which cannot be exported: {reason}");
                     }
                 }
             }

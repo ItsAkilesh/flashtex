@@ -137,12 +137,14 @@ fn real_glyphs_are_emitted_with_the_latin_modern_math_hint() {
         !messages.iter().any(|m| m.contains("has no glyph")),
         "{messages:#?}"
     );
-    // Honest about the base-14 export, naming the resource, once per glyph.
-    let export: Vec<_> = messages
-        .iter()
-        .filter(|m| m.contains("will not survive PDF export") && m.contains("lm.math"))
-        .collect();
-    assert_eq!(export.len(), 6, "{messages:#?}");
+    // The PDF writer embeds Latin Modern Math (and warns itself when the font
+    // is not installed), so the compiler must not predict an export loss.
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.contains("will not survive PDF export")),
+        "{messages:#?}"
+    );
     // And exactly one fidelity limitation for the document.
     let fidelity: Vec<_> = messages
         .iter()
