@@ -242,9 +242,21 @@ pub enum TableEntry {
     HLine { span: Span },
     CLine { first: usize, last: usize, span: Span },
     BookRule { kind: BookRule, width_pt: Option<f64>, span: Span },
-    CMidRule { first: usize, last: usize, trim_left: bool, trim_right: bool, width_pt: Option<f64>, kern_left_pt: Option<f64>, kern_right_pt: Option<f64>, span: Span },
+    CMidRule {
+        first: usize,
+        last: usize,
+        trim_left: bool,
+        trim_right: bool,
+        width_pt: Option<f64>,
+        /// booktabs `\@setrulekerning`: `(l{<dimen>})`/`(r{<dimen>})` replacing
+        /// `\cmidrulekern`, in the font in force at the rule.
+        kern_left: Option<ct::FontDimen>,
+        kern_right: Option<ct::FontDimen>,
+        span: Span,
+    },
     VSpace { pt: f64 },
-    AddLineSpace { pt: Option<f64> },
+    /// booktabs `\addlinespace[<dimen>]` (`None`: `\defaultaddspace`).
+    AddLineSpace { space: Option<ct::FontDimen> },
     SpecialRule { width_pt: f64, above_pt: f64, below_pt: f64, span: Span },
     MoreCmidRules,
     RuleColor(ct::ColorSpec),
@@ -311,18 +323,18 @@ pub fn from_compiler(t: &ct::Tabular, lengths: TableLengths, size_cpt: u16, item
             ct::Entry::HLine { span } => TableEntry::HLine { span: *span },
             ct::Entry::CLine { first, last, span } => TableEntry::CLine { first: *first, last: *last, span: *span },
             ct::Entry::BookRule { kind, width_pt, span } => TableEntry::BookRule { kind: *kind, width_pt: *width_pt, span: *span },
-            ct::Entry::CMidRule { first, last, trim_left, trim_right, width_pt, kern_left_pt, kern_right_pt, span } => TableEntry::CMidRule {
+            ct::Entry::CMidRule { first, last, trim_left, trim_right, width_pt, kern_left, kern_right, span } => TableEntry::CMidRule {
                 first: *first,
                 last: *last,
                 trim_left: *trim_left,
                 trim_right: *trim_right,
                 width_pt: *width_pt,
-                kern_left_pt: *kern_left_pt,
-                kern_right_pt: *kern_right_pt,
+                kern_left: *kern_left,
+                kern_right: *kern_right,
                 span: *span,
             },
             ct::Entry::VSpace { pt } => TableEntry::VSpace { pt: *pt },
-            ct::Entry::AddLineSpace { pt, .. } => TableEntry::AddLineSpace { pt: *pt },
+            ct::Entry::AddLineSpace { space, .. } => TableEntry::AddLineSpace { space: *space },
             ct::Entry::SpecialRule { width_pt, above_pt, below_pt, span } => TableEntry::SpecialRule {
                 width_pt: *width_pt,
                 above_pt: *above_pt,
@@ -783,13 +795,13 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                 last_rule_class = if next_is_booktabs { 2 } else { 0 };
                 y += below_pt;
             }
-            TableEntry::AddLineSpace { pt } => {
+            TableEntry::AddLineSpace { space } => {
                 // booktabs.sty 80-83: `\@belowrulesep` is the space, class 2.
                 first_height.get_or_insert(0.0);
                 last_rule_class = if next_is_booktabs { 2 } else { 0 };
-                y += pt.unwrap_or(DEFAULT_ADD_SPACE_EM * m.em);
+                y += space.map_or(DEFAULT_ADD_SPACE_EM * m.em, |d| d.resolve(m.em, m.ex));
             }
-            TableEntry::CMidRule { first, last, trim_left, trim_right, width_pt, kern_left_pt, kern_right_pt, span } => {
+            TableEntry::CMidRule { first, last, trim_left, trim_right, width_pt, kern_left, kern_right, span } => {
                 let width = width_pt.unwrap_or(CMID_RULE_EM * m.em);
                 if last_rule_class == 0 {
                     first_height.get_or_insert(0.0);
@@ -799,8 +811,8 @@ pub fn layout(table: &TableItem, rows: &[Vec<MCell>], m: &Metrics) -> Geometry {
                 }
                 let (first, last) = ((*first).min(n - 1), (*last).min(n - 1));
                 let kern = CMID_RULE_KERN_EM * m.em;
-                let left = column_x[first] + if *trim_left { kern_left_pt.unwrap_or(kern) } else { 0.0 };
-                let right = right_of(last) - if *trim_right { kern_right_pt.unwrap_or(kern) } else { 0.0 };
+                let left = column_x[first] + if *trim_left { kern_left.map_or(kern, |d| d.resolve(m.em, m.ex)) } else { 0.0 };
+                let right = right_of(last) - if *trim_right { kern_right.map_or(kern, |d| d.resolve(m.em, m.ex)) } else { 0.0 };
                 rule(&mut rules, left, y, right - left, width, *span, &rule_color);
                 y += width;
                 // `\@xcmidrule` (booktabs.sty 151-161).
