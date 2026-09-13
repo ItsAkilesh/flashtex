@@ -105,15 +105,25 @@ fn half_typed_input_never_changes_layout_after_its_paragraph() {
             if let Some(rule) = expected.rule.as_mut() {
                 rule.y_pt += y_shift;
             }
-            let round = |item: &TextItem| {
+            // Baselines are stored rounded to 0.01pt, so `base + shift` can
+            // land one rounding step away from the re-laid item: compare y
+            // within one step and everything else exactly.
+            let strip = |item: &TextItem| {
                 let mut item = item.clone();
-                item.baseline_y_pt = (item.baseline_y_pt * 100.0).round() / 100.0;
+                item.baseline_y_pt = 0.0;
                 if let Some(rule) = item.rule.as_mut() {
-                    rule.y_pt = (rule.y_pt * 100.0).round() / 100.0;
+                    rule.y_pt = 0.0;
                 }
                 format!("{item:?}")
             };
-            assert_eq!(round(item), round(&expected), "{inserted}: item moved");
+            assert_eq!(strip(item), strip(&expected), "{inserted}: item moved");
+            assert!(
+                (item.baseline_y_pt - expected.baseline_y_pt).abs() <= 0.0101,
+                "{inserted}: item moved: {item:?} vs {expected:?}"
+            );
+            if let (Some(a), Some(b)) = (item.rule.as_ref(), expected.rule.as_ref()) {
+                assert!((a.y_pt - b.y_pt).abs() <= 0.0101, "{inserted}: rule moved: {item:?} vs {expected:?}");
+            }
         }
     }
 }
