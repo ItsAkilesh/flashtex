@@ -1,6 +1,6 @@
 {
- "passed": 45,
- "total": 54,
+ "passed": 53,
+ "total": 59,
  "tolerance_bp": 0.5,
  "rule_tolerance_bp": 0.1,
  "fixtures": [
@@ -981,16 +981,16 @@
   },
   {
    "fixture": "40-array-gtlt",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
    "aligned": 12,
-   "within_tol": 10,
+   "within_tol": 12,
    "unaligned": 0,
    "extension_columns_match": true,
-   "worst_bp": 8.254,
+   "worst_bp": 0.006,
    "rules": [
     0,
     0
@@ -1011,17 +1011,17 @@
     1,
     1
    ],
-   "aligned": 15,
-   "within_tol": 11,
-   "unaligned": 2,
+   "aligned": 16,
+   "within_tol": 12,
+   "unaligned": 0,
    "extension_columns_match": true,
-   "worst_bp": 14.605,
+   "worst_bp": 14.207,
    "rules": [
     5,
     5
    ],
-   "rules_within_tol": 0,
-   "rule_worst_bp": 1.195,
+   "rules_within_tol": 5,
+   "rule_worst_bp": 0.001,
    "diagnostics": [
     [
      "compiler",
@@ -1036,17 +1036,17 @@
     1,
     1
    ],
-   "aligned": 15,
-   "within_tol": 11,
-   "unaligned": 2,
+   "aligned": 16,
+   "within_tol": 12,
+   "unaligned": 0,
    "extension_columns_match": true,
-   "worst_bp": 11.967,
+   "worst_bp": 11.568,
    "rules": [
     5,
     5
    ],
-   "rules_within_tol": 0,
-   "rule_worst_bp": 1.195,
+   "rules_within_tol": 5,
+   "rule_worst_bp": 0.001,
    "diagnostics": [
     [
      "compiler",
@@ -1056,22 +1056,22 @@
   },
   {
    "fixture": "43-array-extrarowheight",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
    "aligned": 12,
-   "within_tol": 4,
+   "within_tol": 12,
    "unaligned": 0,
    "extension_columns_match": true,
-   "worst_bp": 7.971,
+   "worst_bp": 0.006,
    "rules": [
     9,
     9
    ],
-   "rules_within_tol": 0,
-   "rule_worst_bp": 7.97,
+   "rules_within_tol": 9,
+   "rule_worst_bp": 0.001,
    "diagnostics": [
     [
      "compiler",
@@ -1081,21 +1081,21 @@
   },
   {
    "fixture": "44-array-bang",
-   "pass": false,
+   "pass": true,
    "pages": [
     1,
     1
    ],
    "aligned": 12,
-   "within_tol": 10,
+   "within_tol": 12,
    "unaligned": 0,
    "extension_columns_match": true,
-   "worst_bp": 0.997,
+   "worst_bp": 0.006,
    "rules": [
     1,
-    0
+    1
    ],
-   "rules_within_tol": 0,
+   "rules_within_tol": 1,
    "rule_worst_bp": 0.0,
    "diagnostics": [
     [
@@ -1338,6 +1338,131 @@
    ],
    "aligned": 12,
    "within_tol": 12,
+   "unaligned": 0,
+   "extension_columns_match": true,
+   "worst_bp": 0.006,
+   "rules": [
+    11,
+    11
+   ],
+   "rules_within_tol": 11,
+   "rule_worst_bp": 0.001,
+   "diagnostics": [
+    [
+     "compiler",
+     "\\pagestyle is not supported in the document preamble"
+    ]
+   ]
+  },
+  {
+   "fixture": "55-array-newcolumntype",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 17,
+   "within_tol": 17,
+   "unaligned": 0,
+   "extension_columns_match": true,
+   "worst_bp": 0.006,
+   "rules": [
+    9,
+    9
+   ],
+   "rules_within_tol": 9,
+   "rule_worst_bp": 0.001,
+   "diagnostics": [
+    [
+     "compiler",
+     "\\pagestyle is not supported in the document preamble"
+    ]
+   ]
+  },
+  {
+   "fixture": "56-array-math-cells",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 15,
+   "within_tol": 15,
+   "unaligned": 0,
+   "extension_columns_match": true,
+   "worst_bp": 0.006,
+   "rules": [
+    1,
+    1
+   ],
+   "rules_within_tol": 1,
+   "rule_worst_bp": 0.001,
+   "diagnostics": [
+    [
+     "compiler",
+     "\\pagestyle is not supported in the document preamble"
+    ]
+   ]
+  },
+  {
+   "fixture": "57-array-w-itshape",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 15,
+   "within_tol": 15,
+   "unaligned": 0,
+   "extension_columns_match": true,
+   "worst_bp": 0.006,
+   "rules": [
+    2,
+    2
+   ],
+   "rules_within_tol": 2,
+   "rule_worst_bp": 0.001,
+   "diagnostics": [
+    [
+     "compiler",
+     "\\pagestyle is not supported in the document preamble"
+    ]
+   ]
+  },
+  {
+   "fixture": "58-array-hline-double",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 12,
+   "within_tol": 12,
+   "unaligned": 0,
+   "extension_columns_match": true,
+   "worst_bp": 0.006,
+   "rules": [
+    15,
+    15
+   ],
+   "rules_within_tol": 15,
+   "rule_worst_bp": 0.001,
+   "diagnostics": [
+    [
+     "compiler",
+     "\\pagestyle is not supported in the document preamble"
+    ]
+   ]
+  },
+  {
+   "fixture": "59-array-m-b-ragged",
+   "pass": true,
+   "pages": [
+    1,
+    1
+   ],
+   "aligned": 21,
+   "within_tol": 21,
    "unaligned": 0,
    "extension_columns_match": true,
    "worst_bp": 0.006,
