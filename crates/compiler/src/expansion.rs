@@ -915,6 +915,12 @@ thread_local! {
 /// Documents kept warm per thread.
 const MAX_CACHES: usize = 4;
 
+/// Source bytes between engine checkpoints. Each checkpoint clones and, when
+/// converging, compares the engine's whole assignment state; measured on
+/// HW1/HW2, denser checkpoints (every 256-320 bytes) made keystrokes slower
+/// than this interval despite shorter re-expansion.
+const CHECKPOINT_INTERVAL: usize = 2048;
+
 /// [`expand_project`], re-expanding incrementally when the entry document
 /// was expanded before on this thread (same path). Output is identical to
 /// [`expand_project`] (see `tests/expansion_incremental.rs`). Small entries
@@ -994,7 +1000,7 @@ pub fn expand_project_with_cache(
 fn build_cache(documents: &[SourceDocument<'_>], entry: usize, prepared: &[Prepared<'_>]) -> (ExpansionCache, Option<Expansion>) {
     let masked: &str = prepared[entry].text.as_ref();
     let init: Rc<dyn Fn(&mut Engine)> = Rc::new(configure);
-    let expander = IncrementalExpander::with_host(masked, limits_for(masked.len()), 2048, init);
+    let expander = IncrementalExpander::with_host(masked, limits_for(masked.len()), CHECKPOINT_INTERVAL, init);
     let mut conv = Converter::new(documents, entry);
     let mut marks = vec![Mark { index: 0, out_len: 0, last_span: conv.last_span }];
     convert_range(&mut conv, prepared, &expander, 0, &mut marks, None);
