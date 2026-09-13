@@ -121,7 +121,8 @@ impl Mode {
 }
 
 /// Everything that influences future expansion and is not the input
-/// stack itself. Cloned wholesale at incremental checkpoints.
+/// stack itself. Snapshotted at incremental checkpoints; every table is
+/// copy-on-write, so a snapshot costs a handful of reference-count bumps.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct State {
     pub scopes: Scopes,
@@ -134,7 +135,7 @@ pub(crate) struct State {
     pub mode: Mode,
     /// `\@addtoreset` lists: parent counter -> children reset when the
     /// parent is stepped (LaTeX's `\cl@<parent>`), in insertion order.
-    pub counter_children: HashMap<String, Vec<String>>,
+    pub counter_children: Rc<HashMap<String, Vec<String>>>,
     pub next_free_register: u16,
     pub next_source_id: u32,
     pub scanner_status: ScannerStatus,
@@ -153,12 +154,62 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) fn map_spans(&self, f: &dyn Fn(Span) -> Option<Span>) -> Option<State> {
+    /// This state with every stored span passed through `f` (`None` if `f`
+    /// rejects one). `f` must leave document spans with `end <=
+    /// identity_bound` unchanged (see `Scopes::map_spans`).
+    pub(crate) fn map_spans(&self, f: &dyn Fn(Span) -> Option<Span>, identity_bound: u32) -> Option<State> {
         let after_assignment = match &self.after_assignment {
             Some(t) => Some(Token::new(t.kind.clone(), f(t.span)?)),
             None => None,
         };
-        Some(State { scopes: self.scopes.map_spans(f)?, after_assignment, ..self.clone() })
+        Some(State { scopes: self.scopes.map_spans(f, identity_bound)?, after_assignment, ..self.clone() })
+    }
+
+    /// `self.map_spans(f, identity_bound) == Some(new.clone())`, without
+    /// building the mapped state (see `Scopes::eq_mapped`).
+    pub(crate) fn eq_mapped(&self, new: &State, f: &dyn Fn(Span) -> Option<Span>, identity_bound: u32) -> bool {
+        let State {
+            scopes,
+            conditionals,
+            pending_global,
+            pending_long,
+            pending_outer,
+            pending_protected,
+            after_assignment,
+            mode,
+            counter_children,
+            next_free_register,
+            next_source_id,
+            scanner_status,
+            matching_long,
+            runaway_par,
+            runaway_par_silent,
+            edef_depth,
+            in_csname,
+            emit_unbalanced_close,
+        } = self;
+        conditionals == &new.conditionals
+            && *pending_global == new.pending_global
+            && *pending_long == new.pending_long
+            && *pending_outer == new.pending_outer
+            && *pending_protected == new.pending_protected
+            && *mode == new.mode
+            && *next_free_register == new.next_free_register
+            && *next_source_id == new.next_source_id
+            && scanner_status == &new.scanner_status
+            && *matching_long == new.matching_long
+            && *runaway_par == new.runaway_par
+            && *runaway_par_silent == new.runaway_par_silent
+            && *edef_depth == new.edef_depth
+            && *in_csname == new.in_csname
+            && *emit_unbalanced_close == new.emit_unbalanced_close
+            && match (after_assignment, &new.after_assignment) {
+                (None, None) => true,
+                (Some(a), Some(b)) => crate::scopes::token_eq_mapped(a, b, f),
+                _ => false,
+            }
+            && (Rc::ptr_eq(counter_children, &new.counter_children) || counter_children == &new.counter_children)
+            && scopes.eq_mapped(&new.scopes, f, identity_bound)
     }
 }
 
@@ -2466,15 +2517,17 @@ impl Engine {
     }
 
     fn add_to_reset(&mut self, child: &str, parent: &str) {
-        let list = self.st.counter_children.entry(parent.to_string()).or_default();
+        let list = Rc::make_mut(&mut self.st.counter_children).entry(parent.to_string()).or_default();
         if !list.iter().any(|c| c == child) {
             list.push(child.to_string());
         }
     }
 
     fn remove_from_reset(&mut self, child: &str, parent: &str) {
-        if let Some(list) = self.st.counter_children.get_mut(parent) {
-            list.retain(|c| c != child);
+        if self.st.counter_children.get(parent).is_some_and(|list| list.iter().any(|c| c == child)) {
+            if let Some(list) = Rc::make_mut(&mut self.st.counter_children).get_mut(parent) {
+                list.retain(|c| c != child);
+            }
         }
     }
 
@@ -4976,7 +5029,7 @@ fn base_state(tex_only: bool) -> State {
         pending_protected: false,
         after_assignment: None,
         mode: Mode::Vertical,
-        counter_children: HashMap::new(),
+        counter_children: Rc::new(HashMap::new()),
         next_free_register: 256,
         next_source_id: 1,
         scanner_status: ScannerStatus::Normal,

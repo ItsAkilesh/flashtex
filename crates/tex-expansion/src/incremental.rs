@@ -65,6 +65,13 @@ impl Shift {
 fn apply_all(s: Span, pending: &[Shift]) -> Option<Span> {
     pending.iter().try_fold(s, |s, shift| shift.apply(s))
 }
+
+/// A shift leaves every span with `end <= edit_start` unchanged, so a chain
+/// of shifts is the identity on spans ending at or before the smallest edit
+/// start among them (`u32::MAX` for no shifts).
+fn identity_bound(pending: &[Shift]) -> u32 {
+    pending.iter().map(|s| s.edit_start.min(u32::MAX as usize) as u32).min().unwrap_or(u32::MAX)
+}
 use crate::expand::{Checkpoint, Engine, LabelRecord, State};
 use crate::span::Span;
 use crate::token::Token;
@@ -277,7 +284,7 @@ impl IncrementalExpander {
             // Spans in a checkpoint's state all precede its position, which
             // precedes this edit; earlier edits may still need applying.
             let pending = std::mem::take(&mut self.pending[cp_idx]);
-            match cp.state.map_spans(&|sp| apply_all(sp, &pending)) {
+            match cp.state.map_spans(&|sp| apply_all(sp, &pending), identity_bound(&pending)) {
                 Some(st) => {
                     cp.state = st;
                     self.checkpoints[cp_idx].state = cp.state.clone();
@@ -431,7 +438,7 @@ impl Converge {
     }
 
     pub fn shift_state(&self, st: &State) -> Option<State> {
-        st.map_spans(&|s| self.shift_span(s))
+        st.map_spans(&|s| self.shift_span(s), identity_bound(&[self.as_shift()]))
     }
 
     fn as_shift(&self) -> Shift {
@@ -439,9 +446,11 @@ impl Converge {
     }
 }
 
+/// Is `old` (an old run's checkpoint state, with its pending shifts and this
+/// edit's shift applied) equal to the new run's `new`? Tables the two runs
+/// still share and that hold no span the shifts move are skipped, so the cost
+/// follows what the runs assigned since they diverged, not the state's size.
 fn states_equivalent(old: &State, pending: &[Shift], new: &State, c: &Converge) -> bool {
-    match old.map_spans(&|s| apply_all(s, pending).and_then(|s| c.shift_span(s))) {
-        Some(shifted) => &shifted == new,
-        None => false,
-    }
+    let bound = identity_bound(pending).min(identity_bound(&[c.as_shift()]));
+    old.eq_mapped(new, &|s| apply_all(s, pending).and_then(|s| c.shift_span(s)), bound)
 }
