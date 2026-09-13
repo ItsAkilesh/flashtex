@@ -17,6 +17,16 @@ pub const MACRO_RECURSION_LIMIT: usize = 64;
 /// Maximum number of active nested `\input`/`\include` calls.
 pub const INCLUDE_DEPTH_LIMIT: usize = 64;
 
+/// `\today`'s fixed, compile-deterministic substitution.
+///
+/// Real `\today` reads the wall-clock date, which this compiler must never
+/// do: `docs/contracts/runtime-v1.md` requires byte-identical output for
+/// byte-identical input, and this project already fixes deterministic
+/// renders to the Unix epoch elsewhere (`SOURCE_DATE_EPOCH=0`, used by the
+/// corpus and visual-oracle harnesses under `docs/evidence/`). This is that
+/// same epoch, in the "Month Day, Year" form real LaTeX's `\today` prints.
+pub const TODAY_TEXT: &str = "January 1, 1970";
+
 /// One project document supplied by the runtime compile payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceDocument<'a> {
@@ -151,6 +161,19 @@ pub enum Block {
     },
     /// `\newpage`: force the next block onto a fresh page.
     PageBreak,
+    /// `\maketitle`: `article.cls`'s `\@maketitle` (title/author/date block).
+    /// `title`/`authors` are already-resolved inline content (never empty —
+    /// `\maketitle` fails with a diagnostic instead, see `P::maketitle`);
+    /// `date` is `None` exactly when `\date{}` suppressed the date line
+    /// (`\@date` empty), matching `flashtex_title_layout::DateField`. Layout
+    /// (exact `\vskip` amounts, `\LARGE`/`\large` sizes, and the leading
+    /// `\newpage`) lives in `layout::LayoutCursor`'s own `TitleBlock` arms;
+    /// see those for the `\@maketitle` provenance this transcribes.
+    TitleBlock {
+        title: Vec<Inline>,
+        authors: Vec<Inline>,
+        date: Option<Vec<Inline>>,
+    },
 }
 
 /// Font selection for one text item, as set by `\textbf`, `\itshape`, etc.
@@ -421,6 +444,13 @@ const BUILT_INS: &[&str] = &[
     "LARGE",
     "huge",
     "Huge",
+    "title",
+    "author",
+    "date",
+    "maketitle",
+    "thanks",
+    "and",
+    "today",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -518,6 +548,33 @@ fn preceded_by_space(tokens: &[InputToken], index: usize) -> bool {
         )
 }
 
+/// Splits a captured `\author{...}` argument on top-level `\and`: real
+/// `article.cls` gives each `\and`-separated name its own
+/// `tabular[t]{c}` column. An `\and` nested inside a brace group does not
+/// split, matching how this parser only ever splits at brace depth zero
+/// (e.g. `&`/`\\` in `multirow_environment`).
+fn split_on_and(tokens: Vec<InputToken>) -> Vec<Vec<InputToken>> {
+    let mut groups = vec![Vec::new()];
+    let mut depth = 0usize;
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                groups.last_mut().expect("at least one group").push(input);
+            }
+            TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+                groups.last_mut().expect("at least one group").push(input);
+            }
+            TokenKind::Command(name) if depth == 0 && name == "and" => {
+                groups.push(Vec::new());
+            }
+            _ => groups.last_mut().expect("at least one group").push(input),
+        }
+    }
+    groups
+}
+
 #[derive(Debug, Clone)]
 struct MacroDef {
     argument_count: usize,
@@ -585,6 +642,9 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style_stack: Vec::new(),
         env_styles: Vec::new(),
         list_spacing: HashMap::new(),
+        title: None,
+        author: None,
+        date: None,
     };
     let blocks = p.document();
 
@@ -665,6 +725,18 @@ struct P<'a> {
     /// runs, so a later `\setlist` does not retroactively change an
     /// already-open list.
     list_spacing: HashMap<String, ListSpacing>,
+    /// Raw (unexpanded) tokens most recently given to `\title`/`\author`,
+    /// with the command's own span for diagnostics. `\maketitle` reads
+    /// whichever is active at its call site, mirroring how real
+    /// `article.cls` reads `\@title`/`\@author`.
+    title: Option<(Vec<InputToken>, Span)>,
+    author: Option<(Vec<InputToken>, Span)>,
+    /// `None` until `\date` is called at all — `\maketitle` then defaults to
+    /// `\today`, matching `article.cls`'s own `\date{\today}` preamble
+    /// default. `Some(tokens)` after an explicit `\date{...}`; an empty
+    /// argument (`\date{}`) suppresses the date line entirely once
+    /// `\maketitle` expands it.
+    date: Option<(Vec<InputToken>, Span)>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -816,6 +888,23 @@ impl P<'_> {
             // behaviour is a documented no-op rather than an "unsupported"
             // diagnostic for a command every corpus fixture's preamble carries.
             "listfiles" => {}
+            // `\title`/`\author`/`\date` are ordinarily preamble commands but
+            // real LaTeX also accepts them in the body before `\maketitle`;
+            // this arm runs in either place, unlike the preamble catch-all
+            // just below.
+            "title" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                self.title = Some((tokens, span.merge(argument_span)));
+            }
+            "author" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                self.author = Some((tokens, span.merge(argument_span)));
+            }
+            "date" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                self.date = Some((tokens, span.merge(argument_span)));
+            }
+            "maketitle" => self.maketitle(span, blocks, para),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -1335,6 +1424,159 @@ impl P<'_> {
             Some(span.merge(argument_span)),
             Some("continued without package-specific commands or formatting".into()),
         ));
+    }
+
+    /// `\maketitle`: builds `Block::TitleBlock` from whatever `\title`/
+    /// `\author`/`\date` are currently set to, mirroring how real
+    /// `article.cls` reads `\@title`/`\@author`/`\@date`. Requires `\title`
+    /// and a non-empty `\author` (real LaTeX degrades to an invisible empty
+    /// box; this compiler never fabricates one — see the crate's `README.md`
+    /// boundary) and otherwise produces no block, with a diagnostic naming
+    /// what is missing.
+    fn maketitle(&mut self, span: Span, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
+        self.flush_paragraph(blocks, para);
+
+        let Some((title_tokens, title_span)) = self.title.clone() else {
+            self.diags.push(Diagnostic::error(
+                "\\maketitle requires \\title to be set first",
+                Some(span),
+                Some("no title block was produced".into()),
+            ));
+            return;
+        };
+        let Some((author_tokens, author_span)) = self.author.clone() else {
+            self.diags.push(Diagnostic::error(
+                "\\maketitle requires \\author to be set first",
+                Some(span),
+                Some("no title block was produced".into()),
+            ));
+            return;
+        };
+
+        let stripped_title = self.strip_thanks(title_tokens);
+        let title_content = self.inlines_from_tokens(stripped_title, TextStyle::default());
+        if title_content.is_empty() {
+            self.diags.push(Diagnostic::error(
+                "\\title was given an empty title",
+                Some(title_span),
+                Some("no title block was produced".into()),
+            ));
+            return;
+        }
+
+        let author_groups = split_on_and(author_tokens);
+        let and_count = author_groups.len().saturating_sub(1);
+        let mut author_content: Vec<Inline> = Vec::new();
+        let mut wrote_author = false;
+        for group in author_groups {
+            let stripped = self.strip_thanks(group);
+            let inlines = self.inlines_from_tokens(stripped, TextStyle::default());
+            if inlines.is_empty() {
+                // A blank `\and`-separated slot (`\author{A \and }`)
+                // contributes nothing, like an empty tabular column.
+                continue;
+            }
+            if wrote_author {
+                author_content.push(Inline::LineBreak { span: author_span });
+            }
+            author_content.extend(inlines);
+            wrote_author = true;
+        }
+        if !wrote_author {
+            self.diags.push(Diagnostic::error(
+                "\\maketitle requires \\author to name at least one author",
+                Some(author_span),
+                Some("no title block was produced".into()),
+            ));
+            return;
+        }
+        if and_count > 0 {
+            self.diags.push(Diagnostic::warning(
+                "multiple \\and-separated authors are typeset one per line; this compiler does not yet place them side by side in columns",
+                Some(author_span),
+                Some("stacked the authors vertically instead of in columns".into()),
+            ));
+        }
+
+        let date_content = match self.date.clone() {
+            None => {
+                // `\date` was never called: `article.cls`'s own preamble
+                // default is `\date{\today}`.
+                Some(vec![Inline::Text {
+                    text: TODAY_TEXT.to_string(),
+                    span,
+                    style: TextStyle::default(),
+                    space_before: true,
+                }])
+            }
+            Some((date_tokens, _)) => {
+                let stripped = self.strip_thanks(date_tokens);
+                let inlines = self.inlines_from_tokens(stripped, TextStyle::default());
+                if inlines.is_empty() {
+                    None // `\date{}`: suppressed, matching `DateField::Suppressed`.
+                } else {
+                    Some(inlines)
+                }
+            }
+        };
+
+        blocks.push(Block::TitleBlock {
+            title: title_content,
+            authors: author_content,
+            date: date_content,
+        });
+        self.finish_block_dependencies();
+    }
+
+    /// Strips `\thanks{...}` out of a captured `\title`/`\author`/`\date`
+    /// argument. Real `article.cls` turns `\thanks` into a footnote mark in
+    /// the title block plus footnote text at the page foot; this compiler
+    /// has no footnote implementation, so the honest recovery is to omit the
+    /// mark and its text — never leak the footnote prose into the centred
+    /// title/author/date line — and say so once per occurrence, per the
+    /// recovery policy documented on `unsupported` above.
+    fn strip_thanks(&mut self, tokens: Vec<InputToken>) -> Vec<InputToken> {
+        let mut out = Vec::with_capacity(tokens.len());
+        let mut i = 0;
+        while i < tokens.len() {
+            let is_thanks = matches!(
+                &tokens[i].token.kind,
+                TokenKind::Command(name) if name == "thanks"
+            );
+            if !is_thanks {
+                out.push(tokens[i].clone());
+                i += 1;
+                continue;
+            }
+            let thanks_span = tokens[i].token.span;
+            let mut j = i + 1;
+            while j < tokens.len()
+                && matches!(tokens[j].token.kind, TokenKind::Space | TokenKind::Comment)
+            {
+                j += 1;
+            }
+            if j < tokens.len() && tokens[j].token.kind == TokenKind::LBrace {
+                let mut depth = 0usize;
+                while j < tokens.len() {
+                    match tokens[j].token.kind {
+                        TokenKind::LBrace => depth += 1,
+                        TokenKind::RBrace => depth -= 1,
+                        _ => {}
+                    }
+                    j += 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+            self.diags.push(Diagnostic::warning(
+                "\\thanks is recognised but footnotes are not implemented; the footnote mark and text were omitted",
+                Some(thanks_span),
+                Some("omitted the footnote mark and its text".into()),
+            ));
+            i = j;
+        }
+        out
     }
 
     fn define_macro(&mut self, kind: &str, span: Span) {
@@ -2274,6 +2516,14 @@ impl P<'_> {
                         span: input.token.span,
                     })
                 }
+                // See `TODAY_TEXT`: a fixed, compile-deterministic date
+                // rather than the real wall-clock `\today`.
+                TokenKind::Command(name) if name == "today" => content.push(Inline::Text {
+                    text: TODAY_TEXT.to_string(),
+                    span: input.token.span,
+                    style,
+                    space_before,
+                }),
                 _ => {}
             }
         }

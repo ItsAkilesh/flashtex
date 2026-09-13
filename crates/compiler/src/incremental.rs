@@ -419,6 +419,18 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             span: mapped_span(*span, changes, deltas)?,
         },
         Block::PageBreak => Block::PageBreak,
+        Block::TitleBlock {
+            title,
+            authors,
+            date,
+        } => Block::TitleBlock {
+            title: shift_inlines(title, changes, deltas)?,
+            authors: shift_inlines(authors, changes, deltas)?,
+            date: match date {
+                Some(date) => Some(shift_inlines(date, changes, deltas)?),
+                None => None,
+            },
+        },
     })
 }
 
@@ -651,6 +663,11 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
         Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        // Signature only, not identity (see the doc comment above): using
+        // just `title` here (never `authors`/`date`) can only widen the
+        // candidate set on an author/date-only edit, never produce a wrong
+        // reuse, since `shift_block`'s full equality check still gates that.
+        Block::TitleBlock { title, .. } => title,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -691,6 +708,11 @@ fn shifted_signature(
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
         Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        // Signature only, not identity (see the doc comment above): using
+        // just `title` here (never `authors`/`date`) can only widen the
+        // candidate set on an author/date-only edit, never produce a wrong
+        // reuse, since `shift_block`'s full equality check still gates that.
+        Block::TitleBlock { title, .. } => title,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
