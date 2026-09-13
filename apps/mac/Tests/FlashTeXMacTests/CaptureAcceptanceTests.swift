@@ -21,6 +21,10 @@ import NearbyClient
 /// real bridge, and a reviewed insert riding the real preview-controller route.
 @MainActor
 final class CaptureAcceptanceTests: XCTestCase {
+    // These cases assert the explicit-pin contract (destination_query answers null
+    // until ⌘⌥P); the fluid caret pin (CaptureInboxTests) is switched off here.
+    override func setUp() { CaptureInboxFeature.caretDestinationOverride = false }
+    override func tearDown() { CaptureInboxFeature.caretDestinationOverride = nil }
     static let psk = Data(repeating: 0x7E, count: 32)
     static let pairId = "acceptancepair01"
     static var pair: PairedMac {

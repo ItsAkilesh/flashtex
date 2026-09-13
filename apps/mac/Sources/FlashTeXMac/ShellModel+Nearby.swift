@@ -220,7 +220,9 @@ enum CaptureInboxFeature {
     /// A nearby capture is converted as soon as the bridge journals it.
     static var autoConvert: Bool { flag("FLASHTEX_CAPTURE_AUTO_CONVERT") }
     /// With nothing pinned, the caret is pinned for the companion on demand.
-    static var caretDestination: Bool { flag("FLASHTEX_CAPTURE_CARET_DESTINATION") }
+    static var caretDestination: Bool { caretDestinationOverride ?? flag("FLASHTEX_CAPTURE_CARET_DESTINATION") }
+    /// Tests of the explicit-pin contract set this to false.
+    nonisolated(unsafe) static var caretDestinationOverride: Bool?
     /// Opening the Captures panel attaches the discovered bridge.
     static var autoAttachBridge: Bool { flag("FLASHTEX_CAPTURES_AUTO_ATTACH") }
     /// Launch advertises when a companion is already paired (pure; tested).

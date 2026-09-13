@@ -19,10 +19,11 @@ final class NearbyReferenceClientTests: XCTestCase {
 
     private var tmp: URL!
     override func setUp() {
+        CaptureInboxFeature.caretDestinationOverride = false // these cases assert the explicit-pin semantics (destination_query: nothing pinned → null)
         tmp = FileManager.default.temporaryDirectory.appendingPathComponent("nearby-ref-\(UUID().uuidString)")
         try! FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
     }
-    override func tearDown() { try? FileManager.default.removeItem(at: tmp) }
+    override func tearDown() { CaptureInboxFeature.caretDestinationOverride = nil; try? FileManager.default.removeItem(at: tmp) }
 
     private func cli(_ args: [String]) async -> (code: Int32, out: [String]) {
         var out: [String] = []
