@@ -30,7 +30,8 @@ jobs:
       # app bundle, so the render-pipeline/pdf tests that need them run
       # instead of skipping (no TeX installation on the runners).
       FLASHTEX_FONT_DIRS: ${{ github.workspace }}/apps/mac/Fonts
-      FLASHTEX_TFM_DIRS: ${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/lm
+      # Latin Modern, EC (T1 without lmodern) and AMS symbol metrics — the same three trees the app bundles.
+      FLASHTEX_TFM_DIRS: ${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/lm:${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/jknappen/ec:${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/amsfonts/symbols
       FLASHTEX_LM_DIR: ${{ github.workspace }}/apps/mac/Fonts
     strategy:
       fail-fast: false
