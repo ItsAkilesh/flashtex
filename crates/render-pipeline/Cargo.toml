@@ -44,6 +44,13 @@ compiler-text-nucleus = []
 # (crates/compiler and crates/math-layout of branch
 # agent/kabir-claude/amsmath-inline); off until vendor/ is re-pinned.
 amsmath-inline = []
+# Per-glyph source spans inside math (math-layout `SourceTag`, PR #161):
+# math clusters and rules get the provenance of the atom that produced them
+# (sub/superscripts, fraction parts, `\left`/`\right` delimiters, ...) instead
+# of the whole formula, and glyphs can be painted per source range
+# (`MathRec::span_paints`). Builds only against a vendor/math-layout that
+# carries `SourceTag`; off until vendor/ is re-pinned.
+math-glyph-spans = []
 
 [dependencies]
 flashtex-compiler = { path = "vendor/compiler" }

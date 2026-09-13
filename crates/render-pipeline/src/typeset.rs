@@ -166,9 +166,24 @@ pub struct MathRec {
     pub text_runs: Vec<crate::mathtext::TextRun>,
     /// Baseline shift upward in points (`\LaTeXe`'s subscript `ε`).
     pub raise: f64,
+    /// Paint for glyphs and rules whose source span lies inside a byte
+    /// range of this formula's document (xcolor `\textcolor`/`\color` in
+    /// math); the innermost range wins, unpainted leaves stay black.
+    /// Empty until the compiler reports colour ranges (#150/#158).
+    #[cfg(feature = "math-glyph-spans")]
+    pub span_paints: Vec<(std::ops::Range<usize>, Paint)>,
 }
 
 impl MathRec {
+    /// The paint of a leaf with math-layout provenance `tag`.
+    #[cfg(feature = "math-glyph-spans")]
+    pub fn paint_of(&self, tag: ml::SourceTag) -> Paint {
+        tag.span
+            .filter(|s| s.document as usize == self.span.document.0)
+            .and_then(|s| innermost_paint(&self.span_paints, s.start, s.end))
+            .unwrap_or(Paint::BLACK)
+    }
+
     /// The `\text` run glyph a placed glyph stands for, if it is one.
     pub fn run_glyph(&self, g: &ml::PositionedGlyph) -> Option<&crate::mathtext::RunGlyph> {
         crate::mathtext::run_of(&self.text_runs, g.font_id)?.glyph_at(g.font_id, g.gid)
@@ -1185,6 +1200,8 @@ impl<'a> Context<'a> {
             metrics: fonts.clone(),
             text_runs,
             raise: 0.0,
+            #[cfg(feature = "math-glyph-spans")]
+            span_paints: Vec::new(),
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1280,6 +1297,13 @@ impl<'a> Context<'a> {
                         let close = fenced.pop().expect("two fences");
                         let open = fenced.pop().expect("two fences");
                         ml::MathBox::hlist(vec![open, grid, close])
+                    };
+                    // Fences and rules of a top-level grid map to it.
+                    #[cfg(feature = "math-glyph-spans")]
+                    let b = {
+                        let mut b = b;
+                        b.inherit_tag(math_tag(*grid_span));
+                        b
                     };
                     (b, 1)
                 }
@@ -4956,8 +4980,8 @@ pub fn convert_math_classed(
     class: &dyn Fn(&Span) -> Option<ml::AtomClass>,
 ) -> ml::MathList {
     use flashtex_compiler::math::{DelimiterRole, Nucleus as N};
-    // Open fences: (left delimiter, atoms converted since it).
-    let mut stack: Vec<(Option<char>, Vec<ml::Atom>)> = Vec::new();
+    // Open fences: (left delimiter, atoms converted since it, its span).
+    let mut stack: Vec<(Option<char>, Vec<ml::Atom>, Span)> = Vec::new();
     let mut atoms = Vec::new();
     for a in &list.atoms {
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
@@ -5024,12 +5048,12 @@ pub fn convert_math_classed(
             // `Right` role; an empty glyph is the null delimiter `.`), matched
             // here exactly like the source-derived fences below.
             N::SizedDelimiter { glyph, role: DelimiterRole::Left, .. } => {
-                stack.push((glyph.chars().next(), Vec::new()));
+                stack.push((glyph.chars().next(), Vec::new(), a.span));
                 continue;
             }
             N::SizedDelimiter { glyph, role: DelimiterRole::Right, .. } if !stack.is_empty() => {
-                let (left, body) = stack.pop().expect("checked non-empty");
-                vec![ml::Atom::left_right(left, glyph.chars().next(), ml::MathList::new(body))]
+                let (left, body, left_span) = stack.pop().expect("checked non-empty");
+                vec![fenced(left, glyph.chars().next(), body, left_span, a.span)]
             }
             // amsmath `\big(`..`\Bigg]` (`\bBigg@`): math-layout's
             // `BigDelimiter` at 1/1.5/2/2.5 `\big@size` (compiler scale
@@ -5141,12 +5165,12 @@ pub fn convert_math_classed(
                 };
                 match (single, fence(&a.span)) {
                     (Some(delim), Some(Fence::Left)) => {
-                        stack.push((delim, Vec::new()));
+                        stack.push((delim, Vec::new(), a.span));
                         continue;
                     }
                     (Some(delim), Some(Fence::Right)) if !stack.is_empty() => {
-                        let (left, body) = stack.pop().expect("checked non-empty");
-                        vec![ml::Atom::left_right(left, delim, ml::MathList::new(body))]
+                        let (left, body, left_span) = stack.pop().expect("checked non-empty");
+                        vec![fenced(left, delim, body, left_span, a.span)]
                     }
                     _ => match single {
                         Some(Some(c)) => match class(&a.span) {
@@ -5255,6 +5279,14 @@ pub fn convert_math_classed(
                 vec![sink.grid_atom(atom_class, cells, columns, left, right, a.span)]
             }
         };
+        // Every atom this compiler atom produced maps to its bytes unless a
+        // more precise span was already given (a `\left...\right` pair).
+        #[cfg(feature = "math-glyph-spans")]
+        for atom in &mut out {
+            if atom.tag.span.is_none() {
+                atom.tag.span = math_tag(a.span).span;
+            }
+        }
         if let Some(last) = out.last_mut() {
             if let Some(sup) = &a.superscript {
                 last.superscript = Some(sub(sup, sink));
@@ -5264,19 +5296,53 @@ pub fn convert_math_classed(
             }
         }
         match stack.last_mut() {
-            Some((_, body)) => body.extend(out),
+            Some((_, body, _)) => body.extend(out),
             None => atoms.extend(out),
         }
     }
     // Unclosed \left: the compiler reports it; the delimiter is set as the
     // plain symbol it would have been without the fence.
-    for (left, body) in stack {
+    for (left, body, left_span) in stack {
         if let Some(c) = left {
-            atoms.extend(symbol_atoms(c, None));
+            let delimiter = symbol_atoms(c, None);
+            #[cfg(feature = "math-glyph-spans")]
+            let delimiter: Vec<ml::Atom> = delimiter.into_iter().map(|d| d.with_tag(math_tag(left_span))).collect();
+            atoms.extend(delimiter);
         }
+        let _ = left_span;
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// A matched `\left...\right` pair as math-layout's `Delimited` atom; with
+/// `math-glyph-spans` each delimiter maps to its own command and the atom
+/// to the whole pair.
+fn fenced(left: Option<char>, right: Option<char>, body: Vec<ml::Atom>, left_span: Span, right_span: Span) -> ml::Atom {
+    let atom = ml::Atom::left_right(left, right, ml::MathList::new(body));
+    #[cfg(feature = "math-glyph-spans")]
+    let atom = atom
+        .with_tag(math_tag(left_span.merge(right_span)))
+        .with_delimiter_tags(math_tag(left_span), math_tag(right_span));
+    #[cfg(not(feature = "math-glyph-spans"))]
+    let _ = (left_span, right_span);
+    atom
+}
+
+/// math-layout provenance for a compiler span.
+#[cfg(feature = "math-glyph-spans")]
+fn math_tag(span: Span) -> ml::SourceTag {
+    ml::SourceTag::span(ml::SourceSpan::new(span.document.0 as u32, span.start, span.end))
+}
+
+/// The paint of the innermost (shortest) range containing `start..end`.
+#[cfg(feature = "math-glyph-spans")]
+fn innermost_paint(ranges: &[(std::ops::Range<usize>, Paint)], start: usize, end: usize) -> Option<Paint> {
+    ranges
+        .iter()
+        .filter(|(r, _)| r.start <= start && end <= r.end)
+        .min_by_key(|(r, _)| r.end - r.start)
+        .map(|(_, p)| *p)
 }
 
 /// math-layout's style for a compiler `\genfrac` style argument.
@@ -5350,6 +5416,9 @@ fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, 
     }
     ml::Layout {
         root: ml::MathBox {
+            // A synthetic wrapper around the row's children, like #165's
+            // inter-atom glue: no source span of its own.
+            tag: ml::SourceTag::NONE,
             kind: ml::BoxKind::HBox(children),
             width: x,
             height,
@@ -7826,8 +7895,16 @@ fn math_items(
 ) {
     let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height - m.raise));
     let src = source_of(m.span);
-    // Group consecutive glyphs of one face and size into a run; each glyph
-    // is a cluster.
+    // With `math-glyph-spans` every glyph and rule maps to the atom that
+    // produced it (math-layout's `SourceTag`); a leaf without one (never
+    // expected: every converted atom is tagged) falls back to the formula.
+    #[cfg(feature = "math-glyph-spans")]
+    let leaf_src = |tag: ml::SourceTag| match tag.span {
+        Some(s) => source_of(Span::in_document(DocumentId(s.document as usize), s.start, s.end)),
+        None => src.clone(),
+    };
+    // Group consecutive glyphs of one face, size and paint into a run; each
+    // glyph is a cluster.
     let mut current: Option<GlyphRun> = None;
     let flush = |current: &mut Option<GlyphRun>, items: &mut Vec<display::Item>| {
         if let Some(r) = current.take() {
@@ -7848,7 +7925,11 @@ fn math_items(
         }
         used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
         let size_tick = Tick::from_tex_pt(g.size);
-        if current.as_ref().is_some_and(|r| r.font_size != size_tick || r.font_id != face.font_id) {
+        #[cfg(feature = "math-glyph-spans")]
+        let (paint, glyph_src) = (m.paint_of(g.tag), leaf_src(g.tag));
+        #[cfg(not(feature = "math-glyph-spans"))]
+        let (paint, glyph_src) = (Paint::BLACK, src.clone());
+        if current.as_ref().is_some_and(|r| r.font_size != size_tick || r.font_id != face.font_id || r.paint != paint) {
             flush(&mut current, items);
         }
         let r = current.get_or_insert_with(|| GlyphRun {
@@ -7857,7 +7938,7 @@ fn math_items(
             text: String::new(),
             glyphs: Vec::new(),
             clusters: Vec::new(),
-            paint: Paint::BLACK,
+            paint,
             role: display::RunRole::Math,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
@@ -7957,7 +8038,7 @@ fn math_items(
                 },
                 last: None,
             },
-            provenance: Provenance::Source(src.clone()),
+            provenance: Provenance::Source(glyph_src),
         });
     }
     flush(&mut current, items);
@@ -7965,13 +8046,17 @@ fn math_items(
         if rule.w <= 0.0 || rule.h <= 0.0 {
             continue;
         }
+        #[cfg(feature = "math-glyph-spans")]
+        let (paint, rule_src) = (m.paint_of(rule.tag), leaf_src(rule.tag));
+        #[cfg(not(feature = "math-glyph-spans"))]
+        let (paint, rule_src) = (Paint::BLACK, src.clone());
         items.push(display::Item::Rule(Rule {
             x: Tick::from_tex_pt(rule.x),
             top: Tick::from_tex_pt(rule.y),
             width: Tick::from_tex_pt(rule.w).max(Tick(1)),
             height: Tick::from_tex_pt(rule.h).max(Tick(1)),
-            paint: Paint::BLACK,
-            provenance: Provenance::Source(src.clone()),
+            paint,
+            provenance: Provenance::Source(rule_src),
         }));
     }
 }
@@ -8003,4 +8088,23 @@ pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
         }
     }
     out
+}
+
+#[cfg(all(test, feature = "math-glyph-spans"))]
+mod math_paint_tests {
+    use super::*;
+
+    #[test]
+    fn innermost_source_range_paints_a_math_leaf() {
+        let red = Paint { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+        let blue = Paint { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+        // `\textcolor{red}{a {\color{blue} b} c}`: red over 10..40, blue 20..30.
+        let ranges = vec![(10..40, red), (20..30, blue)];
+        assert_eq!(innermost_paint(&ranges, 12, 13), Some(red));
+        assert_eq!(innermost_paint(&ranges, 25, 26), Some(blue));
+        assert_eq!(innermost_paint(&ranges, 35, 36), Some(red));
+        // Partly outside every range, or before it: unpainted.
+        assert_eq!(innermost_paint(&ranges, 5, 12), None);
+        assert_eq!(innermost_paint(&ranges, 0, 1), None);
+    }
 }

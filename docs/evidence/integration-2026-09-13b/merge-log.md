@@ -565,6 +565,19 @@ Everything else in the stage-3 queue continues past it.
   `stretched_left` test inside the `else` branch's `pre_display`.
 - Checks: no new errors; #157's own `MathBox` literal is owed to #165.
 
+### #165 math-glyph-spans-pipeline (render-pipeline) @ 707e0e33
+
+- No conflicts; the merge applied cleanly and supplied the `MathBox::tag`
+  field (#161's `SourceTag`) everywhere `mathgrid.rs` and `mathtext.rs`
+  build boxes.
+- One integration fix: #157, merged just before, added a `MathBox` literal
+  for the squeezed-display row that #165 could not know about. It is a
+  synthetic wrapper around the row's children with no source span of its
+  own, so it takes `SourceTag::NONE`, as #165's inter-atom glue does.
+- Checks: render-pipeline is down to four build errors, all owed to #170
+  (`Inline::Graphic`/`Transform`), #158 (`Inline::ColorBox`) and
+  `Piece::Caption::short`.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
