@@ -46,12 +46,40 @@ pub enum Nucleus {
     /// A braced subformula.
     List(MathList),
     /// `\frac{num}{den}`. `thickness` overrides the default rule thickness
-    /// (0 gives `\atop`-style stacking).
+    /// (0 gives `\atop`-style stacking). `left`/`right` are the delimiters of
+    /// `\abovewithdelims`/`\atopwithdelims` (amsmath `\genfrac`, `\binom`),
+    /// sized to `\delim1`/`\delim2` by Rule 15e; `None` is the null
+    /// delimiter (`\nulldelimiterspace`), which is what plain `\over` has.
     Fraction {
         numerator: MathList,
         denominator: MathList,
         thickness: Option<f64>,
+        left: Option<char>,
+        right: Option<char>,
     },
+    /// amsmath's `\big`/`\Big`/`\bigg`/`\Bigg` (`amsmath.sty` `\bBigg@`):
+    /// `\hbox{$\nulldelimiterspace0pt \left<delim>\vcenter to <factor>\big@size{}\right.$}`
+    /// with `\big@size` = 1.2 × (height + depth) of the text-size roman `(`
+    /// (`\Mathstrutbox@`), `factor` 1, 1.5, 2, 2.5. `None` is `\big.`.
+    BigDelimiter { delim: Option<char>, factor: f64 },
+    /// `\phantom`/`\hphantom`/`\vphantom` (`latex.ltx` `\ph@nt`/`\finph@nt`):
+    /// an empty box with the width (`horizontal`) and/or height and depth
+    /// (`vertical`) of `body` set in the current (uncramped) style.
+    Phantom {
+        body: MathList,
+        horizontal: bool,
+        vertical: bool,
+    },
+    /// amsmath's `subarray` environment (`\substack` is `subarray{c}`): rows
+    /// in `\scriptstyle`, aligned `c` or `l`, stacked at `\baselineskip` =
+    /// `\fontdimen10`+`\fontdimen12` of `\scriptfont2` with `\lineskip` =
+    /// `\lineskiplimit` = 3 × `\fontdimen8 \scriptfont3`, `\vcenter`ed.
+    SubArray { rows: Vec<MathList>, align: char },
+    /// Explicit math glue (`\,` `\:` `\;` `\!` `\mskip`, `\quad` `\hskip`):
+    /// `mu` math units of the current style plus `pt` points. Like TeX's glue
+    /// node it takes no part in inter-atom spacing (it does not change
+    /// `r_type`, tex.web §760), so the atom's class is ignored.
+    Glue { mu: f64, pt: f64 },
     /// `\sqrt{radicand}` or `\sqrt[degree]{radicand}`.
     Radical {
         radicand: MathList,
@@ -151,8 +179,60 @@ impl Atom {
                 numerator,
                 denominator,
                 thickness: None,
+                left: None,
+                right: None,
             },
         )
+    }
+
+    /// `\abovewithdelims` / amsmath `\genfrac{left}{right}{thickness}{}`:
+    /// a fraction with Rule 15e delimiters. amsmath wraps the result in a
+    /// group, so the atom is ordinary rather than inner.
+    pub fn genfrac(
+        numerator: MathList,
+        denominator: MathList,
+        thickness: Option<f64>,
+        left: Option<char>,
+        right: Option<char>,
+    ) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::Fraction {
+                numerator,
+                denominator,
+                thickness,
+                left,
+                right,
+            },
+        )
+    }
+
+    /// amsmath `\big(` (`factor` 1), `\Big` 1.5, `\bigg` 2, `\Bigg` 2.5, as
+    /// an ordinary atom; `\bigl`/`\bigr`/`\bigm` change `class`.
+    pub fn big_delimiter(class: AtomClass, delim: Option<char>, factor: f64) -> Atom {
+        Atom::new(class, Nucleus::BigDelimiter { delim, factor })
+    }
+
+    /// `\phantom{body}` (both), `\hphantom` (horizontal), `\vphantom` (vertical).
+    pub fn phantom(body: MathList, horizontal: bool, vertical: bool) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::Phantom {
+                body,
+                horizontal,
+                vertical,
+            },
+        )
+    }
+
+    /// Explicit math glue of `mu` math units plus `pt` points.
+    pub fn glue(mu: f64, pt: f64) -> Atom {
+        Atom::new(AtomClass::Ord, Nucleus::Glue { mu, pt })
+    }
+
+    /// amsmath `\substack` (`align` `c`) / `subarray{l}`.
+    pub fn subarray(rows: Vec<MathList>, align: char) -> Atom {
+        Atom::new(AtomClass::Ord, Nucleus::SubArray { rows, align })
     }
 
     pub fn sqrt(radicand: MathList) -> Atom {
@@ -259,7 +339,10 @@ pub fn default_class(ch: char) -> (AtomClass, Limits) {
         '=' | '<' | '>' | ':' | '\u{2264}' | '\u{2265}' | '\u{2261}' | '\u{2248}' | '\u{2260}'
         | '\u{223C}' | '\u{2282}' | '\u{2283}' | '\u{2286}' | '\u{2287}' | '\u{2208}'
         | '\u{220B}' | '\u{2190}' | '\u{2192}' | '\u{2194}' | '\u{21D0}' | '\u{21D2}'
-        | '\u{21D4}' | '\u{2225}' | '\u{22A5}' | '\u{2223}' => Rel,
+        | '\u{21D4}' | '\u{2225}' | '\u{22A5}' | '\u{2223}'
+        // amsmath/plain long arrows (\Longrightarrow etc.) are \mathrel.
+        | '\u{27F5}' | '\u{27F6}' | '\u{27F7}' | '\u{27F8}' | '\u{27F9}' | '\u{27FA}'
+        | '\u{27FC}' => Rel,
         '(' | '[' | '{' | '\u{27E8}' | '\u{2308}' | '\u{230A}' => Open,
         ')' | ']' | '}' | '\u{27E9}' | '\u{2309}' | '\u{230B}' => Close,
         ',' | ';' => Punct,
@@ -273,4 +356,20 @@ pub fn default_class(ch: char) -> (AtomClass, Limits) {
         _ => Limits::DisplayLimits,
     };
     (class, limits)
+}
+
+#[cfg(test)]
+mod long_arrow_tests {
+    use super::*;
+
+    #[test]
+    fn long_arrows_are_relations() {
+        // \Longrightarrow, \Longleftarrow, \Longleftrightarrow, \longrightarrow,
+        // \longleftarrow, \longleftrightarrow, \longmapsto.
+        for ch in [
+            '\u{27F9}', '\u{27F8}', '\u{27FA}', '\u{27F6}', '\u{27F5}', '\u{27F7}', '\u{27FC}',
+        ] {
+            assert_eq!(default_class(ch).0, AtomClass::Rel, "U+{:04X}", ch as u32);
+        }
+    }
 }

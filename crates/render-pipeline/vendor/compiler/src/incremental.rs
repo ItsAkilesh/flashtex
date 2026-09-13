@@ -594,6 +594,22 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
             }
             Nucleus::Accent { accent: _, body } => shift_math_list(body, changes, deltas)?,
             Nucleus::Group(inner) => shift_math_list(inner, changes, deltas)?,
+            Nucleus::GenFraction {
+                numerator,
+                denominator,
+                ..
+            } => {
+                shift_math_list(numerator, changes, deltas)?;
+                shift_math_list(denominator, changes, deltas)?;
+            }
+            Nucleus::Phantom { body, .. } | Nucleus::Operator { body, .. } => {
+                shift_math_list(body, changes, deltas)?
+            }
+            Nucleus::SubArray { rows, align: _ } => {
+                for row in rows.iter_mut() {
+                    shift_math_list(row, changes, deltas)?;
+                }
+            }
         }
         map_span(span, changes, deltas)?;
         // A present script that cannot be shifted fails the whole mapping, so
