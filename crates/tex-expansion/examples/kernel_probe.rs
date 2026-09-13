@@ -98,7 +98,9 @@ fn main() {
             0
         };
         match &tok.kind {
-            TokenKind::ControlSequence(n) if n == "relax" || n == "par" => {}
+            // Executed no-ops and group boundaries are expected output.
+            TokenKind::ControlSequence(n) if matches!(n.as_str(), "relax" | "par" | "begingroup" | "endgroup") => {}
+            TokenKind::Char(_, flashtex_tex_expansion::CatCode::BeginGroup | flashtex_tex_expansion::CatCode::EndGroup) => {}
             TokenKind::ControlSequence(n) => {
                 let map = if primitives.contains(n) { &mut prim } else { &mut undef };
                 let e = map.entry(n.clone()).or_insert((0, line));

@@ -4723,7 +4723,7 @@ impl Engine {
                     '\\' => CatCode::Escape,
                     '%' => CatCode::Comment,
                     ' ' => CatCode::Space,
-                    '\r' | '\n' => CatCode::EndLine,
+                    '\r' => CatCode::EndLine,
                     '\0' => CatCode::Ignored,
                     '\u{7f}' => CatCode::Invalid,
                     c if c.is_ascii_alphabetic() => CatCode::Letter,
