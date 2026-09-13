@@ -123,7 +123,6 @@ const TEXT_EXTRA_ARMS: &[&str] = &[
     "theoremstyle",
     "newtheoremstyle",
     "swapnumbers",
-    "numberwithin",
     "qed",
     "qedhere",
 ];
@@ -271,6 +270,9 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("subsubsection", "{...}", "numbered subsubsection heading; starred form unnumbered"),
     ("tableofcontents", "", "article contents list from the previous layout pass"),
     ("eqref", "{key}", "parenthesised equation number of the labelled item"),
+    ("numberwithin", "[\\style]{counter}{parent}", "amsmath: counter reset by parent and printed \\theparent.\\style{counter} (equation, figure, table; theorem counters within section)"),
+    ("counterwithin", "{counter}{parent}", "counter reset by parent and printed \\theparent.\\arabic{counter}; starred form keeps the printed form"),
+    ("counterwithout", "{counter}{parent}", "undoes \\counterwithin; starred form keeps the printed form"),
     ("url", "{url}", "monospaced URL text; with hyperref a URI link is recorded for export (not clickable in the preview)"),
     ("href", "{url}{text}", "link text; with hyperref a URI (or #name) link is recorded for export (not clickable in the preview)"),
     ("nolinkurl", "{url}", "monospaced URL text without a link"),
@@ -355,7 +357,6 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("lstinputlisting", "[keys]{file}", "listing of a project document's lines"),
     ("newtheoremstyle", "{name}{above}{below}{body font}{indent}{head font}{punct}{space}{spec}", "defines an amsthm style; a custom head specification is diagnosed"),
     ("swapnumbers", "", "amsthm: numbers before names in the heads of later \\newtheorem environments"),
-    ("numberwithin", "[format]{counter}{parent}", "amsmath: a theorem or sectioning counter resets with its parent and prints the parent's number first"),
     ("qed", "", "amsthm end-of-proof box, flush right"),
     ("qedhere", "", "amsthm: puts the proof's end-of-proof box here instead of at \\end{proof}"),
 ];
@@ -701,6 +702,10 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
         "multi-line display; only the last line is numbered",
     ),
     ("multline*", "multi-line display"),
+    (
+        "subequations",
+        "amsmath: displays inside number as the parent number plus a, b, ...; a \\label right after \\begin gets the parent number",
+    ),
     ("figure", "numbered captions; no floating"),
     ("center", "centred paragraphs"),
     ("flushleft", "left-aligned paragraphs"),

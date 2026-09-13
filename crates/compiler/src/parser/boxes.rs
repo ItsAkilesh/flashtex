@@ -15,7 +15,6 @@ use crate::boxes::{
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::Span;
-use std::collections::HashMap;
 
 /// Kernel lengths a box dimension may name without `\newlength`.
 const KERNEL_LENGTHS: &[&str] = &[
