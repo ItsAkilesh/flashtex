@@ -15,6 +15,7 @@
 
 use super::{token_text, Block, Inline, MacroDependency, ParagraphStyle, TextStyle, P};
 use crate::diagnostics::Diagnostic;
+use crate::lexer::TokenKind;
 use crate::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +105,10 @@ pub(super) struct FloatFrame {
     env_depth: usize,
     block_start: usize,
     dependency_start: usize,
-    style_depth: usize,
+    /// `\@parboxrestore`: a float body starts outside any list or
+    /// paragraph-shape environment; the enclosing ones resume after it.
+    outer_styles: Vec<ParagraphStyle>,
+    outer_lists: Vec<(String, u32, Option<String>, super::ListSpacing)>,
 }
 
 impl P<'_> {
@@ -117,7 +121,7 @@ impl P<'_> {
         para: &mut Vec<Inline>,
     ) {
         self.flush_paragraph(blocks, para);
-        let options = self.optional_bracket_argument();
+        let options = self.float_options();
         let Some(kind) = FloatKind::from_environment(environment) else {
             return;
         };
@@ -143,7 +147,8 @@ impl P<'_> {
             env_depth: self.env_stack.len(),
             block_start: blocks.len(),
             dependency_start: self.block_dependencies.len(),
-            style_depth: self.paragraph_styles.len(),
+            outer_styles: std::mem::take(&mut self.paragraph_styles),
+            outer_lists: std::mem::take(&mut self.list_stack),
         });
     }
 
@@ -158,7 +163,8 @@ impl P<'_> {
             return;
         }
         let frame = self.float_frames.pop().expect("checked above");
-        self.paragraph_styles.truncate(frame.style_depth);
+        self.paragraph_styles = frame.outer_styles;
+        self.list_stack = frame.outer_lists;
         let body: Vec<Block> = blocks
             .drain(frame.block_start.min(blocks.len())..)
             .collect();
@@ -176,6 +182,36 @@ impl P<'_> {
             body,
         }));
         self.block_dependencies.push(dependencies);
+    }
+
+    /// The `[spec]` after `\begin{figure}`. Brackets are word characters to
+    /// the lexer, so `[ht]Body` arrives as one word: split the body text off
+    /// and keep it, as `skip_line_break_length` does for `\\[3pt]Next`.
+    fn float_options(&mut self) -> Option<(String, Span)> {
+        self.skip_spaces();
+        let input = self.t.get_mut(self.i)?;
+        if let TokenKind::Word(word) = &input.token.kind {
+            if let (true, Some(close)) = (word.starts_with('['), word.find(']')) {
+                if close + 1 < word.len() {
+                    let spec = word[1..close].to_string();
+                    let rest = word[close + 1..].to_string();
+                    let span = input.token.span;
+                    let exact = span.end - span.start == word.len();
+                    let spec_span = if exact {
+                        Span::in_document(span.document, span.start, span.start + close + 1)
+                    } else {
+                        span
+                    };
+                    if exact {
+                        input.token.span =
+                            Span::in_document(span.document, span.start + close + 1, span.end);
+                    }
+                    input.token.kind = TokenKind::Word(rest);
+                    return Some((spec, spec_span));
+                }
+            }
+        }
+        self.optional_bracket_argument()
     }
 
     /// LaTeX's `\@xfloat` specifier handling: `htbp!` are valid, `H` only
@@ -270,7 +306,7 @@ impl P<'_> {
     }
 
     /// `\centering` inside a float: centre the paragraphs that end before
-    /// the float closes (the float's end restores the style depth).
+    /// the float closes (the float's end restores the outer styles).
     pub(super) fn float_centering(&mut self) -> bool {
         if self.float_frames.is_empty() {
             return false;

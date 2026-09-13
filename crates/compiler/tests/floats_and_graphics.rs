@@ -282,3 +282,29 @@ fn incremental_edits_around_floats_match_a_clean_build() {
     assert_eq!(format!("{:?}", incremental.output), format!("{clean:?}"));
     assert!(incremental.stats.full_recompile);
 }
+
+#[test]
+fn float_body_ignores_the_enclosing_list_and_the_list_resumes_after_it() {
+    let output = compile(
+        "\\begin{itemize}\\item Before\\begin{figure}[ht]Body\\caption{C}\\end{figure}\\item After\\end{itemize}",
+    );
+    let (_, body) = find(&output, "Body");
+    assert_eq!(body.x_pt, 72.0, "full column width inside the float");
+    assert_eq!(
+        body.span.end - body.span.start,
+        4,
+        "[ht]Body keeps an exact span"
+    );
+    let (_, before) = find(&output, "Before");
+    let (_, after) = find(&output, "After");
+    assert_eq!(before.x_pt, after.x_pt);
+    assert!(after.x_pt > 72.0);
+    assert_eq!(
+        output.pages[0]
+            .items
+            .iter()
+            .filter(|item| item.text == "•")
+            .count(),
+        2
+    );
+}
