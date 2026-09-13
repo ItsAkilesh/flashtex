@@ -32,6 +32,16 @@ Diagnostics: `{severity, message, source, recovery}`. Severity is `error` or
 short description of provisional rendering. A fixture is not a generated PDF or
 evidence of compiler completeness.
 
+Additive optional diagnostic fields (issue #76; absent, never null, when unset —
+consumers must tolerate their absence and unknown `code` values):
+`code` is one of `unknown_command` (no known LaTeX layer defines the command —
+usually a typo), `unsupported_feature` (real LaTeX this compiler does not
+implement), `syntax_error`, `export_limitation`, `fidelity_note`, or
+`recovered_input` (author-fixable input such as a missing include or undefined
+reference). `suggestion` is replacement text for the diagnostic's source range,
+currently a did-you-mean command such as `\alpha` on `unknown_command`.
+Classify by `code`, not by `message` wording.
+
 ## Capture and insertion
 
 `capture_submit`: `capture_id` (stable unique ID), `destination_id` (Mac-pinned

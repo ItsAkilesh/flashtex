@@ -22,6 +22,7 @@ pub mod parser;
 pub mod protocol;
 pub mod tabular;
 pub mod theorems;
+pub mod vocabulary;
 pub mod xref;
 
 /// Stable identity of one document in a compile request.

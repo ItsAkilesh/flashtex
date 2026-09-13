@@ -705,6 +705,8 @@ fn shift_diagnostics(
                     None => None,
                 },
                 recovery: diagnostic.recovery.clone(),
+                code: diagnostic.code,
+                suggestion: diagnostic.suggestion.clone(),
             })
         })
         .collect()
