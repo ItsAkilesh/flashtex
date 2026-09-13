@@ -1,0 +1,14 @@
+[package]
+name = "flashtex-tex-engine-poc"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "KC-110 proof of concept: a pdfLaTeX-compatible text pipeline composed from FlashTeX's standalone TeX crates (expansion, encodings, boxes, page builder, class geometry, hyphenation)."
+
+[dependencies]
+flashtex-tex-expansion = { path = "../tex-expansion" }
+flashtex-tex-boxes = { path = "../tex-boxes" }
+flashtex-page-builder = { path = "../page-builder" }
+flashtex-class-geometry = { path = "../class-geometry" }
+flashtex-tex-text-encoding = { path = "../tex-text-encoding" }
+flashtex-paragraph-layout = { path = "../paragraph-layout" }
