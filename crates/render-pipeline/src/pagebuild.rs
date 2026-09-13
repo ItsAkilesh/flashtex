@@ -36,6 +36,12 @@ pub struct PageParams {
     pub baselineskip: f64,
     pub lineskip: f64,
     pub lineskiplimit: f64,
+    /// `\flushbottom` (the LaTeX kernel default; standard classes keep it
+    /// for two-sided and two-column documents): a page that ends at an
+    /// ordinary break is `\vbox to\vsize`, its glue stretched or shrunk
+    /// (TeX §676). Pages ended by `\newpage`/`\clearpage` (whose `\vfil`
+    /// absorbs the difference) and the last page keep natural glue.
+    pub flushbottom: bool,
 }
 
 /// A line placed on a page: baseline measured downward from the text
@@ -342,6 +348,8 @@ pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
             Some(bi) => bi,
             None => list.len(),
         };
+        let ejected = matches!(list.get(end), Some(VItem::Penalty(pen)) if *pen <= EJECT_PENALTY);
+        let set = if p.flushbottom && fired.is_some() && !ejected { glue_set(p, &list[start..end]) } else { 0.0 };
         // Materialise the page: lines whose box index is before `end`.
         let mut page = BuiltPage::default();
         let mut cursor = start;
@@ -366,9 +374,9 @@ pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
                         depth: *d,
                     });
                 }
-                VItem::Glue { width, .. } => {
+                VItem::Glue { width, stretch, shrink, .. } => {
                     if has_box {
-                        total += depth + width;
+                        total += depth + width + if set > 0.0 { set * stretch } else { set * shrink };
                         depth = 0.0;
                     }
                 }
@@ -395,6 +403,50 @@ pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
     pages
 }
 
+/// Glue set ratio of a page box `\vbox to\vsize` holding `items` (from the
+/// first box to the break): positive stretches by `ratio * stretch`,
+/// negative shrinks by `-ratio * shrink` (capped at the available shrink,
+/// TeX §676/§677). 0 when fil glue absorbs the excess or nothing stretches.
+fn glue_set(p: &PageParams, items: &[VItem]) -> f64 {
+    let (mut total, mut depth, mut has_box, mut last_box) = (0.0, 0.0, false, false);
+    let (mut stretch, mut shrink, mut fil) = (0.0, 0.0, false);
+    for item in items {
+        match item {
+            VItem::Box { height, depth: d, .. } => {
+                total = if has_box { total + depth + height } else { (p.topskip - height).max(0.0) + height };
+                depth = *d;
+                has_box = true;
+                last_box = true;
+            }
+            VItem::Glue { width, stretch: st, shrink: sh, fil: f } => {
+                if has_box {
+                    total += depth + width;
+                    depth = 0.0;
+                    stretch += st;
+                    shrink += sh;
+                    fil |= *f;
+                    last_box = false;
+                }
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    // `\boxmaxdepth`: depth beyond `\maxdepth` counts as height.
+    let natural = total + if last_box { (depth - p.maxdepth).max(0.0) } else { 0.0 };
+    let excess = p.vsize - natural;
+    if excess > 0.0 {
+        if fil || stretch <= 0.0 {
+            0.0
+        } else {
+            excess / stretch
+        }
+    } else if excess < 0.0 && shrink > 0.0 {
+        -(-excess / shrink).min(1.0)
+    } else {
+        0.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +459,7 @@ mod tests {
             baselineskip: 14.5,
             lineskip: 1.0,
             lineskiplimit: 0.0,
+            flushbottom: false,
         }
     }
 

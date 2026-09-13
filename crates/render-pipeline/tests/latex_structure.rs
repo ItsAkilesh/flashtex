@@ -61,7 +61,8 @@ fn section_numbers_follow_secnumdepth_and_point_at_the_command() {
     assert!(unnumbered.iter().all(|i| i.1 != "1"));
     assert_eq!(find(&unnumbered, "Head").2, 72.0);
 
-    let counter = "\\documentclass[12pt]{article}\\setcounter{secnumdepth}{0}\\begin{document}\\section{Head} Body.\\end{document}";
+    // `\pagestyle{empty}`: the plain footer's page number would be a "1" too.
+    let counter = "\\documentclass[12pt]{article}\\pagestyle{empty}\\setcounter{secnumdepth}{0}\\begin{document}\\section{Head} Body.\\end{document}";
     let by_source = items(counter, &RenderOptions::default());
     assert!(by_source.iter().all(|i| i.1 != "1"), "{by_source:?}");
 }
