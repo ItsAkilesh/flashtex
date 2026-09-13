@@ -3590,6 +3590,8 @@ fn url_segments(text: &str) -> Vec<&str> {
         segments.push(&text[start..]);
     }
     segments
+}
+
 /// Expands tabs to the next multiple of 8 columns (a common editor default;
 /// real TeX has no tab stops of its own and would simply treat a raw tab as
 /// an ordinary space, which this crate treats as too lossy for source code)
@@ -4787,6 +4789,10 @@ mod tests {
             parsed.diagnostics.is_empty(),
             "\\nolinkurl was never a link, so it needs no 'not clickable' notice: {:?}",
             parsed.diagnostics
+        );
+    }
+
+    #[test]
     fn verbatim_preserves_specials_and_splits_lines() {
         let source = "\\begin{verbatim}\n100% \\foo ${x}\nline two\n\\end{verbatim}";
         let parsed = parse(source);
@@ -4915,6 +4921,9 @@ mod tests {
         );
         assert_eq!(url_segments("plain"), ["plain"]);
         assert!(url_segments("").is_empty());
+    }
+
+    #[test]
     fn unterminated_verb_diagnoses_and_recovers_at_end_of_line() {
         let source = "\\verb|open\nmore text";
         let (parsed, items) = items(source);
