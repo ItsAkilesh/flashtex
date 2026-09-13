@@ -145,9 +145,9 @@ const KERNEL_SYMBOLS: &[(&str, &str, Class)] = &[
     ("triangleright", "▷", Class::Bin),
     ("uplus", "⊎", Class::Bin),
     ("wr", "≀", Class::Bin),
-    ("bullet", "•", Class::Bin),
+    ("bullet", "∙", Class::Bin),
     ("diamond", "⋄", Class::Bin),
-    ("bigcirc", "○", Class::Bin),
+    ("bigcirc", "◯", Class::Bin),
     ("bigsqcup", "⨆", Class::Op),
     ("biguplus", "⨄", Class::Op),
     ("varrho", "ϱ", Class::Ord),
@@ -201,9 +201,10 @@ fn spacing_classes_match_fontmath_ltx() {
     }
 }
 
-/// Export outcome, and the reason six of them are deliberately not bound to the
-/// Latin Modern Math resource: a row there would take over the *text* face's
-/// own dagger, bullet and section sign in ordinary prose.
+/// Export outcome, and the reason five of them are deliberately not bound to
+/// the Latin Modern Math resource: `map_char` consults `lm_math::advance`
+/// before WinAnsi, so a row there would take over the *text* face's own dagger
+/// and section sign in ordinary prose.
 #[test]
 fn export_outcomes_are_decided_and_text_glyphs_stay_on_the_text_face() {
     for (command, glyph, _) in KERNEL_SYMBOLS {
@@ -214,7 +215,7 @@ fn export_outcomes_are_decided_and_text_glyphs_stay_on_the_text_face() {
             );
         }
     }
-    for c in ['\u{2020}', '\u{2021}', '\u{2022}', '\u{00A7}', '\u{00B6}', '$'] {
+    for c in ['\u{2020}', '\u{2021}', '\u{00A7}', '\u{00B6}', '$'] {
         assert_eq!(lm_math::advance(c), None, "{c:?} must stay on the text face");
         assert_eq!(
             export::map_char(c),
@@ -223,7 +224,6 @@ fn export_outcomes_are_decided_and_text_glyphs_stay_on_the_text_face() {
                 code: match c {
                     '\u{2020}' => 0x86,
                     '\u{2021}' => 0x87,
-                    '\u{2022}' => 0x95,
                     '\u{00A7}' => 0xA7,
                     '\u{00B6}' => 0xB6,
                     _ => 0x24,

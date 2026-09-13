@@ -263,20 +263,20 @@ mod tests {
     /// `COMMAND_GLYPHS` without considering export fails here.
     /// The math symbols whose faithful base-14 home is a *text* face, not the
     /// Symbol face: LaTeX declares them in the `symbols`/`operators` family
-    /// (`fontmath.ltx` 276, 277, 283, 507-509), but Adobe Symbol has no dagger,
-    /// double dagger, bullet, section sign, paragraph sign or dollar sign,
-    /// while WinAnsi carries all six as real glyphs. Binding them to the Latin
+    /// (`fontmath.ltx` 276, 277, 507-509), but Adobe Symbol has no dagger,
+    /// double dagger, section sign, paragraph sign or dollar sign, while
+    /// WinAnsi carries all five as real glyphs. Binding them to the Latin
     /// Modern Math resource instead would take over the text face's own dagger
-    /// and bullet in ordinary prose, which is why they are not in
+    /// and section sign in ordinary prose -- `map_char` consults
+    /// `lm_math::advance` before WinAnsi -- which is why they are not in
     /// `lm_math::ADVANCES`. Every other math symbol must still come from the
     /// Symbol face or the pinned resource.
     const TEXT_FACE_MATH_SYMBOLS: &[char] = &[
         '\u{2020}', // \dagger
         '\u{2021}', // \ddagger
-        '\u{2022}', // \bullet
         '\u{00A7}', // \mathsection
         '\u{00B6}', // \mathparagraph
-        '$',        // \mathdollar
+        '$',         // \mathdollar
     ];
 
     #[test]

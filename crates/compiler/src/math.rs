@@ -2368,12 +2368,15 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     // `\bot` shares `\perp`'s exact base-14 Symbol glyph above with a forced
     // Ord class (see `command_atom`), so it is not a second row here.
     //
-    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`), swept as unsupported
-    // and added here with the Unicode code point `unicode-math` gives the same
-    // family/slot. Most are drawn from the pinned Latin Modern Math resource;
-    // `\surd` is Adobe Symbol's `radical`, and `\dagger`/`\ddagger`/`\bullet`/
-    // `\mathsection`/`\mathparagraph`/`\mathdollar` are real text-face glyphs
-    // the base-14 writer encodes directly (see `crate::export`).
+    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`), swept as unsupported.
+    // The code point is the one the declared cmsy/cmmi/cmr slot carries, which
+    // is the mapping `amsmath_corpus/oracle.py`'s own `OMS_TEXT` already states
+    // for family 2 (it and `unicode-math` disagree on two: cmsy `"0D` is the
+    // 1 em `◯` U+25EF, not the 0.796 em U+25CB, and cmsy `"0F` is `∙` U+2219).
+    // Most are drawn from the pinned Latin Modern Math resource; `\surd` is
+    // Adobe Symbol's `radical`, and `\dagger`/`\ddagger`/`\mathsection`/
+    // `\mathparagraph`/`\mathdollar` are real text-face glyphs the base-14
+    // writer encodes directly (see `crate::export`).
     ("amalg", "⨿"),
     ("asymp", "≍"),
     ("clubsuit", "♣"),
@@ -2413,9 +2416,9 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("triangleright", "▷"),
     ("uplus", "⊎"),
     ("wr", "≀"),
-    ("bullet", "•"),
+    ("bullet", "∙"),
     ("diamond", "⋄"),
-    ("bigcirc", "○"),
+    ("bigcirc", "◯"),
     ("bigsqcup", "⨆"),
     ("biguplus", "⨄"),
     ("varrho", "ϱ"),
@@ -2597,8 +2600,8 @@ fn symbol_class(glyph: &str) -> AtomClass {
         | "▽"
         // LaTeX kernel `\DeclareMathSymbol{..}{\mathbin}` (`fontmath.ltx`
         // 264, 265, 276-284, 286, 287, 289, 294, 299).
-        | "⨿" | "†" | "‡" | "⊙" | "⊖" | "⊘" | "⊓" | "⊔" | "⊎" | "≀" | "⋆" | "◁" | "▷" | "•"
-        | "⋄" | "○" => Bin,
+        | "⨿" | "†" | "‡" | "⊙" | "⊖" | "⊘" | "⊓" | "⊔" | "⊎" | "≀" | "⋆" | "◁" | "▷" | "∙"
+        | "⋄" | "◯" => Bin,
         "(" | "[" | "{" | "〈" | "⟨" | "⌊" | "⌈" => Open,
         ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" | "⌋" | "⌉" => Close,
         "," | ";" => Punct,

@@ -116,13 +116,14 @@ pub const ADVANCES: &[(char, u16)] = &[
     // export if it reaches an item's text (e.g. typed literally by an
     // amsthm-style proof ending).
     ('\u{220E}', 666), // ∎ QED
-    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`). Adobe Symbol has
-    // none of these; `\dagger`/`\ddagger`/`\bullet`/`\mathsection`/
-    // `\mathparagraph`/`\mathdollar` are deliberately absent from this table
-    // because they are real text-face glyphs the base-14 writer encodes
-    // directly, and a row here would take over the text face's own dagger,
-    // bullet and section sign in ordinary prose. `\surd` is absent for the
-    // same reason: Adobe Symbol's `radical` already carries it.
+    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`), at the code point
+    // the cmsy/cmmi slot carries. Adobe Symbol has none of these.
+    // `\dagger`, `\ddagger`, `\mathsection`, `\mathparagraph` and
+    // `\mathdollar` are deliberately absent: `export::map_char` consults this
+    // table before WinAnsi, so a row here would take over the *text* face's
+    // own dagger and section sign in ordinary prose, and those five are real
+    // WinAnsi glyphs. `\surd` is absent for the same reason -- Adobe Symbol's
+    // `radical` already carries it.
     ('\u{2A3F}', 750),  // \amalg
     ('\u{224D}', 778),  // \asymp
     ('\u{2663}', 778),  // \clubsuit
@@ -161,7 +162,8 @@ pub const ADVANCES: &[(char, u16)] = &[
     ('\u{228E}', 667),  // \uplus
     ('\u{2240}', 280),  // \wr
     ('\u{22C4}', 500),  // \diamond
-    ('\u{25CB}', 796),  // \bigcirc
+    ('\u{2219}', 500),  // \bullet
+    ('\u{25EF}', 1013), // \bigcirc
     ('\u{2A06}', 833),  // \bigsqcup
     ('\u{2A04}', 833),  // \biguplus
     ('\u{03F1}', 488),  // \varrho
@@ -232,7 +234,7 @@ mod tests {
         assert_eq!(double_struck('A'), Some('\u{1D538}'));
         assert_eq!(double_struck('a'), None);
         assert_eq!(double_struck('1'), None);
-        assert_eq!(ADVANCES.len(), 117);
+        assert_eq!(ADVANCES.len(), 118);
     }
 
     #[test]
