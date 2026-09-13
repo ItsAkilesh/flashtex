@@ -153,6 +153,22 @@ Against pdflatex+lmodern the trailing word after each fixture formula lands
 within 0.01 bp; `\angle` is LaTeX's constructed `\not`+rule macro, not a
 glyph, and is the one typed `math_limitation` left.
 
+TikZ pictures (`src/tikz.rs`, FT-062): a `tikzpicture` is found from the
+source bytes (the compiler reports it as an unknown environment; those
+diagnostics and the body text are dropped), compiled by
+`flashtex_vector_graphics::tikz` at the body size with node text shaped in
+Latin Modern with TFM metrics, and set as one box on its own line (bottom
+edge on the baseline; centred inside `center`). The display list v2 gets
+`path_fill`/`path_stroke` items (with `clips`) and glyph runs for node text
+— proposal `path-v0`, `docs/proposals/display-list-paths.md`, not in the
+frozen schema; runtime-v1 and `--pdf` omit the paths (warning
+`tikz_display_list_only`). `flashtex-tikz-pdf in.tex out.pdf` writes a
+standalone picture PDF (paths through vector-graphics' content-stream
+serializer, whole Latin Modern OTFs embedded as CID fonts); against
+pdflatex+TikZ at 150 dpi all 30 fixtures in `fixtures/tikz/` pass the
+documented tolerance (`tools/tikz-oracle/compare.py`,
+`docs/evidence/tikz/README.md`). Test: `tests/tikz_pipeline.rs`.
+
 Not implemented (reported, not approximated silently): hyphenation, lists
 (`\item` markers are set as plain paragraphs, no hanging indent), figures
 (`\includegraphics` is dropped by the compiler; captions are plain

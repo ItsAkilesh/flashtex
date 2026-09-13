@@ -52,6 +52,7 @@ cargo clippy --all-targets
 | `pdf` | `content_stream(&DisplayList) -> PdfFragment { content, ext_g_states, images }`. Emits `q`/`Q`, `cm`, `re f`, `m l c h f f* S`, `re W n` / `W n` / `W* n`, `gs` via named ExtGStates (alpha), `Do` via named XObjects. A string builder only; page and resource objects are the writer's job. |
 | `json` | `write_display_list` / `read_display_list` (exact round trip) and `write_device_list` for a preview consumer; a small strict JSON parser. |
 | `diagram` | `arrow`, `polyline`, `circle`, `ellipse` (4 cubics, `KAPPA`), `text_anchor_box` (position/size only, no glyphs), `grid`. |
+| `tikz` | A minimal-but-real TikZ subset (FT-062): `find_pictures`, `Tikz::read_preamble`, `Tikz::render` turn a `tikzpicture` into items in picture space plus node-text placements for a caller `TextMeasurer`, with PGF's geometry and bounding-box rules and a diagnostic for everything unsupported. See `docs/tikz.md`; compared against pdflatex in `crates/render-pipeline/docs/evidence/tikz/`. |
 
 ### Colour and alpha semantics
 

@@ -184,10 +184,83 @@ pub struct Rule {
     pub provenance: Provenance,
 }
 
+/// One vector path command, in ticks (top-left origin, y down). Proposal
+/// `path-v0` (`docs/proposals/display-list-paths.md`), not in the frozen
+/// rendering-v2 schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathCmd {
+    Move(Tick, Tick),
+    Line(Tick, Tick),
+    /// Cubic Bézier: first control, second control, end.
+    Cubic(Tick, Tick, Tick, Tick, Tick, Tick),
+    Close,
+}
+
+impl PathCmd {
+    /// The command with every y coordinate mapped by `f`.
+    pub fn map_y(self, f: &dyn Fn(Tick) -> Tick) -> PathCmd {
+        match self {
+            PathCmd::Move(x, y) => PathCmd::Move(x, f(y)),
+            PathCmd::Line(x, y) => PathCmd::Line(x, f(y)),
+            PathCmd::Cubic(a, b, c, d, e, g) => PathCmd::Cubic(a, f(b), c, f(d), e, f(g)),
+            PathCmd::Close => PathCmd::Close,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineCap {
+    Butt,
+    Round,
+    Square,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineJoin {
+    Miter,
+    Round,
+    Bevel,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stroke {
+    pub width: Tick,
+    pub cap: LineCap,
+    pub join: LineJoin,
+    pub miter_limit: f64,
+    /// Alternating on/off lengths; empty for a solid line.
+    pub dash: Vec<Tick>,
+    pub dash_phase: Tick,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathPaintOp {
+    Fill { even_odd: bool },
+    Stroke(Stroke),
+}
+
+/// A clip in page space; an item is visible only inside every clip.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClipPath {
+    pub commands: Vec<PathCmd>,
+    pub even_odd: bool,
+}
+
+/// A filled or stroked vector path (TikZ pictures).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathItem {
+    pub op: PathPaintOp,
+    pub commands: Vec<PathCmd>,
+    pub clips: Vec<ClipPath>,
+    pub paint: Paint,
+    pub provenance: Provenance,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     GlyphRun(GlyphRun),
     Rule(Rule),
+    Path(PathItem),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,6 +381,7 @@ impl DisplayList {
                 n += match it {
                     Item::GlyphRun(r) => 220 + 2 * r.text.len() + 120 * r.glyphs.len() + 280 * r.clusters.len(),
                     Item::Rule(_) => 240,
+                    Item::Path(p) => 240 + 64 * (p.commands.len() + p.clips.iter().map(|c| c.commands.len()).sum::<usize>()),
                 };
             }
         }
@@ -318,6 +392,16 @@ impl DisplayList {
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
             f.insert(1, "rule");
+        }
+        let paths = || self.pages.iter().flat_map(|p| p.items.iter()).filter_map(|i| if let Item::Path(p) = i { Some(p) } else { None });
+        if paths().any(|p| matches!(p.op, PathPaintOp::Fill { .. })) {
+            f.push("path_fill");
+        }
+        if paths().any(|p| matches!(p.op, PathPaintOp::Stroke(_))) {
+            f.push("path_stroke");
+        }
+        if paths().any(|p| !p.clips.is_empty()) {
+            f.push("clip");
         }
         if self.fonts.iter().any(|r| r.format == "static-truetype") {
             f.push("static-truetype");
@@ -416,6 +500,22 @@ fn paint_json(p: &Paint) -> Value {
     o
 }
 
+/// `[["m",x,y],["l",x,y],["c",x1,y1,x2,y2,x,y],["z"]]` in ticks.
+fn path_json(cmds: &[PathCmd]) -> Value {
+    Value::Arr(
+        cmds.iter()
+            .map(|c| {
+                Value::Arr(match *c {
+                    PathCmd::Move(x, y) => vec![json::str_("m"), tick(x), tick(y)],
+                    PathCmd::Line(x, y) => vec![json::str_("l"), tick(x), tick(y)],
+                    PathCmd::Cubic(a, b, cc, d, e, f) => vec![json::str_("c"), tick(a), tick(b), tick(cc), tick(d), tick(e), tick(f)],
+                    PathCmd::Close => vec![json::str_("z")],
+                })
+            })
+            .collect(),
+    )
+}
+
 fn rect_json(r: &Rect) -> Value {
     let mut o = Value::obj();
     o.set("x", tick(r.x));
@@ -508,6 +608,65 @@ fn page_json(p: &Page) -> Value {
                             ),
                         );
                         o.set("paint", paint_json(&r.paint));
+                        o
+                    }
+                    Item::Path(p) => {
+                        let mut o = Value::obj();
+                        match &p.op {
+                            PathPaintOp::Fill { even_odd } => {
+                                o.set("kind", json::str_("path_fill"));
+                                o.set("fill_rule", json::str_(if *even_odd { "evenodd" } else { "nonzero" }));
+                            }
+                            PathPaintOp::Stroke(s) => {
+                                o.set("kind", json::str_("path_stroke"));
+                                let mut so = Value::obj();
+                                so.set("width", tick(s.width));
+                                so.set(
+                                    "cap",
+                                    json::str_(match s.cap {
+                                        LineCap::Butt => "butt",
+                                        LineCap::Round => "round",
+                                        LineCap::Square => "square",
+                                    }),
+                                );
+                                so.set(
+                                    "join",
+                                    json::str_(match s.join {
+                                        LineJoin::Miter => "miter",
+                                        LineJoin::Round => "round",
+                                        LineJoin::Bevel => "bevel",
+                                    }),
+                                );
+                                so.set("miter_limit", json::num(s.miter_limit));
+                                if !s.dash.is_empty() {
+                                    let mut d = Value::obj();
+                                    d.set("array", Value::Arr(s.dash.iter().map(|t| tick(*t)).collect()));
+                                    d.set("phase", tick(s.dash_phase));
+                                    so.set("dash", d);
+                                }
+                                o.set("stroke", so);
+                            }
+                        }
+                        o.set("path", path_json(&p.commands));
+                        if !p.clips.is_empty() {
+                            o.set(
+                                "clips",
+                                Value::Arr(
+                                    p.clips
+                                        .iter()
+                                        .map(|c| {
+                                            let mut co = Value::obj();
+                                            co.set("kind", json::str_("path"));
+                                            co.set("path", path_json(&c.commands));
+                                            co.set("fill_rule", json::str_(if c.even_odd { "evenodd" } else { "nonzero" }));
+                                            co
+                                        })
+                                        .collect(),
+                                ),
+                            );
+                        }
+                        o.set("paint", paint_json(&p.paint));
+                        provenance_into(&mut o, &p.provenance);
                         o
                     }
                     Item::Rule(r) => {

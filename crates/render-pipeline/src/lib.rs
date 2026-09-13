@@ -110,6 +110,15 @@ pub fn render_cached(
     let texts: Vec<&str> = documents.iter().map(|d| d.text).collect();
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
     let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
+    // The compiler does not know `tikzpicture`: it reports the environment
+    // and every TikZ command inside it, and the pipeline typesets the
+    // picture itself (`adapter` / `tikz`). Those compiler diagnostics are
+    // superseded by the TikZ reader's own.
+    let picture_ranges: Vec<Vec<(usize, usize)>> = texts
+        .iter()
+        .map(|t| flashtex_vector_graphics::tikz::find_pictures(t).into_iter().map(|p| (p.start, p.end)).collect())
+        .collect();
+    let in_picture = |s: &flashtex_compiler::Span| picture_ranges.get(s.document.0).is_some_and(|r| r.iter().any(|(a, b)| s.start >= *a && s.start < *b));
     let mut labels = adapter::Labels::from_parsed(&parsed);
     let max_passes = if adapter::Labels::needs_pages(&parsed) { MAX_LABEL_PASSES } else { 1 };
     let mut passes = 0;
@@ -119,6 +128,7 @@ pub fn render_cached(
         let mut diagnostics: Vec<display::Diagnostic> = parsed
             .diagnostics
             .iter()
+            .filter(|d| !d.span.as_ref().is_some_and(&in_picture))
             .map(|d| display::Diagnostic::from_compiler(d, &paths))
             .collect();
         diagnostics.extend(doc.diagnostics.iter().cloned());

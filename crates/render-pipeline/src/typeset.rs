@@ -80,6 +80,27 @@ pub enum BoxRec {
     /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
     /// baseline (depth 0), painted as a display-list rule.
     Rule { width: f64, height: f64, span: Span },
+    /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
+    Picture(Rc<PictureRec>),
+}
+
+/// A compiled `tikzpicture` and its node text shaped for painting
+/// (`texts[i]` belongs to `picture.texts[i]`).
+#[derive(Clone)]
+pub struct PictureRec {
+    pub picture: flashtex_vector_graphics::tikz::Picture,
+    pub texts: Vec<crate::tikz::ShapedText>,
+    pub span: Span,
+}
+
+impl std::fmt::Debug for PictureRec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PictureRec")
+            .field("span", &self.span)
+            .field("items", &self.picture.items.len())
+            .field("texts", &self.picture.texts.len())
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -1523,6 +1544,129 @@ impl<'a> Context<'a> {
         (s, (self.style.text_width_pt - s - quote).max(0.0))
     }
 
+    /// A `tikzpicture` (the TikZ subset of `flashtex-vector-graphics`),
+    /// compiled at the body size with node text shaped in Latin Modern and
+    /// set as one box of the picture's bounding box whose bottom edge is the
+    /// baseline (TikZ's default `baseline`), flush left (centred inside
+    /// `center`), with the paragraph's `\parskip` and interline glue.
+    fn picture_block(&mut self, document: DocumentId, source: &flashtex_vector_graphics::tikz::PictureSource, centered: bool) -> BuiltBlock {
+        use flashtex_vector_graphics::tikz::{Severity, Tikz};
+        const PT_PER_BP: f64 = 72.27 / 72.0;
+        let text = self.texts.get(document.0).copied().unwrap_or("");
+        let mut tikz = Tikz::new(self.style.body_size_pt);
+        let preamble_end = text.find("\\begin{document}").filter(|e| *e <= source.start).unwrap_or(0);
+        let mut diags = tikz.read_preamble(&text[..preamble_end]);
+        let measurer = crate::tikz::FontMeasurer { fonts: self.fonts };
+        let picture = tikz.render(text, source, &measurer);
+        diags.extend(picture.diagnostics.iter().cloned());
+        let span = Span::in_document(document, source.start, source.end);
+        for d in diags {
+            let src = vec![self.source(Span::in_document(document, d.start.min(text.len()), d.end.min(text.len())))];
+            let diag = match d.severity {
+                Severity::Error => Diagnostic::error("tikz_error", d.message, src),
+                Severity::Warning => Diagnostic::warning("tikz_unsupported", d.message, src),
+            };
+            self.emit(None, diag);
+        }
+        let mut shaped = Vec::with_capacity(picture.texts.len());
+        for t in &picture.texts {
+            let tr = t.transform;
+            if tr.b.abs() > 1e-9 || tr.c.abs() > 1e-9 || (tr.a - 1.0).abs() > 1e-9 || (tr.d - 1.0).abs() > 1e-9 {
+                let src = vec![self.source(Span::in_document(document, t.source.0, t.source.1))];
+                self.emit(
+                    None,
+                    Diagnostic::warning(
+                        "tikz_text_transform",
+                        format!("node text `{}` is rotated or scaled; glyph runs carry no transform, so it is set upright at its origin", t.text),
+                        src,
+                    ),
+                );
+            }
+            shaped.push(crate::tikz::shape_text(self.fonts, &t.text, &t.style));
+        }
+        if !picture.items.is_empty() {
+            let src = vec![self.source(span)];
+            self.emit(
+                Some("tikz_display_list_only".into()),
+                Diagnostic::warning(
+                    "tikz_display_list_only",
+                    "TikZ paths are emitted only as display-list-v2 path items (proposal path-v0); runtime-v1 items and --pdf omit them",
+                    src,
+                ),
+            );
+        }
+        let width = picture.width_bp * PT_PER_BP;
+        let height = picture.height_bp * PT_PER_BP;
+        self.recs.push(BoxRec::Picture(Rc::new(PictureRec {
+            picture,
+            texts: shaped,
+            span,
+        })));
+        let rec = self.recs.len() - 1;
+        let x = if centered { ((self.style.text_width_pt - width) / 2.0).max(0.0) } else { 0.0 };
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size: self.style.body_size_pt,
+            glyphs: Vec::new(),
+            width,
+            height,
+            depth: 0.0,
+            source: span.start..span.end,
+        };
+        let line = pl::Line {
+            index: 0,
+            runs: vec![position_run(&run, x, height)],
+            baseline_y: height,
+            height,
+            depth: 0.0,
+            natural_width: width,
+            set_width: width,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..1,
+            hyphenated: false,
+        };
+        let lines = pl::Lines {
+            lines: vec![line],
+            breaks: Vec::new(),
+            stats: pl::Stats {
+                algorithm: pl::Algorithm::TotalFit,
+                lines: 1,
+                pass: 1,
+                total_demerits: 0.0,
+                overfull: Vec::new(),
+                underfull: Vec::new(),
+                hyphenated_lines: 0,
+                emergency_pass_used: false,
+            },
+            diagnostics: Vec::new(),
+            height,
+        };
+        let vertical = VBlock {
+            lines: vec![(height, 0.0)],
+            penalty_before: None,
+            space_before: None,
+            parskip: Some(skip_tuple(self.style.parskip)),
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: None,
+            vskip_after: Vec::new(),
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items: vec![pl::Item::Box(run)],
+            recs: vec![Some(rec)],
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
+    }
+
     /// A display equation. `pre_display_size` is TeX's measure of the line
     /// before it (its material width plus 2em, or `None` when the display
     /// starts the paragraph); `number` is the `equation` counter set flush
@@ -1693,6 +1837,7 @@ impl<'a> Context<'a> {
                     BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                     BoxRec::Math(m) => Some(self.maths[*m].span),
                     BoxRec::Rule { span, .. } => Some(*span),
+                    BoxRec::Picture(p) => Some(p.span),
                 })
                 .next();
             let _ = list;
@@ -2545,6 +2690,21 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 blocks.push(b);
                 after_heading = false;
             }
+            Block::Picture {
+                document,
+                picture,
+                centered,
+                eject_before,
+                vspace_before,
+            } => {
+                let mut b = ctx.picture_block(*document, picture, *centered);
+                if *eject_before {
+                    b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                }
+                add_vspace(&mut b.vertical, *vspace_before);
+                blocks.push(b);
+                after_heading = false;
+            }
         }
     }
     let s = ctx.style;
@@ -2613,6 +2773,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                 BoxRec::Math(m) => Some(ctx.maths[*m].span),
                 BoxRec::Rule { span, .. } => Some(*span),
+                BoxRec::Picture(p) => Some(p.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -2750,6 +2911,7 @@ pub fn assemble(
                 let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
                     BoxRec::Math(mi) => Some(laid.maths[*mi].span),
                     BoxRec::Rule { span, .. } => Some(*span),
+                    BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -2852,6 +3014,7 @@ fn assemble_block(
                         unmapped.extend(t.take_unmapped());
                     }
                 }
+                BoxRec::Picture(p) => picture_items(&local, p, source_of, &mut items, &mut used),
                 BoxRec::Rule { width, height, span } => {
                     // Line-local like text: the rule's bottom is the baseline.
                     items.push(display::Item::Rule(Rule {
@@ -2875,6 +3038,210 @@ fn assemble_block(
         path: paths.get(document.0).cloned().unwrap_or_else(|| empty.clone()),
         resources,
         unmapped,
+    }
+}
+
+/// A picture's paths and node text in line-local coordinates: the picture's
+/// bottom-left corner is the run origin on the baseline. Paths keep the
+/// picture's paint order; clip groups become per-item `clips`; each node
+/// text is one glyph run (one cluster per glyph, the source range of the
+/// statement that made the node).
+fn picture_items(
+    run: &pl::PositionedRun,
+    p: &PictureRec,
+    source_of: &dyn Fn(Span) -> SourceRange,
+    items: &mut Vec<display::Item>,
+    used: &mut BTreeMap<Rc<str>, Rc<LoadedFace>>,
+) {
+    use flashtex_vector_graphics as vg;
+    const PT_PER_BP: f64 = 72.27 / 72.0;
+    let height_pt = p.picture.height_bp * PT_PER_BP;
+    let x0 = run.x;
+    let tx = |x_bp: f64| Tick::from_tex_pt(x0 + x_bp * PT_PER_BP);
+    let ty = |y_bp: f64| Tick::from_tex_pt(-height_pt + y_bp * PT_PER_BP);
+    let len = |bp: f64| Tick::from_tex_pt(bp * PT_PER_BP);
+    let source = source_of(p.span);
+    let paint = |pt: &vg::Paint| {
+        let (r, g, b) = pt.color.to_rgb();
+        Paint {
+            r,
+            g,
+            b,
+            a: pt.alpha.clamp(0.0, 1.0),
+        }
+    };
+    let conv = |path: &vg::Path| -> Vec<display::PathCmd> {
+        let mut cur = vg::Point::ZERO;
+        path.commands()
+            .iter()
+            .map(|c| match *c {
+                vg::PathCommand::MoveTo(q) => {
+                    cur = q;
+                    display::PathCmd::Move(tx(q.x), ty(q.y))
+                }
+                vg::PathCommand::LineTo(q) => {
+                    cur = q;
+                    display::PathCmd::Line(tx(q.x), ty(q.y))
+                }
+                vg::PathCommand::QuadTo(c1, q) => {
+                    let (a, b) = (cur.lerp(c1, 2.0 / 3.0), q.lerp(c1, 2.0 / 3.0));
+                    cur = q;
+                    display::PathCmd::Cubic(tx(a.x), ty(a.y), tx(b.x), ty(b.y), tx(q.x), ty(q.y))
+                }
+                vg::PathCommand::CubicTo(a, b, q) => {
+                    cur = q;
+                    display::PathCmd::Cubic(tx(a.x), ty(a.y), tx(b.x), ty(b.y), tx(q.x), ty(q.y))
+                }
+                vg::PathCommand::Close => display::PathCmd::Close,
+            })
+            .collect()
+    };
+    let mk = |item: &vg::Item, clips: &[display::ClipPath]| -> Option<display::Item> {
+        let (op, path, pnt) = match item {
+            vg::Item::PathFill(f) => (display::PathPaintOp::Fill { even_odd: f.rule == vg::FillRule::EvenOdd }, &f.path, &f.paint),
+            vg::Item::PathStroke(s) => (
+                display::PathPaintOp::Stroke(display::Stroke {
+                    width: len(s.style.width).max(Tick(1)),
+                    cap: match s.style.cap {
+                        vg::LineCap::Butt => display::LineCap::Butt,
+                        vg::LineCap::Round => display::LineCap::Round,
+                        vg::LineCap::Square => display::LineCap::Square,
+                    },
+                    join: match s.style.join {
+                        vg::LineJoin::Miter => display::LineJoin::Miter,
+                        vg::LineJoin::Round => display::LineJoin::Round,
+                        vg::LineJoin::Bevel => display::LineJoin::Bevel,
+                    },
+                    miter_limit: s.style.miter_limit,
+                    dash: s.style.dash.as_ref().map(|d| d.array.iter().map(|v| len(*v)).collect()).unwrap_or_default(),
+                    dash_phase: s.style.dash.as_ref().map_or(Tick(0), |d| len(d.phase)),
+                }),
+                &s.path,
+                &s.paint,
+            ),
+            _ => return None,
+        };
+        Some(display::Item::Path(display::PathItem {
+            op,
+            commands: conv(path),
+            clips: clips.to_vec(),
+            paint: paint(pnt),
+            provenance: Provenance::Source(source.clone()),
+        }))
+    };
+    let clip_of = |c: &vg::Clip| match c {
+        vg::Clip::Path { path, rule } => display::ClipPath {
+            commands: conv(path),
+            even_odd: *rule == vg::FillRule::EvenOdd,
+        },
+        vg::Clip::Rect(r) => display::ClipPath {
+            commands: conv(&vg::Path::rect(*r)),
+            even_odd: false,
+        },
+    };
+    fn walk(
+        item: &vg::Item,
+        clips: &mut Vec<display::ClipPath>,
+        out: &mut Vec<display::Item>,
+        mk: &dyn Fn(&vg::Item, &[display::ClipPath]) -> Option<display::Item>,
+        clip_of: &dyn Fn(&vg::Clip) -> display::ClipPath,
+    ) {
+        if let vg::Item::Group(g) = item {
+            let pushed = match &g.clip {
+                Some(c) => {
+                    clips.push(clip_of(c));
+                    true
+                }
+                None => false,
+            };
+            for child in &g.items {
+                walk(child, clips, out, mk, clip_of);
+            }
+            if pushed {
+                clips.pop();
+            }
+        } else if let Some(i) = mk(item, clips) {
+            out.push(i);
+        }
+    }
+    let emit_text = |ti: usize, items: &mut Vec<display::Item>, used: &mut BTreeMap<Rc<str>, Rc<LoadedFace>>| {
+        let t = &p.picture.texts[ti];
+        let Some(g) = p.texts.get(ti) else { return };
+        if g.glyphs.is_empty() {
+            return;
+        }
+        used.entry(g.face.font_id.clone()).or_insert_with(|| g.face.clone());
+        let (bx, by) = (t.transform.e, t.transform.f);
+        let baseline = ty(by);
+        let top = Tick::from_tex_pt(-height_pt + by * PT_PER_BP - g.metrics.height_pt);
+        let box_h = Tick::from_tex_pt(g.metrics.height_pt + g.metrics.depth_pt).max(Tick(1));
+        let node_source = source_of(Span::in_document(p.span.document, t.source.0, t.source.1));
+        let n = g.glyphs.len();
+        let mut glyphs = Vec::with_capacity(n);
+        let mut clusters = Vec::with_capacity(n);
+        for (ci, sg) in g.glyphs.iter().enumerate() {
+            let ox = tx(bx + sg.x_pt / PT_PER_BP);
+            let adv = Tick::from_tex_pt(sg.advance_pt);
+            glyphs.push(display::Glyph {
+                gid: sg.gid,
+                origin_x: ox,
+                baseline_y: baseline,
+                advance_x: adv,
+                advance_y: Tick(0),
+                cluster: ci as u32,
+            });
+            // Clusters partition the text: spaces belong to the glyph before.
+            let start = if ci == 0 { 0 } else { sg.text_range.start };
+            let end = g.glyphs.get(ci + 1).map_or(t.text.len(), |next| next.text_range.start).max(start);
+            let last = (ci + 1 == n).then(|| display::Caret {
+                text_byte: t.text.len(),
+                x: Tick(ox.0 + adv.0),
+                top,
+                height: box_h,
+            });
+            clusters.push(display::Cluster {
+                text_start_byte: start,
+                text_end_byte: end,
+                hit_rect: display::Rect {
+                    x: ox,
+                    top,
+                    width: adv.max(Tick(1)),
+                    height: box_h,
+                },
+                carets: display::Carets {
+                    first: display::Caret {
+                        text_byte: start,
+                        x: ox,
+                        top,
+                        height: box_h,
+                    },
+                    last,
+                },
+                provenance: Provenance::Source(node_source.clone()),
+            });
+        }
+        items.push(display::Item::GlyphRun(display::GlyphRun {
+            font_id: g.face.font_id.clone(),
+            font_size: Tick::from_tex_pt(t.style.size_pt),
+            text: t.text.clone(),
+            glyphs,
+            clusters,
+            paint: paint(&t.paint),
+            role: display::RunRole::Text,
+        }));
+    };
+    let mut ti = 0;
+    let mut clips = Vec::new();
+    for (idx, it) in p.picture.items.iter().enumerate() {
+        while ti < p.picture.texts.len() && p.picture.texts[ti].after_item <= idx {
+            emit_text(ti, items, used);
+            ti += 1;
+        }
+        walk(it, &mut clips, items, &mk, &clip_of);
+    }
+    while ti < p.picture.texts.len() {
+        emit_text(ti, items, used);
+        ti += 1;
     }
 }
 
