@@ -414,19 +414,19 @@ struct Measure {
     stretch: f64,
 }
 
-/// TeX's badness: 100·r³ rounded, capped at `INF_BAD`.
-fn badness(t: f64, s: f64) -> f64 {
+/// TeX's `badness(t, s)` (tex.web §108) on `t` and `s` rounded to scaled
+/// points: `r = t·297/s` (or TeX's large-`t` approximations), `inf_bad` when
+/// `r > 1290` — a stretch ratio of about 4.34, not 1.29 — otherwise
+/// `(r³ + 2^17) / 2^18`, which is within a unit or two of `100·(t/s)³` but
+/// is the integer pdfTeX compares with `\tolerance` and puts in demerits.
+pub(crate) fn badness(t: f64, s: f64) -> f64 {
     if t <= 0.0 {
         0.0
     } else if s <= 0.0 {
         INF_BAD
     } else {
-        let r = t / s;
-        if r > 1.29 {
-            INF_BAD
-        } else {
-            (100.0 * r * r * r).round().min(INF_BAD)
-        }
+        let sp = |v: f64| (v * 65536.0).round().clamp(0.0, f64::from(i32::MAX)) as i32;
+        f64::from(flashtex_microtype::arith::badness(sp(t), sp(s)))
     }
 }
 
@@ -1219,5 +1219,33 @@ fn set_line(
         badness: m.badness,
         items: start..brk,
         hyphenated,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// tex.web §108 values for a 3pt stretchability at several ratios; the
+    /// old `100·r³` with a 1.29 cutoff gave 10000 from ratio 1.3 on.
+    #[test]
+    fn badness_is_tex_integer_badness() {
+        let s: f64 = 3.0;
+        for (ratio, want) in [
+            (0.0, 0.0),
+            (0.5, 12.0),
+            (0.9, 73.0),
+            (1.0, 100.0),
+            (1.3, 219.0),
+            (1.5, 336.0),
+            (2.0, 800.0),
+            (4.0, 6396.0),
+            (4.3, 7944.0),
+            (4.4, INF_BAD),
+        ] {
+            let t = (s * 65536.0 * ratio).floor() / 65536.0;
+            assert_eq!(badness(t, s), want, "ratio {ratio}");
+        }
+        assert_eq!(badness(1.0, 0.0), INF_BAD);
     }
 }

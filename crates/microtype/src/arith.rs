@@ -96,6 +96,26 @@ pub fn numexpr_scale(a: i32, b: i32, c: i32) -> i32 {
     (if neg { -q } else { q }) as i32
 }
 
+/// TeX's `store_scaled` (tex.web §571–572): a TFM `fix_word` (2^-20 of the
+/// design size) scaled to a font loaded at `z` sp, exactly as `read_font_info`
+/// computes every width, kern and `\fontdimen` of that font.
+pub fn tfm_scaled(fix_word: i32, z: Scaled) -> Scaled {
+    let mut z = z as i64;
+    let mut alpha: i64 = 16;
+    while z >= 0o40000000 {
+        z /= 2;
+        alpha += alpha;
+    }
+    let beta = 256 / alpha;
+    let alpha = alpha * z;
+    let [a, b, c, d] = fix_word.to_be_bytes().map(i64::from);
+    let sw = (((d * z) / 256 + c * z) / 256 + b * z) / beta;
+    (match a {
+        0 => sw,
+        _ => sw - alpha,
+    }) as Scaled
+}
+
 /// TeX's `badness(t, s)` (tex.web §108).
 pub fn badness(t: Scaled, s: Scaled) -> i32 {
     if t == 0 {
@@ -187,6 +207,19 @@ mod tests {
         assert_eq!(ext_xn_over_d(15, 1, 2), 8);
         assert_eq!(numexpr_scale(7, 1, 2), 4);
         assert_eq!(numexpr_scale(-7, 1, 2), -4);
+    }
+
+    #[test]
+    fn tfm_scaling_is_store_scaled() {
+        // 1.0 design size at 10pt, halves, negative words, and a size above
+        // 2^23 sp where TeX halves z first.
+        assert_eq!(tfm_scaled(1 << 20, 655_360), 655_360);
+        assert_eq!(tfm_scaled(1 << 19, 655_360), 327_680);
+        assert_eq!(tfm_scaled(-(1 << 20), 655_360), -655_360);
+        assert_eq!(tfm_scaled(1 << 20, 717_619), 717_619);
+        assert_eq!(tfm_scaled(1 << 20, 40 * 65_536), 40 * 65_536);
+        // TeX truncates: 0.5 fix of a 1sp-odd size.
+        assert_eq!(tfm_scaled(1 << 19, 717_619), 358_809);
     }
 
     #[test]
