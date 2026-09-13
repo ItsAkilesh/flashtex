@@ -1306,13 +1306,36 @@ fn unrequested_rules_and_unknown_kinds_are_errors_with_source() {
 }
 
 #[test]
+fn symbol_font_hints_use_base14_symbol_with_its_builtin_encoding() {
+    // The compiler's font-hints-v1 names "Symbol" for math operators. Every
+    // character must be drawn from /F2 in Symbol's own encoding, including
+    // those WinAnsi also carries (× is 0xD7 in WinAnsi but 0xB4 in Symbol);
+    // a character Symbol lacks falls back to Times. No substitution warning.
+    let items = r#"{"kind":"text","text":"∈×∀a","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Symbol","weight":"normal","style":"normal"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    assert!(find(&out.bytes, b"/F4").is_none());
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let fonts: Vec<(&str, &[u8])> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.bytes.as_slice()))
+        .collect();
+    assert_eq!(
+        fonts,
+        vec![("F2", b"\xCE\xB4\x22".as_slice()), ("F1", b"a")]
+    );
+}
+
+#[test]
 fn font_hints_select_times_variants_and_report_substitutions() {
     let items = r#"{"kind":"text","text":"plain","x_pt":72,"baseline_y_pt":84,"font_size_pt":12},
         {"kind":"text","text":"bold","x_pt":120,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times New Roman","weight":"bold","style":"normal"}},
         {"kind":"text","text":"italic","x_pt":160,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"normal","style":"italic"}},
         {"kind":"text","text":"both","x_pt":200,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"bold","style":"italic"}},
         {"kind":"text","text":"bold2","x_pt":240,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"bold","style":"normal"}},
-        {"kind":"text","text":"helv","x_pt":280,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Helvetica","weight":"bold","style":"normal"}},
+        {"kind":"text","text":"helv","x_pt":280,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Palatino","weight":"bold","style":"normal"}},
         {"kind":"text","text":"roman","x_pt":320,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Times","weight":"normal","style":"normal"}}"#;
     let json = negotiated_envelope(r#""font-hints-v1""#, items);
     let out = render_envelope(&json).unwrap();
@@ -1357,10 +1380,10 @@ fn font_hints_select_times_variants_and_report_substitutions() {
             ("F1", b"roman"),
         ]
     );
-    // Helvetica is not available: substituted, said so, once.
+    // Palatino is not available: substituted, said so, once.
     assert_eq!(out.warnings.len(), 1, "{:?}", out.warnings);
     assert!(
-        out.warnings[0].contains("\"Helvetica\""),
+        out.warnings[0].contains("\"Palatino\""),
         "{}",
         out.warnings[0]
     );
@@ -1384,6 +1407,24 @@ fn font_hints_select_times_variants_and_report_substitutions() {
         out.warnings
     );
     assert!(find(&out.bytes, b"/F4").is_none());
+}
+
+#[test]
+fn font_hints_select_base14_courier_and_helvetica_variants() {
+    let items = r#"{"kind":"text","text":"mono","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Courier","weight":"normal","style":"normal"}},
+        {"kind":"text","text":"sans","x_pt":120,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Helvetica","weight":"bold","style":"italic"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    assert!(find(&out.bytes, b"\n8 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>").is_some());
+    assert!(find(&out.bytes, b"\n9 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-BoldOblique /Encoding /WinAnsiEncoding >>").is_some());
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    let fonts: Vec<(&str, &[u8])> = placed
+        .iter()
+        .map(|p| (p.font.as_str(), p.bytes.as_slice()))
+        .collect();
+    assert_eq!(fonts, vec![("F4", b"mono".as_slice()), ("F5", b"sans")]);
 }
 
 #[test]
@@ -1488,4 +1529,36 @@ fn latin_modern_hint_without_installation_is_substituted_by_times() {
         assert!(out.warnings[0].contains("substituted by 'Times-Bold'"));
         assert!(find(&out.bytes, b"/BaseFont /Times-Bold").is_some());
     }
+}
+
+#[test]
+fn latin_modern_math_hint_embeds_the_math_font_instead_of_writing_question_marks() {
+    // The compiler hints blackboard bold, \setminus and \Longrightarrow as
+    // "Latin Modern Math". Its roman siblings lack those glyphs, so the hint
+    // must resolve to latinmodern-math.otf itself.
+    let lm_dir = flashtex_pdf::embed::candidate_paths()
+        .into_iter()
+        .find(|p| p.ends_with(flashtex_pdf::embed::LATIN_MODERN_FILE) && p.is_file())
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let has_math = lm_dir.as_ref().is_some_and(|d| {
+        d.join("latinmodern-math.otf").is_file()
+            || d.join("../lm-math/latinmodern-math.otf").is_file()
+    });
+    if !has_math {
+        eprintln!("skipped: Latin Modern Math not installed beside Latin Modern");
+        return;
+    }
+    let items = r#"{"kind":"text","text":"ℝ∖ℚ⟹ℤ","x_pt":72,"baseline_y_pt":84,"font_size_pt":12,"font":{"family":"Latin Modern Math","weight":"normal","style":"normal"}}"#;
+    let json = negotiated_envelope(r#""font-hints-v1""#, items);
+    let out = render_envelope(&json).unwrap();
+    check_structure(&out.bytes).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    assert!(find(&out.bytes, b"LatinModernMath-Regular").is_some());
+    let placed = placements(&stream_data(&out.bytes, 7).unwrap()).unwrap();
+    assert!(
+        placed
+            .iter()
+            .all(|p| p.font == "F4" && !p.bytes.contains(&b'?')),
+        "every glyph drawn from the embedded math font: {placed:?}"
+    );
 }

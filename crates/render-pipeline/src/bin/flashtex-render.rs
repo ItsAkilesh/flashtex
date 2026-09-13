@@ -20,12 +20,12 @@
 //!                      set the counter (default 2; the oracle preamble is 0)
 //!   --timing           print per-request wall time to stderr
 
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use flashtex_compiler::json;
-use flashtex_compiler::protocol::{error_envelope, read_request_line, RequestLine};
-use flashtex_render_pipeline::{protocol, FontSet, RenderCache, RenderOptions, Rendered};
+
+use flashtex_render_pipeline::{protocol, FontSet, RenderOptions, Rendered};
 
 /// Side outputs shared by both modes: `--v2` / `--pdf` of the last render.
 struct Outputs {
@@ -112,53 +112,15 @@ fn main() {
     if let Some(path) = tex_in {
         std::process::exit(run_tex_file(&path, &fonts, &options, &outputs));
     }
-    // Block cache across requests (`incremental`): a keystroke retypesets
-    // only the paragraph it touched; output is identical to a fresh compile.
-    let cache = RenderCache::new();
+    // The worker loop (`protocol::serve`, shared with `flashtex worker`):
+    // a block cache across requests means a keystroke retypesets only the
+    // paragraph it touched; output is identical to a fresh compile.
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let mut input = stdin.lock();
-    loop {
-        let reply = match read_request_line(&mut input) {
-            Ok(Some(RequestLine::Data(bytes))) => match std::str::from_utf8(&bytes) {
-                Ok(line) if line.trim().is_empty() => continue,
-                Ok(line) => protocol::handle_line(line, &fonts, &options, Some(&cache)),
-                Err(_) => protocol::Reply {
-                    line: json::write(&error_envelope("", "invalid_utf8", "request line is not valid UTF-8")),
-                    extra_lines: Vec::new(),
-                    rendered: None,
-                    id: String::new(),
-                },
-            },
-            Ok(Some(RequestLine::TooLarge)) => protocol::Reply {
-                line: json::write(&error_envelope(
-                    "",
-                    "payload_too_large",
-                    &format!("line exceeds the {}-byte limit", protocol::MAX_LINE_BYTES),
-                )),
-                extra_lines: Vec::new(),
-                rendered: None,
-                id: String::new(),
-            },
-            Ok(None) => break,
-            Err(e) => {
-                eprintln!("flashtex-render: read error: {e}");
-                break;
-            }
-        };
-        if writeln!(out, "{}", reply.line).is_err() {
-            break;
-        }
-        for extra in &reply.extra_lines {
-            if writeln!(out, "{extra}").is_err() {
-                break;
-            }
-        }
-        let _ = out.flush();
-        if let Some(r) = &reply.rendered {
-            outputs.write(&reply.id, r);
-        }
+    if let Err(e) = protocol::serve(&mut input, &mut out, &fonts, &options, |id, r| outputs.write(id, r)) {
+        eprintln!("flashtex-render: read error: {e}");
     }
 }
 

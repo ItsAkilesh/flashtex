@@ -38,7 +38,9 @@
 //! Font hints: with `font-hints-v1` negotiated, each text item may name a
 //! family/weight/style. Latin Modern resolves to the matching
 //! `lmroman10-*.otf` embedded as its own font object; Times resolves to the
-//! base-14 Times variants; anything else is substituted by the document face
+//! base-14 Times variants; Courier and Helvetica resolve to their base-14
+//! variants; Symbol resolves to the base-14 Symbol font `/F2`
+//! with its built-in encoding; anything else is substituted by the document face
 //! at the requested weight/style and reported in the warnings. Additional
 //! faces get resources `/F4`, `/F5`, … and their objects follow the document
 //! font after the pages.
@@ -114,14 +116,55 @@ fn describe(weight: Weight, style: Style) -> &'static str {
     }
 }
 
+/// Latin Modern Math: the compiler's `lm.math` resource for blackboard bold,
+/// `\setminus` and `\Longrightarrow`. Checked before the roman families,
+/// whose files lack those glyphs.
+const LATIN_MODERN_MATH_FILE: &str = "latinmodern-math.otf";
+
+fn is_latin_modern_math_family(family: &str) -> bool {
+    family.eq_ignore_ascii_case("latin modern math")
+}
+
 fn is_latin_modern_family(family: &str) -> bool {
     let f = family.to_ascii_lowercase();
     f.starts_with("latin modern") || f.starts_with("lmroman") || f == "lm roman" || f == "lm"
 }
 
+fn is_symbol_family(family: &str) -> bool {
+    family.eq_ignore_ascii_case("symbol")
+}
+
 fn is_times_family(family: &str) -> bool {
     let f = family.to_ascii_lowercase();
     f.starts_with("times")
+}
+
+/// Base-14 Courier or Helvetica at a weight/style, when `family` names one.
+fn sans_or_mono_base_font(family: &str, weight: Weight, style: Style) -> Option<&'static str> {
+    let f = family.to_ascii_lowercase();
+    let [regular, bold, oblique, bold_oblique] = if f.starts_with("courier") {
+        [
+            "Courier",
+            "Courier-Bold",
+            "Courier-Oblique",
+            "Courier-BoldOblique",
+        ]
+    } else if f.starts_with("helvetica") {
+        [
+            "Helvetica",
+            "Helvetica-Bold",
+            "Helvetica-Oblique",
+            "Helvetica-BoldOblique",
+        ]
+    } else {
+        return None;
+    };
+    Some(match (weight, style) {
+        (Weight::Normal, Style::Normal) => regular,
+        (Weight::Bold, Style::Normal) => bold,
+        (Weight::Normal, Style::Italic) => oblique,
+        (Weight::Bold, Style::Italic) => bold_oblique,
+    })
 }
 
 /// One font written after the pages: the document's embedded font or a face
@@ -248,18 +291,23 @@ impl FontTable {
                 embedded: None,
             };
         }
+        self.base14(variant.base_font())
+    }
+
+    /// A WinAnsi-encoded base-14 text face written as its own font object.
+    fn base14(&mut self, name: &'static str) -> Resolved {
         let existing = self.fonts.iter().find_map(|f| match f {
             TrailingFont::Base14 {
                 resource,
                 base_font,
-            } if *base_font == variant.base_font() => Some(*resource),
+            } if *base_font == name => Some(*resource),
             _ => None,
         });
         let resource = existing.unwrap_or_else(|| {
             let resource = self.allocate_extra();
             self.fonts.push(TrailingFont::Base14 {
                 resource,
-                base_font: variant.base_font(),
+                base_font: name,
             });
             resource
         });
@@ -275,7 +323,26 @@ impl FontTable {
         let dir = self.latin_modern_dir.clone().ok_or_else(|| {
             "no Latin Modern installation found (set FLASHTEX_LM_DIR)".to_string()
         })?;
-        let path = dir.join(latin_modern_file(weight, style));
+        self.embedded_file(dir.join(latin_modern_file(weight, style)))
+    }
+
+    /// Latin Modern Math, beside the roman files (the Mac bundle) or in TeX
+    /// Live's sibling `lm-math` directory.
+    fn latin_modern_math(&mut self) -> Result<Resolved, String> {
+        let dir = self.latin_modern_dir.clone().ok_or_else(|| {
+            "no Latin Modern installation found (set FLASHTEX_LM_DIR)".to_string()
+        })?;
+        let beside = dir.join(LATIN_MODERN_MATH_FILE);
+        let sibling = dir.join("../lm-math").join(LATIN_MODERN_MATH_FILE);
+        self.embedded_file(if beside.is_file() || !sibling.is_file() {
+            beside
+        } else {
+            sibling
+        })
+    }
+
+    /// The trailing embedded font for `path`, loading it once per document.
+    fn embedded_file(&mut self, path: std::path::PathBuf) -> Result<Resolved, String> {
         if let Some(i) = self.fonts.iter().position(|f| match f {
             TrailingFont::Embedded { font, .. } => font.source == path,
             _ => false,
@@ -311,7 +378,20 @@ impl FontTable {
         }
         let (weight, style) = (hint.weight, hint.style);
         let variant = TimesVariant::of(weight, style);
-        let resolved = if is_latin_modern_family(&hint.family) {
+        let resolved = if is_latin_modern_math_family(&hint.family) {
+            match self.latin_modern_math() {
+                Ok(r) => r,
+                Err(reason) => {
+                    warnings.push(format!(
+                        "font {:?} ({}) substituted by '{}': {reason}",
+                        hint.family,
+                        describe(weight, style),
+                        variant.base_font()
+                    ));
+                    self.times_variant(variant)
+                }
+            }
+        } else if is_latin_modern_family(&hint.family) {
             match self.latin_modern(weight, style) {
                 Ok(r) => r,
                 Err(reason) => {
@@ -326,6 +406,15 @@ impl FontTable {
             }
         } else if is_times_family(&hint.family) {
             self.times_variant(variant)
+        } else if let Some(name) = sans_or_mono_base_font(&hint.family, weight, style) {
+            self.base14(name)
+        } else if is_symbol_family(&hint.family) {
+            // Base-14 Symbol (`/F2`, built-in encoding) is always written.
+            Resolved {
+                face: encoding::Face::Times,
+                primary: encoding::Font::Symbol,
+                embedded: None,
+            }
         } else {
             // Unknown family: the document face at the requested weight/style,
             // reported as a substitution and never claimed preserved.
@@ -829,14 +918,18 @@ pub fn num(v: f64) -> String {
     }
 }
 
-struct Document {
+/// The one PDF container implementation: objects are appended in numeric
+/// order, offsets recorded, and the classic cross-reference table and
+/// trailer written by [`Document::finish`]. Both the runtime-v1 route and
+/// the exact route (`crate::exact`) write through it.
+pub(crate) struct Document {
     bytes: Vec<u8>,
     /// Byte offset of each object, indexed by object number (index 0 unused).
     offsets: Vec<usize>,
 }
 
 impl Document {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Document {
             bytes: PDF_HEADER.to_vec(),
             offsets: vec![0],
@@ -853,18 +946,18 @@ impl Document {
         writeln!(self.bytes, "{number} 0 obj").expect("Vec write");
     }
 
-    fn object(&mut self, number: usize, body: &[u8]) {
+    pub(crate) fn object(&mut self, number: usize, body: &[u8]) {
         self.begin(number);
         self.bytes.extend_from_slice(body);
         self.bytes.extend_from_slice(b"\nendobj\n");
     }
 
-    fn stream(&mut self, number: usize, data: &[u8]) {
+    pub(crate) fn stream(&mut self, number: usize, data: &[u8]) {
         self.stream_with(number, "", data);
     }
 
     /// A stream whose dictionary carries extra entries (e.g. `/Length1`).
-    fn stream_with(&mut self, number: usize, extra: &str, data: &[u8]) {
+    pub(crate) fn stream_with(&mut self, number: usize, extra: &str, data: &[u8]) {
         self.begin(number);
         write!(
             self.bytes,
@@ -878,7 +971,13 @@ impl Document {
         self.bytes.extend_from_slice(b"\nendstream\nendobj\n");
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    fn finish(self) -> Vec<u8> {
+        self.finish_with_info(5)
+    }
+
+    /// Writes the xref table and trailer; `info_obj` is the object number of
+    /// the document information dictionary.
+    pub(crate) fn finish_with_info(mut self, info_obj: usize) -> Vec<u8> {
         let xref_offset = self.bytes.len();
         let size = self.offsets.len();
         write!(self.bytes, "xref\n0 {size}\n0000000000 65535 f \n").expect("Vec write");
@@ -887,7 +986,7 @@ impl Document {
         }
         write!(
             self.bytes,
-            "trailer\n<< /Size {size} /Root 1 0 R /Info 5 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+            "trailer\n<< /Size {size} /Root 1 0 R /Info {info_obj} 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
         )
         .expect("Vec write");
         self.bytes

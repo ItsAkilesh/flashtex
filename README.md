@@ -1,30 +1,38 @@
 # FlashTeX
 
-**A native LaTeX IDE for macOS with its own incremental LaTeX engine — no TeX
-distribution required.**
+**An incremental LaTeX engine with a command line, and a native macOS IDE
+built on it — no TeX distribution required.**
 
-FlashTeX is a Swift app over a Rust engine. You type LaTeX, and the page
-re-renders as you type: the engine (`flashtex-render`) lexes, lays out and
-paints a document in tens of milliseconds, using the same TeX font metrics as
-pdfLaTeX and the real Latin Modern faces (Computer Modern design; New Computer
-Modern Math for the blackboard-bold and `amssymb` glyphs), and exports PDFs
-with its own bundled writer. An iPad companion (FlashTeXPad) turns Pencil sketches
-and photos into reviewed LaTeX/TikZ insertions. Everything runs as small
-helper processes that speak JSON Lines, so the engine, the editor and the
-companions are independently replaceable and scriptable.
+FlashTeX is a Rust LaTeX engine. `flashtex build main.tex` lexes, lays out
+and paints a document in tens of milliseconds, using the same TeX font
+metrics as pdfLaTeX and the real Latin Modern faces (Computer Modern design;
+New Computer Modern Math for the blackboard-bold and `amssymb` glyphs), and
+writes the PDF with its own bundled writer — embedded font subsets, images,
+links. The IDE, a Swift app for macOS, is a complementary project that links
+nothing and drives the very same engine over a documented JSON Lines protocol
+(`flashtex worker`): you type LaTeX and the page re-renders as you type. An
+iPad companion (FlashTeXPad) turns Pencil sketches and photos into reviewed
+LaTeX/TikZ insertions. Because the engine, the editor and the companions are
+separate processes with versioned contracts, each is independently
+replaceable and scriptable.
 
 What it is **not** (yet): a full TeX engine. FlashTeX implements a growing
 subset of LaTeX (article-class text, sectioning, lists, `amsmath`-style math,
-`\newcommand`, `\input`/`\include`, labels and references); constructs it does
-not implement are reported as diagnostics with a recovery note rather than
-silently dropped, and images, tables, bibliographies and most packages are
-still missing. See [Supported LaTeX](docs/user/compiler.md#supported-latex)
-for the current list.
+`\newcommand`, `\input`/`\include`, labels and references, `tabular`,
+`thebibliography`, TikZ basics); constructs it does not implement are
+reported as diagnostics with a recovery note rather than silently dropped,
+and most packages are still missing. `flashtex supported` prints the exact
+inventory and coverage; see [Supported LaTeX](docs/user/compiler.md#supported-latex).
 
 ![FlashTeX rendering a real homework document: source on the left, live Latin Modern preview on the right, the Problems panel below](docs/images/flashtex-hw1.png)
 
 ## Features
 
+- **The `flashtex` CLI** — `build` (multi-file projects, exact-route PDF),
+  `check --json` (stable diagnostics report), `watch`, `supported`, `fonts`,
+  and `worker` (the protocol the IDE speaks); `file:line:col` diagnostics,
+  build-tool exit codes, fonts and metrics found next to the binary, so a
+  tarball works with no TeX installation and no environment.
 - **Workspace and multi-file projects** — a `.tex` file and its folder are the
   project; `\input`/`\include` targets appear in the sidebar with an outline of
   sections, environments and labels.
@@ -70,6 +78,22 @@ package features that are recognised but not implemented). The pdflatex
 column is a single pass with a warm font cache; a real build usually needs two
 or three passes for references.
 
+**`flashtex build` (exact-route PDF: embedded font subsets, structural
+self-check).** Same machine and fixtures, this checkout at `e18f4f38`, median
+of 5 fresh processes (best in parentheses), measured while several other
+build jobs were running on the machine, so the render column is ~12 ms slower
+than the quiet-machine figures above:
+
+| Document | render (in-process) | exact PDF write | `flashtex build` process wall |
+|---|---:|---:|---:|
+| `HW1.tex` (3 pages) | 59.9 ms (59.7 ms) | 58.9 ms (58.4 ms) | 125.6 ms (124.3 ms) |
+| `HW2.tex` (3 pages) | 59.8 ms (58.9 ms) | 56.3 ms (55.6 ms) | 122.6 ms (120.5 ms) |
+
+The exact PDF write (glyph-id-preserving CFF subsets of eight faces, per-glyph
+width reconciliation, the writer's structural self-check) currently costs
+about as much as the layout; `flashtex-render --tex --pdf` above uses the
+older, lighter text-item route.
+
 **Edit-to-preview latency in the app** (keystroke → painted preview, release
 build, programmatic typing at 30 ms intervals, engine attached through the
 preview controller; from
@@ -99,6 +123,12 @@ cargo build --release --manifest-path crates/render-pipeline/Cargo.toml
 for i in 1 2 3 4 5; do
   /usr/bin/time -p crates/render-pipeline/target/release/flashtex-render \
     --tex fixtures/real-world/hw1/HW1.tex --pdf /tmp/hw1.pdf --timing --font-dir apps/mac/Fonts
+done
+# CLI, exact route (the --timing line on stderr has render / pdf / total; `real` is the process wall)
+cargo build --release --manifest-path crates/flashtex-cli/Cargo.toml
+for i in 1 2 3 4 5; do
+  /usr/bin/time -p crates/flashtex-cli/target/release/flashtex \
+    build fixtures/real-world/hw1/HW1.tex -o /tmp/hw1.pdf --timing --font-dir apps/mac/Fonts
 done
 # The "rendered in N ms" line on stderr is the in-process time; `real` is the process wall time
 # (a Python `subprocess` + `perf_counter` loop was used for the sub-10 ms wall figures above).
@@ -134,17 +164,22 @@ curl -fsSL https://flash-tex.github.io/flashtex/install.sh | sh
 into Applications. The app is ad-hoc signed, not notarized: the first time,
 **right-click → Open** and confirm.
 
-**Command-line tools only.** Each release also ships
+**Engine + CLI only (macOS or Linux).** Each release ships
 `flashtex-cli-<version>-macos-arm64.tar.gz` (and a best-effort
-`linux-x86_64` tarball) with `flashtex-render`, `flashtex-compiler`,
-`flashtex-pdf`, `flashtex-pdf-exact` and the fonts/metrics they need.
+`linux-x86_64` tarball): `bin/flashtex` with the fonts and metrics it needs
+in `share/flashtex/`, plus the `flashtex-render`, `flashtex-compiler`,
+`flashtex-pdf` and `flashtex-pdf-exact` helpers. Extract it anywhere and run
+`bin/flashtex build main.tex`; `bin/flashtex install-cli` links it into
+`/usr/local/bin`. The Mac app bundles the same `flashtex` binary in
+`Contents/MacOS`.
 
 **From source** (Xcode Command Line Tools with Swift 6, stable Rust from rustup;
 there is no root Cargo workspace, each crate builds on its own):
 
 ```sh
 git clone https://github.com/flash-tex/flashtex.git && cd flashtex
-scripts/ci/build-helpers.sh                 # release-builds every helper crate
+cargo build --release --manifest-path crates/flashtex-cli/Cargo.toml   # the engine + CLI
+scripts/ci/build-helpers.sh                 # release-builds the CLI and every helper crate
 apps/mac/scripts/make-app.sh --install      # packages FlashTeX.app into ~/Applications
 apps/mac/scripts/make-app.sh --dmg          # or: build a disk image
 ```
@@ -154,30 +189,25 @@ Full details: [Getting started](docs/user/README.md) and
 
 ## Quick start — CLI
 
-Render a `.tex` file to PDF. The app bundle and the CLI tarball find their
-fonts next to the binary; with a source build add `--font-dir apps/mac/Fonts`
-to every command below (both tools accept it, repeatably):
-
 ```sh
-flashtex-render --tex main.tex --pdf main.pdf                    # diagnostics on stderr, exit 0
-flashtex-render --tex main.tex --v2 main-v2.json --timing        # rendering-v2 display list + wall time
-flashtex-pdf-exact from-v2 main-v2.json --out main-exact.pdf     # exact PDF with embedded Latin Modern subsets
+flashtex build main.tex                       # main.pdf next to it; \input/\include resolved from its folder
+flashtex build main.tex -o out.pdf --timing   # exact-route PDF; render / pdf / total on stderr
+flashtex check main.tex --json                # diagnostics only, flashtex-check/1 on stdout
+flashtex watch main.tex                       # rebuild on every change in the project; Ctrl-C stops
+flashtex supported                            # implemented LaTeX + coverage (--json, --md)
+flashtex fonts                                # which fonts and TeX metrics this binary resolves
 ```
 
-Without `--tex`, `flashtex-render` is a long-running **JSON Lines worker** —
-one `compile` request per stdin line, one `compile_result` per stdout line —
-which is how the app drives it. From a shell:
-
-```sh
-python3 -c 'import json,sys;print(json.dumps({"protocol_version":1,"id":"1","type":"compile","payload":{"project_id":"cli","revision":1,"entry_path":"main.tex","documents":[{"path":"main.tex","text":open(sys.argv[1]).read()}]}}))' main.tex \
-  | flashtex-render --pdf main.pdf > result.jsonl
-```
-
-Exit codes in `--tex` mode: `0` when the document rendered (`ok` or
-`recovered` with diagnostics), `1` when it `failed` (no pages), `2` when the
-file cannot be read or an argument is unknown. The reply format, the font
-search order, `flashtex-compiler`, `flashtex-pdf` and every diagnostic code
-are documented in [Command-line tools](docs/user/compiler.md).
+Diagnostics are `file:line:col: severity[code] message` lines on stderr with
+a summary line; exit `0` when the document rendered (`ok`, or `recovered`
+with diagnostics — `--strict` makes recovered errors exit `1`), `1` when it
+`failed`, `2` for a usage error. The app bundle and the tarball find their
+fonts next to the binary; a source build adds `--font-dir apps/mac/Fonts`.
+`flashtex worker` is the long-running JSON Lines worker the IDE drives (one
+`compile` request per stdin line, one `compile_result` per stdout line), so
+any editor or CI can embed the engine. Every flag, the JSON schema, the font
+search order and the helper binaries are documented in
+[The `flashtex` command line](docs/user/compiler.md).
 
 ## Quick start — IDE
 
@@ -197,8 +227,10 @@ companion is in [FlashTeXPad for iPad](docs/user/ipad.md).
 
 ## Architecture
 
-The Mac app never links the engine. It launches helper processes and talks to
-them over stdin/stdout with versioned JSON Lines contracts
+The engine is a library (`crates/render-pipeline`) with one front end,
+`flashtex` (`crates/flashtex-cli`). The Mac app never links it: it launches
+`flashtex worker` (or the bare `flashtex-render`) and talks to it over
+stdin/stdout with versioned JSON Lines contracts
 ([runtime-v1](docs/contracts/runtime-v1.md), the rendering-v2 display list in
 [`protocol/`](protocol/)); a crashed helper is relaunched and the last good
 preview stays on screen. The same contracts make the engine usable from other
@@ -206,6 +238,7 @@ editors and CI.
 
 ```
 crates/
+  flashtex-cli/      the `flashtex` command line: build / check / watch / supported / worker / fonts
   compiler/          lexer, LaTeX subset, runtime-v1 JSON Lines worker (flashtex-compiler)
   render-pipeline/   the engine: parse tree → styled blocks → shaping → Knuth-Plass →
                      Appendix G math → pages → display list (flashtex-render)
