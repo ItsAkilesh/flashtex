@@ -6617,8 +6617,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
         match &insertions {
             Some(ins) => {
-                longtable_limitation(ctx, &longtables, &blocks, "with footnotes on the page");
-                let (mut pages, areas) = pagebuild::break_pages_inserts(&params, &list, short_pages, short, ins);
+                let regions = pagebuild::resolve_regions(&list, &longtables);
+                let (mut pages, areas) = pagebuild::break_pages_inserts_regions(&params, &list, short_pages, short, ins, &regions);
                 footnotes::place(ctx, &mut blocks, &mut pages, areas);
                 (pages, Vec::new(), Vec::new())
             }
