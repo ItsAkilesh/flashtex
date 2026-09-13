@@ -216,12 +216,61 @@ fn exact_unit(v: f64, what: &str) -> Result<Decimal, String> {
 }
 
 struct Paint {
-    rgb: Option<[Decimal; 3]>,
+    /// Fill and stroke operators to set before painting (`None`: black,
+    /// the page default). A `device_color` (proposal
+    /// `display-list-v2-device-color`) is written exactly as pdfTeX does,
+    /// fill then stroke (`pdftex.def`: `r g b rg r g b RG`); an sRGB paint
+    /// becomes an exact `rg`.
+    ops: Option<Vec<Op>>,
+}
+
+/// `paint.device_color`: `{"space": "rgb"|"cmyk"|"gray", "values": [..]}`
+/// with decimal strings, copied verbatim into the operators.
+fn device_color(v: &Value, what: &str) -> Result<Vec<Op>, String> {
+    let space = s(v.get("space"), &format!("{what}.device_color.space"))?;
+    let values = arr(v.get("values"), &format!("{what}.device_color.values"))?
+        .iter()
+        .enumerate()
+        .map(|(i, x)| {
+            let w = format!("{what}.device_color.values[{i}]");
+            let text = x.as_str().ok_or_else(|| format!("{w}: expected a decimal string"))?;
+            let d = Decimal::new(text).map_err(|e| format!("{w}: {e}"))?;
+            if d.approx() < 0.0 || d.approx() > 1.0 {
+                return Err(format!("{w}: {text} is not in [0, 1]"));
+            }
+            Ok(d)
+        })
+        .collect::<Result<Vec<Decimal>, String>>()?;
+    let n = |k: usize| -> Result<(), String> {
+        if values.len() == k {
+            Ok(())
+        } else {
+            Err(format!("{what}.device_color: {space} takes {k} values, found {}", values.len()))
+        }
+    };
+    let v = &values;
+    Ok(match space {
+        "gray" => {
+            n(1)?;
+            vec![Op::FillGray(v[0].clone()), Op::StrokeGray(v[0].clone())]
+        }
+        "rgb" => {
+            n(3)?;
+            let c = [v[0].clone(), v[1].clone(), v[2].clone()];
+            vec![Op::FillRgb(c.clone()), Op::StrokeRgb(c)]
+        }
+        "cmyk" => {
+            n(4)?;
+            let c = [v[0].clone(), v[1].clone(), v[2].clone(), v[3].clone()];
+            vec![Op::FillCmyk(c.clone()), Op::StrokeCmyk(c)]
+        }
+        other => return Err(format!("{what}.device_color.space: unknown colour space {other}")),
+    })
 }
 
 fn paint(v: Option<&Value>, what: &str) -> Result<Paint, String> {
     let Some(p) = v else {
-        return Ok(Paint { rgb: None });
+        return Ok(Paint { ops: None });
     };
     let a = f(p.get("a"), &format!("{what}.paint.a"))?;
     if a != 1.0 {
@@ -229,18 +278,21 @@ fn paint(v: Option<&Value>, what: &str) -> Result<Paint, String> {
             "{what}: paint alpha {a} is not 1; alpha needs an ExtGState, which is outside the bounded operator set"
         ));
     }
+    if let Some(dc) = p.get("device_color") {
+        return Ok(Paint { ops: Some(device_color(dc, &format!("{what}.paint"))?) });
+    }
     let r = f(p.get("r"), &format!("{what}.paint.r"))?;
     let g = f(p.get("g"), &format!("{what}.paint.g"))?;
     let b = f(p.get("b"), &format!("{what}.paint.b"))?;
     if r == 0.0 && g == 0.0 && b == 0.0 {
-        return Ok(Paint { rgb: None });
+        return Ok(Paint { ops: None });
     }
     Ok(Paint {
-        rgb: Some([
+        ops: Some(vec![Op::FillRgb([
             exact_unit(r, what)?,
             exact_unit(g, what)?,
             exact_unit(b, what)?,
-        ]),
+        ])]),
     })
 }
 
@@ -430,7 +482,7 @@ pub fn from_v2_rooted(
         Run {
             resource: String,
             size_ticks: i128,
-            rgb: Option<[Decimal; 3]>,
+            color: Option<Vec<Op>>,
             glyphs: Vec<Glyph>,
         },
         Ops(Vec<Op>),
@@ -555,7 +607,7 @@ pub fn from_v2_rooted(
                     items.push(Pending::Run {
                         resource: entry.resource.clone(),
                         size_ticks: size,
-                        rgb: pt.rgb,
+                        color: pt.ops.clone(),
                         glyphs,
                     });
                 }
@@ -568,12 +620,12 @@ pub fn from_v2_rooted(
                         return Err(format!("{iw}: rule {w}x{h} ticks is not positive"));
                     }
                     let mut ops = Vec::new();
-                    if let Some(rgb) = pt.rgb {
+                    if let Some(color) = &pt.ops {
                         ops.push(Op::Save);
-                        ops.push(Op::FillRgb(rgb));
+                        ops.extend(color.iter().cloned());
                     }
                     ops.extend(Op::rule(bp(x)?, bp(height - top - h)?, bp(w)?, bp(h)?));
-                    if ops.len() == 4 {
+                    if pt.ops.is_some() {
                         ops.push(Op::Restore);
                     }
                     report.rules += 1;
@@ -868,7 +920,7 @@ pub fn from_v2_rooted(
         // boundaries an extractor reads from geometry.
         let mut last: Option<(i128, i128, i128, String)> = None;
         for item in items {
-            let (resource, size_ticks, rgb, glyphs) = match item {
+            let (resource, size_ticks, color, glyphs) = match item {
                 Pending::Ops(o) => {
                     ops.extend(o);
                     continue;
@@ -887,9 +939,9 @@ pub fn from_v2_rooted(
                 Pending::Run {
                     resource,
                     size_ticks,
-                    rgb,
+                    color,
                     glyphs,
-                } => (resource, size_ticks, rgb, glyphs),
+                } => (resource, size_ticks, color, glyphs),
             };
             let widths = cid_widths(&exact_fonts[&resource]);
             let mut placed = Vec::with_capacity(glyphs.len());
@@ -963,9 +1015,9 @@ pub fn from_v2_rooted(
                 glyphs: placed,
             };
             let run_ops = run.to_ops().map_err(|e| e.to_string())?;
-            if let Some(c) = rgb {
+            if let Some(color) = color {
                 ops.push(Op::Save);
-                ops.push(Op::FillRgb(c));
+                ops.extend(color);
                 ops.extend(run_ops);
                 ops.push(Op::Restore);
             } else {

@@ -108,6 +108,23 @@ pub enum BoxRec {
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
     /// whose origin is the table's reference baseline.
     Table(Rc<TableRec>),
+    /// `\colorbox`/`\fcolorbox` (`Context::color_box`).
+    ColorBox(Rc<ColorBoxRec>),
+}
+
+/// A laid-out `\colorbox`/`\fcolorbox`: the content as one line whose
+/// runs are placed from the box's left edge, and the box's `width`,
+/// `height` and `depth` including `\fboxsep` and the `rule` frame.
+#[derive(Clone)]
+pub struct ColorBoxRec {
+    pub block: BuiltBlock,
+    pub width: f64,
+    pub height: f64,
+    pub depth: f64,
+    pub rule: f64,
+    pub fill: flashtex_compiler::color::DeviceColor,
+    pub frame: Option<flashtex_compiler::color::DeviceColor>,
+    pub span: Span,
 }
 
 /// A laid-out table (`Context::table_box`): every entry or `@{}` box as
@@ -158,6 +175,8 @@ pub struct MathRec {
     /// `\text{...}` runs of this formula (`mathtext`), addressed by the
     /// placed glyphs' `font_id` above `RUN_FONT_BASE`.
     pub text_runs: Vec<crate::mathtext::TextRun>,
+    /// The formula's colour (`adapter::Doc::math_colors`).
+    pub color: Option<flashtex_compiler::color::DeviceColor>,
 }
 
 impl MathRec {
@@ -327,9 +346,15 @@ pub struct Context<'a> {
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
+    math_colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>,
 }
 
 impl<'a> Context<'a> {
+    /// Formula colours (`adapter::Doc::math_colors`).
+    pub fn set_math_colors(&mut self, colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>) {
+        self.math_colors = colors;
+    }
+
     pub fn new(fonts: &'a FontSet, style: &'a Stylesheet, paths: &'a [&'a str]) -> Context<'a> {
         Self::with_texts(fonts, style, paths, &[])
     }
@@ -352,6 +377,7 @@ impl<'a> Context<'a> {
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
+            math_colors: Default::default(),
         }
     }
 
@@ -916,6 +942,7 @@ impl<'a> Context<'a> {
             face: fonts.otf().face().clone(),
             metrics: fonts.clone(),
             text_runs,
+            color: self.math_colors.get(&(span.document.0, span.start, span.end)).copied(),
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1394,6 +1421,7 @@ impl<'a> Context<'a> {
                                 size_cpt: seg.style.size_cpt,
                                 medium: seg.style.medium,
                                 slanted: seg.style.slanted || base.slanted,
+                                color: seg.style.color,
                             },
                         };
                         // A size declaration in force (`{\Large ...}`) sets
@@ -1411,6 +1439,7 @@ impl<'a> Context<'a> {
                         size_cpt: style.size_cpt,
                         medium: style.medium,
                         slanted: style.slanted || base.slanted,
+                        color: style.color,
                     };
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
@@ -1454,6 +1483,10 @@ impl<'a> Context<'a> {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                     }
+                }
+                AItem::ColorBox(cb) => {
+                    let (run, rec) = self.color_box(cb, size);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                 }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
@@ -2426,6 +2459,75 @@ impl<'a> Context<'a> {
         (out, x)
     }
 
+    /// `\colorbox`/`\fcolorbox` (xcolor.sty 3.02 `\color@b@x`): the content
+    /// as an `\hbox` at natural width with `\fboxsep` on both sides and its
+    /// height and depth grown by `\fboxsep`; `\fcolorbox` adds a `\fboxrule`
+    /// frame around that (`\XC@frameb@x`).
+    fn color_box(&mut self, cb: &adapter::ColorBoxItem, size: f64) -> (pl::GlyphRun, usize) {
+        let (placed, content_width) = self.hbox_runs(&cb.items, size);
+        let rule = if cb.frame.is_some() { cb.rule_pt } else { 0.0 };
+        let inset = rule + cb.sep_pt;
+        let (mut ht, mut dp) = (0.0f64, 0.0f64);
+        let mut runs = Vec::with_capacity(placed.len());
+        let mut items = Vec::with_capacity(placed.len());
+        let mut recs = Vec::with_capacity(placed.len());
+        for (run, rec, x) in placed {
+            ht = ht.max(run.height);
+            dp = dp.max(run.depth);
+            runs.push(position_run(&run, inset + x, 0.0));
+            items.push(pl::Item::Box(run));
+            recs.push(Some(rec));
+        }
+        let width = content_width + 2.0 * inset;
+        let n = items.len();
+        let lines = pl::Lines {
+            lines: vec![pl::Line {
+                index: 0,
+                runs,
+                baseline_y: ht,
+                height: ht,
+                depth: dp,
+                natural_width: width,
+                set_width: width,
+                ratio: 0.0,
+                badness: 0.0,
+                items: 0..n,
+                hyphenated: false,
+            }],
+            breaks: Vec::new(),
+            stats: one_line_stats(),
+            diagnostics: Vec::new(),
+            height: ht + dp,
+        };
+        let block = BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items,
+            recs,
+            vertical: VBlock {
+                lines: vec![(ht, dp)],
+                penalty_before: None,
+                space_before: None,
+                parskip: None,
+                interline_penalty: 0,
+                club_penalty: 0,
+                widow_penalty: 0,
+                penalty_after: None,
+                space_after: None,
+                no_interline_first: true,
+                no_interline_after: true,
+                baselineskip: None,
+                vskip_after: Vec::new(),
+                pre_space_after: None,
+            },
+            labels: Vec::new(),
+            cache_key: None,
+        };
+        let (height, depth) = (ht + inset, dp + inset);
+        self.recs.push(BoxRec::ColorBox(Rc::new(ColorBoxRec { block, width, height, depth, rule, fill: cb.fill, frame: cb.frame, span: cb.span })));
+        let run = pl::GlyphRun { font: MATH_SENTINEL, size, glyphs: Vec::new(), width, height, depth, source: cb.span.start..cb.span.end };
+        (run, self.recs.len() - 1)
+    }
+
     /// A header or footer line,`\hb@xt@\textwidth{<left>\hfil <center>\hfil
     /// <right>}` in the `\normalsize` body font: each slot is `(text,
     /// \slshape)`; `\thepage` is upright, marks slanted. Words are separated
@@ -3272,6 +3374,7 @@ impl<'a> Context<'a> {
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
                 })
                 .next();
             let _ = list;
@@ -4755,6 +4858,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 BoxRec::Rule { span, .. } => Some(*span),
                 BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -5069,6 +5173,8 @@ pub fn assemble(
     laid: Laid,
     mut diagnostics: Vec<Diagnostic>,
     cache: Option<&RenderCache>,
+    page_color: Option<flashtex_compiler::color::DeviceColor>,
+    default_color: Option<flashtex_compiler::color::DeviceColor>,
 ) -> DisplayList {
     let paths: Vec<Rc<str>> = documents.iter().map(|d| Rc::from(d.path)).collect();
     let empty: Rc<str> = Rc::from("");
@@ -5122,6 +5228,33 @@ pub fn assemble(
             }
         }
         items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
+        if let Some(color) = default_color {
+            // Under a target model the default colour is written too.
+            for item in &mut items {
+                let paint = match item {
+                    display::Item::GlyphRun(r) => &mut r.paint,
+                    display::Item::Rule(r) => &mut r.paint,
+                    _ => continue,
+                };
+                if paint.device.is_none() {
+                    *paint = Paint::of(Some(color));
+                }
+            }
+        }
+        if let Some(color) = page_color {
+            // pdfTeX paints `\pagecolor` before the page: `q 0 0 W H re f Q`.
+            items.insert(
+                0,
+                display::Item::Rule(Rule {
+                    x: Tick(0),
+                    top: Tick(0),
+                    width: Tick::from_tex_pt(page.width),
+                    height: Tick::from_tex_pt(page.height),
+                    paint: Paint::of(Some(color)),
+                    provenance: Provenance::Synthetic("\\pagecolor".into()),
+                }),
+            );
+        }
         pages.push(display::Page {
             number: page.number,
             width: Tick::from_tex_pt(page.width),
@@ -5164,6 +5297,7 @@ pub fn assemble(
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -5262,12 +5396,13 @@ fn assemble_block(
                     height,
                     depth,
                     continues,
+                    style,
                     ..
                 } => {
                     used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
-                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of) {
+                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of, Paint::of(style.color)) {
                         match (items.last_mut(), item) {
-                            (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size => {
+                            (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size && prev.paint == next.paint => {
                                 join_runs(prev, next);
                             }
                             (_, item) => items.push(item),
@@ -5315,6 +5450,47 @@ fn assemble_block(
                             paint: Paint::BLACK,
                             provenance: Provenance::Source(source_of(r.span)),
                         }));
+                    }
+                }
+                BoxRec::ColorBox(cb) => {
+                    // xcolor draws the fill (`\color@block`: a `\vrule`), the
+                    // content, then the frame (`\boxframe`: top and bottom
+                    // `\hrule`s, side `\vrule`s `\fboxrule` shorter, half a
+                    // rule inside each end).
+                    let x0 = local.x;
+                    let provenance = Provenance::Source(source_of(cb.span));
+                    let block_rule = |x: f64, top: f64, w: f64, h: f64, color| {
+                        display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(x),
+                            top: Tick::from_tex_pt(top),
+                            width: Tick::from_tex_pt(w).max(Tick(1)),
+                            height: Tick::from_tex_pt(h).max(Tick(1)),
+                            paint: Paint::of(Some(color)),
+                            provenance: provenance.clone(),
+                        })
+                    };
+                    let r = cb.rule;
+                    items.push(block_rule(x0 + r, r - cb.height, cb.width - 2.0 * r, cb.height + cb.depth - 2.0 * r, cb.fill));
+                    let a = assemble_block(&cb.block, recs, maths, 0.0, source_of, paths, empty);
+                    let dx = Tick::from_tex_pt(x0);
+                    for line_items in &a.lines {
+                        for it in line_items {
+                            let mut item = incremental::place_item(it, Tick(0), "", 0);
+                            display::shift_x(&mut item, dx);
+                            items.push(item);
+                        }
+                    }
+                    for f in a.faces {
+                        used.entry(f.font_id.clone()).or_insert(f);
+                    }
+                    resources.extend(a.resources);
+                    unmapped.extend(a.unmapped);
+                    if let Some(frame) = cb.frame {
+                        let total = cb.height + cb.depth;
+                        items.push(block_rule(x0, -cb.height, cb.width, r, frame));
+                        items.push(block_rule(x0, r / 2.0 - cb.height, r, total - r, frame));
+                        items.push(block_rule(x0 + cb.width - r, r / 2.0 - cb.height, r, total - r, frame));
+                        items.push(block_rule(x0, cb.depth - r, cb.width, r, frame));
                     }
                 }
                 BoxRec::Rule { width, height, span } => {
@@ -5370,6 +5546,7 @@ fn picture_items(
             g,
             b,
             a: pt.alpha.clamp(0.0, 1.0),
+            device: None,
         }
     };
     let conv = |path: &vg::Path| -> Vec<display::PathCmd> {
@@ -5586,6 +5763,7 @@ fn text_item(
     height: f64,
     depth: f64,
     source_of: &dyn Fn(Span) -> SourceRange,
+    paint: Paint,
 ) -> Option<display::Item> {
     // Line-local: the baseline is 0 and every y is an offset from it; the
     // page position is added as an integer tick move when the line is
@@ -5665,7 +5843,7 @@ fn text_item(
         text: text.to_string(),
         glyphs,
         clusters: out_clusters,
-        paint: Paint::BLACK,
+        paint,
         role: display::RunRole::Text,
     }))
 }
@@ -5710,7 +5888,7 @@ fn math_items(
             text: String::new(),
             glyphs: Vec::new(),
             clusters: Vec::new(),
-            paint: Paint::BLACK,
+            paint: Paint::of(m.color),
             role: display::RunRole::Math,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
@@ -5785,7 +5963,7 @@ fn math_items(
             top: Tick::from_tex_pt(rule.y),
             width: Tick::from_tex_pt(rule.w).max(Tick(1)),
             height: Tick::from_tex_pt(rule.h).max(Tick(1)),
-            paint: Paint::BLACK,
+            paint: Paint::of(m.color),
             provenance: Provenance::Source(src.clone()),
         }));
     }
