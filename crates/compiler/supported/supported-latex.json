@@ -26,7 +26,7 @@
     {"name": "usepackage", "mode": "text", "origin": "text_dispatch", "arguments": "[options]{a,b,c}", "description": "records packages; layout-neutral ones are silent, every other package warns that it is not implemented", "renders": true},
     {"name": "newcolumntype", "mode": "text", "origin": "text_dispatch", "arguments": "{X}[n]{spec}", "description": "array column type expanded in later tabular specifications", "renders": true},
     {"name": "arraybackslash", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "array no-op: \\\\ already ends the row inside p, m and b entries", "renders": true},
-    {"name": "setlist", "mode": "text", "origin": "text_dispatch", "arguments": "[list]{options}", "description": "enumitem itemsep and topsep; other keys warn", "renders": true},
+    {"name": "setlist", "mode": "text", "origin": "text_dispatch", "arguments": "[list]{options}", "description": "enumitem keys recorded on every matching list; itemsep and topsep also set the built-in layout, other keys warn", "renders": true},
     {"name": "newcommand", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}[n]{body}", "description": "defines a macro with 0-9 arguments; rejects an existing name", "renders": true},
     {"name": "renewcommand", "mode": "text", "origin": "text_dispatch", "arguments": "{\\name}[n]{body}", "description": "redefines an existing macro", "renders": true},
     {"name": "DeclareMathOperator", "mode": "text", "origin": "text_dispatch", "arguments": "*{\\name}{text}", "description": "defines \\name as \\operatorname{text}; the starred form takes limits", "renders": true},
@@ -37,7 +37,7 @@
     {"name": "pageref", "mode": "text", "origin": "text_dispatch", "arguments": "{key}", "description": "page number of the labelled item", "renders": true},
     {"name": "eqref", "mode": "text", "origin": "text_dispatch", "arguments": "{key}", "description": "parenthesised equation number of the labelled item", "renders": true},
     {"name": "caption", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered \"Figure N:\" caption inside figure", "renders": true},
-    {"name": "item", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "entry of an itemize or enumerate list", "renders": true},
+    {"name": "item", "mode": "text", "origin": "text_dispatch", "arguments": "[label]", "description": "entry of an itemize, enumerate or description list", "renders": true},
     {"name": "url", "mode": "text", "origin": "text_dispatch", "arguments": "{url}", "description": "monospaced URL text; links are not clickable", "renders": true},
     {"name": "href", "mode": "text", "origin": "text_dispatch", "arguments": "{url}{text}", "description": "link text; links are not clickable", "renders": true},
     {"name": "nolinkurl", "mode": "text", "origin": "text_dispatch", "arguments": "{url}", "description": "monospaced URL text without a link", "renders": true},
@@ -442,8 +442,10 @@
     {"name": "flushright", "mode": "text", "description": "right-aligned paragraphs"},
     {"name": "quote", "mode": "text", "description": "indented paragraphs"},
     {"name": "quotation", "mode": "text", "description": "indented paragraphs"},
-    {"name": "itemize", "mode": "text", "description": "bulleted list"},
-    {"name": "enumerate", "mode": "text", "description": "numbered list; enumitem [label] templates a, A, i, I, 1"},
+    {"name": "verse", "mode": "text", "description": "indented lines; each \\\\ ends a line"},
+    {"name": "itemize", "mode": "text", "description": "bulleted list; article labels per depth, \\item[label]"},
+    {"name": "enumerate", "mode": "text", "description": "numbered list; article labels per depth, enumitem label/label*/shortlabels, start and resume"},
+    {"name": "description", "mode": "text", "description": "list of bold \\item[term] labels"},
     {"name": "tabular", "mode": "text", "description": "table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \\extrarowheight"},
     {"name": "tabular*", "mode": "text", "description": "table of a given width"},
     {"name": "verbatim", "mode": "text", "description": "literal monospaced lines"},
@@ -471,7 +473,7 @@
     {"name": "fontenc", "silent_options": "T1", "description": "text glyphs are mapped from Unicode"},
     {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle and the proof environment"},
     {"name": "array", "silent_options": "", "description": "tabular >{} <{} !{} m b w columns, \\newcolumntype and \\extrarowheight"},
-    {"name": "enumitem", "silent_options": "shortlabels", "description": "enumerate label templates; \\setlist itemsep/topsep"},
+    {"name": "enumitem", "silent_options": "shortlabels", "description": "list keys (label, start, resume, seps, margins) parsed as options; \\setlist"},
     {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"}
   ],
   "coverage": {
@@ -488,7 +490,7 @@
     ],
     "rows": [
       {"set": "kernel", "kind": "command", "canonical": 410, "supported": 104, "percent": 25.4},
-      {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
+      {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 17, "percent": 56.7},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
       {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 20, "percent": 8.7},
@@ -500,6 +502,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 194, "percent": 19.3}
+    "total": {"canonical": 1003, "supported": 196, "percent": 19.5}
   }
 }
