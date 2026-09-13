@@ -21,6 +21,7 @@ pub mod mathfont;
 pub mod mathgrid;
 pub mod mathtex;
 pub mod mathtext;
+pub mod nfss;
 pub mod pagebuild;
 pub mod params;
 pub mod pdf;

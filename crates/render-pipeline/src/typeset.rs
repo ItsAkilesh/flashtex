@@ -451,7 +451,19 @@ impl<'a> Context<'a> {
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let (role, notes) = self.text_role(style, size);
+        let r = self.fonts.resolve(self.style.family, role, size);
+        for (key, message) in notes {
+            let src = self.source(span);
+            self.report_once(key, Diagnostic::warning("font_shape_substituted", message, vec![src]));
+        }
+        if let Some(note) = &r.note {
+            let src = self.source(span);
+            self.report_once(
+                format!("outline:{note}"),
+                Diagnostic::warning("font_outline_substituted", note.clone(), vec![src]),
+            );
+        }
         if let Some(reason) = r.substituted {
             let src = self.source(span);
             self.report_once(
@@ -498,6 +510,29 @@ impl<'a> Context<'a> {
             }
         }
         r.face
+    }
+
+    /// The font role of a text style: its NFSS shape selected in the
+    /// document's scheme (`\wrong@fontshape` substitutions) and followed
+    /// through `sub*`/`ssub*` to the font LaTeX loads, with LaTeX's font
+    /// warnings keyed for [`Self::report_once`].
+    fn text_role(&self, style: TextStyle, size: f64) -> (Role, Vec<(String, String)>) {
+        let scheme = self.style.nfss;
+        let selected = crate::nfss::select(scheme, style.key());
+        let (terminal, sub) = crate::nfss::terminal(scheme, selected.key);
+        let mut notes = Vec::new();
+        for undefined in [style.undefined, selected.undefined].into_iter().flatten() {
+            let (from, to) = (scheme.describe(undefined), scheme.describe(selected.key));
+            notes.push((format!("nfss:{from}"), format!("Font shape `{from}' undefined, using `{to}' instead")));
+        }
+        if let Some((from, to)) = sub {
+            let (from, to) = (scheme.describe(from), scheme.describe(to));
+            notes.push((
+                format!("nfss:{from}:{size}"),
+                format!("Font shape `{from}' in size <{size}> not available, Font shape `{to}' tried instead"),
+            ));
+        }
+        (Role::Font(terminal), notes)
     }
 
     fn math_fonts(&mut self, span: Span) -> Option<MathProvider> {
@@ -574,7 +609,7 @@ impl<'a> Context<'a> {
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
     fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let r = self.fonts.resolve(self.style.family, self.text_role(style, size).0, size);
         if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
             let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
             return params::TextParamsPt {
@@ -1208,18 +1243,17 @@ impl<'a> Context<'a> {
                     // ends the search with no hyphens).
                     let after_glue = matches!(out.last(), Some(pl::Item::Glue(_)));
                     let joined = matches!(items.get(idx + 1), Some(AItem::Word(_) | AItem::Math { .. }));
-                    let hyphenate = after_glue && !joined && w.segments.len() == 1;
+                    // The typewriter families declare `\hyphenchar\font=-1`
+                    // (`ot1cmtt.fd`, `t1cmtt.fd`, `t1lmtt.fd`): no hyphens.
+                    let hyphenate = after_glue
+                        && !joined
+                        && w.segments.len() == 1
+                        && merge_style(base, w.segments[0].style).family != crate::nfss::FamilyKind::Tt;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
                             chars: seg.chars.clone(),
-                            style: TextStyle {
-                                bold: seg.style.bold || (base.bold && !seg.style.medium),
-                                italic: seg.style.italic || base.italic,
-                                size_cpt: seg.style.size_cpt,
-                                medium: seg.style.medium,
-                                slanted: seg.style.slanted || base.slanted,
-                            },
+                            style: merge_style(base, seg.style),
                         };
                         // A size declaration in force (`{\Large ...}`) sets
                         // this segment at its own size.
@@ -1230,13 +1264,7 @@ impl<'a> Context<'a> {
                     }
                 }
                 AItem::Space { style, factor, no_break } => {
-                    let style = TextStyle {
-                        bold: style.bold || (base.bold && !style.medium),
-                        italic: style.italic || base.italic,
-                        size_cpt: style.size_cpt,
-                        medium: style.medium,
-                        slanted: style.slanted || base.slanted,
-                    };
+                    let style = merge_style(base, *style);
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
                     }
@@ -2879,16 +2907,20 @@ fn drop_trailing_break(list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, 
     Some(trailing_skip)
 }
 
-/// The font role of a text style: `\slshape` applies to upright medium text
-/// only (Latin Modern has no bold or italic slanted T1 shape in use here).
-fn role_of(style: TextStyle) -> Role {
-    if style.slanted && !style.bold && !style.italic {
-        Role::Slanted
-    } else {
-        Role::Text {
-            bold: style.bold,
-            italic: style.italic,
-        }
+/// A segment's style inside a block whose own style is `base` (a heading's
+/// `\bfseries`, a running head's `\slshape`): the block's weight unless the
+/// segment is `\normalfont`/`\mdseries`, its shape added, and the segment's
+/// family when it selects one.
+fn merge_style(base: TextStyle, s: TextStyle) -> TextStyle {
+    TextStyle {
+        bold: s.bold || (base.bold && !s.medium),
+        italic: s.italic || base.italic,
+        size_cpt: s.size_cpt,
+        medium: s.medium,
+        slanted: s.slanted || base.slanted,
+        caps: s.caps || base.caps,
+        family: if s.family != crate::nfss::FamilyKind::Rm { s.family } else { base.family },
+        undefined: s.undefined.or(base.undefined),
     }
 }
 

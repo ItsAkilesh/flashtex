@@ -203,6 +203,7 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                     seg.text.hash(h);
                     seg.style.bold.hash(h);
                     seg.style.italic.hash(h);
+                    (seg.style.slanted, seg.style.caps, seg.style.family, seg.style.undefined).hash(h);
                     for c in &seg.chars {
                         (c.start.wrapping_sub(base)).hash(h);
                         (c.end.wrapping_sub(base)).hash(h);
@@ -213,6 +214,7 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 1u8.hash(h);
                 style.bold.hash(h);
                 style.italic.hash(h);
+                (style.slanted, style.caps, style.family, style.undefined).hash(h);
                 factor.hash(h);
                 no_break.hash(h);
             }

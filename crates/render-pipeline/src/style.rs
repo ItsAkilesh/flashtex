@@ -54,6 +54,9 @@ pub struct HeadingStyle {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stylesheet {
     pub family: Family,
+    /// The font definition files text shapes are selected from (`nfss`);
+    /// the adapter sets it from the document's packages and encoding.
+    pub nfss: crate::nfss::Scheme,
     pub base: BaseSize,
     /// Paper size in TeX points (US Letter: 614.295 x 794.97).
     pub page_width_pt: f64,
@@ -162,6 +165,10 @@ impl Stylesheet {
         let list = flashtex_document_style::list_level(base, 1);
         Stylesheet {
             family,
+            nfss: match family {
+                Family::LatinModern => crate::nfss::Scheme::LmT1,
+                Family::ComputerModern | Family::Times => crate::nfss::Scheme::CmT1,
+            },
             base,
             page_width_pt: page.paper_width.0,
             page_height_pt: page.paper_height.0,

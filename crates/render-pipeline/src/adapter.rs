@@ -32,11 +32,47 @@ pub struct TextStyle {
     /// `\normalfont`/`\mdseries` in force inside a heading: the block's
     /// own weight (`\bfseries` from `\@startsection`) is not applied.
     pub medium: bool,
-    /// `\slshape` (upright medium only; running heads).
+    /// Shape `sl` (`\slshape`, running heads); `scsl` with `caps`.
     pub slanted: bool,
+    /// Small caps (`\scshape`): shape `sc`, or `scit`/`scsl` with
+    /// `italic`/`slanted`.
+    pub caps: bool,
+    /// `\rmfamily`/`\sffamily`/`\ttfamily`.
+    pub family: crate::nfss::FamilyKind,
+    /// The shape LaTeX reported undefined on the way to this style
+    /// (`\wrong@fontshape`); the typesetter reports it once.
+    pub undefined: Option<crate::nfss::FontKey>,
 }
 
 impl TextStyle {
+    /// The NFSS shape of this style: series `bx` when bold, and `italic`
+    /// wins over `slanted` when a merge with an enclosing style set both.
+    pub fn key(self) -> crate::nfss::FontKey {
+        use crate::nfss::{FontKey, Series, Shape};
+        let shape = match (self.caps, self.italic, self.slanted) {
+            (true, true, _) => Shape::Scit,
+            (true, false, true) => Shape::Scsl,
+            (true, false, false) => Shape::Sc,
+            (false, true, _) => Shape::It,
+            (false, false, true) => Shape::Sl,
+            (false, false, false) => Shape::N,
+        };
+        FontKey::new(self.family, if self.bold { Series::Bx } else { Series::M }, shape)
+    }
+
+    /// This style with its family, series and shape replaced by `key`'s.
+    pub fn with_key(self, key: crate::nfss::FontKey) -> TextStyle {
+        use crate::nfss::Shape;
+        TextStyle {
+            bold: key.bold(),
+            italic: matches!(key.shape, Shape::It | Shape::Scit),
+            slanted: matches!(key.shape, Shape::Sl | Shape::Scsl),
+            caps: matches!(key.shape, Shape::Sc | Shape::Scit | Shape::Scsl),
+            family: key.family,
+            ..self
+        }
+    }
+
     /// The size to shape at, given the paragraph's `size`.
     pub fn size_or(self, size: f64) -> f64 {
         if self.size_cpt == 0 {
@@ -626,7 +662,8 @@ pub fn adapt_cached(
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
-    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
+    style.nfss = crate::nfss::Scheme::for_document(&parsed.packages, t1_encoding(source));
+    let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t), style.nfss)).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -1998,11 +2035,59 @@ fn has_blank_line(source: &str) -> bool {
     false
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StyleKind {
-    Bold,
-    Emph,
-    Italic,
+/// One font command's content interval: start and end byte, the NFSS
+/// command, and whether LaTeX's `\maybe@ic` italic correction can follow
+/// its end (see [`Styles::closes_at`]).
+type StyleInterval = (usize, usize, crate::nfss::Command, bool);
+
+/// The NFSS commands of a text font command with a braced argument
+/// (latex.ltx 14213-14222 `\DeclareTextFontCommand`, and `\emph`).
+fn text_font_command(name: &str) -> Option<&'static [crate::nfss::Command]> {
+    use crate::nfss::{Command as C, FamilyKind as F, Series as S, ShapeRequest as R};
+    Some(match name {
+        "textbf" => &[C::Series(S::Bx)],
+        "textmd" => &[C::Series(S::M)],
+        "textit" => &[C::Shape(R::It)],
+        "textsl" => &[C::Shape(R::Sl)],
+        "textsc" => &[C::Shape(R::Sc)],
+        "textup" => &[C::Shape(R::Up)],
+        "textrm" => &[C::Family(F::Rm)],
+        "textsf" => &[C::Family(F::Sf)],
+        "texttt" => &[C::Family(F::Tt)],
+        "textnormal" => &[C::Normal],
+        "emph" => &[C::Emph],
+        _ => return None,
+    })
+}
+
+/// The NFSS commands of a font declaration, and whether the end of its
+/// group is recorded for italic correction (the declarations the pipeline
+/// read before NFSS selection existed keep that behaviour). The LaTeX
+/// 2.09 forms reset first: `\bf` is `\normalfont\bfseries` (latex.ltx
+/// `\DeclareOldFontCommand`).
+fn font_declaration(name: &str) -> Option<(&'static [crate::nfss::Command], bool)> {
+    use crate::nfss::{Command as C, FamilyKind as F, Series as S, ShapeRequest as R};
+    Some(match name {
+        "bfseries" => (&[C::Series(S::Bx)], true),
+        "itshape" => (&[C::Shape(R::It)], true),
+        "slshape" => (&[C::Shape(R::Sl)], true),
+        "em" => (&[C::Emph], true),
+        "mdseries" => (&[C::Series(S::M)], false),
+        "scshape" => (&[C::Shape(R::Sc)], false),
+        "upshape" => (&[C::Shape(R::Up)], false),
+        "rmfamily" => (&[C::Family(F::Rm)], false),
+        "sffamily" => (&[C::Family(F::Sf)], false),
+        "ttfamily" => (&[C::Family(F::Tt)], false),
+        "normalfont" => (&[C::Normal], false),
+        "bf" => (&[C::Normal, C::Series(S::Bx)], false),
+        "it" => (&[C::Normal, C::Shape(R::It)], false),
+        "sl" => (&[C::Normal, C::Shape(R::Sl)], false),
+        "sc" => (&[C::Normal, C::Shape(R::Sc)], false),
+        "rm" => (&[C::Normal, C::Family(F::Rm)], false),
+        "sf" => (&[C::Normal, C::Family(F::Sf)], false),
+        "tt" => (&[C::Normal, C::Family(F::Tt)], false),
+        _ => return None,
+    })
 }
 
 /// The point size a `\tiny`..`\Huge` declaration selects at a class base
@@ -2047,12 +2132,13 @@ fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: 
     table[row][col]
 }
 
-/// Brace-group intervals of `\textbf{}`, `\emph{}`, `\textit{}` in source
-/// byte offsets (content only), in document order. Weight and shape only:
-/// the compiler carries no `\bfseries`/`\itshape` scoping for body text
-/// the pipeline could use, while size declarations are read from the
-/// compiler's `TextStyle::size` (see [`declared_size`]).
-fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
+/// Content intervals of the font commands in source byte offsets, in
+/// document order: text font commands (`\textsf{}`, `\emph{}`, ...) over
+/// their braced argument, declarations (`\scshape`, `\ttfamily`, `\bf`,
+/// ...) to the end of the innermost group. Family, series and shape only:
+/// size declarations are read from the compiler's `TextStyle::size` (see
+/// [`declared_size`]).
+fn style_intervals(source: &str) -> Vec<StyleInterval> {
     let mut out = Vec::new();
     let bytes = source.as_bytes();
     let mut i = 0;
@@ -2085,53 +2171,36 @@ fn style_intervals(source: &str) -> Vec<(usize, usize, StyleKind)> {
             }
             b'\\' => {
                 let rest = &source[i..];
-                let kind = if rest.starts_with("\\textbf") && !continues_word(bytes, i + 7) {
-                    Some((StyleKind::Bold, 7))
-                } else if rest.starts_with("\\emph") && !continues_word(bytes, i + 5) {
-                    Some((StyleKind::Emph, 5))
-                } else if rest.starts_with("\\textit") && !continues_word(bytes, i + 7) {
-                    Some((StyleKind::Italic, 7))
-                } else {
-                    None
-                };
-                match kind {
-                    Some((k, len)) => {
-                        let mut j = i + len;
-                        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
-                            j += 1;
-                        }
-                        if j < bytes.len() && bytes[j] == b'{' {
-                            if let Some(close) = matching_brace(bytes, j) {
-                                out.push((j + 1, close, k));
-                            }
-                        }
-                        i += len;
-                        continue;
-                    }
-                    None => {}
-                }
-                // Declarations: the control word's letters.
+                // The control word's letters.
                 let word_end = i + 1 + rest[1..].bytes().take_while(u8::is_ascii_alphabetic).count();
                 let name = &source[i + 1..word_end];
-                let decl = match name {
-                    "bfseries" => Some(StyleKind::Bold),
-                    "itshape" | "slshape" => Some(StyleKind::Italic),
-                    "em" => Some(StyleKind::Emph),
-                    _ => None,
-                };
-                if let Some(k) = decl {
+                if let Some(commands) = text_font_command(name) {
+                    let mut j = word_end;
+                    while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'{' {
+                        if let Some(close) = matching_brace(bytes, j) {
+                            out.extend(commands.iter().map(|c| (j + 1, close, *c, true)));
+                        }
+                    }
+                    i = word_end;
+                    continue;
+                }
+                if let Some((commands, correction)) = font_declaration(name) {
                     let end = match groups.last() {
                         Some(&open) => matching_brace(bytes, open).unwrap_or(bytes.len()),
                         None => find_command(&source[word_end..], "end").map_or(bytes.len(), |e| word_end + e),
                     };
-                    out.push((word_end, end, k));
+                    out.extend(commands.iter().map(|c| (word_end, end, *c, correction)));
                 }
                 i = word_end.max(i + 2);
             }
             _ => i += 1,
         }
     }
-    out.sort_by_key(|(start, _, _)| *start);
+    // Stable: the `\normalfont` of `\bf` stays before its `\bfseries`.
+    out.sort_by_key(|(start, _, _, _)| *start);
     out
 }
 
@@ -2692,45 +2761,59 @@ fn plain_text(s: &str) -> String {
 /// earlier group can still contain the position), and the ends sorted.
 #[derive(Debug, Clone, Default)]
 struct Styles {
-    intervals: Vec<(usize, usize, StyleKind)>,
+    intervals: Vec<(usize, usize, crate::nfss::Command)>,
     max_end: Vec<usize>,
     ends: Vec<usize>,
+    scheme: crate::nfss::Scheme,
 }
 
 impl Styles {
-    fn new(intervals: Vec<(usize, usize, StyleKind)>) -> Styles {
+    fn new(intervals: Vec<StyleInterval>, scheme: crate::nfss::Scheme) -> Styles {
         let mut max_end = Vec::with_capacity(intervals.len());
         let mut m = 0;
-        for (_, end, _) in &intervals {
+        for (_, end, _, _) in &intervals {
             m = m.max(*end);
             max_end.push(m);
         }
-        let mut ends: Vec<usize> = intervals.iter().map(|(_, e, _)| *e).collect();
+        let mut ends: Vec<usize> = intervals.iter().filter(|i| i.3).map(|i| i.1).collect();
         ends.sort_unstable();
-        Styles { intervals, max_end, ends }
+        let intervals = intervals.into_iter().map(|(s, e, c, _)| (s, e, c)).collect();
+        Styles { intervals, max_end, ends, scheme }
     }
 
-    /// The style in force at byte `at` (bold/italic set, emph toggles:
-    /// order-independent, so the groups are visited from the nearest).
+    /// The style in force at byte `at`: the font commands of every interval
+    /// containing it, applied outermost (earliest) first through NFSS
+    /// selection (`crate::nfss::apply`), so order matters exactly as in
+    /// LaTeX (`\textsc{\emph{x}}` is not `\emph{\textsc{x}}`).
     fn at(&self, at: usize) -> TextStyle {
-        let mut s = TextStyle::default();
         let p = self.intervals.partition_point(|(start, _, _)| *start <= at);
+        let mut chain = Vec::new();
         let mut i = p;
         while i > 0 {
             i -= 1;
             if self.max_end[i] <= at {
                 break;
             }
-            let (_, end, kind) = self.intervals[i];
+            let (_, end, command) = self.intervals[i];
             if at < end {
-                match kind {
-                    StyleKind::Bold => s.bold = true,
-                    StyleKind::Italic => s.italic = true,
-                    StyleKind::Emph => s.italic = !s.italic,
-                }
+                chain.push(command);
             }
         }
-        s
+        let mut key = crate::nfss::FontKey::default();
+        let mut undefined = None;
+        for command in chain.into_iter().rev() {
+            let s = crate::nfss::apply(self.scheme, key, command);
+            key = s.key;
+            undefined = s.undefined.or(undefined);
+        }
+        TextStyle { undefined, ..TextStyle::default() }.with_key(key)
+    }
+
+    /// Whether the font in force at byte `at` is slanted (`\fontdimen1 >
+    /// 0`): the loaded shape after `sub*`/`ssub*`.
+    fn slanted_at(&self, at: usize) -> bool {
+        let key = self.at(at).key();
+        crate::nfss::terminal(self.scheme, crate::nfss::select(self.scheme, key).key).0.slanted()
     }
 
     /// Whether a style group's content ends exactly at `at`.
@@ -2894,6 +2977,7 @@ fn items_cached(
     let at = st.at(start);
     at.bold.hash(&mut h);
     at.italic.hash(&mut h);
+    (at.slanted, at.caps, at.family, at.undefined, st.scheme).hash(&mut h);
     for i in inlines {
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
@@ -3242,7 +3326,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 if styles_of(span.document).closes_at(span.end)
                     && source.as_bytes().get(span.end) == Some(&b'}')
                     && !matches!(source.as_bytes().get(span.end + 1), Some(b'.') | Some(b','))
-                    && !style_at(styles_of(span.document), span.end + 1).italic
+                    && !styles_of(span.document).slanted_at(span.end + 1)
                     && matches!(items.last(), Some(Item::Word(_)))
                 {
                     items.push(Item::ItalicCorrection);

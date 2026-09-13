@@ -26,6 +26,7 @@ use flashtex_font_resources::required_tfm::{Manifest as RequiredManifest, Metric
 use flashtex_project_files::ProjectRoot;
 
 use crate::cff::{self, Cff};
+use crate::nfss::{FamilyKind, FontKey, Series, Shape};
 use crate::tfm::Tfm;
 
 /// The 12 pt metric set pdfLaTeX+`lmodern` lays the reference documents
@@ -117,6 +118,26 @@ pub enum Role {
     /// table) for both families, because `\usepackage{times}` leaves math
     /// in Computer Modern.
     Math,
+    /// Any NFSS text shape (`crate::nfss`): the loaded (terminal) font of a
+    /// family slot, series and shape. `Text` and `Slanted` are the roman
+    /// shapes spelled the older way and resolve identically.
+    Font(FontKey),
+}
+
+impl Role {
+    /// The NFSS shape of a text role; `None` for math.
+    pub fn key(self) -> Option<FontKey> {
+        match self {
+            Role::Math => None,
+            Role::Text { bold, italic } => Some(FontKey::new(
+                FamilyKind::Rm,
+                if bold { Series::Bx } else { Series::M },
+                if italic { Shape::It } else { Shape::N },
+            )),
+            Role::Slanted => Some(FontKey::new(FamilyKind::Rm, Series::M, Shape::Sl)),
+            Role::Font(key) => Some(key),
+        }
+    }
 }
 
 /// Default search directories, probed in order for explicit file names.
@@ -271,22 +292,116 @@ pub fn default_tfm_dirs() -> Vec<PathBuf> {
 /// `lmroman12-regular` → `ec-lmr12`, `-bold` → `ec-lmbx12`, `-italic` →
 /// `ec-lmri12`, `-bolditalic` → `ec-lmbxi10`. `None` for the math face and
 /// for names this table does not know.
+///
+/// The other Latin Modern designs pair the same way (`t1lmr.fd`,
+/// `t1lmss.fd`, `t1lmtt.fd`): `lmromanslant` → `ec-lmro`/`ec-lmbxo`,
+/// `lmromancaps` → `ec-lmcsc`/`ec-lmcsco`, `lmromandemi` → `ec-lmb`/
+/// `ec-lmbo`, `lmromanunsl` → `ec-lmu`, `lmsans` → `ec-lmss`/`ec-lmsso`/
+/// `ec-lmssbx`/`ec-lmssbo`, `lmsansdemicond` → `ec-lmssdc`/`ec-lmssdo`,
+/// `lmmono` → `ec-lmtt`/`ec-lmtti`, `lmmonoslant` → `ec-lmtto`,
+/// `lmmonocaps` → `ec-lmtcsc`/`ec-lmtcso`, `lmmonolt` bold → `ec-lmtk`/
+/// `ec-lmtko`.
 pub fn latin_modern_tfm(otf_stem: &str) -> Option<String> {
-    if let Some(rest) = otf_stem.strip_prefix("lmromanslant") {
-        let d: u32 = rest.strip_suffix("-regular")?.parse().ok()?;
-        return Some(format!("ec-lmro{d}.tfm"));
-    }
-    let rest = otf_stem.strip_prefix("lmroman")?;
+    let digits_at = otf_stem.find(|c: char| c.is_ascii_digit())?;
+    let (base, rest) = otf_stem.split_at(digits_at);
     let (digits, style) = rest.split_once('-')?;
     let d: u32 = digits.parse().ok()?;
-    let series = match style {
-        "regular" => "r",
-        "bold" => "bx",
-        "italic" => "ri",
-        "bolditalic" => "bxi",
+    let series = match (base, style) {
+        ("lmroman", "regular") => "r",
+        ("lmroman", "bold") => "bx",
+        ("lmroman", "italic") => "ri",
+        ("lmroman", "bolditalic") => "bxi",
+        ("lmromanslant", "regular") => "ro",
+        ("lmromanslant", "bold") => "bxo",
+        ("lmromancaps", "regular") => "csc",
+        ("lmromancaps", "oblique") => "csco",
+        ("lmromandemi", "regular") => "b",
+        ("lmromandemi", "oblique") => "bo",
+        ("lmromanunsl", "regular") => "u",
+        ("lmsans", "regular") => "ss",
+        ("lmsans", "oblique") => "sso",
+        ("lmsans", "bold") => "ssbx",
+        ("lmsans", "boldoblique") => "ssbo",
+        ("lmsansdemicond", "regular") => "ssdc",
+        ("lmsansdemicond", "oblique") => "ssdo",
+        ("lmmono", "regular") => "tt",
+        ("lmmono", "italic") => "tti",
+        ("lmmonoslant", "regular") => "tto",
+        ("lmmonocaps", "regular") => "tcsc",
+        ("lmmonocaps", "oblique") => "tcso",
+        ("lmmonolt", "bold") => "tk",
+        ("lmmonolt", "boldoblique") => "tko",
         _ => return None,
     };
     Some(format!("ec-lm{series}{d}.tfm"))
+}
+
+/// The Latin Modern OpenType file drawing an NFSS shape at `size_pt`, with
+/// the design sizes of `t1lmr.fd` (`m/n` `<-5.5>`5 ... `<11-15>`12 `<15->`17,
+/// `bx/n` up to 12, `m/it` 7-12, `m/sl` 8-17), `t1lmss.fd` (`m/n`, `m/sl`:
+/// `<-8.5>`8 `<8.5-9.5>`9 `<9.5-11>`10 `<11-15.5>`12 `<15.5->`17) and
+/// `t1lmtt.fd` (`m/n`: 8, 9, 10, `<11->`12); every other shape has one
+/// 10 pt design. The note is set when Latin Modern has no design for the
+/// shape (the EC fonts' `bx/sc` `ecxc`, for example) and a neighbour is
+/// drawn instead.
+pub fn latin_modern_outline(key: FontKey, size_pt: f64) -> (String, Option<&'static str>) {
+    use FamilyKind::{Rm, Sf, Tt};
+    use Series::{Bx, Sbc, B, M};
+    use Shape::{Ui, It, Sc, Scit, Scsl, Sl, N};
+    const RM: [(f64, u32); 7] = [(5.5, 5), (6.5, 6), (7.5, 7), (8.5, 8), (9.5, 9), (11.0, 10), (15.0, 12)];
+    const RM_IT: [(f64, u32); 4] = [(7.5, 7), (8.5, 8), (9.5, 9), (11.0, 10)];
+    const RM_SL: [(f64, u32); 4] = [(8.5, 8), (9.5, 9), (11.0, 10), (15.0, 12)];
+    const SS: [(f64, u32); 4] = [(8.5, 8), (9.5, 9), (11.0, 10), (15.5, 12)];
+    const TT: [(f64, u32); 3] = [(8.5, 8), (9.5, 9), (11.0, 10)];
+    const NO_BOLD_CAPS: &str = "Latin Modern has no bold small-caps design; the medium one is drawn";
+    let pick = |bounds: &[(f64, u32)], last: u32| bounds.iter().find(|(b, _)| size_pt < *b).map_or(last, |(_, d)| *d);
+    let exact = |file: String| (file, None);
+    match (key.family, key.series, key.shape) {
+        (Rm, M, N) => exact(format!("lmroman{}-regular.otf", pick(&RM, 17))),
+        (Rm, Bx, N) => exact(format!("lmroman{}-bold.otf", pick(&RM[..6], 12))),
+        (Rm, M, It) => exact(format!("lmroman{}-italic.otf", pick(&RM_IT, 12))),
+        (Rm, Bx, It) => exact("lmroman10-bolditalic.otf".into()),
+        (Rm, M, Sl) => exact(format!("lmromanslant{}-regular.otf", pick(&RM_SL, 17))),
+        (Rm, Bx, Sl) => exact("lmromanslant10-bold.otf".into()),
+        (Rm, M, Sc) => exact("lmromancaps10-regular.otf".into()),
+        (Rm, M, Scsl) => exact("lmromancaps10-oblique.otf".into()),
+        (Rm, M, Scit) => ("lmromancaps10-oblique.otf".into(), Some("Latin Modern has no italic small-caps design; the slanted one is drawn")),
+        (Rm, M, Ui) => exact("lmromanunsl10-regular.otf".into()),
+        (Rm, B, N) => exact("lmromandemi10-regular.otf".into()),
+        (Rm, B, Sl | It) => exact("lmromandemi10-oblique.otf".into()),
+        (Rm, Bx | B, Sc) => ("lmromancaps10-regular.otf".into(), Some(NO_BOLD_CAPS)),
+        (Rm, Bx | B, Scsl | Scit) => ("lmromancaps10-oblique.otf".into(), Some(NO_BOLD_CAPS)),
+        (Sf, M, N) => exact(format!("lmsans{}-regular.otf", pick(&SS, 17))),
+        (Sf, M, Sl | It) => exact(format!("lmsans{}-oblique.otf", pick(&SS, 17))),
+        (Sf, Bx | B, N) => exact("lmsans10-bold.otf".into()),
+        (Sf, Bx | B, Sl | It) => exact("lmsans10-boldoblique.otf".into()),
+        (Sf, Sbc, N) => exact("lmsansdemicond10-regular.otf".into()),
+        (Sf, Sbc, Sl | It) => exact("lmsansdemicond10-oblique.otf".into()),
+        (Tt, M, N) => exact(format!("lmmono{}-regular.otf", pick(&TT, 12))),
+        (Tt, M, It) => exact("lmmono10-italic.otf".into()),
+        (Tt, M, Sl) => exact("lmmonoslant10-regular.otf".into()),
+        (Tt, M, Sc) => exact("lmmonocaps10-regular.otf".into()),
+        (Tt, M, Scsl) => exact("lmmonocaps10-oblique.otf".into()),
+        (Tt, B | Bx, N) => exact("lmmonolt10-bold.otf".into()),
+        (Tt, B | Bx, Sl | It) => exact("lmmonolt10-boldoblique.otf".into()),
+        _ => {
+            let roman = FontKey::new(Rm, if key.bold() { Bx } else { M }, if key.slanted() { It } else { N });
+            (latin_modern_outline(roman, size_pt).0, Some("no Latin Modern design for this font shape; the roman one of the same weight and slant is drawn"))
+        }
+    }
+}
+
+/// How a metrics-fallback note names the family of a TFM file.
+fn metric_family_label(tfm: &str) -> &'static str {
+    if tfm.starts_with("ec-lm") {
+        "Latin Modern"
+    } else if ["ecss", "ecsi", "ecsx", "ecso"].iter().any(|p| tfm.starts_with(p)) {
+        "T1 cmss"
+    } else if ["ectt", "ecst", "ecit", "ectc"].iter().any(|p| tfm.starts_with(p)) {
+        "T1 cmtt"
+    } else {
+        "T1 cmr"
+    }
 }
 
 /// Where TeX Live keeps the EC metrics (`jknappen/ec`), relative to a
@@ -313,22 +428,52 @@ const EC_SIZES: [(f64, &str); 14] = [
     (35.83, "3583"),
 ];
 
-/// The EC metric file `t1cmr.fd` loads for a text role at `size_pt`:
-/// `m/n` `ecrm`, `bx/n` `ecbx`, `m/it` `ecti`, `bx/it` `ecbi`, `m/sl`
-/// `ecsl`, at the declared size nearest `size_pt` (an undeclared size is a
-/// LaTeX size substitution to the nearest one). `None` for math.
+/// The EC metric file the T1 Computer Modern `.fd` files load for a text
+/// role at `size_pt`, at the declared size nearest `size_pt` (an undeclared
+/// size is a LaTeX size substitution to the nearest one):
+///
+/// * `t1cmr.fd`: `m/n` `ecrm`, `m/sl` `ecsl`, `m/it` `ecti`, `m/sc` `eccc`,
+///   `bx/n` `ecbx`, `b/n` `ecrb`, `bx/it` `ecbi`, `bx/sl` `ecbl`, `bx/sc`
+///   `ecxc`, `m/ui` `ecui`, `m/scsl` `ecsc`, `bx/scsl` and `b/scsl` `ecoc`;
+/// * `t1cmss.fd`: `m/n` `ecss`, `m/sl` and `m/it` `ecsi`, `bx/n` `ecsx`,
+///   `bx/it` and `bx/sl` `ecso`;
+/// * `t1cmtt.fd`: `m/n` `ectt`, `m/sl` `ecst`, `m/it` `ecit`, `m/sc` `ectc`.
+///
+/// The sans and typewriter families declare `<5><6><7><8>#50800`: every
+/// size up to 8 pt uses the 8 pt file. `None` for math and for shapes the
+/// files do not declare (they are substituted before a font is loaded).
 pub fn ec_tfm_file(role: Role, size_pt: f64) -> Option<String> {
-    let prefix = match role {
-        Role::Math => return None,
-        Role::Text { bold: false, italic: false } => "ecrm",
-        Role::Text { bold: true, italic: false } => "ecbx",
-        Role::Text { bold: false, italic: true } => "ecti",
-        Role::Text { bold: true, italic: true } => "ecbi",
-        Role::Slanted => "ecsl",
+    use FamilyKind::{Rm, Sf, Tt};
+    use Series::{Bx, B, M};
+    use Shape::{Ui, It, Sc, Scsl, Sl, N};
+    let key = role.key()?;
+    let (prefix, small_sizes_share_0800) = match (key.family, key.series, key.shape) {
+        (Rm, M, N) => ("ecrm", false),
+        (Rm, M, Sl) => ("ecsl", false),
+        (Rm, M, It) => ("ecti", false),
+        (Rm, M, Sc) => ("eccc", false),
+        (Rm, M, Ui) => ("ecui", false),
+        (Rm, M, Scsl) => ("ecsc", false),
+        (Rm, Bx, N) => ("ecbx", false),
+        (Rm, B, N) => ("ecrb", false),
+        (Rm, Bx, It) => ("ecbi", false),
+        (Rm, Bx, Sl) => ("ecbl", false),
+        (Rm, Bx, Sc) => ("ecxc", false),
+        (Rm, Bx | B, Scsl) => ("ecoc", false),
+        (Sf, M, N) => ("ecss", true),
+        (Sf, M, Sl | It) => ("ecsi", true),
+        (Sf, Bx, N) => ("ecsx", true),
+        (Sf, Bx, Sl | It) => ("ecso", true),
+        (Tt, M, N) => ("ectt", true),
+        (Tt, M, Sl) => ("ecst", true),
+        (Tt, M, It) => ("ecit", true),
+        (Tt, M, Sc) => ("ectc", true),
+        _ => return None,
     };
-    let (_, suffix) = EC_SIZES
+    let (size, suffix) = EC_SIZES
         .iter()
         .min_by(|a, b| (a.0 - size_pt).abs().total_cmp(&(b.0 - size_pt).abs()))?;
+    let suffix = if small_sizes_share_0800 && *size <= 8.0 { "0800" } else { suffix };
     Some(format!("{prefix}{suffix}.tfm"))
 }
 
@@ -506,6 +651,10 @@ pub struct Resolved {
     /// returned is then Times, and the caller must publish this reason as
     /// an error diagnostic: the output is not the requested document.
     pub substituted: Option<String>,
+    /// Set when the face's outlines are a stand-in for the requested design
+    /// (no Latin Modern design exists, or its file is not installed) while
+    /// the metrics are the requested ones; the caller reports it once.
+    pub note: Option<String>,
 }
 
 impl FontSet {
@@ -690,118 +839,80 @@ impl FontSet {
         self.faces.borrow().iter().find(|f| &*f.font_id == font_id).cloned()
     }
 
-    /// Latin Modern optical-size file for a role, per `t1lmr.fd` (the
-    /// design-size boundaries LaTeX uses for `ec-lmr*`).
+    /// Latin Modern file for a role at `size_pt` ([`latin_modern_outline`]:
+    /// the design-size boundaries of `t1lmr.fd`/`t1lmss.fd`/`t1lmtt.fd`).
     pub fn latin_modern_file(role: Role, size_pt: f64) -> String {
-        let s = size_pt;
-        match role {
-            Role::Math => "latinmodern-math.otf".to_string(),
-            Role::Text { bold: false, italic: false } => {
-                let d = if s < 5.5 {
-                    5
-                } else if s < 6.5 {
-                    6
-                } else if s < 7.5 {
-                    7
-                } else if s < 8.5 {
-                    8
-                } else if s < 9.5 {
-                    9
-                } else if s < 11.0 {
-                    10
-                } else if s < 15.0 {
-                    12
-                } else {
-                    17
-                };
-                format!("lmroman{d}-regular.otf")
-            }
-            Role::Text { bold: true, italic: false } => {
-                let d = if s < 5.5 {
-                    5
-                } else if s < 6.5 {
-                    6
-                } else if s < 7.5 {
-                    7
-                } else if s < 8.5 {
-                    8
-                } else if s < 9.5 {
-                    9
-                } else if s < 11.0 {
-                    10
-                } else {
-                    12
-                };
-                format!("lmroman{d}-bold.otf")
-            }
-            Role::Text { bold: false, italic: true } => {
-                let d = if s < 7.5 {
-                    7
-                } else if s < 8.5 {
-                    8
-                } else if s < 9.5 {
-                    9
-                } else if s < 11.0 {
-                    10
-                } else {
-                    12
-                };
-                format!("lmroman{d}-italic.otf")
-            }
-            Role::Text { bold: true, italic: true } => "lmroman10-bolditalic.otf".to_string(),
-            // t1lmr.fd `m/sl`: <-8.5> 8, <8.5-9.5> 9, <9.5-11> 10, <11-15> 12, <15-> 17.
-            Role::Slanted => {
-                let d = if s < 8.5 {
-                    8
-                } else if s < 9.5 {
-                    9
-                } else if s < 11.0 {
-                    10
-                } else if s < 15.0 {
-                    12
-                } else {
-                    17
-                };
-                format!("lmromanslant{d}-regular.otf")
-            }
+        match role.key() {
+            None => "latinmodern-math.otf".to_string(),
+            Some(key) => latin_modern_outline(key, size_pt).0,
         }
     }
 
+    /// The Core 14 face of a role under `\usepackage{times}`: Times for the
+    /// roman family (slanted shapes as italic, small caps as roman),
+    /// Helvetica for `\sffamily` and Courier for `\ttfamily` (the `helvet`/
+    /// `courier` families `times.sty` selects; Core 14 metrics have no
+    /// bold or oblique Helvetica/Courier here).
     fn core14_for(role: Role) -> Core14 {
-        match role {
-            Role::Math => Core14::Symbol,
-            Role::Text { bold: false, italic: false } => Core14::TimesRoman,
-            Role::Text { bold: true, italic: false } => Core14::TimesBold,
-            Role::Text { bold: false, italic: true } => Core14::TimesItalic,
-            Role::Text { bold: true, italic: true } => Core14::TimesBoldItalic,
-            Role::Slanted => Core14::TimesItalic,
+        let Some(key) = role.key() else { return Core14::Symbol };
+        match (key.family, key.bold(), key.slanted()) {
+            (FamilyKind::Sf, ..) => Core14::Helvetica,
+            (FamilyKind::Tt, ..) => Core14::Courier,
+            (FamilyKind::Rm, false, false) => Core14::TimesRoman,
+            (FamilyKind::Rm, true, false) => Core14::TimesBold,
+            (FamilyKind::Rm, false, true) => Core14::TimesItalic,
+            (FamilyKind::Rm, true, true) => Core14::TimesBoldItalic,
         }
     }
 
     /// Resolves (and loads once) the face for `family`/`role` at `size_pt`.
+    ///
+    /// A text shape whose Latin Modern file is not installed (a sans,
+    /// typewriter or small-caps design missing from a bundle) keeps its own
+    /// metrics and draws the roman design of the same weight and slant, with
+    /// [`Resolved::note`] saying so; only a missing roman design falls back
+    /// to Times and is an error.
     pub fn resolve(&self, family: Family, role: Role, size_pt: f64) -> Resolved {
-        match (family, role) {
-            (Family::Times, Role::Text { .. } | Role::Slanted) => Resolved {
+        let key = role.key();
+        if family == Family::Times && key.is_some() {
+            return Resolved {
                 face: self.core14(Self::core14_for(role)),
                 substituted: None,
-            },
-            (_, _) => {
-                let file = Self::latin_modern_file(role, size_pt);
-                let loaded = match (family, ec_tfm_file(role, size_pt)) {
-                    (Family::ComputerModern, Some(ec)) => self.otf_with_tfm(&file, Some(&ec)),
-                    _ => self.otf(&file),
-                };
-                match loaded {
-                    Ok(f) => Resolved {
-                        face: f,
+                note: None,
+            };
+        }
+        let file = Self::latin_modern_file(role, size_pt);
+        let note = key.and_then(|k| latin_modern_outline(k, size_pt).1).map(|n| format!("{file}: {n}"));
+        let ec = if family == Family::ComputerModern { ec_tfm_file(role, size_pt) } else { None };
+        let loaded = match &ec {
+            Some(ec) => self.otf_with_tfm(&file, Some(ec)),
+            None => self.otf(&file),
+        };
+        let reason = match loaded {
+            Ok(f) => return Resolved { face: f, substituted: None, note },
+            Err(reason) => reason,
+        };
+        if let Some(key) = key {
+            let roman = FontKey::new(FamilyKind::Rm, if key.bold() { Series::Bx } else { Series::M }, if key.slanted() { Shape::It } else { Shape::N });
+            let roman_file = latin_modern_outline(roman, size_pt).0;
+            if roman_file != file {
+                let metrics = ec.clone().or_else(|| latin_modern_tfm(file.trim_end_matches(".otf")));
+                if let Ok(face) = self.otf_with_tfm(&roman_file, metrics.as_deref()) {
+                    return Resolved {
+                        face,
                         substituted: None,
-                    },
-                    Err(reason) => Resolved {
-                        face: self.core14(Self::core14_for(role)),
-                        substituted: Some(format!("{file}: {reason}")),
-                    },
+                        note: Some(format!(
+                            "{file}: {reason}; outlines drawn from {roman_file} with the {} metrics",
+                            metrics.as_deref().unwrap_or("OpenType")
+                        )),
+                    };
                 }
             }
+        }
+        Resolved {
+            face: self.core14(Self::core14_for(role)),
+            substituted: Some(format!("{file}: {reason}")),
+            note: None,
         }
     }
 
@@ -906,7 +1017,8 @@ impl FontSet {
                 Err(_) => {
                     let lm = latin_modern_tfm(&stem);
                     metrics_fallback = Some(format!(
-                        "{ec} (T1 cmr metrics) not found; {} used, so line breaks can differ from pdfLaTeX",
+                        "{ec} ({} metrics) not found; {} used, so line breaks can differ from pdfLaTeX",
+                        metric_family_label(ec),
                         lm.as_deref().unwrap_or("OpenType advances")
                     ));
                     lm
