@@ -441,12 +441,17 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 ///   exact `\vskip`s and `\thanks` are not.
 /// - `\vfill`: dropped (the page builder has no stretchable vertical
 ///   glue), reported on the next block.
-fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>) {
+/// - two-column `abstract` (`twocolumn`): article's `\section*{\abstractname}`
+///   heading before the body (the compiler sets the body as plain text).
+fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool, twocolumn: bool) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>) {
     use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextFamily, TextStyle as CStyle};
     let mut out: Vec<CBlock> = Vec::with_capacity(blocks.len());
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut titles: Vec<StashedTitle> = Vec::new();
     let mut pending_vfill = 0usize;
+    // End of the previous block's material, for `\begin{abstract}` in the
+    // gap before the next one.
+    let mut prev_end: Option<Span> = None;
     let sized = |inlines: &[Inline], size: FontSizeLevel| -> Vec<Inline> {
         inlines
             .iter()
@@ -470,6 +475,32 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
             CBlock::Verbatim { span, .. } | CBlock::TableOfContents { span } | CBlock::Rule { span } => Some(*span),
             _ => inlines_of(block).iter().map(inline_span).next(),
         };
+        if let (true, Some(f)) = (twocolumn, first) {
+            let text = texts.get(f.document.0).copied().unwrap_or("");
+            let from = prev_end.filter(|p| p.document == f.document && p.end <= f.start).map_or(0, |p| p.end);
+            if let Some(at) = text.get(from..f.start).and_then(|gap| begin_env_in(gap, "abstract")) {
+                let span = Span::in_document(f.document, from + at, from + at + "\\begin{abstract}".len());
+                out.push(CBlock::Heading {
+                    level: 1,
+                    number: String::new(),
+                    number_span: span,
+                    content: vec![Inline::Text {
+                        text: "Abstract".to_string(),
+                        span,
+                        style: CStyle::BOLD,
+                        space_before: true,
+                    }],
+                });
+            }
+        }
+        let last = match block {
+            CBlock::Verbatim { span, .. } | CBlock::TableOfContents { span } | CBlock::Rule { span } => Some(*span),
+            CBlock::TitleBlock { title, authors, date } => title.iter().chain(authors).chain(date.iter().flatten()).map(inline_span).last(),
+            _ => inlines_of(block).iter().map(inline_span).last(),
+        };
+        if last.is_some() {
+            prev_end = last;
+        }
         if pending_vfill > 0 {
             if let Some(at) = first {
                 limitations.push((
@@ -624,6 +655,19 @@ fn tabular_rows(items: Vec<Item>) -> Vec<Vec<Item>> {
     rows
 }
 
+/// Byte offset of `\begin{<env>}` in `gap` (outside comments).
+fn begin_env_in(gap: &str, env: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(at) = find_command(&gap[from..], "begin") {
+        let abs = from + at;
+        if gap[abs + "\\begin".len()..].strip_prefix('{').and_then(|r| r.strip_prefix(env)).is_some_and(|r| r.starts_with('}')) {
+            return Some(abs);
+        }
+        from = abs + 1;
+    }
+    None
+}
+
 impl Labels {
     /// The `\ref` values of every `\label` in the parse (known before layout).
     pub fn from_parsed(parsed: &Parsed) -> Labels {
@@ -720,6 +764,7 @@ pub fn adapt_cached(
     };
     let items_for = |inlines: &[Inline], heading: bool| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, size, heading, cache) };
     let mut blocks = Vec::new();
+    let twocolumn = style.class_geometry.as_ref().is_some_and(|d| d.flags.twocolumn);
     // Page-style, mark, `\chapter` and `\noindent` commands in the entry
     // document's body, read from the source: the compiler accepts the first
     // two as no-ops, sets the arguments of marks and `\chapter` as body text
@@ -737,7 +782,7 @@ pub fn adapt_cached(
     let maketitles = commands.iter().filter(|c| matches!(c.kind, BodyKind::MakeTitle)).count();
     let title_blocks = parsed.blocks.iter().filter(|b| matches!(b, CBlock::TitleBlock { .. })).count();
     let stash_titles = style.class_geometry.is_some() && maketitles == title_blocks && maketitles > 0;
-    let (mut lowered, mut limitations, stashed) = lower_blocks(texts, &parsed.blocks, stash_titles);
+    let (mut lowered, mut limitations, stashed) = lower_blocks(texts, &parsed.blocks, stash_titles, twocolumn);
     let mut stashed = stashed.into_iter();
     let title_of = |(title, authors, date): StashedTitle, span: Span| Block::Title {
         title: items_for(&title, false),
@@ -1367,7 +1412,10 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
             if let Some(gap) = first.and_then(gap_before) {
                 if let Some(env) = gap_has_list_end(gap) {
                     let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
-                    let seps = list_seps(src, env, 1, size, style);
+                    // The closing list's own `\begin` options (still open at
+                    // the end of the previous item's material).
+                    let options = prev_end.map(|p| list_stack_at(src, p.end)).and_then(|st| st.last().filter(|(e, _)| *e == env).map(|(_, o)| *o)).unwrap_or("");
+                    let seps = list_seps(src, env, options, 1, size, style);
                     addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
                     if let Some(p) = prev_end {
                         endlist_adjust = list_end_adjust(src, p.end, gap, size, style);
@@ -1382,11 +1430,12 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                 let src = texts.get(at.document.0).copied().unwrap_or("");
                 let stack = list_stack_at(src, at.start);
                 let env = stack.last().map_or("enumerate", |(env, _)| env);
-                let seps = list_seps(src, env, stack.len().max(1), size, style);
+                let options = stack.last().map_or("", |(_, o)| o);
+                let seps = list_seps(src, env, options, stack.len().max(1), size, style);
                 // `\@outerparskip`: the `\parskip` in force when `\begin`
                 // was read — the enclosing list's `\parsep` when nested.
                 let outer_parskip = match stack.len() {
-                    n if n > 1 => list_seps(src, stack[n - 2].0, n - 1, size, style).parsep,
+                    n if n > 1 => list_seps(src, stack[n - 2].0, stack[n - 2].1, n - 1, size, style).parsep,
                     _ => style.parskip.natural,
                 };
                 if label.is_some() {
@@ -1893,7 +1942,9 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
 /// The vertical glue of one list level, in points at the class size:
 /// article's `\@list<i>` values (`document-style`), with the source's
 /// `\setlist[<env>]{topsep=..,itemsep=..,parsep=..,partopsep=..}`
-/// overrides for `env` (enumitem evaluates `em`/`ex` in `\normalsize`).
+/// overrides for `env` and then the list's own `\begin{<env>}[<options>]`
+/// keys (enumitem evaluates `em`/`ex` in `\normalsize`; `nosep` zeroes
+/// all four skips, `noitemsep` `\itemsep` and `\parsep`).
 #[derive(Debug, Clone, Copy)]
 struct ListSeps {
     topsep: f64,
@@ -1904,7 +1955,7 @@ struct ListSeps {
     parsep_skip: crate::style::Skip,
 }
 
-fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
+fn list_seps(source: &str, env: &str, options: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
     let base = match size {
         12 => flashtex_document_style::BaseSize::Pt12,
         11 => flashtex_document_style::BaseSize::Pt11,
@@ -1926,11 +1977,26 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
         seps.parsep = style.parsep.natural;
         seps.parsep_skip = style.parsep;
     }
-    for (envs, keys) in setlist_calls(source) {
-        if !setlist_names(envs, env) {
-            continue;
-        }
+    // A `\begin` option list without `=` and without enumitem's spacing
+    // shorthands is a shortlabels template (`[(a)]`), not keys.
+    let begin_keys = options.contains('=') || list_keys(options).any(|(k, _)| matches!(k, "nosep" | "noitemsep"));
+    let calls = setlist_calls(source);
+    let all_keys = calls.iter().filter(|(envs, _)| setlist_names(envs, env)).map(|(_, keys)| *keys).chain(begin_keys.then_some(options));
+    for keys in all_keys {
         for (key, value) in list_keys(keys) {
+            match key {
+                "nosep" => {
+                    (seps.topsep, seps.partopsep, seps.itemsep, seps.parsep) = (0.0, 0.0, 0.0, 0.0);
+                    seps.parsep_skip = crate::style::Skip::fixed(0.0);
+                    continue;
+                }
+                "noitemsep" => {
+                    (seps.itemsep, seps.parsep) = (0.0, 0.0);
+                    seps.parsep_skip = crate::style::Skip::fixed(0.0);
+                    continue;
+                }
+                _ => {}
+            }
             let Some(pt) = parse_dimen(value, size) else { continue };
             match key {
                 "topsep" => seps.topsep = pt,
@@ -1970,10 +2036,10 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
             continue;
         }
         let stack = list_stack_at(source, gap_start + abs);
-        let Some(&(env, _)) = stack.last() else { continue };
+        let Some(&(env, options)) = stack.last() else { continue };
         let depth = stack.len();
-        let parsep = list_seps(source, env, depth, size, style).parsep;
-        let outer = if depth > 1 { list_seps(source, stack[depth - 2].0, depth - 1, size, style).parsep } else { style.parskip.natural };
+        let parsep = list_seps(source, env, options, depth, size, style).parsep;
+        let outer = if depth > 1 { list_seps(source, stack[depth - 2].0, stack[depth - 2].1, depth - 1, size, style).parsep } else { style.parskip.natural };
         adjust += parsep - outer;
     }
     adjust
@@ -2263,7 +2329,7 @@ enum StyleKind {
 /// so a size is never applied twice. The compiler's own table is the same
 /// one, but it resolves against its integer class size where the pipeline
 /// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
-fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+pub(crate) fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
     use flashtex_compiler::parser::FontSizeLevel as L;
     let Some(level) = level else { return 0 };
     // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
@@ -3651,6 +3717,37 @@ fn tex_ligatures(chars: Vec<(char, CharSrc)>) -> Vec<(char, CharSrc)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enumitem_nosep_zeroes_list_skips() {
+        let style = Stylesheet::article(10, Stylesheet::family_of(&[]), None);
+        let plain = list_seps("", "itemize", "", 1, 10, &style);
+        assert!(plain.itemsep > 0.0 && plain.topsep > 0.0);
+        let nosep = list_seps("", "itemize", "nosep,leftmargin=1.5em", 1, 10, &style);
+        assert_eq!((nosep.topsep, nosep.partopsep, nosep.itemsep, nosep.parsep), (0.0, 0.0, 0.0, 0.0));
+        let noitemsep = list_seps("", "itemize", "noitemsep", 1, 10, &style);
+        assert_eq!((noitemsep.itemsep, noitemsep.parsep), (0.0, 0.0));
+        assert_eq!(noitemsep.topsep, plain.topsep);
+        // A shortlabels template is not a key list.
+        assert_eq!(list_seps("", "enumerate", "(a)", 1, 10, &style).itemsep, list_seps("", "enumerate", "", 1, 10, &style).itemsep);
+    }
+
+    #[test]
+    fn two_column_abstract_is_a_starred_section() {
+        let src = "\\documentclass[twocolumn]{article}\n\\title{T}\n\\author{A}\n\\date{}\n\\begin{document}\n\\maketitle\n\\begin{abstract}\nBody text.\n\\end{abstract}\nMore.\n\\end{document}\n";
+        let parsed = flashtex_compiler::parser::parse(src);
+        let (out, _, _) = lower_blocks(&[src], &parsed.blocks, false, true);
+        let heading = out.iter().find(|b| matches!(b, CBlock::Heading { level: 1, .. })).expect("abstract heading");
+        match heading {
+            CBlock::Heading { number, content, .. } => {
+                assert!(number.is_empty());
+                assert!(matches!(&content[0], Inline::Text { text, .. } if text == "Abstract"));
+            }
+            _ => unreachable!(),
+        }
+        let (one_column, _, _) = lower_blocks(&[src], &parsed.blocks, false, false);
+        assert!(!one_column.iter().any(|b| matches!(b, CBlock::Heading { .. })));
+    }
 
     fn items(src: &str) -> Vec<Item> {
         let parsed = flashtex_compiler::parser::parse(src);

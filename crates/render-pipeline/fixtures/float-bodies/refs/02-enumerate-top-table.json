@@ -1,0 +1,198 @@
+{
+ "fixture": "02-enumerate-top-table.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "1.",
+    "x": 86.307,
+    "y_top": 80.236
+   },
+   {
+    "text": "One",
+    "x": 101.2701,
+    "y_top": 80.236
+   },
+   {
+    "text": "step.",
+    "x": 125.9791,
+    "y_top": 80.236
+   },
+   {
+    "text": "2.",
+    "x": 86.307,
+    "y_top": 104.644
+   },
+   {
+    "text": "Two",
+    "x": 101.2701,
+    "y_top": 104.644
+   },
+   {
+    "text": "steps.",
+    "x": 126.6271,
+    "y_top": 104.644
+   },
+   {
+    "text": "3.",
+    "x": 86.307,
+    "y_top": 129.053
+   },
+   {
+    "text": "Three",
+    "x": 101.2701,
+    "y_top": 129.053
+   },
+   {
+    "text": "steps.",
+    "x": 135.0842,
+    "y_top": 129.053
+   },
+   {
+    "text": "Table",
+    "x": 191.218,
+    "y_top": 166.412
+   },
+   {
+    "text": "1:",
+    "x": 223.4134,
+    "y_top": 166.412
+   },
+   {
+    "text": "An",
+    "x": 237.7189,
+    "y_top": 166.412
+   },
+   {
+    "text": "enumerate",
+    "x": 256.8951,
+    "y_top": 166.412
+   },
+   {
+    "text": "at",
+    "x": 313.7994,
+    "y_top": 166.412
+   },
+   {
+    "text": "the",
+    "x": 328.1146,
+    "y_top": 166.412
+   },
+   {
+    "text": "top",
+    "x": 348.2711,
+    "y_top": 166.412
+   },
+   {
+    "text": "of",
+    "x": 369.0779,
+    "y_top": 166.412
+   },
+   {
+    "text": "a",
+    "x": 382.4175,
+    "y_top": 166.412
+   },
+   {
+    "text": "table.",
+    "x": 392.1682,
+    "y_top": 166.412
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 200.617
+   },
+   {
+    "text": "before",
+    "x": 99.3176,
+    "y_top": 200.617
+   },
+   {
+    "text": "the",
+    "x": 134.4301,
+    "y_top": 200.617
+   },
+   {
+    "text": "float",
+    "x": 154.5865,
+    "y_top": 200.617
+   },
+   {
+    "text": "in",
+    "x": 181.2586,
+    "y_top": 200.617
+   },
+   {
+    "text": "its",
+    "x": 194.9114,
+    "y_top": 200.617
+   },
+   {
+    "text": "own",
+    "x": 211.2422,
+    "y_top": 200.617
+   },
+   {
+    "text": "paragraph.",
+    "x": 235.6284,
+    "y_top": 200.617
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 215.063
+   },
+   {
+    "text": "after",
+    "x": 99.3176,
+    "y_top": 215.063
+   },
+   {
+    "text": "the",
+    "x": 126.9533,
+    "y_top": 215.063
+   },
+   {
+    "text": "float,",
+    "x": 147.1097,
+    "y_top": 215.063
+   },
+   {
+    "text": "in",
+    "x": 177.0336,
+    "y_top": 215.063
+   },
+   {
+    "text": "a",
+    "x": 190.6864,
+    "y_top": 215.063
+   },
+   {
+    "text": "paragraph",
+    "x": 200.4371,
+    "y_top": 215.063
+   },
+   {
+    "text": "of",
+    "x": 256.3755,
+    "y_top": 215.063
+   },
+   {
+    "text": "its",
+    "x": 269.7031,
+    "y_top": 215.063
+   },
+   {
+    "text": "own.",
+    "x": 286.022,
+    "y_top": 215.063
+   }
+  ]
+ ],
+ "rules": [
+  []
+ ]
+}

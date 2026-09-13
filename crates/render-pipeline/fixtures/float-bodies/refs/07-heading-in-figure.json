@@ -1,0 +1,163 @@
+{
+ "fixture": "07-heading-in-figure.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "before",
+    "x": 99.3176,
+    "y_top": 83.955
+   },
+   {
+    "text": "the",
+    "x": 134.4301,
+    "y_top": 83.955
+   },
+   {
+    "text": "float",
+    "x": 154.5865,
+    "y_top": 83.955
+   },
+   {
+    "text": "in",
+    "x": 181.2586,
+    "y_top": 83.955
+   },
+   {
+    "text": "its",
+    "x": 194.9114,
+    "y_top": 83.955
+   },
+   {
+    "text": "own",
+    "x": 211.2422,
+    "y_top": 83.955
+   },
+   {
+    "text": "paragraph.",
+    "x": 235.6284,
+    "y_top": 83.955
+   },
+   {
+    "text": "Inside",
+    "x": 72.0,
+    "y_top": 110.036
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 132.203
+   },
+   {
+    "text": "under",
+    "x": 99.3176,
+    "y_top": 132.203
+   },
+   {
+    "text": "the",
+    "x": 132.4814,
+    "y_top": 132.203
+   },
+   {
+    "text": "heading.",
+    "x": 152.6378,
+    "y_top": 132.203
+   },
+   {
+    "text": "Figure",
+    "x": 224.629,
+    "y_top": 156.611
+   },
+   {
+    "text": "1:",
+    "x": 261.5299,
+    "y_top": 156.611
+   },
+   {
+    "text": "A",
+    "x": 275.8355,
+    "y_top": 156.611
+   },
+   {
+    "text": "heading",
+    "x": 288.52,
+    "y_top": 156.611
+   },
+   {
+    "text": "in",
+    "x": 332.0895,
+    "y_top": 156.611
+   },
+   {
+    "text": "a",
+    "x": 345.7543,
+    "y_top": 156.611
+   },
+   {
+    "text": "figure.",
+    "x": 355.505,
+    "y_top": 156.611
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 185.005
+   },
+   {
+    "text": "after",
+    "x": 99.3176,
+    "y_top": 185.005
+   },
+   {
+    "text": "the",
+    "x": 126.9533,
+    "y_top": 185.005
+   },
+   {
+    "text": "float,",
+    "x": 147.1097,
+    "y_top": 185.005
+   },
+   {
+    "text": "in",
+    "x": 177.0336,
+    "y_top": 185.005
+   },
+   {
+    "text": "a",
+    "x": 190.6864,
+    "y_top": 185.005
+   },
+   {
+    "text": "paragraph",
+    "x": 200.4371,
+    "y_top": 185.005
+   },
+   {
+    "text": "of",
+    "x": 256.3755,
+    "y_top": 185.005
+   },
+   {
+    "text": "its",
+    "x": 269.7031,
+    "y_top": 185.005
+   },
+   {
+    "text": "own.",
+    "x": 286.022,
+    "y_top": 185.005
+   }
+  ]
+ ],
+ "rules": [
+  []
+ ]
+}

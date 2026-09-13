@@ -1,0 +1,21 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{tikz}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+Text before the float in its own paragraph.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\fill (0,0) rectangle (2,1);
+\draw (0,-0.5) -- (3,-0.5);
+\end{tikzpicture}
+\caption{A TikZ picture.}
+\end{figure}
+
+Text after the float, in a paragraph of its own.
+\end{document}

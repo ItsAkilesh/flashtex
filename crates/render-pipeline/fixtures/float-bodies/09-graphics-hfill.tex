@@ -1,0 +1,17 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage[demo]{graphicx}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+Text before the float in its own paragraph.
+
+\begin{figure}[h]
+\includegraphics[width=2in,height=1in]{a}\hfill\includegraphics[width=2in,height=1in]{b}
+\caption{Two graphics apart.}
+\end{figure}
+
+Text after the float, in a paragraph of its own.
+\end{document}

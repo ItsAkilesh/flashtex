@@ -166,7 +166,11 @@ pub fn render_cached(
             (Vec::new(), Vec::new())
         };
         diagnostics.extend(float_diagnostics);
-        let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
+        // The context reads the original sources: outside float environments
+        // they equal the masked texts, and a float body's pictures are read
+        // from its own bytes.
+        let originals: Vec<&str> = documents.iter().map(|d| d.text).collect();
+        let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, if any_floats { &originals } else { &texts });
         let laid = typeset::build_with_floats(&mut ctx, &doc, cache, &float_specs);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {

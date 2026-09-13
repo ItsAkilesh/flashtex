@@ -1,0 +1,208 @@
+{
+ "fixture": "03-description-after-text.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 81.963
+   },
+   {
+    "text": "before",
+    "x": 95.2467,
+    "y_top": 81.963
+   },
+   {
+    "text": "the",
+    "x": 125.1634,
+    "y_top": 81.963
+   },
+   {
+    "text": "float",
+    "x": 142.319,
+    "y_top": 81.963
+   },
+   {
+    "text": "in",
+    "x": 165.0088,
+    "y_top": 81.963
+   },
+   {
+    "text": "its",
+    "x": 176.6392,
+    "y_top": 81.963
+   },
+   {
+    "text": "own",
+    "x": 190.529,
+    "y_top": 81.963
+   },
+   {
+    "text": "paragraph.",
+    "x": 211.2791,
+    "y_top": 81.963
+   },
+   {
+    "text": "A",
+    "x": 72.0,
+    "y_top": 102.718
+   },
+   {
+    "text": "paragraph",
+    "x": 82.7895,
+    "y_top": 102.718
+   },
+   {
+    "text": "of",
+    "x": 130.4426,
+    "y_top": 102.718
+   },
+   {
+    "text": "text",
+    "x": 141.796,
+    "y_top": 102.718
+   },
+   {
+    "text": "opens",
+    "x": 162.5491,
+    "y_top": 102.718
+   },
+   {
+    "text": "this",
+    "x": 190.5559,
+    "y_top": 102.718
+   },
+   {
+    "text": "figure.",
+    "x": 209.981,
+    "y_top": 102.718
+   },
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 122.643
+   },
+   {
+    "text": "the",
+    "x": 107.1251,
+    "y_top": 122.643
+   },
+   {
+    "text": "first",
+    "x": 124.2807,
+    "y_top": 122.643
+   },
+   {
+    "text": "entry.",
+    "x": 144.8406,
+    "y_top": 122.643
+   },
+   {
+    "text": "Beta",
+    "x": 72.0,
+    "y_top": 142.569
+   },
+   {
+    "text": "the",
+    "x": 100.4074,
+    "y_top": 142.569
+   },
+   {
+    "text": "second",
+    "x": 117.563,
+    "y_top": 142.569
+   },
+   {
+    "text": "entry.",
+    "x": 149.7192,
+    "y_top": 142.569
+   },
+   {
+    "text": "Figure",
+    "x": 231.418,
+    "y_top": 172.456
+   },
+   {
+    "text": "1:",
+    "x": 262.854,
+    "y_top": 172.456
+   },
+   {
+    "text": "A",
+    "x": 275.0363,
+    "y_top": 172.456
+   },
+   {
+    "text": "description",
+    "x": 285.8258,
+    "y_top": 172.456
+   },
+   {
+    "text": "after",
+    "x": 336.8293,
+    "y_top": 172.456
+   },
+   {
+    "text": "text.",
+    "x": 360.3779,
+    "y_top": 172.456
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 196.367
+   },
+   {
+    "text": "after",
+    "x": 95.2467,
+    "y_top": 196.367
+   },
+   {
+    "text": "the",
+    "x": 118.7953,
+    "y_top": 196.367
+   },
+   {
+    "text": "float,",
+    "x": 135.9509,
+    "y_top": 196.367
+   },
+   {
+    "text": "in",
+    "x": 161.4183,
+    "y_top": 196.367
+   },
+   {
+    "text": "a",
+    "x": 173.0387,
+    "y_top": 196.367
+   },
+   {
+    "text": "paragraph",
+    "x": 181.3375,
+    "y_top": 196.367
+   },
+   {
+    "text": "of",
+    "x": 228.9907,
+    "y_top": 196.367
+   },
+   {
+    "text": "its",
+    "x": 240.344,
+    "y_top": 196.367
+   },
+   {
+    "text": "own.",
+    "x": 254.2339,
+    "y_top": 196.367
+   }
+  ]
+ ],
+ "rules": [
+  []
+ ]
+}
