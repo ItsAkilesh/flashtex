@@ -154,6 +154,27 @@ pub enum Nucleus {
         rows: Vec<MathList>,
         align: char,
     },
+    /// amsmath `\xrightarrow[below]{above}`, `\xleftarrow` and mathtools'
+    /// `\xleftrightarrow` (`amsmath.sty` 971-979 `\arrowfill@`, 1012-1028
+    /// `\ext@arrow`; `mathtools.sty` 323-326): a relation whose arrow is
+    /// stretched to fit its labels, `above` set as the upper limit and
+    /// `below` (the optional argument, empty when absent) as the lower one.
+    ExtArrow {
+        arrow: ExtArrow,
+        above: MathList,
+        below: MathList,
+    },
+}
+
+/// Which extensible arrow an [`Nucleus::ExtArrow`] draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExtArrow {
+    /// `\xrightarrow`: `\ext@arrow 0359\rightarrowfill@`.
+    Right,
+    /// `\xleftarrow`: `\ext@arrow 3095\leftarrowfill@`.
+    Left,
+    /// mathtools `\xleftrightarrow`: `\ext@arrow 3399`, `\leftarrow\relbar\rightarrow`.
+    LeftRight,
 }
 
 /// An explicit math style (`\displaystyle` .. `\scriptscriptstyle`, and the
@@ -723,6 +744,29 @@ impl MathParser<'_> {
                         body,
                         horizontal: name != "vphantom",
                         vertical: name != "hphantom",
+                    },
+                    span,
+                    superscript: None,
+                    subscript: None,
+                    class_override: None,
+                    width_em: None,
+                }
+            }
+            "xrightarrow" | "xleftarrow" | "xleftrightarrow" => {
+                let below = self
+                    .optional_bracket_list()
+                    .unwrap_or(MathList { atoms: Vec::new() });
+                let above = self.required_group(&name, span);
+                let arrow = match name.as_str() {
+                    "xleftarrow" => ExtArrow::Left,
+                    "xleftrightarrow" => ExtArrow::LeftRight,
+                    _ => ExtArrow::Right,
+                };
+                MathAtom {
+                    nucleus: Nucleus::ExtArrow {
+                        arrow,
+                        above,
+                        below,
                     },
                     span,
                     superscript: None,
@@ -2053,6 +2097,8 @@ fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
         Nucleus::Text(text) if text == "..." => Inner,
         Nucleus::Fraction { .. } => Inner,
         Nucleus::Operator { .. } => Op,
+        // `\ext@arrow` is `\mathrel{\mathop{...}\limits...}`.
+        Nucleus::ExtArrow { .. } => Rel,
         Nucleus::Matrix { left, right, .. } if !left.is_empty() || !right.is_empty() => Inner,
         // amsmath's `\overset`/`\stackrel` keep a relation or binary base's class.
         Nucleus::Stacked { base, .. } if base.atoms.len() == 1 => {
@@ -2738,6 +2784,30 @@ fn layout_nucleus(
             b
         }
         Nucleus::Operator { body, .. } => layout_list(body, size, root_size, level, diagnostics),
+        // Approximated as the arrow glyph with its labels stacked over and
+        // under it (render-pipeline builds amsmath's stretched arrow).
+        Nucleus::ExtArrow {
+            arrow,
+            above,
+            below,
+        } => {
+            let glyph = match arrow {
+                ExtArrow::Right => "→",
+                ExtArrow::Left => "←",
+                ExtArrow::LeftRight => "↔",
+            };
+            let stacked = MathAtom {
+                nucleus: Nucleus::Stacked {
+                    base: MathList {
+                        atoms: vec![symbol(glyph.into(), atom.span)],
+                    },
+                    over: (!above.atoms.is_empty()).then(|| above.clone()),
+                    under: (!below.atoms.is_empty()).then(|| below.clone()),
+                },
+                ..atom.clone()
+            };
+            layout_nucleus(&stacked, size, root_size, level, diagnostics)
+        }
         Nucleus::SubArray { rows, .. } => {
             let rows: Vec<Vec<MathList>> = rows.iter().map(|r| vec![r.clone()]).collect();
             layout_matrix(
@@ -2994,7 +3064,10 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
             Nucleus::Symbol(s) => Nucleus::Symbol(s.clone()),
             Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
             Nucleus::Text(s) => Nucleus::Text(s.clone()),
-            Nucleus::Space { em, font_em } => Nucleus::Space { em: *em, font_em: *font_em },
+            Nucleus::Space { em, font_em } => Nucleus::Space {
+                em: *em,
+                font_em: *font_em,
+            },
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -3059,6 +3132,15 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
             Nucleus::Operator { body, limits } => Nucleus::Operator {
                 body: shift_list(body, delta),
                 limits: *limits,
+            },
+            Nucleus::ExtArrow {
+                arrow,
+                above,
+                below,
+            } => Nucleus::ExtArrow {
+                arrow: *arrow,
+                above: shift_list(above, delta),
+                below: shift_list(below, delta),
             },
             Nucleus::SubArray { rows, align } => Nucleus::SubArray {
                 rows: rows.iter().map(|r| shift_list(r, delta)).collect(),
@@ -3485,6 +3567,46 @@ mod parse_tests {
             })
             .collect();
         assert_eq!(glyphs, ["a", "b"], "the stray & is dropped, not typeset");
+    }
+
+    #[test]
+    fn quad_is_text_font_em_and_thin_space_is_math_units() {
+        let tokens = crate::lexer::tokenize(r"a\quad b\,c");
+        let list = parse_tokens(&tokens, &mut Vec::new());
+        let spaces: Vec<(f64, bool)> = list
+            .atoms
+            .iter()
+            .filter_map(|a| match a.nucleus {
+                Nucleus::Space { em, font_em } => Some((em, font_em)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(spaces, [(1.0, true), (3.0 / 18.0, false)]);
+    }
+
+    #[test]
+    fn xrightarrow_takes_optional_below_and_required_above() {
+        let tokens = crate::lexer::tokenize(r"A \xrightarrow{f} B \xleftarrow[g]{h} C");
+        let list = parse_tokens(&tokens, &mut Vec::new());
+        let arrows: Vec<_> = list
+            .atoms
+            .iter()
+            .filter_map(|a| match &a.nucleus {
+                Nucleus::ExtArrow {
+                    arrow,
+                    above,
+                    below,
+                } => Some((*arrow, above.atoms.len(), below.atoms.len(), atom_class(a))),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            arrows,
+            [
+                (ExtArrow::Right, 1, 0, Some(AtomClass::Rel)),
+                (ExtArrow::Left, 1, 1, Some(AtomClass::Rel)),
+            ]
+        );
     }
 
     #[test]
@@ -4426,6 +4548,9 @@ mod shift_tests {
                             denominator,
                             ..
                         } => min_start(numerator).min(min_start(denominator)),
+                        Nucleus::ExtArrow { above, below, .. } => {
+                            min_start(above).min(min_start(below))
+                        }
                         Nucleus::SubArray { rows, .. } => {
                             rows.iter().map(min_start).min().unwrap_or(usize::MAX)
                         }

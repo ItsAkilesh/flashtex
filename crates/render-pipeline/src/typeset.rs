@@ -2221,10 +2221,50 @@ impl<'a> Context<'a> {
         let (strut_h, strut_d) = (0.7 * normal, 0.3 * normal);
         let mut items = Vec::new();
         let mut recs = Vec::new();
-        let mut lines = Vec::with_capacity(rows.len());
+        let mut lines: Vec<pl::Line> = Vec::with_capacity(rows.len());
         let mut extents = Vec::with_capacity(rows.len());
+        let mut vskips: Vec<f64> = Vec::with_capacity(rows.len());
+        // Skip ahead of the first line when an `\intertext` opens the display.
+        let mut lead = 0.0;
         let mut total = 0.0;
         for (ri, row) in cells.iter().enumerate() {
+            // `\intertext`: `\noalign{\penalty\postdisplaypenalty \vskip<before>
+            // \vbox{\normalbaselines \noindent#1\par} \penalty\predisplaypenalty
+            // \vskip<after>}` between the previous row and this one; the
+            // interline glue around the `\vbox` is the alignment's
+            // (`\baselineskip+\jot`), inside it `\normalbaselines`.
+            for text in &rows[ri].intertext {
+                let (before, after) = self.intertext_skips(text);
+                match vskips.last_mut() {
+                    Some(v) => *v += before,
+                    None => lead += before,
+                }
+                if let Some(b) = self.paragraph_block(&text.items, false, true, false, ParaStyle::Plain, None) {
+                    let offset = items.len();
+                    let n = b.block.lines.lines.len();
+                    for (k, mut line) in b.block.lines.lines.into_iter().enumerate() {
+                        // Hyphen runs find their record through `breaks`,
+                        // which this block does not carry: they stay drawn
+                        // but unmapped.
+                        line.index = lines.len();
+                        line.items = line.items.start + offset..line.items.end + offset;
+                        extents.push((line.height, line.depth));
+                        total += line.height + line.depth;
+                        let mut v = b.vertical.vskip_after.get(k).copied().unwrap_or(0.0);
+                        if k + 1 < n {
+                            v -= JOT;
+                        }
+                        vskips.push(v);
+                        lines.push(line);
+                    }
+                    items.extend(b.items);
+                    recs.extend(b.recs);
+                }
+                match vskips.last_mut() {
+                    Some(v) => *v += after,
+                    None => lead += after,
+                }
+            }
             let start = items.len();
             let (mut h, mut d) = (strut_h, strut_d);
             let mut runs = Vec::new();
@@ -2259,7 +2299,7 @@ impl<'a> Context<'a> {
                 self.emit(None, Diagnostic::warning("overfull_display", format!("display row is {:.2}pt wider than the text width", natural - dw), vec![src]));
             }
             lines.push(pl::Line {
-                index: ri,
+                index: lines.len(),
                 runs,
                 baseline_y: h,
                 height: h,
@@ -2272,6 +2312,7 @@ impl<'a> Context<'a> {
                 hyphenated: false,
             });
             extents.push((h, d));
+            vskips.push(0.0);
             total += h + d;
         }
         if lines.is_empty() {
@@ -2301,7 +2342,7 @@ impl<'a> Context<'a> {
         let vertical = VBlock {
             lines: extents,
             penalty_before: Some(PREDISPLAY_PENALTY),
-            space_before: Some((an + first_adjust, ast, ash)),
+            space_before: Some((an + first_adjust + lead, ast, ash)),
             parskip: None,
             // `\interdisplaylinepenalty` is 10000 in LaTeX.
             interline_penalty: pagebuild::INF_PENALTY,
@@ -2312,7 +2353,7 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: Some(normal + JOT),
-            vskip_after: Vec::new(),
+            vskip_after: vskips,
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -2327,6 +2368,28 @@ impl<'a> Context<'a> {
             labels: Vec::new(),
             cache_key: None,
         })
+    }
+
+    /// The `\noalign` skips before and after an `\intertext` paragraph:
+    /// amsmath `\belowdisplayskip`/`\abovedisplayskip` (`amsmath.sty`
+    /// 1190-1197). mathtools (`\MT_intertext:`, `mathtools.sty` 1424-1448;
+    /// `\MT_shortintertext:n`, 1502-1528, with `\abovedisplayshortskip` on
+    /// both sides) adds `-\lineskiplimit+\normallineskiplimit` to each, which
+    /// is `-\jot` under the alignment's `\openup\jot`, and the
+    /// `(above|below)[short]intertext` dimensions: 0pt, 3pt for the short form.
+    fn intertext_skips(&self, text: &adapter::IntertextPart) -> (f64, f64) {
+        const JOT: f64 = 3.0;
+        let s = self.style;
+        let (before, after, sep) = if text.short {
+            (s.abovedisplayshortskip.natural, s.abovedisplayshortskip.natural, 3.0)
+        } else {
+            (s.belowdisplayskip.natural, s.abovedisplayskip.natural, 0.0)
+        };
+        if text.mathtools {
+            (before - JOT + sep, after - JOT + sep)
+        } else {
+            (before, after)
+        }
     }
 
     fn report_overfull(&mut self, lines: &pl::Lines, list: &[pl::Item], recs: &[Option<usize>]) {
@@ -2593,6 +2656,21 @@ pub fn convert_math_classed(
             N::Operator { body, limits } => vec![ml::Atom::new(ml::AtomClass::Op, ml::Nucleus::List(sub(body, sink))).with_limits(if *limits { ml::Limits::Limits } else { ml::Limits::NoLimits })],
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, align } => vec![ml::Atom::subarray(rows.iter().map(|r| sub(r, sink)).collect(), *align)],
+            // amsmath `\ext@arrow#1#2#3#4` kerns and `\arrowfill@` pieces:
+            // `\xrightarrow` 0359 `\relbar\relbar\rightarrow`, `\xleftarrow`
+            // 3095 `\leftarrow\relbar\relbar` (amsmath.sty 977-978,
+            // 1027-1028), mathtools `\xleftrightarrow` 3399
+            // `\leftarrow\relbar\rightarrow` (mathtools.sty 323-326).
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { arrow, above, below } => {
+                use flashtex_compiler::math::ExtArrow as X;
+                let (pieces, kerns) = match arrow {
+                    X::Right => (['-', '-', '\u{2192}'], [0.0, 3.0, 5.0, 9.0]),
+                    X::Left => (['\u{2190}', '-', '-'], [3.0, 0.0, 9.0, 5.0]),
+                    X::LeftRight => (['\u{2190}', '-', '\u{2192}'], [3.0, 3.0, 9.0, 9.0]),
+                };
+                vec![ml::Atom::ext_arrow(pieces, kerns, sub(above, sink), sub(below, sink))]
+            }
             // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
             // math list. math-layout has no kern/glue atom, so the glue is
             // dropped (inter-atom spacing across it is what TeX's mlist_to_hlist
@@ -2984,6 +3062,11 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
             N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_grids(above, out);
+                math_grids(below, out);
+            }
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -3027,6 +3110,8 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_glue_em(r),
                 #[cfg(feature = "amsmath-inline")]
                 N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
+                #[cfg(feature = "amsmath-inline")]
+                N::ExtArrow { above, below, .. } => math_glue_em(above) + math_glue_em(below),
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -3101,6 +3186,11 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_approximations(r, out),
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, .. } => rows.iter().for_each(|r| math_approximations(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_approximations(above, out);
+                math_approximations(below, out);
+            }
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);
@@ -3330,6 +3420,11 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                     row.cells.len().hash(&mut h);
                                     for cell in &row.cells {
                                         incremental::hash_math(cell, &mut h);
+                                    }
+                                    row.intertext.len().hash(&mut h);
+                                    for text in &row.intertext {
+                                        (text.short, text.mathtools).hash(&mut h);
+                                        incremental::hash_items(&text.items, span.start, &mut h);
                                     }
                                 }
                                 bracket.hash(&mut h);

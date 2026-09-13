@@ -154,6 +154,20 @@ pub struct RowPart {
     pub cells: Vec<MathList>,
     pub number: Option<(String, Span)>,
     pub span: Span,
+    /// `\intertext` paragraphs set before this row (feature
+    /// `amsmath-inline`; always empty otherwise).
+    pub intertext: Vec<IntertextPart>,
+}
+
+/// One `\intertext{..}`/`\shortintertext{..}` of a [`RowPart`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntertextPart {
+    pub items: Vec<Item>,
+    pub short: bool,
+    /// mathtools is loaded: its `\MT_intertext:`/`\MT_shortintertext:n`
+    /// replace amsmath's `\intertext@` (`original-intertext=false`).
+    pub mathtools: bool,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -564,6 +578,8 @@ pub fn adapt_cached(
     style.parindent_pt = parindent;
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
+    #[cfg(feature = "amsmath-inline")]
+    let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
     // article's `0pt plus 1pt`.
     if let Some(pt) = parskip(source, size) {
@@ -676,7 +692,20 @@ pub fn adapt_cached(
                                     Some(t) => Some((t, row.span)),
                                     None => row.number.clone().map(|n| (n, row.span)),
                                 };
-                                let part = RowPart { cells, number, span: row.span };
+                                #[cfg(feature = "amsmath-inline")]
+                                let intertext = row
+                                    .intertext
+                                    .iter()
+                                    .map(|t| IntertextPart {
+                                        items: items_for(&t.content, false),
+                                        short: t.short,
+                                        mathtools,
+                                        span: t.span,
+                                    })
+                                    .collect();
+                                #[cfg(not(feature = "amsmath-inline"))]
+                                let intertext = Vec::new();
+                                let part = RowPart { cells, number, span: row.span, intertext };
                                 match parts.last_mut() {
                                     Some(ParaPart::Rows { span: s, rows, .. }) if *s == rows_span => rows.push(part),
                                     _ => parts.push(ParaPart::Rows {
@@ -842,6 +871,12 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
         }
         Inline::Verbatim { text, span, .. } => {
             out.push(("unsupported_block", *span, format!("\\verb {text:?} set in the body face: the pipeline has no monospaced face")));
+        }
+        #[cfg(feature = "amsmath-inline")]
+        Inline::MathRows { rows, .. } => {
+            for i in rows.iter().flat_map(|r| &r.intertext).flat_map(|t| &t.content) {
+                unsupported_inlines(i, out);
+            }
         }
         _ => {}
     }

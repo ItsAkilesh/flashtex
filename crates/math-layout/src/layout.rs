@@ -191,6 +191,18 @@ impl Engine<'_> {
             Nucleus::SubArray { rows, align } => {
                 (self.make_subarray(rows, *align, style), 0.0, false)
             }
+            Nucleus::ExtArrow {
+                left,
+                fill,
+                right,
+                kerns,
+                above,
+                below,
+            } => (
+                self.make_ext_arrow([*left, *fill, *right], *kerns, above, below, style),
+                0.0,
+                false,
+            ),
             // Scripted glue (not a TeX construct): a kern carrying the scripts.
             Nucleus::Glue { mu, pt } => {
                 (MathBox::kern(mu * self.params(style).mu() + pt), 0.0, false)
@@ -355,6 +367,20 @@ impl Engine<'_> {
                 (self.atom(&inner, AtomClass::Ord, style), 0.0)
             }
         };
+        self.op_scripts(nucleus, delta, limits, atom, style)
+    }
+
+    /// The rest of `make_op` once the nucleus is boxed: scripts beside it,
+    /// or Rule 13a limits over and under it.
+    fn op_scripts(
+        &mut self,
+        nucleus: MathBox,
+        delta: f64,
+        limits: bool,
+        atom: &Atom,
+        style: Style,
+    ) -> MathBox {
+        let p = self.params(style);
         if !limits {
             return self.make_scripts(nucleus, delta, false, atom, style);
         }
@@ -413,6 +439,135 @@ impl Engine<'_> {
             height,
             depth,
         }
+    }
+
+    /// One piece of an `\arrowfill@` in `\displaystyle`: the relation's
+    /// character box (with its italic correction), smashed for the minus
+    /// (`\relbar` = `\mathrel{\mathpalette\mathsm@sh\std@minus}`).
+    fn arrow_piece(&mut self, ch: char) -> MathBox {
+        let Some(g) = self.glyph(ch, Style::DISPLAY) else {
+            return MathBox::empty();
+        };
+        let mut b = if g.italic != 0.0 {
+            MathBox::hlist(vec![MathBox::glyph(&g), MathBox::kern(g.italic)])
+        } else {
+            MathBox::hlist(vec![MathBox::glyph(&g)])
+        };
+        if ch == '-' || ch == '\u{2212}' {
+            b.height = 0.0;
+            b.depth = 0.0;
+        }
+        b
+    }
+
+    /// amsmath `\ext@arrow` (see [`Nucleus::ExtArrow`]).
+    fn make_ext_arrow(
+        &mut self,
+        pieces: [char; 3],
+        kerns: [f64; 4],
+        above: &MathList,
+        below: &MathList,
+        style: Style,
+    ) -> MathBox {
+        let mu = self.params(Style::DISPLAY).mu();
+        let script_mu = self.params(Style::SCRIPT).mu();
+        let left = self.arrow_piece(pieces[0]);
+        let right = self.arrow_piece(pieces[2]);
+        // `\setbox\z@\hbox{#5\displaystyle}`: the fill's `\hfill` has no
+        // natural width.
+        let natural = left.width - 14.0 * mu + right.width;
+        // `\hbox{$\scriptstyle\mkern#3mu{#6}\mkern#4mu$}`: `{#6}` is a
+        // sub-formula, whose `clean_box` drops a lone character's italic
+        // correction (tex.web §721).
+        let label = |this: &mut Self, list: &MathList| -> f64 {
+            let group = match list.atoms.as_slice() {
+                [a] if a.superscript.is_none()
+                    && a.subscript.is_none()
+                    && a.class != AtomClass::Op =>
+                {
+                    match a.nucleus {
+                        Nucleus::Symbol(ch) => this
+                            .m
+                            .glyph(ch, Style::SCRIPT.size_class())
+                            .map(|g| g.width),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            let group = group.unwrap_or_else(|| this.clean_box(list, Style::SCRIPT).width);
+            (kerns[2] + kerns[3]) * script_mu + group
+        };
+        let width = natural.max(label(self, below)).max(label(self, above));
+        let stretch = width - natural;
+        let mut children = Vec::new();
+        let mut x = 0.0;
+        let (mut height, mut depth) = (
+            left.height.max(right.height).max(0.0),
+            left.depth.max(right.depth).max(0.0),
+        );
+        children.push(Child {
+            dx: x,
+            dy: 0.0,
+            content: left,
+        });
+        x += children[0].content.width - 7.0 * mu;
+        if stretch > 0.0 {
+            // `\cleaders`: as many whole fill boxes as fit in the glue (plus
+            // TeX's 10sp rounding allowance), centred (tex.web §626).
+            let fill = self.arrow_piece(pieces[1]);
+            let sp = |v: f64| (v * 65536.0).round() as i64;
+            let leader = sp(fill.width - 4.0 * mu);
+            let rule = sp(stretch) + 10;
+            if leader > 0 {
+                height = height.max(fill.height);
+                depth = depth.max(fill.depth);
+                let (n, lr) = (rule / leader, rule % leader);
+                for i in 0..n {
+                    children.push(Child {
+                        dx: x + (lr / 2 + i * leader) as f64 / 65536.0 - 2.0 * mu,
+                        dy: 0.0,
+                        content: fill.clone(),
+                    });
+                }
+            }
+        }
+        x += stretch - 7.0 * mu;
+        children.push(Child {
+            dx: x,
+            dy: 0.0,
+            content: right,
+        });
+        let nucleus = MathBox {
+            kind: BoxKind::HBox(children),
+            width,
+            height,
+            depth,
+        };
+        // `\mathop{..}\limits^{\mkern#1mu #7\mkern#2mu}_{\mkern#1mu #6\mkern#2mu}`,
+        // each script only when its label is non-empty (`\if0#1` omits a 0 kern).
+        let script = |label: &MathList| -> Option<MathList> {
+            if label.is_empty() {
+                return None;
+            }
+            let mut atoms = Vec::with_capacity(label.atoms.len() + 2);
+            if kerns[0] != 0.0 {
+                atoms.push(Atom::glue(kerns[0], 0.0));
+            }
+            atoms.extend(label.atoms.iter().cloned());
+            if kerns[1] != 0.0 {
+                atoms.push(Atom::glue(kerns[1], 0.0));
+            }
+            Some(MathList::new(atoms))
+        };
+        let op = Atom {
+            class: AtomClass::Op,
+            nucleus: Nucleus::Empty,
+            superscript: script(above),
+            subscript: script(below),
+            limits: Limits::Limits,
+        };
+        self.op_scripts(nucleus, 0.0, true, &op, style)
     }
 
     /// Rule 18 and `make_scripts`.

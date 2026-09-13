@@ -362,6 +362,13 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                     hash_math(r, h);
                 }
             }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::ExtArrow { arrow, above, below } => {
+                16u8.hash(h);
+                arrow.hash(h);
+                hash_math(above, h);
+                hash_math(below, h);
+            }
         }
         match &a.superscript {
             Some(s) => {
@@ -543,6 +550,11 @@ fn shift_math(list: &mut MathList, delta: isize) {
             Nucleus::Phantom { body, .. } | Nucleus::Operator { body, .. } => shift_math(body, delta),
             #[cfg(feature = "amsmath-inline")]
             Nucleus::SubArray { rows, .. } => rows.iter_mut().for_each(|r| shift_math(r, delta)),
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::ExtArrow { above, below, .. } => {
+                shift_math(above, delta);
+                shift_math(below, delta);
+            }
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);
