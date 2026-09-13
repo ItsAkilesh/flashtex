@@ -138,6 +138,22 @@ pub enum MultirowWidth {
     Fixed(Length),
 }
 
+/// A dimension TeX evaluates in the font in force where it is used
+/// (booktabs' `\cmidrule(l{.5em})`, `\addlinespace[1ex]`):
+/// `pt + em * quad + ex * x-height`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FontDimen {
+    pub pt: f64,
+    pub em: f64,
+    pub ex: f64,
+}
+
+impl FontDimen {
+    pub fn resolve(self, em: f64, ex: f64) -> f64 {
+        self.pt + self.em * em + self.ex * ex
+    }
+}
+
 /// `longtable`'s optional alignment `[l]`/`[c]`/`[r]` (longtable.sty
 /// 120-126); `None` keeps `\LTleft`/`\LTright`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,8 +286,8 @@ pub enum Entry {
         width_pt: Option<f64>,
         /// `(l{<dimen>})`/`(r{<dimen>})` (booktabs `\@setrulekerning`): the
         /// trim replacing `\cmidrulekern` on that side.
-        kern_left_pt: Option<f64>,
-        kern_right_pt: Option<f64>,
+        kern_left: Option<FontDimen>,
+        kern_right: Option<FontDimen>,
         span: Span,
     },
     /// `\\[<dimen>]` with a non-positive dimension: `\noalign{\vspace}`.
@@ -280,7 +296,7 @@ pub enum Entry {
     },
     /// booktabs `\addlinespace[<dimen>]` (`None`: `\defaultaddspace`, .5em).
     AddLineSpace {
-        pt: Option<f64>,
+        space: Option<FontDimen>,
         span: Span,
     },
     /// booktabs `\specialrule{width}{above}{below}`.
@@ -476,8 +492,8 @@ impl Tabular {
                     trim_left,
                     trim_right,
                     width_pt,
-                    kern_left_pt,
-                    kern_right_pt,
+                    kern_left,
+                    kern_right,
                     span: s,
                 } => Entry::CMidRule {
                     first: *first,
@@ -485,13 +501,13 @@ impl Tabular {
                     trim_left: *trim_left,
                     trim_right: *trim_right,
                     width_pt: *width_pt,
-                    kern_left_pt: *kern_left_pt,
-                    kern_right_pt: *kern_right_pt,
+                    kern_left: *kern_left,
+                    kern_right: *kern_right,
                     span: span(*s)?,
                 },
                 Entry::VSpace { pt } => Entry::VSpace { pt: *pt },
-                Entry::AddLineSpace { pt, span: s } => Entry::AddLineSpace {
-                    pt: *pt,
+                Entry::AddLineSpace { space, span: s } => Entry::AddLineSpace {
+                    space: *space,
                     span: span(*s)?,
                 },
                 Entry::SpecialRule {
@@ -925,8 +941,8 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 trim_left,
                 trim_right,
                 width_pt,
-                kern_left_pt,
-                kern_right_pt,
+                kern_left,
+                kern_right,
                 span,
             } => {
                 let width = width_pt.unwrap_or(CMID_RULE_EM * em);
@@ -939,9 +955,9 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 let (first, last) = (*first.min(&(n - 1)), *last.min(&(n - 1)));
                 let kern = CMID_RULE_KERN_EM * em;
                 let left = column_x[first]
-                    + if *trim_left { kern_left_pt.unwrap_or(kern) } else { 0.0 };
+                    + if *trim_left { kern_left.map_or(kern, |d| d.resolve(em, ex)) } else { 0.0 };
                 let right = column_right(last)
-                    - if *trim_right { kern_right_pt.unwrap_or(kern) } else { 0.0 };
+                    - if *trim_right { kern_right.map_or(kern, |d| d.resolve(em, ex)) } else { 0.0 };
                 push_rule(&mut items, left, y, right - left, width, size, *span);
                 y += width;
                 if matches!(next, Some(Entry::CMidRule { .. })) {
@@ -952,9 +968,9 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                     last_rule_class = 0;
                 }
             }
-            Entry::AddLineSpace { pt, .. } => {
+            Entry::AddLineSpace { space, .. } => {
                 first_height.get_or_insert(0.0);
-                y += pt.unwrap_or(0.5 * em);
+                y += space.map_or(0.5 * em, |d| d.resolve(em, ex));
                 last_rule_class = 2;
             }
             Entry::SpecialRule {
@@ -1434,11 +1450,11 @@ mod tests {
         );
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let e = &t[0].entries;
-        assert!(matches!(e[1], Entry::CMidRule { first: 0, last: 1, trim_left: true, trim_right: true, kern_left_pt: Some(l), kern_right_pt: None, .. } if (l - 2.0).abs() < 1e-9));
+        assert!(matches!(e[1], Entry::CMidRule { first: 0, last: 1, trim_left: true, trim_right: true, kern_left: Some(l), kern_right: None, .. } if (l.pt - 2.0).abs() < 1e-9));
         assert!(matches!(e[2], Entry::MoreCmidRules { .. }));
-        assert!(matches!(e[3], Entry::CMidRule { kern_left_pt: None, kern_right_pt: None, trim_left: true, trim_right: true, .. }));
-        assert!(matches!(e[4], Entry::AddLineSpace { pt: None, .. }));
-        assert!(matches!(e[5], Entry::AddLineSpace { pt: Some(p), .. } if (p - 3.0).abs() < 1e-9));
+        assert!(matches!(e[3], Entry::CMidRule { kern_left: None, kern_right: None, trim_left: true, trim_right: true, .. }));
+        assert!(matches!(e[4], Entry::AddLineSpace { space: None, .. }));
+        assert!(matches!(e[5], Entry::AddLineSpace { space: Some(p), .. } if (p.pt - 3.0).abs() < 1e-9));
         assert!(matches!(e[6], Entry::SpecialRule { width_pt, above_pt, below_pt, .. } if width_pt == 1.0 && above_pt == 2.0 && below_pt == 3.0));
         assert!(matches!(e[7], Entry::Row(_)));
     }

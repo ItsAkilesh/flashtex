@@ -15,7 +15,7 @@ use super::{
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::tabular::{
-    Align, BookRule, BoxAlign, Cell, ColorFill, ColorSpec, ColumnTemplate, Entry, Length,
+    Align, BookRule, BoxAlign, Cell, ColorFill, ColorSpec, ColumnTemplate, Entry, FontDimen, Length,
     Longtable, LongtableAlign, LongtableSection, Material, Multirow, MultirowPos, MultirowWidth,
     Row, Tabular, VerticalPosition, ARRAYRULEWIDTH_PT, DOUBLERULESEP_PT, TABCOLSEP_PT,
 };
@@ -130,6 +130,19 @@ struct TableFeatures {
     longtable: bool,
     colortbl: bool,
     multirow: bool,
+}
+
+/// A dimension that may be em/ex of the font where it is used.
+fn font_dimen(raw: &str, body: f64) -> Option<FontDimen> {
+    let text = raw.trim();
+    for (unit, is_em) in [("em", true), ("ex", false)] {
+        if let Some(number) = text.strip_suffix(unit) {
+            if let Ok(v) = number.trim().parse::<f64>() {
+                return Some(FontDimen { pt: 0.0, em: if is_em { v } else { 0.0 }, ex: if is_em { 0.0 } else { v } });
+            }
+        }
+    }
+    parse_dimen_pt_at(text, body).map(|pt| FontDimen { pt, em: 0.0, ex: 0.0 })
 }
 
 /// A `tabular*` width or `p{}` width: a dimension, or a multiple of the text
@@ -1253,7 +1266,7 @@ impl P<'_> {
             "addlinespace" => {
                 let (pt, span) = match self.glued_bracket_argument() {
                     Some((raw, option_span)) => {
-                        let pt = parse_dimen_pt_at(&raw, body);
+                        let pt = font_dimen(&raw, body);
                         if pt.is_none() {
                             self.diags.push(Diagnostic::error(
                                 format!("\\addlinespace needs a dimension, got '{}'", raw.trim()),
@@ -1265,7 +1278,7 @@ impl P<'_> {
                     }
                     None => (None, span),
                 };
-                Some(Entry::AddLineSpace { pt, span })
+                Some(Entry::AddLineSpace { space: pt, span })
             }
             // booktabs.sty 77-79: `\specialrule{width}{above}{below}`.
             "specialrule" => {
@@ -1294,7 +1307,7 @@ impl P<'_> {
             "morecmidrules" => Some(Entry::MoreCmidRules { span }),
             _ => {
                 let (width_pt, span) = self.rule_width(command, span, body);
-                let (trim_left, trim_right, kern_left_pt, kern_right_pt) = self.cmidrule_trim(body);
+                let (trim_left, trim_right, kern_left, kern_right) = self.cmidrule_trim(body);
                 let (tokens, argument_span) = self.required_group(command, span);
                 let span = span.merge(argument_span);
                 let (first, last) = self.column_range(command, &token_text(&tokens), n, span)?;
@@ -1304,8 +1317,8 @@ impl P<'_> {
                     trim_left,
                     trim_right,
                     width_pt,
-                    kern_left_pt,
-                    kern_right_pt,
+                    kern_left,
+                    kern_right,
                     span,
                 })
             }
@@ -1337,7 +1350,7 @@ impl P<'_> {
     /// `l`/`r` trim that side by `\cmidrulekern`; a braced dimension after
     /// one (`l{.25em}`) replaces that side's kern. Returns the sides and
     /// their explicit kerns.
-    fn cmidrule_trim(&mut self, body: f64) -> (bool, bool, Option<f64>, Option<f64>) {
+    fn cmidrule_trim(&mut self, body: f64) -> (bool, bool, Option<FontDimen>, Option<FontDimen>) {
         self.skip_spaces();
         if !matches!(self.peek().map(|token| &token.kind), Some(TokenKind::Word(word)) if word.starts_with('(')) {
             return (false, false, None, None);
@@ -1393,7 +1406,7 @@ impl P<'_> {
                     for _ in 0..=value.chars().count() {
                         chars.next();
                     }
-                    let pt = parse_dimen_pt_at(&value, body);
+                    let pt = font_dimen(&value, body);
                     match side {
                         Some('l') => kern_left = pt,
                         Some('r') => kern_right = pt,
