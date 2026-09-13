@@ -114,6 +114,23 @@ pub enum BoxRec {
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
     /// whose origin is the table's reference baseline.
     Table(Rc<TableRec>),
+    /// `\colorbox`/`\fcolorbox` (`Context::color_box`).
+    ColorBox(Rc<ColorBoxRec>),
+}
+
+/// A laid-out `\colorbox`/`\fcolorbox`: the content as one line whose
+/// runs are placed from the box's left edge, and the box's `width`,
+/// `height` and `depth` including `\fboxsep` and the `rule` frame.
+#[derive(Clone)]
+pub struct ColorBoxRec {
+    pub block: BuiltBlock,
+    pub width: f64,
+    pub height: f64,
+    pub depth: f64,
+    pub rule: f64,
+    pub fill: flashtex_compiler::color::DeviceColor,
+    pub frame: Option<flashtex_compiler::color::DeviceColor>,
+    pub span: Span,
 }
 
 /// A laid-out table (`Context::table_box`): every entry or `@{}` box as
@@ -164,6 +181,8 @@ pub struct MathRec {
     /// `\text{...}` runs of this formula (`mathtext`), addressed by the
     /// placed glyphs' `font_id` above `RUN_FONT_BASE`.
     pub text_runs: Vec<crate::mathtext::TextRun>,
+    /// The formula's colour (`adapter::Doc::math_colors`).
+    pub color: Option<flashtex_compiler::color::DeviceColor>,
     /// Baseline shift upward in points (`\LaTeXe`'s subscript `ε`).
     pub raise: f64,
     /// Where a paragraph may break inside this text-style formula: TeX
@@ -181,9 +200,24 @@ pub struct MathRec {
     /// runs continue the previous piece's items when they land on the
     /// same line, so an unbroken formula assembles exactly as one box.
     pub continues: bool,
+    /// Paint for glyphs and rules whose source span lies inside a byte
+    /// range of this formula's document (xcolor `\textcolor`/`\color` in
+    /// math); the innermost range wins, unpainted leaves stay black.
+    /// Empty until the compiler reports colour ranges (#150/#158).
+    #[cfg(feature = "math-glyph-spans")]
+    pub span_paints: Vec<(std::ops::Range<usize>, Paint)>,
 }
 
 impl MathRec {
+    /// The paint of a leaf with math-layout provenance `tag`.
+    #[cfg(feature = "math-glyph-spans")]
+    pub fn paint_of(&self, tag: ml::SourceTag) -> Paint {
+        tag.span
+            .filter(|s| s.document as usize == self.span.document.0)
+            .and_then(|s| innermost_paint(&self.span_paints, s.start, s.end))
+            .unwrap_or(Paint::BLACK)
+    }
+
     /// The `\text` run glyph a placed glyph stands for, if it is one.
     pub fn run_glyph(&self, g: &ml::PositionedGlyph) -> Option<&crate::mathtext::RunGlyph> {
         crate::mathtext::run_of(&self.text_runs, g.font_id)?.glyph_at(g.font_id, g.gid)
@@ -316,6 +350,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 pub mod floatpage;
 pub mod footnotes;
 mod toc;
+pub mod multicol;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -354,14 +389,28 @@ pub struct Context<'a> {
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
+    math_colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>,
+    /// Box records of `\item` labels. LaTeX sets a label inside the
+    /// `\@labels` hbox, so pdfTeX's line packer never expands its
+    /// characters (`hpack` adds `char_stretch` only for character nodes
+    /// of the line itself) and they take no part in the line's font
+    /// stretch/shrink.
+    label_recs: BTreeSet<usize>,
     /// Footnote texts met while building horizontal lists, and for each
     /// the box record its `\insert` follows (the mark, or the box before
     /// `\footnotetext`): see [`footnotes`].
     notes: Vec<footnotes::NoteSrc>,
     note_anchors: Vec<(usize, usize)>,
+    /// `multicols` environments of the project (`multicol::attach`).
+    multicol: multicol::State,
 }
 
 impl<'a> Context<'a> {
+    /// Formula colours (`adapter::Doc::math_colors`).
+    pub fn set_math_colors(&mut self, colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>) {
+        self.math_colors = colors;
+    }
+
     pub fn new(fonts: &'a FontSet, style: &'a Stylesheet, paths: &'a [&'a str]) -> Context<'a> {
         Self::with_texts(fonts, style, paths, &[])
     }
@@ -384,8 +433,11 @@ impl<'a> Context<'a> {
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
+            math_colors: Default::default(),
+            label_recs: BTreeSet::new(),
             notes: Vec::new(),
             note_anchors: Vec::new(),
+            multicol: multicol::State::default(),
         }
     }
 
@@ -1120,9 +1172,12 @@ impl<'a> Context<'a> {
             face: fonts.otf().face().clone(),
             metrics: fonts.clone(),
             text_runs,
+            color: self.math_colors.get(&(span.document.0, span.start, span.end)).copied(),
             raise: 0.0,
             inline_breaks,
             continues: false,
+            #[cfg(feature = "math-glyph-spans")]
+            span_paints: Vec::new(),
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1163,7 +1218,7 @@ impl<'a> Context<'a> {
                 glue.width += u.width;
                 // plain.tex: `\thickmuskip=5mu plus 5mu`, `\medmuskip=4mu
                 // plus 2mu minus 4mu`, `\thinmuskip=3mu`; a kern is fixed.
-                if let ml::BoxKind::Glue { mu } = u.kind {
+                if let ml::BoxKind::Glue { mu, .. } = u.kind {
                     if mu >= 5.0 {
                         glue.stretch += u.width;
                     } else if mu >= 4.0 {
@@ -1291,6 +1346,13 @@ impl<'a> Context<'a> {
                         let close = fenced.pop().expect("two fences");
                         let open = fenced.pop().expect("two fences");
                         ml::MathBox::hlist(vec![open, grid, close])
+                    };
+                    // Fences and rules of a top-level grid map to it.
+                    #[cfg(feature = "math-glyph-spans")]
+                    let b = {
+                        let mut b = b;
+                        b.inherit_tag(math_tag(*grid_span));
+                        b
                     };
                     (b, 1)
                 }
@@ -1502,7 +1564,7 @@ impl<'a> Context<'a> {
             let rec = recs.get(i).copied().flatten();
             let mut mi = pl::MicroItem::default();
             match item {
-                pl::Item::Box(run) => mi.run = rec.and_then(|r| self.micro_run(r, run)),
+                pl::Item::Box(run) => mi.run = rec.filter(|r| !self.label_recs.contains(r)).and_then(|r| self.micro_run(r, run)),
                 pl::Item::Penalty(p) => {
                     if let Some(pre) = &p.pre_break {
                         mi.pre_break = rec.and_then(|r| self.micro_run(r, pre));
@@ -1767,6 +1829,10 @@ impl<'a> Context<'a> {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                     }
+                }
+                AItem::ColorBox(cb) => {
+                    let (run, rec) = self.color_box(cb, size);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                 }
                 AItem::Kern { amount, style } => {
                     let style = merge_base(*style, base);
@@ -2050,17 +2116,22 @@ impl<'a> Context<'a> {
             if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
                 if let Some((run, rec)) = self.label_box(text, *span, size) {
                     let labelsep = self.style.labelsep_pt;
-                    let lead = [
+                    let protrude = self.item_left_protrusion(&list, &recs);
+                    let mut lead = vec![
                         (pl::Item::kern(-(labelsep + run.width.min(labelwidth))), None),
                         (pl::Item::Box(run), Some(rec)),
                         (pl::Item::kern(labelsep), None),
                     ];
+                    if protrude != 0.0 {
+                        lead.push((pl::Item::kern(-protrude), None));
+                    }
+                    let n = lead.len();
                     for (i, (item, rec)) in lead.into_iter().enumerate() {
                         list.insert(i, item);
                         recs.insert(i, rec);
                     }
                     for (at, _) in &mut skips {
-                        *at += 3;
+                        *at += n;
                     }
                 }
             }
@@ -2131,6 +2202,27 @@ impl<'a> Context<'a> {
         shaped.width_units as f64 * size / shaped.units_per_em as f64
     }
 
+    /// microtype's `\leftprotrusion`, which it appends to `\@item`'s
+    /// `\everypar` (microtype.sty, `\MT@patch@patch\@item{\everypar{}}
+    /// {\everypar{\leftprotrusion}}`): `\MT@get@prot` sets the item text's
+    /// first group alone and adds `\kern\leftmarginkern` of that line, the
+    /// negated `char_pw` of its first character, after the label. pdfTeX's
+    /// own margin kern cannot reach that character (`find_protchar_left`
+    /// stops at the `\@labels` box's glue), so this explicit kern is the
+    /// item text's only protrusion. In points; 0 without protrusion or when
+    /// the text does not open with a character of a configured font.
+    fn item_left_protrusion(&mut self, list: &[pl::Item], recs: &[Option<usize>]) -> f64 {
+        if !self.style.microtype.as_ref().is_some_and(|m| m.protrude_chars > 0) {
+            return 0.0;
+        }
+        let (Some(pl::Item::Box(run)), Some(Some(rec))) = (list.first(), recs.first()) else { return 0.0 };
+        let Some(micro) = self.micro_run(*rec, run) else { return 0.0 };
+        match micro.glyphs.first().and_then(|g| g.code) {
+            Some(c) => f64::from(micro.params.left_protrusion(c)) / 65536.0,
+            None => 0.0,
+        }
+    }
+
     /// The `\item` label as a text box whose characters all point at the
     /// `\item` command's bytes (article's `\labelenumi`/`\labelitemi` in
     /// the body font).
@@ -2147,7 +2239,11 @@ impl<'a> Context<'a> {
                 .collect(),
             style: TextStyle::default(),
         };
-        self.text_box(&seg, size)
+        let boxed = self.text_box(&seg, size);
+        if let Some((_, rec)) = &boxed {
+            self.label_recs.insert(*rec);
+        }
+        boxed
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
@@ -2836,6 +2932,75 @@ impl<'a> Context<'a> {
         (out, x)
     }
 
+    /// `\colorbox`/`\fcolorbox` (xcolor.sty 3.02 `\color@b@x`): the content
+    /// as an `\hbox` at natural width with `\fboxsep` on both sides and its
+    /// height and depth grown by `\fboxsep`; `\fcolorbox` adds a `\fboxrule`
+    /// frame around that (`\XC@frameb@x`).
+    fn color_box(&mut self, cb: &adapter::ColorBoxItem, size: f64) -> (pl::GlyphRun, usize) {
+        let (placed, content_width) = self.hbox_runs(&cb.items, size);
+        let rule = if cb.frame.is_some() { cb.rule_pt } else { 0.0 };
+        let inset = rule + cb.sep_pt;
+        let (mut ht, mut dp) = (0.0f64, 0.0f64);
+        let mut runs = Vec::with_capacity(placed.len());
+        let mut items = Vec::with_capacity(placed.len());
+        let mut recs = Vec::with_capacity(placed.len());
+        for (run, rec, x) in placed {
+            ht = ht.max(run.height);
+            dp = dp.max(run.depth);
+            runs.push(position_run(&run, inset + x, 0.0));
+            items.push(pl::Item::Box(run));
+            recs.push(Some(rec));
+        }
+        let width = content_width + 2.0 * inset;
+        let n = items.len();
+        let lines = pl::Lines {
+            lines: vec![pl::Line {
+                index: 0,
+                runs,
+                baseline_y: ht,
+                height: ht,
+                depth: dp,
+                natural_width: width,
+                set_width: width,
+                ratio: 0.0,
+                badness: 0.0,
+                items: 0..n,
+                hyphenated: false,
+            }],
+            breaks: Vec::new(),
+            stats: one_line_stats(),
+            diagnostics: Vec::new(),
+            height: ht + dp,
+        };
+        let block = BuiltBlock {
+            block: pl::ParagraphBlock::body(lines),
+            items,
+            recs,
+            vertical: VBlock {
+                lines: vec![(ht, dp)],
+                penalty_before: None,
+                space_before: None,
+                parskip: None,
+                interline_penalty: 0,
+                club_penalty: 0,
+                widow_penalty: 0,
+                penalty_after: None,
+                space_after: None,
+                no_interline_first: true,
+                no_interline_after: true,
+                baselineskip: None,
+                vskip_after: Vec::new(),
+                pre_space_after: None,
+            },
+            labels: Vec::new(),
+            cache_key: None,
+        };
+        let (height, depth) = (ht + inset, dp + inset);
+        self.recs.push(BoxRec::ColorBox(Rc::new(ColorBoxRec { block, width, height, depth, rule, fill: cb.fill, frame: cb.frame, span: cb.span })));
+        let run = pl::GlyphRun { font: MATH_SENTINEL, size, glyphs: Vec::new(), width, height, depth, source: cb.span.start..cb.span.end };
+        (run, self.recs.len() - 1)
+    }
+
     /// A header or footer line,`\hb@xt@\textwidth{<left>\hfil <center>\hfil
     /// <right>}` in the `\normalsize` body font: each slot is `(text,
     /// \slshape)`; `\thepage` is upright, marks slanted. Words are separated
@@ -3083,6 +3248,104 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// A paragraph line with no boxes (only whatsits such as `\label`, its
+    /// trailing space dropped by line_break): height and depth 0, set with
+    /// the usual interline glue, no `\parskip` (the paragraph continues).
+    fn empty_line_block(&mut self) -> BuiltBlock {
+        let line = pl::Line {
+            index: 0,
+            runs: Vec::new(),
+            baseline_y: 0.0,
+            height: 0.0,
+            depth: 0.0,
+            natural_width: 0.0,
+            set_width: self.style.text_width_pt,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..0,
+            hyphenated: false,
+        };
+        let vertical = VBlock {
+            lines: vec![(0.0, 0.0)],
+            penalty_before: None,
+            space_before: None,
+            parskip: None,
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: None,
+            vskip_after: Vec::new(),
+            pre_space_after: None,
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines: pl::Lines {
+                    lines: vec![line],
+                    breaks: Vec::new(),
+                    stats: pl::Stats {
+                        algorithm: pl::Algorithm::TotalFit,
+                        lines: 1,
+                        pass: 1,
+                        total_demerits: 0.0,
+                        overfull: Vec::new(),
+                        underfull: Vec::new(),
+                        hyphenated_lines: 0,
+                        emergency_pass_used: false,
+                    },
+                    diagnostics: Vec::new(),
+                    height: 0.0,
+                },
+                space_before: pl::Glue::fixed(0.0),
+                space_after: pl::Glue::fixed(0.0),
+                keep_with_next: false,
+            },
+            items: Vec::new(),
+            recs: Vec::new(),
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
+    }
+
+    /// An equation number or `\tag` label as amsmath's `\maketag@@@` sets
+    /// it: an `\hbox` of the text in the body face whose interword spaces
+    /// are TeX's glue at natural width (`\ignorespaces`/`\unskip` drop the
+    /// outer ones), not the T1 visible-space glyph one shaped run would use.
+    /// Each word is its own text box at its offset.
+    fn number_box(&mut self, text: &str, nspan: Span, size: f64) -> Option<NumberBox> {
+        let space = self.space_glue(TextStyle::default(), size, 1000).width;
+        let mut pieces = Vec::new();
+        let (mut x, mut height, mut depth) = (0.0f64, 0.0f64, 0.0f64);
+        for (i, word) in text.split_whitespace().enumerate() {
+            if i > 0 {
+                x += space;
+            }
+            let seg = adapter::Segment {
+                text: word.to_string(),
+                chars: word
+                    .chars()
+                    .map(|_| adapter::CharSrc {
+                        document: nspan.document,
+                        start: nspan.start,
+                        end: nspan.end,
+                    })
+                    .collect(),
+                style: TextStyle::default(),
+            };
+            let (run, rec) = self.text_box(&seg, size)?;
+            height = height.max(run.height);
+            depth = depth.max(run.depth);
+            let w = run.width;
+            pieces.push((run, rec, x));
+            x += w;
+        }
+        (!pieces.is_empty()).then_some(NumberBox { pieces, width: x, height, depth })
+    }
+
     /// A display equation. `pre_display_size` is TeX's measure of the line
     /// before it (its material width plus 2em, or `None` when the display
     /// starts the paragraph); `number` is the `equation` counter set flush
@@ -3100,70 +3363,125 @@ impl<'a> Context<'a> {
     ) -> Option<BuiltBlock> {
         let rec = self.math_box(list, span, true)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
-        let root = &self.maths[*mi].root;
+        let mi = *mi;
         let size = self.style.body_size_pt;
-        let run = math_run(root, size, span);
-        let width = run.width;
-        let (mut height, mut depth) = (run.height, run.depth);
+        let natural_width = self.maths[mi].root.width;
         let (s, z) = self.display_shape(style, list_geom);
-        // \eqno: the number's box (§1202) reduces the room for the formula.
-        let mut eqno: Option<(pl::GlyphRun, usize)> = None;
+        let source: &str = self.texts.get(span.document.0).copied().unwrap_or("");
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        // The number's box `a` (§1199): its width reduces the room for the
+        // formula. `\leqno` (amsmath `leqno`, or the primitive) puts it left.
+        let mut eqno: Option<NumberBox> = None;
+        let mut left = false;
         let mut e = 0.0;
         let mut q = 0.0;
         if let Some((text, nspan)) = number {
-            let seg = adapter::Segment {
-                text: format!("({text})"),
-                chars: format!("({text})")
-                    .chars()
-                    .map(|_| adapter::CharSrc {
-                        document: nspan.document,
-                        start: nspan.start,
-                        end: nspan.end,
-                    })
-                    .collect(),
-                style: TextStyle::default(),
+            let at = source.get(nspan.start..).unwrap_or("");
+            left = if at.starts_with("\\leqno") {
+                true
+            } else if at.starts_with("\\eqno") {
+                false
+            } else {
+                self.style.leqno
             };
-            if let Some((nrun, nrec)) = self.text_box(&seg, size) {
-                e = nrun.width;
-                q = e + self.text_params(TextStyle::default(), size).quad;
-                height = height.max(nrun.height);
-                depth = depth.max(nrun.depth);
-                eqno = Some((nrun, nrec));
+            if let Some(nb) = self.number_box(text, *nspan, size) {
+                e = nb.width;
+                q = e + quad;
+                eqno = Some(nb);
             }
         }
-        // §1199: centre the formula in the measure; if it would collide with
-        // the number, shift it (d) so both fit; `l` marks a display wider
-        // than the room left.
-        let mut w = width;
-        let l = w + q > z;
-        if l {
-            w = (z - q).max(0.0);
-        }
-        let mut d = (z - w) / 2.0;
-        if e > 0.0 && d < 2.0 * e {
-            d = (z - w - e) / 2.0;
-            if d < 0.0 {
-                d = 0.0;
+        let rest = source.get(span.start..).unwrap_or("");
+        // amsmath's `\mathdisplay` honours `fleqn`; a primitive `$$` does not.
+        let fleqn = self.style.fleqn && !rest.starts_with("$$");
+        // §1201: a number that cannot sit beside the squeezed formula goes on
+        // a line of its own (TeX sets e := 0).
+        let mut separate = false;
+        let mut overfull = (natural_width - z).max(0.0);
+        // (formula x, number x, d of §1202)
+        let (x, number_x, d) = if fleqn {
+            // amsmath `fleqn` (`\endmathdisplay@fleqn`): the formula is set
+            // in an `\hbox to\displaywidth` after `\@mathmargin`
+            // (`\leftmargini`); the tag follows `\hfil` flush right
+            // (`\emdf@R`) or comes first with at least `\mintagsep` before
+            // the formula (`\emdf@L`). TeX sees one display-wide box and no
+            // `\eqno`: d = 0.
+            let mintagsep = 0.5 * size;
+            let margin = self.style.leftmargini_pt;
+            if left && e > 0.0 {
+                (s + margin.max(e + mintagsep), s, 0.0)
+            } else {
+                (s + margin, s + z - e, 0.0)
             }
+        } else {
+            // §1199-§1201: a formula too wide beside its number is squeezed.
+            // With a number, `hpack(p, z - q, exactly)` when its finite
+            // shrink reaches (or any infinite shrink exists); otherwise the
+            // number goes on a line of its own and the formula alone is
+            // packed to `z` if it is still wider. The glue set comes from
+            // math-layout's `pack_to` (tex.web §649-§667).
+            let mut w = natural_width;
+            if w + q > z {
+                let root = &self.maths[mi].root;
+                let totals = root.glue_totals();
+                let infinite = totals.shrink[1..].iter().any(|t| *t != 0.0);
+                let packed = if e != 0.0 && (w - totals.shrink[0] + q <= z || infinite) {
+                    Some(root.pack_to(z - q))
+                } else {
+                    separate = e != 0.0;
+                    (w > z).then(|| root.pack_to(z))
+                };
+                if let Some(p) = packed {
+                    w = p.root.width;
+                    overfull = p.overfull;
+                    self.maths[mi].root = p.root;
+                }
+            }
+            let e = if separate { 0.0 } else { e };
+            // §1202: centred, or moved off a number closer than 2e (to 0
+            // when the formula starts with glue).
+            let mut d = (z - w) / 2.0;
+            if e > 0.0 && d < 2.0 * e {
+                d = (z - w - e) / 2.0;
+                if let ml::BoxKind::HBox(children) = &self.maths[mi].root.kind {
+                    if children.first().is_some_and(|c| matches!(c.content.kind, ml::BoxKind::Glue { .. })) {
+                        d = 0.0;
+                    }
+                }
+            }
+            // §1204: `\leqno` packs [a, kern z-w-e-d, b] at s; `\eqno`
+            // [b, kern z-w-e-d, a] at s + d. §1203/§1205: a number on its own
+            // line sits at s (`\leqno`, above) or s + z - width(a) (below).
+            if left && e > 0.0 {
+                (s + z - w - d, s, d)
+            } else if left && separate {
+                (s + d, s, d)
+            } else {
+                (s + d, s + z - eqno.as_ref().map_or(0.0, |n| n.width), d)
+            }
+        };
+        let run = math_run(&self.maths[mi].root, size, span);
+        let width = run.width;
+        let (formula_height, formula_depth) = (run.height, run.depth);
+        let (mut height, mut depth) = (formula_height, formula_depth);
+        if let (Some(nb), false) = (&eqno, separate) {
+            height = height.max(nb.height);
+            depth = depth.max(nb.depth);
         }
-        // §1199: "not enough clearance" when the display starts left of
-        // where the line before it ended (`d + s <= pre_display_size`).
-        let x = s + d.max(0.0);
         // amsmath sets `equation{split}` through `\gather@`'s `\halign`, a
         // display alignment: always the non-short skips (§1206).
-        let split = self
-            .texts
-            .get(span.document.0)
-            .and_then(|t| t.get(span.start..))
-            .and_then(|r| r.strip_prefix("\\begin{equation*}").or_else(|| r.strip_prefix("\\begin{equation}")))
+        let split = rest
+            .strip_prefix("\\begin{equation*}")
+            .or_else(|| rest.strip_prefix("\\begin{equation}"))
             .is_some_and(|r| r.trim_start().starts_with("\\begin{split}"));
-        let long = pre_display_size.is_some_and(|p| x <= p) || l || split;
+        // §1203: "not enough clearance" (`d + s <= \predisplaysize`) or a
+        // `\leqno` number takes the normal skips.
+        let long = pre_display_size.is_some_and(|p| s + d <= p) || (left && eqno.is_some() && !fleqn) || split;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
         } else {
             (self.style.abovedisplayshortskip, self.style.belowdisplayshortskip)
         };
-        let mut runs = vec![pl::PositionedRun {
+        let formula_run = pl::PositionedRun {
             x,
             baseline_y: height,
             width,
@@ -3172,34 +3490,78 @@ impl<'a> Context<'a> {
             glyphs: Vec::new(),
             source: run.source.clone(),
             is_hyphen: false,
-        }];
-        let mut items = vec![pl::Item::Box(run)];
-        let mut recs = vec![Some(rec)];
-        if let Some((nrun, nrec)) = eqno {
-            runs.push(position_run(&nrun, s + z - e, height));
-            items.push(pl::Item::Box(nrun));
-            recs.push(Some(nrec));
-        }
-        let n = items.len();
-        let line = pl::Line {
-            index: 0,
-            runs,
-            baseline_y: height,
-            height,
-            depth,
-            natural_width: s + width,
-            set_width: s + z,
-            ratio: 0.0,
-            badness: 0.0,
-            items: 0..n,
-            hyphenated: false,
         };
+        // Each output line: (runs, items, recs, height, depth, natural width).
+        type OutLine = (Vec<pl::PositionedRun>, Vec<pl::Item>, Vec<Option<usize>>, f64, f64, f64);
+        let mut out_lines: Vec<OutLine> = Vec::new();
+        // The number's word boxes at `number_x`, on a baseline of `baseline`.
+        let number_parts = |nb: NumberBox, baseline: f64| {
+            let mut runs = Vec::new();
+            let mut items = Vec::new();
+            let mut recs = Vec::new();
+            for (nrun, nrec, dx) in nb.pieces {
+                runs.push(position_run(&nrun, number_x + dx, baseline));
+                items.push(pl::Item::Box(nrun));
+                recs.push(Some(nrec));
+            }
+            (runs, items, recs)
+        };
+        match eqno {
+            Some(nb) if separate => {
+                let (nh, nd, nw) = (nb.height, nb.depth, nb.width);
+                let (runs, line_items, line_recs) = number_parts(nb, nh);
+                let number_line: OutLine = (runs, line_items, line_recs, nh, nd, number_x + nw);
+                let formula_line: OutLine = (vec![formula_run], vec![pl::Item::Box(run)], vec![Some(rec)], formula_height, formula_depth, x + width);
+                if left {
+                    out_lines.push(number_line);
+                    out_lines.push(formula_line);
+                } else {
+                    out_lines.push(formula_line);
+                    out_lines.push(number_line);
+                }
+            }
+            Some(nb) => {
+                let (number_runs, number_items, number_recs) = number_parts(nb, height);
+                let mut runs = vec![formula_run];
+                runs.extend(number_runs);
+                let mut line_items = vec![pl::Item::Box(run)];
+                line_items.extend(number_items);
+                let mut line_recs = vec![Some(rec)];
+                line_recs.extend(number_recs);
+                out_lines.push((runs, line_items, line_recs, height, depth, s + width));
+            }
+            None => out_lines.push((vec![formula_run], vec![pl::Item::Box(run)], vec![Some(rec)], height, depth, s + width)),
+        }
+        let mut items = Vec::new();
+        let mut recs = Vec::new();
+        let mut line_list = Vec::new();
+        let mut extents = Vec::new();
+        for (index, (runs, line_items, line_recs, h, dp, natural)) in out_lines.into_iter().enumerate() {
+            let start = items.len();
+            items.extend(line_items);
+            recs.extend(line_recs);
+            line_list.push(pl::Line {
+                index,
+                runs,
+                baseline_y: h,
+                height: h,
+                depth: dp,
+                natural_width: natural,
+                set_width: s + z,
+                ratio: 0.0,
+                badness: 0.0,
+                items: start..items.len(),
+                hyphenated: false,
+            });
+            extents.push((h, dp));
+        }
+        let n_lines = line_list.len();
         let lines = pl::Lines {
-            lines: vec![line],
+            lines: line_list,
             breaks: Vec::new(),
             stats: pl::Stats {
                 algorithm: pl::Algorithm::TotalFit,
-                lines: 1,
+                lines: n_lines,
                 pass: 1,
                 total_demerits: 0.0,
                 overfull: Vec::new(),
@@ -3208,28 +3570,37 @@ impl<'a> Context<'a> {
                 emergency_pass_used: false,
             },
             diagnostics: Vec::new(),
-            height: height + depth,
+            height: extents.iter().map(|(h, dp)| h + dp).sum(),
         };
-        if width > z + 1e-6 {
+        if overfull > 1e-6 {
             let src = self.source(span);
             self.emit(None, Diagnostic::warning(
                 "overfull_display",
-                format!("display is {:.2}pt wider than the {}", width - z, if s > 0.0 { "line width" } else { "text width" }),
+                format!("display is {:.2}pt wider than the {}", overfull, if s > 0.0 { "line width" } else { "text width" }),
                 vec![src],
             ));
         }
         // $$: \penalty\predisplaypenalty, \abovedisplayskip, the display,
-        // \penalty\postdisplaypenalty (0), \belowdisplayskip.
+        // \penalty\postdisplaypenalty (0), \belowdisplayskip. A number on its
+        // own line is kept with the formula (\penalty10000, interline glue
+        // between them); above the formula (`\leqno`) it replaces the
+        // above-display skip, below it (`\eqno`) the below-display skip
+        // (§1203, §1205).
+        let (space_before, space_after) = match (separate, left) {
+            (true, true) => (None, Some(skip_tuple(below))),
+            (true, false) => (Some(skip_tuple(above)), None),
+            _ => (Some(skip_tuple(above)), Some(skip_tuple(below))),
+        };
         let vertical = VBlock {
-            lines: vec![(height, depth)],
+            lines: extents,
             penalty_before: Some(PREDISPLAY_PENALTY),
-            space_before: Some(skip_tuple(above)),
+            space_before,
             parskip: None,
-            interline_penalty: 0,
+            interline_penalty: if separate { pagebuild::INF_PENALTY } else { 0 },
             club_penalty: 0,
             widow_penalty: 0,
             penalty_after: None,
-            space_after: Some(skip_tuple(below)),
+            space_after,
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
@@ -3239,8 +3610,8 @@ impl<'a> Context<'a> {
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
                 lines,
-                space_before: above.glue(),
-                space_after: below.glue(),
+                space_before: if space_before.is_some() { above.glue() } else { pl::Glue::fixed(0.0) },
+                space_after: if space_after.is_some() { below.glue() } else { pl::Glue::fixed(0.0) },
                 keep_with_next: false,
             },
             items,
@@ -3269,6 +3640,9 @@ impl<'a> Context<'a> {
         let dw = self.style.text_width_pt;
         // `\mintagsep`: half of cmsy's quad at the text size.
         let mintagsep = 0.5 * size;
+        // amsmath `fleqn` (`\@mathmargin` = `\leftmargini`) and `leqno`.
+        let (fleqn, leqno) = (self.style.fleqn, self.style.leqno);
+        let margin = self.style.leftmargini_pt;
         let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
         // Cell boxes: (run, rec) per row per cell; right-hand (even-index
         // from 1) align cells and every multline row start with `{}`.
@@ -3306,7 +3680,7 @@ impl<'a> Context<'a> {
         let mut tags: Vec<Option<(pl::GlyphRun, usize)>> = Vec::with_capacity(rows.len());
         for row in rows {
             tags.push(row.number.as_ref().and_then(|(text, nspan)| {
-                let label = format!("({text})");
+                let label = text.clone();
                 let seg = adapter::Segment {
                     text: label.clone(),
                     chars: label
@@ -3338,7 +3712,8 @@ impl<'a> Context<'a> {
                         colw[ci] = colw[ci].max(width(c));
                     }
                 }
-                let totwidth: f64 = colw.iter().sum();
+                // `\measure@`: under `fleqn` `\totwidth@` includes `\@mathmargin`.
+                let totwidth: f64 = colw.iter().sum::<f64>() + if fleqn { margin } else { 0.0 };
                 let d = dw - totwidth;
                 let p = (maxfields / 2) as i64;
                 let (mut eqnshift, mut alignsep, minalignsep, tempcntb, tempcnta);
@@ -3347,8 +3722,15 @@ impl<'a> Context<'a> {
                         alignsep = 0.0;
                         minalignsep = 0.0;
                         tempcntb = 0i64;
-                        tempcnta = 2i64;
-                        eqnshift = d / 2.0;
+                        tempcnta = if fleqn { 1i64 } else { 2i64 };
+                        eqnshift = if fleqn { margin } else { d / 2.0 };
+                    }
+                    RowsEnv::Align if fleqn => {
+                        tempcntb = p - 1;
+                        tempcnta = p;
+                        eqnshift = margin;
+                        alignsep = if tempcnta != 0 { d / tempcnta as f64 } else { d };
+                        minalignsep = MINALIGNSEP;
                     }
                     RowsEnv::Align => {
                         tempcntb = p - 1;
@@ -3361,6 +3743,7 @@ impl<'a> Context<'a> {
                         tempcntb = p - 1;
                         tempcnta = p - 1;
                         eqnshift = 0.0;
+                        let d = if fleqn { d + margin } else { d };
                         // TeX's \divide by zero leaves the dimension unchanged.
                         alignsep = if tempcntb > 0 { d / tempcntb as f64 } else { d };
                         minalignsep = MINALIGNSEP;
@@ -3368,13 +3751,15 @@ impl<'a> Context<'a> {
                 }
                 if alignsep < minalignsep {
                     alignsep = minalignsep;
-                    if eqnshift > 0.0 {
+                    if eqnshift > 0.0 && !fleqn {
                         eqnshift = (dw - totwidth - tempcntb as f64 * alignsep) / 2.0;
                     }
                 }
                 eqnshift = eqnshift.max(0.0);
                 // `\calc@shift@align` (tags right, not fleqn): last row first.
-                for ri in (0..cells.len()).rev() {
+                // The `fleqn`/`leqno` variants only move tags that do not
+                // fit onto their own line, which is not modelled.
+                for ri in (0..cells.len()).rev().filter(|_| !(fleqn || leqno)) {
                     let t = tagw(ri);
                     if t <= 0.0 {
                         continue;
@@ -3457,7 +3842,15 @@ impl<'a> Context<'a> {
                             shift -= t;
                         }
                     }
-                    let mut x = (shift / 2.0).max(0.0);
+                    // `\calc@shift@gather`: `\@mathmargin` under `fleqn`;
+                    // with `leqno` the shift is mirrored.
+                    let mut x = if fleqn {
+                        margin
+                    } else if leqno {
+                        (dw - w - shift / 2.0).max(0.0)
+                    } else {
+                        (shift / 2.0).max(0.0)
+                    };
                     for (ci, c) in row.iter().enumerate() {
                         xs[ri][ci] = x;
                         x += width(c);
@@ -3566,7 +3959,7 @@ impl<'a> Context<'a> {
             if let Some((nrun, nrec)) = &tags[ri] {
                 h = h.max(nrun.height);
                 d = d.max(nrun.depth);
-                runs.push(position_run(nrun, dw - nrun.width, 0.0));
+                runs.push(position_run(nrun, if leqno { 0.0 } else { dw - nrun.width }, 0.0));
                 items.push(pl::Item::Box(nrun.clone()));
                 recs.push(Some(*nrec));
             }
@@ -3682,6 +4075,7 @@ impl<'a> Context<'a> {
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
                 })
                 .next();
             let _ = list;
@@ -3796,6 +4190,7 @@ fn merge_style(base: TextStyle, s: TextStyle) -> TextStyle {
         caps: s.caps || base.caps,
         family: if s.family != crate::nfss::FamilyKind::Rm { s.family } else { base.family },
         undefined: s.undefined.or(base.undefined),
+        color: s.color.or(base.color),
     }
 }
 
@@ -3810,6 +4205,7 @@ fn merge_base(style: TextStyle, base: TextStyle) -> TextStyle {
         caps: style.caps || base.caps,
         family: if style.family != crate::nfss::FamilyKind::Rm { style.family } else { base.family },
         undefined: style.undefined.or(base.undefined),
+        color: style.color.or(base.color),
     }
 }
 
@@ -3895,6 +4291,15 @@ fn seg_span(seg: &adapter::Segment) -> Option<Span> {
     let first = seg.chars.first()?;
     let last = seg.chars.last()?;
     Some(Span::in_document(first.document, first.start.min(last.start), first.end.max(last.end)))
+}
+
+/// A display's equation number (see `Context::number_box`): word boxes
+/// with their x offsets inside the number, and the number's dimensions.
+struct NumberBox {
+    pieces: Vec<(pl::GlyphRun, usize, f64)>,
+    width: f64,
+    height: f64,
+    depth: f64,
 }
 
 fn math_run(root: &ml::MathBox, size: f64, span: Span) -> pl::GlyphRun {
@@ -4007,8 +4412,8 @@ pub fn convert_math_classed(
     class: &dyn Fn(&Span) -> Option<ml::AtomClass>,
 ) -> ml::MathList {
     use flashtex_compiler::math::{DelimiterRole, Nucleus as N};
-    // Open fences: (left delimiter, atoms converted since it).
-    let mut stack: Vec<(Option<char>, Vec<ml::Atom>)> = Vec::new();
+    // Open fences: (left delimiter, atoms converted since it, its span).
+    let mut stack: Vec<(Option<char>, Vec<ml::Atom>, Span)> = Vec::new();
     let mut atoms = Vec::new();
     for a in &list.atoms {
         let sub = |l: &flashtex_compiler::math::MathList, sink: &mut crate::mathtext::TextSink| convert_math_classed(l, sink, fence, class);
@@ -4075,12 +4480,12 @@ pub fn convert_math_classed(
             // `Right` role; an empty glyph is the null delimiter `.`), matched
             // here exactly like the source-derived fences below.
             N::SizedDelimiter { glyph, role: DelimiterRole::Left, .. } => {
-                stack.push((glyph.chars().next(), Vec::new()));
+                stack.push((glyph.chars().next(), Vec::new(), a.span));
                 continue;
             }
             N::SizedDelimiter { glyph, role: DelimiterRole::Right, .. } if !stack.is_empty() => {
-                let (left, body) = stack.pop().expect("checked non-empty");
-                vec![ml::Atom::left_right(left, glyph.chars().next(), ml::MathList::new(body))]
+                let (left, body, left_span) = stack.pop().expect("checked non-empty");
+                vec![fenced(left, glyph.chars().next(), body, left_span, a.span)]
             }
             // amsmath `\big(`..`\Bigg]` (`\bBigg@`): math-layout's
             // `BigDelimiter` at 1/1.5/2/2.5 `\big@size` (compiler scale
@@ -4192,12 +4597,12 @@ pub fn convert_math_classed(
                 };
                 match (single, fence(&a.span)) {
                     (Some(delim), Some(Fence::Left)) => {
-                        stack.push((delim, Vec::new()));
+                        stack.push((delim, Vec::new(), a.span));
                         continue;
                     }
                     (Some(delim), Some(Fence::Right)) if !stack.is_empty() => {
-                        let (left, body) = stack.pop().expect("checked non-empty");
-                        vec![ml::Atom::left_right(left, delim, ml::MathList::new(body))]
+                        let (left, body, left_span) = stack.pop().expect("checked non-empty");
+                        vec![fenced(left, delim, body, left_span, a.span)]
                     }
                     _ => match single {
                         Some(Some(c)) => match class(&a.span) {
@@ -4306,6 +4711,14 @@ pub fn convert_math_classed(
                 vec![sink.grid_atom(atom_class, cells, columns, left, right, a.span)]
             }
         };
+        // Every atom this compiler atom produced maps to its bytes unless a
+        // more precise span was already given (a `\left...\right` pair).
+        #[cfg(feature = "math-glyph-spans")]
+        for atom in &mut out {
+            if atom.tag.span.is_none() {
+                atom.tag.span = math_tag(a.span).span;
+            }
+        }
         if let Some(last) = out.last_mut() {
             if let Some(sup) = &a.superscript {
                 last.superscript = Some(sub(sup, sink));
@@ -4315,19 +4728,53 @@ pub fn convert_math_classed(
             }
         }
         match stack.last_mut() {
-            Some((_, body)) => body.extend(out),
+            Some((_, body, _)) => body.extend(out),
             None => atoms.extend(out),
         }
     }
     // Unclosed \left: the compiler reports it; the delimiter is set as the
     // plain symbol it would have been without the fence.
-    for (left, body) in stack {
+    for (left, body, left_span) in stack {
         if let Some(c) = left {
-            atoms.extend(symbol_atoms(c, None));
+            let delimiter = symbol_atoms(c, None);
+            #[cfg(feature = "math-glyph-spans")]
+            let delimiter: Vec<ml::Atom> = delimiter.into_iter().map(|d| d.with_tag(math_tag(left_span))).collect();
+            atoms.extend(delimiter);
         }
+        let _ = left_span;
         atoms.extend(body);
     }
     ml::MathList::new(atoms)
+}
+
+/// A matched `\left...\right` pair as math-layout's `Delimited` atom; with
+/// `math-glyph-spans` each delimiter maps to its own command and the atom
+/// to the whole pair.
+fn fenced(left: Option<char>, right: Option<char>, body: Vec<ml::Atom>, left_span: Span, right_span: Span) -> ml::Atom {
+    let atom = ml::Atom::left_right(left, right, ml::MathList::new(body));
+    #[cfg(feature = "math-glyph-spans")]
+    let atom = atom
+        .with_tag(math_tag(left_span.merge(right_span)))
+        .with_delimiter_tags(math_tag(left_span), math_tag(right_span));
+    #[cfg(not(feature = "math-glyph-spans"))]
+    let _ = (left_span, right_span);
+    atom
+}
+
+/// math-layout provenance for a compiler span.
+#[cfg(feature = "math-glyph-spans")]
+fn math_tag(span: Span) -> ml::SourceTag {
+    ml::SourceTag::span(ml::SourceSpan::new(span.document.0 as u32, span.start, span.end))
+}
+
+/// The paint of the innermost (shortest) range containing `start..end`.
+#[cfg(feature = "math-glyph-spans")]
+fn innermost_paint(ranges: &[(std::ops::Range<usize>, Paint)], start: usize, end: usize) -> Option<Paint> {
+    ranges
+        .iter()
+        .filter(|(r, _)| r.start <= start && end <= r.end)
+        .min_by_key(|(r, _)| r.end - r.start)
+        .map(|(_, p)| *p)
 }
 
 /// math-layout's style for a compiler `\genfrac` style argument.
@@ -4356,24 +4803,57 @@ fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, 
     let classes = ml::layout::effective_classes(&all_atoms);
     let params = metrics.params(style.size_class());
     let (quad, mu) = (params.quad, params.mu());
-    let mut boxes = Vec::new();
+    // One flat hlist, as TeX's mlist_to_hlist makes: each run's own list
+    // (atoms and inter-atom glue) is spliced in at its offset rather than
+    // nested as a rigid box, and the spacing across the split is real muskip
+    // glue, so `MathBox::glue_totals`/`pack_to` see every glue of the formula
+    // (a too-wide display is squeezed by it, §1201). Positions are unchanged.
+    let mut children: Vec<ml::Child> = Vec::new();
+    let (mut x, mut height, mut depth) = (0.0f64, 0.0f64, 0.0f64);
+    let mut push = |children: &mut Vec<ml::Child>, x: &mut f64, b: ml::MathBox| {
+        let w = b.width;
+        match b.kind {
+            ml::BoxKind::HBox(kids) => {
+                for c in kids {
+                    height = height.max(c.content.height - c.dy);
+                    depth = depth.max(c.content.depth + c.dy);
+                    children.push(ml::Child { dx: *x + c.dx, dy: c.dy, content: c.content });
+                }
+            }
+            _ => {
+                height = height.max(b.height);
+                depth = depth.max(b.depth);
+                children.push(ml::Child { dx: *x, dy: 0.0, content: b });
+            }
+        }
+        *x += w;
+    };
     let mut limitations = Vec::new();
     let mut at = 0usize;
     for (i, l) in runs.iter().enumerate() {
         let part = ml::layout_with_report(l, style, metrics);
         limitations.extend(part.limitations);
-        boxes.push((0.0, part.root));
+        push(&mut children, &mut x, part.root);
         at += l.atoms.len();
         if let Some(em) = glue.get(i).copied().flatten() {
-            let spacing = match (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
-                (Some(&left), Some(&right)) => ml::between(left, right, style).mu() * mu,
-                _ => 0.0,
-            };
-            boxes.push((0.0, ml::MathBox::kern(em * quad + spacing)));
+            push(&mut children, &mut x, ml::MathBox::kern(em * quad));
+            if let (Some(&left), Some(&right)) = (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
+                let space = ml::between(left, right, style);
+                if space != ml::Space::None {
+                    let flex = |amount: f64| ml::Flex::pt(amount * mu);
+                    push(&mut children, &mut x, ml::MathBox::glue_flex(space.mu() * mu, space.mu(), flex(space.stretch_mu()), flex(space.shrink_mu())));
+                }
+            }
         }
     }
     ml::Layout {
-        root: ml::MathBox::hbox(boxes),
+        root: ml::MathBox {
+            tag: ml::SourceTag::NONE,
+            kind: ml::BoxKind::HBox(children),
+            width: x,
+            height,
+            depth,
+        },
         limitations,
     }
 }
@@ -4451,7 +4931,7 @@ fn inline_break_points(root: &mut ml::MathBox, runs: &[ml::MathList], kerned: bo
             // with the line (`4mu plus 2mu minus 4mu`, `5mu plus 5mu`): the
             // formula is cut there too, with no break allowed unless the
             // atom carries a penalty.
-            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu }) if *mu >= 4.0);
+            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu, .. }) if *mu >= 4.0);
             if let Some(penalty) = penalty {
                 breaks.push((at, penalty));
             } else if stretchy_glue_next {
@@ -4994,6 +5474,9 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
 /// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
 /// ([`floatpage`]); without floats the page builder is unchanged.
 pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
+    if let Some(outer) = multicol::outer_doc(ctx, doc, floats) {
+        return build_with_floats(ctx, &outer, cache, floats);
+    }
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
@@ -5328,7 +5811,19 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             let (ind, starts, ah) = (*indent && first, first, after_heading && first);
                             let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
                             let st = *style;
-                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
+                            // `\label` whatsits and a space left in horizontal
+                            // mode after a display (the adapter's
+                            // `label_line` part): TeX's line_break still sets
+                            // them as an empty line, and `\predisplaysize` of a
+                            // display after it is -\maxdimen (§1145-§1146).
+                            let label_line = !items.is_empty()
+                                && matches!(items.last(), Some(AItem::Space { .. }))
+                                && items.iter().all(|i| matches!(i, AItem::Label { .. } | AItem::Space { .. }))
+                                && items.iter().any(|i| matches!(i, AItem::Label { .. }));
+                            if label_line && !first {
+                                blocks.push(ctx.empty_line_block());
+                                pre_display = None;
+                            } else if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -5384,7 +5879,16 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             number,
                             bracket,
                         } => {
-                            if first {
+                            // TeX §1145: a display that opens a paragraph whose
+                            // list is still empty sets no line — after a
+                            // heading, `\@afterheading`'s `\everypar` has
+                            // removed the indent box — so only `\parskip`
+                            // precedes it and `\predisplaysize` is -\maxdimen.
+                            let mut empty_start = None;
+                            if first && after_heading && geom.is_none_or(|g| g.label.is_none()) {
+                                empty_start = Some((std::mem::take(&mut eject), std::mem::take(&mut vspace), env_before.take()));
+                                pre_display = None;
+                            } else if first {
                                 let (mut opener, size) = ctx.display_opener_block(*bracket, geom);
                                 if std::mem::take(&mut eject) {
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -5415,7 +5919,16 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             };
                             let pd = pre_display;
                             let st = *style;
-                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                                if let Some((ej, vs, env)) = empty_start {
+                                    let parskip = geom.map_or(ctx.style.parskip, |g| g.parsep);
+                                    if ej {
+                                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                    }
+                                    add_skip_before(&mut b.vertical, Some(skip_tuple(parskip)));
+                                    add_vspace(&mut b.vertical, vs);
+                                    add_skip_before(&mut b.vertical, env);
+                                }
                                 blocks.push(b);
                             }
                             pre_display = None;
@@ -5492,7 +6005,9 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = n_columns;
-    let (mut built, images, float_labels) = if floats.is_empty() {
+    let (mut built, images, float_labels) = if let Some(b) = multicol::paginate(ctx, doc, &mut blocks, &params) {
+        (b, Vec::new(), Vec::new())
+    } else if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
         match &insertions {
             Some(ins) => {
@@ -5622,6 +6137,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
+    multicol::shift(ctx, &mut pages, &mut line_dx, &blocks);
     if let Some(g) = geo {
         page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events, &counters);
     }
@@ -5664,6 +6180,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 BoxRec::Rule { span, .. } => Some(*span),
                 BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -6027,6 +6544,8 @@ pub fn assemble(
     laid: Laid,
     mut diagnostics: Vec<Diagnostic>,
     cache: Option<&RenderCache>,
+    page_color: Option<flashtex_compiler::color::DeviceColor>,
+    default_color: Option<flashtex_compiler::color::DeviceColor>,
 ) -> DisplayList {
     let paths: Vec<Rc<str>> = documents.iter().map(|d| Rc::from(d.path)).collect();
     let empty: Rc<str> = Rc::from("");
@@ -6080,6 +6599,33 @@ pub fn assemble(
             }
         }
         items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
+        if let Some(color) = default_color {
+            // Under a target model the default colour is written too.
+            for item in &mut items {
+                let paint = match item {
+                    display::Item::GlyphRun(r) => &mut r.paint,
+                    display::Item::Rule(r) => &mut r.paint,
+                    _ => continue,
+                };
+                if paint.device.is_none() {
+                    *paint = Paint::of(Some(color));
+                }
+            }
+        }
+        if let Some(color) = page_color {
+            // pdfTeX paints `\pagecolor` before the page: `q 0 0 W H re f Q`.
+            items.insert(
+                0,
+                display::Item::Rule(Rule {
+                    x: Tick(0),
+                    top: Tick(0),
+                    width: Tick::from_tex_pt(page.width),
+                    height: Tick::from_tex_pt(page.height),
+                    paint: Paint::of(Some(color)),
+                    provenance: Provenance::Synthetic("\\pagecolor".into()),
+                }),
+            );
+        }
         pages.push(display::Page {
             number: page.number,
             width: Tick::from_tex_pt(page.width),
@@ -6122,6 +6668,7 @@ pub fn assemble(
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
+                    BoxRec::ColorBox(c) => Some(c.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -6220,13 +6767,14 @@ fn assemble_block(
                     height,
                     depth,
                     continues,
+                    style,
                     raise,
                     ..
                 } => {
                     used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
-                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, *raise, source_of) {
+                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, *raise, source_of, Paint::of(style.color)) {
                         match (items.last_mut(), item) {
-                            (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size => {
+                            (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size && prev.paint == next.paint => {
                                 join_runs(prev, next);
                             }
                             (_, item) => items.push(item),
@@ -6274,6 +6822,47 @@ fn assemble_block(
                             paint: Paint::BLACK,
                             provenance: Provenance::Source(source_of(r.span)),
                         }));
+                    }
+                }
+                BoxRec::ColorBox(cb) => {
+                    // xcolor draws the fill (`\color@block`: a `\vrule`), the
+                    // content, then the frame (`\boxframe`: top and bottom
+                    // `\hrule`s, side `\vrule`s `\fboxrule` shorter, half a
+                    // rule inside each end).
+                    let x0 = local.x;
+                    let provenance = Provenance::Source(source_of(cb.span));
+                    let block_rule = |x: f64, top: f64, w: f64, h: f64, color| {
+                        display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(x),
+                            top: Tick::from_tex_pt(top),
+                            width: Tick::from_tex_pt(w).max(Tick(1)),
+                            height: Tick::from_tex_pt(h).max(Tick(1)),
+                            paint: Paint::of(Some(color)),
+                            provenance: provenance.clone(),
+                        })
+                    };
+                    let r = cb.rule;
+                    items.push(block_rule(x0 + r, r - cb.height, cb.width - 2.0 * r, cb.height + cb.depth - 2.0 * r, cb.fill));
+                    let a = assemble_block(&cb.block, recs, maths, 0.0, source_of, paths, empty);
+                    let dx = Tick::from_tex_pt(x0);
+                    for line_items in &a.lines {
+                        for it in line_items {
+                            let mut item = incremental::place_item(it, Tick(0), "", 0);
+                            display::shift_x(&mut item, dx);
+                            items.push(item);
+                        }
+                    }
+                    for f in a.faces {
+                        used.entry(f.font_id.clone()).or_insert(f);
+                    }
+                    resources.extend(a.resources);
+                    unmapped.extend(a.unmapped);
+                    if let Some(frame) = cb.frame {
+                        let total = cb.height + cb.depth;
+                        items.push(block_rule(x0, -cb.height, cb.width, r, frame));
+                        items.push(block_rule(x0, r / 2.0 - cb.height, r, total - r, frame));
+                        items.push(block_rule(x0 + cb.width - r, r / 2.0 - cb.height, r, total - r, frame));
+                        items.push(block_rule(x0, cb.depth - r, cb.width, r, frame));
                     }
                 }
                 BoxRec::Rule { width, height, bottom, span } => {
@@ -6334,6 +6923,7 @@ fn picture_items(
             g,
             b,
             a: pt.alpha.clamp(0.0, 1.0),
+            device: None,
         }
     };
     let conv = |path: &vg::Path| -> Vec<display::PathCmd> {
@@ -6551,6 +7141,7 @@ fn text_item(
     depth: f64,
     raise: f64,
     source_of: &dyn Fn(Span) -> SourceRange,
+    paint: Paint,
 ) -> Option<display::Item> {
     // Line-local: the baseline is 0 and every y is an offset from it; the
     // page position is added as an integer tick move when the line is
@@ -6630,7 +7221,7 @@ fn text_item(
         text: text.to_string(),
         glyphs,
         clusters: out_clusters,
-        paint: Paint::BLACK,
+        paint,
         role: display::RunRole::Text,
     }))
 }
@@ -6644,8 +7235,16 @@ fn math_items(
 ) {
     let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height - m.raise));
     let src = source_of(m.span);
-    // Group consecutive glyphs of one face and size into a run; each glyph
-    // is a cluster.
+    // With `math-glyph-spans` every glyph and rule maps to the atom that
+    // produced it (math-layout's `SourceTag`); a leaf without one (never
+    // expected: every converted atom is tagged) falls back to the formula.
+    #[cfg(feature = "math-glyph-spans")]
+    let leaf_src = |tag: ml::SourceTag| match tag.span {
+        Some(s) => source_of(Span::in_document(DocumentId(s.document as usize), s.start, s.end)),
+        None => src.clone(),
+    };
+    // Group consecutive glyphs of one face, size and paint into a run; each
+    // glyph is a cluster.
     let mut current: Option<GlyphRun> = None;
     // A piece cut from the formula before it (`math_pieces`), on the same
     // line: its glyphs go on before the rules that piece appended (one
@@ -6683,7 +7282,13 @@ fn math_items(
         }
         used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
         let size_tick = Tick::from_tex_pt(g.size);
-        if current.as_ref().is_some_and(|r| r.font_size != size_tick || r.font_id != face.font_id) {
+        #[cfg(feature = "math-glyph-spans")]
+        let (paint, glyph_src) = (m.paint_of(g.tag), leaf_src(g.tag));
+        // No per-glyph span_paints yet without the feature (#150/#158 fill
+        // them as a follow-up): fall back to the formula's own colour.
+        #[cfg(not(feature = "math-glyph-spans"))]
+        let (paint, glyph_src) = (Paint::of(m.color), src.clone());
+        if current.as_ref().is_some_and(|r| r.font_size != size_tick || r.font_id != face.font_id || r.paint != paint) {
             flush(&mut current, items);
         }
         let r = current.get_or_insert_with(|| GlyphRun {
@@ -6692,7 +7297,7 @@ fn math_items(
             text: String::new(),
             glyphs: Vec::new(),
             clusters: Vec::new(),
-            paint: Paint::BLACK,
+            paint,
             role: display::RunRole::Math,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
@@ -6792,7 +7397,7 @@ fn math_items(
                 },
                 last: None,
             },
-            provenance: Provenance::Source(src.clone()),
+            provenance: Provenance::Source(glyph_src),
         });
     }
     flush(&mut current, items);
@@ -6801,13 +7406,18 @@ fn math_items(
         if rule.w <= 0.0 || rule.h <= 0.0 {
             continue;
         }
+        #[cfg(feature = "math-glyph-spans")]
+        let (paint, rule_src) = (m.paint_of(rule.tag), leaf_src(rule.tag));
+        // See the matching glyph-run fallback above.
+        #[cfg(not(feature = "math-glyph-spans"))]
+        let (paint, rule_src) = (Paint::of(m.color), src.clone());
         items.push(display::Item::Rule(Rule {
             x: Tick::from_tex_pt(rule.x),
             top: Tick::from_tex_pt(rule.y),
             width: Tick::from_tex_pt(rule.w).max(Tick(1)),
             height: Tick::from_tex_pt(rule.h).max(Tick(1)),
-            paint: Paint::BLACK,
-            provenance: Provenance::Source(src.clone()),
+            paint,
+            provenance: Provenance::Source(rule_src),
         }));
     }
 }
@@ -6839,4 +7449,23 @@ pub fn documents_referenced(list: &DisplayList) -> BTreeSet<DocumentId> {
         }
     }
     out
+}
+
+#[cfg(all(test, feature = "math-glyph-spans"))]
+mod math_paint_tests {
+    use super::*;
+
+    #[test]
+    fn innermost_source_range_paints_a_math_leaf() {
+        let red = Paint { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+        let blue = Paint { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+        // `\textcolor{red}{a {\color{blue} b} c}`: red over 10..40, blue 20..30.
+        let ranges = vec![(10..40, red), (20..30, blue)];
+        assert_eq!(innermost_paint(&ranges, 12, 13), Some(red));
+        assert_eq!(innermost_paint(&ranges, 25, 26), Some(blue));
+        assert_eq!(innermost_paint(&ranges, 35, 36), Some(red));
+        // Partly outside every range, or before it: unpainted.
+        assert_eq!(innermost_paint(&ranges, 5, 12), None);
+        assert_eq!(innermost_paint(&ranges, 0, 1), None);
+    }
 }

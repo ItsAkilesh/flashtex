@@ -69,7 +69,9 @@ DO_DMG=0
 # The bridge is additionally built on demand when missing (see below); the
 # others are optional and skipped when not built or passed.
 HELPER_TABLE=(
-  "cli|flashtex|flashtex-cli|--cli"
+  # Staged as flashtex-cli: on a case-insensitive volume "flashtex" would
+  # overwrite the app executable "FlashTeX" in the same directory.
+  "cli|flashtex-cli|flashtex-cli|--cli"
   "compiler|flashtex-compiler|compiler|--compiler"
   "pdf|flashtex-pdf|pdf|--pdf"
   "bridge|flashtex-bridge|bridge|--bridge"
@@ -376,6 +378,8 @@ for row in "${HELPER_TABLE[@]}"; do
   src="$(helper_override_for "$key")"
   if [[ -z "$src" ]]; then
     default="$HELPER_ROOT/crates/$crate/target/release/$name"
+    # The CLI crate builds "flashtex"; it is staged under a distinct name.
+    [[ "$key" == "cli" ]] && default="$HELPER_ROOT/crates/$crate/target/release/flashtex"
     if [[ "$key" == "bridge" && ! -f "$default" && -f "$HELPER_ROOT/crates/$crate/Cargo.toml" ]]; then
       echo "    $name not built; building it (cargo build --release in crates/$crate)…"
       if (cd "$HELPER_ROOT/crates/$crate" && cargo build --release); then

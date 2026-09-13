@@ -214,6 +214,10 @@ pub enum Op {
     StrokeGray(Decimal),
     FillRgb([Decimal; 3]),
     StrokeRgb([Decimal; 3]),
+    /// `c m y k k` (pdfTeX with xcolor's cmyk colours).
+    FillCmyk([Decimal; 4]),
+    /// `c m y k K`.
+    StrokeCmyk([Decimal; 4]),
     Move(Decimal, Decimal),
     Line(Decimal, Decimal),
     /// `x1 y1 x2 y2 x3 y3 c`
@@ -258,6 +262,8 @@ impl Op {
             Op::StrokeGray(_) => "G",
             Op::FillRgb(_) => "rg",
             Op::StrokeRgb(_) => "RG",
+            Op::FillCmyk(_) => "k",
+            Op::StrokeCmyk(_) => "K",
             Op::Move(..) => "m",
             Op::Line(..) => "l",
             Op::Cubic(_) => "c",
@@ -322,6 +328,7 @@ impl Op {
                 nums(out, std::slice::from_ref(phase));
             }
             Op::FillRgb(v) | Op::StrokeRgb(v) => nums(out, v),
+            Op::FillCmyk(v) | Op::StrokeCmyk(v) => nums(out, v),
             Op::Move(x, y) | Op::Line(x, y) | Op::TextMove(x, y) => {
                 nums(out, &[x.clone(), y.clone()]);
             }
@@ -719,6 +726,8 @@ fn build_op(name: &str, operands: &[Operand]) -> Result<Op, String> {
         "G" => Op::StrokeGray(decimals::<1>(operands, name)?[0].clone()),
         "rg" => Op::FillRgb(decimals::<3>(operands, name)?),
         "RG" => Op::StrokeRgb(decimals::<3>(operands, name)?),
+        "k" => Op::FillCmyk(decimals::<4>(operands, name)?),
+        "K" => Op::StrokeCmyk(decimals::<4>(operands, name)?),
         "m" => {
             let [x, y] = decimals::<2>(operands, name)?;
             Op::Move(x, y)
@@ -1529,6 +1538,8 @@ fn validate(
             | Op::FillGray(_)
             | Op::StrokeGray(_)
             | Op::FillRgb(_)
+            | Op::FillCmyk(_)
+            | Op::StrokeCmyk(_)
             | Op::StrokeRgb(_) => {}
         }
         if in_text

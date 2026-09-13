@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-071",
+  "title": "Producer-side performance: render-pipeline incremental path and IPC",
+  "agent_id": "mac-claude-a",
+  "machine": "mac-m1max-a",
+  "allocation_id": "heavy-models-compiler-perf",
+  "branch": "agent/mac-render-pipeline/perf-*",
+  "owned_paths": [
+    "crates/render-pipeline",
+    "apps/mac"
+  ],
+  "objective": "Same owner directive. Heavy-model lane(s) on mac-m1max-a dedicated to the Mac producer/IDE hot path: end-to-end keystroke\u2192preview latency (tools/typing-bench), render-pipeline incremental relayout (paragraph/page cache hit rates, byte-identical gate), display-list emission and JSON size, V2 consumer decode/paint cost, page cache; targets: p50 keystroke\u2192paint < 30 ms on HW1 and < 60 ms on a 60KB body (currently 48/195 ms per docs/evidence/typing-bench-2026-09-12T102931Z.md).",
+  "acceptance": [
+    "typing-bench before/after with evidence dir",
+    "render-pipeline tests green, digests byte-identical"
+  ],
+  "dependencies": [],
+  "input_main_sha": "6af83a8b86a4693073c96a10794ba1b746d6e09a",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": null,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T17:41:25Z",
+  "notes": "Standing program; model policy: heaviest available (Fable/Opus max), per the owner. Claim before starting; report on issue #2 with numbers."
+}

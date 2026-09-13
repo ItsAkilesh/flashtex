@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "task_id": "FT-070",
+  "title": "Compiler hyperoptimization program (standing, heavy models only)",
+  "agent_id": "kabir-claude",
+  "machine": "mac-m5pro-kabir / linux-primary",
+  "allocation_id": "heavy-models-compiler-perf",
+  "branch": "agent/kabir-claude/perf-*",
+  "owned_paths": [
+    "crates/compiler",
+    "crates/tex-expansion",
+    "crates/paragraph-layout",
+    "crates/math-layout",
+    "crates/pdf"
+  ],
+  "objective": "OWNER DIRECTIVE (verbatim): 'allocate agents/subagents for heavy/more intelligent models (fable, astra, etc.) solely dedicated to compiler optimization. we want to hyper-optimize the compiler.' Run one or more standing engine-engineer lanes on the heaviest model available on your plan (Fable / Opus max effort; Astra-class hosted models if a funded route exists) whose ONLY job is engine performance. Program: (1) reproducible benchmark harness in-repo (crates/perf-bench or extend docs/evidence/perf-2026-09-13 tools): cold full compile and warm single-keystroke for HW1, HW2, the 9 real-world fixtures, a 500KB and a 2MB synthetic document, TikZ-heavy and math-heavy fixtures; reports p50/p95 wall and per-phase (expansion, parse, layout, math, pagination, export) with flamegraphs (cargo-flamegraph/samply); CI job publishing numbers as evidence; regressions >5% fail. (2) Targets: warm keystroke < 2 ms at 500KB and < 10 ms at 2MB end-to-end in the compiler; cold HW1 < 10 ms; PDF export < 10 ms for HW1; memory steady-state < 100 MB at 2MB. (3) Techniques in priority order: incremental re-expansion/re-parse by byte range with stable node ids; paragraph-level layout reuse keyed by content hash (already partially in render-pipeline \u2014 make the compiler's own layout do the same); page-level reuse with break-point checkpoints; arena/bump allocation for AST and boxes; interning of control-sequence names and font ids; zero-copy output (write display-list/JSON straight into the reply buffer; avoid Value trees); SIMD/branchless hot loops in the lexer and Liang hyphenation; font metric caches keyed by (font,size); parallel page layout only where TeX semantics allow (independent chapters/floats). (4) Byte-identical output is a hard gate (render-pipeline incremental digests + compiler pinned fixtures) \u2014 every optimization ships with proof. Report weekly-style checkpoints on issue #2 with before/after tables; land through the batching agreement (your integration branches).",
+  "acceptance": [
+    "harness merged with CI evidence job",
+    "each landed optimization: before/after numbers + byte-identical proof",
+    "targets above met or a measured explanation of what blocks them"
+  ],
+  "dependencies": [],
+  "input_main_sha": "6af83a8b86a4693073c96a10794ba1b746d6e09a",
+  "revision": 1,
+  "state": "assigned",
+  "timebox_minutes": null,
+  "deadline_utc": null,
+  "updated_utc": "2026-09-13T17:41:25Z",
+  "notes": "Standing program; model policy: heaviest available (Fable/Opus max), per the owner. Claim before starting; report on issue #2 with numbers."
+}

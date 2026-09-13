@@ -41,15 +41,129 @@ pub enum ExtensionSizing {
     Fixed,
     /// `cmex10` scaled to the script sizes (7pt, 5pt), so rule thickness and
     /// big-operator spacing shrink with the style. Approximates `amsfonts`,
-    /// which loads real `cmex7`/`cmex8`/`cmex9` fonts at smaller sizes.
+    /// which loads real `cmex7`/`cmex8`/`cmex9` fonts at smaller sizes; see
+    /// [`ExtensionSizing::Designs`] for the exact declaration.
     Scaled,
+    /// `amsmath.sty` (default `cmex7` option, lines 109-114:
+    /// `<-8>cmex7<8>cmex8<9>cmex9<10><10.95>..cmex10`) and `amsfonts.sty`
+    /// (lines 36-41: `<-7.5>cmex7<7.5-8.5>cmex8<8.5-9.5>cmex9<9.5->cmex10`)
+    /// redeclare `OMX/cmex/m/n` without `sfixed`: family 3 is loaded at the
+    /// math size itself, in the design [`extension_design`] names. A
+    /// Computer Modern document loading amsmath or amssymb gets this (pdfTeX
+    /// `\fontname\textfont3` in an 11pt article: `cmex10 at 10.95pt`,
+    /// `\scriptfont3` `cmex8`, `\scriptscriptfont3` `cmex7 at 6.0pt`).
+    /// `lmodern` keeps `omxlmex.fd`'s `sfixed*lmex10` ([`ExtensionSizing::Fixed`]).
+    Designs,
 }
 
 /// Every embedded font, indexed by `FontId`.
-pub static ALL_FONTS: [&TfmFont; 18] = [
+///
+/// New designs are appended so that existing ids stay stable.
+pub static ALL_FONTS: [&TfmFont; 25] = [
     &CMR10, &CMR7, &CMR5, &CMMI10, &CMMI7, &CMMI5, &CMSY10, &CMSY7, &CMSY5, &CMEX10, &CMR12, &CMR8,
-    &CMR6, &CMMI12, &CMMI8, &CMMI6, &CMSY8, &CMSY6,
+    &CMR6, &CMMI12, &CMMI8, &CMMI6, &CMSY8, &CMSY6, &CMR9, &CMR17, &CMMI9, &CMSY9, &CMEX7, &CMEX8,
+    &CMEX9,
 ];
+
+/// The embedded TFM called `name` (`"cmmi9"`), if any.
+pub fn tfm_by_name(name: &str) -> Option<&'static TfmFont> {
+    ALL_FONTS.iter().copied().find(|f| f.name == name)
+}
+
+/// The math sizes `[text, script, scriptscript]` LaTeX uses at a text size.
+///
+/// `fontmath.ltx` lines 75-86: `\DeclareMathSizes{5}{5}{5}{5}`, `{6}{6}{5}{5}`,
+/// `{7}{7}{5}{5}`, `{8}{8}{6}{5}`, `{9}{9}{6}{5}`, `{10}{10}{7}{5}`,
+/// `{10.95}{10.95}{8}{6}`, `{12}{12}{8}{6}`, `{14.4}{14.4}{10}{7}`,
+/// `{17.28}{17.28}{12}{10}`, `{20.74}{20.74}{14.4}{12}`,
+/// `{24.88}{24.88}{20.74}{17.28}`. `size10.clo`/`size11.clo`/`size12.clo`
+/// only choose which of these a size command selects (10pt class:
+/// `\footnotesize` 8, `\small` 9, `\Large` 14.4; 11pt: 9, 10, 14.4; 12pt:
+/// 10, 10.95, 17.28). Any other size gets `\calculate@math@sizes`
+/// (latex.ltx 10742-10754): `\defaultscriptratio` .7 and
+/// `\defaultscriptscriptratio` .5 of the text size, multiplied as TeX does
+/// (the factor in 2^-16 units, truncated to the scaled point).
+pub fn declare_math_sizes(text_pt: f64) -> [f64; 3] {
+    const TABLE: [[f64; 3]; 12] = [
+        [5.0, 5.0, 5.0],
+        [6.0, 5.0, 5.0],
+        [7.0, 5.0, 5.0],
+        [8.0, 6.0, 5.0],
+        [9.0, 6.0, 5.0],
+        [10.0, 7.0, 5.0],
+        [10.95, 8.0, 6.0],
+        [12.0, 8.0, 6.0],
+        [14.4, 10.0, 7.0],
+        [17.28, 12.0, 10.0],
+        [20.74, 14.4, 12.0],
+        [24.88, 20.74, 17.28],
+    ];
+    if let Some(row) = TABLE.iter().find(|row| (row[0] - text_pt).abs() < 0.005) {
+        return *row;
+    }
+    let sp = (text_pt * 65536.0).round() as i64;
+    let scaled = |f: i64| ((sp * f) >> 16) as f64 / 65536.0;
+    [text_pt, scaled(45875), scaled(32768)]
+}
+
+/// The design of `family` that LaTeX loads at `size_pt`.
+///
+/// Computer Modern (`ot1cmr.fd`, `omlcmm.fd`, `omscmsy.fd`) lists exact
+/// sizes: cmr `<5>..<9><10><12>gen*cmr <10.95>cmr10 <14.4>cmr12
+/// <17.28><20.74><24.88>cmr17`, cmmi `<5>..<9>gen*cmmi <10><10.95>cmmi10
+/// <12>..<24.88>cmmi12`, cmsy `<5>..<10>gen*cmsy <10.95>..<24.88>cmsy10`.
+/// Latin Modern (`ot1lmr.fd`, `omllmm.fd`, `omslmsy.fd`) uses ranges that
+/// select the same design at every one of those sizes and are used here for
+/// the rest: roman `<-5.5>5 <5.5-6.5>6 <6.5-7.5>7 <7.5-8.5>8 <8.5-9.5>9
+/// <9.5-11>10 <11-15>12 <15->17`, math italic the same up to `<9.5-11>10
+/// <11->12`, symbols up to `<9.5->10` (`lmr`/`lmmi`/`lmsy` are metric
+/// copies of the CM designs). Family 3 is [`extension_design`]'s.
+pub fn design_for(family: Family, size_pt: f64) -> &'static TfmFont {
+    let s = size_pt;
+    match family {
+        Family::Roman => match s {
+            s if s < 5.5 => &CMR5,
+            s if s < 6.5 => &CMR6,
+            s if s < 7.5 => &CMR7,
+            s if s < 8.5 => &CMR8,
+            s if s < 9.5 => &CMR9,
+            s if s < 11.0 => &CMR10,
+            s if s < 15.0 => &CMR12,
+            _ => &CMR17,
+        },
+        Family::Italic => match s {
+            s if s < 5.5 => &CMMI5,
+            s if s < 6.5 => &CMMI6,
+            s if s < 7.5 => &CMMI7,
+            s if s < 8.5 => &CMMI8,
+            s if s < 9.5 => &CMMI9,
+            s if s < 11.0 => &CMMI10,
+            _ => &CMMI12,
+        },
+        Family::Symbol => match s {
+            s if s < 5.5 => &CMSY5,
+            s if s < 6.5 => &CMSY6,
+            s if s < 7.5 => &CMSY7,
+            s if s < 8.5 => &CMSY8,
+            s if s < 9.5 => &CMSY9,
+            _ => &CMSY10,
+        },
+        Family::Extension => extension_design(s),
+    }
+}
+
+/// The `cmex` design amsmath/amsfonts load at `size_pt`
+/// ([`ExtensionSizing::Designs`]): cmex7 below 7.5pt, cmex8 below 8.5pt,
+/// cmex9 below 9.5pt, else cmex10 (amsfonts' ranges; amsmath's exact sizes
+/// agree at every declared size).
+pub fn extension_design(size_pt: f64) -> &'static TfmFont {
+    match size_pt {
+        s if s < 7.5 => &CMEX7,
+        s if s < 8.5 => &CMEX8,
+        s if s < 9.5 => &CMEX9,
+        _ => &CMEX10,
+    }
+}
 
 fn font_id_of(font: &'static TfmFont) -> FontId {
     let i = ALL_FONTS
@@ -100,6 +214,29 @@ impl CmMathMetrics {
         }
     }
 
+    /// The math fonts LaTeX selects when the current text size is `text_pt`
+    /// (`\normalsize` of a class, `\footnotesize` in a footnote, `\Large` in
+    /// a `\section` title): [`declare_math_sizes`] with [`design_for`] each
+    /// family at each size, and family 3 fixed at cmex10 (the kernel's and
+    /// lmodern's `sfixed`). A Computer Modern document with amsmath or
+    /// amsfonts uses [`CmMathMetrics::with_extension`]`(Designs)`.
+    /// `for_text_size(10.0)` and `for_text_size(12.0)` equal
+    /// [`CmMathMetrics::latex_10pt`] and [`CmMathMetrics::latex_12pt`].
+    pub fn for_text_size(text_pt: f64) -> CmMathMetrics {
+        let sizes = declare_math_sizes(text_pt);
+        let row = |family: Family| sizes.map(|s| design_for(family, s));
+        CmMathMetrics {
+            sizes,
+            extension: ExtensionSizing::Fixed,
+            families: [row(Family::Roman), row(Family::Italic), row(Family::Symbol)],
+        }
+    }
+
+    /// `self` with family 3 sized as `extension`.
+    pub fn with_extension(self, extension: ExtensionSizing) -> CmMathMetrics {
+        CmMathMetrics { extension, ..self }
+    }
+
     /// Alias of [`CmMathMetrics::latex_10pt`]: plain TeX uses the same sizes.
     pub fn plain() -> CmMathMetrics {
         CmMathMetrics::latex_10pt()
@@ -135,12 +272,13 @@ impl CmMathMetrics {
             Family::Italic => 1,
             Family::Symbol => 2,
             Family::Extension => {
-                let at = match self.extension {
+                let (font, at) = match self.extension {
                     // cmex10 is `sfixed` at its 10pt design size in LaTeX.
-                    ExtensionSizing::Fixed => CMEX10.design_size,
-                    ExtensionSizing::Scaled => self.sizes[i],
+                    ExtensionSizing::Fixed => (&CMEX10, CMEX10.design_size),
+                    ExtensionSizing::Scaled => (&CMEX10, self.sizes[i]),
+                    ExtensionSizing::Designs => (extension_design(self.sizes[i]), self.sizes[i]),
                 };
-                return (&CMEX10, font_id_of(&CMEX10), at);
+                return (font, font_id_of(font), at);
             }
         };
         let font = self.families[fam][i];
@@ -268,6 +406,9 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{00AC}' => (Symbol, 0x3A),
         '\u{2205}' => (Symbol, 0x3B),
         '\u{2207}' => (Symbol, 0x72),
+        // fontmath.ltx 224: `\DeclareMathSymbol{\prime}{\mathord}{symbols}{"30}`,
+        // the large prime that `'` (`^\prime`, latex.ltx 15683) sets in scripts.
+        '\u{2032}' => (Symbol, 0x30),
         '\u{2202}' => (Italic, 0x40),
         '\u{2227}' => (Symbol, 0x5E),
         '\u{2228}' => (Symbol, 0x5F),
@@ -292,7 +433,8 @@ pub fn symbol_slot(ch: char) -> Option<(Family, u8)> {
         '\u{03B2}' => (Italic, 0x0C),
         '\u{03B3}' => (Italic, 0x0D),
         '\u{03B4}' => (Italic, 0x0E),
-        '\u{03B5}' => (Italic, 0x0F),
+        // TeX \varepsilon (cmmi "22, the open ε); \epsilon is the lunate U+03F5 below.
+        '\u{03B5}' => (Italic, 0x22),
         '\u{03B6}' => (Italic, 0x10),
         '\u{03B7}' => (Italic, 0x11),
         '\u{03B8}' => (Italic, 0x12),

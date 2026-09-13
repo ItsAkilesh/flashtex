@@ -81,7 +81,7 @@ app-bundle `../Resources` and sibling `<exe>/Fonts` layouts, before the host
 TeX Live directories), so the extracted directory works anywhere with no
 environment and no TeX installation; `flashtex install-cli` symlinks the
 binary into `/usr/local/bin` without breaking that. The Mac app also ships
-the same binary as `Contents/MacOS/flashtex` (it resolves
+the same binary as `Contents/MacOS/flashtex-cli` (it resolves
 `Contents/Resources/{Fonts,texmf}`).
 
 ### Secrets (all optional)

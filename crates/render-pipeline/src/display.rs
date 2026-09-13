@@ -55,6 +55,10 @@ pub struct Paint {
     pub g: f64,
     pub b: f64,
     pub a: f64,
+    /// PROPOSAL (`protocol/proposals/display-list-v2-device-color.md`): the
+    /// colour exactly as pdfTeX writes it (`k`, `rg`, `g` operands); `r`,
+    /// `g`, `b` are then its naive sRGB preview. `None`: the default colour.
+    pub device: Option<flashtex_compiler::color::DeviceColor>,
 }
 
 impl Paint {
@@ -63,7 +67,27 @@ impl Paint {
         g: 0.0,
         b: 0.0,
         a: 1.0,
+        device: None,
     };
+
+    /// The paint of a compiler colour (`None`: black, the default).
+    pub fn of(color: Option<flashtex_compiler::color::DeviceColor>) -> Paint {
+        match color {
+            None => Paint::BLACK,
+            Some(device) => {
+                let (r, g, b) = device.to_rgb();
+                Paint { r, g, b, a: 1.0, device: Some(device) }
+            }
+        }
+    }
+}
+
+/// Negotiated display-list proposals: image items (FT-063) and device
+/// colours (`display-list-v2-device-color`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Wire {
+    pub images: bool,
+    pub device_color: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -477,6 +501,12 @@ impl DisplayList {
 
     /// `images`: whether image items are serialised (adds `image`).
     pub fn required_features_with(&self, images: bool) -> Vec<&'static str> {
+        self.required_features_wire(Wire { images, device_color: false })
+    }
+
+    /// `device-color` is listed when negotiated and some paint carries one.
+    pub fn required_features_wire(&self, wire: Wire) -> Vec<&'static str> {
+        let images = wire.images;
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
             f.insert(1, "rule");
@@ -497,6 +527,15 @@ impl DisplayList {
         if images && self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(_)))) {
             f.push("image");
         }
+        let device = |it: &Item| match it {
+            Item::GlyphRun(r) => r.paint.device.is_some(),
+            Item::Rule(r) => r.paint.device.is_some(),
+            Item::Path(p) => p.paint.device.is_some(),
+            Item::Image(_) => false,
+        };
+        if wire.device_color && self.pages.iter().any(|p| p.items.iter().any(device)) {
+            f.push("device-color");
+        }
         f
     }
 
@@ -514,6 +553,11 @@ impl DisplayList {
     /// [`to_json`](Self::to_json); `images` also serialises image items
     /// and lists the `image` feature (negotiated `display-list-v2-images`).
     pub fn to_json_with(&self, id: &str, images: bool) -> Value {
+        self.to_json_wire(id, Wire { images, device_color: false })
+    }
+
+    /// [`to_json_with`](Self::to_json_with) with every negotiated proposal.
+    pub fn to_json_wire(&self, id: &str, wire: Wire) -> Value {
         let mut payload = Value::obj();
         payload.set("render_format", json::str_("display-list-v2"));
         payload.set("coordinate_unit", json::str_("bp_2pow20"));
@@ -523,7 +567,7 @@ impl DisplayList {
         payload.set("revision", json::num(self.revision as f64));
         payload.set(
             "required_features",
-            Value::Arr(self.required_features_with(images).into_iter().map(json::str_).collect()),
+            Value::Arr(self.required_features_wire(wire).into_iter().map(json::str_).collect()),
         );
         payload.set(
             "documents",
@@ -561,7 +605,7 @@ impl DisplayList {
                     .collect(),
             ),
         );
-        payload.set("pages", Value::Arr(self.pages.iter().map(|p| page_json(p, images)).collect()));
+        payload.set("pages", Value::Arr(self.pages.iter().map(|p| page_json(p, wire)).collect()));
         payload.set(
             "diagnostics",
             Value::Arr(self.diagnostics.iter().map(diagnostic_json).collect()),
@@ -586,6 +630,11 @@ impl DisplayList {
     /// `json::write(&self.to_json_with(id, images))` written directly:
     /// `images` also serialises image items and lists the `image` feature.
     pub fn write_json_with(&self, id: &str, images: bool) -> String {
+        self.write_json_wire(id, Wire { images, device_color: false })
+    }
+
+    /// [`write_json_with`](Self::write_json_with) with every negotiated proposal.
+    pub fn write_json_wire(&self, id: &str, wire: Wire) -> String {
         let mut o = String::with_capacity(self.estimated_json_bytes());
         o.push_str("{\"id\":");
         json::write_string_into(id, &mut o);
@@ -642,12 +691,12 @@ impl DisplayList {
         o.push_str("],\"pages\":[");
         for (i, p) in self.pages.iter().enumerate() {
             sep(&mut o, i);
-            write_page(&mut o, p, images);
+            write_page(&mut o, p, wire);
         }
         o.push_str("],\"project_id\":");
         json::write_string_into(&self.project_id, &mut o);
         o.push_str(",\"render_format\":\"display-list-v2\",\"required_features\":[");
-        for (i, f) in self.required_features_with(images).into_iter().enumerate() {
+        for (i, f) in self.required_features_wire(wire).into_iter().enumerate() {
             sep(&mut o, i);
             json::write_string_into(f, &mut o);
         }
@@ -704,11 +753,21 @@ fn write_provenance(o: &mut String, p: &Provenance) {
     }
 }
 
-fn write_paint(o: &mut String, p: &Paint) {
+fn write_paint(o: &mut String, p: &Paint, device: bool) {
     o.push_str("{\"a\":");
     num(o, p.a);
     o.push_str(",\"b\":");
     num(o, p.b);
+    if let Some(d) = p.device.filter(|_| device) {
+        o.push_str(",\"device_color\":{\"space\":");
+        json::write_string_into(device_space(&d), o);
+        o.push_str(",\"values\":[");
+        for (i, v) in d.operands().split(' ').enumerate() {
+            sep(o, i);
+            json::write_string_into(v, o);
+        }
+        o.push_str("]}");
+    }
     o.push_str(",\"g\":");
     num(o, p.g);
     o.push_str(",\"r\":");
@@ -788,7 +847,16 @@ fn write_image(o: &mut String, i: &Image) {
     o.push('}');
 }
 
-fn write_page(o: &mut String, p: &Page, images: bool) {
+fn device_space(d: &flashtex_compiler::color::DeviceColor) -> &'static str {
+    match d.space {
+        flashtex_compiler::color::ColorSpace::Gray => "gray",
+        flashtex_compiler::color::ColorSpace::Rgb => "rgb",
+        flashtex_compiler::color::ColorSpace::Cmyk => "cmyk",
+    }
+}
+
+fn write_page(o: &mut String, p: &Page, wire: Wire) {
+    let images = wire.images;
     o.push_str("{\"height\":");
     write_tick(o, p.height);
     o.push_str(",\"items\":[");
@@ -856,7 +924,7 @@ fn write_page(o: &mut String, p: &Page, images: bool) {
                     o.push('}');
                 }
                 o.push_str("],\"kind\":\"glyph_run\",\"paint\":");
-                write_paint(o, &r.paint);
+                write_paint(o, &r.paint, wire.device_color);
                 o.push_str(",\"text\":");
                 json::write_string_into(&r.text, o);
                 o.push('}');
@@ -865,7 +933,7 @@ fn write_page(o: &mut String, p: &Page, images: bool) {
                 o.push_str("{\"height\":");
                 write_tick(o, r.height);
                 o.push_str(",\"kind\":\"rule\",\"paint\":");
-                write_paint(o, &r.paint);
+                write_paint(o, &r.paint, wire.device_color);
                 write_provenance(o, &r.provenance);
                 o.push_str(",\"top\":");
                 write_tick(o, r.top);
@@ -904,7 +972,7 @@ fn write_page(o: &mut String, p: &Page, images: bool) {
                     }
                 };
                 o.push_str(",\"paint\":");
-                write_paint(o, &p.paint);
+                write_paint(o, &p.paint, wire.device_color);
                 o.push_str(",\"path\":");
                 write_path(o, &p.commands);
                 let synthetic = matches!(p.provenance, Provenance::Synthetic(_));
@@ -973,8 +1041,14 @@ fn provenance_into(o: &mut Value, p: &Provenance) {
     }
 }
 
-fn paint_json(p: &Paint) -> Value {
+fn paint_json(p: &Paint, device: bool) -> Value {
     let mut o = Value::obj();
+    if let Some(d) = p.device.filter(|_| device) {
+        let mut dc = Value::obj();
+        dc.set("space", json::str_(device_space(&d)));
+        dc.set("values", Value::Arr(d.operands().split(' ').map(|v| json::str_(v.to_string())).collect()));
+        o.set("device_color", dc);
+    }
     o.set("r", json::num(p.r));
     o.set("g", json::num(p.g));
     o.set("b", json::num(p.b));
@@ -1022,7 +1096,8 @@ pub fn diagnostic_json(d: &Diagnostic) -> Value {
     o
 }
 
-fn page_json(p: &Page, images: bool) -> Value {
+fn page_json(p: &Page, wire: Wire) -> Value {
+    let images = wire.images;
     let mut o = Value::obj();
     o.set("number", json::num(f64::from(p.number)));
     o.set("width", tick(p.width));
@@ -1090,7 +1165,7 @@ fn page_json(p: &Page, images: bool) -> Value {
                                     .collect(),
                             ),
                         );
-                        o.set("paint", paint_json(&r.paint));
+                        o.set("paint", paint_json(&r.paint, wire.device_color));
                         o
                     }
                     Item::Path(p) => {
@@ -1148,7 +1223,7 @@ fn page_json(p: &Page, images: bool) -> Value {
                                 ),
                             );
                         }
-                        o.set("paint", paint_json(&p.paint));
+                        o.set("paint", paint_json(&p.paint, wire.device_color));
                         provenance_into(&mut o, &p.provenance);
                         o
                     }
@@ -1159,7 +1234,7 @@ fn page_json(p: &Page, images: bool) -> Value {
                         o.set("top", tick(r.top));
                         o.set("width", tick(r.width));
                         o.set("height", tick(r.height));
-                        o.set("paint", paint_json(&r.paint));
+                        o.set("paint", paint_json(&r.paint, wire.device_color));
                         provenance_into(&mut o, &r.provenance);
                         o
                     }
@@ -1267,6 +1342,7 @@ mod tests {
                 g: 0.1,
                 b: 1.0 / 3.0,
                 a: 1.0,
+                device: None,
             },
             role: RunRole::Text,
         });
@@ -1307,7 +1383,7 @@ mod tests {
                 op,
                 commands: cmds(),
                 clips,
-                paint: Paint { r: 0.5, g: 0.0, b: 1.0, a: 0.25 },
+                paint: Paint { r: 0.5, g: 0.0, b: 1.0, a: 0.25, device: None },
                 provenance,
             })
         };
