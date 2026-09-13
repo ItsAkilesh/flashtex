@@ -10,8 +10,8 @@
 //!
 //! For every fixture in `PASSING`: the page count matches and every
 //! reference word (labels included) has a candidate glyph origin within
-//! 0.5 bp in x and y. `oracle.py check` measures all fixtures, including
-//! the ones listed in `PENDING` with the reason they do not match yet.
+//! 0.5 bp in x and y (all 39 fixtures; `oracle.py check` measures the
+//! same set from a `flashtex-render` build).
 
 mod common;
 
@@ -27,10 +27,14 @@ const PASSING: &[&str] = &[
     "02-enumerate-10pt",
     "02-enumerate-11pt",
     "02-enumerate-12pt",
+    "03-description-10pt",
+    "03-description-11pt",
+    "03-description-12pt",
     "04-nested-enumerate-11pt",
     "04-nested-enumerate-12pt",
     "04-nested-itemize-10pt",
     "04-nested-mixed-10pt",
+    "05-twocolumn-description-12pt",
     "05-twocolumn-itemize-10pt",
     "05-twocolumn-nested-11pt",
     "06-consecutive-10pt",
@@ -39,32 +43,23 @@ const PASSING: &[&str] = &[
     "07-after-heading-10pt",
     "08-multipar-10pt",
     "08-multipar-12pt",
+    "09-description-in-itemize-10pt",
+    "09-description-long-11pt",
     "10-center-after-list-10pt",
     "10-quotation-10pt",
     "10-quote-11pt",
+    "10-quote-in-list-11pt",
+    "10-verse-12pt",
     "11-enumitem-label-10pt",
     "11-enumitem-labelsep-12pt",
     "11-enumitem-leftmargin-star-11pt",
+    "11-enumitem-noitemsep-11pt",
     "11-enumitem-nosep-10pt",
     "11-enumitem-seps-12pt",
     "11-enumitem-setlist-10pt",
+    "11-enumitem-start-resume-10pt",
+    "12-item-optional-10pt",
     "12-long-items-11pt",
-];
-
-/// Fixtures `oracle.py check` still reports as failing, and why.
-#[allow(dead_code)]
-const PENDING: &[(&str, &str)] = &[
-    ("03-description-10pt", "vendored compiler: no `description` environment or `\\item[<label>]`"),
-    ("03-description-11pt", "vendored compiler: no `description`"),
-    ("03-description-12pt", "vendored compiler: no `description`"),
-    ("05-twocolumn-description-12pt", "vendored compiler: no `description`"),
-    ("09-description-in-itemize-10pt", "vendored compiler: no `description`"),
-    ("09-description-long-11pt", "vendored compiler: no `description`"),
-    ("12-item-optional-10pt", "vendored compiler: `\\item[<label>]` is typeset as text"),
-    ("11-enumitem-noitemsep-11pt", "vendored compiler: `[noitemsep]` is read as a shortlabels template (label text)"),
-    ("11-enumitem-start-resume-10pt", "vendored compiler: `start=`/`resume` ignored (numbering and label text)"),
-    ("10-verse-12pt", "vendored compiler: `verse` is not a paragraph environment; pipeline has no verse geometry"),
-    ("10-quote-in-list-11pt", "pipeline: `quote` inside a list does not take the list's margin plus `\\leftmarginii`, nor level-2 `\\topsep`"),
 ];
 
 fn num(v: &Value) -> f64 {

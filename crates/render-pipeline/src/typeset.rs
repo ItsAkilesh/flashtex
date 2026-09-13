@@ -327,6 +327,9 @@ pub struct Context<'a> {
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
+    /// The [`adapter::EnvShape`] of the paragraph being set, with its
+    /// enclosing lists' margins resolved to points.
+    env_shape: Option<(adapter::EnvShape, f64)>,
 }
 
 impl<'a> Context<'a> {
@@ -352,6 +355,7 @@ impl<'a> Context<'a> {
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
+            env_shape: None,
         }
     }
 
@@ -1672,6 +1676,12 @@ impl<'a> Context<'a> {
             ParaStyle::FlushLeft => (pl::BreakMode::RaggedRight, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
             ParaStyle::Quote | ParaStyle::Quotation => (pl::BreakMode::Justified, margin.clone(), margin),
         };
+        // A `quote` in a list, or `verse`: the enclosing lists'
+        // `\@totalleftmargin` plus the environment's own margins.
+        let (left_skip, right_skip) = match (&self.env_shape, style) {
+            (Some((shape, outer)), ParaStyle::Quote | ParaStyle::Quotation) => (pl::Glue::fixed(outer + shape.left_pt), pl::Glue::fixed(shape.right_pt)),
+            _ => (left_skip, right_skip),
+        };
         // `\list`: `\parshape` every line `\@totalleftmargin` in (`\rightmargin`
         // is 0pt), on top of any `quote` margin.
         let left_skip = if hang_pt != 0.0 { pl::Glue::fixed(left_skip.width + hang_pt) } else { left_skip };
@@ -1687,10 +1697,11 @@ impl<'a> Context<'a> {
             double_hyphen_demerits: 10_000.0,
             final_hyphen_demerits: 5_000.0,
             // `quotation`: `\listparindent 1.5em`.
-            parindent: match (indent, style) {
-                (false, _) => 0.0,
-                (true, ParaStyle::Quotation) => 1.5 * s.em_pt,
-                (true, _) => s.parindent_pt,
+            parindent: match (indent, style, &self.env_shape) {
+                (false, _, _) => 0.0,
+                (true, ParaStyle::Quote | ParaStyle::Quotation, Some((shape, _))) => shape.parindent_pt,
+                (true, ParaStyle::Quotation, None) => 1.5 * s.em_pt,
+                (true, _, _) => s.parindent_pt,
             },
             left_skip,
             right_skip,
@@ -1721,20 +1732,41 @@ impl<'a> Context<'a> {
             let (hang, labelwidth) = self.list_geometry(geom, size);
             hang_pt = hang;
             if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
-                if let Some((run, rec)) = self.label_box(text, *span, size) {
-                    let labelsep = geom.labelsep;
-                    let lead = [
-                        (pl::Item::kern(-(labelsep + run.width.min(labelwidth))), None),
-                        (pl::Item::Box(run), Some(rec)),
-                        (pl::Item::kern(labelsep), None),
-                    ];
-                    for (i, (item, rec)) in lead.into_iter().enumerate() {
-                        list.insert(i, item);
-                        recs.insert(i, rec);
+                let labelsep = geom.labelsep;
+                let (words, space) = self.label_words(text, *span, size, geom.label_bold, geom.label_math);
+                let label_width = words.iter().map(|(run, _)| run.width).sum::<f64>() + space * words.len().saturating_sub(1) as f64;
+                let mut label: Vec<(pl::Item, Option<usize>)> = Vec::new();
+                for (i, (run, rec)) in words.into_iter().enumerate() {
+                    if i > 0 {
+                        label.push((pl::Item::kern(space), None));
                     }
-                    for (at, _) in &mut skips {
-                        *at += 3;
-                    }
+                    label.push((pl::Item::Box(run), Some(rec)));
+                }
+                // `\@item`: `\hskip\itemindent \hskip-\labelwidth
+                // \hskip-\labelsep <label box> \hskip\labelsep`. itemize and
+                // enumerate: `\hbox to\labelwidth{\hss\llap{<label>}}`, so a
+                // wider label extends left and never moves the text;
+                // description: `\itemindent-\leftmargin` (= -(\labelwidth of
+                // the level + \labelsep) here), `\labelwidth\z@`, and the box
+                // `\hspace\labelsep\bfseries <term>` at its natural width.
+                let mut lead: Vec<(pl::Item, Option<usize>)> = Vec::new();
+                if geom.description {
+                    lead.push((pl::Item::kern(-(labelwidth + labelsep)), None));
+                    lead.extend(label);
+                    lead.push((pl::Item::kern(labelsep), None));
+                } else if !label.is_empty() {
+                    let boxed = if geom.llap { label_width } else { label_width.min(labelwidth) };
+                    lead.push((pl::Item::kern(-(labelsep + boxed)), None));
+                    lead.extend(label);
+                    lead.push((pl::Item::kern(labelsep), None));
+                }
+                let n = lead.len();
+                for (i, (item, rec)) in lead.into_iter().enumerate() {
+                    list.insert(i, item);
+                    recs.insert(i, rec);
+                }
+                for (at, _) in &mut skips {
+                    *at += n;
                 }
             }
         }
@@ -1742,7 +1774,19 @@ impl<'a> Context<'a> {
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
-        let parskip = list_geom.map_or(self.style.parskip, |g| g.parsep);
+        // A shaped `quote`/`verse` paragraph adds its level's `\parsep`,
+        // except after `verse`'s `\\` (`\addvspace{-\parskip}`).
+        let parskip = match (list_geom, &self.env_shape) {
+            (Some(g), _) => g.parsep,
+            (None, Some((shape, _))) if matches!(style, ParaStyle::Quote | ParaStyle::Quotation) => {
+                if shape.after_line_break.is_some() {
+                    crate::style::Skip::fixed(0.0)
+                } else {
+                    shape.parsep
+                }
+            }
+            _ => self.style.parskip,
+        };
         let vertical = VBlock {
             lines: line_extents(&lines),
             penalty_before: None,
@@ -1813,9 +1857,8 @@ impl<'a> Context<'a> {
     /// `\bullet`/`\ast`/`\cdot` (0.5em, 0.5em, 0.277779em wide), set here
     /// from Latin Modern Math, whose advances are the same; `\labelitemii`
     /// is `\bfseries\textendash`.
-    fn label_box(&mut self, text: &str, span: Span, size: f64) -> Option<(pl::GlyphRun, usize)> {
-        let math = matches!(text, "•" | "∗" | "⋅");
-        let style = TextStyle { bold: text == "–", ..TextStyle::default() };
+    fn label_box(&mut self, text: &str, span: Span, size: f64, bold: bool, math: bool) -> Option<(pl::GlyphRun, usize)> {
+        let style = TextStyle { bold, ..TextStyle::default() };
         let seg = adapter::Segment {
             text: text.to_string(),
             chars: text
@@ -1830,6 +1873,15 @@ impl<'a> Context<'a> {
         };
         let face = math.then(|| self.fonts.resolve(self.style.family, Role::Math, size).face);
         self.text_box_in(&seg, size, face)
+    }
+
+    /// The label's words as boxes, and the interword space between them: a
+    /// space inside the label's `\hbox` is the face's `\fontdimen2` glue
+    /// at its natural width, not the shaped space glyph.
+    fn label_words(&mut self, text: &str, span: Span, size: f64, bold: bool, math: bool) -> (Vec<(pl::GlyphRun, usize)>, f64) {
+        let space = self.text_params(TextStyle { bold, ..TextStyle::default() }, size).space;
+        let words = text.split(' ').filter(|w| !w.is_empty()).filter_map(|w| self.label_box(w, span, size, bold, math)).collect();
+        (words, space)
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
@@ -1903,24 +1955,37 @@ impl<'a> Context<'a> {
         let size = s.body_size_pt;
         let (hang, labelwidth) = list_geom.map_or((0.0, 0.0), |g| self.list_geometry(g, size));
         let linewidth = s.text_width_pt - hang;
-        let label = list_geom.and_then(|g| g.label.as_ref()).and_then(|(text, span)| self.label_box(text, *span, size));
+        let (words, space) = match list_geom.and_then(|g| g.label.as_ref().map(|l| (g, l))) {
+            Some((g, (text, span))) => self.label_words(text, *span, size, g.label_bold, g.label_math),
+            None => (Vec::new(), 0.0),
+        };
+        let description = list_geom.is_some_and(|g| g.description);
         let mut width = hang + if bracket { 0.6 * linewidth } else { 0.0 };
         let (mut runs, mut items, mut recs) = (Vec::new(), Vec::new(), Vec::new());
         let (mut height, mut depth) = (0.0, 0.0);
-        match label {
-            Some((run, rec)) => {
-                // `\hskip-\labelwidth \hskip-\labelsep \hbox to\labelwidth
-                // {\hss <label>} \hskip\labelsep`: the label's right edge
-                // ends `\labelsep` before the text edge.
-                let labelsep = list_geom.map_or(s.labelsep_pt, |g| g.labelsep);
-                let x = hang - labelsep - run.width.min(labelwidth);
-                height = run.height;
-                depth = run.depth;
-                runs.push(position_run(&run, x, run.height));
+        if words.is_empty() {
+            width += s.parindent_pt;
+        } else {
+            // `\hskip-\labelwidth \hskip-\labelsep \hbox to\labelwidth
+            // {\hss <label>} \hskip\labelsep`: the label's right edge ends
+            // `\labelsep` before the text edge (description: the term starts
+            // `\leftmargin` left of it; see `paragraph_block`).
+            let labelsep = list_geom.map_or(s.labelsep_pt, |g| g.labelsep);
+            let label_width = words.iter().map(|(run, _)| run.width).sum::<f64>() + space * (words.len() - 1) as f64;
+            height = words.iter().map(|(run, _)| run.height).fold(0.0, f64::max);
+            depth = words.iter().map(|(run, _)| run.depth).fold(0.0, f64::max);
+            let llap = list_geom.is_some_and(|g| g.llap);
+            let mut x = if description {
+                hang - (labelwidth + labelsep)
+            } else {
+                hang - labelsep - if llap { label_width } else { label_width.min(labelwidth) }
+            };
+            for (run, rec) in words {
+                runs.push(position_run(&run, x, height));
+                x += run.width + space;
                 items.push(pl::Item::Box(run));
                 recs.push(Some(rec));
             }
-            None => width += s.parindent_pt,
         }
         let n = items.len();
         let line = pl::Line {
@@ -2566,10 +2631,14 @@ impl<'a> Context<'a> {
     /// list its `\@totalleftmargin`).
     fn display_shape(&mut self, style: ParaStyle, list_geom: Option<&ListGeom>) -> (f64, f64) {
         let size = self.style.body_size_pt;
-        let quote = if matches!(style, ParaStyle::Quote | ParaStyle::Quotation) { self.style.leftmargini_pt } else { 0.0 };
+        let (left, right) = match (&self.env_shape, style) {
+            (Some((shape, outer)), ParaStyle::Quote | ParaStyle::Quotation) => (outer + shape.left_pt, shape.right_pt),
+            (None, ParaStyle::Quote | ParaStyle::Quotation) => (self.style.leftmargini_pt, self.style.leftmargini_pt),
+            _ => (0.0, 0.0),
+        };
         let hang = list_geom.map_or(0.0, |g| self.list_geometry(g, size).0);
-        let s = quote + hang;
-        (s, (self.style.text_width_pt - s - quote).max(0.0))
+        let s = left + hang;
+        (s, (self.style.text_width_pt - s - right).max(0.0))
     }
 
     /// A `tikzpicture` (the TikZ subset of `flashtex-vector-graphics`),
@@ -4417,10 +4486,32 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 addvspace_before,
                 endlist_adjust,
                 list,
+                shape,
             } => {
                 let mut first = true;
                 let mut eject = *eject_before;
                 let mut vspace = *vspace_before;
+                ctx.env_shape = shape.as_ref().map(|s| {
+                    let size = ctx.style.body_size_pt;
+                    let labelsep = ctx.style.labelsep_pt;
+                    let outer: f64 = s
+                        .outer_margins
+                        .iter()
+                        .map(|m| match m {
+                            ListMargin::Fixed(pt) => *pt,
+                            ListMargin::Widest(text) => ctx.text_width(text, size, Span::new(0, 0)) + labelsep,
+                        })
+                        .sum();
+                    (s.clone(), outer)
+                });
+                // `verse`'s `\\[<dimen>]`: `\vskip <dimen>` before the line.
+                if let Some(pt) = shape.as_ref().and_then(|s| s.after_line_break) {
+                    vspace += pt;
+                }
+                // `\list`-based environment opened here with an [`EnvShape`]:
+                // `\@item`'s `\addvspace\@topsep` (`\topsep` + `\@outerparskip`,
+                // + `\partopsep` from vertical mode) and `\addvspace{-\parskip}`.
+                let shape_skips = shape.as_ref().map(|s| (s.topsep, s.partopsep, s.outer_parskip, s.parsep.natural));
                 // `\endtrivlist`: a positive trailing skip of the previous
                 // block is changed in place before `\@endparenv`'s
                 // `\addvspace` compares against it.
@@ -4440,15 +4531,22 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
                 // `\partopsep` from vertical mode) before the first paragraph;
                 // `\end{...}` adds the same after the last (`\@endparenv`).
-                let env_skip = |vmode: bool| {
-                    let t = ctx.style.topsep;
-                    let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
-                    (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
+                let env_skip = |vmode: bool| match shape_skips {
+                    Some((t, p, _, _)) => (t + if vmode { p } else { 0.0 }, 0.0, 0.0),
+                    None => {
+                        let t = ctx.style.topsep;
+                        let p = if vmode { ctx.style.partopsep } else { crate::style::Skip::default() };
+                        (t.natural + p.natural, t.stretch + p.stretch, t.shrink + p.shrink)
+                    }
                 };
                 if let Some(e) = env_open {
                     env_vmode = e.vmode;
                 }
                 let mut env_before = env_open.map(|e| env_skip(e.vmode));
+                if let (Some(e), Some((_, _, outer_parskip, parsep))) = (env_before.as_mut(), shape_skips) {
+                    e.0 += outer_parskip;
+                    vspace -= parsep;
+                }
                 // A list closed right before the environment: its `\@item`'s
                 // `\addvspace\@topsep` (`\@topsepadd + \parskip`, the
                 // paragraph's own `\parskip` taken back) keeps the larger of
@@ -4486,8 +4584,18 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     }
                     g.parsep.natural.to_bits().hash(&mut h);
                     g.labelsep.to_bits().hash(&mut h);
+                    (g.label_bold, g.label_math, g.description, g.llap).hash(&mut h);
                     h.finish()
                 });
+                let list_fp = match shape {
+                    Some(s) => {
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        list_fp.hash(&mut h);
+                        format!("{s:?}").hash(&mut h);
+                        h.finish()
+                    }
+                    None => list_fp,
+                };
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
