@@ -16,6 +16,7 @@ use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
 #[cfg(test)]
 use crate::lexer::tokenize;
 use crate::math::{self, MathList};
+use crate::siunitx;
 use crate::text_builtins::{self, SymbolOutcome, TextDimen, TextLogo, TextRule};
 use crate::theorems::{
     self, HeadSpace, QedMark, QedPlacement, QedSymbol, TheoremDef, TheoremKind, TheoremRecord,
@@ -659,6 +660,20 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "lstdefinestyle",
     "lstloadlanguages",
     "lstinputlisting",
+    "num",
+    "qty",
+    "unit",
+    "si",
+    "SI",
+    "numlist",
+    "numrange",
+    "qtylist",
+    "qtyrange",
+    "SIlist",
+    "SIrange",
+    "ang",
+    "sisetup",
+    "DeclareSIUnit",
     "section",
     "subsection",
     "subsubsection",
@@ -1070,6 +1085,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             }
         }
     }
+    siunitx::reset();
     let mut p = P {
         t: std::mem::replace(&mut expanded.tokens, Rc::new(Vec::new())),
         entry_path: entry_document.path,
@@ -1697,8 +1713,22 @@ impl P<'_> {
                 let _ = self.required_group(name, span);
                 let _ = self.required_group(name, span);
             }
+            // siunitx settings are ordinary preamble material (`crate::siunitx`).
+            "sisetup" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let keys = siunitx::raw_text(tokens.iter().map(|t| &t.token));
+                siunitx::sisetup(&keys, span.merge(argument_span), &mut self.diags);
+            }
+            "DeclareSIUnit" => {
+                let _ = self.siunitx_bracket();
+                let unit = self.command_or_group(name, span);
+                let (tokens, _) = self.required_group(name, span);
+                siunitx::declare_unit(&unit, &siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "chapter" if self.chapter_class => self.chapter(span, blocks, para),
+            "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
+            | "qtyrange" | "SIlist" | "SIrange" | "ang" => self.siunitx(name, span, para),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
                     "section" => 1,
@@ -2567,6 +2597,13 @@ impl P<'_> {
     }
 
     fn use_package(&mut self, span: Span) {
+        // siunitx keys keep their braces (`output-decimal-marker={,}`).
+        let raw_options = {
+            let start = self.i;
+            let raw = self.siunitx_bracket().map(|(raw, _)| raw);
+            self.i = start;
+            raw
+        };
         let (options, options_span) = self
             .optional_bracket_argument()
             .map(|(options, options_span)| (options, Some(options_span)))
@@ -2601,6 +2638,9 @@ impl P<'_> {
                 let list = self.raw_inside(options_span);
                 self.apply_hyperref_options(&list, options_span);
             }
+        }
+        if let Some(raw) = raw_options.filter(|_| packages.iter().any(|p| p == "siunitx")) {
+            siunitx::load_package(&raw, span.merge(argument_span), &mut self.diags);
         }
         let packages: Vec<String> = packages
             .into_iter()
@@ -4607,6 +4647,74 @@ impl P<'_> {
                         None => {}
                     }
                 }
+                // siunitx in a heading, caption or style argument: the same
+                // formula as in running text (`P::siunitx`).
+                TokenKind::Command(name) if siunitx::arity(name).is_some() => {
+                    let (required, pre_unit_bracket) = siunitx::arity(name).unwrap_or((0, false));
+                    let mut next = index + 1;
+                    let mut span = input.token.span;
+                    let widen = |span: &mut Span, other: Span| {
+                        if other.document == span.document {
+                            *span = span.merge(other);
+                        }
+                    };
+                    let options = siunitx_bracket_at(&expanded, next).map(|(raw, s, after)| {
+                        next = after;
+                        widen(&mut span, s);
+                        raw
+                    });
+                    let mut pre_unit = None;
+                    let mut args = Vec::with_capacity(required);
+                    for argument in 0..required {
+                        if pre_unit_bracket && argument == 1 {
+                            if let Some((raw, s, after)) = siunitx_bracket_at(&expanded, next) {
+                                next = after;
+                                widen(&mut span, s);
+                                pre_unit = Some(raw);
+                            }
+                        }
+                        match siunitx_group_at(&expanded, next) {
+                            Some((raw, s, after)) => {
+                                next = after;
+                                widen(&mut span, s);
+                                args.push(raw);
+                            }
+                            None => {
+                                self.diags.push(Diagnostic::error(
+                                    format!("\\{name} requires an argument"),
+                                    Some(input.token.span),
+                                    Some("used an empty argument and continued".into()),
+                                ));
+                                args.push(String::new());
+                            }
+                        }
+                    }
+                    skip_to = next;
+                    let atoms = siunitx::typeset(
+                        name,
+                        options.as_deref(),
+                        pre_unit.as_deref(),
+                        &args,
+                        false,
+                        span,
+                        &mut self.diags,
+                    );
+                    if !atoms.is_empty() {
+                        content.push(Inline::Math {
+                            list: MathList { atoms },
+                            display: false,
+                            number: None,
+                            number_span: None,
+                            span,
+                            space_before,
+                            // #150: the running colour; a siunitx formula is
+                            // built from its arguments' text, so no inner
+                            // `\color` ranges.
+                            color: style.color,
+                            color_ranges: Vec::new(),
+                        });
+                    }
+                }
                 TokenKind::Command(name) if style_command(name) => {
                     pending = Some(apply_style(style, name));
                 }
@@ -4752,6 +4860,77 @@ impl P<'_> {
         if let Some(inline) = self.symbol_inline(name, span, style, space_before) {
             para.push(inline);
         }
+    }
+
+    /// A siunitx typesetting command (`crate::siunitx`): its arguments are
+    /// read as raw source and the result is one inline formula spanning the
+    /// command and its arguments.
+    fn siunitx(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let Some((required, pre_unit_bracket)) = siunitx::arity(name) else {
+            return;
+        };
+        let options = self.siunitx_bracket();
+        let mut full = options.as_ref().map_or(span, |(_, s)| span.merge(*s));
+        let mut pre_unit = None;
+        let mut args = Vec::with_capacity(required);
+        for index in 0..required {
+            if pre_unit_bracket && index == 1 {
+                if let Some((raw, s)) = self.siunitx_bracket() {
+                    full = full.merge(s);
+                    pre_unit = Some(raw);
+                }
+            }
+            let (tokens, argument_span) = self.required_group(name, span);
+            if argument_span.document == span.document {
+                full = full.merge(argument_span);
+            }
+            args.push(siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+        }
+        let atoms = siunitx::typeset(
+            name,
+            options.as_ref().map(|(o, _)| o.as_str()),
+            pre_unit.as_deref(),
+            &args,
+            false,
+            full,
+            &mut self.diags,
+        );
+        if atoms.is_empty() {
+            return;
+        }
+        para.push(Inline::Math {
+            list: crate::math::MathList { atoms },
+            display: false,
+            number: None,
+            number_span: None,
+            span: full,
+            space_before,
+            // #150: the current text colour; no inner `\color` ranges.
+            color: self.style.color,
+            color_ranges: Vec::new(),
+        });
+    }
+
+    /// A `[key=value, ...]` argument read as raw source with its braces kept
+    /// (`optional_bracket_argument` drops them, which would split
+    /// `output-decimal-marker={,}` at the comma). Nothing is consumed when
+    /// no bracket follows.
+    fn siunitx_bracket(&mut self) -> Option<(String, Span)> {
+        let (raw, span, next) = siunitx_bracket_at(&self.t, self.i)?;
+        self.i = next;
+        Some((raw, span))
+    }
+
+    /// `\DeclareSIUnit\name` or `\DeclareSIUnit{\name}`: the unit's name.
+    fn command_or_group(&mut self, name: &str, span: Span) -> String {
+        self.skip_spaces();
+        if let Some(TokenKind::Command(command)) = self.peek().map(|t| t.kind.clone()) {
+            self.i += 1;
+            return command;
+        }
+        let (tokens, _) = self.required_group(name, span);
+        siunitx::raw_text(tokens.iter().map(|t| &t.token))
     }
 
     fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
@@ -5647,6 +5826,10 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         "algorithmic" => options.iter().all(|option| *option == "noend"),
         "algpseudocode" => options.iter().all(|option| crate::algorithmic::algpseudocode_option(option)),
         "algorithmicx" => options.is_empty(),
+        // siunitx v3 numbers, units, quantities, lists, ranges and angles
+        // (crate::siunitx); its options are \sisetup keys, and a key that
+        // is not modelled gets its own diagnostic there.
+        "siunitx" => true,
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
@@ -5855,6 +6038,84 @@ fn token_source(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+/// A siunitx `[key=value, ...]` argument at `index` (after spaces), read as
+/// raw source with its braces kept: (options, span, index after `]`).
+fn siunitx_bracket_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let first = tokens.get(index)?;
+    if !matches!(&first.token.kind, TokenKind::Word(w) if w.starts_with('[')) {
+        return None;
+    }
+    let start = first.token.span;
+    let mut raw = String::new();
+    let mut depth = 0usize;
+    let mut cursor = index;
+    while let Some(input) = tokens.get(cursor) {
+        cursor += 1;
+        match &input.token.kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                raw.push('{');
+            }
+            TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+                raw.push('}');
+            }
+            TokenKind::ParBreak => return None,
+            _ => {
+                let mut piece = siunitx::raw_text(std::iter::once(&input.token));
+                if cursor == index + 1 {
+                    piece.remove(0);
+                }
+                if depth == 0 {
+                    if let Some(close) = piece.find(']') {
+                        raw.push_str(&piece[..close]);
+                        return Some((raw, start.merge(input.token.span), cursor));
+                    }
+                }
+                raw.push_str(&piece);
+            }
+        }
+    }
+    None
+}
+
+/// A braced siunitx argument at `index` (after spaces) as raw source without
+/// its outer braces: (argument, span, index after `}`).
+fn siunitx_group_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let open = tokens.get(index)?;
+    if open.token.kind != TokenKind::LBrace {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (offset, input) in tokens[index..].iter().enumerate() {
+        match input.token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = tokens[index + 1..index + offset].iter().map(|t| &t.token);
+                    let span = if input.token.span.document == open.token.span.document {
+                        open.token.span.merge(input.token.span)
+                    } else {
+                        open.token.span
+                    };
+                    return Some((siunitx::raw_text(inner), span, index + offset + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn token_text(tokens: &[InputToken]) -> String {
@@ -6126,6 +6387,37 @@ mod tests {
         let parsed = parse(source);
         let pages = layout::layout(&parsed.blocks);
         (parsed, pages)
+    }
+
+    #[test]
+    fn siunitx_commands_are_inline_formulas_in_text_and_headings() {
+        let parsed = parse(
+            "\\usepackage[output-decimal-marker={,}]{siunitx}\n\\begin{document}\n\\section{Speed \\qty{3.5}{\\metre\\per\\second}}\nA \\num[group-digits=none]{12345} b.\n\\end{document}\n",
+        );
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let math_in = |inlines: &[Inline]| {
+            inlines
+                .iter()
+                .filter_map(|i| match i {
+                    Inline::Math { list, display: false, .. } => Some(list.atoms.len()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut heading = None;
+        let mut paragraph = None;
+        for block in &parsed.blocks {
+            match block {
+                Block::Heading { content, .. } => heading = Some(math_in(content)),
+                Block::Paragraph(content) => paragraph = Some(math_in(content)),
+                _ => {}
+            }
+        }
+        // 3 , 5 (the braced comma is one Ord group), thin space, m, s^-1
+        // with its inter-unit thin space.
+        assert_eq!(heading, Some(vec![7]));
+        // 1 2 3 4 5: ungrouped digits.
+        assert_eq!(paragraph, Some(vec![5]));
     }
 
     #[test]
