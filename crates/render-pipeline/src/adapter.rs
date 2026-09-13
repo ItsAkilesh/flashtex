@@ -123,6 +123,9 @@ pub enum ParaPart {
     /// environment's source span (`\eqno` at the right margin).
     /// `bracket` marks LaTeX's `\[`/`displaymath`, which in vertical mode
     /// first sets an empty `.6\linewidth` box with `\nointerlineskip`.
+    /// Under amsmath `\[` is `\begin{equation*}`, whose `\mathdisplay`
+    /// is a bare `$$` (no box, no `\nointerlineskip`), so it is `false`
+    /// there.
     Display {
         list: MathList,
         span: Span,
@@ -184,6 +187,13 @@ pub enum Block {
         /// its excess over the previous block's trailing skip (a display's
         /// `\belowdisplayskip`) is added.
         addvspace_before: f64,
+        /// `\endtrivlist` of the list(s) closed between the previous block
+        /// and this one: when the previous block left a positive trailing
+        /// skip (a display's `\belowdisplayskip`), each closing list
+        /// changes it by its `\parsep` minus the `\parskip` outside it,
+        /// in points; summed innermost first. Nothing when there was no
+        /// trailing skip.
+        endlist_adjust: f64,
         /// The paragraph is (part of) an `itemize`/`enumerate` `\item`
         /// (compiler `Block::ListItem`): LaTeX's `\list` geometry applies.
         list: Option<ListGeom>,
@@ -222,6 +232,10 @@ pub struct ListGeom {
     /// The `\item` marker text and the command's span; `None` for a later
     /// paragraph of the same item (a blank line inside the item's text).
     pub label: Option<(String, Span)>,
+    /// The innermost list's `\parsep` (`\list` sets `\parskip\parsep`):
+    /// the glue every paragraph of the item adds. Article's `\@list<i>`
+    /// value for the nesting level, or an enumitem `parsep=` key.
+    pub parsep: crate::style::Skip,
 }
 
 /// One list level's `\leftmargin`.
@@ -339,6 +353,8 @@ pub fn adapt_cached(
         None => None,
     };
     let mut style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
+    let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
     // article's `0pt plus 1pt`.
     if let Some(pt) = parskip(source, size) {
@@ -441,7 +457,7 @@ pub fn adapt_cached(
                                 Some(row) => row,
                                 None => display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}")),
                             };
-                            let bracket = rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}");
+                            let bracket = !amsmath && (rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}"));
                             parts.push(ParaPart::Display {
                                 list,
                                 span,
@@ -474,6 +490,7 @@ pub fn adapt_cached(
                     eject_before,
                     vspace_before,
                     addvspace_before: unit.addvspace_before,
+                    endlist_adjust: unit.endlist_adjust,
                     list,
                 });
                 after_heading = false;
@@ -529,6 +546,8 @@ struct Unit<'p> {
     vspace_before: f64,
     /// `\addvspace` glue before this unit (list skips; paragraphs only).
     addvspace_before: f64,
+    /// See [`Block::Paragraph::endlist_adjust`].
+    endlist_adjust: f64,
     /// Constructs before this unit the pipeline set approximately.
     limitations: Vec<(&'static str, Span, String)>,
 }
@@ -604,6 +623,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                     eject_before: eject,
                     vspace_before: std::mem::take(&mut pending_vspace),
                     addvspace_before: 0.0,
+                    endlist_adjust: 0.0,
                     limitations: std::mem::take(&mut pending_limitations),
                 });
                 prev_end = Some(*span);
@@ -646,7 +666,10 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
         // the outer `\parskip`, + `\partopsep` when `\begin` was read in
         // vertical mode) then `\addvspace{-\parskip}` with `\parskip` now
         // `\parsep`; the item paragraph then adds `\parsep`
-        // (`paragraph_block`). Right after a heading (`\@nobreak`)
+        // (`paragraph_block`). The first `\addvspace` only tops up the
+        // skip the previous block left (a display's `\belowdisplayskip`),
+        // while the negative one always takes `\parsep` off whatever is
+        // there, so it goes into `vspace_before`. Right after a heading (`\@nobreak`)
         // `\@nbitem`'s skip is absorbed by the heading's after-skip, so
         // only `\parsep` remains. Later items: `\addvspace\itemsep`. A
         // later paragraph of one item (no label) adds nothing but
@@ -664,12 +687,16 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
         };
         let is_heading = matches!(block, CBlock::Heading { .. });
         let mut addvspace_before = 0.0;
+        let mut endlist_adjust = 0.0;
         if prev_list && !is_heading {
             if let Some(gap) = first.and_then(gap_before) {
                 if let Some(env) = gap_has_list_end(gap) {
                     let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
                     let seps = list_seps(src, env, 1, size, style);
                     addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                    if let Some(p) = prev_end {
+                        endlist_adjust = list_end_adjust(src, p.end, gap, size, style);
+                    }
                 }
             }
         }
@@ -681,15 +708,24 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                 let stack = list_stack_at(src, at.start);
                 let env = stack.last().map_or("enumerate", |(env, _)| env);
                 let seps = list_seps(src, env, stack.len().max(1), size, style);
+                // `\@outerparskip`: the `\parskip` in force when `\begin`
+                // was read — the enclosing list's `\parsep` when nested.
+                let outer_parskip = match stack.len() {
+                    n if n > 1 => list_seps(src, stack[n - 2].0, n - 1, size, style).parsep,
+                    _ => style.parskip.natural,
+                };
                 if label.is_some() {
                     let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b)));
                     match opens {
                         Some((g, b)) if list_env_after_begin(&g[b..]) => {
                             let before = &g[..b];
                             list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
-                            addvspace_before += style.parskip.natural - seps.parsep;
-                            if !prev_vmode {
-                                addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                            if prev_vmode {
+                                // `\@nbitem`: `\addvspace{\@outerparskip - \parskip}`.
+                                addvspace_before += outer_parskip - seps.parsep;
+                            } else {
+                                addvspace_before += seps.topsep + outer_parskip + if list_vmode { seps.partopsep } else { 0.0 };
+                                vspace_before -= seps.parsep;
                             }
                         }
                         _ => addvspace_before += seps.itemsep,
@@ -699,6 +735,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                     level: *level,
                     margins: list_margins(src, at.start, size),
                     label: label.clone(),
+                    parsep: seps.parsep_skip,
                 });
             }
         }
@@ -757,6 +794,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                     eject_before: eject,
                     vspace_before,
                     addvspace_before,
+                    endlist_adjust: 0.0,
                     limitations,
                 });
             }
@@ -780,6 +818,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
                             addvspace_before: std::mem::take(&mut addvspace_before),
+                            endlist_adjust: std::mem::take(&mut endlist_adjust),
                             limitations: std::mem::take(&mut limitations),
                         });
                         eject = true;
@@ -798,6 +837,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style
                     eject_before: eject,
                     vspace_before,
                     addvspace_before,
+                    endlist_adjust,
                     limitations,
                 });
             }
@@ -997,6 +1037,8 @@ struct ListSeps {
     partopsep: f64,
     itemsep: f64,
     parsep: f64,
+    /// `\parsep` with its stretch and shrink.
+    parsep_skip: crate::style::Skip,
 }
 
 fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
@@ -1011,13 +1053,15 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
         partopsep: class.partopsep.pt,
         itemsep: class.itemsep.pt,
         parsep: class.parsep.pt,
+        parsep_skip: crate::style::Skip::new(class.parsep.pt, class.parsep.plus, class.parsep.minus),
     };
     if depth == 1 {
-        // The stylesheet's level-1 values are the ones `paragraph_block`
-        // adds as the item's `\parskip`; keep both readings identical.
+        // The stylesheet's level-1 values are the ones the typesetter
+        // reads for `\topsep`; keep both readings identical.
         seps.topsep = style.topsep.natural;
         seps.partopsep = style.partopsep.natural;
         seps.parsep = style.parsep.natural;
+        seps.parsep_skip = style.parsep;
     }
     for (envs, keys) in setlist_calls(source) {
         if !setlist_names(envs, env) {
@@ -1029,7 +1073,10 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
                 "topsep" => seps.topsep = pt,
                 "partopsep" => seps.partopsep = pt,
                 "itemsep" => seps.itemsep = pt,
-                "parsep" => seps.parsep = pt,
+                "parsep" => {
+                    seps.parsep = pt;
+                    seps.parsep_skip = crate::style::Skip::fixed(pt);
+                }
                 _ => {}
             }
         }
@@ -1041,6 +1088,32 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
 fn list_env_after_begin(rest: &str) -> bool {
     let after = rest.strip_prefix("\\begin").unwrap_or(rest).trim_start();
     after.starts_with("{itemize}") || after.starts_with("{enumerate}")
+}
+
+/// `\endtrivlist` for every `\end{itemize}`/`\end{enumerate}` in `gap`
+/// (which starts at byte `gap_start` of `source`), innermost first: when
+/// the list leaves a positive `\lastskip` it becomes `\lastskip +
+/// \parskip - \@outerparskip` — the closing list's `\parsep` less the
+/// `\parskip` outside it (the enclosing list's `\parsep`, or the
+/// document's). The summed change, in points.
+fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: &Stylesheet) -> f64 {
+    let mut adjust = 0.0;
+    let mut from = 0;
+    while let Some(at) = find_command(&gap[from..], "end") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = gap[abs + "\\end".len()..].trim_start();
+        if !rest.starts_with("{itemize}") && !rest.starts_with("{enumerate}") {
+            continue;
+        }
+        let stack = list_stack_at(source, gap_start + abs);
+        let Some(&(env, _)) = stack.last() else { continue };
+        let depth = stack.len();
+        let parsep = list_seps(source, env, depth, size, style).parsep;
+        let outer = if depth > 1 { list_seps(source, stack[depth - 2].0, depth - 1, size, style).parsep } else { style.parskip.natural };
+        adjust += parsep - outer;
+    }
+    adjust
 }
 
 /// The environment of the last `\end{itemize}`/`\end{enumerate}` in `gap`.
