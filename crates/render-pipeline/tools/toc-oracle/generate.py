@@ -44,6 +44,20 @@ _spec.loader.exec_module(pf)
 pf.BP = 72.0 / 72.27
 pf.PAGE_H = 792.0
 
+_fonts_of = pf.fonts_of
+
+
+def _fonts_or_none(objs, page):
+    # A blank page (`\@endpart`'s `\null\newpage`, `\cleardoublepage`) has no
+    # /Font resource.
+    try:
+        return _fonts_of(objs, page)
+    except KeyError:
+        return {}
+
+
+pf.fonts_of = _fonts_or_none
+
 MARK = "%% toc-oracle: lists end"
 PROBE = "\\pdfsavepos\\write-1{TOC-ORACLE-LISTS-END \\the\\pdflastxpos\\space\\the\\pdflastypos}"
 
@@ -163,6 +177,100 @@ def fixtures():
         "\\pagenumbering{arabic}\n" + secs(32, NAMES[:3], sub=["Overview"]) + "\n\n" + figs("figure", ["Only figure"], 33),
     )
     f["23-article-same-page"] = doc("article", "", toc, secs(34, NAMES[:3], sub=["Overview"]), clear=False)
+    # `\part` entries (`\l@part`) and pages.
+    f["24-article-part"] = doc(
+        "article",
+        "",
+        toc,
+        "\\part{Foundations}\n\n" + secs(35, NAMES[:2], sub=["Overview"]) + "\n\n\\part{Applications}\n\n" + secs(36, NAMES[2:4], sub=["Details"]),
+    )
+    f["25-report-part"] = doc(
+        "report",
+        "",
+        toc,
+        "\\part{Basics}\n\n" + secs(37, ["Getting Started", "Going Further"], cmd="chapter", sub=["Overview"])
+        + "\n\n\\part{Advanced Topics}\n\n" + secs(38, ["Beyond"], cmd="chapter", sub=["Details"]),
+        clear=False,
+    )
+    f["26-book-part"] = doc(
+        "book",
+        "",
+        toc,
+        "\\mainmatter\n\\part{First Half}\n\n" + secs(39, ["Opening"], cmd="chapter", sub=["Overview"])
+        + "\n\n\\part{Second Half}\n\n" + secs(40, ["Closing"], cmd="chapter", sub=["Details"]),
+        clear=False,
+    )
+    f["27-article-part-starred-tocdepth"] = doc(
+        "article",
+        "",
+        toc,
+        "\\part*{Prologue}\n\\addcontentsline{toc}{part}{Prologue}\n" + pf.paras(41, 1, 60)
+        + "\n\n\\part{Main Matter}\n\n" + secs(42, NAMES[:3], sub=["Overview"]),
+        "\\setcounter{tocdepth}{0}\n",
+    )
+    # `\caption[<short>]{<long>}`: the list shows `<short>`.
+    f["28-article-caption-short"] = doc(
+        "article",
+        "",
+        "\\listoffigures\n\\listoftables",
+        secs(43, NAMES[:2])
+        + "\n\n"
+        + pf.paras(44, 1, 70)
+        + "\n\n\\begin{figure}[h]\n\\centering\n\\caption[Setup]{The experimental setup, drawn to scale, with every component labelled}\n\\end{figure}\n\n"
+        + pf.paras(45, 1, 70)
+        + "\n\n\\begin{table}[h]\n\\centering\n\\caption[Short table name]{A long table caption that is only shown under the table itself}\n\\end{table}\n\n"
+        + figs("figure", ["Plain caption"], 46),
+    )
+    # Macros in the entry texts: set like body text.
+    f["29-article-inline-macros"] = doc(
+        "article",
+        "",
+        "\\tableofcontents\n\\listoffigures",
+        "\\section{The \\emph{Main} Result}\n" + pf.paras(47, 1, 60)
+        + "\n\n\\section{Bounds on $x$ and $y$}\n" + pf.paras(48, 1, 60)
+        + "\n\n\\subsection{About \\proj{} and \\textbf{bold} words}\n" + pf.paras(49, 1, 60)
+        + "\n\n\\section*{Extra}\n\\addcontentsline{toc}{section}{Extra \\emph{notes} on \\proj}\n" + pf.paras(50, 1, 60)
+        + "\n\n\\begin{figure}[h]\n\\centering\n\\caption{A \\textbf{bold} caption with $y_1$}\n\\end{figure}\n\n"
+        + figs("figure", ["Made with \\proj"], 51),
+        "\\newcommand{\\proj}{FlashTeX}\n",
+    )
+    f["30-report-inline-macros-short"] = doc(
+        "report",
+        "",
+        "\\tableofcontents\n\\listoffigures",
+        "\\chapter{The \\emph{First} Chapter}\n" + pf.paras(52, 1, 60)
+        + "\n\n\\section{Some \\textit{italic} words}\n" + pf.paras(53, 1, 60)
+        + "\n\n\\begin{figure}[h]\n\\centering\n\\caption[Short \\emph{one}]{A long caption for the figure}\n\\end{figure}\n\n"
+        + secs(54, ["Second"], cmd="chapter"),
+        clear=False,
+    )
+    # Two-column report/book: the lists are set in one column.
+    f["31-report-twocolumn"] = doc(
+        "report",
+        "twocolumn",
+        "\\tableofcontents\n\\listoffigures",
+        # A paragraph first: the lists-end probe lands above it, not inside
+        # a two-column `\chapter` head (`\@topnewpage`).
+        pf.paras(60, 1, 40) + "\n\n"
+        + secs(55, ["Getting Started", "Going Further"], cmd="chapter", sub=["Overview", "Details"], words=90)
+        + "\n\n" + figs("figure", ["A figure"], 56),
+        clear=False,
+    )
+    f["32-book-twocolumn"] = doc(
+        "book",
+        "twocolumn",
+        toc,
+        "\\mainmatter\n" + secs(57, ["Opening", "Middle", "Closing"], cmd="chapter", sub=["Overview"], words=90),
+        clear=False,
+    )
+    # `\clearpage` in two-column mode ends the page, `\newpage` the column.
+    f["33-article-twocolumn-newpage"] = doc(
+        "article",
+        "twocolumn",
+        toc,
+        "\\newpage\n" + secs(58, NAMES[:3], sub=["Overview"], words=90) + "\n\n\\clearpage\n\n" + secs(59, NAMES[3:5], words=90),
+        clear=False,
+    )
     return f
 
 

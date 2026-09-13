@@ -142,6 +142,12 @@ pub fn render_cached(
     let entry_text = texts.get(entry_index).copied().unwrap_or("");
     let has_lists = toc::has_lists(entry_text);
     labels.floats = toc::float_entries(&float_envs, &documents.iter().map(|d| d.text).collect::<Vec<_>>());
+    // Entry titles from source bytes (`\addcontentsline`, `\chapter`,
+    // `\part`, captions) are set as body text: one parse per document.
+    if has_lists {
+        let spans = toc::entry_spans(entry_text, flashtex_compiler::DocumentId(entry_index), &labels.floats);
+        labels.entry_items = toc::entry_items(documents, entry_index, &texts, options, &labels, &spans);
+    }
     // The compiler reports the list commands, `\addcontentsline` and
     // `\appendix` it has no model for; the pipeline sets them.
     let superseded = toc::superseded_commands(entry_text);

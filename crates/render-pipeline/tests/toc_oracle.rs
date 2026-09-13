@@ -44,6 +44,16 @@ pub const FIXTURES: &[&str] = &[
     "21-book-basic",
     "22-article-roman-frontmatter",
     "23-article-same-page",
+    "24-article-part",
+    "25-report-part",
+    "26-book-part",
+    "27-article-part-starred-tocdepth",
+    "28-article-caption-short",
+    "29-article-inline-macros",
+    "30-report-inline-macros-short",
+    "31-report-twocolumn",
+    "32-book-twocolumn",
+    "33-article-twocolumn-newpage",
 ];
 
 /// Entry page numbers that follow a body page break the pipeline places
@@ -51,9 +61,7 @@ pub const FIXTURES: &[&str] = &[
 /// gated, and so is every other word:
 /// - 12pt article: `4 Results` falls on page 4 instead of 3 because the
 ///   subsection skips above it add up 0.7bp short of pdflatex's.
-/// - two-column article: the pipeline ends the column, not the page, at the
-///   `\clearpage` after the list, so the body starts on page 1.
-const PAGE_TEXT_UNGATED: &[&str] = &["11-article-twocolumn", "14-article-12pt"];
+const PAGE_TEXT_UNGATED: &[&str] = &["14-article-12pt"];
 
 #[derive(Debug, Clone)]
 struct W {
@@ -127,6 +135,12 @@ fn ours(r: &flashtex_render_pipeline::Rendered) -> Vec<W> {
     out
 }
 
+/// The oracle's reader has no ToUnicode map for the math fonts' Greek
+/// letters and writes `?`; ours carries the Unicode letter.
+fn same_text(ours: &str, oracle: &str) -> bool {
+    ours == oracle || (oracle == "?" && !ours.is_ascii() && ours.chars().count() == 1)
+}
+
 #[derive(Default)]
 struct Outcome {
     words: usize,
@@ -162,7 +176,7 @@ fn check(name: &str) -> Outcome {
         out.words += 1;
         out.dots += usize::from(dot);
         let near = |w: &W| w.page == e.page && (w.x - e.x).abs() <= TOL_BP && (w.baseline - e.baseline).abs() <= TOL_BP;
-        let found = mine.iter().position(|w| w.as_ref().is_some_and(|w| near(w) && w.text == e.text)).or_else(|| {
+        let found = mine.iter().position(|w| w.as_ref().is_some_and(|w| near(w) && same_text(&w.text, &e.text))).or_else(|| {
             let digits = |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit());
             page_text_free.then(|| mine.iter().position(|w| w.as_ref().is_some_and(|w| near(w) && digits(&w.text) && digits(&e.text)))).flatten()
         });

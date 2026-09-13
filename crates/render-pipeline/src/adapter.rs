@@ -293,6 +293,13 @@ pub enum Block {
         /// drops the `Chapter <n>.` prefix).
         mark: bool,
     },
+    /// `\part` (the compiler reports the command and sets its argument as
+    /// body text, which is dropped): article.cls lines 268-301 in the
+    /// flow, report.cls 278-328 / book.cls 299-349 on a page of its own.
+    /// `number` is `\thepart` (`None` for `\part*`).
+    /// `eject_before`: a page-break command stands right before it
+    /// (`clear_before`: `\clearpage`/`\cleardoublepage`).
+    Part { number: Option<String>, items: Vec<Item>, span: Span, eject_before: bool, clear_before: bool },
     /// `\maketitle` (article.cls lines 169-251, report.cls 175-257,
     /// book.cls 181-263): the compiler's title, the `\and`-separated
     /// authors (each a `tabular` whose rows are split at `\\`) and the date
@@ -408,6 +415,9 @@ pub struct Doc {
     pub limitations: Vec<(&'static str, Span, String)>,
     /// `secnumdepth` in force (numbers in running heads).
     pub secnumdepth: u8,
+    /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
+    /// `clear_page_blocks`).
+    pub page_starts: Vec<usize>,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -421,6 +431,8 @@ pub struct Labels {
     pub toc_pages: BTreeMap<String, String>,
     /// Captioned floats: the `\listoffigures`/`\listoftables` entries.
     pub floats: Vec<crate::toc::FloatEntry>,
+    /// Entry titles taken from source bytes, set as body text.
+    pub entry_items: crate::toc::EntryItems,
 }
 
 fn inlines_of(block: &CBlock) -> &[Inline] {
@@ -750,6 +762,7 @@ pub fn adapt_cached(
     // becomes `\@Alph`; `chapter_label` is `\thechapter`.
     let mut appendix = false;
     let mut chapter_label = String::new();
+    let mut part_no = 0u32;
     // Contents lists (`crate::toc`): every `\contentsline` record, where
     // each list stands, and the label keys of records whose page is that of
     // the next block. Nothing is collected without a list.
@@ -771,7 +784,7 @@ pub fn adapt_cached(
     // heading or rule), for rejoining a display with its paragraph.
     let mut prev_para_end: Option<Span> = None;
     for unit in split_at_page_breaks(texts, &lowered, size, &style) {
-        let eject_before = unit.eject_before;
+        let mut eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
         let unit_start = match &unit.kind {
@@ -813,7 +826,7 @@ pub fn adapt_cached(
                                     list: crate::toc::ListKind::Toc,
                                     level: 0,
                                     number: Some((n.clone(), span)),
-                                    title: items.clone(),
+                                    title: labels.entry_items.get(entry_doc, title.0, title.1).unwrap_or_else(|| items.clone()),
                                     key: key.clone(),
                                 });
                                 toc_pending.push(key);
@@ -879,7 +892,7 @@ pub fn adapt_cached(
                     }
                     BodyKind::AddContentsLine { list, level, text } => {
                         if let (true, Some(level)) = (toc_active, crate::toc::level_of(level)) {
-                            let (number, title) = crate::toc::contentsline_text(source, entry_doc, text.0, text.1);
+                            let (number, title) = crate::toc::contentsline_text(source, entry_doc, text.0, text.1, &labels.entry_items);
                             let key = crate::toc::key(toc_records.len());
                             toc_records.push(crate::toc::Record {
                                 list: *list,
@@ -891,7 +904,7 @@ pub fn adapt_cached(
                             // The write lands on the page of the heading just
                             // set, or of the next block.
                             match blocks.last_mut() {
-                                Some(Block::Heading { items, .. } | Block::Chapter { items, .. }) if after_heading => items.push(Item::Label { key }),
+                                Some(Block::Heading { items, .. } | Block::Chapter { items, .. } | Block::Part { items, .. }) if after_heading => items.push(Item::Label { key }),
                                 _ => toc_pending.push(key),
                             }
                         }
@@ -902,6 +915,49 @@ pub fn adapt_cached(
                         appendix = true;
                         chapter_no = 0;
                         section_nos = [0; 3];
+                    }
+                    BodyKind::Part { starred, short, title } => {
+                        // `\@part`: `\refstepcounter{part}` (`\thepart` is
+                        // `\@Roman\c@part`) and `\addcontentsline{toc}{part}
+                        // {\thepart\hspace{1em}#1}`; `\@spart` writes nothing.
+                        let number = (!*starred).then(|| {
+                            part_no += 1;
+                            flashtex_class_geometry::Numbering::UpperRoman.format(i64::from(part_no))
+                        });
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let mut items = words_from_source(source, entry_doc, title.0, title.1);
+                        if toc_active {
+                            if let Some(n) = &number {
+                                let (s, e) = short.unwrap_or(*title);
+                                let key = crate::toc::key(toc_records.len());
+                                toc_records.push(crate::toc::Record {
+                                    list: crate::toc::ListKind::Toc,
+                                    level: -1,
+                                    number: Some((n.clone(), span)),
+                                    title: labels.entry_items.get(entry_doc, s, e).unwrap_or_else(|| words_from_source(source, entry_doc, s, e)),
+                                    key: key.clone(),
+                                });
+                                toc_pending.push(key);
+                            }
+                            items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                        }
+                        // The compiler attaches a `\clearpage` before `\part`
+                        // to the next unit; it belongs to the part.
+                        let before = source[..cmd.start].trim_end();
+                        let clear_before = ["\\clearpage", "\\cleardoublepage"].iter().any(|c| before.ends_with(c));
+                        let part_eject = clear_before || ["\\newpage", "\\pagebreak"].iter().any(|c| before.ends_with(c));
+                        if part_eject {
+                            eject_before = false;
+                        }
+                        blocks.push(Block::Part {
+                            number,
+                            items,
+                            span,
+                            eject_before: part_eject,
+                            clear_before,
+                        });
+                        after_heading = true;
+                        prev_para_end = None;
                     }
                 }
             }
@@ -1180,13 +1236,49 @@ pub fn adapt_cached(
             _ => {}
         }
     }
+    let page_starts = clear_page_blocks(texts, &blocks);
     Doc {
         style,
         blocks,
         diagnostics: Vec::new(),
         limitations,
         secnumdepth,
+        page_starts,
     }
+}
+
+/// Blocks whose `eject_before` comes from `\clearpage`/`\cleardoublepage`
+/// (the page-break command nearest before the block): in two-column mode
+/// those end the page, `\newpage`/`\pagebreak` only the column (latex.ltx
+/// `\clearpage` flushes with `\vbox{}\penalty-\@Mi`, `\@outputdblcol` ships
+/// the page).
+fn clear_page_blocks(texts: &[&str], blocks: &[Block]) -> Vec<usize> {
+    let first_span = |items: &[Item]| {
+        items.iter().find_map(|i| match i {
+            Item::Word(w) => Some(w.span()),
+            Item::Math { span, .. } => Some(*span),
+            _ => None,
+        })
+    };
+    blocks
+        .iter()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            let at = match b {
+                Block::Paragraph { eject_before: true, parts, .. } => parts.iter().find_map(|p| match p {
+                    ParaPart::Lines(items) => first_span(items),
+                    _ => None,
+                }),
+                Block::Heading { eject_before: true, span, .. } | Block::Rule { eject_before: true, span, .. } => Some(*span),
+                Block::Picture { eject_before: true, document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
+                _ => None,
+            }?;
+            let text = texts.get(at.document.0)?.get(..at.start)?;
+            let clear = text.rfind("\\clearpage").max(text.rfind("\\cleardoublepage"));
+            let column = text.rfind("\\newpage").max(text.rfind("\\pagebreak"));
+            (clear.is_some() && clear > column).then_some(i)
+        })
+        .collect()
 }
 
 fn inline_span(i: &Inline) -> Span {
@@ -2871,6 +2963,8 @@ pub enum BodyKind {
     AddContentsLine { list: crate::toc::ListKind, level: String, text: (usize, usize) },
     /// `\appendix`.
     Appendix,
+    /// `\part[<short>]{<title>}` / `\part*{<title>}` (inner ranges).
+    Part { starred: bool, short: Option<(usize, usize)>, title: (usize, usize) },
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -2948,6 +3042,24 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 }
                 group(k).map(|(s, e, after)| (BodyKind::Chapter { starred, title: (s, e) }, after))
             }
+            "part" => {
+                let mut k = j;
+                let starred = bytes.get(k) == Some(&b'*');
+                if starred {
+                    k += 1;
+                }
+                let rest = &source[k..];
+                let trimmed = rest.trim_start();
+                let mut short = None;
+                if trimmed.starts_with('[') {
+                    if let Some(close) = trimmed.find(']') {
+                        let open = k + rest.len() - trimmed.len();
+                        short = Some((open + 1, open + close));
+                        k = open + close + 1;
+                    }
+                }
+                group(k).map(|(s, e, after)| (BodyKind::Part { starred, short, title: (s, e) }, after))
+            }
             "noindent" => Some((BodyKind::NoIndent, j)),
             "tableofcontents" => Some((BodyKind::ContentsList(crate::toc::ListKind::Toc), j)),
             "listoffigures" => Some((BodyKind::ContentsList(crate::toc::ListKind::Lof), j)),
@@ -3007,7 +3119,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
 fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
     let ranges: Vec<(usize, usize)> = commands
         .iter()
-        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Part { .. } | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
         .map(|c| (c.start, c.end))
         .collect();
     if ranges.is_empty() {
@@ -3910,6 +4022,7 @@ mod tests {
                 Block::Rule { .. } => "R".to_string(),
                 Block::Picture { .. } => "P".to_string(),
                 Block::Chapter { .. } => "C".to_string(),
+                Block::Part { .. } => "P".to_string(),
                 Block::Chrome { .. } => "M".to_string(),
                 Block::Title { .. } => "T".to_string(),
                 Block::ClearPage { .. } => "N".to_string(),

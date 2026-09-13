@@ -13,8 +13,12 @@
 //! The entry geometry (`\l@section`, `\l@chapter`, `\@dottedtocline`) is
 //! [`EntryStyle`]; the lines themselves are set by `typeset::toc`.
 
-use crate::adapter::{self, Block, ChromeEvent, Item, Labels};
+use std::collections::BTreeMap;
+
+use crate::adapter::{self, Block, ChromeEvent, Item, Labels, ParaPart};
 use crate::floats::{FloatEnv, FloatKind, Piece};
+use crate::RenderOptions;
+use flashtex_compiler::parser::SourceDocument;
 use flashtex_compiler::{DocumentId, Span};
 
 /// Which list a `\contentsline` belongs to.
@@ -49,6 +53,8 @@ impl ListKind {
 /// `\l@<level>`'s depth: `\c@tocdepth` hides entries deeper than it.
 pub fn level_of(name: &str) -> Option<i8> {
     Some(match name {
+        // `\l@part`: `\ifnum \c@tocdepth >-2`.
+        "part" => -1,
         "chapter" => 0,
         "section" | "figure" | "table" => 1,
         "subsection" => 2,
@@ -111,7 +117,9 @@ pub fn float_entries(envs: &[Vec<FloatEnv>], texts: &[&str]) -> Vec<FloatEntry> 
         let source = texts.get(d).copied().unwrap_or("");
         for (i, f) in doc.iter().enumerate() {
             let Some(caption) = f.pieces.iter().find_map(|p| match p {
-                Piece::Caption { arg, .. } => Some(*arg),
+                // `\@caption#1[#2]#3`: the list shows `#2` (`\@dblarg`
+                // makes it `#3` when absent).
+                Piece::Caption { arg, short, .. } => Some(short.unwrap_or(*arg)),
                 _ => None,
             }) else {
                 continue;
@@ -151,6 +159,13 @@ pub struct EntryStyle {
     /// `\vskip`.
     pub addvspace: bool,
     pub penalty_after: Option<i32>,
+    /// `\l@part`: `{\leavevmode \large \bfseries #1\hfil \hb@xt@\@pnumwidth
+    /// {\hss #2}}\par` — the title and page at `\large`, the number set
+    /// inline (`\thepart\hspace{1em}`) rather than in a `\numberline` box.
+    pub part: bool,
+    /// report/book `\l@part`'s `\global\@nobreaktrue`: the next entry's
+    /// `\addpenalty` does nothing.
+    pub nobreak_after: bool,
 }
 
 /// `\@secpenalty` (article.cls) and `\@highpenalty` (latex.ltx).
@@ -158,7 +173,7 @@ const SECPENALTY: i32 = -300;
 const HIGHPENALTY: i32 = 301;
 
 /// The `\l@<level>` of article.cls (`chapters == false`) or report.cls /
-/// book.cls (identical here); `None` for `\l@part` (not set).
+/// book.cls (identical here).
 pub fn entry_style(level: i8, list: ListKind, chapters: bool) -> Option<EntryStyle> {
     // `\@dottedtocline{#1}{#2}{#3}`: `\vskip 0pt plus .2pt`.
     let dotted = |indent_em: f64, numwidth_em: f64| EntryStyle {
@@ -170,12 +185,30 @@ pub fn entry_style(level: i8, list: ListKind, chapters: bool) -> Option<EntrySty
         skip_before: (0.0, 0.2),
         addvspace: false,
         penalty_after: None,
+        part: false,
+        nobreak_after: false,
     };
     if list != ListKind::Toc {
         // `\l@figure{\@dottedtocline{1}{1.5em}{2.3em}}`, `\let\l@table\l@figure`.
         return Some(dotted(1.5, 2.3));
     }
     Some(match (chapters, level) {
+        // `\l@part` (article.cls lines 509-527, report.cls 595-611,
+        // book.cls 601-617): `\addpenalty\@secpenalty` (article) or
+        // `{-\@highpenalty}`, `\addvspace{2.25em \@plus\p@}`, `\rightskip
+        // \@pnumwidth`, `\parfillskip -\@pnumwidth`, the line, `\nobreak`.
+        (_, -1) => EntryStyle {
+            bold: true,
+            indent_em: 0.0,
+            numwidth_em: 0.0,
+            dotted: false,
+            penalty_before: Some(if chapters { -HIGHPENALTY } else { SECPENALTY }),
+            skip_before: (2.25, 1.0),
+            addvspace: true,
+            penalty_after: Some(10_000),
+            part: true,
+            nobreak_after: chapters,
+        },
         // report.cls/book.cls `\l@chapter`: `\addpenalty{-\@highpenalty}`,
         // `\vskip 1.0em \@plus\p@`, ..., `\penalty\@highpenalty`.
         (true, 0) => EntryStyle {
@@ -187,6 +220,8 @@ pub fn entry_style(level: i8, list: ListKind, chapters: bool) -> Option<EntrySty
             skip_before: (1.0, 1.0),
             addvspace: false,
             penalty_after: Some(HIGHPENALTY),
+            part: false,
+            nobreak_after: false,
         },
         (true, 1) => dotted(1.5, 2.3),
         (true, 2) => dotted(3.8, 3.2),
@@ -204,6 +239,8 @@ pub fn entry_style(level: i8, list: ListKind, chapters: bool) -> Option<EntrySty
             skip_before: (1.0, 1.0),
             addvspace: true,
             penalty_after: None,
+            part: false,
+            nobreak_after: false,
         },
         (false, 2) => dotted(1.5, 2.3),
         (false, 3) => dotted(3.8, 3.2),
@@ -223,6 +260,9 @@ pub struct TocEntry {
     pub page: String,
     /// The list command: the bytes of the leader dots and page numbers.
     pub list_span: Span,
+    /// Set across the full `\textwidth` of a two-column document: report/
+    /// book `\tableofcontents` (etc.) run `\onecolumn` around the list.
+    pub wide: bool,
 }
 
 /// Document settings the lists read from the source.
@@ -233,6 +273,17 @@ pub struct Settings {
     pub names: [String; 3],
     /// `\pagestyle{headings}`: `\@mkboth` sets both marks.
     pub marks: bool,
+    /// report.cls/book.cls lists in a `twocolumn` document: `\if@twocolumn
+    /// \@restonecoltrue\onecolumn ... \if@restonecol\twocolumn\fi` (report.cls
+    /// lines 583-594, 634-658; book.cls 589-600, 640-664).
+    pub onecolumn_lists: bool,
+}
+
+/// Whether `\documentclass[<options>]` lists `twocolumn`.
+pub fn twocolumn_class(source: &str) -> bool {
+    let Some(at) = source.find("\\documentclass") else { return false };
+    let rest = source[at + "\\documentclass".len()..].trim_start();
+    rest.strip_prefix('[').and_then(|r| r.split(']').next()).is_some_and(|opts| opts.split(',').any(|o| o.trim() == "twocolumn"))
 }
 
 impl Settings {
@@ -242,6 +293,7 @@ impl Settings {
             renewed_name(source, macro_name).unwrap_or_else(|| default.to_string())
         };
         Settings {
+            onecolumn_lists: chapters && twocolumn_class(source),
             chapters,
             // article.cls `\setcounter{tocdepth}{3}`, report/book `{2}`.
             tocdepth: signed_counter(source, "tocdepth").unwrap_or(if chapters { 2 } else { 3 }),
@@ -318,7 +370,7 @@ fn renewed_name(source: &str, name: &str) -> Option<String> {
 pub fn superseded_commands(source: &str) -> Vec<usize> {
     let mut out: Vec<usize> = adapter::body_commands(source, false, false)
         .iter()
-        .filter(|c| matches!(c.kind, adapter::BodyKind::ContentsList(_) | adapter::BodyKind::AddContentsLine { .. } | adapter::BodyKind::Appendix))
+        .filter(|c| matches!(c.kind, adapter::BodyKind::ContentsList(_) | adapter::BodyKind::AddContentsLine { .. } | adapter::BodyKind::Appendix | adapter::BodyKind::Part { .. }))
         .map(|c| c.start)
         .collect();
     for name in ["contentsname", "listfigurename", "listtablename"] {
@@ -358,9 +410,10 @@ pub fn has_lists(source: &str) -> bool {
     adapter::body_commands(source, false, false).iter().any(|c| matches!(c.kind, adapter::BodyKind::ContentsList(_)))
 }
 
-/// `\addcontentsline`'s entry text: an optional leading
-/// `[\protect]\numberline{<number>}`, then the title words.
-pub fn contentsline_text(source: &str, document: DocumentId, start: usize, end: usize) -> (Option<(String, Span)>, Vec<Item>) {
+/// `\addcontentsline`'s entry text `source[start..end]`: an optional
+/// leading `[\protect]\numberline{<number>}` (the number and the bytes
+/// through its `}`), then the title's range.
+fn contentsline_parts(source: &str, start: usize, end: usize) -> (Option<(String, usize, usize)>, (usize, usize)) {
     let text = &source[start..end];
     let mut k = start + text.len() - text.trim_start().len();
     if source[k..end].starts_with("\\protect") {
@@ -375,12 +428,130 @@ pub fn contentsline_text(source: &str, document: DocumentId, start: usize, end: 
         if source.as_bytes().get(open) == Some(&b'{') {
             if let Some(close) = matching_brace(source.as_bytes(), open).filter(|c| *c < end) {
                 let number = source[open + 1..close].split_whitespace().collect::<Vec<_>>().join(" ");
-                let span = Span::in_document(document, k, close + 1);
-                return (Some((number, span)), adapter::words_from_source(source, document, close + 1, end));
+                return (Some((number, k, close + 1)), (close + 1, end));
             }
         }
     }
-    (None, adapter::words_from_source(source, document, start, end))
+    (None, (start, end))
+}
+
+/// `\addcontentsline`'s entry: its `\numberline` number and the title,
+/// set like body text when [`entry_items`] has it.
+pub fn contentsline_text(source: &str, document: DocumentId, start: usize, end: usize, entry: &EntryItems) -> (Option<(String, Span)>, Vec<Item>) {
+    let (number, (s, e)) = contentsline_parts(source, start, end);
+    let title = entry.get(document, s, e).unwrap_or_else(|| adapter::words_from_source(source, document, s, e));
+    (number.map(|(n, a, b)| (n, Span::in_document(document, a, b))), title)
+}
+
+/// Entry titles set as body text: `(document, start, end)` of the source
+/// range → the items the adapter makes of it. The contents files hold the
+/// arguments unexpanded and `\l@<level>` typesets them, so macros, math and
+/// font commands come out as they would in a paragraph.
+#[derive(Debug, Clone, Default)]
+pub struct EntryItems(pub BTreeMap<(usize, usize, usize), Vec<Item>>);
+
+/// Derived from the sources once per render: equal keys mean equal items.
+impl PartialEq for EntryItems {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len() && self.0.keys().eq(other.0.keys())
+    }
+}
+
+impl Eq for EntryItems {}
+
+impl EntryItems {
+    pub fn get(&self, document: DocumentId, start: usize, end: usize) -> Option<Vec<Item>> {
+        self.0.get(&(document.0, start, end)).filter(|items| !items.is_empty()).cloned()
+    }
+}
+
+/// The source ranges of the entry titles the lists need from source bytes:
+/// `\addcontentsline` titles, `\chapter`/`\part` titles (the optional
+/// argument when given) in the entry document, and float captions.
+pub fn entry_spans(source: &str, entry: DocumentId, floats: &[FloatEntry]) -> Vec<Span> {
+    let mut out = Vec::new();
+    for c in adapter::body_commands(source, true, false) {
+        let range = match c.kind {
+            adapter::BodyKind::AddContentsLine { text, .. } => contentsline_parts(source, text.0, text.1).1,
+            adapter::BodyKind::Chapter { title, .. } => title,
+            adapter::BodyKind::Part { short, title, .. } => short.unwrap_or(title),
+            _ => continue,
+        };
+        out.push(Span::in_document(entry, range.0, range.1));
+    }
+    out.extend(floats.iter().map(|f| f.caption));
+    out
+}
+
+/// Parses every range of `spans` as body text (the rest of its document
+/// blanked, the preamble kept for its macro definitions, a paragraph break
+/// after each range) and keeps each range's paragraph items.
+pub fn entry_items(documents: &[SourceDocument<'_>], entry_index: usize, texts: &[&str], options: &RenderOptions, labels: &Labels, spans: &[Span]) -> EntryItems {
+    let mut out = EntryItems::default();
+    let mut by_doc: BTreeMap<usize, Vec<Span>> = BTreeMap::new();
+    for s in spans {
+        if s.start < s.end {
+            by_doc.entry(s.document.0).or_default().push(*s);
+        }
+    }
+    for (d, doc_spans) in by_doc {
+        let Some(document) = documents.get(d) else { continue };
+        let text = document.text;
+        let body = text.find("\\begin{document}").map_or(0, |p| p + "\\begin{document}".len());
+        let mut bytes: Vec<u8> = Vec::with_capacity(text.len());
+        for (i, c) in text.char_indices() {
+            if i < body || doc_spans.iter().any(|s| (s.start..s.end).contains(&i)) {
+                bytes.extend_from_slice(&text.as_bytes()[i..i + c.len_utf8()]);
+            } else {
+                bytes.extend(std::iter::repeat_n(if c == '\n' { b'\n' } else { b' ' }, c.len_utf8()));
+            }
+        }
+        for s in &doc_spans {
+            // A paragraph break after the range when two blanked bytes follow.
+            if s.end + 2 <= bytes.len() && !doc_spans.iter().any(|o| (o.start..o.end).contains(&s.end) || (o.start..o.end).contains(&(s.end + 1))) {
+                bytes[s.end] = b'\n';
+                bytes[s.end + 1] = b'\n';
+            }
+        }
+        // Blanking keeps multi-byte characters whole only inside kept ranges;
+        // replace any broken sequence rather than failing.
+        let isolated = String::from_utf8_lossy(&bytes).into_owned();
+        if isolated.len() != text.len() {
+            continue;
+        }
+        let mut texts2: Vec<&str> = texts.to_vec();
+        if d >= texts2.len() {
+            continue;
+        }
+        texts2[d] = &isolated;
+        let docs2: Vec<SourceDocument<'_>> = documents.iter().zip(&texts2).map(|(doc, t)| SourceDocument { path: doc.path, text: t }).collect();
+        let entry_path = documents.get(entry_index).map_or("", |doc| doc.path);
+        let parsed = flashtex_compiler::parser::parse_project(&docs2, entry_path);
+        let doc = adapter::adapt(&texts2, entry_index, &parsed, options, labels);
+        for block in &doc.blocks {
+            let adapter::Block::Paragraph { parts, .. } = block else { continue };
+            let items: Vec<Item> = parts
+                .iter()
+                .flat_map(|p| match p {
+                    ParaPart::Lines(items) => items.clone(),
+                    _ => Vec::new(),
+                })
+                .collect();
+            let position = items.iter().find_map(|i| match i {
+                Item::Word(w) => Some(w.span()),
+                Item::Math { span, .. } => Some(*span),
+                _ => None,
+            });
+            let Some(at) = position.filter(|p| p.document.0 == d) else { continue };
+            let Some(s) = doc_spans.iter().find(|s| (s.start..s.end).contains(&at.start)) else { continue };
+            let slot = out.0.entry((d, s.start, s.end)).or_default();
+            if !slot.is_empty() {
+                slot.push(Item::Space { style: adapter::TextStyle::default(), factor: 1000, no_break: false });
+            }
+            slot.extend(items.into_iter().filter(|i| !matches!(i, Item::Label { .. })));
+        }
+    }
+    out
 }
 
 /// The blocks of one list: its heading (`\section*` in article,
@@ -440,6 +611,7 @@ pub fn list_blocks(
             title,
             page: page(key),
             list_span: span,
+            wide: settings.onecolumn_lists,
         })));
     };
     // Float captions and `\addcontentsline{lof}` records are merged in
@@ -485,7 +657,7 @@ pub fn list_blocks(
                 } else {
                     n.to_string()
                 };
-                let title = adapter::words_at(&f.text, doc, f.caption.start);
+                let title = labels.entry_items.get(doc, f.caption.start, f.caption.end).unwrap_or_else(|| adapter::words_at(&f.text, doc, f.caption.start));
                 push(1, Some((number, f.caption)), title, &f.key);
             }
             (None, None) => {}

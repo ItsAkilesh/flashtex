@@ -2101,6 +2101,73 @@ impl<'a> Context<'a> {
     /// One bold `\raggedright` chapter-head paragraph at `size_pt` with its
     /// `\baselineskip`, `\nobreak` and `\vskip after_pt` after it.
     fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64) -> Option<BuiltBlock> {
+        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, None)
+    }
+
+    /// article.cls `\@part`/`\@spart` (lines 275-301): `\addvspace{4ex}`,
+    /// `{\parindent\z@ \raggedright \interlinepenalty\@M \Large\bfseries
+    /// \partname\nobreakspace\thepart \par\nobreak \huge\bfseries #2\par}`,
+    /// `\nobreak \vskip 3ex`.
+    fn part_flow_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::PartSpec, base: flashtex_class_geometry::BaseSize) -> Vec<BuiltBlock> {
+        use crate::style::frame_pt;
+        let metrics = |size: flashtex_class_geometry::FontSize| {
+            let (s, b) = size.metrics(base);
+            (frame_pt(s), frame_pt(b))
+        };
+        let mut out = Vec::new();
+        if let Some(n) = number {
+            let (size, bs) = metrics(spec.number_size);
+            let words = adapter::command_words(&format!("Part {n}"), span);
+            out.extend(self.part_line(&words, size, bs, frame_pt(spec.number_title_skip), ParaStyle::FlushLeft, None));
+        }
+        let (size, bs) = metrics(spec.title_size);
+        out.extend(self.part_line(title, size, bs, frame_pt(spec.space_after), ParaStyle::FlushLeft, None));
+        if let Some(first) = out.first_mut() {
+            first.vertical.space_before = Some((frame_pt(spec.space_before), 0.0, 0.0));
+        }
+        out
+    }
+
+    /// report.cls `\part` (lines 278-328; book.cls 299-349): the page break,
+    /// `\null\vfil`, `{\centering \huge\bfseries \partname\nobreakspace
+    /// \thepart \par \vskip 20\p@ \Huge\bfseries #2\par}`, `\@endpart`'s
+    /// `\vfil\newpage` (and `\newpage`'s own `\vfil`): the three `\vfil`s
+    /// share what the page leaves, one before the title and two after.
+    fn part_page_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::PartSpec, base: flashtex_class_geometry::BaseSize, width: f64) -> Vec<BuiltBlock> {
+        use crate::style::frame_pt;
+        let metrics = |size: flashtex_class_geometry::FontSize| {
+            let (s, b) = size.metrics(base);
+            (frame_pt(s), frame_pt(b))
+        };
+        let mut null = plain_vblock(vec![(0.0, 0.0)]);
+        null.penalty_before = Some(pagebuild::EJECT_PENALTY);
+        null.space_after = Some((0.0, 0.0, 0.0));
+        let mut out = vec![empty_block(null)];
+        if let Some(n) = number {
+            let (size, bs) = metrics(spec.number_size);
+            let words = adapter::command_words(&format!("Part {n}"), span);
+            out.extend(self.part_line(&words, size, bs, frame_pt(spec.number_title_skip), ParaStyle::Center, Some(width)));
+        }
+        let (size, bs) = metrics(spec.title_size);
+        out.extend(self.part_line(title, size, bs, 0.0, ParaStyle::Center, Some(width)));
+        let last = out.len() - 1;
+        out[last].vertical.penalty_after = Some(pagebuild::EJECT_PENALTY);
+        let s = self.style;
+        let p = page_params(s);
+        let vb: Vec<VBlock> = out.iter().map(|b| b.vertical.clone()).collect();
+        let (_, natural) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), true);
+        let fils = 3.0 + if s.raggedbottom { 1e-4 } else { 0.0 };
+        let fil = ((s.text_height_pt - natural) / fils).max(0.0);
+        if let Some(sa) = out[0].vertical.space_after.as_mut() {
+            sa.0 += fil;
+        }
+        out
+    }
+
+    /// One bold heading paragraph (`\raggedright` or `\centering`) at
+    /// `size_pt` with its `\baselineskip`, `\nobreak` and `\vskip after_pt`
+    /// after it, `width` wide (the column by default).
+    fn part_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64, para: ParaStyle, width: Option<f64>) -> Option<BuiltBlock> {
         let (list, recs, labels, skips) = self.hlist(
             items,
             size_pt,
@@ -2108,12 +2175,15 @@ impl<'a> Context<'a> {
                 bold: true,
                 ..TextStyle::default()
             },
-            ParaStyle::FlushLeft,
+            para,
         );
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let params = self.line_params(false, baselineskip_pt, ParaStyle::FlushLeft, 0.0);
+        let mut params = self.line_params(false, baselineskip_pt, para, 0.0);
+        if let Some(w) = width {
+            params.line_width = w;
+        }
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         let vertical = VBlock {
             lines: line_extents(&lines),
@@ -4296,7 +4366,15 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         incremental::hash_items(items, base, &mut h);
         (Some(h.finish()), Some((document, base)))
     };
-    for block in &doc.blocks {
+    // Two-column documents: blocks that start a page (`\clearpage`,
+    // `\chapter`, `\part`) rather than a column, and blocks set across the
+    // text width (`\onecolumn` material), by built-block index.
+    let mut page_start_blocks: Vec<usize> = Vec::new();
+    let mut wide_blocks: Vec<usize> = Vec::new();
+    for (doc_index, block) in doc.blocks.iter().enumerate() {
+        if doc.page_starts.binary_search(&doc_index).is_ok() {
+            page_start_blocks.push(blocks.len());
+        }
         match block {
             Block::Heading {
                 level,
@@ -4362,11 +4440,68 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             }
                         }
                     }
+                    if entry.wide {
+                        wide_blocks.push(blocks.len());
+                    }
                     blocks.push(b);
+                    // report/book `\l@part`: `\global\@nobreaktrue`.
+                    after_heading = entry.style.nobreak_after;
+                }
+            }
+            Block::Part { number, items, span, eject_before, clear_before } => {
+                let Some(g) = geo else { continue };
+                if *clear_before {
+                    page_start_blocks.push(blocks.len());
+                }
+                let spec = &g.part;
+                let first = blocks.len();
+                // `\markboth{}{}` (and report/book `\thispagestyle{plain}`).
+                let empty_marks = adapter::ChromeEvent::MarkBoth(String::new(), String::new());
+                if spec.own_page {
+                    events.push((first, adapter::ChromeEvent::ThisPageStyle(flashtex_class_geometry::PageStyle::Plain), *span));
+                    events.push((first, empty_marks, *span));
+                    // report/book `\part`: `\if@twocolumn \onecolumn`.
+                    let width = if n_columns > 1 { crate::style::frame_pt(g.frame.text_width) } else { ctx.style.text_width_pt };
+                    let built = ctx.part_page_blocks(number.as_deref(), items, *span, spec, g.options.size, width);
+                    if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                        chapter_starts.push((first, events.len()));
+                    }
+                    blocks.extend(built);
+                    if spec.blank_page_after {
+                        // `\@endpart`: `\null \thispagestyle{empty} \newpage`.
+                        let mut blank = plain_vblock(vec![(0.0, 0.0)]);
+                        blank.penalty_after = Some(pagebuild::EJECT_PENALTY);
+                        events.push((blocks.len(), adapter::ChromeEvent::ThisPageStyle(flashtex_class_geometry::PageStyle::Empty), *span));
+                        blocks.push(empty_block(blank));
+                    }
+                    page_start_blocks.push(first);
+                    if n_columns > 1 {
+                        wide_blocks.extend(first..blocks.len());
+                    }
                     after_heading = false;
+                } else {
+                    let mut built = ctx.part_flow_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                    if let (true, Some(b)) = (*eject_before, built.first_mut()) {
+                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                    }
+                    // `\addvspace{4ex}`: only the excess over the previous skip.
+                    if let (Some(b), Some(prev)) = (built.first_mut(), blocks.last_mut()) {
+                        if let (Some(before), Some(last)) = (b.vertical.space_before, prev.vertical.space_after) {
+                            if last.0 < before.0 {
+                                prev.vertical.space_after = None;
+                            } else {
+                                b.vertical.space_before = None;
+                            }
+                        }
+                    }
+                    events.push((first, empty_marks, *span));
+                    blocks.extend(built);
+                    // `\@afterheading`.
+                    after_heading = true;
                 }
             }
             Block::Chapter { number, appendix, items, title, span, mark } => {
+                page_start_blocks.push(blocks.len());
                 let Some((g, spec)) = geo.and_then(|g| g.chapter.as_ref().map(|c| (g, c))) else { continue };
                 // `\chapter`: `\clearpage`, `\thispagestyle{plain}`, then
                 // `\@chapter`'s `\chaptermark` before `\@makechapterhead`.
@@ -4656,7 +4791,19 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
-    for at in clears {
+    // `\twocolumn` begins with `\clearpage`: column material after
+    // full-width material starts a page (`\onecolumn`'s own `\clearpage`
+    // comes with the `\chapter*` heading of the list).
+    if n_columns > 1 && !wide_blocks.is_empty() {
+        for i in 1..blocks.len() {
+            let wide = |b: usize| wide_blocks.binary_search(&b).is_ok();
+            if wide(i - 1) && !wide(i) {
+                blocks[i].vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                page_start_blocks.push(i);
+            }
+        }
+    }
+    for &at in &clears {
         if let Some(b) = blocks.get_mut(at) {
             b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
         }
@@ -4712,10 +4859,26 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // `\c@page` and `\thepage` of every page; `\cleardoublepage`'s empty
     // page (`\hbox{}\newpage`) before an `openright` chapter that would
     // start on an even page of a two-sided document.
+    // Two-column documents: a page start or `\onecolumn` material that the
+    // page builder put in a later column moves to the next page.
+    let mut aligned: Vec<usize> = Vec::new();
+    page_start_blocks.extend(clears.iter().copied());
+    if columns > 1 && !(page_start_blocks.is_empty() && wide_blocks.is_empty()) {
+        let flags = |list: &[usize]| {
+            let mut v = vec![false; blocks.len()];
+            for &b in list {
+                if let Some(f) = v.get_mut(b) {
+                    *f = true;
+                }
+            }
+            v
+        };
+        aligned = align_columns(&mut built, columns, &flags(&page_start_blocks), &flags(&wide_blocks));
+    }
     let mut blank_pages: Vec<usize> = Vec::new();
     let counters = geo.map_or_else(Vec::new, |g| {
-        if columns == 1 && g.flags.twoside && !chapter_starts.is_empty() {
-            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering);
+        if g.flags.twoside && !chapter_starts.is_empty() {
+            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering, columns);
         }
         page_counters(&built, columns, blocks.len(), &events, g.numbering)
     });
@@ -4785,7 +4948,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // `\evensidemargin`, the second column).
     let column_page = |n: u32| -> (u32, usize) {
         let mut ci = n.saturating_sub(1) as usize;
-        for &b in &blank_pages {
+        // Both insertion lists, in the order they were made.
+        for &b in aligned.iter().chain(&blank_pages) {
             if b <= ci {
                 ci += 1;
             }
@@ -4917,23 +5081,57 @@ fn page_counters(built: &[pagebuild::BuiltPage], columns: usize, n_blocks: usize
 /// `\cleardoublepage` before an `openright` chapter (one-column,
 /// two-sided): an empty page (`\hbox{}\newpage`, the page style in force)
 /// when the chapter's page would be even.
-fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[(usize, usize)], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<usize> {
-    // Indices (in the final list, ascending) of the inserted empty pages.
+fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[(usize, usize)], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering, columns: usize) -> Vec<usize> {
+    // Indices (in the final list, ascending) of the inserted empty columns:
+    // a whole page of them (`\cleardoublepage`'s `\if@twocolumn\hbox{}
+    // \newpage\fi`).
+    let columns = columns.max(1);
     let mut inserted = Vec::new();
     let mut k = 0;
     while k < built.len() {
-        // The first `\cleardoublepage` recorded for the page's first block.
-        let start = built[k].lines.first().and_then(|l| chapter_starts.iter().find(|(b, _)| *b == l.payload.0).copied());
+        // The first `\cleardoublepage` recorded for the page's first block
+        // (a page start is always a page's first column).
+        let start = built[k].lines.first().filter(|_| k % columns == 0).and_then(|l| chapter_starts.iter().find(|(b, _)| *b == l.payload.0).copied());
         if let Some((block, cut)) = start {
             // `\ifodd\c@page` is tested before the counter commands issued
             // after the clear (book `\mainmatter`'s `\pagenumbering{arabic}`).
             let before: Vec<(usize, adapter::ChromeEvent, Span)> = events.iter().enumerate().filter(|(i, (b, _, _))| !(*b == block && *i >= cut)).map(|(_, e)| e.clone()).collect();
-            if page_counters(built, 1, n_blocks, &before, numbering)[k].0 % 2 == 0 {
+            if page_counters(built, columns, n_blocks, &before, numbering)[k / columns].0 % 2 == 0 {
+                for _ in 0..columns {
+                    built.insert(k, pagebuild::BuiltPage::default());
+                    inserted.push(k);
+                    k += 1;
+                }
+            }
+        }
+        k += 1;
+    }
+    inserted
+}
+
+/// Two-column documents (`\@outputdblcol`): the page builder fills
+/// columns, but material after `\clearpage` (and `\chapter`/`\part`) starts
+/// a new page, and `\onecolumn` material (report/book contents lists, the
+/// report/book `\part` page, set at `\textwidth`) takes the whole page.
+/// Inserts empty columns so such a column is a page's first and the column
+/// after `\onecolumn` material starts the next page; returns the inserted
+/// indices (in the final list, ascending).
+fn align_columns(built: &mut Vec<pagebuild::BuiltPage>, columns: usize, page_start: &[bool], wide: &[bool]) -> Vec<usize> {
+    let flag = |v: &[bool], b: usize| v.get(b).copied().unwrap_or(false);
+    let mut inserted = Vec::new();
+    let mut prev_wide = false;
+    let mut k = 0;
+    while k < built.len() {
+        let starts = built[k].lines.first().is_some_and(|l| flag(page_start, l.payload.0));
+        let has_wide = built[k].lines.iter().any(|l| flag(wide, l.payload.0));
+        if (starts || has_wide || prev_wide) && k % columns != 0 {
+            while k % columns != 0 {
                 built.insert(k, pagebuild::BuiltPage::default());
                 inserted.push(k);
                 k += 1;
             }
         }
+        prev_wide = has_wide;
         k += 1;
     }
     inserted

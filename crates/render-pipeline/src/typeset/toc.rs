@@ -33,13 +33,20 @@ fn sp(pt: f64) -> i64 {
 impl Context<'_> {
     pub(super) fn toc_entry_block(&mut self, e: &TocEntry) -> Option<BuiltBlock> {
         let s = e.style;
-        let size = self.style.body_size_pt;
+        let body = self.style.body_size_pt;
+        let geo = self.style.class_geometry.as_deref();
+        // `\l@part`: `\large \bfseries` for the number, title and page.
+        let size = match (s.part, geo) {
+            (true, Some(g)) => crate::style::frame_pt(flashtex_class_geometry::FontSize::Large.metrics(g.options.size).0),
+            (true, None) => body * 1.2,
+            (false, _) => body,
+        };
         let regular = TextStyle::default();
         let style = TextStyle { bold: s.bold, ..TextStyle::default() };
         // `em` in `\@dottedtocline` and `\l@section`'s lengths is the body
         // font's: they are set before `\bfseries`. The page box of the bold
         // forms is `\@pnumwidth` in the bold font.
-        let em = self.text_params(regular, size).quad;
+        let em = self.text_params(regular, body).quad;
         let indent = s.indent_em * em;
         let numwidth = s.numwidth_em * em;
         let leftskip = indent + numwidth;
@@ -61,7 +68,8 @@ impl Context<'_> {
                 }
                 None => 0.0,
             };
-            list.push(pl::Item::kern(numwidth - width));
+            // `\l@part`'s `\thepart\hspace{1em}`: 1em of `\large\bfseries`.
+            list.push(pl::Item::kern(if s.part { self.text_params(style, size).quad } else { numwidth - width }));
             recs.push(None);
         }
         let (title, title_recs, _labels, _skips) = self.hlist(&e.title, size, style, ParaStyle::Plain);
@@ -99,6 +107,10 @@ impl Context<'_> {
         params.left_skip = pl::Glue::fixed(leftskip);
         params.right_skip = pl::Glue::fixed(rightskip);
         params.parindent = if s.dotted { indent } else { 0.0 };
+        // `\onecolumn` around a report/book list: `\hsize\textwidth`.
+        if let (true, Some(g)) = (e.wide, geo) {
+            params.line_width = crate::style::frame_pt(g.frame.text_width);
+        }
         let line_width = params.line_width;
         let mut lines = self.break_paragraph(&list, &params, &e.title, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
