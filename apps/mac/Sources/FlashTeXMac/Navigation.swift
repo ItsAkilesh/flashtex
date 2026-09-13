@@ -722,10 +722,10 @@ struct NavigationCommands: Commands {
             Divider()
             Button("Next Diagnostic") { model.goToDiagnostic(forward: true) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
-                .disabled(model.result == nil)
+                .disabled(!model.toolbarHasResult) // change-only mirror: a per-reply `result` read here re-evaluates the App scene (FlashTeXMacApp.commands)
             Button("Previous Diagnostic") { model.goToDiagnostic(forward: false) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
-                .disabled(model.result == nil)
+                .disabled(!model.toolbarHasResult) // change-only mirror: a per-reply `result` read here re-evaluates the App scene (FlashTeXMacApp.commands)
             Button("Next Occurrence") { if let p = diagnosticsPanel { model.stepOccurrence(forward: true, panel: p) } }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .disabled(diagnosticsPanel == nil)
@@ -735,7 +735,7 @@ struct NavigationCommands: Commands {
             Divider()
             Button("Reveal Caret in Preview") { model.revealCaretInPreview() }
                 .keyboardShortcut("j", modifiers: [.command, .shift])
-                .disabled(model.result == nil)
+                .disabled(!model.toolbarHasResult) // change-only mirror: a per-reply `result` read here re-evaluates the App scene (FlashTeXMacApp.commands)
         }
     }
 }
