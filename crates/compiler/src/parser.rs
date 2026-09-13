@@ -1391,6 +1391,26 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // natbib's punctuation commands: preamble or body.
+            "citestyle" => {
+                let (tokens, _) = self.required_group(name, span);
+                self.citer.style.named_style(&token_text(&tokens), true);
+            }
+            "bibpunct" => {
+                let cmt = self.optional_bracket_argument().map(|(text, _)| text);
+                let mut args = Vec::new();
+                for _ in 0..6 {
+                    let (tokens, _) = self.required_group(name, span);
+                    args.push(token_text(&tokens));
+                }
+                self.citer.style.bibpunct(cmt.as_deref(), &args);
+            }
+            "setcitestyle" => {
+                let (tokens, _) = self.required_group(name, span);
+                self.citer
+                    .style
+                    .setcitestyle(&bib::braced_text(tokens.iter().map(|t| &t.token)));
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1480,7 +1500,7 @@ impl P<'_> {
             // only visible effect is the undefined-citation warning.
             "nocite" => {
                 let (tokens, argument_span) = self.required_group(name, span);
-                for key in token_text(&tokens).split(',').map(str::trim) {
+                for key in token_text(&tokens).split(',').map(str::trim_start) {
                     if !key.is_empty() && key != "*" && self.bibliography.resolve(key).is_none() {
                         self.diags.push(Diagnostic::warning(
                             format!("Citation `{key}' undefined"),
@@ -1514,25 +1534,6 @@ impl P<'_> {
                         Some("ignored the style's entry formatting and continued".into()),
                     ));
                 }
-            }
-            "citestyle" => {
-                let (tokens, _) = self.required_group(name, span);
-                self.citer.style.named_style(&token_text(&tokens), true);
-            }
-            "bibpunct" => {
-                let cmt = self.optional_bracket_argument().map(|(text, _)| text);
-                let mut args = Vec::new();
-                for _ in 0..6 {
-                    let (tokens, _) = self.required_group(name, span);
-                    args.push(token_text(&tokens));
-                }
-                self.citer.style.bibpunct(cmt.as_deref(), &args);
-            }
-            "setcitestyle" => {
-                let (tokens, _) = self.required_group(name, span);
-                self.citer
-                    .style
-                    .setcitestyle(&bib::braced_text(tokens.iter().map(|t| &t.token)));
             }
             // article.cls/natbib: `\hskip .11em\@plus.33em\@minus.07em`
             // between blocks of an entry; the layouts read the glue from
@@ -2190,12 +2191,15 @@ impl P<'_> {
         };
         let (tokens, argument_span) = self.required_group(name, span);
         let full_span = span.merge(argument_span);
-        let keys: Vec<String> = token_text(&tokens)
-            .split(',')
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-            .map(str::to_string)
-            .collect();
+        // `\edef\@citeb{\expandafter\@firstofone\@citeb\@empty}` drops the
+        // spaces before a key but keeps those after it: `\cite{a ,b}` asks
+        // for `a ` and is undefined in LaTeX too.
+        let text = token_text(&tokens);
+        let keys: Vec<String> = if text.trim().is_empty() {
+            Vec::new()
+        } else {
+            text.split(',').map(|key| key.trim_start().to_string()).collect()
+        };
         self.document_global_state = true;
         if keys.is_empty() {
             self.diags.push(Diagnostic::warning(
@@ -6402,6 +6406,28 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, ["[1]", "[2]", "[3]"]);
+    }
+
+    #[test]
+    fn preamble_bibpunct_applies_and_keys_keep_trailing_spaces() {
+        let source = r"\documentclass{article}\usepackage{natbib}
+\bibpunct{[}{]}{,}{a}{}{;}
+\setcitestyle{notesep={: }}
+\begin{document}
+\citep[p.~3]{a,b} \cite{ a , b} \cite{a, b}
+\begin{thebibliography}{2}
+\bibitem[Knuth(1984)]{a}A.
+\bibitem[Knuth(1986)]{b}B.
+\end{thebibliography}
+\end{document}";
+        let parsed = parse(source);
+        let texts: Vec<&str> = parsed.citations.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["[Knuth 1984; 1986: p.~3]", "?, Knuth [1986]", "Knuth [1984; 1986]"]);
+        assert!(!parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("preamble")), "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics.iter().any(|d| d.message == "Citation `a ' undefined"));
     }
 
     #[test]
