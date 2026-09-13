@@ -2367,6 +2367,65 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("bigtriangledown", "▽"),
     // `\bot` shares `\perp`'s exact base-14 Symbol glyph above with a forced
     // Ord class (see `command_atom`), so it is not a second row here.
+    //
+    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`), swept as unsupported
+    // and added here with the Unicode code point `unicode-math` gives the same
+    // family/slot. Most are drawn from the pinned Latin Modern Math resource;
+    // `\surd` is Adobe Symbol's `radical`, and `\dagger`/`\ddagger`/`\bullet`/
+    // `\mathsection`/`\mathparagraph`/`\mathdollar` are real text-face glyphs
+    // the base-14 writer encodes directly (see `crate::export`).
+    ("amalg", "⨿"),
+    ("asymp", "≍"),
+    ("clubsuit", "♣"),
+    ("dagger", "†"),
+    ("ddagger", "‡"),
+    ("diamondsuit", "♢"),
+    ("heartsuit", "♡"),
+    ("spadesuit", "♠"),
+    ("flat", "♭"),
+    ("natural", "♮"),
+    ("sharp", "♯"),
+    ("frown", "⌢"),
+    ("smile", "⌣"),
+    ("imath", "ı"),
+    ("jmath", "ȷ"),
+    ("leftharpoonup", "↼"),
+    ("leftharpoondown", "↽"),
+    ("rightharpoonup", "⇀"),
+    ("rightharpoondown", "⇁"),
+    ("nearrow", "↗"),
+    ("nwarrow", "↖"),
+    ("searrow", "↘"),
+    ("swarrow", "↙"),
+    ("odot", "⊙"),
+    ("ominus", "⊖"),
+    ("oslash", "⊘"),
+    ("prec", "≺"),
+    ("preceq", "⪯"),
+    ("succ", "≻"),
+    ("succeq", "⪰"),
+    ("sqcap", "⊓"),
+    ("sqcup", "⊔"),
+    ("sqsubseteq", "⊑"),
+    ("sqsupseteq", "⊒"),
+    ("star", "⋆"),
+    ("triangleleft", "◁"),
+    ("triangleright", "▷"),
+    ("uplus", "⊎"),
+    ("wr", "≀"),
+    ("bullet", "•"),
+    ("diamond", "⋄"),
+    ("bigcirc", "○"),
+    ("bigsqcup", "⨆"),
+    ("biguplus", "⨄"),
+    ("varrho", "ϱ"),
+    ("surd", "√"),
+    ("mathdollar", "$"),
+    ("mathparagraph", "¶"),
+    ("mathsection", "§"),
+    // `\owns` is `\ni`'s own name in `fontmath.ltx` 331/332 (both `\mathrel`
+    // `symbols` `"33`), so it is the same glyph and the same class.
+    ("owns", "∋"),
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
@@ -2442,7 +2501,9 @@ fn takes_display_limits(nucleus: &Nucleus) -> bool {
             name.as_str(),
             "lim" | "liminf" | "limsup" | "max" | "min" | "sup" | "inf" | "det" | "gcd" | "Pr"
         ),
-        Nucleus::Symbol(glyph) => matches!(glyph.as_str(), "∑" | "∏"),
+        // Every `largesymbols` `\mathop` except `\int`/`\oint`, which plain.tex
+        // declares `\intop\nolimits`/`\ointop\nolimits`.
+        Nucleus::Symbol(glyph) => matches!(glyph.as_str(), "∑" | "∏" | "⨆" | "⨄"),
         _ => false,
     }
 }
@@ -2524,16 +2585,26 @@ fn symbol_class(glyph: &str) -> AtomClass {
         // HW2 follow-up: the remaining long arrows (issue #62), also from the
         // pinned Latin Modern Math resource. `⊥` above is `\perp`'s glyph;
         // `\bot` shares it but overrides the class to Ord (see `command_atom`).
-        | "⟺" | "⟶" | "⟵" | "⟸" | "⟷" => Rel,
+        | "⟺" | "⟶" | "⟵" | "⟸" | "⟷"
+        // LaTeX kernel `\DeclareMathSymbol{..}{\mathrel}` (`fontmath.ltx`
+        // 301, 302, 307-310, 320, 321, 323, 324, 346-352).
+        | "≍" | "⌢" | "⌣" | "↼" | "↽" | "⇀" | "⇁" | "↗" | "↖" | "↘" | "↙" | "≺" | "⪯" | "≻"
+        | "⪰" | "⊑" | "⊒" => Rel,
         "+" | "-" | "−" | "*" | "±" | "×" | "÷" | "⋅" | "·" | "∗" | "∪" | "∩" | "∨" | "∧" | "⊕"
         | "⊗" | "∖" | "∓" | "∘"
         // `\bigtriangledown`; `\bigtriangleup` shares `\triangle`'s glyph
         // (Ord by default here) and overrides its class to Bin instead.
-        | "▽" => Bin,
+        | "▽"
+        // LaTeX kernel `\DeclareMathSymbol{..}{\mathbin}` (`fontmath.ltx`
+        // 264, 265, 276-284, 286, 287, 289, 294, 299).
+        | "⨿" | "†" | "‡" | "⊙" | "⊖" | "⊘" | "⊓" | "⊔" | "⊎" | "≀" | "⋆" | "◁" | "▷" | "•"
+        | "⋄" | "○" => Bin,
         "(" | "[" | "{" | "〈" | "⟨" | "⌊" | "⌈" => Open,
         ")" | "]" | "}" | "〉" | "⟩" | "!" | "?" | "⌋" | "⌉" => Close,
         "," | ";" => Punct,
-        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" => Op,
+        // `\bigsqcup`/`\biguplus` (`fontmath.ltx` 262, 250) join the other
+        // `largesymbols` `\mathop`s.
+        "∑" | "∏" | "∫" | "∫∫" | "∫∫∫" | "∮" | "⨆" | "⨄" => Op,
         "⋅⋅⋅" => Inner,
         _ => Ord,
     }

@@ -116,6 +116,55 @@ pub const ADVANCES: &[(char, u16)] = &[
     // export if it reaches an item's text (e.g. typed literally by an
     // amsthm-style proof ending).
     ('\u{220E}', 666), // ∎ QED
+    // LaTeX kernel `\DeclareMathSymbol`s (`fontmath.ltx`). Adobe Symbol has
+    // none of these; `\dagger`/`\ddagger`/`\bullet`/`\mathsection`/
+    // `\mathparagraph`/`\mathdollar` are deliberately absent from this table
+    // because they are real text-face glyphs the base-14 writer encodes
+    // directly, and a row here would take over the text face's own dagger,
+    // bullet and section sign in ordinary prose. `\surd` is absent for the
+    // same reason: Adobe Symbol's `radical` already carries it.
+    ('\u{2A3F}', 750),  // \amalg
+    ('\u{224D}', 778),  // \asymp
+    ('\u{2663}', 778),  // \clubsuit
+    ('\u{2662}', 778),  // \diamondsuit
+    ('\u{2661}', 778),  // \heartsuit
+    ('\u{2660}', 778),  // \spadesuit
+    ('\u{266D}', 388),  // \flat
+    ('\u{266E}', 388),  // \natural
+    ('\u{266F}', 388),  // \sharp
+    ('\u{2322}', 1000), // \frown
+    ('\u{2323}', 1000), // \smile
+    ('\u{0131}', 278),  // \imath
+    ('\u{0237}', 306),  // \jmath
+    ('\u{21BC}', 1000), // \leftharpoonup
+    ('\u{21BD}', 1012), // \leftharpoondown
+    ('\u{21C0}', 1000), // \rightharpoonup
+    ('\u{21C1}', 1012), // \rightharpoondown
+    ('\u{2197}', 1000), // \nearrow
+    ('\u{2196}', 1000), // \nwarrow
+    ('\u{2198}', 1000), // \searrow
+    ('\u{2199}', 1000), // \swarrow
+    ('\u{2299}', 778),  // \odot
+    ('\u{2296}', 778),  // \ominus
+    ('\u{2298}', 778),  // \oslash
+    ('\u{227A}', 778),  // \prec
+    ('\u{2AAF}', 778),  // \preceq
+    ('\u{227B}', 778),  // \succ
+    ('\u{2AB0}', 778),  // \succeq
+    ('\u{2293}', 667),  // \sqcap
+    ('\u{2294}', 667),  // \sqcup
+    ('\u{2291}', 778),  // \sqsubseteq
+    ('\u{2292}', 778),  // \sqsupseteq
+    ('\u{22C6}', 500),  // \star
+    ('\u{25C1}', 858),  // \triangleleft
+    ('\u{25B7}', 858),  // \triangleright
+    ('\u{228E}', 667),  // \uplus
+    ('\u{2240}', 280),  // \wr
+    ('\u{22C4}', 500),  // \diamond
+    ('\u{25CB}', 796),  // \bigcirc
+    ('\u{2A06}', 833),  // \bigsqcup
+    ('\u{2A04}', 833),  // \biguplus
+    ('\u{03F1}', 488),  // \varrho
 ];
 
 /// The double-struck code point for `\mathbb{letter}`: the Mathematical
@@ -183,7 +232,7 @@ mod tests {
         assert_eq!(double_struck('A'), Some('\u{1D538}'));
         assert_eq!(double_struck('a'), None);
         assert_eq!(double_struck('1'), None);
-        assert_eq!(ADVANCES.len(), 75);
+        assert_eq!(ADVANCES.len(), 117);
     }
 
     #[test]
