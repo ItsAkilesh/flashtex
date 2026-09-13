@@ -1,0 +1,5 @@
+perf_bench: HW2 skipped (/Users/kubar/code/flashtex/.claude/worktrees/agent-ae8c40d8210f8929f/crates/render-pipeline/../../fixtures/real-world/hw2/HW2.tex: No such file or directory (os error 2))
+# machine: Apple M5 Pro, 15 logical CPUs | load(1,5,15): 3.37 3.76 4.32 | font set + first HW1 request: 21.0 ms
+scenario                           steps    p50 ms    p95 ms    max ms  first ms  digest           load
+500KB type-paragraph                   6   6134.93   6155.23   6155.23   6075.44  07e400ee20887cf2 3.37 3.76 4.32 -> 3.40 3.72 4.28
+500KB type-paragraph +v2               6   6206.22   6240.90   6240.90   6107.38  333b1695e2279f31 3.40 3.72 4.28 -> 3.78 3.75 4.26
