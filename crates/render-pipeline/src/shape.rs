@@ -108,7 +108,10 @@ impl Shaper {
 
     /// Shapes `text` in `face` with kerning and ligatures on.
     pub fn shape(&self, face: &Rc<LoadedFace>, text: &str) -> Rc<Shaped> {
-        let key = (face.font_id.clone(), text.to_string());
+        // Keyed by the face's metrics identity, not its wire `font_id`: one
+        // OpenType program is laid out with different TFMs (`ec-lmr10` for
+        // `lmodern`, `ecrm1095`/`ecrm1000` for T1 `cmr`).
+        let key = (face.shape_key.clone(), text.to_string());
         if let Some(hit) = self.cache.borrow().get(&key) {
             return hit.clone();
         }

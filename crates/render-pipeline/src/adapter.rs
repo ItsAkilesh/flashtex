@@ -587,7 +587,7 @@ pub fn adapt_cached(
     // class; body-only input keeps the compiler's implicit 0pt.
     let mut style = Stylesheet::from_resolved(
         &flashtex_class_geometry::resolve(&document_setup(source, explicit_class.is_some(), &class_options)),
-        Stylesheet::family_of(&parsed.packages),
+        Stylesheet::family_for(&parsed.packages, t1_encoding(source)),
     );
     // The class's `\parindent` (`size1x.clo`: 15pt / 17pt / 1.5em; `1em` in
     // two-column mode) comes with the resolved frame.
@@ -1487,6 +1487,13 @@ fn display_number(inlines: &[Inline], span: Span) -> Option<(String, Span)> {
         } if *s == span => Some((n.clone(), number_span.unwrap_or(span))),
         _ => None,
     })
+}
+
+/// Whether `\usepackage[...]{fontenc}` makes T1 the text encoding: the last
+/// encoding option becomes `\encodingdefault` (`[OT1,T1]` → T1).
+pub fn t1_encoding(source: &str) -> bool {
+    package_options(source, "fontenc")
+        .is_some_and(|opts| opts.split(',').map(str::trim).filter(|o| !o.is_empty()).last() == Some("T1"))
 }
 
 /// Options of `\usepackage[opts]{name}`, if the package is loaded.
