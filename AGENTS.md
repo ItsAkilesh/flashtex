@@ -54,6 +54,28 @@ policy to their existing children. Do not reactivate drained workers just to com
 > This overrides older six-engineer staffing text below. Other authorization
 > and explicit-user-stop-only project continuity remain unchanged.
 
+## Model and effort selection — all machines
+
+Tokens come from shared Max-plan quotas; spend the strongest model where mistakes
+are expensive. Dispatch by agent type (`.claude/agents/`), which sets the defaults:
+
+| Work | Agent type | Model / effort |
+|---|---|---|
+| Engine correctness (math, TikZ, floats, hyphenation, line breaking, perf) | `engine-engineer` | Opus / high |
+| Coordination tooling (Beads, contracts/, Agent Mail, failover) | `coordination-tooling` | Opus / high |
+| Generated docs, drift gates, resource registers, PR write-ups | `docs-writer` | Sonnet / medium |
+| Website/accessibility QA, screenshot sweeps, acceptance checks | `qa-reviewer` | Sonnet / medium |
+| Read-only search, log/JSON/CI triage | `repo-scout` (or Explore) | Haiku / low |
+
+- The Commander session stays on Opus: dispatch, integration and failover decisions.
+- Default to `high`, not `max`. Use `max` only for a stuck, high-stakes problem after
+  two serious attempts (e.g. a pdflatex line-break mismatch), and say so in the report.
+- Subagents inherit the parent model unless a type or override says otherwise; a
+  general-purpose spawn for QA/docs/search work should pass `model: sonnet`/`haiku`.
+- When a machine's quota runs low, first move QA, docs and search down to Sonnet or
+  Haiku, then defer them; cut Opus from engine work last. Report low quota immediately
+  through the current coordination channel so the Commander can reallocate.
+
 # FlashTeX: required agent collaboration protocol
 
 These instructions apply to all work in this repository, across agents, computers,
