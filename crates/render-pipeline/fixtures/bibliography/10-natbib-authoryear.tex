@@ -1,0 +1,20 @@
+\documentclass{article}
+\usepackage{natbib}
+\begin{document}
+In author-year mode \citet{knuth84} is textual and \citep{plass81} is
+parenthetical; several keys \citep{knuth84,plass81} are separated by
+semicolons, and two works by one author group their years
+\citep{knuth84,knuth86}. \citet{hammer14} abbreviate with et~al.
+
+\begin{thebibliography}{4}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting, Volume A}. Addison-Wesley, 1984.
+\bibitem[Knuth(1986)]{knuth86} Donald E. Knuth. \emph{Computers and Typesetting, Volume B}. Addison-Wesley, 1986.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\bibitem[Hammer et~al.(2014)Hammer, Phang, Hicks, and Foster]{hammer14}
+  Matthew A. Hammer, Khoo Yit Phang, Michael Hicks, and Jeffrey S. Foster.
+  Adapton: composable, demand-driven incremental computation. In \emph{PLDI},
+  2014.
+\end{thebibliography}
+\end{document}

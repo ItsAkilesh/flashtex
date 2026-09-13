@@ -168,6 +168,12 @@ pub enum Item {
     HFill { fill: bool },
     /// `\hspace{<dimen>}` (compiler `Inline::HSpace`): fixed glue in points.
     HSpace { pt: f64 },
+    /// Glue in ems of the current font with finite stretch and shrink
+    /// (`\newblock`: `\hskip .11em\@plus.33em\@minus.07em`). Distinct from
+    /// [`Item::Glue`], which #156 added for amsthm's `\thm@headsep` and
+    /// measures in points plus interword spaces of a given style: this one
+    /// scales with the font's quad, so the two cannot share a variant.
+    EmGlue { em: f64, stretch_em: f64, shrink_em: f64 },
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
@@ -531,6 +537,22 @@ pub struct ListGeom {
     /// Otherwise (`thebibliography`) the kernel's `\@mklab` box is kept at
     /// the label's width when wider.
     pub llap: bool,
+    /// The item is a `thebibliography` entry (`\bibitem`).
+    pub bibliography: Option<BibItemGeom>,
+}
+
+/// What `thebibliography` adds to an item's `\list` (article.cls 565-583,
+/// natbib.sty 632-647 and 1052-1075): the label is `\makelabel`'s
+/// `\hss\llap{..}` (right edge `\labelsep` before the text, never pushing
+/// it), `\itemindent` (natbib author-year: `-\bibhang`), `\sloppy`,
+/// `\clubpenalty4000`, `\widowpenalty4000` and `\sfcode`\.\@m`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BibItemGeom {
+    pub itemindent_pt: f64,
+    /// The kernel's `\@lbibitem` label `\item[\@biblabel{#1}\hfill]`:
+    /// `\makelabel` is `\hfil #1`, so the label sits at the left of
+    /// `\labelwidth` (a numbered or natbib label is right-aligned).
+    pub label_left: bool,
 }
 
 /// One list level's `\leftmargin`.
@@ -1332,6 +1354,32 @@ pub fn adapt_cached(
             }
         }
         match unit.kind {
+            // report.cls/book.cls `\thebibliography`: `\chapter*{\bibname}`.
+            UnitKind::Heading { number, number_span, .. } if has_chapters && number.is_empty() && is_bibliography_heading(texts, number_span) => {
+                // `\bibname`, attributed to the `\begin{thebibliography}` bytes.
+                let title = "Bibliography".to_string();
+                let chars = title
+                    .chars()
+                    .map(|_| CharSrc {
+                        document: number_span.document,
+                        start: number_span.start,
+                        end: number_span.end,
+                    })
+                    .collect();
+                let mut items = Vec::new();
+                push_segment(&mut items, title.clone(), chars, TextStyle::default());
+                items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                blocks.push(Block::Chapter {
+                    number: None,
+                    appendix: false,
+                    items,
+                    title,
+                    span: number_span,
+                    mark: false,
+                });
+                after_heading = true;
+                prev_para_end = None;
+            }
             UnitKind::Heading {
                 level,
                 number,
@@ -1455,6 +1503,9 @@ pub fn adapt_cached(
                     unsupported_inlines(inline, &mut limitations);
                 }
                 let mut items = theorem_items(items_for(inlines, false), inlines.iter().map(inline_span).next(), theorem_head, &parsed.theorems, &parsed.qed_marks, &style);
+                if list.as_ref().is_some_and(|g| g.bibliography.is_some()) {
+                    bibliography_space_factors(&mut items);
+                }
                 items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
@@ -2084,7 +2135,13 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                 let src = texts.get(at.document.0).copied().unwrap_or("");
                 let stack = list_stack_at(src, at.start);
                 let (env, options) = stack.last().map_or(("enumerate", ""), |(env, options, _)| (*env, *options));
-                let seps = list_seps(src, env, options, stack.len().max(1), size, style);
+                let mut seps = list_seps(src, env, options, stack.len().max(1), size, style);
+                // natbib is loaded by the entry document; a `.bbl`'s own
+                // bytes never say so.
+                let natbib = env == "thebibliography" && texts.iter().any(|t| natbib_loaded(t));
+                if natbib {
+                    natbib_bibsep(&mut seps, size);
+                }
                 // `\@outerparskip`: the `\parskip` in force when `\begin`
                 // was read — the enclosing list's `\parsep` when nested.
                 let outer_parskip = match stack.len() {
@@ -2141,9 +2198,31 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     Some(ItemLabel::Explicit { content, .. }) => (!content.is_empty() && content.iter().all(|i| matches!(i, Inline::Text { style, .. } if style.bold)), false),
                     _ => (false, false),
                 };
+                    let mut margins = list_margins(src, at.start, size, style.class_geometry.as_ref().is_some_and(|g| g.flags.twocolumn));
+                let mut bibliography = None;
+                if env == "thebibliography" {
+                    // natbib's author-year `\@bibsetup`: `\leftmargin\bibhang`
+                    // (1em), `\itemindent-\leftmargin`; the compiler gives
+                    // those entries an empty label.
+                    let author_year = natbib && !label.as_ref().is_some_and(|(text, _)| !text.is_empty());
+                    let label_left = !natbib
+                        && label.as_ref().is_some_and(|(_, span)| {
+                            src.get(span.end..).is_some_and(|rest| rest.trim_start().starts_with('['))
+                                || src.get(span.start..).is_some_and(|rest| rest.strip_prefix("\\bibitem").is_some_and(|r| r.trim_start().starts_with('[')))
+                        });
+                    let mut itemindent_pt = 0.0;
+                    if author_year {
+                        let bibhang = parse_dimen("1em", size).unwrap_or(0.0);
+                        if let Some(last) = margins.last_mut() {
+                            *last = ListMargin::Fixed(bibhang);
+                        }
+                        itemindent_pt = -bibhang;
+                    }
+                    bibliography = Some(BibItemGeom { itemindent_pt, label_left });
+                }
                 list = Some(ListGeom {
                     level: *level,
-                    margins: list_margins(src, at.start, size, style.class_geometry.as_ref().is_some_and(|g| g.flags.twocolumn)),
+                    margins,
                     label: label.clone(),
                     parsep: seps.parsep_skip,
                     labelsep: list_labelsep(src, env, options, size, style),
@@ -2151,6 +2230,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     label_math,
                     description: lists.last().is_some_and(|f| f.environment == ListEnvironment::Description),
                     llap: lists.last().is_some_and(|f| matches!(f.environment, ListEnvironment::Itemize | ListEnvironment::Enumerate)),
+                    bibliography,
                 });
             }
         }
@@ -3068,6 +3148,20 @@ struct ListSeps {
     parsep_skip: crate::style::Skip,
 }
 
+/// natbib.sty 641-647: `\bibsep` is `\@listi`'s `\itemsep` plus `\parsep`
+/// at load time, and `\@bibsetup` sets `\itemsep\bibsep`, `\parsep\z@`.
+fn natbib_bibsep(seps: &mut ListSeps, size: u32) {
+    let base = match size {
+        12 => flashtex_document_style::BaseSize::Pt12,
+        11 => flashtex_document_style::BaseSize::Pt11,
+        _ => flashtex_document_style::BaseSize::Pt10,
+    };
+    let listi = flashtex_document_style::list_level(base, 1);
+    seps.itemsep = listi.itemsep.pt + listi.parsep.pt;
+    seps.parsep = 0.0;
+    seps.parsep_skip = crate::style::Skip::fixed(0.0);
+}
+
 /// enumitem's own keys (enumitem.sty `\enitkv@key{}{...}`): an optional
 /// `\begin` argument made of these is a key list, anything else a
 /// shortlabels template such as `(a)`.
@@ -3225,6 +3319,26 @@ fn list_env_after_begin(rest: &str) -> bool {
     LIST_ENVS.iter().any(|e| after.strip_prefix('{').is_some_and(|r| r.starts_with(e) && r[e.len()..].starts_with('}')))
 }
 
+/// Whether natbib is loaded (`\usepackage[..]{natbib}` or in a list).
+pub(crate) fn natbib_loaded(source: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "usepackage") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = source[abs + "\\usepackage".len()..].trim_start();
+        let rest = match rest.strip_prefix('[') {
+            Some(r) => r.find(']').map_or(r, |c| r[c + 1..].trim_start()),
+            None => rest,
+        };
+        if let Some(names) = rest.strip_prefix('{').and_then(|r| r.split('}').next()) {
+            if names.split(',').any(|n| n.trim() == "natbib") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// The environments built on `\trivlist`, whose `\end` runs
 /// `\@endparenv` and so leaves TeX in vertical mode.
 const TRIVLIST_ENVS: [&str; 9] = ["itemize", "enumerate", "description", "center", "flushleft", "flushright", "quote", "quotation", "verse"];
@@ -3250,6 +3364,71 @@ fn ends_in_vmode(before: &str) -> bool {
         return ["\\chapter", "\\section", "\\subsection", "\\subsubsection"].iter().any(|c| line.starts_with(c));
     }
     false
+}
+
+/// `thebibliography`'s `\sfcode`\.\@m`: a period sets the space factor to
+/// 1000, so the space after `Knuth.` is an ordinary interword space.
+fn bibliography_space_factors(items: &mut [Item]) {
+    for i in 1..items.len() {
+        let after_period = matches!(&items[i - 1], Item::Word(word)
+            if word.segments.last().and_then(|s| s.text.chars().last()) == Some('.'));
+        if let Item::Space { factor, .. } = &mut items[i] {
+            if after_period && *factor == 3000 {
+                *factor = 1000;
+            }
+        }
+    }
+}
+
+/// Whether `span` is a `thebibliography` heading (the compiler gives the
+/// `\section*{\refname}`/`\chapter*{\bibname}` it opens with the bytes of
+/// `\begin{thebibliography}{..}`).
+fn is_bibliography_heading(texts: &[&str], span: Span) -> bool {
+    texts
+        .get(span.document.0)
+        .and_then(|t| t.get(span.start..))
+        .is_some_and(|rest| rest.starts_with("\\begin{thebibliography}"))
+}
+
+/// Whether the document's citations are numerical: the kernel's, or
+/// natbib's under `numbers`/`super`, a numerical `\bibpunct` or
+/// `\setcitestyle`, or a bibliography with a plain `\bibitem{key}`
+/// (`\NAT@force@numbers`).
+fn citations_numbered(source: &str) -> bool {
+    if !natbib_loaded(source) {
+        return true;
+    }
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "usepackage") {
+        let abs = from + at;
+        from = abs + 1;
+        let rest = source[abs + "\\usepackage".len()..].trim_start();
+        if let Some(options) = rest.strip_prefix('[').and_then(|r| r.split(']').next()) {
+            if options.split(',').any(|o| matches!(o.trim(), "numbers" | "super")) {
+                return true;
+            }
+        }
+    }
+    if let Some(at) = find_command(source, "bibpunct") {
+        let groups: Vec<&str> = source[at..].split('{').skip(1).take(4).collect();
+        if groups.get(3).is_some_and(|g| matches!(g.split('}').next().map(str::trim), Some("n" | "s"))) {
+            return true;
+        }
+    }
+    if let Some(at) = find_command(source, "setcitestyle") {
+        let list = source[at..].split('{').nth(1).unwrap_or("");
+        if list.split(['}', ',']).any(|k| matches!(k.trim(), "numbers" | "super")) {
+            return true;
+        }
+    }
+    source.contains("\\bibitem{")
+}
+
+/// Whether the text run at `start` is a citation command's output
+/// (`\cite`, natbib's `\citet`, `\Citep`, ...): its spaces are interword
+/// glue (`\ ` in `\@citex`, `\NAT@spacechar`).
+fn is_citation_at(source: &str, start: usize) -> bool {
+    source.get(start..).is_some_and(|rest| rest.starts_with("\\cite") || rest.starts_with("\\Cite"))
 }
 
 /// Whether the `\begin` at byte `begin` of `source` is read in vertical
@@ -4568,8 +4747,35 @@ fn gap_has_space(gap: &str) -> bool {
             b'\\' => {
                 i += 1;
                 if i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+                    let name_start = i;
                     while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
                         i += 1;
+                    }
+                    // `\penalty<number>` (BibTeX's `\penalty0`): the number
+                    // and the one space ending it are not text.
+                    if &gap[name_start..i] == "penalty" {
+                        while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+                            i += 1;
+                        }
+                        if bytes.get(i) == Some(&b'-') {
+                            i += 1;
+                        }
+                        while i < bytes.len() && bytes[i].is_ascii_digit() {
+                            i += 1;
+                        }
+                        // The space ending the number; a line end also
+                        // drops the next line's leading blanks.
+                        match bytes.get(i) {
+                            Some(b' ') => i += 1,
+                            Some(b'\n') => {
+                                i += 1;
+                                while i < bytes.len() && matches!(bytes[i], b' ' | b'\t') {
+                                    i += 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                        continue;
                     }
                     while i < bytes.len() && (bytes[i] as char).is_whitespace() {
                         i += 1;
@@ -5225,7 +5431,9 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     style.medium = !cs.bold;
                     style.italic |= cs.italic;
                 }
-                if compiler_weight {
+                // A citation's weight is the compiler's (LaTeX's bold `?`
+                // for an undefined key has no braces in the source).
+                if compiler_weight || is_citation_at(source, span.start) {
                     style.bold = compiler_style.bold;
                     style.italic = compiler_style.italic;
                 }
@@ -5244,6 +5452,13 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
+                }
+                // `\newblock` between two runs of a bibliography entry: its
+                // glue follows the space before it.
+                if let Some(pe) = prev_end.filter(|_| prev_span.is_some_and(|p| p.document == span.document)) {
+                    if source.get(pe..span.start).is_some_and(|gap| find_command(gap, "newblock").is_some()) {
+                        items.push(Item::EmGlue { em: 0.11, stretch_em: 0.33, shrink_em: 0.07 });
+                    }
                 }
                 prev_size_cpt = style.size_cpt;
                 if let Some(mark) = accent_char {
@@ -5294,6 +5509,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     }
                 }
                 let chars = tex_ligatures(chars);
+                let citation = is_citation_at(source, span.start);
                 // `~` is an unbreakable space.
                 let mut run: Vec<(char, CharSrc)> = Vec::new();
                 let flush = |run: &mut Vec<(char, CharSrc)>, items: &mut Vec<Item>, factor: &mut u32| {
@@ -5308,7 +5524,37 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     push_segment(items, text, srcs, style);
                     run.clear();
                 };
-                for (ch, src) in chars {
+                let numbered_citation = citation && citations_numbered(source);
+                let mut chars = chars.into_iter().peekable();
+                while let Some((ch, src)) = chars.next() {
+                    // A citation's own spaces are interword glue (the
+                    // compiler's runs share the command's span, so no
+                    // source gap separates them): `\ ` in `\@citex`,
+                    // natbib's `\NAT@spacechar`, space factor 1000. A
+                    // numerical list separator is followed by
+                    // `\penalty\@m` (`\@citea`, `\NAT@separator`).
+                    if citation && (ch == ' ' || ch == '~') {
+                        let separator = matches!(run.last().map(|(c, _)| *c), Some(',' | ';'));
+                        // A space opening a run follows the previous run
+                        // (natbib's `{\reset@font\bfseries?}` and its line end).
+                        let opens_run = run.is_empty();
+                        flush(&mut run, &mut items, &mut factor);
+                        let next = chars.peek().map(|(c, _)| *c);
+                        if ch == ' ' && numbered_citation && separator && next.is_none_or(|c| c.is_ascii_digit() || c == '?') {
+                            items.push(Item::Penalty { value: 1000 });
+                        }
+                        // Text a document typed (a note, `\NAT@cmt`'s
+                        // `, `) keeps its space factor; the macros' own
+                        // spaces before names, years and numbers do not.
+                        let typed = ch == ' ' && (next.is_some_and(char::is_lowercase) || (opens_run && factor != 1000));
+                        items.push(Item::Space {
+                            style,
+                            factor: if typed { factor } else { 1000 },
+                            no_break: ch == '~',
+                        });
+                        factor = 1000;
+                        continue;
+                    }
                     // Only a typed `~` is the active tie; `\textasciitilde`
                     // (the compiler's symbol text) is the character itself.
                     if ch == '~' && source.get(src.start..src.end) == Some("~") {
@@ -5324,6 +5570,11 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                     run.push((ch, src));
                 }
                 flush(&mut run, &mut items, &mut factor);
+                // The kernel's undefined-citation `\hbox{\reset@font\bfseries ?}`
+                // is a box: the space factor after it is 1000.
+                if citation && style.bold && !natbib_loaded(source) {
+                    factor = 1000;
+                }
                 // A style group closing right after this text: LaTeX's
                 // \text@command appends \/ (`\maybe@ic`) unless the next
                 // token is in \nocorrlist (`,` and `.`) or the enclosing

@@ -1975,6 +1975,13 @@ impl<'a> Context<'a> {
                     let (run, rec) = self.qed_box(em, *span, size);
                     push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                 }
+                AItem::EmGlue { em, stretch_em, shrink_em } => {
+                    let quad = self.text_params(base, size).quad;
+                    let mut glue = pl::Glue::fixed(em * quad);
+                    glue.stretch = stretch_em * quad;
+                    glue.shrink = shrink_em * quad;
+                    push(&mut out, &mut recs, pl::Item::Glue(glue), None);
+                }
                 AItem::Table(table) => {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
@@ -2597,7 +2604,40 @@ impl<'a> Context<'a> {
         if let Some(geom) = list_geom {
             let (hang, labelwidth) = self.list_geometry(geom, size);
             hang_pt = hang;
-            if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
+            if let Some(bib) = geom.bibliography.as_ref().filter(|_| starts_paragraph) {
+                // `\@item`: `\hskip\itemindent \hskip-\labelwidth
+                // \hskip-\labelsep`, then the label box — `\hbox
+                // to\labelwidth{\hfil <label>}` (`\@lbibitem`'s
+                // `<label>\hfill` sits at its left), or the label's own
+                // width when wider — and `\hskip\labelsep`.
+                let labelsep = self.style.labelsep_pt;
+                let mut lead: Vec<(pl::Item, Option<usize>)> = Vec::new();
+                match geom.label.as_ref().and_then(|(text, span)| self.label_box(text, *span, size, geom.label_bold, geom.label_math)) {
+                    Some((run, rec)) => {
+                        let w = run.width;
+                        let (before, after) = if w > labelwidth {
+                            (-labelwidth, 0.0)
+                        } else if bib.label_left {
+                            (-labelwidth, labelwidth - w)
+                        } else {
+                            (-w, 0.0)
+                        };
+                        lead.push((pl::Item::kern(bib.itemindent_pt - labelsep + before), None));
+                        lead.push((pl::Item::Box(run), Some(rec)));
+                        lead.push((pl::Item::kern(labelsep + after), None));
+                    }
+                    None if bib.itemindent_pt != 0.0 => lead.push((pl::Item::kern(bib.itemindent_pt), None)),
+                    None => {}
+                }
+                let n = lead.len();
+                for (i, (item, rec)) in lead.into_iter().enumerate() {
+                    list.insert(i, item);
+                    recs.insert(i, rec);
+                }
+                for (at, _) in &mut skips {
+                    *at += n;
+                }
+            } else if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
                 let labelsep = geom.labelsep;
                 let (words, space) = self.label_words(text, *span, size, geom.label_bold, geom.label_math);
                 let label_width = words.iter().map(|(run, _)| run.width).sum::<f64>() + space * words.len().saturating_sub(1) as f64;
@@ -2642,7 +2682,14 @@ impl<'a> Context<'a> {
                 }
             }
         }
-        let params = self.line_params(indent, self.baselineskip_override.unwrap_or(self.style.baselineskip_pt), style, hang_pt);
+        let mut params = self.line_params(indent, self.baselineskip_override.unwrap_or(self.style.baselineskip_pt), style, hang_pt);
+        let bibliography = list_geom.is_some_and(|g| g.bibliography.is_some());
+        if bibliography {
+            // `thebibliography`'s `\sloppy`.
+            params.tolerance = 9999.0;
+            params.emergency_stretch = 3.0 * size;
+            params.hfuzz = 0.5;
+        }
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
@@ -2665,8 +2712,16 @@ impl<'a> Context<'a> {
             space_before: None,
             parskip: starts_paragraph.then(|| skip_tuple(parskip)),
             interline_penalty: 0,
-            club_penalty: if after_heading { pagebuild::INF_PENALTY } else { CLUB_PENALTY },
-            widow_penalty: WIDOW_PENALTY,
+            // `thebibliography`: `\clubpenalty4000 \@clubpenalty\clubpenalty
+            // \widowpenalty4000`.
+            club_penalty: if after_heading {
+                pagebuild::INF_PENALTY
+            } else if bibliography {
+                4000
+            } else {
+                CLUB_PENALTY
+            },
+            widow_penalty: if bibliography { 4000 } else { WIDOW_PENALTY },
             penalty_after: None,
             space_after: trailing_skip.map(|pt| {
                 // `\@xcentercr`: `\par \addvspace{-\parskip} \vskip <dimen>`;

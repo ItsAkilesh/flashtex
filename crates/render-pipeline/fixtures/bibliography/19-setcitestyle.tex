@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{natbib}
+\setcitestyle{square,aysep={},yysep={;},notesep={: }}
+\begin{document}
+A style set by keywords and keys: \citep{knuth84}, \citep{knuth84,knuth86},
+\citep[p.~3]{plass81}, and \citet{plass81}.
+
+\begin{thebibliography}{3}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting, Volume A}. Addison-Wesley, 1984.
+\bibitem[Knuth(1986)]{knuth86} Donald E. Knuth. \emph{Computers and Typesetting, Volume B}. Addison-Wesley, 1986.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\end{thebibliography}
+\end{document}

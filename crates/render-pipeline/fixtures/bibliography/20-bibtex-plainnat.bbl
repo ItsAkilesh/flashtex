@@ -1,0 +1,30 @@
+\begin{thebibliography}{4}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Hammer et~al.(2014)Hammer, Phang, Hicks, and Foster]{hammer14}
+Matthew~A. Hammer, Khoo~Yit Phang, Michael Hicks, and Jeffrey~S. Foster.
+\newblock Adapton: Composable, demand-driven incremental computation.
+\newblock In \emph{Proceedings of the 35th ACM SIGPLAN Conference on
+  Programming Language Design and Implementation}, pages 156--166, 2014.
+
+\bibitem[Knuth(1984)]{knuth84}
+Donald~E. Knuth.
+\newblock \emph{Computers and Typesetting, Volume A}.
+\newblock Addison-Wesley, Reading, Massachusetts, 1984.
+
+\bibitem[Knuth and Plass(1981)]{plass81}
+Donald~E. Knuth and Michael~F. Plass.
+\newblock Breaking paragraphs into lines.
+\newblock \emph{Software: Practice and Experience}, 11\penalty0 (11):\penalty0
+  1119--1184, 1981.
+
+\bibitem[Lamport(1994)]{lamport94}
+Leslie Lamport.
+\newblock \emph{A Document Preparation System}.
+\newblock Addison-Wesley, second edition, 1994.
+
+\end{thebibliography}

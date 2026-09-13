@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{natbib}
+\begin{document}
+A post-note alone \citep[p.~5]{knuth84}, a prefix alone \citep[see][]{plass81},
+both together \citep[e.g.][chap.~2]{knuth84,plass81}, and a textual citation
+with notes \citet[see][p.~7]{knuth84} all place their notes inside the
+brackets.
+
+\begin{thebibliography}{2}
+\bibitem[Knuth(1984)]{knuth84} Donald E. Knuth. \emph{Computers and Typesetting}. Addison-Wesley, 1984.
+\bibitem[Knuth and Plass(1981)]{plass81} Donald E. Knuth and Michael F. Plass.
+  Breaking paragraphs into lines. \emph{Software: Practice and Experience},
+  11(11):1119--1184, 1981.
+\end{thebibliography}
+\end{document}
