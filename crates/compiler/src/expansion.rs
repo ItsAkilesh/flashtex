@@ -64,6 +64,12 @@ pub struct ExpandedToken {
     pub maps_to_invocation: bool,
 }
 
+impl std::borrow::Borrow<Token> for ExpandedToken {
+    fn borrow(&self) -> &Token {
+        &self.token
+    }
+}
+
 /// A replacement-text run: the invocation it was expanded at, and the
 /// definition bytes it was copied from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

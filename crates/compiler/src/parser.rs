@@ -11,7 +11,9 @@ use std::rc::Rc;
 use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::expansion::{self, ExpansionSite};
-use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
+use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
+#[cfg(test)]
+use crate::lexer::tokenize;
 use crate::math::{self, MathList};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
@@ -710,10 +712,6 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         path: entry_path,
         text: "",
     });
-    let raw = tokenize_document(entry_document.text, DocumentId(entry));
-    let has_document = has_document_environment(&raw);
-    let mut bibliography_diags = Vec::new();
-    let bibliography = bib::prescan(&raw, &mut bibliography_diags);
     let expanded = if documents.is_empty() {
         expansion::Expansion {
             tokens: Rc::new(Vec::new()),
@@ -723,6 +721,11 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     } else {
         expansion::expand_project_cached(documents, entry)
     };
+    // Structure queries read the expanded stream the parser walks: one
+    // tokenizer pass per revision instead of three.
+    let has_document = has_document_environment(&expanded.tokens);
+    let mut bibliography_diags = Vec::new();
+    let bibliography = bib::prescan(&expanded.tokens[..], &mut bibliography_diags);
     let mut expansions: Vec<ExpansionSite> = Vec::new();
     for token in expanded.tokens.iter() {
         if let (true, Some(definition)) = (token.maps_to_invocation, token.definition) {
@@ -821,7 +824,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         parskip_pt: p.parskip_pt,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
-        preamble_source: preamble_source(entry_document.text, has_document),
+        preamble_source: preamble_source(entry_document.text, has_document, &expanded.tokens),
         incremental_safe,
         document_global_state: p.document_global_state,
         expansions,
@@ -3902,35 +3905,12 @@ fn roman(mut count: u32) -> String {
     text
 }
 
-fn preamble_source(text: &str, has_document: bool) -> String {
-    let tokens = tokenize(text);
+fn preamble_source(text: &str, has_document: bool, tokens: &[InputToken]) -> String {
     let end = if has_document {
-        tokens.iter().enumerate().find_map(|(index, token)| {
-            if token.kind != TokenKind::Command("begin".into()) {
-                return None;
-            }
-            let significant: Vec<&Token> = tokens[index + 1..]
-                .iter()
-                .filter(|token| !matches!(token.kind, TokenKind::Space | TokenKind::Comment))
-                .take(3)
-                .collect();
-            match significant.as_slice() {
-                [Token {
-                    kind: TokenKind::LBrace,
-                    ..
-                }, Token {
-                    kind: TokenKind::Word(name),
-                    ..
-                }, Token {
-                    kind: TokenKind::RBrace,
-                    span,
-                }] if name == "document" => Some(span.end),
-                _ => None,
-            }
-        })
-    } else if tokens.iter().any(|token| {
+        document_begin_end(tokens)
+    } else if tokens.iter().any(|input| {
         matches!(
-            &token.kind,
+            &input.token.kind,
             TokenKind::Command(name) if name == "documentclass" || name == "usepackage"
         )
     }) {
@@ -3938,7 +3918,9 @@ fn preamble_source(text: &str, has_document: bool) -> String {
     } else {
         None
     };
-    end.map_or("", |end| &text[..end]).to_string()
+    end.filter(|end| *end <= text.len() && text.is_char_boundary(*end))
+        .map_or("", |end| &text[..end])
+        .to_string()
 }
 
 fn token_text(tokens: &[InputToken]) -> String {
@@ -4106,24 +4088,35 @@ fn paragraph_boundary_at(tokens: &[InputToken], index: usize) -> bool {
     }
 }
 
-fn has_document_environment(tokens: &[Token]) -> bool {
-    tokens.iter().enumerate().any(|(index, token)| {
-        if token.kind != TokenKind::Command("begin".into()) {
-            return false;
+fn has_document_environment(tokens: &[InputToken]) -> bool {
+    document_begin_end(tokens).is_some()
+}
+
+/// The end offset of the first `\begin{document}` (past its closing brace).
+fn document_begin_end(tokens: &[InputToken]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(index, input)| {
+        if !matches!(&input.token.kind, TokenKind::Command(name) if name == "begin") {
+            return None;
         }
         let significant: Vec<&Token> = tokens[index + 1..]
             .iter()
+            .map(|input| &input.token)
             .filter(|token| !matches!(token.kind, TokenKind::Space | TokenKind::Comment))
             .take(3)
             .collect();
-        matches!(
-            significant.as_slice(),
-            [
-                Token { kind: TokenKind::LBrace, .. },
-                Token { kind: TokenKind::Word(name), .. },
-                Token { kind: TokenKind::RBrace, .. }
-            ] if name == "document"
-        )
+        match significant.as_slice() {
+            [Token {
+                kind: TokenKind::LBrace,
+                ..
+            }, Token {
+                kind: TokenKind::Word(name),
+                ..
+            }, Token {
+                kind: TokenKind::RBrace,
+                span,
+            }] if name == "document" => Some(span.end),
+            _ => None,
+        }
     })
 }
 
