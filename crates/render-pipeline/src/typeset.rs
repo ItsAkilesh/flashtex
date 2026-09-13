@@ -6640,8 +6640,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 src,
             ));
         }
-        longtable_limitation(ctx, &longtables, &blocks, "in a document with floats");
-        floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
+        let regions = pagebuild::resolve_regions(&list, &longtables);
+        floatpage::paginate(ctx, &mut blocks, &params, &list, floats, &regions)
     };
     // The `\twocolumn[...]` box sits at the top of the first page
     // (`\@combinedblfloats`), both columns `\dbltextfloatsep` below it.
