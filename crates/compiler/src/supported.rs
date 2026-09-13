@@ -273,6 +273,10 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("linebreak", "[n]", "line break"),
     ("nolinebreak", "[n]", "accepted no-op"),
     ("vfill", "", "vertical glue filling the rest of the page"),
+    ("columnbreak", "[n]", "multicol: ends the current column of multicols (priority n, default 4)"),
+    ("newcolumn", "", "multicol: ends the current column of multicols, filling it"),
+    ("raggedcolumns", "", "multicol: columns keep their natural height"),
+    ("flushcolumns", "", "multicol: columns are stretched to one height (the default)"),
     ("thispagestyle", "{style}", "accepted; no headers or footers are rendered"),
     ("pagenumbering", "{style}", "accepted; no page numbers are rendered"),
     ("centering", "", "centres the following paragraphs"),
@@ -714,6 +718,14 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
         "thebibliography",
         "References section with numbered \\bibitem entries",
     ),
+    (
+        "multicols",
+        "multicol {n}[preface][premulticols]: balanced columns, laid out by the render pipeline",
+    ),
+    (
+        "multicols*",
+        "multicol {n}[preface][premulticols]: unbalanced columns, laid out by the render pipeline",
+    ),
 ];
 
 /// Packages `parser::package_matches_layout` accepts without a warning.
@@ -754,6 +766,11 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "siunitx",
         "any \\sisetup keys",
         "v3 \\num, \\unit, \\qty, lists, ranges, \\ang, \\sisetup and \\DeclareSIUnit; unmodelled keys are diagnosed",
+    ),
+    (
+        "multicol",
+        "",
+        "multicols and multicols* with preface, \\columnbreak, \\raggedcolumns (columns set by the render pipeline)",
     ),
 ];
 

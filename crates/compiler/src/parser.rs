@@ -707,6 +707,10 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "linebreak",
     "nolinebreak",
     "vfill",
+    "columnbreak",
+    "newcolumn",
+    "raggedcolumns",
+    "flushcolumns",
     "pagestyle",
     "thispagestyle",
     "pagenumbering",
@@ -1028,6 +1032,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         author: None,
         date: None,
         titlepage_option: false,
+        twocolumn_option: false,
         column_types: HashMap::new(),
         colors: None,
         page_color: None,
@@ -1218,6 +1223,9 @@ struct P<'a> {
     /// primitive, so `P::maketitle` renders the ordinary compact block and
     /// says so once, rather than silently ignoring the option.
     titlepage_option: bool,
+    /// The `twocolumn` class option: multicol.sty's `twocolumn` option
+    /// handler (lines 111-113) warns when the package is loaded with it.
+    twocolumn_option: bool,
 }
 
 /// One open `itemize`/`enumerate`/`description`/`thebibliography`.
@@ -1946,6 +1954,23 @@ impl P<'_> {
                 blocks.push(Block::VFill);
                 self.finish_block_dependencies();
             }
+            // multicol.sty 919-950: `\columnbreak[n]` and `\newcolumn` end a
+            // column of `multicols` (set by the render pipeline); outside the
+            // environment multicol raises an error.
+            "columnbreak" | "newcolumn" => {
+                if name == "columnbreak" {
+                    let _ = self.optional_bracket_argument();
+                }
+                if !self.env_stack.iter().any(|(environment, _)| environment == "multicols" || environment == "multicols*") {
+                    self.diags.push(Diagnostic::error(
+                        format!("Package multicol Error: \\{name} outside multicols; this command can only be used within a multicols or multicols* environment"),
+                        Some(span),
+                        Some("ignored the command".into()),
+                    ));
+                }
+            }
+            // multicol.sty 564-567: column heights at output time.
+            "raggedcolumns" | "flushcolumns" => {}
             "pagestyle" => {
                 // No header/footer rendering exists yet, so every style is
                 // accepted with the same (honest) effect: none. `empty` and
@@ -2116,6 +2141,9 @@ impl P<'_> {
         // dedicated, vertically centred title page (see `P::maketitle`).
         if option_list.contains(&"titlepage") {
             self.titlepage_option = true;
+        }
+        if option_list.contains(&"twocolumn") {
+            self.twocolumn_option = true;
         }
         let (tokens, _) = self.required_group("documentclass", span);
         let class = token_text(&tokens).trim().to_string();
@@ -2305,6 +2333,15 @@ impl P<'_> {
         for package in &packages {
             self.load_color_package(package, &options);
         }
+        // multicol.sty lines 111-113: the global `twocolumn` class option
+        // reaches the package's option handler.
+        if self.twocolumn_option && packages.iter().any(|package| package == "multicol") {
+            self.diags.push(Diagnostic::warning(
+                "Package multicol Warning: May not work with the twocolumn option",
+                Some(span.merge(argument_span)),
+                Some("multicols is set inside the page column".into()),
+            ));
+        }
         if packages.iter().any(|package| package == "fontenc") {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
                 self.font_encoding = encoding;
@@ -2328,6 +2365,138 @@ impl P<'_> {
             Some(span.merge(argument_span)),
             Some("continued without package-specific commands or formatting".into()),
         ));
+    }
+
+    /// `\begin{multicols}{<n>}[<preface>][<premulticols>]` and `multicols*`
+    /// (multicol.sty 2025/10/21 v2.0b, lines 145-205 and 894-905). The
+    /// column count is checked as `\multicols` checks it: fewer than two
+    /// columns become two with multicol's warning, more than twenty become
+    /// twenty with its error. The preface is `#1\par` in `\mult@@cols`: it
+    /// stays in the token stream as ordinary body material, its `[` blanked
+    /// and its `]` turned into the paragraph break. `[<premulticols>]` only
+    /// decides a page break and is dropped here. The columns themselves are
+    /// laid out by the render pipeline (`typeset::multicol`).
+    fn multicols_arguments(&mut self, span: Span, environment: &str) {
+        let (tokens, count_span) = self.required_group(environment, span);
+        let count = token_text(&tokens).trim().to_string();
+        let at = Some(span.merge(count_span));
+        match count.parse::<i64>() {
+            Ok(n) if n < 2 => self.diags.push(Diagnostic::warning(
+                format!("Package multicol Warning: Using `{n}' columns doesn't seem a good idea. I therefore use two columns instead"),
+                at,
+                Some("set two columns".into()),
+            )),
+            Ok(n) if n > 20 => self.diags.push(Diagnostic::error(
+                "Package multicol Error: Too many columns; the current implementation doesn't support more than 20 columns",
+                at,
+                Some("set 20 columns".into()),
+            )),
+            Ok(_) => {}
+            Err(_) => self.diags.push(Diagnostic::warning(
+                format!("{environment} expects a number of columns, got '{count}'"),
+                at,
+                Some("set two columns".into()),
+            )),
+        }
+        self.skip_spaces();
+        let open = self.i;
+        let Some(close) = self.bracket_close(open) else { return };
+        // `[<premulticols>]` right after the preface (`\@ifnextchar[` skips
+        // spaces): in the same word as the preface's `]` (`][80pt]`), or in
+        // the words that follow.
+        let (close_token, at) = close;
+        let rest = match &self.t[close_token].token.kind {
+            TokenKind::Word(word) => word[at + 1..].to_string(),
+            _ => String::new(),
+        };
+        if rest.starts_with('[') {
+            if let Some(end) = rest.find(']') {
+                if let Some(t) = self.token_mut(close_token) {
+                    if let TokenKind::Word(word) = &mut t.token.kind {
+                        word.replace_range(at + 1..at + 2 + end, "");
+                    }
+                }
+            }
+        } else if rest.is_empty() {
+            let mut next = close_token + 1;
+            while next < self.t.len() && matches!(self.t[next].token.kind, TokenKind::Space | TokenKind::Comment) {
+                next += 1;
+            }
+            if let Some((close2, _)) = self.bracket_close(next) {
+                for k in next..=close2 {
+                    if let Some(t) = self.token_mut(k) {
+                        t.token.kind = TokenKind::Comment;
+                    }
+                }
+            }
+        }
+        self.blank_preface_brackets(open, close);
+    }
+
+    /// The token and byte offset of the `]` closing the `[` that starts the
+    /// word at `open` (brackets inside braces do not count; a blank line
+    /// ends the search).
+    fn bracket_close(&self, open: usize) -> Option<(usize, usize)> {
+        let TokenKind::Word(first) = &self.t.get(open)?.token.kind else {
+            return None;
+        };
+        if !first.starts_with('[') {
+            return None;
+        }
+        let (mut depth, mut braces) = (0i32, 0i32);
+        for k in open..self.t.len() {
+            match &self.t[k].token.kind {
+                TokenKind::LBrace => braces += 1,
+                TokenKind::RBrace => braces -= 1,
+                TokenKind::ParBreak => return None,
+                TokenKind::Word(word) if braces == 0 => {
+                    for (at, c) in word.char_indices() {
+                        match c {
+                            '[' => depth += 1,
+                            ']' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some((k, at));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// The preface's `[` disappears and its `]` becomes `\par`.
+    fn blank_preface_brackets(&mut self, open: usize, (close, at): (usize, usize)) {
+        let mut rest_of_word = false;
+        if let Some(t) = self.token_mut(close) {
+            if let TokenKind::Word(word) = &mut t.token.kind {
+                word.remove(at);
+                if word.is_empty() {
+                    t.token.kind = TokenKind::ParBreak;
+                } else {
+                    rest_of_word = true;
+                }
+            }
+        }
+        if rest_of_word && matches!(self.t.get(close + 1).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+            if let Some(t) = self.token_mut(close + 1) {
+                t.token.kind = TokenKind::ParBreak;
+            }
+        }
+        if let Some(t) = self.token_mut(open) {
+            if let TokenKind::Word(word) = &mut t.token.kind {
+                if word.starts_with('[') {
+                    word.remove(0);
+                }
+                if word.is_empty() {
+                    t.token.kind = TokenKind::Comment;
+                }
+            }
+        }
     }
 
     /// `\maketitle`: builds `Block::TitleBlock` from whatever `\title`/
@@ -2610,6 +2779,10 @@ impl P<'_> {
                 self.push_list_frame(ListEnvironment::Bibliography, Vec::new(), heading_span);
             } else if environment == "subequations" && self.in_body {
                 self.begin_subequations();
+            } else if matches!(environment.as_str(), "multicols" | "multicols*") && self.in_body {
+                // `\mult@@cols` starts with `\par`.
+                self.flush_paragraph(blocks, para);
+                self.multicols_arguments(span.merge(argument_span), &environment);
             } else if self.in_body {
                 self.diags.push(Diagnostic::environment_warning(
                     &environment,
@@ -2736,6 +2909,9 @@ impl P<'_> {
                     }
                 }
             }
+        } else if matches!(environment.as_str(), "multicols" | "multicols*") && self.in_body {
+            // `\endmulticols` starts with `\par`.
+            self.flush_paragraph(blocks, para);
         } else if environment == "figure" || self.theorems.contains_key(&environment) {
             self.flush_paragraph(blocks, para);
         } else if environment == "proof" {
@@ -3905,6 +4081,8 @@ impl P<'_> {
                     );
                     if !atoms.is_empty() {
                         content.push(Inline::Math {
+                            color: style.color,
+                            color_ranges: Vec::new(),
                             list: MathList { atoms },
                             display: false,
                             number: None,
@@ -4089,6 +4267,8 @@ impl P<'_> {
             return;
         }
         para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges: Vec::new(),
             list: crate::math::MathList { atoms },
             display: false,
             number: None,
@@ -4980,6 +5160,12 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // (crate::siunitx); its options are \sisetup keys, and a key that
         // is not modelled gets its own diagnostic there.
         "siunitx" => true,
+        // multicols/multicols*, \columnbreak and \raggedcolumns are parsed
+        // (the render pipeline sets the columns); the tracing options change
+        // nothing typeset.
+        "multicol" => options
+            .iter()
+            .all(|option| matches!(*option, "errorshow" | "infoshow" | "balancingshow" | "markshow" | "debugshow")),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
