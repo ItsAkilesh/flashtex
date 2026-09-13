@@ -91,16 +91,20 @@ build needs signing set once:
    A free Apple ID works (7-day profile); the first launch needs *Settings >
    General > VPN & Device Management* trust for a personal team.
 4. Pair with the Mac app (`apps/mac`, `scripts/make-app.sh` or `swift run`):
-   Mac *Edit > Nearby Companion… > Start Advertising > Show Pairing Code* — the
-   window shows the 6-digit code, the QR, and host:port. On the iPad, *Mac link*
-   > *Scan QR…* (or paste the `flashtex-nearby://pair?…` text); if Bonjour does
-   not find the Mac (different subnet, AP isolation), type the host and port
-   shown on the Mac before tapping *Pair from payload*. Allow the Local Network
-   prompt on both sides. Then *Edit > Pin Insertion Point* on the Mac, draw on
-   the iPad, *Prepare capture* > *Send to Mac*; the Mac converts
-   (*Edit > Attach Capture Bridge* first; a conversion provider key, see `apps/mac/docs/capture-conversion.md`) and the
+   Mac *View > Toggle Captures* (⌘⇧I; advertising starts, the bridge attaches)
+   > *Pairing code…* — the Nearby window shows the 6-digit code, the QR, and
+   host:port. On the iPad, *Mac link* > *Find nearby Macs* and tap the Mac with
+   the code typed, or *Scan QR…* (or paste the `flashtex-nearby://pair?…`
+   text); if Bonjour does not find the Mac (different subnet, AP isolation),
+   type the host and port shown on the Mac before tapping *Pair from payload*.
+   Allow the Local Network prompt on both sides. Then put the caret where the
+   result goes on the Mac (no pin needed; ⌘⌥P overrides), draw or tap *Camera*
+   on the iPad, pick an instruction chip, tap *Send*; the Mac's Captures
+   inspector shows the row, converts it (a conversion provider key, see
+   `apps/mac/docs/capture-conversion.md`) and *Insert at caret* inserts it; the
    iPad row follows journaled → converting → proposal ready (LaTeX shown) →
-   inserted once you approve on the Mac.
+   "Inserted on Mac ✓". Relaunching the iPad reconnects to the stored Mac by
+   itself (remembered address, then Bonjour by fingerprint).
 
 ## The proofs (all in the simulator)
 

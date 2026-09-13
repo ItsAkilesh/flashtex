@@ -384,6 +384,22 @@ diagnostics checks beyond the one-line contract fixture.
 
 ## Nearby companion (proposal nearby-v1)
 
+The everyday surface is the **Captures** inspector (`View > Toggle Captures`,
+⌘⇧I, or the toolbar's Captures button; `CaptureInbox.swift`): opening it
+starts advertising and attaches the discovered bridge, *Pairing code…* opens
+the Nearby window with a code, and every companion capture appears there at
+once with its image, instruction and state (received → converting → proposal
+ready → inserted), the syntax-coloured proposal and *Insert at caret* /
+*Edit* / *Review…* / *Reject*. A companion's `destination_query` with nothing
+pinned pins the caret on its behalf (locally and on the bridge, awaited before
+the reply; `mac-caret-N` ids), ⌘⌥P overrides; a nearby capture is converted
+as soon as the bridge journals it when a provider is enabled. Launch
+advertises when a companion is paired. Switches (`=0` off):
+`FLASHTEX_CAPTURE_AUTO_CONVERT`, `FLASHTEX_CAPTURE_CARET_DESTINATION`,
+`FLASHTEX_CAPTURES_AUTO_ATTACH`, `FLASHTEX_NEARBY_AUTO_ADVERTISE`;
+`FLASHTEX_SHOW_CAPTURES=1` opens the inspector at launch (automation).
+Tests: `CaptureInboxTests` (fake bridge + fake ledger).
+
 `Edit > Nearby Companion…` (⌘⇧N) opens a window that advertises this Mac to a
 paired iPad/iPhone companion and receives its `capture_submit` messages over an
 authenticated, encrypted connection. **This is a proposal until the Commander

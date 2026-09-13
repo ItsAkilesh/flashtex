@@ -297,22 +297,42 @@ proposal* — **nothing is inserted unless you approve it**.
 
 ## The Nearby companion (iPad)
 
-*Edit › Nearby Companion…* (⌘⇧N) opens the window that pairs this Mac with
-[FlashTeXPad on an iPad](ipad.md) and receives its captures.
+The **Captures** inspector (*View › Toggle Captures*, ⌘⇧I, or the toolbar's
+Captures button) is where captures from [FlashTeXPad on an iPad](ipad.md)
+arrive and get inserted. Opening it starts advertising this Mac (macOS asks
+for Local Network permission once) and attaches the capture bridge; the two
+status pills at the top say so. The Mac also advertises at launch once a
+companion is paired, so the iPad reconnects without any click.
 
-1. Turn on **Advertise** (macOS asks for Local Network permission once).
-2. **Show Pairing Code**: a 6-digit code valid for 120 s, shown as digits and
-   as a QR code; *Copy code* copies the digits; Return shows or resumes a
-   code, Esc cancels it. Scan or type it on the iPad.
-3. **Paired companions** lists devices with a "connected" badge; **Forget**
-   revokes one immediately (also drops its live session).
-4. **Received captures** shows the last captures. With the capture bridge
-   attached (it is, in the bundled app) a capture is journaled durably and
-   *Edit › Convert Capture* (⌘⇧G) turns it into a proposal; the review sheet
-   shows the LaTeX, ambiguities and required packages, and **Approve**
-   inserts exactly one undoable edit at the pinned insertion point
-   (*Edit › Pin Insertion Point*, ⌘⌥P). Without a bridge captures are held in
-   memory only.
+1. **Pairing code…** opens the Nearby Companion window (*Edit › Nearby
+   Companion…*, ⌘⇧N) with a fresh 6-digit code valid for 120 s, shown as
+   digits and as a QR code; *Copy code* copies the digits. Scan, type, or pick
+   the Mac from the iPad's *Find nearby Macs* list and enter the code. The
+   window also lists **paired companions** (a "connected" badge, a
+   per-companion permission pop-up, **Forget**).
+2. The insertion point is the caret: when the iPad asks where to insert, the
+   Mac pins the caret for it. *Edit › Pin Insertion Point* (⌘⌥P) is an
+   explicit override; the inspector's destination line says "(caret)" or
+   "(pinned)".
+3. Every capture the iPad sends appears in the inspector immediately with its
+   image, instruction and state — *received* → *converting* → *proposal
+   ready* → *inserted* (or *rejected* / *failed*, with the reason). With a
+   conversion provider configured (Preferences → Capture conversion) the
+   conversion starts on receipt; without one the row offers **Convert**.
+4. When the proposal is ready the LaTeX/TikZ is shown syntax-coloured.
+   **Insert at caret** approves it: the bridge prepares the edit at the bound
+   destination, verifies it, and inserts exactly one undoable edit (⌘Z).
+   **Edit** changes the text first (the bridge refuses edited text —
+   transfer-v1 inserts only the journaled proposal — so edit after inserting
+   or reject and resend), **Review…** opens the full sheet with the shadow
+   compile and ambiguities, **Reject** discards it. The iPad's row shows
+   "Inserted on Mac ✓".
+5. **Clear N** removes finished rows. Without a bridge, captures wait in the
+   inspector as *received* until **Attach bridge**.
+
+Switches (environment, `=0` turns each off): `FLASHTEX_CAPTURE_AUTO_CONVERT`,
+`FLASHTEX_CAPTURE_CARET_DESTINATION`, `FLASHTEX_CAPTURES_AUTO_ATTACH`,
+`FLASHTEX_NEARBY_AUTO_ADVERTISE`.
 
 Pairings live in `~/Library/Application Support/FlashTeX/pairs.json`
 (owner-only permissions, not the Keychain). The transport is TLS 1.2 with a

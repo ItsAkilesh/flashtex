@@ -84,14 +84,18 @@ the Mac.
 
 On the Mac:
 
-1. *Edit › Nearby Companion…* (⌘⇧N).
-2. Turn on **Advertise**, then **Show Pairing Code**. The window shows the
-   6-digit code, a QR code, an "expires in N s" countdown, and below them the
-   Bonjour name, the listening **port** and the Mac id (fp). *Copy code*
+1. Open the **Captures** inspector (View › Toggle Captures, ⌘⇧I, or the
+   toolbar's Captures button). Opening it starts advertising; the status pill
+   turns green.
+2. Click **Pairing code…**. The Nearby Companion window (⌘⇧N) opens showing
+   the 6-digit code, a QR code, an "expires in N s" countdown, and below them
+   the Bonjour name, the listening **port** and the Mac id (fp). *Copy code*
    copies the six digits.
 
 On the iPad, open **Mac link**:
 
+- **Find nearby Macs** — the Macs advertising on this network are listed by
+  name; type the code and tap the Mac to pair, or
 - **Scan QR…** — point the camera at the Mac's QR code (real iPads with
   VisionKit support), or
 - **Paste** a `flashtex-nearby://pair?…` payload (the text the QR encodes) and
@@ -102,8 +106,12 @@ On the iPad, open **Mac link**:
 
 The Mac is normally found by Bonjour. If discovery fails (different subnet,
 guest Wi-Fi with client isolation), type the Mac's IP address and the port
-shown in the Nearby window before pairing. After pairing, **Reconnect with stored key**
-reconnects later without a new code; **Forget pairing** removes the key (do
+shown in the Nearby window before pairing. After pairing the iPad reconnects
+by itself: at launch it tries the address the Mac last had, then Bonjour by
+the Mac's fingerprint, with the stored key and no new code (the Mac must be
+advertising — it does so at launch once a companion is paired, and whenever
+the Captures inspector is open). **Reconnect** on the Capture screen and in
+Mac link does the same on demand; **Forget pairing** removes the key (do
 the same on the Mac with *Forget* next to the device name).
 
 A code is single-use: if the connection drops before the Mac answers, show a
@@ -111,21 +119,26 @@ new code and pair again.
 
 ## Sending a capture
 
-1. On the Mac, put the caret where the result should go and choose
-   *Edit › Pin Insertion Point* (⌘⌥P). The iPad's Capture screen shows the
-   pinned destination (path and revision) — or "no insertion point pinned on
-   the Mac", in which case sending is refused.
-2. On the iPad's **Capture** screen, draw with the Pencil (or a finger), or
-   tap **Photo…** to pick an image from Photos, or **Sample image**. **Clear**
-   empties the canvas.
-3. Type an instruction for the Mac (at most 4096 bytes), e.g. "convert this
-   triangle to TikZ".
-4. Tap **Prepare capture**. The app shows the PNG size; **Discard** throws it
-   away (nothing was sent), **Send to Mac** sends it.
-5. On the Mac, attach the capture bridge if it is not attached, then
-   *Edit › Convert Capture* (⌘⇧G). Review the proposal in the sheet that
-   opens (editable LaTeX, ambiguities, required packages) and **Approve** or
-   **Reject**. Approval inserts exactly one undoable edit at the pinned point.
+1. On the Mac, put the caret where the result should go. That is the
+   destination: when the iPad asks, the Mac pins the caret for it. (*Edit ›
+   Pin Insertion Point*, ⌘⌥P, still works as an explicit override; the
+   Captures inspector says "(caret)" or "(pinned)".) The iPad's Capture
+   screen shows the destination path and revision.
+2. On the iPad's **Capture** screen, draw with the Pencil (or a finger), tap
+   **Camera** to photograph a page (on the simulator, **Photo…** picks from
+   Photos instead), or **Sample image**. **Clear** empties the canvas.
+3. Tap an instruction chip — *Convert to TikZ*, *Transcribe as LaTeX*, *This
+   is a matrix*, or one you sent recently — or type your own (at most 4096
+   bytes).
+4. Tap **Send**. That is the only tap: the PNG is rendered, validated, saved
+   on the iPad and sent. A problem (empty canvas, not connected, image too
+   large) is shown in red and nothing is sent.
+5. On the Mac the capture appears in the Captures inspector at once and
+   converts on its own (with a conversion provider configured; otherwise the
+   row offers **Convert**). When the proposal is ready, read it — syntax
+   coloured — and click **Insert at caret**. **Edit** lets you change the
+   text first, **Review…** opens the full sheet (shadow compile, ambiguities),
+   **Reject** discards it. Nothing is inserted without that click; ⌘Z undoes.
 
 ### What the iPad shows
 
@@ -133,16 +146,17 @@ Each capture is a row in the captures list with a status:
 
 | Status | Meaning |
 |---|---|
-| drafted — not sent | Prepared but not sent yet |
+| drafted — not sent | Saved on the iPad, not sent yet (only after an interrupted launch; Send drafts and sends in one step) |
 | sending… / re-sending (attempt N, same capture_id) | In flight; a retry after a dropped connection reuses the same id, so the Mac never stores a duplicate |
 | received | The Mac stored it (durable when a bridge is attached; otherwise "Mac inbox, no bridge attached — not converted yet") |
 | refused by the Mac: `<code>` | e.g. `invalid_image`, `image_too_large`, `revision_mismatch` (the Mac document changed since the pin — re-pin and send again), `capture_id_conflict` |
 | not acknowledged (…) — retry re-sends the same capture_id | The connection dropped before a receipt; **Retry** is safe |
-| discarded before sending | You tapped Discard |
+| discarded before sending | A draft from an older version you discarded |
 
 After a receipt the iPad polls the Mac every 2 seconds and shows the outcome:
 *journaled* → *converting* → *proposal ready* (the LaTeX text appears, read-only)
-→ *inserted (revision N)* / *rejected* / *conversion failed*. **Refresh status**
+→ *inserted (revision N)* — the row shows **Inserted on Mac ✓** — / *rejected* /
+*conversion failed*. **Refresh status**
 polls once more. Polling stops at a final state, after 5 minutes, or when the
 Mac cannot answer ("outcome unavailable").
 
