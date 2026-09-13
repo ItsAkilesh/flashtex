@@ -123,6 +123,8 @@ pub enum BoxRec {
 pub struct TableRec {
     pub pieces: Vec<TablePiece>,
     pub rules: Vec<crate::table::PlacedRule>,
+    /// colortbl fills, painted under the pieces and rules.
+    pub fills: Vec<crate::table::PlacedRule>,
     pub span: Span,
 }
 
@@ -1769,6 +1771,12 @@ impl<'a> Context<'a> {
                 };
                 let before = self.table_pieces(before_m, size, (ri, ci), true, &mut blocks);
                 let mut content_offset = (0.0, 0.0);
+                if let Some(mr) = &cell.multirow {
+                    let content = self.multirow_box(mr, &cell.items, size, bskip, quad, align, &metrics, (ri, ci), &mut blocks, &mut content_offset);
+                    let after = self.table_pieces(after_m, size, (ri, ci), false, &mut blocks);
+                    out.push(MCell { column, columns, align, before, content, after, content_offset });
+                    continue;
+                }
                 let content = match align {
                     Align::Paragraph(len) | Align::Middle(len) | Align::Bottom(len) => {
                         let width = tb::resolve(len, measure).max(0.0);
@@ -1807,14 +1815,15 @@ impl<'a> Context<'a> {
             }
             rows.push(out);
         }
-        let geometry = tb::layout(t, &rows, &metrics);
+        let mut geometry = tb::layout(t, &rows, &metrics);
+        self.resolve_table_colors(t.span, &mut geometry);
         let mut pieces = Vec::new();
         for p in &geometry.placed {
             if let Some(block) = blocks.remove(&(p.row, p.cell, p.slot)) {
                 pieces.push(TablePiece { x: p.x, baseline: p.baseline, block });
             }
         }
-        self.recs.push(BoxRec::Table(Rc::new(TableRec { pieces, rules: geometry.rules, span: t.span })));
+        self.recs.push(BoxRec::Table(Rc::new(TableRec { pieces, rules: geometry.rules, fills: geometry.fills, span: t.span })));
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
             size,
@@ -1825,6 +1834,112 @@ impl<'a> Context<'a> {
             source: t.span.start..t.span.end,
         };
         Some((run, self.recs.len() - 1))
+    }
+
+    /// Resolves colortbl colours to sRGB; an unresolvable colour paints
+    /// black and is reported once per specification.
+    fn resolve_table_colors(&mut self, span: Span, geometry: &mut crate::table::Geometry) {
+        let defined = crate::tablecolor::definitions(self.texts.get(span.document.0).copied().unwrap_or(""));
+        let mut unresolved = Vec::new();
+        for r in geometry.rules.iter_mut().chain(geometry.fills.iter_mut()) {
+            let Some(c) = &r.color else { continue };
+            r.rgb = crate::tablecolor::resolve(c.model.as_deref(), &c.spec, &defined);
+            if r.rgb.is_none() && !unresolved.iter().any(|(s, _): &(String, Span)| *s == c.spec) {
+                unresolved.push((c.spec.clone(), c.span));
+            }
+        }
+        for (spec, at) in unresolved {
+            let src = vec![self.source(at)];
+            self.emit(
+                None,
+                Diagnostic::warning(
+                    "table_limitation",
+                    format!("table colour '{spec}' is not a colour this pipeline resolves yet (base xcolor names, \\definecolor rgb/RGB/HTML/gray/cmyk, a!p!b mixes); painted black"),
+                    src,
+                ),
+            );
+        }
+    }
+
+    /// multirow.sty v2.9 `\@xmultirow` (168-201): the text is set in box 0,
+    /// `\vtop to\multirow@dima` of `nrows` strut rows plus the bigstruts
+    /// (with `\vfill` above and/or below by `vpos`), raised by the final
+    /// `\multirow@dima` plus `vmove`, and entered as a box of no height and
+    /// no depth. Returns that box; `offset.1` is the first baseline's y
+    /// below the row's baseline.
+    #[allow(clippy::too_many_arguments)]
+    fn multirow_box(
+        &mut self,
+        mr: &flashtex_compiler::tabular::Multirow,
+        items: &[AItem],
+        size: f64,
+        bskip: f64,
+        quad: f64,
+        align: flashtex_compiler::tabular::Align,
+        m: &crate::table::Metrics,
+        key: (usize, usize),
+        blocks: &mut std::collections::HashMap<(usize, usize, crate::table::Slot), BuiltBlock>,
+        offset: &mut (f64, f64),
+    ) -> crate::table::Dims {
+        use crate::table::{self as tb, Dims, Slot};
+        use flashtex_compiler::tabular::{MultirowPos, MultirowWidth};
+        const BIGSTRUTJOT: f64 = 3.0; // `\bigstrutjot=\jot`
+        // `\strut` inside the box is `\strutbox` of the size in force.
+        let plain_height = tb::sp(0.7 * bskip);
+        let plain_depth = tb::sp(0.3 * bskip);
+        let (ht, dp) = (m.strut_height, m.strut_depth);
+        let jot = |on: bool| if on { BIGSTRUTJOT } else { 0.0 };
+        let d0 = mr.rows.abs() * (ht + dp) + f64::from(mr.bigstrut_count) * BIGSTRUTJOT;
+        // (width, first line height, first-to-last baseline, last depth).
+        let (width, first, inner, last) = match mr.width {
+            MultirowWidth::Natural => match self.table_hbox(items, size) {
+                Some((block, dims)) => {
+                    blocks.insert((key.0, key.1, Slot::Content), block);
+                    (dims.width, dims.height.max(plain_height), 0.0, dims.depth.max(plain_depth))
+                }
+                None => (0.0, plain_height, 0.0, plain_depth),
+            },
+            MultirowWidth::Column | MultirowWidth::Fixed(_) => {
+                let width = match mr.width {
+                    MultirowWidth::Fixed(len) => tb::resolve(len, m.measure),
+                    _ => align.paragraph_width().map_or(m.measure, |len| tb::resolve(len, m.measure)),
+                }
+                .max(0.0);
+                // `\multirowsetup` is `\raggedright`.
+                match self.table_pbox(items, size, width, bskip, quad, ParaStyle::FlushLeft) {
+                    Some((block, lines)) => {
+                        blocks.insert((key.0, key.1, Slot::Content), block);
+                        (width, lines.first_height.max(plain_height), lines.inner, lines.last_depth.max(plain_depth))
+                    }
+                    None => (width, plain_height, 0.0, plain_depth),
+                }
+            }
+        };
+        // The first baseline below box 0's top: `\vfill` glue does not
+        // shrink, so an overfull box keeps its natural positions.
+        let within = match mr.vpos {
+            MultirowPos::Top => first,
+            MultirowPos::Center => ((d0 - first - inner - last) / 2.0).max(0.0) + first,
+            MultirowPos::Bottom => (d0 - first - inner).max(0.0) + first,
+        };
+        // `\ht0`: box 0 is a `\vtop` whose first item is the text for `t`.
+        let ht0 = if mr.vpos == MultirowPos::Top { first } else { 0.0 };
+        let mut raise = if mr.rows > 0.0 {
+            match mr.vpos {
+                MultirowPos::Top => ht0,
+                MultirowPos::Center => ht + jot(mr.bigstrut_top),
+                MultirowPos::Bottom => ht + jot(mr.bigstrut_top) + dp + jot(mr.bigstrut_bottom),
+            }
+        } else {
+            match mr.vpos {
+                MultirowPos::Bottom => d0,
+                MultirowPos::Center => d0 - dp - jot(mr.bigstrut_bottom),
+                MultirowPos::Top => d0 - dp - jot(mr.bigstrut_bottom) - ht - jot(mr.bigstrut_top) + ht0,
+            }
+        };
+        raise += mr.vmove_pt;
+        offset.1 = within - raise;
+        Dims { width, height: 0.0, depth: 0.0 }
     }
 
     /// Measures a template's `u`/`v` material, shaping `@{}` text.
@@ -1843,6 +1958,7 @@ impl<'a> Context<'a> {
                 TableMaterial::Space(pt) => MPiece::Space(*pt),
                 TableMaterial::Rule(span) => MPiece::Rule(*span),
                 TableMaterial::VLine(span, width) => MPiece::VLine(*span, *width),
+                TableMaterial::DoubleRuleGap(width) => MPiece::DoubleRuleGap(*width),
                 TableMaterial::Text(items) => match self.table_hbox(items, size) {
                     Some((block, dims)) => {
                         blocks.insert((key.0, key.1, if before { Slot::Before(i) } else { Slot::After(i) }), block);
@@ -6058,6 +6174,18 @@ fn assemble_block(
                 }
                 BoxRec::Picture(p) => picture_items(&local, p, source_of, &mut items, &mut used),
                 BoxRec::Table(t) => {
+                    let paint_of = |r: &crate::table::PlacedRule| r.rgb.map_or(Paint::BLACK, |[r, g, b]| Paint { r, g, b, a: 1.0 });
+                    // colortbl's leaders come before the entry in each cell.
+                    for r in &t.fills {
+                        items.push(display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(local.x + r.x),
+                            top: Tick::from_tex_pt(r.top),
+                            width: Tick::from_tex_pt(r.width).max(Tick(1)),
+                            height: Tick::from_tex_pt(r.height).max(Tick(1)),
+                            paint: paint_of(r),
+                            provenance: Provenance::Source(source_of(r.span)),
+                        }));
+                    }
                     // Each piece is assembled like a block of its own, then
                     // moved to its place; the rules follow the text.
                     for piece in &t.pieces {
@@ -6086,7 +6214,7 @@ fn assemble_block(
                             top: Tick::from_tex_pt(r.top),
                             width: Tick::from_tex_pt(r.width).max(Tick(1)),
                             height: Tick::from_tex_pt(r.height).max(Tick(1)),
-                            paint: Paint::BLACK,
+                            paint: paint_of(r),
                             provenance: Provenance::Source(source_of(r.span)),
                         }));
                     }
