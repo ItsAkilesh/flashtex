@@ -607,6 +607,27 @@ fn write_paint(o: &mut String, p: &Paint) {
     o.push('}');
 }
 
+/// [`path_json`] written directly.
+fn write_path(o: &mut String, cmds: &[PathCmd]) {
+    o.push('[');
+    for (i, c) in cmds.iter().enumerate() {
+        sep(o, i);
+        let (op, ts): (&str, &[Tick]) = match c {
+            PathCmd::Move(x, y) => ("[\"m\"", &[*x, *y]),
+            PathCmd::Line(x, y) => ("[\"l\"", &[*x, *y]),
+            PathCmd::Cubic(a, b, cc, d, e, f) => ("[\"c\"", &[*a, *b, *cc, *d, *e, *f]),
+            PathCmd::Close => ("[\"z\"", &[]),
+        };
+        o.push_str(op);
+        for t in ts {
+            o.push(',');
+            write_tick(o, *t);
+        }
+        o.push(']');
+    }
+    o.push(']');
+}
+
 fn write_page(o: &mut String, p: &Page) {
     o.push_str("{\"height\":");
     write_tick(o, p.height);
@@ -691,6 +712,76 @@ fn write_page(o: &mut String, p: &Page) {
                 write_tick(o, r.width);
                 o.push_str(",\"x\":");
                 write_tick(o, r.x);
+                o.push('}');
+            }
+            Item::Path(p) => {
+                // BTreeMap key order: clips, fill_rule, kind, paint, path,
+                // sources, stroke, synthetic_reason.
+                o.push('{');
+                if !p.clips.is_empty() {
+                    o.push_str("\"clips\":[");
+                    for (j, c) in p.clips.iter().enumerate() {
+                        sep(o, j);
+                        o.push_str("{\"fill_rule\":");
+                        o.push_str(if c.even_odd { "\"evenodd\"" } else { "\"nonzero\"" });
+                        o.push_str(",\"kind\":\"path\",\"path\":");
+                        write_path(o, &c.commands);
+                        o.push('}');
+                    }
+                    o.push_str("],");
+                }
+                let stroke = match &p.op {
+                    PathPaintOp::Fill { even_odd } => {
+                        o.push_str("\"fill_rule\":");
+                        o.push_str(if *even_odd { "\"evenodd\"" } else { "\"nonzero\"" });
+                        o.push_str(",\"kind\":\"path_fill\"");
+                        None
+                    }
+                    PathPaintOp::Stroke(s) => {
+                        o.push_str("\"kind\":\"path_stroke\"");
+                        Some(s)
+                    }
+                };
+                o.push_str(",\"paint\":");
+                write_paint(o, &p.paint);
+                o.push_str(",\"path\":");
+                write_path(o, &p.commands);
+                let synthetic = matches!(p.provenance, Provenance::Synthetic(_));
+                if !synthetic {
+                    write_provenance(o, &p.provenance);
+                }
+                if let Some(s) = stroke {
+                    o.push_str(",\"stroke\":{\"cap\":");
+                    o.push_str(match s.cap {
+                        LineCap::Butt => "\"butt\"",
+                        LineCap::Round => "\"round\"",
+                        LineCap::Square => "\"square\"",
+                    });
+                    if !s.dash.is_empty() {
+                        o.push_str(",\"dash\":{\"array\":[");
+                        for (j, t) in s.dash.iter().enumerate() {
+                            sep(o, j);
+                            write_tick(o, *t);
+                        }
+                        o.push_str("],\"phase\":");
+                        write_tick(o, s.dash_phase);
+                        o.push('}');
+                    }
+                    o.push_str(",\"join\":");
+                    o.push_str(match s.join {
+                        LineJoin::Miter => "\"miter\"",
+                        LineJoin::Round => "\"round\"",
+                        LineJoin::Bevel => "\"bevel\"",
+                    });
+                    o.push_str(",\"miter_limit\":");
+                    num(o, s.miter_limit);
+                    o.push_str(",\"width\":");
+                    write_tick(o, s.width);
+                    o.push('}');
+                }
+                if synthetic {
+                    write_provenance(o, &p.provenance);
+                }
                 o.push('}');
             }
         }
@@ -995,6 +1086,37 @@ mod tests {
                 provenance,
             })
         };
+        let cmds = || {
+            vec![
+                PathCmd::Move(Tick(1), Tick(-2)),
+                PathCmd::Line(Tick(3), Tick(4)),
+                PathCmd::Cubic(Tick(5), Tick(6), Tick(7), Tick(8), Tick(9), Tick(1 << 40)),
+                PathCmd::Close,
+            ]
+        };
+        let clips = || {
+            vec![
+                ClipPath { commands: cmds(), even_odd: false },
+                ClipPath { commands: Vec::new(), even_odd: true },
+            ]
+        };
+        let stroke = |dash: Vec<Tick>| Stroke {
+            width: Tick(1 << 19),
+            cap: LineCap::Round,
+            join: LineJoin::Bevel,
+            miter_limit: 10.5,
+            dash,
+            dash_phase: Tick(2),
+        };
+        let path = |op, clips, provenance| {
+            Item::Path(PathItem {
+                op,
+                commands: cmds(),
+                clips,
+                paint: Paint { r: 0.5, g: 0.0, b: 1.0, a: 0.25 },
+                provenance,
+            })
+        };
         let list = DisplayList {
             project_id: "p\\1".into(),
             revision: 42,
@@ -1021,6 +1143,17 @@ mod tests {
                     width: Tick(612 << 20),
                     height: Tick(792 << 20),
                     items: vec![run, rule(Provenance::Source(src(7, 8))), rule(Provenance::Synthetic("frac".into()))],
+                },
+                Page {
+                    number: 3,
+                    width: Tick(612 << 20),
+                    height: Tick(792 << 20),
+                    items: vec![
+                        path(PathPaintOp::Fill { even_odd: true }, Vec::new(), Provenance::Source(src(1, 3))),
+                        path(PathPaintOp::Fill { even_odd: false }, clips(), Provenance::Synthetic("tikz".into())),
+                        path(PathPaintOp::Stroke(stroke(Vec::new())), Vec::new(), Provenance::Synthetic("tikz".into())),
+                        path(PathPaintOp::Stroke(stroke(vec![Tick(3), Tick(-4)])), clips(), Provenance::Sources(vec![src(2, 5), src(6, 9)])),
+                    ],
                 },
                 Page {
                     number: 2,
