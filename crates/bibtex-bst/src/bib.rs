@@ -30,6 +30,7 @@ impl<'a> Engine<'a> {
     /// §223.
     pub(crate) fn read_bib_files(&mut self) -> R<()> {
         // §§224–227
+        self.check_field_overflow(self.num_fields * self.num_cites);
         self.field_info = vec![None; self.num_fields * self.num_cites];
         self.type_list = vec![TypeRef::Empty; self.num_cites];
         self.entry_exists = vec![false; self.num_cites];
@@ -607,6 +608,7 @@ impl<'a> Engine<'a> {
         if self.at_bib_command {
             // §262
             if self.command_num == N_BIB_PREAMBLE {
+                self.check_bib_files_overflow(self.s_preamble.len());
                 self.s_preamble.push(sval);
                 self.preamble_ptr += 1;
             } else {
@@ -661,6 +663,11 @@ impl<'a> Engine<'a> {
     /// `add_database_cite` (§265) for the cite key `exact` and its
     /// lower-case form `lc`; increments `cite_ptr`.
     fn add_database_cite(&mut self, exact: Vec<u8>, lc: Vec<u8>) {
+        self.check_cite_overflow();
+        // [226]: also re-checked as new cites (and thus new fields) are
+        // discovered while reading the .bib files (e.g. via `\citation{*}`),
+        // not just once with the initial explicit-citation count.
+        self.check_field_overflow(self.num_fields * (self.cite_ptr + 1));
         let new = self.cite_ptr;
         self.ensure_cite(new);
         self.cite_list[new] = Rc::from(&exact[..]);

@@ -401,8 +401,31 @@ impl<'a> Engine<'a> {
     }
 
     /// §187.
+    /// `insert_fn_loc` ([187]/[188]): push one item into the per-call
+    /// `singl_function` array, emulating TeX Live's `BIB_XRETALLOC` growth
+    /// (initial `SINGLE_FN_SPACE=50`, grows by 50 each time). The check
+    /// matches the Pascal macro exactly: it runs right after the item is
+    /// stored, when the (pre-increment) index equals the current space,
+    /// i.e. when this is the `space + 1`-th item stored.
+    fn insert_single(&mut self, single: &mut Vec<WizItem>, space: &mut usize, item: WizItem) {
+        single.push(item);
+        if single.len() == *space + 1 {
+            let old = *space;
+            *space += 50;
+            pln!(
+                self,
+                "Reallocated singl_function (elt_size=4) to ",
+                *space as i64,
+                " items from ",
+                old as i64,
+                "."
+            );
+        }
+    }
+
     fn scan_fn_def(&mut self, fn_hash_loc: usize) -> R<()> {
         let mut single: Vec<WizItem> = Vec::new();
+        let mut single_fn_space: usize = 50;
         if !self.eat_check("function")? {
             return Ok(());
         }
@@ -433,7 +456,7 @@ impl<'a> Engine<'a> {
                         if self.illegal_after_literal() {
                             self.skip_illegal_stuff_after_token_print();
                         } else {
-                            single.push(WizItem::Call(id));
+                            self.insert_single(&mut single, &mut single_fn_space, WizItem::Call(id));
                         }
                     }
                 }
@@ -450,7 +473,7 @@ impl<'a> Engine<'a> {
                         if self.illegal_after_literal() {
                             self.skip_illegal_stuff_after_token_print();
                         } else {
-                            single.push(WizItem::Call(id));
+                            self.insert_single(&mut single, &mut single_fn_space, WizItem::Call(id));
                         }
                     }
                 }
@@ -464,8 +487,8 @@ impl<'a> Engine<'a> {
                         None => self.skp_token_unknown_function_print(),
                         Some(id) if id == self.wiz_loc => self.print_recursion_illegal(),
                         Some(id) => {
-                            single.push(WizItem::Quote);
-                            single.push(WizItem::Call(id));
+                            self.insert_single(&mut single, &mut single_fn_space, WizItem::Quote);
+                            self.insert_single(&mut single, &mut single_fn_space, WizItem::Call(id));
                         }
                     }
                 }
@@ -480,8 +503,8 @@ impl<'a> Engine<'a> {
                     }
                     self.impl_fn_num += 1;
                     self.fns[id].class = FnClass::Wiz(0);
-                    single.push(WizItem::Quote);
-                    single.push(WizItem::Call(id));
+                    self.insert_single(&mut single, &mut single_fn_space, WizItem::Quote);
+                    self.insert_single(&mut single, &mut single_fn_space, WizItem::Call(id));
                     self.buf_ptr2 += 1;
                     self.scan_fn_def(id)?;
                 }
@@ -493,7 +516,7 @@ impl<'a> Engine<'a> {
                     match self.fn_map.get(&tok).copied() {
                         None => self.skp_token_unknown_function_print(),
                         Some(id) if id == self.wiz_loc => self.print_recursion_illegal(),
-                        Some(id) => single.push(WizItem::Call(id)),
+                        Some(id) => self.insert_single(&mut single, &mut single_fn_space, WizItem::Call(id)),
                     }
                 }
             }
@@ -503,7 +526,20 @@ impl<'a> Engine<'a> {
             }
         }
         // §200
-        single.push(WizItem::End);
+        self.insert_single(&mut single, &mut single_fn_space, WizItem::End);
+        // [200]: while (single_ptr + wiz_def_ptr > wiz_fn_space) reallocate.
+        while single.len() + self.wiz_functions.len() > self.wiz_fn_space {
+            let old = self.wiz_fn_space;
+            self.wiz_fn_space += 3000;
+            pln!(
+                self,
+                "Reallocated wiz_functions (elt_size=4) to ",
+                self.wiz_fn_space as i64,
+                " items from ",
+                old as i64,
+                "."
+            );
+        }
         self.fns[fn_hash_loc].class = FnClass::Wiz(self.wiz_functions.len());
         self.wiz_functions.extend_from_slice(&single);
         self.buf_ptr2 += 1;
@@ -567,6 +603,7 @@ impl<'a> Engine<'a> {
             return Ok(());
         }
         self.scan_id_list("strings", |e, id, _| {
+            e.check_glob_str_overflow(e.globs.len());
             e.fns[id].class = FnClass::StrGlobal(e.globs.len());
             e.globs.push(Glob::Buf(Vec::new()));
             Ok(true)

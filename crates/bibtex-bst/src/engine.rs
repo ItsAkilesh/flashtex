@@ -253,6 +253,21 @@ pub(crate) struct Engine<'a> {
     pub cite_ptr: usize,
     pub num_cites: usize,
     pub old_num_cites: usize,
+    /// TeX Live's `max_cites` ([138]): initial `MAX_CITES=750`, grows by 750.
+    pub max_cites: usize,
+    /// TeX Live's `max_fields` ([226]): initial `MAX_FIELDS=5000`; when
+    /// `total_fields > max_fields` it jumps directly to `total_fields + 5000`
+    /// (not incremented in a loop).
+    pub max_fields_cap: usize,
+    /// TeX Live's `max_bib_files` ([242]/[123]): initial `MAX_BIB_FILES=20`,
+    /// grows by 20.
+    pub max_bib_files_cap: usize,
+    /// TeX Live's `max_glob_strs` ([216]): initial `MAX_GLOB_STRS=10`, grows
+    /// by 10.
+    pub max_glob_strs_cap: usize,
+    /// TeX Live's `lit_stk_size` ([307]): initial `LIT_STK_SIZE=50`, grows
+    /// by 50.
+    pub lit_stk_size_cap: usize,
     pub entry_cite_ptr: usize,
     pub cite_xptr: usize,
 
@@ -265,6 +280,9 @@ pub(crate) struct Engine<'a> {
     pub str_lits: HashMap<Vec<u8>, usize>,
     pub macros: HashMap<Vec<u8>, Str>,
     pub wiz_functions: Vec<WizItem>,
+    /// TeX Live's `wiz_fn_space` ([200]): initial `WIZ_FN_SPACE=3000`, grows
+    /// by 3000 whenever `single_ptr + wiz_def_ptr > wiz_fn_space`.
+    pub wiz_fn_space: usize,
     pub wiz_loc: usize,
     pub impl_fn_num: i32,
     pub b_default: usize,
@@ -368,6 +386,11 @@ impl<'a> Engine<'a> {
             cite_ptr: 0,
             num_cites: 0,
             old_num_cites: 0,
+            max_cites: 750,
+            max_fields_cap: 5000,
+            max_bib_files_cap: 20,
+            max_glob_strs_cap: 10,
+            lit_stk_size_cap: 50,
             entry_cite_ptr: 0,
             cite_xptr: 0,
             bst_line_num: 0,
@@ -378,6 +401,7 @@ impl<'a> Engine<'a> {
             str_lits: HashMap::new(),
             macros: HashMap::new(),
             wiz_functions: Vec::new(),
+            wiz_fn_space: 3000,
             wiz_loc: 0,
             impl_fn_num: 0,
             b_default: 0,
@@ -834,6 +858,7 @@ impl<'a> Engine<'a> {
             let name = self.token();
             self.intern(&name);
             let found = !self.bib_seen_names.insert(name.clone());
+            self.check_bib_files_overflow(self.bib_ptr);
             if self.bib_list.len() <= self.bib_ptr {
                 self.bib_list.resize(self.bib_ptr + 1, Rc::from(&b""[..]));
                 self.bib_files.resize_with(self.bib_ptr + 1, || None);
@@ -933,6 +958,7 @@ impl<'a> Engine<'a> {
                 if self.cite_idx.contains_key(&tok) {
                     return Err(self.confusion("Cite hash error"));
                 }
+                self.check_cite_overflow();
                 self.set_cite(self.cite_ptr, Rc::from(&tok[..]));
                 self.cite_idx.insert(tok.clone(), self.cite_ptr);
                 self.lc_cite.insert(lc, tok);
@@ -947,6 +973,94 @@ impl<'a> Engine<'a> {
             self.ex_buf.resize(at + bytes.len() + 20000, 0);
         }
         self.ex_buf[at..at + bytes.len()].copy_from_slice(bytes);
+    }
+
+    /// `check_cite_overflow` ([138]): checked right before a new cite key is
+    /// stored at `self.cite_ptr`, i.e. `if (last_cite = max_cites)`.
+    pub(crate) fn check_cite_overflow(&mut self) {
+        while self.cite_ptr >= self.max_cites {
+            let old = self.max_cites;
+            self.max_cites += 750;
+            let n = self.max_cites as i64;
+            let o = old as i64;
+            pln!(self, "Reallocated cite_list (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated type_list (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated entry_exists (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated cite_info (elt_size=4) to ", n, " items from ", o, ".");
+        }
+    }
+
+    /// `check_field_overflow` ([226]): called with the final `total_fields
+    /// = num_fields * num_cites`. Unlike the other capacity arrays this one
+    /// does not grow in a fixed-size loop: it jumps straight to
+    /// `total_fields + MAX_FIELDS`.
+    pub(crate) fn check_field_overflow(&mut self, total_fields: usize) {
+        if total_fields > self.max_fields_cap {
+            let old = self.max_fields_cap;
+            self.max_fields_cap = total_fields + 5000;
+            pln!(
+                self,
+                "Reallocated field_info (elt_size=4) to ",
+                self.max_fields_cap as i64,
+                " items from ",
+                old as i64,
+                "."
+            );
+        }
+    }
+
+    /// `check_bib_files` ([242]/[123]): the `bib_list`/`bib_file`/`s_preamble`
+    /// triple, checked before storing at index `self.bib_ptr` (or the
+    /// preamble count), growing by `MAX_BIB_FILES=20` in a loop.
+    pub(crate) fn check_bib_files_overflow(&mut self, next_index: usize) {
+        while next_index >= self.max_bib_files_cap {
+            let old = self.max_bib_files_cap;
+            self.max_bib_files_cap += 20;
+            let n = self.max_bib_files_cap as i64;
+            let o = old as i64;
+            pln!(self, "Reallocated bib_list (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated bib_file (elt_size=8) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated s_preamble (elt_size=4) to ", n, " items from ", o, ".");
+        }
+    }
+
+    /// `check_glob_str_overflow` ([216]): the `glb_str_ptr`/`global_strs`/
+    /// `glb_str_end` triple, checked before storing a new global string
+    /// variable, growing by `MAX_GLOB_STRS=10` in a loop. `global_strs`'
+    /// `elt_size` is `glob_str_size + 1`, taken from `self.opts`.
+    pub(crate) fn check_glob_str_overflow(&mut self, next_index: usize) {
+        while next_index >= self.max_glob_strs_cap {
+            let old = self.max_glob_strs_cap;
+            self.max_glob_strs_cap += 10;
+            let n = self.max_glob_strs_cap as i64;
+            let o = old as i64;
+            pln!(self, "Reallocated glb_str_ptr (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(
+                self,
+                "Reallocated global_strs (elt_size=",
+                (self.opts.glob_str_size as i64) + 1,
+                ") to ",
+                n,
+                " items from ",
+                o,
+                "."
+            );
+            pln!(self, "Reallocated glb_str_end (elt_size=4) to ", n, " items from ", o, ".");
+        }
+    }
+
+    /// `check_lit_stk_overflow` ([307]): the `lit_stack`/`lit_stk_type` pair,
+    /// checked before pushing a new literal-stack entry, growing by
+    /// `LIT_STK_SIZE=50` in a loop.
+    pub(crate) fn check_lit_stk_overflow(&mut self, next_index: usize) {
+        while next_index >= self.lit_stk_size_cap {
+            let old = self.lit_stk_size_cap;
+            self.lit_stk_size_cap += 50;
+            let n = self.lit_stk_size_cap as i64;
+            let o = old as i64;
+            pln!(self, "Reallocated lit_stack (elt_size=4) to ", n, " items from ", o, ".");
+            pln!(self, "Reallocated lit_stk_type (elt_size=1) to ", n, " items from ", o, ".");
+        }
     }
 
     pub(crate) fn set_cite(&mut self, i: usize, s: Str) {

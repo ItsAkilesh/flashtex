@@ -314,3 +314,179 @@ impl Session {
         self.cache = None;
     }
 }
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    use std::cell::RefCell as StdRefCell;
+    use std::collections::HashMap;
+
+    /// An in-memory [`FileSource`] for tests, keyed as `"<kind>:<name>"`.
+    #[derive(Default)]
+    struct MemSource {
+        files: StdRefCell<HashMap<(FileKind, String), Vec<u8>>>,
+    }
+
+    impl MemSource {
+        fn new() -> Self {
+            Self::default()
+        }
+        fn set(&self, kind: FileKind, name: &str, content: &str) {
+            self.files.borrow_mut().insert((kind, name.to_string()), content.as_bytes().to_vec());
+        }
+    }
+
+    impl FileSource for MemSource {
+        fn read(&self, kind: FileKind, name: &str) -> Option<Vec<u8>> {
+            self.files.borrow().get(&(kind, name.to_string())).cloned()
+        }
+    }
+
+    /// A minimal, always-successful `.aux`/`.bst`/`.bib` trio: one entry,
+    /// cited explicitly, formatted by a trivial style.
+    fn basic_fixture() -> MemSource {
+        let fs = MemSource::new();
+        fs.set(
+            FileKind::Aux,
+            "job.aux",
+            "\\citation{k1}\n\\bibdata{refs}\n\\bibstyle{sty}\n",
+        );
+        fs.set(
+            FileKind::Bib,
+            "refs",
+            "@article{k1, author={A B}, title={T}, journal={J}, year={2000}}\n",
+        );
+        fs.set(
+            FileKind::Bst,
+            "sty",
+            "ENTRY { title } { } { }\n\
+             FUNCTION {article} { title write$ newline$ }\n\
+             READ\n\
+             ITERATE {call.type$}\n",
+        );
+        fs
+    }
+
+    #[test]
+    fn cache_hit_when_inputs_unchanged() {
+        let fs = basic_fixture();
+        let opts = Options::default();
+        let mut session = Session::new();
+
+        let first = session.run("job.aux", &fs, &opts).expect("first run");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 1);
+
+        let second = session.run("job.aux", &fs, &opts).expect("second run");
+        assert_eq!(session.hits, 1);
+        assert_eq!(session.misses, 1);
+        assert_eq!(first.bbl, second.bbl);
+        assert_eq!(first.blg, second.blg);
+
+        // A third call, still nothing changed, is also a hit.
+        let third = session.run("job.aux", &fs, &opts).expect("third run");
+        assert_eq!(session.hits, 2);
+        assert_eq!(session.misses, 1);
+        assert_eq!(first.bbl, third.bbl);
+    }
+
+    #[test]
+    fn reruns_when_aux_changes() {
+        let fs = basic_fixture();
+        let opts = Options::default();
+        let mut session = Session::new();
+        let first = session.run("job.aux", &fs, &opts).expect("first run");
+
+        // Add a second entry and cite it: this rewrites the .aux (and thus
+        // its hash), which must force a full re-run rather than a stale hit.
+        fs.set(
+            FileKind::Bib,
+            "refs",
+            "@article{k1, author={A B}, title={T}, journal={J}, year={2000}}\n\
+             @article{k2, author={C D}, title={T2}, journal={J}, year={2001}}\n",
+        );
+        fs.set(
+            FileKind::Aux,
+            "job.aux",
+            "\\citation{k1}\n\\citation{k2}\n\\bibdata{refs}\n\\bibstyle{sty}\n",
+        );
+
+        let second = session.run("job.aux", &fs, &opts).expect("second run");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 2);
+        assert_ne!(first.bbl, second.bbl);
+        assert!(second.bbl.windows(2).count() > 0);
+    }
+
+    #[test]
+    fn reruns_when_bib_changes_but_aux_does_not() {
+        let fs = basic_fixture();
+        let opts = Options::default();
+        let mut session = Session::new();
+        let first = session.run("job.aux", &fs, &opts).expect("first run");
+
+        // Change the cited entry's data without touching the .aux or .bst.
+        fs.set(
+            FileKind::Bib,
+            "refs",
+            "@article{k1, author={Z Y}, title={Changed}, journal={J}, year={2000}}\n",
+        );
+
+        let second = session.run("job.aux", &fs, &opts).expect("second run");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 2);
+        assert_ne!(first.bbl, second.bbl);
+    }
+
+    #[test]
+    fn reruns_when_bst_changes_but_aux_does_not() {
+        let fs = basic_fixture();
+        let opts = Options::default();
+        let mut session = Session::new();
+        session.run("job.aux", &fs, &opts).expect("first run");
+
+        fs.set(
+            FileKind::Bst,
+            "sty",
+            "ENTRY { title } { } { }\n\
+             FUNCTION {article} { \"changed \" write$ title write$ newline$ }\n\
+             READ\n\
+             ITERATE {call.type$}\n",
+        );
+
+        session.run("job.aux", &fs, &opts).expect("second run");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 2);
+    }
+
+    #[test]
+    fn invalidate_forces_a_rerun() {
+        let fs = basic_fixture();
+        let opts = Options::default();
+        let mut session = Session::new();
+        session.run("job.aux", &fs, &opts).expect("first run");
+        session.invalidate();
+        session.run("job.aux", &fs, &opts).expect("second run");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 2);
+    }
+
+    #[test]
+    fn different_options_are_not_cached_together() {
+        let fs = basic_fixture();
+        let mut session = Session::new();
+        let opts_a = Options::default();
+        let opts_b = Options { min_crossrefs: 5, ..Options::default() };
+
+        session.run("job.aux", &fs, &opts_a).expect("run a");
+        session.run("job.aux", &fs, &opts_b).expect("run b");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 2);
+
+        // Back to the first options: still a fresh cache entry (the last
+        // run cached opts_b), so this is a miss too.
+        session.run("job.aux", &fs, &opts_a).expect("run a again");
+        assert_eq!(session.hits, 0);
+        assert_eq!(session.misses, 3);
+    }
+}

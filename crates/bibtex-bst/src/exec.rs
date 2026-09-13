@@ -100,6 +100,7 @@ impl<'a> Engine<'a> {
     }
 
     fn push(&mut self, l: Lit) {
+        self.check_lit_stk_overflow(self.stack.len());
         self.stack.push(l);
     }
 

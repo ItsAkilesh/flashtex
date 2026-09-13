@@ -130,6 +130,44 @@ case("crlf", aux(["*"], "crlf", "plain"), **{"crlf.bib": CRLF_BIB})
 CR_BIB = "@misc{cr1, title = {CR only}}\r@misc{cr2, title = {Second\rline}}\r"
 case("cr-only", aux(["*"], "cronly", "unsrt"), **{"cronly.bib": CR_BIB})
 
+# Capacity-limit cases: exercise TeX Live's dynamic-array reallocation and
+# its `Reallocated <name> (elt_size=N) to M items from K.` .blg log lines.
+# See crates/bibtex-bst/src/engine.rs for the corresponding checks.
+
+# cite_list/type_list/entry_exists/cite_info ([138], MAX_CITES=750) and
+# field_info ([226], MAX_FIELDS=5000): 900 entries with 6 fields each
+# (5400 > 5000) explicitly cited (900 > 750).
+_CITE_OVERFLOW_ENTRIES = []
+for _i in range(900):
+    _CITE_OVERFLOW_ENTRIES.append(
+        "@article{cap%d, author={A%d}, title={T%d}, journal={J}, year={2000}, "
+        "note={N%d}}" % (_i, _i, _i, _i)
+    )
+CITE_OVERFLOW_BIB = "\n".join(_CITE_OVERFLOW_ENTRIES)
+case("cite-overflow",
+     aux(["*"], "capcites", "plain"), **{"capcites.bib": CITE_OVERFLOW_BIB})
+
+# bib_list/bib_file/s_preamble ([242]/[123], MAX_BIB_FILES=20): 25 \bibdata
+# files, each with a @preamble (so s_preamble grows past 20 too).
+_BIB_FILES = {}
+_BIB_NAMES = []
+for _i in range(25):
+    _name = "capbib%d" % _i
+    _BIB_NAMES.append(_name)
+    _BIB_FILES["%s.bib" % _name] = (
+        '@preamble{"p%d"}\n@article{capbibkey%d, author={A}, title={T}, '
+        'journal={J}, year={2000}}\n' % (_i, _i)
+    )
+case("bib-files-overflow", aux(["*"], ",".join(_BIB_NAMES), "plain"), **_BIB_FILES)
+
+# glb_str_ptr/global_strs/glb_str_end ([216], MAX_GLOB_STRS=10): a style
+# declaring 15 global string variables.
+case("glob-str-overflow", aux(["*"], "people", "capstrings"))
+
+# lit_stack/lit_stk_type ([307], LIT_STK_SIZE=50): a style that pushes 100
+# literal-stack entries for a single entry without popping them all.
+case("lit-stack-overflow", aux(["knuth1984"], "people", "capstack"))
+
 # Original test styles.
 for db in ["people", "crossref", "accents", "strings"]:
     case("builtins-%s" % db, aux(["*"], db, "builtins"))
