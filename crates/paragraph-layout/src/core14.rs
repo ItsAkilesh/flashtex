@@ -23,6 +23,9 @@
 //!   plain-TeX 1/2, 1/3 defaults of the trait.
 //! * Punctuation outside ISO-8859-1 (`endash`, `emdash`, curly quotes,
 //!   `bullet`, `ellipsis`) uses the same AFMs' widths, keyed by Unicode.
+//!   Following TeX's OT1/T1 text encodings, ASCII `'` and `` ` `` are
+//!   `quoteright`/`quoteleft` (width 333, with their AFM kern pairs), the one
+//!   deliberate deviation from de1020c's table (which has `quotesingle` 180).
 //! * Ligatures: `fi` (StandardEncoding code 174, width 556/556/500) and `fl`
 //!   (code 175, width 556/556/500) are genuine Core 14 glyphs and are reported
 //!   through [`FontMetricsSource::ligature`] as U+FB01/U+FB02. pdflatex's T1
@@ -112,7 +115,12 @@ impl Core14Times {
 
     /// Width of `ch` in 1/1000 em.
     pub fn width_units(&self, ch: char) -> u16 {
-        let code = ch as u32;
+        let code = tex_quote(ch) as u32;
+        if code == 0x27 {
+            // TeX's OT1/T1 encodings map ASCII `'` to `quoteright` (333), not
+            // `quotesingle` (180, which de1020c's table holds).
+            return 333;
+        }
         if (0x20..=0x7e).contains(&code) {
             self.ascii()[(code - 0x20) as usize]
         } else if (0xa0..=0xff).contains(&code) {
@@ -122,6 +130,16 @@ impl Core14Times {
         } else {
             DEFAULT_ADVANCE_UNITS
         }
+    }
+}
+
+/// TeX text conventions: ASCII `'` is `quoteright` and `` ` `` is `quoteleft`,
+/// and the Unicode curly quotes are the same glyphs.
+fn tex_quote(ch: char) -> char {
+    match ch {
+        '\u{2019}' => '\'',
+        '\u{2018}' => '`',
+        c => c,
     }
 }
 
@@ -143,6 +161,9 @@ impl FontMetricsSource for Core14Times {
     }
 
     fn kern(&self, left: char, right: char) -> f64 {
+        // The table's `'`/`` ` `` rows are the AFM `quoteright`/`quoteleft`
+        // pairs (see `tex_quote`), so U+2019/U+2018 share them.
+        let (left, right) = (tex_quote(left), tex_quote(right));
         // 272 entries; a linear scan is cheap and keeps the table literal.
         self.kerns()
             .iter()
