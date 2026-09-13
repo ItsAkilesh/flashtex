@@ -66,6 +66,10 @@ pub struct Tabular {
     pub arraystretch: f64,
     /// Text style (notably a size declaration) in effect at `\begin`.
     pub style: TextStyle,
+    /// The preamble was built by the `array` package (array.sty v2.6n):
+    /// `|` takes `\arrayrulewidth` of width, `p`/`m`/`b` entries start with
+    /// the row strut, and `\hline\hline` is `\doublerulesep` apart.
+    pub array_package: bool,
     /// `\begin{tabular}` through `\end{tabular}`.
     pub span: Span,
     /// See `Inline::Text::space_before`.
@@ -101,8 +105,12 @@ pub struct ColumnTemplate {
 pub enum Material {
     /// `\tabcolsep`, `\doublerulesep` or the half rule width before `|@`.
     Space(f64),
-    /// A `|` from the column specification, at the source `|`.
+    /// A kernel `|` (no width, centred on its boundary), at the source `|`.
     Rule(Span),
+    /// A rule that takes its width: array.sty's `|` (`\vline`, width
+    /// `\arrayrulewidth` when `width_pt` is `None`) or a `\vrule`/`\vline`
+    /// in `!{}`/`@{}`. It runs the height and depth of the row.
+    VLine { span: Span, width_pt: Option<f64> },
     /// `@{text}` material other than `\extracolsep`.
     Text(Vec<Inline>),
 }
@@ -114,6 +122,30 @@ pub enum Align {
     Right,
     /// `p{width}`: a top-aligned paragraph box of that width.
     Paragraph(Length),
+    /// array's `m{width}`: the paragraph `\vbox` centred by `\ar@align@mcell`.
+    Middle(Length),
+    /// array's `b{width}`: the paragraph `\vbox`, last line on the baseline.
+    Bottom(Length),
+    /// array's `w{align}{width}`/`W`: the entry in `\makebox[width][align]`.
+    Fixed(Length, BoxAlign),
+}
+
+impl Align {
+    /// The paragraph width of a `p`/`m`/`b` entry.
+    pub fn paragraph_width(self) -> Option<Length> {
+        match self {
+            Align::Paragraph(w) | Align::Middle(w) | Align::Bottom(w) => Some(w),
+            _ => None,
+        }
+    }
+}
+
+/// `\makebox`'s position argument (`s` is set as `l`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoxAlign {
+    Left,
+    Center,
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +201,12 @@ pub struct Cell {
     pub columns: usize,
     /// `\multicolumn`'s own template, replacing the column's.
     pub template: Option<ColumnTemplate>,
+    /// `\centering`/`\raggedright`/`\raggedleft` in force at the end of a
+    /// `p`/`m`/`b` entry (typically from `>{\centering\arraybackslash}`).
+    pub alignment: Option<crate::parser::ParagraphStyle>,
+    /// array `>{}`/`<{}` tokens were inserted around the entry, so its text
+    /// style comes from them as well as from the entry's own source.
+    pub declarations: bool,
 }
 
 impl Tabular {
@@ -190,6 +228,10 @@ impl Tabular {
                         Some(match m {
                             Material::Space(pt) => Material::Space(*pt),
                             Material::Rule(s) => Material::Rule(span(*s)?),
+                            Material::VLine { span: s, width_pt } => Material::VLine {
+                                span: span(*s)?,
+                                width_pt: *width_pt,
+                            },
                             Material::Text(content) => Material::Text(inlines(content)?),
                         })
                     })
@@ -222,6 +264,8 @@ impl Tabular {
                                     Some(t) => Some(template(t, span, inlines)?),
                                     None => None,
                                 },
+                                alignment: cell.alignment,
+                                declarations: cell.declarations,
                             })
                         })
                         .collect::<Option<Vec<_>>>()?,
@@ -271,6 +315,7 @@ impl Tabular {
             width: self.width,
             arraystretch: self.arraystretch,
             style: self.style,
+            array_package: self.array_package,
             span: span(self.span)?,
             space_before: self.space_before,
         })
@@ -315,6 +360,7 @@ fn resolve(length: Length, measure: f64) -> f64 {
 enum Piece {
     Space(f64),
     Rule(Span),
+    VLine(Span, f64),
     Text(MathBox),
 }
 
@@ -323,6 +369,7 @@ impl Piece {
         match self {
             Piece::Space(pt) => *pt,
             Piece::Rule(_) => 0.0,
+            Piece::VLine(_, width) => *width,
             Piece::Text(b) => b.width,
         }
     }
@@ -368,6 +415,9 @@ fn pieces(c: &mut LayoutCursor, material: &[Material], size: f64) -> Vec<Piece> 
         .map(|m| match m {
             Material::Space(pt) => Piece::Space(*pt),
             Material::Rule(span) => Piece::Rule(*span),
+            Material::VLine { span, width_pt } => {
+                Piece::VLine(*span, width_pt.unwrap_or(ARRAYRULEWIDTH_PT))
+            }
             Material::Text(content) => Piece::Text(c.inline_box(content, size, None).0),
         })
         .collect()
@@ -408,12 +458,17 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
             let columns = cell.columns.clamp(1, n - column);
             let before = pieces(c, &template.before, size);
             let measure_box = match template.align {
-                Align::Paragraph(width) => Some(resolve(width, measure).max(0.0)),
+                Align::Paragraph(width) | Align::Middle(width) | Align::Bottom(width) => {
+                    Some(resolve(width, measure).max(0.0))
+                }
                 _ => None,
             };
             let (mut content, last_baseline) = c.inline_box(&cell.content, size, measure_box);
             if let Some(width) = measure_box {
                 content.width = width;
+            }
+            if let Align::Fixed(width, _) = template.align {
+                content.width = resolve(width, measure).max(0.0);
             }
             let after = pieces(c, &template.after, size);
             cells.push(LaidCell {
@@ -478,7 +533,7 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
     let ex = layout::x_height_pt(layout::Font::TimesRoman, body);
     let mut items: Vec<MathItem> = Vec::new();
     // Vertical rules as (x, top, bottom, span), merged where rows abut.
-    let mut vrules: Vec<(f64, f64, f64, Span)> = Vec::new();
+    let mut vrules: Vec<(f64, f64, f64, f64, Span)> = Vec::new();
     let mut y = 0.0f64;
     let mut first_height = None;
     let mut last_depth = 0.0;
@@ -500,7 +555,7 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 for cell in &cells {
                     height = height.max(cell.content.ascent);
                     depth = depth.max(cell.content.descent);
-                    if matches!(cell.align, Align::Paragraph(_)) {
+                    if cell.align.paragraph_width().is_some() {
                         depth = depth.max(cell.last_baseline + strut_depth);
                     }
                     for piece in cell.before.iter().chain(&cell.after) {
@@ -522,10 +577,14 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                             Piece::Space(_) => {}
                             Piece::Rule(span) => vrules.push((
                                 x - ARRAYRULEWIDTH_PT / 2.0,
+                                ARRAYRULEWIDTH_PT,
                                 top,
                                 top + height + depth,
                                 span,
                             )),
+                            Piece::VLine(span, width) => {
+                                vrules.push((x, width, top, top + height + depth, span))
+                            }
                             Piece::Text(b) => push_box(items, b, x, baseline),
                         };
                     for piece in cell.before {
@@ -535,7 +594,11 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                     }
                     let after_width: f64 = cell.after.iter().map(Piece::width).sum();
                     let content_x = match cell.align {
-                        Align::Left | Align::Paragraph(_) => x,
+                        Align::Left
+                        | Align::Paragraph(_)
+                        | Align::Middle(_)
+                        | Align::Bottom(_)
+                        | Align::Fixed(..) => x,
                         Align::Right => right - after_width - cell.content.width,
                         Align::Center => x + (right - after_width - x - cell.content.width) / 2.0,
                     };
@@ -563,7 +626,10 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
                 );
                 y += ARRAYRULEWIDTH_PT;
                 if matches!(next, Some(Entry::HLine { .. })) {
-                    y += DOUBLERULESEP_PT - ARRAYRULEWIDTH_PT;
+                    y += DOUBLERULESEP_PT;
+                    if !table.array_package {
+                        y -= ARRAYRULEWIDTH_PT;
+                    }
                 }
             }
             Entry::CLine { first, last, span } => {
@@ -649,24 +715,27 @@ pub(crate) fn layout(c: &mut LayoutCursor, table: &Tabular, size: f64) -> MathBo
     }
 
     // Merge vertical rule segments that continue one another.
-    vrules.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-    let mut merged: Vec<(f64, f64, f64, Span)> = Vec::new();
+    vrules.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.2.total_cmp(&b.2)));
+    let mut merged: Vec<(f64, f64, f64, f64, Span)> = Vec::new();
     for rule in vrules {
         match merged.last_mut() {
             Some(last)
-                if last.0 == rule.0 && last.3 == rule.3 && (last.2 - rule.1).abs() < 1e-9 =>
+                if last.0 == rule.0
+                    && last.1 == rule.1
+                    && last.4 == rule.4
+                    && (last.3 - rule.2).abs() < 1e-9 =>
             {
-                last.2 = rule.2;
+                last.3 = rule.3;
             }
             _ => merged.push(rule),
         }
     }
-    for (x, top, bottom, span) in merged {
+    for (x, width, top, bottom, span) in merged {
         push_rule(
             &mut items,
             x,
             top,
-            ARRAYRULEWIDTH_PT,
+            width,
             bottom - top,
             size,
             span,
@@ -945,6 +1014,93 @@ mod tests {
         assert!(diagnostics
             .iter()
             .any(|d| d.message.contains("\\cline{1-3}")));
+    }
+
+    fn array_table(preamble: &str, table: &str) -> (super::Tabular, Vec<Diagnostic>) {
+        let parsed = parse(&format!(
+            "\\documentclass{{article}}\\usepackage{{array}}{preamble}\\begin{{document}}{table}\\end{{document}}"
+        ));
+        let table = parsed
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                crate::parser::Block::Paragraph(content) => content.iter().find_map(|inline| match inline {
+                    crate::parser::Inline::Tabular(t) => Some((**t).clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .expect("a table");
+        (table, parsed.diagnostics)
+    }
+
+    fn spaces(material: &[super::Material]) -> Vec<String> {
+        material
+            .iter()
+            .map(|m| match m {
+                super::Material::Space(pt) => format!("{pt}"),
+                super::Material::Rule(_) => "rule".into(),
+                super::Material::VLine { width_pt, .. } => format!("vline{width_pt:?}"),
+                super::Material::Text(_) => "text".into(),
+            })
+            .collect()
+    }
+
+    /// array.sty `\@mkpream`: `|` is a `\vline`, `||` has `\doublerulesep`
+    /// between, `!{}` keeps the `\tabcolsep`s around it, `>{}`/`<{}` tokens
+    /// wrap every entry of their column.
+    #[test]
+    fn array_preamble_builds_width_taking_rules_and_declarations() {
+        use super::{Align, BoxAlign, Length};
+        let (t, diagnostics) = array_table(
+            "",
+            "\\begin{tabular}{||>{\\bfseries}l<{:}!{\\vrule width 1pt}m{2cm}|w{r}{1cm}}A & B & C\\end{tabular}",
+        );
+        assert!(t.array_package);
+        assert!(diagnostics.iter().all(|d| !d.message.contains("tabular") && !d.message.contains("column")), "{diagnostics:?}");
+        assert_eq!(t.columns.len(), 3);
+        assert_eq!(spaces(&t.columns[0].before), ["vlineNone", "2", "vlineNone", "6"]);
+        assert_eq!(spaces(&t.columns[0].after), ["6", "vlineSome(1.0)"]);
+        assert_eq!(spaces(&t.columns[1].before), ["6"]);
+        assert_eq!(spaces(&t.columns[1].after), ["6", "vlineNone"]);
+        assert_eq!(spaces(&t.columns[2].before), ["6"]);
+        assert_eq!(spaces(&t.columns[2].after), ["6"]);
+        assert!(matches!(t.columns[1].align, Align::Middle(Length::Pt(w)) if (w - 56.905).abs() < 0.01));
+        assert!(matches!(t.columns[2].align, Align::Fixed(Length::Pt(_), BoxAlign::Right)));
+        let super::Entry::Row(row) = &t.entries[0] else { panic!("a row") };
+        assert!(row.cells[0].declarations);
+        let text: Vec<_> = row.cells[0]
+            .content
+            .iter()
+            .filter_map(|inline| match inline {
+                crate::parser::Inline::Text { text, style, .. } => Some((text.as_str(), style.bold)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, [("A", true), (":", true)]);
+        assert!(!row.cells[1].declarations);
+    }
+
+    #[test]
+    fn newcolumntype_expands_with_arguments_and_centering_reaches_the_entry() {
+        use super::Align;
+        let (t, diagnostics) = array_table(
+            "\\newcolumntype{C}[1]{>{\\centering\\arraybackslash}p{#1}}",
+            "\\begin{tabular}{C{2cm}l}Some words & x\\end{tabular}",
+        );
+        assert!(diagnostics.iter().all(|d| !d.message.contains("column") && !d.message.contains("arraybackslash")), "{diagnostics:?}");
+        assert_eq!(t.columns.len(), 2);
+        assert!(matches!(t.columns[0].align, Align::Paragraph(_)));
+        let super::Entry::Row(row) = &t.entries[0] else { panic!("a row") };
+        assert_eq!(row.cells[0].alignment, Some(crate::parser::ParagraphStyle::Center));
+        assert_eq!(row.cells[1].alignment, None);
+    }
+
+    #[test]
+    fn array_misplaced_less_than_becomes_a_bang_expression() {
+        let (t, diagnostics) = array_table("", "\\begin{tabular}{<{x}l}A\\end{tabular}");
+        assert!(diagnostics.iter().any(|d| d.message.contains("changed to !{..}")));
+        assert_eq!(spaces(&t.columns[0].before), ["text", "6"]);
     }
 
     #[test]

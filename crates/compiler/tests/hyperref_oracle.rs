@@ -14,7 +14,7 @@
 //! Not asserted here: word positions and link rectangles. The compiler's own
 //! layout (`layout.rs`, Core 14 metrics) is not the pdfTeX-metric pipeline;
 //! positions belong to `crates/render-pipeline` once it adopts these records
-//! (see `docs/proposals/display-list-v2-links.md`). The expected files keep
+//! (see `protocol/proposals/display-list-v2-links.md`). The expected files keep
 //! them for that comparison.
 
 use flashtex_compiler::hyperref::{LinkTarget, Options};

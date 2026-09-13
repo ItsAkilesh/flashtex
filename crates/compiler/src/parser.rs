@@ -531,6 +531,8 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "documentclass",
     "setlength",
     "usepackage",
+    "newcolumntype",
+    "arraybackslash",
     "setlist",
     "newcommand",
     "renewcommand",
@@ -866,6 +868,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         no_hyper_depth: 0,
         bookmark_level: None,
         list_label_state: Vec::new(),
+        column_types: HashMap::new(),
     };
     p.diags.extend(bibliography_diags);
     // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
@@ -927,6 +930,8 @@ struct P<'a> {
     class_size_pt: Option<f64>,
     parskip_pt: Option<f64>,
     packages: Vec<String>,
+    /// array's `\newcolumntype{X}[n]{spec}` definitions (`parser/tabular.rs`).
+    column_types: HashMap<char, (usize, Vec<InputToken>)>,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
     documents: &'a [SourceDocument<'a>],
@@ -1212,6 +1217,10 @@ impl P<'_> {
             "documentclass" => self.document_class(span),
             "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
+            "newcolumntype" => self.new_column_type(span),
+            // array.sty 247: `\let\\\tabularnewline`; this parser already
+            // ends table rows at `\\` inside `p`-column entries.
+            "arraybackslash" => {}
             "setlist" => self.set_list(span),
             "newcommand" | "renewcommand" => self.define_macro(name, span),
             "DeclareMathOperator" => self.declare_math_operator(span),
@@ -4368,6 +4377,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // Links, destinations and bookmarks are recorded (crate::hyperref);
         // its options are checked key by key where the package is loaded.
         "hyperref" => true,
+        // array.sty's preamble builder, column types and row strut are
+        // implemented (parser/tabular.rs, crate::tabular); no options.
+        "array" => options.is_empty(),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep

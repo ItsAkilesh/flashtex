@@ -648,7 +648,9 @@ fn layout_is_deterministic() {
 /// 12.5pt short over 1.5pt stretch (infinite badness) and "aaaa bbbb cccc" is
 /// 10pt over with 1.2pt shrink, so passes 1 and 2 fail. With
 /// `emergency_stretch = 10`, pass 3 sees 11.5pt of stretch: ratio 1.087,
-/// badness round(100 x 1.284) = 128 <= 200, and the paragraph is 2 + 2 words.
+/// TeX badness (tex.web 108) r = 819200sp x 297 / 753664sp = 322,
+/// (322^3 + 2^17) / 2^18 = 127 <= 200 (100 x 1.284 would round to 128), and
+/// the paragraph is 2 + 2 words.
 /// The set line still only has its real 1.5pt of stretch, so like TeX's hpack
 /// it is reported "Underfull \hbox (badness 10000)" citing both boxes.
 #[test]
@@ -667,7 +669,7 @@ fn emergency_stretch_enables_a_third_pass_and_reports_underfull() {
     assert_eq!(with.lines.len(), 2);
     assert_eq!(with.lines[0].runs.len(), 2);
     assert!(close(with.breaks[0].ratio, 12.5 / 11.5));
-    assert_eq!(with.breaks[0].badness, 128.0);
+    assert_eq!(with.breaks[0].badness, 127.0);
     // Real glue: 2.5 + (12.5/11.5) x 1.5 = 4.13pt space; set width 44.13 < 55.
     assert!(close(
         with.lines[0].runs[1].x,
