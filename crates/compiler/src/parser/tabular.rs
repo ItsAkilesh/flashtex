@@ -116,9 +116,11 @@ fn block_inlines(block: Block) -> Vec<Inline> {
         | Block::FigureCaption { content }
         | Block::Styled { content, .. }
         | Block::ListItem { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Verbatim { .. } => {
-            Vec::new()
-        }
+        Block::VSpace { .. }
+        | Block::Rule { .. }
+        | Block::PageBreak
+        | Block::Verbatim { .. }
+        | Block::TableOfContents { .. } => Vec::new(),
     }
 }
 

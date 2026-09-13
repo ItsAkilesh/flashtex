@@ -1017,12 +1017,10 @@ impl P<'_> {
                 self.flush_paragraph(blocks, para);
                 let number = if starred {
                     String::new()
-                } else if level == 1 {
-                    self.section_counter += 1;
-                    self.subsection_counter = 0;
-                    theorems::reset_within_section(&self.theorems, &mut self.theorem_counters);
-                    self.section_counter.to_string()
                 } else {
+                    if level == 1 {
+                        theorems::reset_within_section(&self.theorems, &mut self.theorem_counters);
+                    }
                     self.counters.step(name).unwrap_or_default()
                 };
                 if !starred {
@@ -2079,7 +2077,7 @@ impl P<'_> {
             *counter += 1;
             let n = *counter;
             let number = if def.within_section {
-                format!("{}.{}", self.section_counter, n)
+                format!("{}.{}", self.counters.value("section").unwrap_or(0), n)
             } else {
                 n.to_string()
             };
