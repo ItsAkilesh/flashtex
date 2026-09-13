@@ -73,6 +73,11 @@ enum Completion {
             case mathSymbol = "math_symbol"
             case mathOperator = "math_operator"
             case controlSymbol = "control_symbol"
+            /// Executed by the expansion pass (`crate::expansion`): a
+            /// TeX/LaTeX primitive or kernel macro of `flashtex-tex-expansion`
+            /// (`\newcounter`, `\setcounter`, `\providecommand`, ...), never
+            /// seen by the parser directly.
+            case expansion = "expansion"
         }
 
         struct Entry: Equatable {
