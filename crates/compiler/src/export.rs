@@ -219,6 +219,13 @@ pub fn map_char(c: char) -> Glyph {
 pub fn unrepresentable(text: &str) -> Vec<char> {
     let mut out: Vec<char> = Vec::new();
     for c in text.chars() {
+        // Printable ASCII is always WinAnsi-encodable (pinned by the
+        // `printable_ascii_is_always_exportable` test). Skipping the linear
+        // table scans here keeps the per-keystroke export check cheap: at
+        // 500 KB it was ~10 ms of every warm compile_result (issue #65).
+        if (' '..='~').contains(&c) {
+            continue;
+        }
         if matches!(map_char(c), Glyph::Unrepresentable { .. }) && !out.contains(&c) {
             out.push(c);
         }
