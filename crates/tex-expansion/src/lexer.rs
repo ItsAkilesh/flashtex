@@ -65,7 +65,7 @@ impl<'a> Lexer<'a> {
             {
                 let byte = u8::from_str_radix(&format!("{c2}{c3}"), 16).ok()?;
                 let end = i3 + c3.len_utf8();
-                return Some((byte as char, end - pos));
+                return Some((byte as char, end));
             }
         }
         // single-char form: char code c2 XOR 64 if < 128, else + 64
@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
             let code = (c2 as u32) ^ 64;
             let ch = char::from_u32(code)?;
             let end = i2 + c2.len_utf8();
-            return Some((ch, end - pos));
+            return Some((ch, end));
         }
         None
     }
@@ -181,6 +181,13 @@ impl<'a> Lexer<'a> {
                 CatCode::Comment => {
                     self.pos += raw_len;
                     self.skip_comment_to_eol();
+                    // TeX discards the rest of the line *including* its
+                    // end-of-line character (TeXbook p. 47): the next line
+                    // starts in state N. Leaving the `\n` for the EndLine
+                    // arm would turn every line-ending `%` into `\par`.
+                    if let Some(('\n', len)) = self.peek_char() {
+                        self.pos += len;
+                    }
                     // A comment absorbs the following end-of-line too (it
                     // is treated as if the line ended right there); we
                     // leave the actual `\n` byte for the EndLine handling

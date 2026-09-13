@@ -19,7 +19,6 @@ use crate::tabular::{
     ARRAYRULEWIDTH_PT, DOUBLERULESEP_PT, TABCOLSEP_PT,
 };
 use crate::Span;
-use std::collections::HashMap;
 
 /// Bound on `*{n}{...}` expansion, far beyond any real column specification.
 const MAX_SPEC_ITEMS: usize = 4096;
@@ -354,7 +353,7 @@ impl P<'_> {
                                     kind: TokenKind::Word(piece.to_string()),
                                     span: piece_span,
                                 },
-                                expansion_depth: input.expansion_depth,
+                                definition: input.definition,
                                 maps_to_invocation: input.maps_to_invocation,
                             });
                     }
@@ -485,20 +484,14 @@ impl P<'_> {
 
     /// `\arraystretch` as currently defined (`1` by default).
     fn array_stretch(&mut self, open: Span) -> f64 {
-        let Some(definition) = self.macros.get("arraystretch").cloned() else {
+        // The expansion pass records the replacement text in effect at this
+        // `\begin`; a missing entry means `\arraystretch` was undefined or
+        // given parameters, which is not a plain number either.
+        let Some(text) = self.arraystretch.get(&(open.document.0, open.start)).cloned() else {
             return 1.0;
         };
-        self.record_macro_read("arraystretch", &definition);
-        let text: String = definition
-            .body
-            .iter()
-            .filter_map(|token| match &token.kind {
-                TokenKind::Word(word) => Some(word.as_str()),
-                _ => None,
-            })
-            .collect();
         match text.trim().parse::<f64>() {
-            Ok(value) if definition.argument_count == 0 && value.is_finite() && value >= 0.0 => {
+            Ok(value) if value.is_finite() && value >= 0.0 => {
                 value
             }
             _ => {
@@ -725,7 +718,6 @@ impl P<'_> {
         let style_depth = self.style_stack.len();
         let brace_depth = self.brace_stack.len();
         let dependency_count = self.block_dependencies.len();
-        self.macro_scopes.push(HashMap::new());
 
         let mut blocks = Vec::new();
         let mut para = Vec::new();
@@ -733,14 +725,12 @@ impl P<'_> {
 
         while self.brace_stack.len() > brace_depth {
             let open = self.brace_stack.pop().expect("length checked");
-            self.restore_scope();
             self.diags.push(Diagnostic::error(
                 "unmatched '{' — group never closed inside a table entry",
                 Some(open),
                 Some("closed the group at the end of the entry".into()),
             ));
         }
-        self.restore_scope();
         self.style = style;
         self.style_stack.truncate(style_depth);
         self.t = outer_tokens;

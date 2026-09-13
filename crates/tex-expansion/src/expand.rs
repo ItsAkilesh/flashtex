@@ -64,6 +64,9 @@ pub struct Engine<'a> {
     emit_grouping: bool,
     /// Invocation origin of the most recently read raw token.
     last_origin: Option<Span>,
+    /// Set once the step limit is exceeded: every further read reports end
+    /// of input, so no scanning loop can run unbounded.
+    halted: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,6 +211,7 @@ impl<'a> Engine<'a> {
             next_free_register: 1,
             emit_grouping: false,
             last_origin: None,
+            halted: false,
         }
     }
 
@@ -225,8 +229,12 @@ impl<'a> Engine<'a> {
     /// typesetting command such as `\section`). It is emitted unchanged like
     /// any unknown control sequence, but counts as *defined*: `\newcommand`
     /// refuses to redefine it and `\renewcommand` accepts it.
+    /// Has no effect on a name this engine already defines (its own
+    /// primitives keep their meaning).
     pub fn declare_host_command(&mut self, name: &str) {
-        self.scopes.assign_cs(name, Meaning::Primitive(Primitive::Host), true);
+        if matches!(self.scopes.meaning(name), Meaning::Undefined) {
+            self.scopes.assign_cs(name, Meaning::Primitive(Primitive::Host), true);
+        }
     }
 
     /// Start reading `text` (as TeX's `\input` does): its tokens are read
@@ -322,6 +330,17 @@ impl<'a> Engine<'a> {
     }
 
     fn next_raw(&mut self) -> Option<Pending> {
+        // Every token any scanner reads passes through here, so bounding
+        // reads bounds every expansion loop (not just the main loop's).
+        if self.halted {
+            return None;
+        }
+        self.steps += 1;
+        if self.steps > self.limits.max_expansion_steps {
+            self.halted = true;
+            self.err("expansion step limit exceeded (possible infinite macro loop)", Span::synthetic());
+            return None;
+        }
         loop {
             match self.sources.last_mut()? {
                 Input::Text(lexer) => {
@@ -362,11 +381,6 @@ impl<'a> Engine<'a> {
     /// `None` at end of input).
     pub fn next_content_token(&mut self) -> Option<Token> {
         loop {
-            self.steps += 1;
-            if self.steps > self.limits.max_expansion_steps {
-                self.err("expansion step limit exceeded (possible infinite macro loop)", Span::synthetic());
-                return None;
-            }
             let pending = self.next_raw()?;
             if pending.frozen {
                 return Some(pending.tok);
@@ -1380,6 +1394,11 @@ impl<'a> Engine<'a> {
     }
 
     fn do_newcommand(&mut self, kind: Primitive, span: Span) {
+        let command = match kind {
+            Primitive::RenewCommand => "renewcommand",
+            Primitive::ProvideCommand => "providecommand",
+            _ => "newcommand",
+        };
         // optional leading '*' (a "robust" command marker in real LaTeX;
         // expansion behavior is identical either way for us).
         if let Some(t) = self.peek_one() {
@@ -1393,25 +1412,40 @@ impl<'a> Engine<'a> {
         };
         // `\newcommand{\foo}...` or `\newcommand\foo...`
         let name_tok = if matches!(name_tok.kind, TokenKind::Char(_, CatCode::BeginGroup)) {
+            let open_span = name_tok.span;
             self.push_tokens(vec![name_tok]);
-            let inner = self.scan_braced_group(false);
-            inner.into_iter().next().unwrap_or(Token::synthetic(TokenKind::ControlSequence(String::new())))
+            let mut inner: Vec<Token> = self
+                .scan_braced_group(false)
+                .into_iter()
+                .filter(|t| !matches!(t.kind, TokenKind::Char(_, CatCode::Space)))
+                .collect();
+            if inner.len() == 1 {
+                inner.remove(0)
+            } else {
+                Token::new(TokenKind::Char('{', CatCode::Other), open_span)
+            }
         } else {
             name_tok
         };
-        let already_defined = !matches!(self.meaning_of_token(&name_tok), Meaning::Undefined);
-        match kind {
-            Primitive::NewCommand if already_defined => {
-                self.err(format!("\\newcommand cannot redefine existing command {}", name_tok.display_name()), span);
-            }
-            Primitive::RenewCommand if !already_defined => {
-                self.err(format!("\\renewcommand cannot redefine undefined command {}", name_tok.display_name()), span);
-            }
-            _ => {}
+        // LaTeX's kernel errors (\@ifdefinable / \@notdefinable, "Illegal
+        // parameter number"): report, keep the input in sync, and do not
+        // define anything unusable.
+        let valid_name = matches!(name_tok.kind, TokenKind::ControlSequence(_) | TokenKind::ActiveChar(_));
+        if !valid_name {
+            self.err(format!("\\{command} requires a single command name as its first argument"), span);
         }
-        // For \providecommand when already defined, we still parse (and
-        // discard) the rest of the syntax below to keep the input stream
-        // in sync with what real TeX would have consumed.
+        let already_defined = valid_name && !matches!(self.meaning_of_token(&name_tok), Meaning::Undefined);
+        if valid_name {
+            match kind {
+                Primitive::NewCommand if already_defined => {
+                    self.err(format!("\\newcommand cannot redefine existing command {}", name_tok.display_name()), span);
+                }
+                Primitive::RenewCommand if !already_defined => {
+                    self.err(format!("\\renewcommand cannot redefine undefined command {}", name_tok.display_name()), span);
+                }
+                _ => {}
+            }
+        }
         let nargs = self.scan_optional_bracket_number();
         let default = if let Some(t) = self.peek_one() {
             if matches!(t.kind, TokenKind::Char('[', CatCode::Other)) {
@@ -1424,15 +1458,32 @@ impl<'a> Engine<'a> {
             None
         };
         let body_toks = fold_param_tokens(self.scan_braced_group(false));
-        let arity = nargs.unwrap_or(0) as u8;
+        let bad_count = matches!(nargs, Some(n) if !(0..=9).contains(&n));
+        if bad_count {
+            self.err(format!("\\{command} argument count must be an integer from 0 to 9"), span);
+        }
+        let arity = if bad_count { 0 } else { nargs.unwrap_or(0) as u8 };
         let params: Vec<ParamPart> = (1..=arity).map(ParamPart::Param).collect();
+        let mut undeclared: Option<u8> = None;
         let body: Vec<BodyPart> = body_toks
             .into_iter()
-            .map(|t| match t.kind {
-                TokenKind::Param(n) => BodyPart::Param(n),
-                _ => BodyPart::Literal(t),
+            .filter_map(|t| match t.kind {
+                TokenKind::Param(n) if n > arity => {
+                    undeclared.get_or_insert(n);
+                    None
+                }
+                TokenKind::Param(n) => Some(BodyPart::Param(n)),
+                _ => Some(BodyPart::Literal(t)),
             })
             .collect();
+        if let Some(n) = undeclared {
+            self.err(format!("macro replacement references #{n} but that argument is not declared"), span);
+        }
+        if !valid_name || bad_count {
+            return;
+        }
+        // \providecommand on a defined command is a no-op; \newcommand on
+        // one keeps the existing definition (\@notdefinable).
         if matches!(kind, Primitive::ProvideCommand | Primitive::NewCommand) && already_defined {
             return;
         }

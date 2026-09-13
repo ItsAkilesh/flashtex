@@ -79,11 +79,6 @@ const SOURCE_CASES: &[SourceCase] = &[
         message: r"\section requires a braced argument",
     },
     SourceCase {
-        name: "empty required macro argument",
-        input: r"\newcommand{\echo}[1]{#1} Visible \echo{} Tail.",
-        message: r"macro \echo received an empty required argument",
-    },
-    SourceCase {
         name: "required argument missing closing brace",
         input: r"Visible \textbf{Tail",
         message: r"argument to \textbf is missing its closing brace",
@@ -131,7 +126,7 @@ const SOURCE_CASES: &[SourceCase] = &[
     SourceCase {
         name: "macro recursion limit",
         input: r"\newcommand{\loop}{\loop} Visible \loop Tail.",
-        message: r"macro \loop exceeded the expansion recursion limit",
+        message: "expansion step limit exceeded",
     },
     SourceCase {
         name: "undeclared macro replacement parameter",

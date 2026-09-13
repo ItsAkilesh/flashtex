@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::bib;
 use crate::diagnostics::Diagnostic;
+use crate::expansion::{self, ExpansionSite};
 use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
@@ -16,8 +17,6 @@ use crate::{DocumentId, Span};
 
 mod tabular;
 
-/// Maximum number of nested user-macro expansions at one use site.
-pub const MACRO_RECURSION_LIMIT: usize = 64;
 /// Maximum number of active nested `\input`/`\include` calls.
 pub const INCLUDE_DEPTH_LIMIT: usize = 64;
 
@@ -449,6 +448,10 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// Every run of macro replacement text in the parser's input, in input
+    /// order: the invocation span its tokens carry, and the exact bytes of
+    /// the definition they were copied from (see `crate::expansion`).
+    pub expansions: Vec<ExpansionSite>,
 }
 
 impl Parsed {
@@ -650,7 +653,9 @@ pub(crate) fn path_is_safe(path: &str) -> bool {
 #[derive(Debug, Clone)]
 struct InputToken {
     token: Token,
-    expansion_depth: usize,
+    /// For macro replacement text: the definition bytes it was copied from
+    /// (`token.span` is then the invocation span).
+    definition: Option<Span>,
     maps_to_invocation: bool,
 }
 
@@ -696,12 +701,6 @@ fn split_on_and(tokens: Vec<InputToken>) -> Vec<Vec<InputToken>> {
     groups
 }
 
-#[derive(Debug, Clone)]
-struct MacroDef {
-    argument_count: usize,
-    body: Vec<Token>,
-}
-
 pub fn parse(text: &str) -> Parsed {
     parse_project(&[SourceDocument { path: "", text }], "")
 }
@@ -720,21 +719,49 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     let has_document = has_document_environment(&raw);
     let mut bibliography_diags = Vec::new();
     let bibliography = bib::prescan(&raw, &mut bibliography_diags);
+    let expanded = if documents.is_empty() {
+        expansion::Expansion {
+            tokens: Vec::new(),
+            diagnostics: Vec::new(),
+            arraystretch: HashMap::new(),
+        }
+    } else {
+        expansion::expand_project(documents, entry)
+    };
+    let mut expansions: Vec<ExpansionSite> = Vec::new();
+    for token in &expanded.tokens {
+        if let (true, Some(definition)) = (token.maps_to_invocation, token.definition) {
+            match expansions.last_mut() {
+                Some(last)
+                    if last.invocation == token.token.span
+                        && last.definition.document == definition.document
+                        && last.definition.end <= definition.start
+                        && gap_is_blank(documents, last.definition, definition) =>
+                {
+                    last.definition = last.definition.merge(definition);
+                }
+                _ => expansions.push(ExpansionSite {
+                    invocation: token.token.span,
+                    definition,
+                }),
+            }
+        }
+    }
     let mut p = P {
-        t: raw
+        t: expanded
+            .tokens
             .into_iter()
             .map(|token| InputToken {
-                token,
-                expansion_depth: 0,
-                maps_to_invocation: false,
+                token: token.token,
+                definition: token.definition,
+                maps_to_invocation: token.maps_to_invocation,
             })
             .collect(),
         i: 0,
         diags: Vec::new(),
         brace_stack: Vec::new(),
         env_stack: Vec::new(),
-        macros: HashMap::new(),
-        macro_scopes: Vec::new(),
+        arraystretch: expanded.arraystretch,
         has_document,
         in_body: !has_document,
         document_ended: false,
@@ -780,17 +807,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         titlepage_option: false,
     };
     p.diags.extend(bibliography_diags);
-    // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
-    p.macros.insert(
-        "arraystretch".into(),
-        MacroDef {
-            argument_count: 0,
-            body: vec![Token {
-                kind: TokenKind::Word("1".into()),
-                span: Span::in_document(DocumentId(entry), 0, 0),
-            }],
-        },
-    );
+    p.diags.extend(expanded.diagnostics);
     let blocks = p.document();
 
     while let Some(open) = p.brace_stack.pop() {
@@ -820,7 +837,17 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source: preamble_source(entry_document.text, has_document),
         incremental_safe,
         document_global_state: p.document_global_state,
+        expansions,
     }
+}
+
+/// Whether only whitespace separates two definition spans (so they belong
+/// to one run of replacement text).
+fn gap_is_blank(documents: &[SourceDocument<'_>], a: Span, b: Span) -> bool {
+    documents
+        .get(a.document.0)
+        .and_then(|document| document.text.get(a.end..b.start))
+        .is_some_and(|gap| gap.chars().all(char::is_whitespace))
 }
 
 struct P<'a> {
@@ -829,8 +856,8 @@ struct P<'a> {
     diags: Vec<Diagnostic>,
     brace_stack: Vec<Span>,
     env_stack: Vec<(String, Span)>,
-    macros: HashMap<String, MacroDef>,
-    macro_scopes: Vec<HashMap<String, Option<MacroDef>>>,
+    /// `\arraystretch` at each `\begin{tabular}`, from the expansion pass.
+    arraystretch: HashMap<(usize, usize), String>,
     has_document: bool,
     in_body: bool,
     document_ended: bool,
@@ -1015,7 +1042,6 @@ impl P<'_> {
                             ));
                         }
                     } else {
-                        self.restore_scope();
                         if let Some(style) = self.style_stack.pop() {
                             self.style = style;
                         }
@@ -1049,7 +1075,7 @@ impl P<'_> {
                 | TokenKind::Subscript => self.i += 1,
                 TokenKind::Command(name) => {
                     self.i += 1;
-                    self.command(&name, tok.span, input.expansion_depth, blocks, para);
+                    self.command(&name, tok.span, blocks, para);
                 }
                 TokenKind::Verb {
                     text,
@@ -1077,24 +1103,8 @@ impl P<'_> {
         }
     }
 
-    fn command(
-        &mut self,
-        name: &str,
-        span: Span,
-        depth: usize,
-        blocks: &mut Vec<Block>,
-        para: &mut Vec<Inline>,
-    ) {
+    fn command(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
         if self.document_ended {
-            return;
-        }
-        if let Some(definition) = self.macros.get(name).cloned() {
-            self.record_macro_read(name, &definition);
-            // The command token has already been consumed by the main loop. Keep
-            // its index while arguments are consumed, then replace the complete
-            // invocation with one splice.
-            let invocation_start = self.i - 1;
-            self.expand_macro(name, span, depth, definition, invocation_start);
             return;
         }
 
@@ -1103,7 +1113,6 @@ impl P<'_> {
             "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
             "setlist" => self.set_list(span),
-            "newcommand" | "renewcommand" => self.define_macro(name, span),
             "newtheorem" => self.new_theorem(span),
             "theoremstyle" => self.set_theorem_style(span),
             "begin" | "end" => self.environment(name, span, blocks, para),
@@ -1691,7 +1700,7 @@ impl P<'_> {
             .into_iter()
             .map(|token| InputToken {
                 token,
-                expansion_depth: 0,
+                definition: None,
                 maps_to_invocation: false,
             })
             .collect(),
@@ -2066,205 +2075,6 @@ impl P<'_> {
             i = j;
         }
         out
-    }
-
-    fn define_macro(&mut self, kind: &str, span: Span) {
-        let (name_tokens, name_span) = self.long_required_group(kind, span);
-        let macro_name = name_tokens
-            .iter()
-            .filter(|t| !matches!(t.token.kind, TokenKind::Space | TokenKind::Comment))
-            .collect::<Vec<_>>();
-        let name = match macro_name.as_slice() {
-            [InputToken {
-                token:
-                    Token {
-                        kind: TokenKind::Command(name),
-                        ..
-                    },
-                ..
-            }] if !name.is_empty() => name.clone(),
-            _ => {
-                self.diags.push(Diagnostic::error(
-                    format!(
-                        "\\{} requires a single command name as its first argument",
-                        kind
-                    ),
-                    Some(name_span),
-                    Some("ignored the invalid macro definition".into()),
-                ));
-                let _ = self.optional_bracket_argument();
-                let _ = self.required_group(kind, span);
-                return;
-            }
-        };
-
-        let argument_count = match self.optional_bracket_argument() {
-            Some((raw, option_span)) => match raw.trim().parse::<usize>() {
-                Ok(count) if count <= 9 => count,
-                _ => {
-                    self.diags.push(Diagnostic::error(
-                        format!("\\{} argument count must be an integer from 0 to 9", kind),
-                        Some(option_span),
-                        Some("ignored the invalid macro definition".into()),
-                    ));
-                    let _ = self.required_group(kind, span);
-                    return;
-                }
-            },
-            None => 0,
-        };
-        let (body, _) = self.long_required_group(kind, span);
-        let definition = MacroDef {
-            argument_count,
-            body: body.into_iter().map(|t| t.token).collect(),
-        };
-
-        let already_defined = self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str());
-        let valid = if kind == "newcommand" {
-            if already_defined {
-                self.diags.push(Diagnostic::error(
-                    format!("\\newcommand cannot redefine existing command \\{}", name),
-                    Some(span.merge(name_span)),
-                    Some("kept the existing command definition".into()),
-                ));
-                false
-            } else {
-                true
-            }
-        } else if already_defined {
-            true
-        } else {
-            self.diags.push(Diagnostic::error(
-                format!(
-                    "\\renewcommand cannot redefine undefined command \\{}",
-                    name
-                ),
-                Some(span.merge(name_span)),
-                Some("ignored the invalid redefinition".into()),
-            ));
-            false
-        };
-        if valid {
-            self.set_macro(name, definition);
-        }
-    }
-
-    fn expand_macro(
-        &mut self,
-        name: &str,
-        span: Span,
-        depth: usize,
-        definition: MacroDef,
-        invocation_start: usize,
-    ) {
-        let mut arguments = Vec::new();
-        for _ in 0..definition.argument_count {
-            let (argument, argument_span) = self.long_required_group(name, span);
-            if argument_span != span
-                && argument.iter().all(|token| {
-                    matches!(
-                        token.token.kind,
-                        TokenKind::Space | TokenKind::ParBreak | TokenKind::Comment
-                    )
-                })
-            {
-                self.diags.push(Diagnostic::error(
-                    format!("macro \\{} received an empty required argument", name),
-                    Some(argument_span),
-                    Some("substituted an empty argument and continued".into()),
-                ));
-            }
-            arguments.push(argument);
-        }
-        if depth >= MACRO_RECURSION_LIMIT {
-            self.diags.push(Diagnostic::error(
-                format!(
-                    "macro \\{} exceeded the expansion recursion limit of {}",
-                    name, MACRO_RECURSION_LIMIT
-                ),
-                Some(span),
-                Some("stopped expanding this macro invocation".into()),
-            ));
-            self.t.drain(invocation_start..self.i);
-            self.i = invocation_start;
-            return;
-        }
-
-        let next_depth = depth + 1;
-        let mut expanded = Vec::new();
-        for token in definition.body {
-            match token.kind {
-                TokenKind::Word(word) => {
-                    self.expand_macro_word(&word, span, next_depth, &arguments, &mut expanded)
-                }
-                kind => expanded.push(InputToken {
-                    token: Token { kind, span },
-                    expansion_depth: next_depth,
-                    maps_to_invocation: true,
-                }),
-            }
-        }
-        // One shift, not two. Callers used to `remove` the invocation token and
-        // then `splice` the expansion into the gap, so every macro invocation
-        // moved the tail of the token vector twice. Callers now leave the
-        // invocation in place and this replaces it in a single splice.
-        //
-        // This halves the work but the operation is still linear in the tokens
-        // after the cursor, so parsing remains superlinear in macro-dense
-        // documents. Measured: parse is 402 ms of a 420 ms edit at 500 KB.
-        // The real fix is incremental parsing, which is a larger change than
-        // this revision's scope; the README records the measurement.
-        let invocation_end = self.i;
-        self.t.splice(invocation_start..invocation_end, expanded);
-        self.i = invocation_start;
-    }
-
-    fn expand_macro_word(
-        &mut self,
-        word: &str,
-        invocation_span: Span,
-        depth: usize,
-        arguments: &[Vec<InputToken>],
-        out: &mut Vec<InputToken>,
-    ) {
-        let bytes = word.as_bytes();
-        let mut literal_start = 0;
-        let mut index = 0;
-        while index + 1 < bytes.len() {
-            let digit = bytes[index + 1];
-            if bytes[index] == b'#' && (b'1'..=b'9').contains(&digit) {
-                if literal_start < index {
-                    out.push(mapped_word(
-                        &word[literal_start..index],
-                        invocation_span,
-                        depth,
-                    ));
-                }
-                let argument_index = usize::from(digit - b'1');
-                if let Some(argument) = arguments.get(argument_index) {
-                    out.extend(argument.iter().cloned().map(|mut token| {
-                        token.expansion_depth = depth;
-                        token
-                    }));
-                } else {
-                    self.diags.push(Diagnostic::error(
-                        format!(
-                            "macro replacement references #{} but that argument is not declared",
-                            argument_index + 1
-                        ),
-                        Some(invocation_span),
-                        Some("omitted the unavailable argument".into()),
-                    ));
-                }
-                index += 2;
-                literal_start = index;
-            } else {
-                index += 1;
-            }
-        }
-        if literal_start < word.len() {
-            out.push(mapped_word(&word[literal_start..], invocation_span, depth));
-        }
     }
 
     fn environment(
@@ -2764,9 +2574,6 @@ impl P<'_> {
         let mut found_end = false;
 
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                 self.i = after;
                 end = end_span.end;
@@ -2856,9 +2663,6 @@ impl P<'_> {
         let mut found_end = false;
 
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if depth == 0 {
                 if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                     self.i = after;
@@ -3034,9 +2838,6 @@ impl P<'_> {
         let mut close_end = open.end;
         let mut found = false;
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             // Unterminated math ends with its paragraph (TeX: "Missing $
             // inserted"), never at a `$` pages later.
             if paragraph_boundary_at(&self.t, self.i) {
@@ -3077,9 +2878,6 @@ impl P<'_> {
         self.i += 1;
         let content_start = self.i;
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if self.t[self.i].token.kind == TokenKind::DisplayMathClose
                 || paragraph_boundary_at(&self.t, self.i)
             {
@@ -3109,29 +2907,6 @@ impl P<'_> {
             space_before,
             para,
         );
-    }
-
-    fn expand_current_macro(&mut self) -> bool {
-        let Some(input) = self.t.get(self.i).cloned() else {
-            return false;
-        };
-        let TokenKind::Command(name) = &input.token.kind else {
-            return false;
-        };
-        let Some(definition) = self.macros.get(name).cloned() else {
-            return false;
-        };
-        self.record_macro_read(name, &definition);
-        let invocation_start = self.i;
-        self.i += 1;
-        self.expand_macro(
-            name,
-            input.token.span,
-            input.expansion_depth,
-            definition,
-            invocation_start,
-        );
-        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3224,18 +2999,6 @@ impl P<'_> {
         self.required_group_bounded(command, command_span, false)
     }
 
-    /// A `\long` argument (macro bodies and arguments of `\newcommand`
-    /// macros) may legitimately span paragraphs; only when it is never
-    /// closed at all is it closed at the end of its first paragraph rather
-    /// than swallowing the rest of the document.
-    fn long_required_group(
-        &mut self,
-        command: &str,
-        command_span: Span,
-    ) -> (Vec<InputToken>, Span) {
-        self.required_group_bounded(command, command_span, true)
-    }
-
     fn required_group_bounded(
         &mut self,
         command: &str,
@@ -3313,10 +3076,9 @@ impl P<'_> {
     /// `lexer.rs`), with no notion of a mid-document catcode change, so the
     /// same effect is reached by re-reading the exact source bytes between
     /// the braces directly instead of trusting the tokens already produced
-    /// for that range — and then re-tokenizing everything after the closing
-    /// brace, because the ordinary tokenizer may have already misread part
-    /// of it (a literal `%` inside the URL otherwise starts a real comment
-    /// that swallows the rest of the physical line, closing brace included).
+    /// for that range. The expansion pass (`crate::expansion`) blanks those
+    /// bytes before any tokenizing, so a literal `%` inside the URL can no
+    /// longer start a comment that swallows the closing brace.
     ///
     /// Only `\{` and `\}` are recognised as escapes, for a literal brace
     /// inside the URL; an unescaped `{`/`}` still opens/closes a nested
@@ -3325,6 +3087,16 @@ impl P<'_> {
     /// happens to contain.
     fn url_argument(&mut self, command: &str, command_span: Span) -> (String, Span) {
         self.skip_spaces();
+        // A URL group produced by macro expansion has no source bytes of its
+        // own to re-read; take its (already expanded) tokens.
+        if self
+            .t
+            .get(self.i)
+            .is_some_and(|input| input.maps_to_invocation && input.token.kind == TokenKind::LBrace)
+        {
+            let (tokens, span) = self.required_group(command, command_span);
+            return (token_text(&tokens), span);
+        }
         let open = match self.peek() {
             Some(token) if token.kind == TokenKind::LBrace => token.span,
             _ => {
@@ -3381,29 +3153,22 @@ impl P<'_> {
         (content, span)
     }
 
-    /// Discards every already-tokenized token from a raw-scanned group (see
-    /// `url_argument`) and re-tokenizes everything from `close_end` onward,
-    /// so a `%`/etc. the ordinary tokenizer misread inside the group cannot
-    /// corrupt what follows it. `self.i` is left pointing at the group's
-    /// opening `{` token, which this replaces along with everything after.
+    /// Moves past every token a raw-scanned group (see `url_argument`)
+    /// covered. The expansion pass blanked that group's bytes before
+    /// expansion, so nothing inside it was interpreted and the tokens after
+    /// its closing brace are already correct; only the group's own tokens are
+    /// skipped (re-tokenizing the source here would discard every later macro
+    /// expansion).
     fn resync_after_raw_group(&mut self, document: DocumentId, close_end: usize) {
-        self.t.truncate(self.i);
-        let source = self.documents[document.0].text;
-        let suffix = tokenize_document(&source[close_end..], document)
-            .into_iter()
-            .map(|token| InputToken {
-                token: Token {
-                    kind: token.kind,
-                    span: Span::in_document(
-                        document,
-                        token.span.start + close_end,
-                        token.span.end + close_end,
-                    ),
-                },
-                expansion_depth: 0,
-                maps_to_invocation: false,
-            });
-        self.t.extend(suffix);
+        while let Some(input) = self.t.get(self.i) {
+            if input.maps_to_invocation
+                || input.token.span.document != document
+                || input.token.span.start >= close_end
+            {
+                break;
+            }
+            self.i += 1;
+        }
     }
 
     /// Pushes literal `\url`/`\nolinkurl` text as one or more `Inline::Text`
@@ -3548,7 +3313,6 @@ impl P<'_> {
 
     fn open_group(&mut self, span: Span) {
         self.brace_stack.push(span);
-        self.macro_scopes.push(HashMap::new());
         self.style_stack.push(self.style);
         self.alignment_stack.push(self.declared_alignment);
     }
@@ -3558,9 +3322,6 @@ impl P<'_> {
         let outer_index = std::mem::replace(&mut self.i, 0);
         let mut expanded = Vec::new();
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             expanded.push(self.t[self.i].clone());
             self.i += 1;
         }
@@ -3694,13 +3455,10 @@ impl P<'_> {
         let outer_style = std::mem::take(&mut self.style);
         let outer_label = self.pending_item_label.take();
         let outer_dependency_blocks = self.block_dependencies.len();
-        // The argument is a TeX group: definitions inside it stay local.
-        self.macro_scopes.push(HashMap::new());
         let mut blocks = Vec::new();
         let mut para = Vec::new();
         self.parse_stream(&mut blocks, &mut para);
         self.flush_paragraph(&mut blocks, &mut para);
-        self.restore_scope();
         self.block_dependencies.truncate(outer_dependency_blocks);
         self.t = outer_tokens;
         self.i = outer_index;
@@ -3725,44 +3483,6 @@ impl P<'_> {
             content.extend(inlines);
         }
         content
-    }
-
-    fn set_macro(&mut self, name: String, definition: MacroDef) {
-        if let Some(scope) = self.macro_scopes.last_mut() {
-            scope
-                .entry(name.clone())
-                .or_insert_with(|| self.macros.get(&name).cloned());
-        }
-        self.macros.insert(name, definition);
-    }
-
-    fn restore_scope(&mut self) {
-        if let Some(scope) = self.macro_scopes.pop() {
-            for (name, previous) in scope {
-                match previous {
-                    Some(definition) => {
-                        self.macros.insert(name, definition);
-                    }
-                    None => {
-                        self.macros.remove(&name);
-                    }
-                }
-            }
-        }
-    }
-
-    fn record_macro_read(&mut self, name: &str, definition: &MacroDef) {
-        self.current_dependencies.insert(
-            name.to_string(),
-            (
-                definition.argument_count,
-                definition
-                    .body
-                    .iter()
-                    .map(|token| token.kind.clone())
-                    .collect(),
-            ),
-        );
     }
 
     fn finish_block_dependencies(&mut self) {
@@ -4192,17 +3912,6 @@ fn roman(mut count: u32) -> String {
         }
     }
     text
-}
-
-fn mapped_word(word: &str, span: Span, depth: usize) -> InputToken {
-    InputToken {
-        token: Token {
-            kind: TokenKind::Word(word.to_string()),
-            span,
-        },
-        expansion_depth: depth,
-        maps_to_invocation: true,
-    }
 }
 
 fn preamble_source(text: &str, has_document: bool) -> String {
@@ -4912,7 +4621,8 @@ mod tests {
 
     #[test]
     fn nested_macros_expand_and_renewcommand_replaces_an_existing_macro() {
-        let source = r"\newcommand{\inner}{first} \newcommand{\outer}{\inner} \outer \renewcommand{\inner}{second} \outer";
+        // (`\outer` would be a TeX primitive, which `\newcommand` refuses.)
+        let source = r"\newcommand{\inner}{first} \newcommand{\wrapper}{\inner} \wrapper \renewcommand{\inner}{second} \wrapper";
         let (parsed, items) = items(source);
         assert!(parsed.diagnostics.is_empty());
         assert_eq!(
@@ -4989,11 +4699,9 @@ mod tests {
     fn self_referential_macro_hits_explicit_recursion_limit() {
         let source = "\\newcommand{\\loop}{\\loop} \\loop";
         let (parsed, _) = items(source);
+        // The expansion pass bounds runaway expansion by its step limit.
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.message.contains("\\loop")
-                && diagnostic
-                    .message
-                    .contains(&MACRO_RECURSION_LIMIT.to_string())
+            diagnostic.message.contains("expansion step limit exceeded")
         }));
     }
 

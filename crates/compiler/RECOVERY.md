@@ -1,4 +1,4 @@
-Generated from commit `a448e015b11ef20676c1c76cfdde252fc79d9c01` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `a7876004a9724764c0f02dc53a89c806af66bfe5` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -238,25 +238,6 @@ Positioned text items:
 
 - `Visible.` — byte range `0..8`
 
-## empty required macro argument
-
-Input:
-
-```text
-\newcommand{\echo}[1]{#1} Visible \echo{} Tail.
-```
-
-Status: `recovered`
-
-Diagnostics:
-
-- `macro \echo received an empty required argument` — recovery: `substituted an empty argument and continued`; byte range: `39..41`
-
-Positioned text items:
-
-- `Visible` — byte range `26..33`
-- `Tail.` — byte range `42..47`
-
 ## required argument missing closing brace
 
 Input:
@@ -362,7 +343,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand requires a single command name as its first argument` — recovery: `ignored the invalid macro definition`; byte range: `19..25`
+- `\newcommand requires a single command name as its first argument` — recovery: `continued expanding after the problem`; byte range: `8..19`
 
 Positioned text items:
 
@@ -381,7 +362,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand argument count must be an integer from 0 to 9` — recovery: `ignored the invalid macro definition`; byte range: `15..19`
+- `\newcommand argument count must be an integer from 0 to 9` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 
@@ -399,7 +380,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand cannot redefine existing command \section` — recovery: `kept the existing command definition`; byte range: `0..21`
+- `\newcommand cannot redefine existing command \section` — recovery: `kept the existing command definition`; byte range: `0..11`
 
 Positioned text items:
 
@@ -417,7 +398,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\renewcommand cannot redefine undefined command \missing` — recovery: `ignored the invalid redefinition`; byte range: `0..23`
+- `\renewcommand cannot redefine undefined command \missing` — recovery: `defined the command anyway`; byte range: `0..13`
 
 Positioned text items:
 
@@ -435,12 +416,11 @@ Status: `recovered`
 
 Diagnostics:
 
-- `macro \loop exceeded the expansion recursion limit of 64` — recovery: `stopped expanding this macro invocation`; byte range: `34..39`
+- `expansion step limit exceeded (possible infinite macro loop)` — recovery: `stopped expanding; the rest of the input was not typeset`; byte range: `33..34`
 
 Positioned text items:
 
 - `Visible` — byte range `26..33`
-- `Tail.` — byte range `40..45`
 
 ## undeclared macro replacement parameter
 
@@ -454,7 +434,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `macro replacement references #1 but that argument is not declared` — recovery: `omitted the unavailable argument`; byte range: `31..36`
+- `macro replacement references #1 but that argument is not declared` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 
