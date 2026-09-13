@@ -370,6 +370,7 @@ pub mod floatpage;
 pub mod footnotes;
 pub mod graphics_boxes;
 mod toc;
+pub mod multicol;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -444,6 +445,8 @@ pub struct Context<'a> {
     env_shape: Option<(adapter::EnvShape, f64)>,
     /// Image files, `\graphicspath` and `draft` for inline graphics.
     graphics: graphics_boxes::GraphicsEnv,
+    /// `multicols` environments of the project (`multicol::attach`).
+    multicol: multicol::State,
 }
 
 impl<'a> Context<'a> {
@@ -487,6 +490,7 @@ impl<'a> Context<'a> {
             rlap_marks: false,
             env_shape: None,
             graphics: Default::default(),
+            multicol: multicol::State::default(),
         }
     }
 
@@ -7088,6 +7092,11 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
 /// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
 /// ([`floatpage`]); without floats the page builder is unchanged.
 pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
+    // multicol: `multicols` spanning material is lifted into an outer
+    // document and the body paginated in columns (`multicol::paginate`).
+    if let Some(outer) = multicol::outer_doc(ctx, doc, floats) {
+        return build_with_floats(ctx, &outer, cache, floats);
+    }
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
     let n_columns = geo.map_or(1, |g| g.frame.columns.len().max(1));
@@ -7104,7 +7113,9 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = n_columns;
-    let (mut built, mut images, float_labels) = if floats.is_empty() {
+    let (mut built, mut images, float_labels) = if let Some(b) = multicol::paginate(ctx, doc, &mut blocks, &params) {
+        (b, Vec::new(), Vec::new())
+    } else if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
         // #151's later `\@topnewpage` boxes (two-column `\chapter` heads).
         let tops: Vec<(usize, f64)> = chapter_tops.iter().map(|t| (t.0, t.3)).collect();
@@ -7272,6 +7283,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
+    multicol::shift(ctx, &mut pages, &mut line_dx, &blocks);
     if let Some(g) = geo {
         page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events, &counters);
     }

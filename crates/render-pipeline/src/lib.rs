@@ -123,6 +123,11 @@ pub fn render_cached(
     let any_floats = float_envs.iter().any(|e| !e.is_empty());
     let masked: Vec<String> = documents.iter().zip(&float_envs).map(|(d, e)| if e.is_empty() { String::new() } else { floats::mask(d.text, e) }).collect();
     let texts: Vec<&str> = documents.iter().zip(&float_envs).zip(&masked).map(|((d, e), m)| if e.is_empty() { d.text } else { m.as_str() }).collect();
+    // `multicols` environments are laid out by `typeset::multicol`: their
+    // markup is blanked before the compiler parses (offsets unchanged).
+    let multicol_scans: Vec<typeset::multicol::Scan> = texts.iter().map(|t| typeset::multicol::scan(t)).collect();
+    let multicol_masked: Vec<Option<String>> = texts.iter().zip(&multicol_scans).map(|(t, s)| s.masked(t)).collect();
+    let texts: Vec<&str> = texts.iter().zip(&multicol_masked).map(|(t, m)| m.as_deref().unwrap_or(t)).collect();
     let parse_docs: Vec<SourceDocument<'_>> = documents.iter().zip(&texts).map(|(d, t)| SourceDocument { path: d.path, text: t }).collect();
     let parsed = flashtex_compiler::parser::parse_project(&parse_docs, entry_path);
     let (float_numbers, float_label_values) = floats::number(&float_envs);
@@ -209,6 +214,7 @@ pub fn render_cached(
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, if any_floats { &originals } else { &texts });
         ctx.set_math_colors(doc.math_colors.clone());
         ctx.set_graphics(options, graphics_path.clone(), graphics_draft);
+        typeset::multicol::attach(&mut ctx, &multicol_scans);
         let laid = typeset::build_with_floats(&mut ctx, &doc, cache, &float_specs);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {
