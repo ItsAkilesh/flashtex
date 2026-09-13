@@ -695,11 +695,17 @@ impl Engine<'_> {
         wanted: f64,
         on_missing: impl FnOnce(f64, f64) -> Limitation,
     ) -> Option<MathBox> {
+        // `char_box` widths include the italic correction; it is a kern
+        // after the glyph so the glyph box itself keeps its TFM width.
+        let char_box = |g: &Glyph| {
+            if g.italic == 0.0 {
+                MathBox::glyph(g)
+            } else {
+                MathBox::hlist(vec![MathBox::glyph(g), MathBox::kern(g.italic)])
+            }
+        };
         if let Some(chosen) = sizes.iter().find(|g| g.total_height() >= wanted) {
-            let mut b = MathBox::glyph(chosen);
-            // `char_box` widths include the italic correction.
-            b.width += chosen.italic;
-            return Some(b);
+            return Some(char_box(chosen));
         }
         if let Some(recipe) = extensible {
             return Some(stack_extensible(&recipe, wanted));
@@ -707,9 +713,7 @@ impl Engine<'_> {
         let chosen = sizes.last()?;
         self.limitations
             .push(on_missing(wanted, chosen.total_height()));
-        let mut b = MathBox::glyph(chosen);
-        b.width += chosen.italic;
-        Some(b)
+        Some(char_box(chosen))
     }
 
     /// Rule 11 and `make_radical`.

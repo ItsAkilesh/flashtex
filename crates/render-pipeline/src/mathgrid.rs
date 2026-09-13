@@ -324,10 +324,14 @@ pub fn delimiter(metrics: &dyn MathFontMetrics, ch: Option<char>, height: f64, d
     let wanted = (delta1 * 2.0 * p.delimiter_factor).max(2.0 * delta1 - p.delimiter_shortfall);
     let sizes = metrics.delimiter_sizes(ch, style.size_class());
     let ext = metrics.delimiter_extensible(ch, style.size_class());
+    // `char_box` width includes the italic correction, set as a kern so the
+    // glyph box keeps its TFM width.
     let glyph_box = |g: &Glyph| {
-        let mut b = MathBox::glyph(g);
-        b.width += g.italic;
-        b
+        if g.italic == 0.0 {
+            MathBox::glyph(g)
+        } else {
+            MathBox::hlist(vec![MathBox::glyph(g), MathBox::kern(g.italic)])
+        }
     };
     let (b, short) = if let Some(chosen) = sizes.iter().find(|g| g.total_height() >= wanted) {
         (glyph_box(chosen), None)
