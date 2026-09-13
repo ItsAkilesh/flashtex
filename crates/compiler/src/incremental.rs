@@ -553,6 +553,18 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 space_before: _,
             } => map_span(span, changes, deltas)?,
+            Inline::Graphic(graphic) => map_span(&mut graphic.span, changes, deltas)?,
+            Inline::Transform(transform) => {
+                let shifted = transform.try_map_spans(
+                    &mut |span| mapped_span(span, changes, deltas),
+                    &mut |inlines| {
+                        let mut owned = inlines.to_vec();
+                        shift_inlines(&mut owned, changes, deltas)?;
+                        Some(owned)
+                    },
+                )?;
+                **transform = shifted;
+            }
         }
     }
     Some(())
@@ -722,6 +734,8 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Footnote { span, .. } => *span,
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
+        Inline::Graphic(graphic) => graphic.span,
+        Inline::Transform(transform) => transform.span,
         Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);

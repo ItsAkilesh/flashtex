@@ -2090,6 +2090,7 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
                     visit_inline_references(list, visitor);
                 }
             }
+            Inline::Transform(b) => visit_inline_references(&b.content, visitor),
             _ => {}
         }
     }
@@ -2221,6 +2222,27 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 space_before,
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
+            // This Core 14 layout reads no image files and has no transformed
+            // boxes; the rendering pipeline sets both (`crate::graphics`).
+            Inline::Graphic(g) => c.diagnostics.push(
+                Diagnostic::warning(
+                    "\\includegraphics: this layout does not load or draw images",
+                    Some(g.span),
+                    Some("left no space for the image".into()),
+                )
+                .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+            ),
+            Inline::Transform(b) => {
+                c.diagnostics.push(
+                    Diagnostic::warning(
+                        "graphics transforms are not applied by this layout",
+                        Some(b.span),
+                        Some("set the content untransformed".into()),
+                    )
+                    .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+                );
+                emit(c, &b.content, size, font);
+            }
             Inline::Logo {
                 logo,
                 span,

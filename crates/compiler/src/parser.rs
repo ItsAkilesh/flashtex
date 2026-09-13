@@ -172,6 +172,13 @@ pub enum Inline {
         /// See `Inline::Text::space_before`.
         space_before: bool,
     },
+    /// `\includegraphics` in running text: an image box (see
+    /// `crate::graphics`). Figures and tables re-derive their graphics from
+    /// the source instead.
+    Graphic(Box<crate::graphics::Graphic>),
+    /// `\scalebox`, `\resizebox`, `\rotatebox`, `\reflectbox` around
+    /// horizontal material (see `crate::graphics`).
+    Transform(Box<crate::graphics::TransformBox>),
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -562,6 +569,11 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "caption",
     "item",
     "includegraphics",
+    "scalebox",
+    "resizebox",
+    "rotatebox",
+    "reflectbox",
+    "graphicspath",
     "url",
     "href",
     "nolinkurl",
@@ -1302,6 +1314,12 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // `\def\graphicspath#1{\def\Ginput@path{#1}}` (graphics.sty): no
+            // material. The search list is re-read from the source by the
+            // consumer that loads image files (see `crate::graphics`).
+            "graphicspath" => {
+                let _ = self.required_group(name, span);
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1542,14 +1560,9 @@ impl P<'_> {
                     self.pending_item_label = Some((bib::label_bracket(&label), span));
                 }
             }
-            "includegraphics" => {
-                let _ = self.optional_bracket_argument();
-                let _ = self.required_group(name, span);
-                self.diags.push(Diagnostic::warning(
-                    "\\includegraphics is unsupported; image loading is not implemented",
-                    Some(span),
-                    Some("omitted the image and continued".into()),
-                ));
+            "includegraphics" => self.include_graphics(span, para),
+            "scalebox" | "resizebox" | "rotatebox" | "reflectbox" => {
+                self.transform_box(name, span, para)
             }
             // See `url_argument` for why the URL is read from raw source
             // bytes rather than the ordinary token stream, and
@@ -3492,6 +3505,176 @@ impl P<'_> {
         }
     }
 
+    /// `\includegraphics*[<keys>]{<file>}`, or graphics.sty's
+    /// `[<llx>,<lly>][<urx>,<ury>]{<file>}` bounding-box form (graphicx.sty
+    /// `\Gin@ii` hands two brackets to `\Gin@iii`, which pdftex.def replaces
+    /// by `\Gin@iii@vp`: a viewport).
+    fn include_graphics(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let starred = self.take_star_prefix();
+        let mut options = self.bracket_argument().unwrap_or_default();
+        if !options.is_empty() || self.bracket_follows() {
+            if let Some(upper) = self.bracket_argument() {
+                let corner = |s: &str| s.replace(',', " ").split_whitespace().collect::<Vec<_>>().join(" ");
+                options = format!("viewport={} {}", corner(&options), corner(&upper));
+            }
+        }
+        let (tokens, argument) = self.required_group("includegraphics", span);
+        let path = self.argument_text(&tokens, argument);
+        para.push(Inline::Graphic(Box::new(crate::graphics::Graphic {
+            starred,
+            options,
+            path,
+            span: span.merge(argument),
+            space_before,
+        })));
+    }
+
+    /// `\scalebox{x}[y]{..}`, `\resizebox*{w}{h}{..}`,
+    /// `\rotatebox[keys]{angle}{..}`, `\reflectbox{..}`: the parameters as
+    /// written, then the content parsed as horizontal material in the
+    /// current style.
+    fn transform_box(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        use crate::graphics::TransformKind;
+        let space_before = self.space_precedes(self.i - 1);
+        let kind = match name {
+            "scalebox" => {
+                let (tokens, argument) = self.required_group(name, span);
+                let x = self.argument_text(&tokens, argument);
+                let y = self.bracket_argument();
+                TransformKind::Scale { x, y }
+            }
+            "resizebox" => {
+                let starred = self.take_optional_star();
+                let (tokens, argument) = self.required_group(name, span);
+                let width = self.argument_text(&tokens, argument);
+                let (tokens, argument) = self.required_group(name, span);
+                let height = self.argument_text(&tokens, argument);
+                TransformKind::Resize { starred, width, height }
+            }
+            "rotatebox" => {
+                let options = self.bracket_argument();
+                let (tokens, argument) = self.required_group(name, span);
+                let angle = self.argument_text(&tokens, argument);
+                TransformKind::Rotate { options, angle }
+            }
+            _ => TransformKind::Reflect,
+        };
+        let (tokens, argument) = self.required_group(name, span);
+        let style = self.style;
+        let content = self.argument_inlines(tokens, span, style);
+        para.push(Inline::Transform(Box::new(crate::graphics::TransformBox {
+            kind,
+            content,
+            span: span.merge(argument),
+            space_before,
+        })));
+    }
+
+    /// A `*` after a command, alone or glued to the word that follows it
+    /// (`\includegraphics*[..]` lexes as one word `*[..]`).
+    fn take_star_prefix(&mut self) -> bool {
+        if self.take_optional_star() {
+            return true;
+        }
+        let Some(input) = self.token_mut(self.i) else {
+            return false;
+        };
+        let TokenKind::Word(word) = &input.token.kind else {
+            return false;
+        };
+        let Some(rest) = word.strip_prefix('*') else {
+            return false;
+        };
+        let rest = rest.to_string();
+        let span = input.token.span;
+        if span.end - span.start == word.len() {
+            input.token.span = Span::in_document(span.document, span.start + 1, span.end);
+        }
+        input.token.kind = TokenKind::Word(rest);
+        true
+    }
+
+    /// Whether the next non-space token starts a `[..]` argument.
+    fn bracket_follows(&self) -> bool {
+        self.t[self.i..]
+            .iter()
+            .find(|input| !matches!(input.token.kind, TokenKind::Space | TokenKind::Comment))
+            .is_some_and(|input| matches!(&input.token.kind, TokenKind::Word(w) if w.starts_with('[')))
+    }
+
+    /// An optional `[..]` argument's exact source text (braces kept), or
+    /// its token reconstruction when it came from a macro expansion.
+    fn bracket_argument(&mut self) -> Option<String> {
+        if !self.bracket_follows() {
+            return None;
+        }
+        self.skip_spaces();
+        // `[a][b]` or `[a]text` lexes as one word: take the first bracket and
+        // leave the rest of the word in place.
+        if let Some(input) = self.token_mut(self.i) {
+            if let TokenKind::Word(word) = &input.token.kind {
+                if let Some(close) = word.find(']').filter(|&c| c + 1 < word.len() && !word[..c].contains('{')) {
+                    let content = word[1..close].trim().to_string();
+                    let rest = word[close + 1..].to_string();
+                    let span = input.token.span;
+                    if span.end - span.start == word.len() {
+                        input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
+                    }
+                    input.token.kind = TokenKind::Word(rest);
+                    return Some(content);
+                }
+            }
+        }
+        let from_source = !self.t[self.i..]
+            .iter()
+            .find(|input| !matches!(input.token.kind, TokenKind::Space | TokenKind::Comment))
+            .is_some_and(|input| input.maps_to_invocation);
+        let (content, span) = self.optional_bracket_argument()?;
+        if from_source {
+            if let Some(inner) = self
+                .documents
+                .get(span.document.0)
+                .and_then(|document| bracket_inner(document.text, span.start))
+            {
+                return Some(inner.trim().to_string());
+            }
+        }
+        Some(content.trim().to_string())
+    }
+
+    /// A braced argument's exact source text (without the outer braces) when
+    /// its tokens come from the source, else a reconstruction of the tokens.
+    fn argument_text(&self, tokens: &[InputToken], outer: Span) -> String {
+        if tokens.iter().all(|input| !input.maps_to_invocation) {
+            if let Some(text) = self.documents.get(outer.document.0).map(|document| document.text) {
+                let end = if text.as_bytes().get(outer.end.wrapping_sub(1)) == Some(&b'}') {
+                    outer.end - 1
+                } else {
+                    outer.end
+                };
+                if let Some(inner) = text.get(outer.start + 1..end) {
+                    return inner.trim().to_string();
+                }
+            }
+        }
+        let mut out = String::new();
+        for input in tokens {
+            match &input.token.kind {
+                TokenKind::Word(word) => out.push_str(word),
+                TokenKind::Command(name) => {
+                    out.push('\\');
+                    out.push_str(name);
+                }
+                TokenKind::Space | TokenKind::ParBreak => out.push(' '),
+                TokenKind::LBrace => out.push('{'),
+                TokenKind::RBrace => out.push('}'),
+                _ => {}
+            }
+        }
+        out.trim().to_string()
+    }
+
     fn take_optional_star(&mut self) -> bool {
         self.skip_spaces();
         if matches!(
@@ -3795,9 +3978,16 @@ impl P<'_> {
     /// inside the argument become line breaks: the footnote is one inline
     /// sequence, not separate blocks; each break is attributed to `span`.
     fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
+        self.argument_inlines(tokens, span, TextStyle::default())
+    }
+
+    /// Parses an argument with the ordinary dispatch starting in `style`
+    /// (see [`P::footnote_inlines`]); paragraph breaks become line breaks
+    /// attributed to `span`.
+    fn argument_inlines(&mut self, tokens: Vec<InputToken>, span: Span, style: TextStyle) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
-        let outer_style = std::mem::take(&mut self.style);
+        let outer_style = std::mem::replace(&mut self.style, style);
         let outer_label = self.pending_item_label.take();
         let outer_dependency_blocks = self.block_dependencies.len();
         let mut blocks = Vec::new();
@@ -4342,6 +4532,25 @@ fn dimen_source(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+/// The text between the `[` at `open` and its `]` (brace groups may hold
+/// `]`), or `None` when `open` is not a `[` or the bracket is unclosed.
+fn bracket_inner(text: &str, open: usize) -> Option<&str> {
+    if text.as_bytes().get(open) != Some(&b'[') {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (i, c) in text[open + 1..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            ']' if depth == 0 => return Some(&text[open + 1..open + 1 + i]),
+            '\n' if text[open + 1..open + 1 + i].ends_with('\n') => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn token_text(tokens: &[InputToken]) -> String {
