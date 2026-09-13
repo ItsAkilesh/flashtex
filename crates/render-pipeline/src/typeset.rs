@@ -66,6 +66,11 @@ pub struct GlyphRec {
     pub y_max_units: i32,
     pub y_min_units: i32,
     pub empty: bool,
+    /// TFM shaping: the character code, the advance and the font kern after
+    /// the glyph (fixwords; `advance_fix - kern_fix` is the char width).
+    pub tfm_code: Option<u8>,
+    pub advance_fix: i32,
+    pub kern_fix: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +246,14 @@ pub struct BuiltBlock {
     pub cache_key: Option<(u64, DocumentId, usize)>,
 }
 
+/// Resolved microtype font parameters (and the warning an unmodelled font
+/// raised) by (metrics identity, size bits, options and family), per thread.
+type MicrotypeFontEntry = (Option<Rc<flashtex_microtype::FontParams>>, Option<(String, String)>);
+thread_local! {
+    static MICROTYPE_FONTS: std::cell::RefCell<std::collections::HashMap<(String, u64, String), MicrotypeFontEntry>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 /// LaTeX/plain penalties (article defaults).
 const CLUB_PENALTY: i32 = 150;
 const WIDOW_PENALTY: i32 = 150;
@@ -312,6 +325,8 @@ pub struct Context<'a> {
     /// their once-only keys, suppressed ones included).
     capture: Option<Vec<(Option<String>, Diagnostic)>>,
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
+    /// microtype's per-font pdfTeX parameters by (metrics identity, size).
+    microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
 }
 
 impl<'a> Context<'a> {
@@ -336,6 +351,7 @@ impl<'a> Context<'a> {
             reported: BTreeSet::new(),
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
+            microtype_fonts: BTreeMap::new(),
         }
     }
 
@@ -669,6 +685,9 @@ impl<'a> Context<'a> {
                     y_max_units: g.y_max,
                     y_min_units: g.y_min,
                     empty: g.empty,
+                    tfm_code: if shaped.tfm_metrics { g.tfm_code } else { None },
+                    advance_fix: g.advance,
+                    kern_fix: g.tfm_kern,
                 });
             }
             clusters.push(ClusterRec {
@@ -1160,8 +1179,26 @@ impl<'a> Context<'a> {
     /// Runs the breaker. A list it rejects (non-finite or overlong, which
     /// the adapter never produces) is reported as a typed error and the
     /// block skipped rather than panicking the worker.
-    fn break_paragraph(&mut self, list: &[pl::Item], params: &pl::LineBreakParams, items: &[AItem]) -> Option<pl::Lines> {
-        match pl::layout_paragraph(list, params) {
+    fn break_paragraph(&mut self, list: &[pl::Item], params: &pl::LineBreakParams, items: &[AItem], recs: Option<&[Option<usize>]>) -> Option<pl::Lines> {
+        // `recs` is `None` for material pdfTeX never line-breaks (a natural
+        // width `\hbox`): no protrusion or expansion there.
+        let result = match (self.style.microtype.clone().filter(|m| m.active()), recs) {
+            (None, _) | (_, None) => pl::layout_paragraph(list, params),
+            (Some(setup), Some(recs)) => {
+                let mt = self.microtype_items(list, recs, &setup);
+                let mut params = params.clone();
+                // pdfTeX measures `\hsize` in sp: use the class frame's exact
+                // width when the f64 measure is its 0.001pt snap.
+                if let Some(doc) = &self.style.class_geometry {
+                    let exact = doc.frame.columns[0].width.0 as f64 / 65536.0;
+                    if (exact - params.line_width).abs() < 4.0 / 65536.0 {
+                        params.line_width = exact;
+                    }
+                }
+                pl::layout_paragraph_microtype(list, &params, &mt).map(|(lines, _)| lines)
+            }
+        };
+        match result {
             Ok(lines) => Some(lines),
             Err(e) => {
                 let span = items.iter().find_map(|i| match i {
@@ -1174,6 +1211,145 @@ impl<'a> Context<'a> {
                 None
             }
         }
+    }
+
+    /// The microtype side of a horizontal list: each text box's (and
+    /// discretionary hyphen's) TFM codes, sp widths and in-run kerns with its
+    /// font's resolved pdfTeX parameters, and which kerns are font kerns (the
+    /// kern `word_items` keeps after a hyphenation point).
+    fn microtype_items(&mut self, list: &[pl::Item], recs: &[Option<usize>], setup: &crate::style::MicrotypeSetup) -> pl::Microtype {
+        let mut out = Vec::with_capacity(list.len());
+        for (i, item) in list.iter().enumerate() {
+            let rec = recs.get(i).copied().flatten();
+            let mut mi = pl::MicroItem::default();
+            match item {
+                pl::Item::Box(run) => mi.run = rec.and_then(|r| self.micro_run(r, run)),
+                pl::Item::Penalty(p) => {
+                    if let Some(pre) = &p.pre_break {
+                        mi.pre_break = rec.and_then(|r| self.micro_run(r, pre));
+                    }
+                }
+                pl::Item::Kern(_) => {
+                    mi.font_kern = i > 0 && matches!(&list[i - 1], pl::Item::Penalty(p) if p.flagged) && matches!(list.get(i + 1), Some(pl::Item::Box(_)));
+                }
+                pl::Item::Glue(_) => {}
+            }
+            out.push(mi);
+        }
+        pl::Microtype { protrude_chars: setup.protrude_chars, adjust_spacing: setup.adjust_spacing, items: out }
+    }
+
+    /// A text box record as pdfTeX characters, or `None` for a box that is
+    /// not TFM-shaped text in a font microtype configures.
+    fn micro_run(&mut self, rec: usize, run: &pl::GlyphRun) -> Option<pl::MicroRun> {
+        let BoxRec::Text { face, size, style, glyphs, .. } = &self.recs[rec] else { return None };
+        if glyphs.len() != run.glyphs.len() || !glyphs.iter().any(|g| g.tfm_code.is_some()) {
+            return None;
+        }
+        let (face, size, style) = (face.clone(), *size, *style);
+        let z = (size * 65536.0).round() as i32;
+        let scaled = |fix: i32| flashtex_microtype::arith::tfm_scaled(fix, z);
+        let micro: Vec<pl::MicroGlyph> = glyphs
+            .iter()
+            .zip(&run.glyphs)
+            .map(|(g, pg)| {
+                let Some(code) = g.tfm_code else {
+                    // A left-boundary kern carried as an empty glyph.
+                    return pl::MicroGlyph { code: None, width: 0, kern: scaled(g.advance_fix) };
+                };
+                let width_fix = g.advance_fix - g.kern_fix;
+                // The discretionary hyphen's advance also carries the kern
+                // between the letter before it and the hyphen (`word_items`).
+                let placed = pg.advance + pg.kern;
+                let kern_fix = if (placed - crate::tfm::Tfm::pt(g.advance_fix, size)).abs() > 1e-9 {
+                    ((placed - crate::tfm::Tfm::pt(width_fix, size)) * crate::tfm::FIX as f64 / size).round() as i32
+                } else {
+                    g.kern_fix
+                };
+                pl::MicroGlyph { code: Some(code), width: scaled(width_fix), kern: scaled(kern_fix) }
+            })
+            .collect();
+        let params = self.microtype_params(&face, style, size)?;
+        Some(pl::MicroRun { params, glyphs: micro })
+    }
+
+    /// microtype's `\lpcode`/`\rpcode`/`\efcode` and expansion limits for the
+    /// NFSS font LaTeX selects for this face (T1, `cmr` for EC metrics or
+    /// `lmr` with `lmodern`), resolved once per face and size from the
+    /// bundled `microtype.cfg` + `mt-cmr.cfg`.
+    fn microtype_params(&mut self, face: &Rc<LoadedFace>, style: TextStyle, size: f64) -> Option<Rc<flashtex_microtype::FontParams>> {
+        let key = (face.shape_key.clone(), size.to_bits());
+        if let Some(hit) = self.microtype_fonts.get(&key) {
+            return hit.clone();
+        }
+        let setup = self.style.microtype.clone()?;
+        // Across requests (a fresh `Context` per render): resolving parses
+        // nothing but still walks the config per font, so the result and any
+        // warning are kept per thread for the face, size and options.
+        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}", setup.options, self.style.family));
+        if let Some((hit, warning)) = MICROTYPE_FONTS.with(|c| c.borrow().get(&global_key).cloned()) {
+            if let Some((k, message)) = warning {
+                self.emit(Some(k), Diagnostic::warning("microtype_unsupported", message, Vec::new()));
+            }
+            self.microtype_fonts.insert(key, hit.clone());
+            return hit;
+        }
+        let mut warning: Option<(String, String)> = None;
+        let families = match self.style.family {
+            Family::ComputerModern => Some(("cmr", "cmss", "cmtt")),
+            Family::LatinModern => Some(("lmr", "lmss", "lmtt")),
+            Family::Times => None,
+        };
+        let resolved = match (families, face.tfm.clone()) {
+            (Some((rm, sf, tt)), Some(tfm)) => {
+                struct Metrics<'t> {
+                    tfm: &'t crate::tfm::Tfm,
+                    z: i32,
+                }
+                impl flashtex_microtype::FontMetrics for Metrics<'_> {
+                    fn char_width(&self, slot: u8) -> flashtex_microtype::Scaled {
+                        self.tfm.metrics(slot).map_or(0, |m| flashtex_microtype::arith::tfm_scaled(m.width, self.z))
+                    }
+                    fn quad(&self) -> flashtex_microtype::Scaled {
+                        self.tfm.param(6).map_or(0, |q| flashtex_microtype::arith::tfm_scaled(q, self.z))
+                    }
+                }
+                static CONFIG: OnceLock<flashtex_microtype::MicrotypeConfig> = OnceLock::new();
+                let font = flashtex_microtype::NfssFont {
+                    encoding: "T1".to_string(),
+                    family: rm.to_string(),
+                    series: if style.bold && !style.medium { "bx" } else { "m" }.to_string(),
+                    shape: if style.italic { "it" } else if style.slanted { "sl" } else { "n" }.to_string(),
+                    size: format!("{size}"),
+                };
+                let metrics = Metrics { tfm: &tfm, z: (size * 65536.0).round() as i32 };
+                let defaults = flashtex_microtype::NfssDefaults::latex("T1", rm, sf, tt);
+                match CONFIG.get_or_init(flashtex_microtype::MicrotypeConfig::bundled).resolve(&setup.options, &defaults, &font, &metrics) {
+                    Ok(r) => Some(Rc::new(r.params)),
+                    Err(e) => {
+                        let message = format!(
+                            "microtype setup for {}/{}/{}/{}/{} is not modelled ({e:?}); that font gets no protrusion or expansion",
+                            font.encoding, font.family, font.series, font.shape, font.size
+                        );
+                        warning = Some((format!("microtype:{}:{}", face.name, font.size), message));
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+        if let Some((k, message)) = &warning {
+            self.emit(Some(k.clone()), Diagnostic::warning("microtype_unsupported", message.clone(), Vec::new()));
+        }
+        MICROTYPE_FONTS.with(|c| {
+            let mut c = c.borrow_mut();
+            if c.len() >= 4096 {
+                c.clear();
+            }
+            c.insert(global_key, (resolved.clone(), warning));
+        });
+        self.microtype_fonts.insert(key, resolved.clone());
+        resolved
     }
 
     /// Builds a horizontal list. Returns paragraph-layout items, the
@@ -1423,7 +1599,7 @@ impl<'a> Context<'a> {
         }
         let mut params = self.line_params(false, self.style.baselineskip_pt, ParaStyle::Plain, 0.0);
         params.line_width = crate::table::MAX_DIMEN_PT;
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, None)?;
         let width = lines.lines.iter().map(|l| l.natural_width).fold(0.0, f64::max);
         let (first, last) = (lines.lines.first()?, lines.lines.last()?);
         let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth };
@@ -1442,14 +1618,13 @@ impl<'a> Context<'a> {
         let mut params = self.line_params(false, baselineskip, ParaStyle::Plain, 0.0);
         params.line_width = width;
         // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt`.
-        // paragraph-layout's `badness` is infinite above a stretch ratio of
-        // 1.29 (TeX §108: above 1290/297 = 4.34), so a loose `p{}` line TeX
-        // accepts at this tolerance is infeasible there and the entry can
-        // break differently; the kernel's parameters are kept regardless.
+        // paragraph-layout's `badness` is TeX's integer one (tex.web 108,
+        // infinite only above a stretch ratio of 1290/297 = 4.34), so loose
+        // lines TeX accepts at this tolerance are feasible here too.
         params.tolerance = 9999.0;
         params.emergency_stretch = 3.0 * em;
         params.hfuzz = 0.5;
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         let (first, last) = (lines.lines.first()?, lines.lines.last()?);
         let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth.max(strut_depth) };
@@ -1533,7 +1708,7 @@ impl<'a> Context<'a> {
             }
         }
         let params = self.line_params(indent, self.style.baselineskip_pt, style, hang_pt);
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
         let parskip = list_geom.map_or(self.style.parskip, |g| g.parsep);
@@ -1631,7 +1806,7 @@ impl<'a> Context<'a> {
             return None;
         }
         let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0);
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
         // (`\Large` is in force inside \@sect's group); the before/after
@@ -1912,7 +2087,7 @@ impl<'a> Context<'a> {
             return None;
         }
         let params = self.line_params(false, baselineskip_pt, ParaStyle::FlushLeft, 0.0);
-        let lines = self.break_paragraph(&list, &params, items)?;
+        let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         let vertical = VBlock {
             lines: line_extents(&lines),
             penalty_before: None,
