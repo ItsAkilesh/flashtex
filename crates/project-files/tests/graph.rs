@@ -469,6 +469,54 @@ fn nfc_nfd_reference_collision_does_not_duplicate_the_file() {
     assert_eq!(g.edges().len(), 2, "both references still resolve");
 }
 
+/// Issue #45 finding 3, the ext4 half of the story. APFS is normalization
+/// *insensitive*: a literal byte-for-byte lookup of the NFD spelling against
+/// an NFC file on disk already succeeds at the OS level (discovery's literal
+/// check is tried first, so it never even reaches the directory-listing
+/// fallback there), so a test that only exercises that would stay green on
+/// macOS whether or not discovery has any normalization awareness of its own
+/// — which is exactly how this regressed (green on macOS, `left: 1, right:
+/// 2` on the ubuntu runner: ext4 performs a literal byte comparison, so the
+/// NFD reference found no file at all and never resolved). This test creates
+/// *only* the NFC-spelled file and resolves it through a single NFD-spelled
+/// reference, deterministically (no threads, no probabilistic outcome): on a
+/// normalization-sensitive filesystem this can only succeed through the
+/// directory-listing fallback; see
+/// `graph::tests::directory_listing_fallback_finds_nfd_reference_against_nfc_file`
+/// in `src/graph.rs` for a unit test that exercises that exact fallback
+/// function directly, independent of the host filesystem's own behavior.
+#[test]
+fn nfd_only_reference_resolves_to_the_nfc_file_on_disk() {
+    let t = TempDir::new("nfc-nfd-ext4-sim");
+    let nfc_stem = "caf\u{e9}"; // "café", 'é' precomposed (NFC) -- the only file written to disk
+    let nfd_stem = "cafe\u{301}"; // "café", 'e' + combining acute (NFD) -- how it's referenced
+    t.write(&format!("{nfc_stem}.tex"), "Cafe content.");
+    t.write("main.tex", &format!("\\input{{{nfd_stem}}}"));
+
+    let g = ProjectGraph::discover(t.root(), &pp("main.tex")).unwrap();
+    assert!(g.diagnostics().is_empty(), "{:?}", g.diagnostics());
+
+    let cafe_files: Vec<&str> = g
+        .files()
+        .iter()
+        .filter(|f| f.path.as_str() != "main.tex")
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(
+        cafe_files.len(),
+        1,
+        "the single NFC file on disk must resolve exactly once, got {cafe_files:?}"
+    );
+    // Identity (not raw-byte) equality: whichever spelling the resolver kept
+    // as the winning candidate, it must be recognized as the same physical
+    // file as the on-disk NFC name.
+    assert_eq!(
+        ProjectPath::normalize(cafe_files[0]).unwrap(),
+        pp(&format!("{nfc_stem}.tex"))
+    );
+    assert_eq!(g.edges().len(), 1, "the NFD reference must resolve");
+}
+
 #[test]
 fn project_path_display_and_ordering() {
     let mut v = [pp("b/a.tex"), pp("a.tex"), pp("a/z.tex")];
