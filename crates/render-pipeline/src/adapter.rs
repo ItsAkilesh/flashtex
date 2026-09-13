@@ -384,6 +384,9 @@ pub enum Block {
         eject_before: bool,
         vspace_before: f64,
     },
+    /// A bare `algorithmic` environment (`crate::algorithms`), inserted by
+    /// source position after adaptation.
+    Algorithmic(std::rc::Rc<crate::typeset::algorithms::BareAlgorithm>),
     /// `\hrule` in vertical mode: a full-measure rule 0.4pt high with no
     /// interline glue on either side (TeX §1056 sets `prev_depth` to
     /// `ignore_depth`).
@@ -2544,7 +2547,7 @@ fn font_declaration(name: &str) -> Option<(&'static [crate::nfss::Command], bool
 /// so a size is never applied twice. The compiler's own table is the same
 /// one, but it resolves against its integer class size where the pipeline
 /// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
-fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+pub(crate) fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
     use flashtex_compiler::parser::FontSizeLevel as L;
     let Some(level) = level else { return 0 };
     // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge
@@ -4289,6 +4292,7 @@ mod tests {
                     .collect(),
                 Block::Rule { .. } => "R".to_string(),
                 Block::Picture { .. } => "P".to_string(),
+                Block::Algorithmic(_) => "A".to_string(),
                 Block::Chapter { .. } => "C".to_string(),
                 Block::Part { .. } => "P".to_string(),
                 Block::Chrome { .. } => "M".to_string(),

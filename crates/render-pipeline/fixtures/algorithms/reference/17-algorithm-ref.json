@@ -1,0 +1,219 @@
+{
+ "fixture": "17-algorithm-ref.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "We",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "first",
+   "x": 165.87,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "show",
+   "x": 186.428,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 211.118,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 259.019,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "and",
+   "x": 267.328,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 286.697,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 309.387,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "2.",
+   "x": 357.288,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "First",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "one",
+   "x": 143.731,
+   "baseline": 168.967
+  },
+  {
+   "page": 1,
+   "text": "Between",
+   "x": 148.712,
+   "baseline": 195.324
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 188.425,
+   "baseline": 195.324
+  },
+  {
+   "page": 1,
+   "text": "two",
+   "x": 205.58,
+   "baseline": 195.324
+  },
+  {
+   "page": 1,
+   "text": "algorithms.",
+   "x": 224.4,
+   "baseline": 195.324
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 218.924
+  },
+  {
+   "page": 1,
+   "text": "2",
+   "x": 189.162,
+   "baseline": 218.924
+  },
+  {
+   "page": 1,
+   "text": "Second",
+   "x": 198.208,
+   "baseline": 218.924
+  },
+  {
+   "page": 1,
+   "text": "two",
+   "x": 143.731,
+   "baseline": 231.373
+  },
+  {
+   "page": 1,
+   "text": "Both",
+   "x": 148.712,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "were",
+   "x": 173.477,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "referenced:",
+   "x": 196.478,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 247.725,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "and",
+   "x": 256.034,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "2.",
+   "x": 275.403,
+   "baseline": 257.73
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 172.96,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 209.225,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 222.862,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 235.366,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

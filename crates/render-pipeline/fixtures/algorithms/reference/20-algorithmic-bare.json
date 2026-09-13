@@ -1,0 +1,230 @@
+{
+ "fixture": "20-algorithmic-bare.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "An",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "algorithmic",
+   "x": 163.931,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "environment",
+   "x": 215.431,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "in",
+   "x": 271.641,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 282.155,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "text,",
+   "x": 298.204,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "without",
+   "x": 320.847,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 356.822,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "float.",
+   "x": 364.015,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 148.705
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 150.705,
+   "baseline": 148.704
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 159.168,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 171.9,
+   "baseline": 148.704
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 160.66
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 150.705,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 180.278,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "<",
+   "x": 188.741,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "3",
+   "x": 199.26,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 207.558,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 172.616
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 160.667,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 169.131,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 181.863,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "+1",
+   "x": 189.768,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 184.571
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 184.57
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 172.004,
+   "baseline": 184.57
+  },
+  {
+   "page": 1,
+   "text": "And",
+   "x": 133.768,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 155.628,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "paragraph",
+   "x": 172.792,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "continues",
+   "x": 220.446,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "after",
+   "x": 264.228,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "it.",
+   "x": 287.776,
+   "baseline": 198.517
+  },
+  {
+   "page": 1,
+   "text": "A",
+   "x": 148.712,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "new",
+   "x": 159.501,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "paragraph.",
+   "x": 179.987,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": []
+}

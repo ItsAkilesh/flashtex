@@ -1,0 +1,134 @@
+{
+ "fixture": "22-algorithm-plain-style.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Plain",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "float",
+   "x": 174.862,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "style:",
+   "x": 197.562,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 224.731,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "caption",
+   "x": 241.895,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "goes",
+   "x": 277.315,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "below.",
+   "x": 299.231,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 155.07
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 150.705,
+   "baseline": 155.069
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 159.168,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 171.9,
+   "baseline": 155.069
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 167.026
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 150.705,
+   "baseline": 167.025
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 158.718,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "2",
+   "x": 171.44,
+   "baseline": 167.025
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 252.517,
+   "baseline": 187.835
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 300.418,
+   "baseline": 187.835
+  },
+  {
+   "page": 1,
+   "text": "Plain",
+   "x": 312.6,
+   "baseline": 187.835
+  },
+  {
+   "page": 1,
+   "text": "style",
+   "x": 338.75,
+   "baseline": 187.835
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 211.746
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": []
+}

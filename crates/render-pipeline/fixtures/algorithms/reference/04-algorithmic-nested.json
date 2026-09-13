@@ -1,0 +1,336 @@
+{
+ "fixture": "04-algorithmic-nested.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Three",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "levels.",
+   "x": 177.517,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Nesting",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 169.66
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 150.705,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "true",
+   "x": 180.278,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 204.395,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 181.615
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 160.667,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 177.933,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 184.134,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 196.866,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "to",
+   "x": 205.165,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 218.677,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 227.974,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 193.57
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 170.63,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 181.716,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 186.987,
+   "baseline": 195.066
+  },
+  {
+   "page": 1,
+   "text": ">",
+   "x": 193.071,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "m",
+   "x": 203.59,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 215.654,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 205.526
+  },
+  {
+   "page": 1,
+   "text": "m",
+   "x": 180.593,
+   "baseline": 205.525
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 192.109,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 204.842,
+   "baseline": 205.525
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 210.104,
+   "baseline": 207.021
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 217.481
+  },
+  {
+   "page": 1,
+   "text": "else",
+   "x": 170.63,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 192.151,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 203.248,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 208.511,
+   "baseline": 218.976
+  },
+  {
+   "page": 1,
+   "text": "=",
+   "x": 214.595,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "m",
+   "x": 225.114,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 237.178,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "6:",
+   "x": 139.137,
+   "baseline": 229.436
+  },
+  {
+   "page": 1,
+   "text": "count",
+   "x": 180.593,
+   "baseline": 229.435
+  },
+  {
+   "page": 1,
+   "text": "it",
+   "x": 207.995,
+   "baseline": 229.435
+  },
+  {
+   "page": 1,
+   "text": "7:",
+   "x": 139.137,
+   "baseline": 241.391
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 170.63,
+   "baseline": 241.39
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 191.929,
+   "baseline": 241.39
+  },
+  {
+   "page": 1,
+   "text": "8:",
+   "x": 139.137,
+   "baseline": 253.346
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 160.667,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 181.966,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "9:",
+   "x": 139.137,
+   "baseline": 265.301
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 265.3
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 172.004,
+   "baseline": 265.3
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 293.594
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 269.294,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

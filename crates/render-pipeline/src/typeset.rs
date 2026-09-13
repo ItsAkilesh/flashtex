@@ -298,6 +298,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
     }
 }
 
+pub mod algorithms;
 pub mod floatpage;
 pub mod footnotes;
 mod toc;
@@ -5248,6 +5249,18 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                         }
                     }
                 }
+                after_heading = false;
+            }
+            Block::Algorithmic(algorithm) => {
+                let mut built = ctx.algorithm_flow_blocks(algorithm);
+                // `\addvspace\@topsep`: only the excess over the previous
+                // block's trailing skip.
+                if let (Some(first), Some(prev)) = (built.first_mut(), blocks.last()) {
+                    if let (Some(before), Some(after)) = (first.vertical.space_before, prev.vertical.space_after) {
+                        first.vertical.space_before = Some(((before.0 - after.0).max(0.0), 0.0, 0.0));
+                    }
+                }
+                blocks.extend(built);
                 after_heading = false;
             }
             Block::Rule {

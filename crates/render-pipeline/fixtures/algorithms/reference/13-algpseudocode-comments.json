@@ -1,0 +1,252 @@
+{
+ "fixture": "13-algpseudocode-comments.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Comments.",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Comments",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 169.312
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 150.705,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 156.907,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 169.639,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 181.267
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 150.705,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 180.278,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "<",
+   "x": 186.479,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 196.998,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 206.295,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 193.223
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 165.649,
+   "baseline": 193.222
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 171.85,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 184.583,
+   "baseline": 193.222
+  },
+  {
+   "page": 1,
+   "text": "+1",
+   "x": 190.226,
+   "baseline": 193.222
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 205.178
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 205.177
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 172.004,
+   "baseline": 205.177
+  },
+  {
+   "page": 1,
+   "text": "▷",
+   "x": 415.376,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "start",
+   "x": 423.685,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "at",
+   "x": 447.564,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "zero",
+   "x": 459.738,
+   "baseline": 169.311
+  },
+  {
+   "page": 1,
+   "text": "▷",
+   "x": 346.996,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "We",
+   "x": 355.295,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "have",
+   "x": 372.452,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 395.424,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "answer",
+   "x": 412.579,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 445.598,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 454.727,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "is",
+   "x": 461.477,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 471.502,
+   "baseline": 181.266
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 233.471
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 209.17,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

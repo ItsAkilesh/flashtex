@@ -1,0 +1,138 @@
+{
+ "fixture": "19-algorithm-renames.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Renamed",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "keywords.",
+   "x": 192.571,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Renames",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Input:",
+   "x": 133.768,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 169.827,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "graph",
+   "x": 178.125,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "G",
+   "x": 206.388,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "Output:",
+   "x": 133.768,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 178.544,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "spanning",
+   "x": 186.843,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "tree",
+   "x": 228.971,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 195.508
+  },
+  {
+   "page": 1,
+   "text": "build",
+   "x": 150.705,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "it",
+   "x": 176.163,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 221.863
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 199.5,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

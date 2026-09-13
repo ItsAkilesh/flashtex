@@ -15,6 +15,8 @@ use flashtex_compiler::{DocumentId, Span};
 pub enum FloatKind {
     Figure,
     Table,
+    /// algorithm.sty's float (`crate::algorithms`).
+    Algorithm,
 }
 
 impl FloatKind {
@@ -22,13 +24,16 @@ impl FloatKind {
         match self {
             FloatKind::Figure => "Figure",
             FloatKind::Table => "Table",
+            FloatKind::Algorithm => "Algorithm",
         }
     }
-    /// `\ftype@figure` = 1, `\ftype@table` = 2.
+    /// `\ftype@figure` = 1, `\ftype@table` = 2; float.sty's `\newfloat`
+    /// continues from 4 when `figure` exists (float.sty 24-27).
     pub fn type_bit(self) -> u32 {
         match self {
             FloatKind::Figure => 1,
             FloatKind::Table => 2,
+            FloatKind::Algorithm => 4,
         }
     }
 }
@@ -357,7 +362,9 @@ pub const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// `(float numbers per document in scan order, label key -> value)`.
 pub fn number(envs: &[Vec<FloatEnv>]) -> (Vec<Vec<u32>>, Vec<(String, String)>) {
-    let (mut figures, mut tables) = (0u32, 0u32);
+    // `algorithm` floats are numbered by `crate::algorithms::number`; `scan`
+    // never yields them.
+    let (mut figures, mut tables, mut algorithms) = (0u32, 0u32, 0u32);
     let mut numbers = Vec::new();
     let mut labels = Vec::new();
     for doc in envs {
@@ -367,6 +374,7 @@ pub fn number(envs: &[Vec<FloatEnv>]) -> (Vec<Vec<u32>>, Vec<(String, String)>) 
             let counter = match f.kind {
                 FloatKind::Figure => &mut figures,
                 FloatKind::Table => &mut tables,
+                FloatKind::Algorithm => &mut algorithms,
             };
             if has_caption {
                 *counter += 1;

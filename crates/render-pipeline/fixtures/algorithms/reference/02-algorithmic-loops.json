@@ -1,0 +1,450 @@
+{
+ "fixture": "02-algorithmic-loops.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Loops",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "follow.",
+   "x": 177.962,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Loops",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 171.597
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 150.705,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 167.97,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "=",
+   "x": 174.172,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 184.69,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "to",
+   "x": 192.989,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 206.5,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 215.797,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 183.552
+  },
+  {
+   "page": 1,
+   "text": "s",
+   "x": 160.667,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 168.107,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "s",
+   "x": 180.84,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "+",
+   "x": 187.722,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 197.682,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 195.508
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 172.004,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 207.463
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 150.705,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "all",
+   "x": 168.468,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "v",
+   "x": 183.729,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "∈",
+   "x": 191.676,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "V",
+   "x": 201.088,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 212.438,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 219.418
+  },
+  {
+   "page": 1,
+   "text": "visit",
+   "x": 160.667,
+   "baseline": 219.417
+  },
+  {
+   "page": 1,
+   "text": "v",
+   "x": 182.582,
+   "baseline": 219.417
+  },
+  {
+   "page": 1,
+   "text": "6:",
+   "x": 139.137,
+   "baseline": 231.373
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 231.372
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 172.004,
+   "baseline": 231.372
+  },
+  {
+   "page": 1,
+   "text": "7:",
+   "x": 139.137,
+   "baseline": 243.328
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 150.705,
+   "baseline": 243.327
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 180.278,
+   "baseline": 243.327
+  },
+  {
+   "page": 1,
+   "text": ">",
+   "x": 188.741,
+   "baseline": 243.327
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 199.26,
+   "baseline": 243.327
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 207.558,
+   "baseline": 243.327
+  },
+  {
+   "page": 1,
+   "text": "8:",
+   "x": 139.137,
+   "baseline": 255.283
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 160.667,
+   "baseline": 255.282
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 169.131,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 181.863,
+   "baseline": 255.282
+  },
+  {
+   "page": 1,
+   "text": "−",
+   "x": 189.768,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 199.729,
+   "baseline": 255.282
+  },
+  {
+   "page": 1,
+   "text": "9:",
+   "x": 139.137,
+   "baseline": 267.239
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 267.238
+  },
+  {
+   "page": 1,
+   "text": "while",
+   "x": 172.004,
+   "baseline": 267.238
+  },
+  {
+   "page": 1,
+   "text": "10:",
+   "x": 134.903,
+   "baseline": 279.194
+  },
+  {
+   "page": 1,
+   "text": "repeat",
+   "x": 150.705,
+   "baseline": 279.193
+  },
+  {
+   "page": 1,
+   "text": "11:",
+   "x": 134.903,
+   "baseline": 291.149
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 160.668,
+   "baseline": 291.148
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 168.681,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "y/2",
+   "x": 181.403,
+   "baseline": 291.148
+  },
+  {
+   "page": 1,
+   "text": "12:",
+   "x": 134.903,
+   "baseline": 303.104
+  },
+  {
+   "page": 1,
+   "text": "until",
+   "x": 150.705,
+   "baseline": 303.103
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 177.254,
+   "baseline": 303.103
+  },
+  {
+   "page": 1,
+   "text": "<",
+   "x": 185.267,
+   "baseline": 303.103
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 195.785,
+   "baseline": 303.103
+  },
+  {
+   "page": 1,
+   "text": "13:",
+   "x": 134.903,
+   "baseline": 315.059
+  },
+  {
+   "page": 1,
+   "text": "loop",
+   "x": 150.705,
+   "baseline": 315.058
+  },
+  {
+   "page": 1,
+   "text": "14:",
+   "x": 134.903,
+   "baseline": 327.015
+  },
+  {
+   "page": 1,
+   "text": "wait",
+   "x": 160.668,
+   "baseline": 327.014
+  },
+  {
+   "page": 1,
+   "text": "15:",
+   "x": 134.903,
+   "baseline": 338.97
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 338.969
+  },
+  {
+   "page": 1,
+   "text": "loop",
+   "x": 172.004,
+   "baseline": 338.969
+  },
+  {
+   "page": 1,
+   "text": "Done.",
+   "x": 148.712,
+   "baseline": 367.262
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 344.899,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

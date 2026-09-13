@@ -1,0 +1,234 @@
+{
+ "fixture": "01-algorithmic-basic.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Text",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "before",
+   "x": 171.958,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 201.872,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "algorithm.",
+   "x": 219.027,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Euclid’s",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "algorithm",
+   "x": 236.036,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 169.815
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 150.705,
+   "baseline": 169.814
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 159.168,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 171.9,
+   "baseline": 169.814
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 181.77
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 150.705,
+   "baseline": 181.769
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 161.791,
+   "baseline": 181.769
+  },
+  {
+   "page": 1,
+   "text": ">",
+   "x": 169.827,
+   "baseline": 181.769
+  },
+  {
+   "page": 1,
+   "text": "b",
+   "x": 180.346,
+   "baseline": 181.769
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 187.939,
+   "baseline": 181.769
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 193.725
+  },
+  {
+   "page": 1,
+   "text": "swap",
+   "x": 160.667,
+   "baseline": 193.724
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 185.357,
+   "baseline": 193.724
+  },
+  {
+   "page": 1,
+   "text": "values",
+   "x": 202.511,
+   "baseline": 193.724
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 205.681
+  },
+  {
+   "page": 1,
+   "text": "else",
+   "x": 150.705,
+   "baseline": 205.68
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 217.636
+  },
+  {
+   "page": 1,
+   "text": "return",
+   "x": 160.667,
+   "baseline": 217.635
+  },
+  {
+   "page": 1,
+   "text": "b",
+   "x": 199.186,
+   "baseline": 217.635
+  },
+  {
+   "page": 1,
+   "text": "6:",
+   "x": 139.137,
+   "baseline": 229.591
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 229.59
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 172.004,
+   "baseline": 229.59
+  },
+  {
+   "page": 1,
+   "text": "After",
+   "x": 148.712,
+   "baseline": 255.947
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 174.75,
+   "baseline": 255.947
+  },
+  {
+   "page": 1,
+   "text": "algorithm.",
+   "x": 191.915,
+   "baseline": 255.947
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 233.583,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

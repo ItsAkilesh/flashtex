@@ -1,0 +1,198 @@
+{
+ "fixture": "07-algorithmic-noend.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "No",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 164.483,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "lines.",
+   "x": 183.308,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Without",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 238.333,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 169.66
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 150.705,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 167.97,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "=",
+   "x": 174.172,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 184.69,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "to",
+   "x": 192.989,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 206.5,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 215.797,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 181.615
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 160.667,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 171.754,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "is",
+   "x": 178.513,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "odd",
+   "x": 188.528,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 208.176,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 193.57
+  },
+  {
+   "page": 1,
+   "text": "print",
+   "x": 170.63,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 195.283,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 205.526
+  },
+  {
+   "page": 1,
+   "text": "stop",
+   "x": 150.705,
+   "baseline": 205.525
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 235.756
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 211.455,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

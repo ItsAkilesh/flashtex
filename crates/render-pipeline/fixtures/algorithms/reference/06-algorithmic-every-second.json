@@ -1,0 +1,198 @@
+{
+ "fixture": "06-algorithmic-every-second.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Every",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "second",
+   "x": 177.387,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "line",
+   "x": 209.541,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "is",
+   "x": 228.356,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "numbered.",
+   "x": 238.38,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Frequency",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "one",
+   "x": 150.705,
+   "baseline": 168.967
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 180.923
+  },
+  {
+   "page": 1,
+   "text": "two",
+   "x": 150.705,
+   "baseline": 180.922
+  },
+  {
+   "page": 1,
+   "text": "three",
+   "x": 150.705,
+   "baseline": 192.878
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 204.834
+  },
+  {
+   "page": 1,
+   "text": "four",
+   "x": 150.705,
+   "baseline": 204.833
+  },
+  {
+   "page": 1,
+   "text": "five",
+   "x": 150.705,
+   "baseline": 216.788
+  },
+  {
+   "page": 1,
+   "text": "6:",
+   "x": 139.137,
+   "baseline": 228.744
+  },
+  {
+   "page": 1,
+   "text": "six",
+   "x": 150.705,
+   "baseline": 228.743
+  },
+  {
+   "page": 1,
+   "text": "seven",
+   "x": 150.705,
+   "baseline": 240.698
+  },
+  {
+   "page": 1,
+   "text": "8:",
+   "x": 139.137,
+   "baseline": 252.654
+  },
+  {
+   "page": 1,
+   "text": "eight",
+   "x": 150.705,
+   "baseline": 252.653
+  },
+  {
+   "page": 1,
+   "text": "nine",
+   "x": 150.705,
+   "baseline": 264.609
+  },
+  {
+   "page": 1,
+   "text": "10:",
+   "x": 134.903,
+   "baseline": 276.565
+  },
+  {
+   "page": 1,
+   "text": "ten",
+   "x": 150.705,
+   "baseline": 276.564
+  },
+  {
+   "page": 1,
+   "text": "eleven",
+   "x": 150.705,
+   "baseline": 288.519
+  },
+  {
+   "page": 1,
+   "text": "12:",
+   "x": 134.903,
+   "baseline": 300.475
+  },
+  {
+   "page": 1,
+   "text": "twelve",
+   "x": 150.705,
+   "baseline": 300.474
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 326.831
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 304.467,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

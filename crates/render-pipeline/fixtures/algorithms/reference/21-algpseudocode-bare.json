@@ -1,0 +1,182 @@
+{
+ "fixture": "21-algpseudocode-bare.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Pseudocode",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "in",
+   "x": 203.148,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 214.768,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "text.",
+   "x": 231.933,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 148.705
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 150.705,
+   "baseline": 148.704
+  },
+  {
+   "page": 1,
+   "text": "Count(n)",
+   "x": 204.196,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 160.66
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 165.649,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 182.914,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 189.116,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1,",
+   "x": 201.848,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 211.26,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 220.558,
+   "baseline": 160.659
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 172.616
+  },
+  {
+   "page": 1,
+   "text": "c",
+   "x": 180.593,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 187.674,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "c",
+   "x": 200.406,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "+1",
+   "x": 206.93,
+   "baseline": 172.615
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 184.571
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 165.649,
+   "baseline": 184.57
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 186.948,
+   "baseline": 184.57
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 196.526
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 196.525
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 172.004,
+   "baseline": 196.525
+  },
+  {
+   "page": 1,
+   "text": "A",
+   "x": 148.712,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "new",
+   "x": 159.501,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "paragraph.",
+   "x": 179.987,
+   "baseline": 210.473
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": []
+}

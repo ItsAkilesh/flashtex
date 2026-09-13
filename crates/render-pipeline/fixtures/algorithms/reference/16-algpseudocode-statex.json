@@ -1,0 +1,138 @@
+{
+ "fixture": "16-algpseudocode-statex.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Unnumbered",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "lines.",
+   "x": 207.958,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Statex",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 169.66
+  },
+  {
+   "page": 1,
+   "text": "first",
+   "x": 150.705,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 150.705,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "line",
+   "x": 159.004,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "without",
+   "x": 177.829,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 214.91,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "number",
+   "x": 223.209,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 193.57
+  },
+  {
+   "page": 1,
+   "text": "second",
+   "x": 150.705,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 217.481
+  },
+  {
+   "page": 1,
+   "text": "third",
+   "x": 150.705,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 245.774
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 221.473,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

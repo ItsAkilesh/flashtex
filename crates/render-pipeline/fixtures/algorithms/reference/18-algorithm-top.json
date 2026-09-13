@@ -1,0 +1,390 @@
+{
+ "fixture": "18-algorithm-top.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 134.502
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 134.502
+  },
+  {
+   "page": 1,
+   "text": "At",
+   "x": 198.208,
+   "baseline": 134.502
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 212.593,
+   "baseline": 134.502
+  },
+  {
+   "page": 1,
+   "text": "top",
+   "x": 229.758,
+   "baseline": 134.502
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 147.244
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 150.705,
+   "baseline": 147.243
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 159.168,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 171.9,
+   "baseline": 147.243
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 159.199
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 150.705,
+   "baseline": 159.198
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 158.718,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "2",
+   "x": 171.44,
+   "baseline": 159.198
+  },
+  {
+   "page": 1,
+   "text": "The",
+   "x": 148.712,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "float",
+   "x": 168.739,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "goes",
+   "x": 190.98,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "to",
+   "x": 212.438,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 224.163,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "top",
+   "x": 240.869,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "of",
+   "x": 258.129,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 269.024,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "page.",
+   "x": 285.731,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "Lorem",
+   "x": 312.697,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "ipsum",
+   "x": 343.406,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "dolor",
+   "x": 372.344,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "sit",
+   "x": 397.372,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "amet,",
+   "x": 410.812,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "consecte-",
+   "x": 438.124,
+   "baseline": 195.407
+  },
+  {
+   "page": 1,
+   "text": "tur",
+   "x": 133.768,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "adipiscing",
+   "x": 149.999,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "elit,",
+   "x": 196.146,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "sed",
+   "x": 215.759,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 232.57,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "eiusmod",
+   "x": 246.006,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "tempor",
+   "x": 284.691,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "incididunt",
+   "x": 318.912,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "ut",
+   "x": 365.833,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "labore",
+   "x": 378.162,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "et",
+   "x": 407.955,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "dolore",
+   "x": 419.186,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "magna",
+   "x": 448.7,
+   "baseline": 207.362
+  },
+  {
+   "page": 1,
+   "text": "aliqua.",
+   "x": 133.768,
+   "baseline": 219.317
+  },
+  {
+   "page": 1,
+   "text": "Ut",
+   "x": 148.712,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "enim",
+   "x": 163.246,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "ad",
+   "x": 187.467,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "minim",
+   "x": 201.181,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "veniam,",
+   "x": 232.043,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "quis",
+   "x": 269.021,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "nostrud",
+   "x": 289.7,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "exercitation",
+   "x": 326.181,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "ullamco",
+   "x": 380.594,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "laboris",
+   "x": 417.554,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "nisi",
+   "x": 449.885,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "ut",
+   "x": 468.073,
+   "baseline": 231.272
+  },
+  {
+   "page": 1,
+   "text": "aliquip",
+   "x": 133.768,
+   "baseline": 243.228
+  },
+  {
+   "page": 1,
+   "text": "ex",
+   "x": 166.698,
+   "baseline": 243.228
+  },
+  {
+   "page": 1,
+   "text": "ea",
+   "x": 179.712,
+   "baseline": 243.228
+  },
+  {
+   "page": 1,
+   "text": "commodo",
+   "x": 192.438,
+   "baseline": 243.228
+  },
+  {
+   "page": 1,
+   "text": "consequat.",
+   "x": 237.544,
+   "baseline": 243.228
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 124.802,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 138.44,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 165.129,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

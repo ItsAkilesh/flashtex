@@ -1,0 +1,168 @@
+{
+ "fixture": "03-algorithmic-require-ensure.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Pre-",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "and",
+   "x": 170.46,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "postconditions,",
+   "x": 189.84,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "unnumbered.",
+   "x": 258.859,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Conditions",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Require:",
+   "x": 133.768,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 181.338,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "≥",
+   "x": 190.088,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 200.606,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "Ensure:",
+   "x": 133.768,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 176.678,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "=",
+   "x": 184.691,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "x",
+   "x": 195.199,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 200.897,
+   "baseline": 179.938
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 143.731,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 151.744,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 164.466,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "print",
+   "x": 143.731,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "y",
+   "x": 175.143,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 235.756
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 213.392,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

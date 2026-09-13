@@ -1,0 +1,210 @@
+{
+ "fixture": "05-algorithmic-comments.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Comments.",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Comments",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 170.214
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 150.705,
+   "baseline": 170.213
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 156.907,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 169.639,
+   "baseline": 170.213
+  },
+  {
+   "page": 1,
+   "text": "{start",
+   "x": 177.938,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "at",
+   "x": 206.798,
+   "baseline": 170.213
+  },
+  {
+   "page": 1,
+   "text": "zero}",
+   "x": 218.981,
+   "baseline": 170.213
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 182.169
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 150.705,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 161.791,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "<",
+   "x": 167.993,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "n",
+   "x": 178.511,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 187.809,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "{check",
+   "x": 213.573,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 245.389,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "bound}",
+   "x": 262.554,
+   "baseline": 182.168
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 194.124
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 160.667,
+   "baseline": 194.123
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 166.869,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "i",
+   "x": 179.601,
+   "baseline": 194.123
+  },
+  {
+   "page": 1,
+   "text": "+1",
+   "x": 185.245,
+   "baseline": 194.123
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 206.079
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 206.078
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 172.004,
+   "baseline": 206.078
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 234.372
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 210.071,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

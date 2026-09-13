@@ -1,0 +1,348 @@
+{
+ "fixture": "08-algorithmic-wrap.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Long",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "statements.",
+   "x": 173.754,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "Wrapping",
+   "x": 198.208,
+   "baseline": 158.357
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 171.597
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 150.705,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "each",
+   "x": 167.97,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "vertex",
+   "x": 190.39,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "do",
+   "x": 220.586,
+   "baseline": 171.596
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 183.552
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 160.667,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 171.754,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "vertex",
+   "x": 188.918,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "has",
+   "x": 219.105,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "not",
+   "x": 236.878,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "been",
+   "x": 254.587,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "visited",
+   "x": 278.109,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "yet",
+   "x": 309.986,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "then",
+   "x": 326.594,
+   "baseline": 183.551
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 195.508
+  },
+  {
+   "page": 1,
+   "text": "mark",
+   "x": 170.63,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 196.979,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "vertex",
+   "x": 214.721,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "as",
+   "x": 245.506,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "visited",
+   "x": 258.322,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "and",
+   "x": 290.787,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "push",
+   "x": 310.744,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "every",
+   "x": 335.184,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "one",
+   "x": 362.084,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "of",
+   "x": 380.943,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "its",
+   "x": 392.875,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "neighbours",
+   "x": 407.351,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "onto",
+   "x": 458.387,
+   "baseline": 195.507
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 170.63,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "stack",
+   "x": 187.785,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "so",
+   "x": 213.304,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "that",
+   "x": 225.532,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "they",
+   "x": 247.125,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "are",
+   "x": 269.538,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "explored",
+   "x": 286.166,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "later",
+   "x": 326.329,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "in",
+   "x": 349.599,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "depth-first",
+   "x": 361.22,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "order",
+   "x": 410.006,
+   "baseline": 207.462
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 219.418
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 160.667,
+   "baseline": 219.417
+  },
+  {
+   "page": 1,
+   "text": "if",
+   "x": 181.966,
+   "baseline": 219.417
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 231.373
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 231.372
+  },
+  {
+   "page": 1,
+   "text": "for",
+   "x": 172.004,
+   "baseline": 231.372
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 257.729
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 148.656,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 162.295,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 235.365,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

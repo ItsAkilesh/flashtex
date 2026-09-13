@@ -1,0 +1,354 @@
+{
+ "fixture": "12-algpseudocode-procedures.tex",
+ "engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "pages": 1,
+ "words": [
+  {
+   "page": 1,
+   "text": "Procedures",
+   "x": 148.712,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "and",
+   "x": 200.157,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "functions.",
+   "x": 219.526,
+   "baseline": 134.757
+  },
+  {
+   "page": 1,
+   "text": "Algorithm",
+   "x": 133.768,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 189.162,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Procedures",
+   "x": 198.208,
+   "baseline": 156.42
+  },
+  {
+   "page": 1,
+   "text": "Require:",
+   "x": 133.768,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "a,",
+   "x": 181.338,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "b",
+   "x": 191.036,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "≥",
+   "x": 198.082,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "0",
+   "x": 208.59,
+   "baseline": 169.659
+  },
+  {
+   "page": 1,
+   "text": "Ensure:",
+   "x": 133.768,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "the",
+   "x": 176.678,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "greatest",
+   "x": 193.833,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "common",
+   "x": 231.558,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "divisor",
+   "x": 271.404,
+   "baseline": 181.614
+  },
+  {
+   "page": 1,
+   "text": "1:",
+   "x": 139.137,
+   "baseline": 193.57
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 150.705,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "Euclid(a,",
+   "x": 204.196,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "b)",
+   "x": 251.501,
+   "baseline": 193.569
+  },
+  {
+   "page": 1,
+   "text": "2:",
+   "x": 139.137,
+   "baseline": 205.526
+  },
+  {
+   "page": 1,
+   "text": "r",
+   "x": 165.649,
+   "baseline": 205.525
+  },
+  {
+   "page": 1,
+   "text": "←",
+   "x": 173.192,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "Mod(a,",
+   "x": 186.473,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "b)",
+   "x": 222.439,
+   "baseline": 205.525
+  },
+  {
+   "page": 1,
+   "text": "3:",
+   "x": 139.137,
+   "baseline": 217.481
+  },
+  {
+   "page": 1,
+   "text": "return",
+   "x": 165.649,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "r",
+   "x": 200.84,
+   "baseline": 217.48
+  },
+  {
+   "page": 1,
+   "text": "4:",
+   "x": 139.137,
+   "baseline": 229.436
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 229.435
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 172.004,
+   "baseline": 229.435
+  },
+  {
+   "page": 1,
+   "text": "5:",
+   "x": 139.137,
+   "baseline": 241.391
+  },
+  {
+   "page": 1,
+   "text": "function",
+   "x": 150.705,
+   "baseline": 241.39
+  },
+  {
+   "page": 1,
+   "text": "Mod(a,",
+   "x": 195.076,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "b)",
+   "x": 231.053,
+   "baseline": 241.39
+  },
+  {
+   "page": 1,
+   "text": "6:",
+   "x": 139.137,
+   "baseline": 253.346
+  },
+  {
+   "page": 1,
+   "text": "return",
+   "x": 165.649,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "a",
+   "x": 200.84,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "mod",
+   "x": 208.875,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "b",
+   "x": 230.742,
+   "baseline": 253.345
+  },
+  {
+   "page": 1,
+   "text": "7:",
+   "x": 139.137,
+   "baseline": 265.301
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 265.3
+  },
+  {
+   "page": 1,
+   "text": "function",
+   "x": 172.004,
+   "baseline": 265.3
+  },
+  {
+   "page": 1,
+   "text": "8:",
+   "x": 139.137,
+   "baseline": 277.257
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 150.705,
+   "baseline": 277.256
+  },
+  {
+   "page": 1,
+   "text": "Main",
+   "x": 204.196,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "9:",
+   "x": 139.137,
+   "baseline": 289.212
+  },
+  {
+   "page": 1,
+   "text": "Euclid(6,",
+   "x": 165.649,
+   "baseline": null
+  },
+  {
+   "page": 1,
+   "text": "4)",
+   "x": 212.669,
+   "baseline": 289.211
+  },
+  {
+   "page": 1,
+   "text": "10:",
+   "x": 134.903,
+   "baseline": 301.167
+  },
+  {
+   "page": 1,
+   "text": "end",
+   "x": 150.705,
+   "baseline": 301.166
+  },
+  {
+   "page": 1,
+   "text": "procedure",
+   "x": 172.004,
+   "baseline": 301.166
+  },
+  {
+   "page": 1,
+   "text": "End.",
+   "x": 148.712,
+   "baseline": 331.397
+  },
+  {
+   "page": 1,
+   "text": "1",
+   "x": 303.133,
+   "baseline": 702.627
+  }
+ ],
+ "rules": [
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 146.72,
+   "width": 343.711,
+   "height": 0.797
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 160.358,
+   "width": 343.711,
+   "height": 0.398
+  },
+  {
+   "page": 1,
+   "x": 133.768,
+   "top": 307.096,
+   "width": 343.711,
+   "height": 0.398
+  }
+ ]
+}

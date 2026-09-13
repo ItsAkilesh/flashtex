@@ -21,8 +21,8 @@ use std::rc::Rc;
 
 use flashtex_compiler::Span;
 
-use crate::adapter::{Item as AItem, ParaStyle};
-use crate::display::{self, Diagnostic, ImageResource, Provenance, Tick};
+use crate::adapter::{Item as AItem, ParaStyle, TextStyle};
+use crate::display::{self, Diagnostic, ImageResource, Paint, Provenance, Tick};
 use crate::floats::FloatKind;
 use crate::graphics::{GraphicBox, BP_PER_PT};
 use crate::pagebuild::{self, badness, BuiltPage, PageParams, Placed, VItem, AWFUL_BAD, DEPLORABLE, EJECT_PENALTY, INF_BAD, INF_PENALTY};
@@ -50,6 +50,17 @@ pub enum FloatPart {
     Graphic(PreparedGraphic),
     /// The caption paragraph's items, `Figure~N: ` prefix included.
     Caption { items: Vec<AItem> },
+    /// `\hrule height<h>` across the box (float.sty's `ruled` style,
+    /// `crate::algorithms`): no interline glue after it.
+    Rule { height: f64, span: Span },
+    /// `\kern`/`\vskip` of `pt` plus `em` of the body font.
+    Kern { pt: f64, em: f64 },
+    /// A float.sty caption (`\floatc@ruled`, `\floatc@plain`): a paragraph
+    /// without `\abovecaptionskip`, centred when `center_if_fits` and it
+    /// fits on one line.
+    StyleCaption { items: Vec<AItem>, center_if_fits: bool },
+    /// One pseudocode statement line.
+    AlgLine(Box<super::algorithms::AlgLine>),
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +103,8 @@ enum Elem {
     /// A caption line: block/line in `blocks`, baseline from the box top.
     Line { block: usize, line: usize, baseline: f64, height: f64, depth: f64 },
     Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, provenance: Provenance },
+    /// A rule: its top from the box top.
+    Rule { top: f64, height: f64, width: f64, provenance: Provenance },
 }
 
 struct FloatBox {
@@ -162,6 +175,59 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
                     elems.push(Elem::Line { block: bi, line: li, baseline: b, height: line.height, depth: line.depth });
                 }
                 blocks.push(block);
+            }
+            FloatPart::Rule { height, span } => {
+                flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
+                elems.push(Elem::Rule { top: y, height: *height, width: tw, provenance: Provenance::Source(ctx.source(*span)) });
+                y += height;
+                // A rule leaves `\prevdepth` at `ignore_depth` (tex.web §1056).
+                prev_depth = None;
+            }
+            FloatPart::Kern { pt, em } => {
+                flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
+                y += pt + em * ctx.text_params(TextStyle::default(), s.body_size_pt).quad;
+            }
+            FloatPart::StyleCaption { items, center_if_fits } => {
+                flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
+                let Some(mut block) = ctx.paragraph_block(items, false, true, false, ParaStyle::Plain, None) else { continue };
+                let lines = &block.block.lines.lines;
+                if *center_if_fits && lines.len() == 1 && lines[0].natural_width <= tw + 1e-6 {
+                    if let Some(b) = ctx.paragraph_block(items, false, true, false, ParaStyle::Center, None) {
+                        block = b;
+                    }
+                }
+                // float.sty appends the caption with `\unvbox\@floatcapt`: no
+                // interline glue before its first line.
+                prev_depth = None;
+                let bi = blocks.len();
+                for (li, line) in block.block.lines.lines.iter().enumerate() {
+                    let b = add_box(line.height, line.depth, &mut y, &mut prev_depth);
+                    elems.push(Elem::Line { block: bi, line: li, baseline: b, height: line.height, depth: line.depth });
+                }
+                blocks.push(block);
+            }
+            FloatPart::AlgLine(line) => {
+                flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
+                if line.no_text {
+                    // `\item[]\nointerlineskip` and an empty line (algorithmicx.sty 194).
+                    prev_depth = None;
+                    add_box(0.0, 0.0, &mut y, &mut prev_depth);
+                    continue;
+                }
+                match ctx.algorithm_line_block(line) {
+                    Some(block) => {
+                        let bi = blocks.len();
+                        for (li, l) in block.block.lines.lines.iter().enumerate() {
+                            let b = add_box(l.height, l.depth, &mut y, &mut prev_depth);
+                            elems.push(Elem::Line { block: bi, line: li, baseline: b, height: l.height, depth: l.depth });
+                        }
+                        blocks.push(block);
+                    }
+                    // An `\item` without material still sets an empty line.
+                    None => {
+                        add_box(0.0, 0.0, &mut y, &mut prev_depth);
+                    }
+                }
             }
         }
     }
@@ -393,6 +459,19 @@ impl Placer<'_> {
         for e in &b.elems {
             match e {
                 Elem::Line { block, line, baseline, height, depth } => lines.push(Placed { payload: (*block, *line), baseline: top + baseline, height: *height, depth: *depth }),
+                Elem::Rule { top: rule_top, height, width, provenance } => {
+                    self.images.push((
+                        page,
+                        display::Item::Rule(display::Rule {
+                            x: Tick::from_tex_pt(self.text_x),
+                            top: Tick::from_tex_pt(self.text_y + top + rule_top),
+                            width: Tick::from_tex_pt(*width),
+                            height: Tick::from_tex_pt(*height),
+                            paint: Paint::BLACK,
+                            provenance: provenance.clone(),
+                        }),
+                    ));
+                }
                 Elem::Image { x, baseline, gbox, resource, provenance } => {
                     let Some(resource) = resource else { continue };
                     let left = self.text_x + x;
