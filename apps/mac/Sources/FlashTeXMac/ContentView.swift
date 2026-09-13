@@ -402,6 +402,7 @@ private struct StatusBar: View {
             }
             Label(route, systemImage: routeIcon)
                 .help(model.isFixture ? "Not a real compile." : (model.controllerAttached ? model.controllerStatus : model.workerStatus))
+            WordCountStatusItem() // GH68: live word count + breakdown popover (WordCountStatusView.swift)
             let diags = model.displayedDiagnostics
             if !diags.isEmpty {
                 let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)

@@ -153,6 +153,48 @@ final class DocumentStatisticsTests: XCTestCase {
 
     // MARK: real-world fixture (evidence for the GH68 gate: does not regress on HW1-sized docs)
 
+    /// Perf evidence for the GH68 gate ("must not regress typing latency"):
+    /// best-of-5 scan time for HW1 and a synthesized ~500 KB document, printed
+    /// unconditionally; the bound (well under the 300 ms debounce interval,
+    /// which itself runs off the main thread) is only enforced under a quiet
+    /// 1-minute load average, matching `CompletionLatencyTests`' convention.
+    func testScanTimeOnHW1AndA500KBDocument() throws {
+        guard let repo = ProcessInfo.processInfo.environment["FLASHTEX_REPO"] else {
+            throw XCTSkip("FLASHTEX_REPO not set; run via `FLASHTEX_REPO=$(git rev-parse --show-toplevel) swift test`")
+        }
+        var load = [0.0, 0.0, 0.0]
+        getloadavg(&load, 3)
+        let quiet = load[0] < 20
+
+        func bestOf(_ n: Int, _ body: () -> Void) -> Double {
+            var best = Double.greatestFiniteMagnitude
+            for _ in 0..<n {
+                let start = DispatchTime.now()
+                body()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+                best = min(best, ms)
+            }
+            return best
+        }
+
+        let hw1URL = URL(fileURLWithPath: repo).appendingPathComponent("fixtures/real-world/hw1/HW1.tex")
+        let hw1 = try String(contentsOf: hw1URL, encoding: .utf8)
+        let hw1Ms = bestOf(5) { _ = DocumentStatistics.analyze(hw1) }
+
+        // Repeat HW1's own content (real LaTeX shape: prose, math, sections,
+        // comments, macros) out to ~500 KB rather than synthetic filler.
+        var big = hw1
+        while big.utf8.count < 500_000 { big += hw1 }
+        let bigMs = bestOf(5) { _ = DocumentStatistics.analyze(big) }
+
+        print("[DocumentStatistics perf] HW1 (\(hw1.utf8.count) bytes): \(String(format: "%.2f", hw1Ms)) ms; "
+              + "500KB doc (\(big.utf8.count) bytes): \(String(format: "%.2f", bigMs)) ms; load1=\(load[0]) quiet=\(quiet)")
+
+        guard quiet else { throw XCTSkip("1-min load \(load[0]) >= 20; timing not enforced, see printed numbers") }
+        XCTAssertLessThan(hw1Ms, 20, "HW1-sized scan should be well under the 300 ms debounce interval")
+        XCTAssertLessThan(bigMs, 150, "a 500 KB scan should still leave headroom under the 300 ms debounce interval")
+    }
+
     func testHW1FixtureCountsAreSane() throws {
         guard let repo = ProcessInfo.processInfo.environment["FLASHTEX_REPO"] else {
             throw XCTSkip("FLASHTEX_REPO not set; run via `FLASHTEX_REPO=$(git rev-parse --show-toplevel) swift test`")
