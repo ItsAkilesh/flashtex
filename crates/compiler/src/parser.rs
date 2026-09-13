@@ -381,6 +381,9 @@ const BUILT_INS: &[&str] = &[
     "caption",
     "item",
     "includegraphics",
+    "url",
+    "href",
+    "nolinkurl",
     "hfill",
     "hfil",
     "hspace",
@@ -585,6 +588,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style_stack: Vec::new(),
         env_styles: Vec::new(),
         list_spacing: HashMap::new(),
+        noted_unclickable_link: false,
     };
     let blocks = p.document();
 
@@ -665,6 +669,10 @@ struct P<'a> {
     /// runs, so a later `\setlist` does not retroactively change an
     /// already-open list.
     list_spacing: HashMap<String, ListSpacing>,
+    /// Set once `\url`/`\href` has already produced the one honest
+    /// "links are not clickable yet" diagnostic (see `note_links_unclickable`),
+    /// so a document with many links gets a single notice, not one per use.
+    noted_unclickable_link: bool,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -952,6 +960,31 @@ impl P<'_> {
                     Some(span),
                     Some("omitted the image and continued".into()),
                 ));
+            }
+            // See `url_argument` for why the URL is read from raw source
+            // bytes rather than the ordinary token stream, and
+            // `note_links_unclickable` for the once-per-document diagnostic.
+            "url" => {
+                let space_before = self.space_precedes(self.i - 1);
+                let (text, arg_span) = self.url_argument(name, span);
+                let full_span = span.merge(arg_span);
+                self.note_links_unclickable(full_span);
+                self.push_url_text(&text, full_span, space_before, para);
+            }
+            // `\nolinkurl`: url.sty-style literal, monospaced text with no
+            // hyperlink at all, so it never needs the "not clickable" notice
+            // — nothing here was ever meant to be clickable.
+            "nolinkurl" => {
+                let space_before = self.space_precedes(self.i - 1);
+                let (text, arg_span) = self.url_argument(name, span);
+                self.push_url_text(&text, span.merge(arg_span), space_before, para);
+            }
+            "href" => {
+                let (_url, url_span) = self.url_argument(name, span);
+                let (text_tokens, text_span) = self.required_group(name, span.merge(url_span));
+                self.note_links_unclickable(span.merge(text_span));
+                let style = self.style;
+                para.extend(self.inlines_from_tokens(text_tokens, style));
             }
             _ if style_command(name) => {
                 self.skip_spaces();
@@ -2120,6 +2153,151 @@ impl P<'_> {
         )
     }
 
+    /// Reads a `\url`/`\nolinkurl`/`\href` URL argument as literal source
+    /// text, bypassing the ordinary token stream.
+    ///
+    /// Real `url.sty` works by temporarily changing category codes so `%
+    /// # _ ~ &` — otherwise a comment, a macro-parameter marker, a math
+    /// subscript, and (not modelled here) an active tie and alignment tab —
+    /// read as plain "other" characters for the duration of the argument.
+    /// This compiler tokenizes the whole document once up front (see
+    /// `lexer.rs`), with no notion of a mid-document catcode change, so the
+    /// same effect is reached by re-reading the exact source bytes between
+    /// the braces directly instead of trusting the tokens already produced
+    /// for that range — and then re-tokenizing everything after the closing
+    /// brace, because the ordinary tokenizer may have already misread part
+    /// of it (a literal `%` inside the URL otherwise starts a real comment
+    /// that swallows the rest of the physical line, closing brace included).
+    ///
+    /// Only `\{` and `\}` are recognised as escapes, for a literal brace
+    /// inside the URL; an unescaped `{`/`}` still opens/closes a nested
+    /// group that does not end the argument, matching `required_group`'s
+    /// own depth balancing so a URL is never truncated by a brace it
+    /// happens to contain.
+    fn url_argument(&mut self, command: &str, command_span: Span) -> (String, Span) {
+        self.skip_spaces();
+        let open = match self.peek() {
+            Some(token) if token.kind == TokenKind::LBrace => token.span,
+            _ => {
+                self.diags.push(Diagnostic::error(
+                    format!("\\{command} requires a braced argument"),
+                    Some(command_span),
+                    Some("used an empty argument and continued".into()),
+                ));
+                return (String::new(), command_span);
+            }
+        };
+        let document = open.document;
+        let source = self.documents[document.0].text;
+        let mut depth = 1usize;
+        let mut content = String::new();
+        let mut pos = open.end;
+        let close_end = loop {
+            let Some(ch) = source[pos..].chars().next() else {
+                self.diags.push(Diagnostic::error(
+                    format!("argument to \\{command} is missing its closing brace"),
+                    Some(open),
+                    Some("closed the argument at end of input".into()),
+                ));
+                break pos;
+            };
+            let ch_len = ch.len_utf8();
+            match ch {
+                '\\' if matches!(source[pos + ch_len..].chars().next(), Some('{' | '}')) => {
+                    let escaped = source[pos + ch_len..].chars().next().unwrap();
+                    content.push(escaped);
+                    pos += ch_len + escaped.len_utf8();
+                }
+                '{' => {
+                    depth += 1;
+                    content.push(ch);
+                    pos += ch_len;
+                }
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break pos + ch_len;
+                    }
+                    content.push(ch);
+                    pos += ch_len;
+                }
+                _ => {
+                    content.push(ch);
+                    pos += ch_len;
+                }
+            }
+        };
+        let span = Span::in_document(document, open.start, close_end);
+        self.resync_after_raw_group(document, close_end);
+        (content, span)
+    }
+
+    /// Discards every already-tokenized token from a raw-scanned group (see
+    /// `url_argument`) and re-tokenizes everything from `close_end` onward,
+    /// so a `%`/etc. the ordinary tokenizer misread inside the group cannot
+    /// corrupt what follows it. `self.i` is left pointing at the group's
+    /// opening `{` token, which this replaces along with everything after.
+    fn resync_after_raw_group(&mut self, document: DocumentId, close_end: usize) {
+        self.t.truncate(self.i);
+        let source = self.documents[document.0].text;
+        let suffix = tokenize_document(&source[close_end..], document)
+            .into_iter()
+            .map(|token| InputToken {
+                token: Token {
+                    kind: token.kind,
+                    span: Span::in_document(
+                        document,
+                        token.span.start + close_end,
+                        token.span.end + close_end,
+                    ),
+                },
+                expansion_depth: 0,
+                maps_to_invocation: false,
+            });
+        self.t.extend(suffix);
+    }
+
+    /// Pushes literal `\url`/`\nolinkurl` text as one or more `Inline::Text`
+    /// runs, split at `URL_BREAK_AFTER` characters (see its doc comment) so
+    /// the layout can wrap a long URL without ever inserting a hyphen.
+    fn push_url_text(
+        &mut self,
+        text: &str,
+        span: Span,
+        space_before: bool,
+        para: &mut Vec<Inline>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let style = apply_style(self.style, "ttfamily");
+        for (index, segment) in url_segments(text).into_iter().enumerate() {
+            para.push(Inline::Text {
+                text: segment.to_string(),
+                span,
+                style,
+                space_before: index == 0 && space_before,
+            });
+        }
+    }
+
+    /// Emits the one honest "links are not clickable yet" diagnostic the
+    /// first time `\url`/`\href` is used in this document (see
+    /// `noted_unclickable_link`): `docs/contracts/runtime-v1.md` has no link
+    /// or annotation item, so a real hyperlink cannot be produced yet, but
+    /// the URL/text itself is still typeset faithfully.
+    fn note_links_unclickable(&mut self, span: Span) {
+        if self.noted_unclickable_link {
+            return;
+        }
+        self.noted_unclickable_link = true;
+        self.diags.push(Diagnostic::warning(
+            "links are not clickable in the preview/PDF yet",
+            Some(span),
+            Some("typeset the link text without an active hyperlink annotation".into()),
+        ));
+    }
+
     /// Brackets stay ordinary lexer word characters, preserving normal text.
     fn optional_bracket_argument(&mut self) -> Option<(String, Span)> {
         self.skip_spaces();
@@ -2733,6 +2911,34 @@ fn token_text(tokens: &[InputToken]) -> String {
         }
     }
     result
+}
+
+/// Characters after which `url.sty` allows a URL to break onto a new line
+/// (its `\UrlBreaks` default set, trimmed to the characters that actually
+/// show up in real URLs), with no hyphen ever inserted at the break — see
+/// `url_segments` and `P::push_url_text`.
+const URL_BREAK_AFTER: &[char] = &['/', '.', '-', '?', '&', '#', '=', '~', '+'];
+
+/// Splits literal `\url`/`\nolinkurl` text into the runs `LayoutCursor::place`
+/// should lay out independently, so a long URL can wrap at a
+/// `URL_BREAK_AFTER` character without ever inserting a hyphen: each run
+/// keeps its trailing break character, since real `url.sty` breaks *after*
+/// `/`, `.`, ... rather than before it, and `place` already starts a new
+/// line for whichever run does not fit.
+fn url_segments(text: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    for (index, ch) in text.char_indices() {
+        if URL_BREAK_AFTER.contains(&ch) {
+            let end = index + ch.len_utf8();
+            segments.push(&text[start..end]);
+            start = end;
+        }
+    }
+    if start < text.len() {
+        segments.push(&text[start..]);
+    }
+    segments
 }
 
 fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
@@ -3741,5 +3947,132 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["A", "B"]
         );
+    }
+
+    #[test]
+    fn url_is_typeset_literally_in_courier_with_one_link_diagnostic() {
+        use layout::Font;
+        // `%`, `#`, `_`, `~`, and `&` all have some other special meaning to
+        // the ordinary tokenizer (comment, none, math subscript, none, none)
+        // — `\url` must still take every one of them literally. The URL is
+        // laid out as several break-opportunity runs (see `url_segments`),
+        // which is only visible in wrapping; concatenated, it must still
+        // read back exactly as written, with "now." never swallowed by the
+        // literal '%' as a stray comment.
+        let url = "http://ex.com/a_b~c#d&e%f";
+        let source = format!(r"See \url{{{url}}} now.");
+        let (parsed, items) = items(&source);
+        assert_eq!(items.first().unwrap().text, "See");
+        assert_eq!(items.last().unwrap().text, "now.");
+        let url_items = &items[1..items.len() - 1];
+        assert_eq!(
+            url_items
+                .iter()
+                .map(|i| i.text.as_str())
+                .collect::<String>(),
+            url,
+            "the literal URL must survive intact across its break-opportunity runs"
+        );
+        assert!(url_items.iter().all(|i| i.font == Font::Courier));
+        assert_eq!(
+            parsed
+                .diagnostics
+                .iter()
+                .filter(|d| d.message.contains("not clickable"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn url_diagnostic_is_emitted_once_per_document_not_once_per_use() {
+        let source = r"\url{http://a.com} and \url{http://b.com} and \href{http://c.com}{link}";
+        let (parsed, _) = items(source);
+        assert_eq!(
+            parsed
+                .diagnostics
+                .iter()
+                .filter(|d| d.message.contains("not clickable"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn href_renders_only_its_text_argument_in_the_current_font() {
+        use layout::Font;
+        let source = r"Plain \textbf{\href{http://example.com/secret}{Click here}} end.";
+        let (parsed, items) = items(source);
+        let texts: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(texts, ["Plain", "Click", "here", "end."]);
+        assert_eq!(font_of(&items, "Click"), Font::TimesBold);
+        assert!(
+            !items.iter().any(|i| i.text.contains("secret")),
+            "the URL itself must never be typeset, only the link text"
+        );
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("not clickable")));
+    }
+
+    #[test]
+    fn nolinkurl_is_literal_courier_text_with_no_link_diagnostic() {
+        use layout::Font;
+        let source = r"\nolinkurl{http://example.com/x_y}";
+        let (parsed, items) = items(source);
+        assert_eq!(
+            items.iter().map(|i| i.text.as_str()).collect::<String>(),
+            "http://example.com/x_y"
+        );
+        assert!(items.iter().all(|i| i.font == Font::Courier));
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "\\nolinkurl was never a link, so it needs no 'not clickable' notice: {:?}",
+            parsed.diagnostics
+        );
+    }
+
+    #[test]
+    fn long_url_wraps_at_break_characters_without_a_hyphen() {
+        // A URL far wider than the text measure, built almost entirely from
+        // `URL_BREAK_AFTER` characters, must still wrap across at least two
+        // lines (rather than overflow the page unbroken) and never gain a
+        // hyphen at the break.
+        let long_url = "http://example.com/".to_string() + &"segment/".repeat(40);
+        let source = format!(r"\url{{{long_url}}}");
+        let (parsed, pages) = pages(&source);
+        assert!(parsed
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != crate::diagnostics::Severity::Error));
+        let lines: std::collections::BTreeSet<_> = pages[0]
+            .items
+            .iter()
+            .map(|item| item.baseline_y_pt.to_bits())
+            .collect();
+        assert!(
+            lines.len() > 1,
+            "a URL wider than the measure must wrap onto more than one line"
+        );
+        assert!(
+            pages[0].items.iter().all(|item| !item.text.contains('-')),
+            "url.sty never inserts a hyphen at a URL line break: {:?}",
+            pages[0].items.iter().map(|i| &i.text).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn url_segments_break_after_but_not_before_the_delimiter() {
+        // Adjacent break characters (the `//` in `http://`) each end their
+        // own run rather than being merged, which is harmless: `place`
+        // glues consecutive zero-`space_before` runs back together whenever
+        // they fit on the line.
+        assert_eq!(
+            url_segments("http://ex.com/a/b.c?d&e"),
+            ["http:/", "/", "ex.", "com/", "a/", "b.", "c?", "d&", "e"]
+        );
+        assert_eq!(url_segments("plain"), ["plain"]);
+        assert!(url_segments("").is_empty());
     }
 }
