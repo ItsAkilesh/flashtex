@@ -20,12 +20,13 @@ may paint one rule over the table; so on both sides rules that continue one
 another (same x and width within 0.01 bp, touching vertically, or same top
 and height touching horizontally) are merged before comparison.
 
-A fixture passes when both sides have one page, every word aligns and lies
-within 0.5 bp of its reference origin in x and y, math extension glyphs (cmex:
-big operators and delimiters, whose painted origin legitimately differs) have
-the same sorted distinct x origins within 0.5 bp, the merged rule counts are
-equal, and every reference rule is matched by a distinct candidate rule whose
-x, top, width and height are all within 0.1 bp.
+A fixture passes when both sides have the same number of pages (a longtable
+breaks across several), every word aligns and lies within 0.5 bp of its
+reference origin in x and y, math extension glyphs (cmex: big operators and
+delimiters, whose painted origin legitimately differs) have the same sorted
+distinct x origins within 0.5 bp, the merged rule counts are equal, and every
+reference rule is matched by a distinct candidate rule whose x, top, width
+and height are all within 0.1 bp.
 """
 import argparse, json, os, subprocess, sys, tempfile
 
@@ -334,7 +335,9 @@ def cmd_check(args):
                 m_ok, m_worst = match_rules(rr, cr)
                 rn, rok, rworst = rn + len(rr), rok + m_ok, max(rworst, m_worst)
             ncand_rules = sum(len(r) for _, _, r in cand)
-            good = (len(ref) == len(cand) == 1 and n > 0 and ok == n and unaligned == 0 and cols_ok
+            # `>= 1`, not `== 1`: a longtable spans pages, so a fixture may
+            # legitimately have several. The page *counts* must still agree.
+            good = (len(ref) == len(cand) >= 1 and n > 0 and ok == n and unaligned == 0 and cols_ok
                     and rules_equal and rok == rn and not font_bad)
             if font_bad:
                 fontenv.report_font_failure(name, font_bad, env)

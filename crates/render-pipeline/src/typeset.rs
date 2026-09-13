@@ -2173,10 +2173,12 @@ impl<'a> Context<'a> {
         // `\ifvoid\LT@firsthead\copy\LT@head\else\box\LT@firsthead\fi`
         // followed by `\nobreak` (longtable.sty 239).
         let opening = parts.opening_head().to_vec();
+        let mut opening_depth = None;
         if !opening.is_empty() {
             let mut chunk = lt::chunk_geometry(t, &rows, &metrics, &cols, &opening);
             self.resolve_table_colors(span, &mut chunk.geometry);
             let (h, d) = (chunk.height, chunk.depth);
+            opening_depth = Some(d);
             push(self, &chunk, 0.0, h + d, Some(h), &mut blocks, &mut lines, &mut vlines, &mut items, &mut recs);
             line_penalty.push((vlines.len(), pagebuild::INF_PENALTY));
         }
@@ -2202,11 +2204,13 @@ impl<'a> Context<'a> {
         let closing = parts.closing_foot().to_vec();
         let tail_from = vlines.len();
         let mut tail_foot_height = 0.0;
+        let mut closing_depth = None;
         if !closing.is_empty() {
             let mut chunk = lt::chunk_geometry(t, &rows, &metrics, &cols, &closing);
             self.resolve_table_colors(span, &mut chunk.geometry);
             let (h, d) = (chunk.height, chunk.depth);
             tail_foot_height = h;
+            closing_depth = Some(d);
             push(self, &chunk, 0.0, h + d, Some(h), &mut blocks, &mut lines, &mut vlines, &mut items, &mut recs);
         }
         if vlines.is_empty() {
@@ -2260,6 +2264,13 @@ impl<'a> Context<'a> {
             pre_space_after: None,
             contributed: Some(contributed),
             line_penalty,
+            // The chunks are `\unvbox`ed, which leaves `\prevdepth` alone;
+            // only the head and foot boxes the package `\box`es set it
+            // (longtable.sty 239, 506).
+            depth_after: match (closing_depth, opening_depth) {
+                (Some(d), _) | (None, Some(d)) => pagebuild::DepthAfter::Fixed(d),
+                (None, None) => pagebuild::DepthAfter::Unchanged,
+            },
         };
         let region = pagebuild::Region {
             lines: 0..contributed,
@@ -2565,6 +2576,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -2690,6 +2702,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -2792,6 +2805,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         (
             BuiltBlock {
@@ -2867,6 +2881,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -2927,6 +2942,7 @@ impl<'a> Context<'a> {
                 lineskip: None,
                 contributed: None,
                 line_penalty: Vec::new(),
+                depth_after: pagebuild::DepthAfter::default(),
             },
             labels: Vec::new(),
             cache_key: None,
@@ -3050,6 +3066,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -3527,6 +3544,7 @@ impl<'a> Context<'a> {
                 lineskip: None,
                 contributed: None,
                 line_penalty: Vec::new(),
+                depth_after: pagebuild::DepthAfter::default(),
             },
             labels: Vec::new(),
             cache_key: None,
@@ -3661,6 +3679,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         BuiltBlock {
             block: pl::ParagraphBlock::body(lines),
@@ -4033,6 +4052,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -4454,6 +4474,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -4556,6 +4577,7 @@ fn table_cell_block(lines: pl::Lines, items: Vec<pl::Item>, recs: Vec<Option<usi
         lineskip: None,
         contributed: None,
         line_penalty: Vec::new(),
+        depth_after: pagebuild::DepthAfter::default(),
     };
     BuiltBlock { block: pl::ParagraphBlock::body(lines), items, recs, vertical, labels, cache_key: None }
 }
@@ -5886,6 +5908,7 @@ fn plain_vblock(lines: Vec<(f64, f64)>) -> VBlock {
         lineskip: None,
         contributed: None,
         line_penalty: Vec::new(),
+        depth_after: pagebuild::DepthAfter::default(),
     }
 }
 
