@@ -45,6 +45,9 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .inspector(isPresented: $model.captureInboxVisible) { // Captures (CaptureInbox.swift): View > Captures, ⌘⇧I
+            CaptureInboxPanel(inbox: model.captureInbox).inspectorColumnWidth(min: 300, ideal: 360, max: 560)
+        }
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
     }
@@ -129,6 +132,13 @@ private struct WorkspaceToolbar: ToolbarContent {
                 .help("Export PDF… (⌘⇧E), via Rust writer (⌘⌥E), or exact from the v2 display list (File menu)")
             Button { openWindow(id: "nearby") } label: { Label("Nearby", systemImage: "ipad.and.iphone") }
                 .help("Nearby Companion… (Edit, ⌘⇧N): pair an iPad/iPhone to send captures")
+            Toggle(isOn: $model.captureInboxVisible) {
+                let n = model.captureInbox.items.count
+                Label(n > 0 ? "Captures \(n)" : "Captures", systemImage: n > 0 ? "tray.full" : "tray")
+            }
+            .toggleStyle(.button)
+            .help("Show or hide the Captures inspector (View, ⌘⇧I): captures from the iPad, their proposals, Insert at caret")
+            .accessibilityIdentifier("toolbar.captures")
             Toggle(isOn: $model.problemsVisible) {
                 let n = model.displayedDiagnostics.count
                 Label(n > 0 ? "Problems \(n)" : "Problems", systemImage: n > 0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")

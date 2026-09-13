@@ -12,7 +12,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
     case restoreDiscardedBuffer
     case undo
-    case commandPalette, toggleProblems
+    case commandPalette, toggleProblems, toggleCaptures
     case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
     case completion, completionList, toggleComment, signatureHelp
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
@@ -108,9 +108,13 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Records the caret as the destination anchor for capture proposals; the capture bar reads it back.",
                          menuItem: "Pin Insertion Point")
         case .openCaptureProposal:
-            return Entry(command: self, title: "Open capture proposal", shortcuts: ["⌘⇧I"], menu: "Edit",
+            return Entry(command: self, title: "Open capture proposal", shortcuts: ["Edit > Open Capture Proposal…"], menu: "Edit",
                          description: "Queues a capture_proposal file for review; Return in the sheet approves and inserts one undoable edit.",
                          menuItem: "Open Capture Proposal…")
+        case .toggleCaptures:
+            return Entry(command: self, title: "Toggle Captures inspector", shortcuts: ["⌘⇧I"], menu: "View",
+                         description: "Shows or hides the Captures inspector: every capture the paired iPad sent with its image, instruction and state (received, converting, proposal ready, inserted), the proposed LaTeX/TikZ, and Insert at caret / Edit / Review… / Reject. Opening it starts advertising and attaches the capture bridge; Pairing code… opens the Nearby window with a code.",
+                         menuItem: "Toggle Captures")
         case .submitSampleCapture:
             return Entry(command: self, title: "Submit sample capture", shortcuts: ["⌘⇧U"], menu: "Edit",
                          description: "Sends a chosen PNG/JPEG as capture_submit through the attached bridge.",

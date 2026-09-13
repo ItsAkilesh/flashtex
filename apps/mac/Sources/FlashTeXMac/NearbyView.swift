@@ -336,7 +336,16 @@ struct NearbyView: View {
                 Self.autostarted = true
                 c.showCode()
             }
+            consumeCodeRequest(c)
         }
+        .onChange(of: nearby.codeRequested) { _, _ in if let controller { consumeCodeRequest(controller) } }
+    }
+
+    /// The Captures panel asked for a code (`NearbyState.codeRequested`).
+    private func consumeCodeRequest(_ c: PairingFlowController) {
+        guard nearby.codeRequested else { return }
+        nearby.codeRequested = false
+        if c.phase.canShowCode() { c.showCode() }
     }
 }
 

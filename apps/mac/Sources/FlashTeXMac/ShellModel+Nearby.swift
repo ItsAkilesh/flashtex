@@ -53,15 +53,24 @@ extension ShellModel: CaptureSink, DestinationProvider {
 
     /// Forwards to the attached bridge (transfer-v1 `capture_submit`) and
     /// returns its acknowledgement; bridge `error` envelopes pass through.
-    func forwardNearbyCapture(_ submit: RuntimeV1.CaptureSubmit) async -> Result<NearbyV1.CaptureReceived, NearbyV1.ErrorPayload> {
+    func forwardNearbyCapture(_ submit: RuntimeV1.CaptureSubmit, pairId: String? = nil) async -> Result<NearbyV1.CaptureReceived, NearbyV1.ErrorPayload> {
+        // The Captures panel shows the row the moment the bytes are here.
+        captureInbox.received(submit, pairId: pairId, autoPinned: submit.destinationId == captureInbox.autoPinnedDestinationId)
         guard let bridge, bridge.running else { return receiveNearbyCapture(submit) }
         do {
             let ack = try await bridge.submit(submit)
             let received = NearbyV1.CaptureReceived(captureId: ack.captureId, durable: ack.durable,
                                                     hasProposal: ack.hasProposal, applied: ack.applied)
             nearbyInbox.noteForwarded(submit, received)
+            // Fluid path: the companion already said what it wants, so the
+            // conversion starts now; the proposal lands in the panel and the
+            // review queue, and insertion still waits for the explicit click.
+            if CaptureInboxFeature.autoConvert, bridge.conversionEnabled, !ack.hasProposal, !ack.applied {
+                Task { await convertCaptureForInbox(captureId: ack.captureId) }
+            }
             return .success(received)
         } catch let f as BridgeClient.Failure {
+            captureInbox.noteFailure(submit.captureId, "bridge refused the capture: \(f.text)")
             if case .bridge(let e) = f { return .failure(.init(code: e.code, message: e.message)) }
             return .failure(.init(code: "unavailable", message: "bridge: \(f.text)"))
         } catch {
@@ -90,7 +99,46 @@ extension ShellModel: CaptureSink, DestinationProvider {
     }
 
     nonisolated func currentDestination(_ reply: @escaping (NearbyV1.Destination?) -> Void) {
-        Task { @MainActor in reply(self.nearbyDestination) }
+        Task { @MainActor in reply(await self.nearbyDestinationPinningCaretIfNeeded()) }
+    }
+
+    /// What `hello_ack` / `destination_query` announce (lane mac-capture-fluid):
+    /// the pin when one is valid; otherwise the caret, pinned right now on the
+    /// companion's behalf (locally and, when attached, on the bridge, awaited
+    /// so the id the companion binds to is one the bridge knows). The user
+    /// never has to press ⌘⌥P; an explicit pin still overrides until an edit
+    /// drops it. Off with `FLASHTEX_CAPTURE_CARET_DESTINATION=0`.
+    func nearbyDestinationPinningCaretIfNeeded() async -> NearbyV1.Destination? {
+        if let d = nearbyDestination { return d }
+        guard CaptureInboxFeature.caretDestination else { return nil }
+        guard historicalRefusal(of: "pinning an insertion point") == nil,
+              let anchor = Insertion.makeAnchor(id: "mac-caret-\(nextAnchorNumber)", path: activePath,
+                                                text: activeText, caretUTF16: caretUTF16, revision: editorRevision)
+        else { return nil }
+        nextAnchorNumber += 1
+        self.anchor = anchor
+        captureInbox.autoPinnedDestinationId = anchor.id
+        if let bridge, bridge.running {
+            let end = activeText.utf8ByteRange(of: NSRange(location: caretUTF16, length: caretLengthUTF16))?.end ?? anchor.byteOffset
+            guard await bridgePinAndWait(destinationId: anchor.id, path: anchor.path, revision: anchor.revision,
+                                         startByte: anchor.byteOffset, endByte: max(end, anchor.byteOffset)) != nil else { return nil }
+        }
+        captureNote = "Insertion point: the caret (\(anchor.path) byte \(anchor.byteOffset)); pin (⌘⌥P) to override."
+        return nearbyDestination
+    }
+
+    /// True while the announced destination is the automatic caret pin (or nothing is pinned yet).
+    var captureDestinationIsAutomatic: Bool {
+        guard let d = nearbyDestination else { return true }
+        return d.destinationId == captureInbox.autoPinnedDestinationId
+    }
+
+    /// Opening the Captures panel: advertise (a paired iPad connects without
+    /// the Nearby window) and attach the discovered bridge when none is
+    /// attached, so the first capture converts instead of waiting in the inbox.
+    func prepareCaptureInbox(nearby: NearbyState) {
+        if !nearby.isAdvertising { nearby.startAdvertising() }
+        if !bridgeAttached, CaptureInboxFeature.autoAttachBridge { attachDiscoveredBridge() }
     }
 
     nonisolated func captureStatus(_ envelope: RuntimeV1.Envelope<NearbyV1.CaptureStatusRequest>, reply: @escaping (Data) -> Void) {
@@ -161,5 +209,22 @@ extension ShellModel: CaptureSink, DestinationProvider {
                          note: local?.note ?? "proposal awaiting review on the Mac")
         }
         return .init(captureId: captureId, state: .journaled, durable: true, note: local?.note ?? "journaled by the bridge; not converted yet (Edit > Convert Capture on the Mac)")
+    }
+}
+
+/// Switches for the fluid capture path (lane mac-capture-fluid); each defaults on.
+enum CaptureInboxFeature {
+    static func flag(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment[name] != "0"
+    }
+    /// A nearby capture is converted as soon as the bridge journals it.
+    static var autoConvert: Bool { flag("FLASHTEX_CAPTURE_AUTO_CONVERT") }
+    /// With nothing pinned, the caret is pinned for the companion on demand.
+    static var caretDestination: Bool { flag("FLASHTEX_CAPTURE_CARET_DESTINATION") }
+    /// Opening the Captures panel attaches the discovered bridge.
+    static var autoAttachBridge: Bool { flag("FLASHTEX_CAPTURES_AUTO_ATTACH") }
+    /// Launch advertises when a companion is already paired (pure; tested).
+    static func autoAdvertise(pairs: Int, environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        pairs > 0 && flag("FLASHTEX_NEARBY_AUTO_ADVERTISE", environment: environment)
     }
 }

@@ -101,6 +101,8 @@ final class ShellModel {
     var bridgeStatusTimeout: TimeInterval = 15
     var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
+    let captureInbox = CaptureInbox() // Captures inspector rows (CaptureInbox.swift)
+    var captureInboxVisible = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_CAPTURES"] == "1" // View > Captures (⌘⇧I)
     var workerLog: [String] = []
     @ObservationIgnored private var worker: WorkerClient?
     /// How the current worker was launched, so an abnormal exit can relaunch

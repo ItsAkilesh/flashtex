@@ -372,7 +372,8 @@ you trust.
 | Edit › Durable History… | Undo/redo on the durable edit ledger |
 | ⌘⇧N | Nearby Companion… (pairing, captures) |
 | ⌘⌥P | Pin insertion point (capture destination) |
-| ⌘⇧I | Open capture proposal… (review sheet; Return approves) |
+| Edit › Open Capture Proposal… | Open a capture proposal file (review sheet; Return approves) |
+| ⌘⇧I | Toggle the Captures inspector (iPad captures, proposals, Insert at caret) |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG through the bridge) |
 | ⌘⇧G | Convert the latest received capture |
 | Edit › Restore Discarded Buffer | Bring back text discarded when opening another file |

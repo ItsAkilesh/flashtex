@@ -101,9 +101,12 @@ struct FlashTeXMacApp: App {
         WindowGroup("FlashTeX") {
             ContentView()
                 .environment(model)
+                .environmentObject(nearby) // Captures inspector: status pill, pairing code (CaptureInbox.swift)
                 .frame(minWidth: 1200, minHeight: 640) // sidebar + editor + preview + Problems panel
                 .onAppear {
                     appDelegate.model = model; nearby.attach(sink: model, destinations: model); TypingBench.shared.install(model: model)
+                    // A paired iPad reconnects at launch without opening any window (mac-capture-fluid).
+                    if CaptureInboxFeature.autoAdvertise(pairs: nearby.pairs.count) { nearby.startAdvertising() }
                     // Automation: open a secondary window at launch for evidence captures.
                     if ProcessInfo.processInfo.environment["FLASHTEX_SHOW_PALETTE"] == "1" { model.commandPaletteShown = true } // evidence captures of the command palette
                     // Evidence captures of the completion list: place the caret after the
@@ -150,6 +153,8 @@ struct FlashTeXMacApp: App {
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Toggle Problems") { model.problemsVisible.toggle() }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
+                Button("Toggle Captures") { model.captureInboxVisible.toggle() } // CaptureInbox.swift
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
                 Divider()
                 // Preview zoom (PreviewZoom.swift): multiplier over fit-to-width.
                 Button("Zoom In") { model.previewZoomIn() }
@@ -176,8 +181,7 @@ struct FlashTeXMacApp: App {
                 Divider()
                 Button("Pin Insertion Point") { model.pinAnchorAtCaret() }
                     .keyboardShortcut("p", modifiers: [.command, .option]) // ⌘⇧P is the command palette (View)
-                Button("Open Capture Proposal…") { model.openProposalPanel() }
-                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Open Capture Proposal…") { model.openProposalPanel() } // ⌘⇧I moved to View > Toggle Captures (mac-capture-fluid)
                 Button("Restore Discarded Buffer") { model.restoreDiscardedBuffer() }
                     .disabled(model.recoverableBuffer == nil)
                 Divider()

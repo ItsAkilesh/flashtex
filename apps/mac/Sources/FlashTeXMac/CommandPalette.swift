@@ -99,6 +99,7 @@ enum CommandPaletteModel {
         case .renameCitation: openWindow(id: CitationRename.windowID)
         case .commandPalette: model.commandPaletteShown.toggle()
         case .toggleProblems: model.problemsVisible.toggle()
+        case .toggleCaptures: model.captureInboxVisible.toggle() // CaptureInbox.swift
         case .zoomIn: model.previewZoomIn() // PreviewZoom.swift
         case .zoomOut: model.previewZoomOut()
         case .actualSize: model.previewActualSize()

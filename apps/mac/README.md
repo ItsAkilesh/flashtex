@@ -200,7 +200,7 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
 - Capture review and insertion (contract "Capture and insertion", Mac side):
   `Edit > Pin Insertion Point` (⌘⌥P) records the caret as a `destination_id`
   anchor (UTF-8 byte offset + revision + following context). `Edit > Open Capture
-  Proposal…` (⌘⇧I) queues a `capture_proposal`; a review sheet shows editable
+  Proposal…` (no shortcut) queues a `capture_proposal`; a review sheet shows editable
   LaTeX, ambiguities, and required packages. Approve applies exactly one edit
   through the text view's undo manager (⌘Z reverts). Repeated `capture_id`s never
   insert twice. If the buffer changed since pinning, the anchor is rebased by its
@@ -881,7 +881,8 @@ explain that nothing is loaded.
 | ⌘⇧E | Export PDF… (CoreGraphics, always white) |
 | ⌘⌥E | Export PDF via Rust writer… (`flashtex-pdf --verify`, always white) |
 | ⌘⌥P | Pin insertion point at caret (capture destination anchor) |
-| ⌘⇧I | Open capture proposal… (review sheet; ⏎ approves, inserts one undoable edit) |
+| Edit > Open Capture Proposal… | Open capture proposal… file (review sheet; ⏎ approves, inserts one undoable edit; no shortcut since ⌘⇧I moved to the Captures inspector) |
+| ⌘⇧I | Toggle Captures inspector (View; also the toolbar's Captures button): captures from the paired iPad with image, instruction and state (received → converting → proposal ready → inserted), the proposed LaTeX/TikZ, Insert at caret / Edit / Review… / Reject; opening it starts advertising and attaches the bridge; Pairing code… is one click |
 | ⌘⇧U | Submit sample capture… (PNG/JPEG → `capture_submit` through the attached bridge) |
 | ⌘⇧G | Convert capture (`capture_convert` for the latest received capture) |
 | ⌘⇧N | Nearby Companion… (advertise, pairing code, paired devices, received captures; Return shows or resumes a pairing code, Esc cancels it or dismisses a banner, Tab walks Advertise → pairing controls → Forget → Clear; the step indicator, status row and every transition are VoiceOver text) |

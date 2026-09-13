@@ -130,6 +130,9 @@ final class NearbyState: ObservableObject {
     static let maxReceiveErrors = 20
     /// Transport counters for the window's metrics line (`NearbyMetrics.swift`).
     @Published private(set) var metrics = NearbyTransportMetrics()
+    /// Set by the Captures panel's "Pairing code…" before it opens the Nearby
+    /// window; the window shows a code and clears it (one click to a code).
+    @Published var codeRequested = false
 
     /// Raw listener events, forwarded on the main actor before `handle` acts
     /// on them (the pairing flow controller's `observe(_:)` consumes these).
