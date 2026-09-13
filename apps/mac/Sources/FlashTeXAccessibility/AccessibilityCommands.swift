@@ -400,7 +400,7 @@ public enum PanelFocusOrder {
                 Control(name: "Tab width", sourceMarker: "Stepper(value: $prefs.tabWidth"),
                 Control(name: "Indent style (radio group)", sourceMarker: "Picker(\"Indent with\""),
                 Control(name: "Editor appearance (segments)", sourceMarker: "Picker(\"Editor appearance\""),
-                Control(name: "Auto-close braces", sourceMarker: "Toggle(\"Auto-close braces\""),
+                Control(name: "Auto-close brackets & math", sourceMarker: "Toggle(\"Auto-close brackets & math\""),
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
                 Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
