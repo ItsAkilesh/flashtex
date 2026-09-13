@@ -227,27 +227,29 @@ name the actual commit executor, and add `Co-authored-by: Cursor
   - `scripts/beads/bd ready --json` lists unblocked work.
   - `scripts/beads/bd show <id>` gives details.
   - `scripts/beads/bd list -l to:<your-agent-id> --status open --json` is your inbox.
-- **Claim:**
-  1. `scripts/beads/bd dolt pull`
-  2. `scripts/beads/bd update <id> --claim`
-  3. `scripts/beads/bd dolt push`
-
-  A claim counts only after a successful push **and** a re-read shows you as
-  assignee. If the push is rejected, pull and re-read. If the pull reports merge
-  conflicts, you lost: keep your code on its branch, yield, and let the machine
-  sync loop re-bootstrap the ledger. Never `--force`.
+- **Claim:** `scripts/beads/claim <id> --actor <your-agent-id>`. Start work only on exit 0 `CLAIMED`.
+  A claim counts only after a successful push **and** a re-read showing you as
+  assignee; the tool does both, retries rejected pushes, and undoes an uncounted
+  local claim under the machine ledger mutex. `LOST*`/`NOT_COUNTED*` means do not
+  start. Never `--force`, never hand-roll `bd update --claim` plus an unclaim.
+  Collisions are settled by the machine sync loop (`scripts/beads/ledger-recover`).
+- **Freshness:** `scripts/beads/ledger-status` prints `ledger as of <UTC> (lag Ns)`;
+  quote it in decisions. One `scripts/beads/sync-loop` per machine does all pulls.
 - **Progress / handoff:** `bd update <id> --append-notes "branch=… sha=… tests=… next=…"`,
   then push. The code checkpoint is still a git branch push.
 - **Finish:** `bd close <id> -r "<PR link / SHA>"`, then push.
 - **Durable learnings:** `bd remember "<insight>"` (1.2.2 command; `bd memories`/`bd recall` to read).
-- **Messages:** `bd create "<subject>" -t task --assignee <to> -l msg,to:<to>,from:<me> --description "<body>"`,
-  then push. Acknowledge by `bd close`. Do NOT use `-t message` or `--ephemeral`:
-  those are local-only wisps and never reach other machines.
+- **Messages:** `bd create "<subject>" -t task --assignee <to> -l msg,to:<to>,from:<me>,thread:<root-id> --description "<body>"`,
+  then push. Inbox: `scripts/beads/inbox --agent <me>`; thread: `scripts/beads/inbox --thread <root-id>`.
+  Reply with the same `thread:` label plus `bd dep add <reply> <parent> --type relates-to`
+  (if you use `--parent`, add `--no-inherit-labels`). Acknowledge by `bd close`.
+  Do NOT use `-t message` or `--ephemeral`: local-only wisps never reach other machines.
 - **Low usage:** the moment your tool reports a usage warning or limit, record the
   exact tool text on your agent bead (`--set-metadata capacity=low --set-metadata usage_verbatim="…"`),
-  hand off or unclaim, and push. The Commander reallocates. No estimates.
+  hand off (`scripts/beads/claim <task> --actor <me> --release`, label `handoff-ready`),
+  and push. The Commander reallocates. No estimates.
 - **Stop using GitHub issue comments to talk to each other.** Product bugs remain
   GitHub issues. Branches, PRs, review and merge are unchanged.
-- **Commander authority** lives in the bead `ft-authority`.
+- **Commander authority** lives in the bead `ft-authority` (`scripts/beads/authority`).
   `coordination/authority.json` becomes a read-only mirror. Failover gates are
   unchanged (beads.md §9).

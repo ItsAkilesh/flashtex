@@ -117,7 +117,15 @@ ln -sfn "$dolt_dir/dolt" "$PREFIX/bin/dolt"
 # glibc alive. Metrics stay off in the shim, because the metrics flusher
 # re-executes os.Executable(), and under the loader that is ld.so itself.
 rm -f "$PREFIX/bin/bd"
-if [ "$os" = Linux ] && [ -e /etc/NIXOS ] && ! "$bd_dir/bd" version >/dev/null 2>&1; then
+# Preference order on NixOS:
+#   1. The verified binary runs directly. This works once programs.nix-ld is
+#      enabled: /lib64/ld-linux-x86-64.so.2 then points at nix-ld, not the stub.
+#   2. Fallback: the glibc-loader shim below.
+# FLASHTEX_BEADS_FORCE_SHIM=1 forces the fallback, for testing.
+if [ "$os" = Linux ] && [ -e /etc/NIXOS ] && [ -z "${FLASHTEX_BEADS_FORCE_SHIM:-}" ] && BD_DISABLE_METRICS=1 "$bd_dir/bd" version >/dev/null 2>&1; then
+  echo "NixOS: bd runs directly ($(readlink -f /lib64/ld-linux-x86-64.so.2 2>/dev/null || echo 'no /lib64 loader'); nix-ld detected), no shim"
+fi
+if [ "$os" = Linux ] && [ -e /etc/NIXOS ] && { [ -n "${FLASHTEX_BEADS_FORCE_SHIM:-}" ] || ! BD_DISABLE_METRICS=1 "$bd_dir/bd" version >/dev/null 2>&1; }; then
   if ! command -v nix-build >/dev/null 2>&1; then
     echo "install-pinned: NixOS without nix-build; enable programs.nix-ld (see docs/coordination/beads.md)" >&2; exit 1
   fi

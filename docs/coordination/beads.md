@@ -101,125 +101,200 @@ Measured on the Mac with 8 and 16 concurrent `bd` processes (create / list / `re
 
 **Consequences:**
 - All git worktrees of a clone share the main clone's `.beads/embeddeddolt`: `bd where` from a worktree prints the main clone's DB, and a bead created in a worktree is visible in main (VERIFIED). So a 15–20-agent machine has **one** ledger DB.
-- The embedded lock is held for the whole network sync. A local `bd create` issued during a 7.6 s `bd dolt push` took 9.18 s (VERIFIED).
-  - Therefore agents do **not** each run pull/push loops. One machine-level sync loop (supervisor script, no model call) runs `bd dolt pull` every 60 s and pushes after local writes.
-  - Agents push immediately only after claim/close (§6).
-- Expect about 3 local ops/s of throughput with contention. That is ample for task-boundary use, not for per-token logging.
+- Writers serialise on Dolt's storage lock `.dolt/noms/LOCK`.
+  - A bd write **blocks** while it is held, then succeeds. VERIFIED: waits of 10 s and 100 s, exit 0.
+  - The `.beads/embeddeddolt/.lock` flock is taken only by `bd init` (SOURCE `cmd/bd/init.go:952`).
+  - Reads (`bd list/show/ready`) do not wait.
+- Agents do **not** run pull loops. Exactly one machine-level `scripts/beads/sync-loop` does (§5). Agents push only inside `scripts/beads/claim`.
 
-## 5. Sync convention (staleness is explicit)
+## 5. Sync loop, staleness and sync convention
 
-- **Transport:** the ledger lives on the code repo's remote under `refs/dolt/data` (VERIFIED via `git ls-remote`).
-  - The first `bd dolt push` also creates a visible **branch** `refs/heads/__dolt_remote_info__` containing `DOLT_REMOTE.md` (VERIFIED). Do not delete it; exclude it from branch-cleanup scripts.
-  - Plain PR flow is unaffected: branch, push, `gh pr create`, `gh pr merge --squash --delete-branch` all worked with both refs present, and the refs survived (VERIFIED, trial PR #1).
-- **Fresh clone:** `scripts/beads/bd bootstrap --yes`, which clones `refs/dolt/data` (VERIFIED). Then `git config beads.role maintainer`, because bd warns `beads.role not configured (GH#2950)`, and `chmod 700 .beads`, because bd warns about 0755.
-- **Read at task boundaries:** before choosing work, before claiming, before closing, and at each checkpoint. Run `bd dolt pull` first, or rely on the machine loop's last pull. Any decision must state the pull time it relied on: "ledger as of <UTC of last successful pull>".
-- **Push:** immediately after claim, close, handoff or message; otherwise the machine loop pushes. Never `--force`.
-- **Rejected push** (`! [rejected] main -> main (non-fast-forward)`, VERIFIED): pull, then push again. Non-conflicting concurrent work merges cleanly: two machines each created beads offline, the loser pulled, and both beads were present everywhere with distinct hash IDs (VERIFIED).
+**One loop per machine:** `scripts/beads/sync-loop --repo <main clone>`, python3 stdlib, macOS and NixOS.
+- **Single instance:** a flock on `<state>/sync-loop.lock`. A second copy exits 75.
+- **Pull** every 60 s.
+- **Push.** Every 5 s it checks for unpushed commits with a read-only `dolt sql … dolt_log('origin/main..main')` (0.085 s). It pushes when there are any, at most every 15 s. A rejected push pulls and retries up to 3 times. Never `--force`.
+- **Backoff** on transport errors: 10 s doubling, cap `--max-backoff`.
+  - Soak: the 300 s cap left B at lag 355 s for about 3.5 min after a 3-min outage ended.
+  - **Use `--max-backoff 60`** in the service files; post-outage lag is then about one minute.
+- **Wedge:** runs `ledger-recover` (§6). `<state>/RECOVERING` exists while it runs.
+  - exit 4 (lost a race): retried within 3 s
+  - exit 2: writes `<state>/HOLD`, sets `state=needs_operator`, exits 2. Service files do not restart on exit 2, and later starts refuse while HOLD exists.
+- **Status** goes atomically to `<state>/status.json` (`~/.local/state/flashtex-beads`). Fields:
+  - `state` (ok | degraded | recovering | needs_operator | stopped)
+  - `last_pull_ok_utc`, `last_push_ok_utc`, `lag_seconds`, `unpushed_commits`
+  - `consecutive_failures`, `backoff_seconds`, `pushes`, `push_rejections`
+  - `recoveries`, `recovery_attempts`, `last_error`, `last_recovery`
+- **Staleness:** `scripts/beads/ledger-status` prints `ledger as of <UTC> (lag Ns) on <machine>: FRESH|STALE|NEEDS_OPERATOR`. Exit 0/1/2; STALE also when no loop runs.
+- **Services** (`scripts/beads/service/`):
+  - `install-launchd.sh` + `dev.flashtex.beads-sync.plist` (macOS user agent, `KeepAlive.SuccessfulExit=false`)
+  - `flashtex-beads-sync.service` (systemd `--user`, `RestartPreventExitStatus=2 75`)
+  - `home-manager-snippet.nix` (proposal for GoKubar/nixos-config, not applied)
 
-## 6. Claim rule
+**Transport:** the ledger lives on the code repo's remote under `refs/dolt/data` (VERIFIED via `git ls-remote`).
+- The first `bd dolt push` also creates a visible **branch** `refs/heads/__dolt_remote_info__` containing `DOLT_REMOTE.md` (VERIFIED).
+  - It is acceptable (owner decision 3). Do not delete it; exclude it from branch-cleanup scripts.
+- Plain PR flow is unaffected (VERIFIED, trial PR #1).
+- Measured push latency, one small change: Mac about 7.7 s, NixOS PC about 5.5 s (VERIFIED). The slower machine loses push races under heavy write rates (§10).
 
-**A claim counts only after `bd update <id> --claim` has been followed by a successful `bd dolt push` and a re-read shows you as assignee.**
+**Fresh clone:** `scripts/beads/bd bootstrap --yes`, then `git config beads.role maintainer`, `chmod 700 .beads`.
 
-**What actually happens on a collision** (VERIFIED, trial bead `trial-q7g`):
-1. A and B both run `bd update trial-q7g --claim` offline. Both print `✓ Updated issue`.
-2. A pushes first: `Push complete.`
-3. B pushes: `! [rejected] main -> main (non-fast-forward)` (exit 1).
-4. B pulls: `Error: merge origin/main: merge conflicts in issues require operator resolution; merge aborted and working set restored` (exit 1).
-   - B's local copy still says `assignee: agent-B`.
-   - Every further push from B is rejected, so **B's ledger is wedged**.
-5. A and the remote say `assignee: agent-A`. First successful pusher wins.
-6. `bd doctor` (the documented conflict fix) prints `'bd doctor' is not yet supported in embedded mode`.
-7. **Recovery that worked:** move `.beads/embeddeddolt` aside, run `bd bootstrap --yes`. B then showed `assignee: agent-A` and pushed a new bead successfully.
-   - This discards B's unpushed ledger writes, so keep them minimal.
+**Reads:** before choosing work, claiming, closing and at checkpoints. Quote the `ledger as of` time from `ledger-status`.
 
-**Protocol derived from this:**
-- `pull` → `show` (still open/unassigned?) → `--claim` → `push`, with **no other unpushed ledger writes** in between.
-- If the push is rejected: pull. If the pull succeeds, re-read. If you are not the assignee, yield.
-- If the pull reports `merge conflicts … require operator resolution`, your claim lost:
-  1. Keep code on your git branch.
-  2. Copy any unpushed notes into the branch handoff file.
-  3. Move `.beads/embeddeddolt` aside, run `bd bootstrap --yes`, and re-read.
-  4. Notify the machine's other agents: a re-bootstrap affects the whole machine's shared DB, so the machine sync loop should do it.
-- Never resolve by `--force` push. `bd vc merge --strategy theirs` exists for branch merges but was not tested for the remote case.
+## 6. Claim rule and collision recovery
+
+**A claim counts only after `bd update <id> --claim` has been followed by a successful `bd dolt push` and a re-read shows you as assignee.** Use `scripts/beads/claim <id> --actor <agent>`, which implements exactly this:
+- exit 0 `CLAIMED`
+- exit 1 `LOST*` / `NOT_CLAIMABLE`
+- exit 3 `NOT_COUNTED*` (transport failure, or the machine ledger is recovering)
+
+On any non-zero exit it undoes its own local claim, so an uncounted claim is never pushed later. A rejected push is retried after pull and re-read, up to 6 times with jitter.
+
+**What a cross-machine collision does** (VERIFIED, trial beads `trial-eey`, `trial-c3p`, `trial-72g`):
+1. A and B both `--claim` offline. Both print `✓ Updated issue`.
+2. The first pusher wins (`Push complete.`).
+3. The loser's push fails: `hint: Updates were rejected because the tip of your current branch is behind`.
+4. The loser's pull fails, every time: `Error: merge origin/main: merge conflicts in issues require operator resolution; merge aborted and working set restored` (exit 1). The whole machine ledger is wedged.
+
+**Recovery candidates tested on a wedged copy** (VERIFIED on the trial repo):
+
+| Candidate | Result |
+|---|---|
+| `bd doctor --fix` / `bd sql` | `'bd doctor' is not yet supported in embedded mode`; `'bd sql' is not yet supported in embedded mode` |
+| `bd vc merge origin/main --strategy theirs` | `Error 1105: Merge conflict detected, @autocommit transaction rolled back` (exit 1) |
+| dolt 2.3.3 CLI on `.beads/embeddeddolt/<db>`: `dolt merge origin/main` + `dolt conflicts resolve --theirs issues` | settles the claim (`our_assignee: agent-Y, their_assignee: agent-X`) **but drops the loser's other edits to the same row** (appended notes → `None`) → lossy |
+| move `.beads/embeddeddolt` aside + `bd bootstrap --yes` | works, discards every unpushed write on the machine → last resort only |
+| **`scripts/beads/ledger-recover`** (chosen) | lossless; details below |
+
+**`scripts/beads/ledger-recover`, the chosen recovery.** The machine sync loop runs it automatically when it sees the wedge.
+1. **Lock.** Hold the live DB's storage lock `.dolt/noms/LOCK` for the whole recovery.
+   - bd processes block on it rather than fail. VERIFIED: a bd write waited 100 s and then succeeded.
+   - So no write can interleave. Soak run 2 showed that writes landing mid-recovery re-conflict.
+2. **Copy.** Take a pristine backup and a work copy.
+3. **Settle in the work copy** with the pinned dolt CLI; bd's own pull has already run `DOLT_FETCH` (SOURCE `versioncontrolops/remotes.go`). Repeat up to 12 rounds:
+   1. `dolt fetch origin`, `dolt merge origin/main`
+   2. settle each conflicted `issues` row **column by column**:
+      - a column only one side changed keeps that change
+      - `notes` both appended: winner's notes + loser's suffix
+      - `updated_at`: the later value
+      - `metadata`: key-wise
+      - any other column both changed (`assignee`, `status`, `started_at`, …): **remote wins**. The loser's value goes into `<state>/recoveries/<utc>.json` and a `claim-lost` message bead to the losing assignee.
+   3. commit, then non-force `dolt push origin main`
+4. **Restore.** Copy the settled `.dolt` back into the live DB file by file, keeping `LOCK` and `config.json`. Release the lock. Then `bd dolt pull` (a no-op check), `bd recompute-blocked`, notify, `bd dolt push`.
+5. **Refusals.** Conflicts outside `issues`, schema conflicts, constraint violations or delete-vs-modify rows are refused: exit 2, live DB untouched, the loop writes `HOLD` and stops.
+   - VERIFIED refusal path: a NixOS account without a dolt identity produced `error_live_untouched` → `needs_operator` → HOLD. The work copy now sets a local identity.
+
+**Evidence (VERIFIED):**
+- **Same-row edits kept.** Loser's unpushed note on the contested row, a metadata key, and a new bead all survived; winner's assignee kept.
+  - Mac: `X sees: trial-p1i agent-X in_progress 'Z progress note' {'j': 'x', 'k': 'z', 'base': '1'}`, plus `msg: trial-79d claim lost: trial-p1i is held by agent-X`.
+- **Both cross-machine directions** via `sync-loop --once`:
+  - B lost: `B status: ok recoveries 1` … `A sees: trial-c3p agent-A 'B offline note'`, `A sees B follow-up: trial-dfa`.
+  - A lost: `A after: trial-72g agent-B 'A offline note'`, `B sees A follow-up: trial-cab`.
+- **Concurrent writer.** 20 `bd create` running on the loser during recovery: `lock_held_seconds 8.8`, `live_pull_after_restore: Pull complete.`, `zconc count: 20` on both clones.
+
+**Protocol:**
+- Agents never run `ledger-recover`. `claim` reports `LOST_collision_sync_loop_recovers` and refuses new claims while `<state>/RECOVERING` or `HOLD` exists.
+- Keep code on the git branch. Unpushed ledger notes survive recovery, or are recorded.
+- Never `--force`.
 
 ## 7. Messaging convention
 
-- **`-t message` does not work cross-machine.** In 1.2.2 `message` is a built-in infrastructure type that bd routes to the local `wisps` table, which is dolt-ignored.
-  - `bd create -t message …` returned `trial-wisp-bde`, and B then saw an empty inbox and `no issue found` (VERIFIED; SOURCE `types.infra`).
-  - `bd promote <wisp>` makes it permanent: B could then `bd show` it, but `bd list -t message` on B stayed empty. Do not rely on this path.
-  - `bd mail` only delegates to an external provider (`mail.delegate`), and none is configured.
-- **Convention (VERIFIED end-to-end A→B):**
-  - **Send:** `bd create "<subject>" -t task --assignee <recipient> -l msg,to:<recipient>,from:<sender> --description "<body>"`, then `bd dolt push`.
-  - **Receive:** `bd dolt pull`, then `bd list -l to:<me> --status open --json` (493 bytes for one message).
-  - **Read:** `bd show <id>` (293–360 bytes).
-  - **Acknowledge:** `bd close <id> -r read`, then push.
-  - **Reply:** create a message and `bd dep add <reply> <original> --type replies-to`. The dep type was accepted locally (VERIFIED); a cross-machine thread was not tested.
-  - **Broadcast:** `-l msg,to:all`. Machine-wide: `-l msg,to:machine:<alias>`.
-  - Messages are pull-based, so latency is the sync-loop interval (≤60 s) plus push/pull (about 6–8 s each, measured).
-- **Other sync facts (VERIFIED):** `bd kv set/get` values, `--set-metadata` fields and `bd config set types.custom` all reach the other machine after push/pull.
-- **Output sizes** (trial, 9–11 beads):
-  - `bd ready` 443 B; `bd ready --json` 2273–2763 B
-  - `bd show <id>` 360 B; `--json` 543 B
-  - `bd list --json` 3135 B; `bd prime` 4694 B
-
-  Compare about 437 KB for one read of GitHub issue #2.
+- **`-t message` does not work cross-machine.** In 1.2.2 `message` is an infrastructure type routed to the local, dolt-ignored `wisps` table. B never saw `trial-wisp-bde` (VERIFIED). `bd mail` only delegates to an unconfigured provider.
+- **Convention** (VERIFIED A→B→A, drill 2026-09-13 07:27–07:35Z, beads `trial-ljie`, `trial-7pfa`, `trial-ljie.1`):
+  - **Send:** `bd create "<subject>" -t task --assignee <to> -l msg,to:<to>,from:<me>,thread:<root-id> --description "<body>"`. A root message labels itself `thread:<own id>`. Then push.
+  - **Inbox:** `scripts/beads/inbox --agent <me>` lists open `msg` beads labelled `to:<me>`, `to:all` or `to:machine:<alias>`, headed by the ledger freshness line.
+  - **Reply:** a new message with the same `thread:<root>` label, plus `bd dep add <reply> <parent> --type relates-to`.
+    - A `--parent <msg>` reply also syncs, but **inherits the parent's `to:`/`from:` labels**. The drill reply showed `to=agent-A,agent-B`. Always pass `--no-inherit-labels` with `--parent`.
+  - **Thread by ID after sync:** `scripts/beads/inbox --thread <root>`, `bd dep list <root> --direction=up` (shows both the `relates-to` and `parent-child` replies) and `bd children <root>` all worked on the other machine. `bd show <root> --thread` showed only the root, so do not rely on it.
+  - **Ack:** `bd close <id> -r read`, then push. The other machine saw the closes.
+- **Latency:** loop poll (≤60 s) plus push/pull (5.5–7.7 s each).
+  - The drill's 427 s round trip was dominated by slow bd operations on a long-lived test clone. A `bd dolt pull` there took 127 s after the soak; fresh clones were fast.
+  - Treat clone age and `refs/dolt/data` growth as a performance item to watch (BELIEVED cause: local git-remote-cache size).
+- **Other sync facts (VERIFIED):** `bd kv`, `--set-metadata`, `bd set-state` event beads and labels, and `types.custom` all reach the other machine.
 
 ## 8. Low-usage signalling and reallocation
 
-**Agent, the moment its tool reports a usage warning, 429/limit error, or low reading:**
-1. Push code to the task branch.
-2. `bd update <task> --append-notes "handoff: branch=<b> sha=<sha> tests=<…> next=<…>"`
-3. `bd update ft-agent-<id> --set-metadata capacity=low --set-metadata usage_verbatim="<exact tool text>" --set-metadata observed_utc=<utc>`. Use `capacity=exhausted` if no more calls are possible.
-4. If it cannot finish: `bd assign <task> ""` and `bd update <task> --status open --add-label handoff-ready`.
-5. `bd dolt push`.
+**Agent, the moment its tool reports a usage warning, a limit, or a low reading** (VERIFIED drill, agent bead `trial-1gte`, task `trial-ee3o`):
+1. Push code to the task branch. Then `bd update <task> --append-notes "handoff: branch=<b> sha=<sha> tests=<…> next=<…>"`.
+2. `bd set-state ft-agent-<id> capacity=low --reason "<exact tool output>"`. This creates an event bead and the label `capacity:low`. Also `bd update ft-agent-<id> --set-metadata usage_verbatim='<json>' --set-metadata usage_source='<command>' --set-metadata observed_utc=<utc>`.
+   - Example recorded verbatim from `~/.claude/bin/claude-usage --json`: `{"five_hour":{"utilization":69.0,"resets_at":"2026-09-13T09:30:00.968565+00:00",…}}`.
+3. If it cannot finish: `scripts/beads/claim <task> --actor <me> --release`. This is an atomic unclaim; plain `bd assign <task> ""` also works when no recovery can be running. Then `bd update <task> --add-label handoff-ready`, and push.
 
 Report the exact tool text only. Never estimate or sum unlike resources.
 
-**Commander (scripted poll, no model call):** `bd list -l handoff-ready --status open --json` plus agent beads whose metadata shows `capacity=low`. Grants still come from `coordination/RESOURCES.md`; Beads confers no spend permission. Two ways to reassign:
-- `bd assign <task> <eligible-agent>`, then a message (§7), then push.
-- Leave it unassigned with capability labels for `bd ready --claim --label cap:<x> --unassigned`.
+**Commander (scripted, no model call), VERIFIED from the other machine:**
+- `bd list -l capacity:low` showed the agent bead with the verbatim usage.
+- `bd list -l handoff-ready --status open` showed the task.
+- `bd assign <task> <agent>` plus `--set-metadata reassigned_from=<id>` and `--remove-label handoff-ready`, then a message `-l msg,to:<agent>,thread:<task>`, then push.
+- The first machine then saw `assignee agent-B2`, `meta {'reassigned_from': 'agent-A'}`, and `inbox --agent agent-B2` listed the message.
+
+Grants still come from `coordination/RESOURCES.md`.
 
 ## 9. Commander authority and failover
 
-**Decision 5:** after cutover the authority record is the bead `ft-authority` (type `decision`). `coordination/authority.json` is a read-only mirror the Commander regenerates until retired.
-
-**Metadata:**
+**Record:** the bead `ft-authority` (type `decision`). Metadata:
 - `commander_id`, `machine`, `authority_state` (active | handoff | vacant)
-- `epoch`, `claim_mode`, `designated_successor`, `updated_utc`, `heartbeat_utc`
-- `bd_pin`, `dolt_pin`, `upgrade_state` (frozen | planned | in_progress)
+- `epoch`, `claim_mode`, `claim_evidence`, `previous_commander_id`, `designated_successor`
+- `updated_utc`, `heartbeat_utc`
+- `bd_pin`, `dolt_pin`, `upgrade_state`
 
-**Heartbeat:** the Commander sets `heartbeat_utc` every ≤5 min, then pushes. A stale heartbeat is **only a prompt to investigate**, never grounds to claim (AGENTS.md rule, unchanged).
+Tool: `scripts/beads/authority show | heartbeat | handoff | claim`. The wrapper reads `machine` and `authority_state`.
 
-**Claim protocol:**
-1. Run `bd dolt pull` and `git fetch`, then read `ft-authority`.
-2. Eligibility is unchanged. One of:
-   - an explicit quiesced handoff naming you;
-   - independently verified termination of the exact session plus stopped publishers;
-   - a direct user instruction naming you.
-3. `bd update ft-authority --set-metadata epoch=<n+1> --set-metadata commander_id=<me> --set-metadata machine=<alias> --set-metadata authority_state=active`, then `bd dolt push` (never `--force`).
-4. If the push is rejected, or the pull conflicts (§6), another claimant won: re-bootstrap, re-read, stand down.
-5. The claim is complete only when the push succeeded **and** a fresh pull shows your epoch. Only then does the wrapper grant migration rights on your machine: it reads `machine` and `authority_state`.
-6. A resumed old Commander re-reads, sees the higher epoch, and stays quiesced.
+**Claim** (unchanged AGENTS.md gates; a stale heartbeat is never sufficient):
+1. `authority claim --actor <id> --machine <alias> --mode handoff|verified-termination|user-directed --evidence "<verification or quoted instruction>"`
+2. It pulls, checks eligibility and writes `epoch+1` (non-force push with bounded pull/retry). Then it pulls again and re-reads.
+   - `CLAIMED` only when the re-read shows this actor, this machine and the new epoch.
+   - A lost collision gives `LOST_collision_stand_down`; the sync loop recovers with remote-wins.
+
+**Drill** (VERIFIED on the trial repo, bead `trial-authority`, A = mac-m5pro-kabir, B = NixOS PC):
+
+| Step | Observed |
+|---|---|
+| A holds epoch 1, heartbeat | `{"cmd": "heartbeat", "push": "ok"}`; wrapper on A: `bd migrate permitted on Commander machine mac-m5pro-kabir (beads:trial-authority)` |
+| B reads, wrapper on B | `heartbeat_age_seconds: 13`; `bd migrate refused: this machine is 'nixos', Commander machine is 'mac-m5pro-kabir'` |
+| A "dead"; B claims | `{"result": "CLAIMED", "epoch": 2, "previous": "commander-A", "mode": "user-directed"}`; wrapper on B: `permitted on Commander machine nixos` |
+| A resumes | re-read shows `commander-B / nixos / 2`; wrapper on A `refused: … Commander machine is 'nixos'`; `authority heartbeat` → `commander-A is not the Commander` (exit 1) |
+| Concurrent epoch-3 claims | A `LOST_collision_stand_down`; B `CLAIMED epoch 3` |
+| **Bug found** | after recovery the record read `commander-B2` with `machine: mac-m5pro-kabir`: the key-wise metadata merge mixed the two claims, which would grant migrate rights to the wrong machine. **Fixed:** if any metadata key conflicts, the remote object wins whole (unit-checked: `{'commander_id': 'commander-B2', 'machine': 'nixos', 'epoch': 3}`). |
+| Concurrent claims after the fix | A `LOST_collision_stand_down`, B `CLAIMED epoch 4`; after `sync-loop --once` both machines read `{'commander_id': 'commander-B4', 'machine': 'nixos', 'epoch': 4, 'authority_state': 'active'}`; wrapper on A `refused: … Commander machine is 'nixos'`, on B `permitted on Commander machine nixos` |
 
 ## 10. Verified vs believed
 
 | Claim | Status |
 |---|---|
 | Identical `bd version 1.2.2` / `dolt version 2.3.3` on macOS arm64 and NixOS x86_64, sha256-verified | VERIFIED |
-| Create on A → push → B `bootstrap` + `show` | VERIFIED |
-| Claim on B → push → A pull shows `in_progress`/`agent-B`; `bd ready` on A no longer offers it | VERIFIED |
-| Blocked bead absent from `bd ready`, appears after blocker closed | VERIFIED |
-| Offline creates on both machines merge with no ID collision or loss | VERIFIED |
-| Claim collision: first pusher wins; loser's pull aborts (exit 1) and ledger is wedged until re-bootstrap | VERIFIED |
-| Embedded mode: 16 concurrent writers, 0 failures; server mode drops concurrent claims (40001) | VERIFIED (Mac) |
-| Worktrees share one embedded DB | VERIFIED |
-| `-t message` is local-only (wisp); task+labels messages sync | VERIFIED |
-| kv, metadata, `types.custom` config sync | VERIFIED |
-| `BD_SMART_GATE=0` blocks writes/pull on pending remote-backed migration | VERIFIED (v32→v53) |
-| Smart gate auto-migrates at ≥v43 when unset | SOURCE / BELIEVED |
-| Metrics off via config + env | VERIFIED |
-| PR flow unaffected by `refs/dolt/data` and `__dolt_remote_info__` | VERIFIED |
-| Wrapper refusals (version, force, migrate, vacant authority) | VERIFIED |
+| NixOS: pinned bd runs via the glibc-loader shim; nix-ld not yet enabled on the PC (`/lib64/ld-linux-x86-64.so.2 -> …stub-ld…`, direct run `Could not start dynamically linked executable`) | VERIFIED; installer prefers direct execution when nix-ld makes it work: BELIEVED (untestable until the owner rebuilds) |
+| Create/claim/close/blocked/ready round trips across machines | VERIFIED |
+| Offline creates merge with no ID collision or loss | VERIFIED |
+| Claim collision: first pusher wins; loser wedged until recovery | VERIFIED |
+| `ledger-recover` lossless recovery, both directions, same-row edits kept, concurrent writer blocked | VERIFIED (§6) |
+| `bd init --skip-agents --skip-hooks` leaves AGENTS.md/CLAUDE.md byte-identical and `core.hooksPath` unset; commit contains only `.beads/{.gitignore,README.md,config.yaml,interactions.jsonl,metadata.json}` (+ root `.gitignore` lines); without `--skip-hooks` `core.hooksPath` becomes `.beads/hooks` | VERIFIED (fresh repo with no `.beads`) |
+| `bd init` in a repo whose committed `.beads/config.yaml` has `sync.remote` bootstraps from that remote instead (ignores `--prefix`) | VERIFIED |
+| Messaging A→B→A with threads; low-usage signal and cross-machine reassignment | VERIFIED (§7, §8) |
+| Commander failover drill, wrapper permission moving with the claim | VERIFIED (§9) |
+| Sync loop status/staleness, backoff, HOLD on refusal, single instance | VERIFIED |
+| **Soak (16 + 8 agents, 32 min, 7 collisions, 2 outages, loop kill -9)** | **FAILED run 3** (see soak report below) |
 | Sync on Daniel's / Jaysen's machines | BELIEVED (runbook) |
-| Behaviour with 15–20 real agents over hours, and dolt storage growth in the repo | BELIEVED |
-| `bd init` git hooks (`core.hooksPath=.beads/hooks`) are harmless for FlashTeX | NOT VERIFIED → use `--skip-hooks` |
+
+### Soak report (trial repo, 2026-09-13)
+
+- **Run 1** (06:08Z) was aborted after about 1 min. `claim` retried a rejected push only once, and Mac claims livelocked against the NixOS PC's pushes. Fixed with 6 jittered attempts.
+- **Run 2** (06:13Z, 60–150 s work cycles) failed.
+  - A's recovery kept losing push races (`remote moved during recovery`).
+  - A commit-on-clean-merge bug put the loop into HOLD.
+  - Then, even after the settle pushed, the live pull re-conflicted, because agents kept writing to the contested rows mid-recovery.
+  - Fixed by holding bd's storage lock for the whole recovery, settling in a copy and restoring in place.
+- **Run 3** (06:36Z, 180–360 s cycles), result:
+  - 24 agents; 80 counted claims and 80 closes; 21 follow-ups created, none missing.
+  - Ledgers identical: 285 beads each, same dolt HEAD `84h28qe1r82g4ilp1vob2t5nj9q63c1s`.
+  - 7/7 deliberate collisions had exactly one winner. 7 recoveries on A and 3 on B, all successful. Survived 2 outages and a `kill -9` of B's loop.
+  - Max lag: A 557 s (loop `ok` but a pull/push call stalled; BELIEVED transport stall hitting the old 300 s subprocess timeout, now 120 s), B 410 s (post-outage backoff; service files now `--max-backoff 60`).
+  - Storage growth: `.beads` A 166→447 MB (includes run-2 churn), B 39→89 MB. `refs/dolt/data` pack 5.95→12.99 MiB (repacked).
+  - **FAILED: `trial-g7of` claimed and closed by two agents** (`r3A-13` at 06:46/06:50, `r3B-5` at 06:55/07:01).
+  - Root cause, from `bd history`: B's `claim` undo checked "still mine?" and then wrote `status=open assignee=""`. The write blocked on the storage lock held by a recovery and landed after the restore (`02:50:34.851 (None, open)`), reopening a task its owner had closed. The machines then flip-flopped until the reopen won, and a second agent legitimately claimed it.
+  - Also found: the recovery record's detailed rows were overwritten by the summary (fixed).
+- **Fix** (after run 3): a machine ledger mutex `<state>/ledger-write.lock`, held by `claim`'s check+undo (and `--release`) and by `ledger-recover`.
+  - Deterministic reproduction with test-only delays, same ordering as run 3:
+    - without the mutex: `FINAL Z: None open None   X: None open None` (close reverted)
+    - with it: `FINAL Z: agent-X closed done by agent-X   X: agent-X closed done by agent-X`
+  - **Not yet re-soaked.** Per the task rule (two serious attempts), the Phase B gate did not pass; a run 4 needs an owner decision.
+- **Throughput finding:** at 60–150 s cycles (about 0.3 claims/s over 24 agents) the slower pusher (Mac 7.7 s vs PC 5.5 s per push) starves. FlashTeX task-boundary rates are far lower, but this is the measured ceiling.

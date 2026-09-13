@@ -13,7 +13,9 @@
 | Daniel `mac-m5pro-dq222` and Kabir `mac-m5pro-kabir` | Part B |
 | Jaysen `mac-m1max-a` | also Part B for its non-Commander clones |
 
-Nothing here was run on the real repo. The steps were exercised on `GoKubar/flashtex-beads-trial`.
+Nothing here was run on the real repo. The steps were exercised on `GoKubar/flashtex-beads-trial` (2026-09-13).
+
+> **Status: NOT cleared for cutover.** Soak run 3 double-closed one task; the fix (ledger mutex) is verified by a deterministic reproduction but has not been re-soaked. See beads.md §10. Do not run this runbook on flash-tex/flashtex until the owner approves after a passing soak.
 
 ## Part A: Commander machine
 
@@ -35,7 +37,9 @@ Nothing here was run on the real repo. The steps were exercised on `GoKubar/flas
    scripts/beads/bd config set types.custom message   # optional; messages still use -t task (beads.md §7)
    ```
    - The wrapper permits `init` in flash-tex/flashtex only on the authority machine.
-   - `--skip-agents` keeps AGENTS.md untouched. `--skip-hooks` avoids setting `core.hooksPath=.beads/hooks`, which the trial `bd init` did.
+   - VERIFIED on a fresh repo: `--skip-agents --skip-hooks` leaves AGENTS.md and CLAUDE.md byte-identical and `core.hooksPath` unset. Without `--skip-hooks`, `core.hooksPath` becomes `.beads/hooks`. The init commit contains only `.beads/{.gitignore,README.md,config.yaml,interactions.jsonl,metadata.json}` plus root `.gitignore` lines.
+   - bd commits with the clone's git identity. Set the required local `user.name`/`user.email` first, then amend to add trailers **before** pushing.
+   - If the branch already has a committed `.beads/config.yaml` with `sync.remote`, `bd init` bootstraps from that remote and ignores `--prefix` (VERIFIED). Init must run on a tree without `.beads/`.
 3. **Authority bead**, mirroring `coordination/authority.json`:
    ```bash
    scripts/beads/bd create "Commander authority" --id ft-authority -t decision --silent \
@@ -83,10 +87,18 @@ Nothing here was run on the real repo. The steps were exercised on `GoKubar/flas
      - AGENTS.md:130-135 recovery issues → `bd create -t bug -l recovery …` in the ledger (product bugs stay GitHub issues).
      - docs/commander-failover.md:3, 34, 64-66, 96, 122 (Astra/linux-primary witness) → replace with a pointer to beads.md §9. Keep the eligibility gates verbatim.
    - Make `coordination/authority.json` a mirror: add `"mirror_of": "beads:ft-authority"` and update it after each claim.
-7. **Machine sync loop** on every machine (supervisor, no model call):
-   - every 60 s: `scripts/beads/bd dolt pull`
-   - after local writes: `scripts/beads/bd dolt push` (retry once after pull)
-   - on `merge conflicts … require operator resolution`: stop agents' ledger writes, move `.beads/embeddeddolt` aside, run `bd bootstrap --yes`, notify agents.
+7. **Machine sync loop** on every machine. It is a supervisor, not a model call.
+   - Install:
+     - macOS: `scripts/beads/service/install-launchd.sh <main clone>`
+     - Linux: the systemd `--user` unit in `scripts/beads/service/`, or the home-manager snippet.
+   - Check: `scripts/beads/ledger-status` must print `FRESH`.
+   - The loop does the following (beads.md §5–6):
+     - pulls every 60 s
+     - pushes unpushed commits (at most every 15 s)
+     - backs off to 60 s on outages
+     - on the merge-conflict wedge, runs `scripts/beads/ledger-recover` (lossless: lock-held settle in a copy, remote wins contested cells, loser notified)
+     - writes `HOLD` and stops on anything it cannot settle losslessly
+   - Delete-and-`bootstrap` is the operator's last resort only. It discards unpushed writes.
 
 ## Part B: every other machine (Daniel, Jaysen non-Commander clones, Kabir)
 
@@ -99,13 +111,15 @@ scripts/beads/bd bootstrap --yes                                # "Synced databa
 git config beads.role maintainer && chmod 700 .beads
 ```
 
+Then install the machine sync loop (Part A step 7) against that clone and confirm `scripts/beads/ledger-status` prints `FRESH`.
+
 **Verification. Each item must pass before the machine stops using issue comments:**
 1. `scripts/beads/bd version` shows `bd version 1.2.2 (6c124203e…`, and `dolt version` shows `2.3.3`. Post both, plus the tarball sha256 lines, in `docs/resources/machines/<alias>.md`.
 2. `scripts/beads/bd metrics | head -1` shows `OFF`.
 3. `scripts/beads/bd show ft-authority --json` names the current Commander.
 4. `scripts/beads/bd list --assignee <each local agent> --json` matches that agent's assignment.
 5. Round trip:
-   - Create `-l msg,to:<commander_id>,from:<agent> "cutover check <alias>"`, then push.
+   - Create `-l msg,to:<commander_id>,from:<agent>,thread:<self> "cutover check <alias>"`, then push. The Commander reads it with `scripts/beads/inbox --agent <commander_id>`.
    - The Commander pulls, sees it, and closes it.
    - This machine pulls and sees it closed.
 6. Wrapper refusal check: `scripts/beads/bd migrate schema` must print `refused: this machine is '<alias>', Commander machine is 'mac-m1max-a'`.
@@ -136,4 +150,5 @@ Do not close or delete existing issues.
 | `scripts/cooldown_dispatch.py:39` | `gh issue comment <issue> --repo flash-tex/flashtex --body …` | message bead `-l msg,to:<agent>` + push |
 | `scripts/fleet_health.py:138` | `gh issue list --state open --limit 1000 --json …` | `bd list -l recovery --status open --json` after pull |
 | `scripts/coord.py` (`ack`/`report`/`checkpoint`; `:358` `gh api user`) | git-file ledger + trailer lookup | ack/report also `bd update --append-notes`; `gh api user` for trailers stays |
-| `scripts/claim_commander.py`, `scripts/commander_failover.py`, `scripts/select_successor.py` | authority.json claims | read/write `ft-authority` per beads.md §9; keep gates |
+| `scripts/claim_commander.py`, `scripts/commander_failover.py`, `scripts/select_successor.py` | authority.json claims | `scripts/beads/authority claim/heartbeat/handoff` per beads.md §9; keep gates |
+| agents' claim/unclaim | (new) | `scripts/beads/claim <id> --actor <me>` / `--release`: never raw `bd update --claim` + ad-hoc undo (soak run 3 race) |
