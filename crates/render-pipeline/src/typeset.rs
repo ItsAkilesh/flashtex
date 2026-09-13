@@ -14,6 +14,7 @@
 //! `\raggedbottom`). This module keeps a record per box so every placed run
 //! maps back to its document, bytes, glyph extents and math box.
 
+use flashtex_compiler::text_builtins::TextLogo;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::rc::Rc;
@@ -98,11 +99,16 @@ pub enum BoxRec {
         /// continues the word box before it on the same line: painted into
         /// that run, so an unbroken word is one glyph run as before.
         continues: bool,
+        /// Baseline shift upward in points (`\LaTeX`'s raised `A`, `\TeX`'s
+        /// lowered `E`); 0 for ordinary text.
+        raise: f64,
     },
     Math(usize),
     /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
     /// baseline (depth 0), painted as a display-list rule.
-    Rule { width: f64, height: f64, span: Span },
+    /// `\rule` boxes set `bottom` (the painted part's bottom above the
+    /// baseline); nothing is painted when `width` or `height` is not positive.
+    Rule { width: f64, height: f64, bottom: f64, span: Span },
     /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
     Picture(Rc<PictureRec>),
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
@@ -177,6 +183,8 @@ pub struct MathRec {
     pub text_runs: Vec<crate::mathtext::TextRun>,
     /// The formula's colour (`adapter::Doc::math_colors`).
     pub color: Option<flashtex_compiler::color::DeviceColor>,
+    /// Baseline shift upward in points (`\LaTeXe`'s subscript `ε`).
+    pub raise: f64,
 }
 
 impl MathRec {
@@ -192,7 +200,7 @@ impl MathRec {
         // The OTF fallback ids (`u32::MAX`, `u32::MAX - 1`) lie above the
         // `\text` run ids: they must be answered by the provider, not
         // looked up as a run.
-        if !crate::mathtex::is_otf_fallback(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+        if !crate::mathtex::is_provider_font(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
             let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
             let glyph = run.glyph_at(g.font_id, g.gid)?;
             return Some((run.face.clone(), glyph.gid.0));
@@ -310,6 +318,8 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 }
 
 pub mod floatpage;
+pub mod footnotes;
+mod toc;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -324,6 +334,8 @@ pub struct Laid {
     /// one-sided first-column left edge the blocks were assembled at (an even
     /// page's `\evensidemargin`, the second column's offset).
     pub line_dx: Vec<Vec<f64>>,
+    /// `\thepage` of every page (empty without a resolved class frame).
+    pub page_text: Vec<String>,
 }
 
 pub struct Context<'a> {
@@ -347,6 +359,11 @@ pub struct Context<'a> {
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
     math_colors: std::collections::HashMap<(usize, usize, usize), flashtex_compiler::color::DeviceColor>,
+    /// Footnote texts met while building horizontal lists, and for each
+    /// the box record its `\insert` follows (the mark, or the box before
+    /// `\footnotetext`): see [`footnotes`].
+    notes: Vec<footnotes::NoteSrc>,
+    note_anchors: Vec<(usize, usize)>,
 }
 
 impl<'a> Context<'a> {
@@ -378,6 +395,8 @@ impl<'a> Context<'a> {
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
             math_colors: Default::default(),
+            notes: Vec::new(),
+            note_anchors: Vec::new(),
         }
     }
 
@@ -493,7 +512,19 @@ impl<'a> Context<'a> {
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let (role, notes) = self.text_role(style, size);
+        let r = self.fonts.resolve(self.style.family, role, size);
+        for (key, message) in notes {
+            let src = self.source(span);
+            self.report_once(key, Diagnostic::warning("font_shape_substituted", message, vec![src]));
+        }
+        if let Some(note) = &r.note {
+            let src = self.source(span);
+            self.report_once(
+                format!("outline:{note}"),
+                Diagnostic::warning("font_outline_substituted", note.clone(), vec![src]),
+            );
+        }
         if let Some(reason) = r.substituted {
             let src = self.source(span);
             self.report_once(
@@ -542,6 +573,29 @@ impl<'a> Context<'a> {
         r.face
     }
 
+    /// The font role of a text style: its NFSS shape selected in the
+    /// document's scheme (`\wrong@fontshape` substitutions) and followed
+    /// through `sub*`/`ssub*` to the font LaTeX loads, with LaTeX's font
+    /// warnings keyed for [`Self::report_once`].
+    fn text_role(&self, style: TextStyle, size: f64) -> (Role, Vec<(String, String)>) {
+        let scheme = self.style.nfss;
+        let selected = crate::nfss::select(scheme, style.key());
+        let (terminal, sub) = crate::nfss::terminal(scheme, selected.key);
+        let mut notes = Vec::new();
+        for undefined in [style.undefined, selected.undefined].into_iter().flatten() {
+            let (from, to) = (scheme.describe(undefined), scheme.describe(selected.key));
+            notes.push((format!("nfss:{from}"), format!("Font shape `{from}' undefined, using `{to}' instead")));
+        }
+        if let Some((from, to)) = sub {
+            let (from, to) = (scheme.describe(from), scheme.describe(to));
+            notes.push((
+                format!("nfss:{from}:{size}"),
+                format!("Font shape `{from}' in size <{size}> not available, Font shape `{to}' tried instead"),
+            ));
+        }
+        (Role::Font(terminal), notes)
+    }
+
     fn math_fonts(&mut self, span: Span) -> Option<MathProvider> {
         if let Some(m) = &self.math_fonts {
             return Some(m.clone());
@@ -570,7 +624,13 @@ impl<'a> Context<'a> {
                     flashtex_document_style::BaseSize::Pt11 => 11,
                     flashtex_document_style::BaseSize::Pt12 => 12,
                 };
-                let tex = TexMathMetrics::new(base, m.clone(), self.fonts);
+                // The math alphabets the sources name get their text fonts.
+                let used: Vec<crate::mathalpha::MathAlphabet> = crate::mathalpha::TEXT_ALPHABETS
+                    .iter()
+                    .copied()
+                    .filter(|a| self.texts.iter().any(|t| t.contains(a.command())))
+                    .collect();
+                let tex = TexMathMetrics::new(base, m.clone(), self.fonts).with_alphabets(self.fonts, &used);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
                 } else {
@@ -616,7 +676,7 @@ impl<'a> Context<'a> {
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
     fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let r = self.fonts.resolve(self.style.family, self.text_role(style, size).0, size);
         if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
             let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
             return params::TextParamsPt {
@@ -641,6 +701,126 @@ impl<'a> Context<'a> {
             width += p.extra_space;
         }
         pl::Glue::finite(width, p.stretch * f / 1000.0, p.shrink * 1000.0 / f)
+    }
+
+    /// `text_builtins::DimenContext` for `style` at `size`: the face's
+    /// `\fontdimen6`/`\fontdimen5`, and the text width for `\textwidth`,
+    /// `\linewidth` and `\columnwidth` (a list's narrower `\linewidth` is
+    /// not tracked at this level).
+    fn dimen_context(&self, style: TextStyle, size: f64) -> flashtex_compiler::text_builtins::DimenContext {
+        use flashtex_compiler::text_builtins::{pt_to_sp, DimenContext};
+        let p = self.text_params(style, size);
+        let width = pt_to_sp(self.style.text_width_pt);
+        DimenContext {
+            quad: pt_to_sp(p.quad),
+            x_height: pt_to_sp(p.x_height),
+            text_width: width,
+            line_width: width,
+            column_width: width,
+        }
+    }
+
+    /// `\rule` (compiler `Inline::Rule`, latex.ltx 16359-16367): an hbox
+    /// `RuleBox::width` wide whose painted part spans `rule_bottom..rule_top`
+    /// above the baseline; zero-width or empty rules are struts.
+    fn rule_box(&mut self, rule: &flashtex_compiler::text_builtins::TextRule, cx: &flashtex_compiler::text_builtins::DimenContext, size: f64, span: Span) -> (pl::GlyphRun, usize) {
+        use flashtex_compiler::text_builtins::sp_to_pt;
+        let b = rule.resolve(cx);
+        let width = sp_to_pt(b.width);
+        let (paint_width, paint_height) = if b.painted() { (width, sp_to_pt(b.rule_top - b.rule_bottom)) } else { (0.0, 0.0) };
+        self.recs.push(BoxRec::Rule {
+            width: paint_width,
+            height: paint_height,
+            bottom: sp_to_pt(b.rule_bottom),
+            span,
+        });
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width,
+            height: sp_to_pt(b.height),
+            depth: sp_to_pt(b.depth),
+            source: span.start..span.end,
+        };
+        (run, self.recs.len() - 1)
+    }
+
+    /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): one box per glyph
+    /// at the x `text_builtins::layout_logo` computes from this face's TFM
+    /// metrics, joined by kerns (not break points: no glue follows them),
+    /// with `E` lowered and `A` raised through the box records. `\LaTeXe`'s
+    /// `ε` is a math box from the formula fonts, shifted like the subscript.
+    fn logo_items(&mut self, logo: TextLogo, style: TextStyle, size: f64, span: Span) -> Vec<(pl::Item, Option<usize>)> {
+        use flashtex_compiler::text_builtins::{self as tb, LogoFont};
+        let sf = tb::sp_to_pt(tb::sf_size(tb::pt_to_sp(size)));
+        let sf_style = TextStyle { size_cpt: (sf * 100.0).round() as u16, ..style };
+        let current = self.face(style, size, span);
+        let small = self.face(sf_style, sf, span);
+        let params = self.text_params(style, size);
+        let mut epsilon: Option<(usize, f64, f64)> = None;
+        if logo == TextLogo::LaTeXe {
+            if let Some(rec) = self.math_box(&flashtex_compiler::math::varepsilon_list(span), span, false) {
+                if let BoxRec::Math(mi) = &self.recs[rec] {
+                    let root = &self.maths[*mi].root;
+                    epsilon = Some((rec, root.width, root.height));
+                }
+            }
+        }
+        let metrics = TfmLogoMetrics {
+            current: current.tfm.clone(),
+            small: small.tfm.clone(),
+            size,
+            sf,
+            quad: params.quad,
+            x_height: params.x_height,
+            epsilon: epsilon.map_or((0.0, 0.0), |(_, w, h)| (w, h)),
+        };
+        let built = tb::layout_logo(logo, &metrics);
+        let mut out = Vec::new();
+        let mut x = 0.0f64;
+        for g in &built.glyphs {
+            let target = tb::sp_to_pt(g.x);
+            if (target - x).abs() > 1e-9 {
+                out.push((pl::Item::kern(target - x), None));
+                x = target;
+            }
+            let raise = tb::sp_to_pt(g.raise);
+            let placed = match g.font {
+                LogoFont::MathItalic => epsilon.and_then(|(rec, ..)| {
+                    let BoxRec::Math(mi) = &self.recs[rec] else { return None };
+                    let mi = *mi;
+                    self.maths[mi].raise = raise;
+                    Some((math_run(&self.maths[mi].root, size, span), rec))
+                }),
+                font => {
+                    let (seg_style, seg_size) = if font == LogoFont::ScriptSize { (sf_style, sf) } else { (style, size) };
+                    let seg = adapter::Segment {
+                        text: g.ch.to_string(),
+                        chars: vec![adapter::CharSrc { document: span.document, start: span.start, end: span.end }],
+                        style: seg_style,
+                    };
+                    let placed = self.text_box(&seg, seg_size);
+                    if let Some((_, rec)) = placed {
+                        if let BoxRec::Text { raise: r, .. } = &mut self.recs[rec] {
+                            *r = raise;
+                        }
+                    }
+                    placed
+                }
+            };
+            if let Some((mut run, rec)) = placed {
+                run.height += raise;
+                run.depth -= raise;
+                x += run.width;
+                out.push((pl::Item::Box(run), Some(rec)));
+            }
+        }
+        let total = tb::sp_to_pt(built.width);
+        if (total - x).abs() > 1e-9 {
+            out.push((pl::Item::kern(total - x), None));
+        }
+        out
     }
 
     /// Shapes one styled segment into a box record and a paragraph-layout box.
@@ -746,6 +926,7 @@ impl<'a> Context<'a> {
             height,
             depth,
             continues: false,
+            raise: 0.0,
         });
         Some((run, self.recs.len() - 1))
     }
@@ -767,6 +948,10 @@ impl<'a> Context<'a> {
         if fam2_quad > 0.0 && text_quad > 0.0 {
             sink.text_quad = Some((text_quad, text_quad / fam2_quad));
         }
+        sink.body_size_pt = self.style.body_size_pt;
+        sink.amsfonts = self.texts.iter().any(|t| {
+            crate::adapter::package_options(t, "amssymb").is_some() || crate::adapter::package_options(t, "amsfonts").is_some()
+        });
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
@@ -832,7 +1017,7 @@ impl<'a> Context<'a> {
                 grid: g.clone(),
             })
             .collect();
-        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts).with_grids(&nested);
+        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts, &sink.keys).with_grids(&nested);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
@@ -943,6 +1128,7 @@ impl<'a> Context<'a> {
             metrics: fonts.clone(),
             text_runs,
             color: self.math_colors.get(&(span.document.0, span.start, span.end)).copied(),
+            raise: 0.0,
         });
         let idx = self.maths.len() - 1;
         self.recs.push(BoxRec::Math(idx));
@@ -1312,7 +1498,7 @@ impl<'a> Context<'a> {
         // Across requests (a fresh `Context` per render): resolving parses
         // nothing but still walks the config per font, so the result and any
         // warning are kept per thread for the face, size and options.
-        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}", setup.options, self.style.family));
+        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}|{:?}", setup.options, self.style.family, self.style.nfss));
         if let Some((hit, warning)) = MICROTYPE_FONTS.with(|c| c.borrow().get(&global_key).cloned()) {
             if let Some((k, message)) = warning {
                 self.emit(Some(k), Diagnostic::warning("microtype_unsupported", message, Vec::new()));
@@ -1321,9 +1507,21 @@ impl<'a> Context<'a> {
             return hit;
         }
         let mut warning: Option<(String, String)> = None;
+        // The NFSS font LaTeX loads for this style (family slot, series and
+        // shape after substitutions), named in the document's scheme: `cmr`/
+        // `cmss`/`cmtt` or `lmr`/`lmss`/`lmtt`, OT1 or T1 (mt-cmr.cfg and
+        // mt-lmr.cfg list both encodings).
+        let scheme = self.style.nfss;
+        let loaded = match self.text_role(style, size).0 {
+            Role::Font(key) => key,
+            _ => style.key(),
+        };
         let families = match self.style.family {
-            Family::ComputerModern => Some(("cmr", "cmss", "cmtt")),
-            Family::LatinModern => Some(("lmr", "lmss", "lmtt")),
+            Family::ComputerModern | Family::LatinModern => Some((
+                scheme.family_name(crate::nfss::FamilyKind::Rm),
+                scheme.family_name(crate::nfss::FamilyKind::Sf),
+                scheme.family_name(crate::nfss::FamilyKind::Tt),
+            )),
             Family::Times => None,
         };
         let resolved = match (families, face.tfm.clone()) {
@@ -1341,15 +1539,24 @@ impl<'a> Context<'a> {
                     }
                 }
                 static CONFIG: OnceLock<flashtex_microtype::MicrotypeConfig> = OnceLock::new();
+                // `ENC/family/series/shape` as `nfss::Scheme::describe` spells it.
+                let described = scheme.describe(loaded);
+                let mut parts = described.split('/').skip(2);
+                let (series, shape) = (parts.next().unwrap_or("m"), parts.next().unwrap_or("n"));
                 let font = flashtex_microtype::NfssFont {
-                    encoding: "T1".to_string(),
-                    family: rm.to_string(),
-                    series: if style.bold && !style.medium { "bx" } else { "m" }.to_string(),
-                    shape: if style.italic { "it" } else if style.slanted { "sl" } else { "n" }.to_string(),
+                    encoding: scheme.encoding().to_string(),
+                    family: match loaded.family {
+                        crate::nfss::FamilyKind::Rm => rm,
+                        crate::nfss::FamilyKind::Sf => sf,
+                        crate::nfss::FamilyKind::Tt => tt,
+                    }
+                    .to_string(),
+                    series: if style.medium && !loaded.bold() { "m" } else { series }.to_string(),
+                    shape: shape.to_string(),
                     size: format!("{size}"),
                 };
                 let metrics = Metrics { tfm: &tfm, z: (size * 65536.0).round() as i32 };
-                let defaults = flashtex_microtype::NfssDefaults::latex("T1", rm, sf, tt);
+                let defaults = flashtex_microtype::NfssDefaults::latex(scheme.encoding(), rm, sf, tt);
                 match CONFIG.get_or_init(flashtex_microtype::MicrotypeConfig::bundled).resolve(&setup.options, &defaults, &font, &metrics) {
                     Ok(r) => Some(Rc::new(r.params)),
                     Err(e) => {
@@ -1397,8 +1604,28 @@ impl<'a> Context<'a> {
             out.push(item);
             recs.push(rec);
         };
+        // Notes of this list: (item index, mark record, note).
+        let mut notes: Vec<(usize, Option<usize>, usize)> = Vec::new();
         for (idx, item) in items.iter().enumerate() {
             match item {
+                AItem::Footnote { number, mark, span, text } => {
+                    let note = text.as_ref().map(|t| {
+                        self.notes.push(footnotes::NoteSrc { number: number.clone(), span: *span, items: t.clone() });
+                        self.notes.len() - 1
+                    });
+                    let mut anchor = None;
+                    if *mark {
+                        // `\@footnotemark`: `\nobreak\@makefnmark`.
+                        push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
+                        if let Some((run, rec)) = self.footnote_mark(number, *span, size) {
+                            push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                            anchor = Some(rec);
+                        }
+                    }
+                    if let Some(n) = note {
+                        notes.push((out.len(), anchor, n));
+                    }
+                }
                 AItem::Word(w) => {
                     // TeX hyphenates a word only when it directly follows
                     // glue (§894: never the first word of a paragraph, which
@@ -1410,19 +1637,17 @@ impl<'a> Context<'a> {
                     // ends the search with no hyphens).
                     let after_glue = matches!(out.last(), Some(pl::Item::Glue(_)));
                     let joined = matches!(items.get(idx + 1), Some(AItem::Word(_) | AItem::Math { .. }));
-                    let hyphenate = after_glue && !joined && w.segments.len() == 1;
+                    // The typewriter families declare `\hyphenchar\font=-1`
+                    // (`ot1cmtt.fd`, `t1cmtt.fd`, `t1lmtt.fd`): no hyphens.
+                    let hyphenate = after_glue
+                        && !joined
+                        && w.segments.len() == 1
+                        && merge_style(base, w.segments[0].style).family != crate::nfss::FamilyKind::Tt;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
                             chars: seg.chars.clone(),
-                            style: TextStyle {
-                                bold: seg.style.bold || (base.bold && !seg.style.medium),
-                                italic: seg.style.italic || base.italic,
-                                size_cpt: seg.style.size_cpt,
-                                medium: seg.style.medium,
-                                slanted: seg.style.slanted || base.slanted,
-                                color: seg.style.color,
-                            },
+                            style: merge_style(base, seg.style),
                         };
                         // A size declaration in force (`{\Large ...}`) sets
                         // this segment at its own size.
@@ -1433,14 +1658,7 @@ impl<'a> Context<'a> {
                     }
                 }
                 AItem::Space { style, factor, no_break } => {
-                    let style = TextStyle {
-                        bold: style.bold || (base.bold && !style.medium),
-                        italic: style.italic || base.italic,
-                        size_cpt: style.size_cpt,
-                        medium: style.medium,
-                        slanted: style.slanted || base.slanted,
-                        color: style.color,
-                    };
+                    let style = merge_style(base, *style);
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
                     }
@@ -1488,6 +1706,25 @@ impl<'a> Context<'a> {
                     let (run, rec) = self.color_box(cb, size);
                     push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
                 }
+                AItem::Kern { amount, style } => {
+                    let style = merge_base(*style, base);
+                    let cx = self.dimen_context(style, style.size_or(size));
+                    let pt = flashtex_compiler::text_builtins::sp_to_pt(amount.resolve(&cx));
+                    push(&mut out, &mut recs, pl::Item::kern(pt), None);
+                }
+                AItem::Rule { rule, style, span } => {
+                    let style = merge_base(*style, base);
+                    let rule_size = style.size_or(size);
+                    let cx = self.dimen_context(style, rule_size);
+                    let (run, rec) = self.rule_box(rule, &cx, rule_size, *span);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
+                AItem::Logo { logo, style, span } => {
+                    let style = merge_base(*style, base);
+                    for (item, rec) in self.logo_items(*logo, style, style.size_or(size), *span) {
+                        push(&mut out, &mut recs, item, rec);
+                    }
+                }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
                     // `\/`: a kern of the last character's TFM italic
@@ -1516,6 +1753,14 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
         push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
+        // A `\footnotetext` insert follows the line of the box before it
+        // (the first box of the list when there is none).
+        for (at, anchor, n) in notes {
+            let rec = anchor.or_else(|| recs[..at.min(recs.len())].iter().rev().find_map(|r| *r)).or_else(|| recs.iter().find_map(|r| *r));
+            if let Some(rec) = rec {
+                self.note_anchors.push((rec, n));
+            }
+        }
         (out, recs, labels, skips)
     }
 
@@ -2006,7 +2251,7 @@ impl<'a> Context<'a> {
     /// A rule `width` x `height` whose bottom sits on the line's baseline,
     /// `x` from the line's left edge.
     fn rule_block_sized(&mut self, span: Span, width: f64, height: f64, x: f64) -> BuiltBlock {
-        self.recs.push(BoxRec::Rule { width, height, span });
+        self.recs.push(BoxRec::Rule { width, height, bottom: 0.0, span });
         let rec = self.recs.len() - 1;
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
@@ -2130,6 +2375,73 @@ impl<'a> Context<'a> {
     /// One bold `\raggedright` chapter-head paragraph at `size_pt` with its
     /// `\baselineskip`, `\nobreak` and `\vskip after_pt` after it.
     fn chapter_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64) -> Option<BuiltBlock> {
+        self.part_line(items, size_pt, baselineskip_pt, after_pt, ParaStyle::FlushLeft, None)
+    }
+
+    /// article.cls `\@part`/`\@spart` (lines 275-301): `\addvspace{4ex}`,
+    /// `{\parindent\z@ \raggedright \interlinepenalty\@M \Large\bfseries
+    /// \partname\nobreakspace\thepart \par\nobreak \huge\bfseries #2\par}`,
+    /// `\nobreak \vskip 3ex`.
+    fn part_flow_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::PartSpec, base: flashtex_class_geometry::BaseSize) -> Vec<BuiltBlock> {
+        use crate::style::frame_pt;
+        let metrics = |size: flashtex_class_geometry::FontSize| {
+            let (s, b) = size.metrics(base);
+            (frame_pt(s), frame_pt(b))
+        };
+        let mut out = Vec::new();
+        if let Some(n) = number {
+            let (size, bs) = metrics(spec.number_size);
+            let words = adapter::command_words(&format!("Part {n}"), span);
+            out.extend(self.part_line(&words, size, bs, frame_pt(spec.number_title_skip), ParaStyle::FlushLeft, None));
+        }
+        let (size, bs) = metrics(spec.title_size);
+        out.extend(self.part_line(title, size, bs, frame_pt(spec.space_after), ParaStyle::FlushLeft, None));
+        if let Some(first) = out.first_mut() {
+            first.vertical.space_before = Some((frame_pt(spec.space_before), 0.0, 0.0));
+        }
+        out
+    }
+
+    /// report.cls `\part` (lines 278-328; book.cls 299-349): the page break,
+    /// `\null\vfil`, `{\centering \huge\bfseries \partname\nobreakspace
+    /// \thepart \par \vskip 20\p@ \Huge\bfseries #2\par}`, `\@endpart`'s
+    /// `\vfil\newpage` (and `\newpage`'s own `\vfil`): the three `\vfil`s
+    /// share what the page leaves, one before the title and two after.
+    fn part_page_blocks(&mut self, number: Option<&str>, title: &[AItem], span: Span, spec: &flashtex_class_geometry::PartSpec, base: flashtex_class_geometry::BaseSize, width: f64) -> Vec<BuiltBlock> {
+        use crate::style::frame_pt;
+        let metrics = |size: flashtex_class_geometry::FontSize| {
+            let (s, b) = size.metrics(base);
+            (frame_pt(s), frame_pt(b))
+        };
+        let mut null = plain_vblock(vec![(0.0, 0.0)]);
+        null.penalty_before = Some(pagebuild::EJECT_PENALTY);
+        null.space_after = Some((0.0, 0.0, 0.0));
+        let mut out = vec![empty_block(null)];
+        if let Some(n) = number {
+            let (size, bs) = metrics(spec.number_size);
+            let words = adapter::command_words(&format!("Part {n}"), span);
+            out.extend(self.part_line(&words, size, bs, frame_pt(spec.number_title_skip), ParaStyle::Center, Some(width)));
+        }
+        let (size, bs) = metrics(spec.title_size);
+        out.extend(self.part_line(title, size, bs, 0.0, ParaStyle::Center, Some(width)));
+        let last = out.len() - 1;
+        out[last].vertical.penalty_after = Some(pagebuild::EJECT_PENALTY);
+        let s = self.style;
+        let p = page_params(s);
+        let vb: Vec<VBlock> = out.iter().map(|b| b.vertical.clone()).collect();
+        let (_, natural) = pagebuild::natural_layout(&p, &pagebuild::vlist(&p, &vb), true);
+        let fils = 3.0 + if s.raggedbottom { 1e-4 } else { 0.0 };
+        let fil = ((s.text_height_pt - natural) / fils).max(0.0);
+        if let Some(sa) = out[0].vertical.space_after.as_mut() {
+            sa.0 += fil;
+        }
+        out
+    }
+
+    /// One bold heading paragraph (`\raggedright` or `\centering`) at
+    /// `size_pt` with its `\baselineskip`, `\nobreak` and `\vskip after_pt`
+    /// after it, `width` wide (the column by default).
+    fn part_line(&mut self, items: &[AItem], size_pt: f64, baselineskip_pt: f64, after_pt: f64, para: ParaStyle, width: Option<f64>) -> Option<BuiltBlock> {
         let (list, recs, labels, skips) = self.hlist(
             items,
             size_pt,
@@ -2137,12 +2449,15 @@ impl<'a> Context<'a> {
                 bold: true,
                 ..TextStyle::default()
             },
-            ParaStyle::FlushLeft,
+            para,
         );
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let params = self.line_params(false, baselineskip_pt, ParaStyle::FlushLeft, 0.0);
+        let mut params = self.line_params(false, baselineskip_pt, para, 0.0);
+        if let Some(w) = width {
+            params.line_width = w;
+        }
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         let vertical = VBlock {
             lines: line_extents(&lines),
@@ -3475,15 +3790,96 @@ fn drop_trailing_break(list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, 
     Some(trailing_skip)
 }
 
-/// The font role of a text style: `\slshape` applies to upright medium text
-/// only (Latin Modern has no bold or italic slanted T1 shape in use here).
-fn role_of(style: TextStyle) -> Role {
-    if style.slanted && !style.bold && !style.italic {
-        Role::Slanted
-    } else {
-        Role::Text {
-            bold: style.bold,
-            italic: style.italic,
+/// A segment's style inside a block whose own style is `base` (a heading's
+/// `\bfseries`, a running head's `\slshape`): the block's weight unless the
+/// segment is `\normalfont`/`\mdseries`, its shape added, and the segment's
+/// family when it selects one.
+fn merge_style(base: TextStyle, s: TextStyle) -> TextStyle {
+    TextStyle {
+        bold: s.bold || (base.bold && !s.medium),
+        italic: s.italic || base.italic,
+        size_cpt: s.size_cpt,
+        medium: s.medium,
+        slanted: s.slanted || base.slanted,
+        caps: s.caps || base.caps,
+        family: if s.family != crate::nfss::FamilyKind::Rm { s.family } else { base.family },
+        undefined: s.undefined.or(base.undefined),
+        color: s.color.or(base.color),
+    }
+}
+
+/// A word style under the block's base style (as `AItem::Space` merges it).
+fn merge_base(style: TextStyle, base: TextStyle) -> TextStyle {
+    TextStyle {
+        bold: style.bold || (base.bold && !style.medium),
+        italic: style.italic || base.italic,
+        size_cpt: style.size_cpt,
+        medium: style.medium,
+        slanted: style.slanted || base.slanted,
+        caps: style.caps || base.caps,
+        family: if style.family != crate::nfss::FamilyKind::Rm { style.family } else { base.family },
+        undefined: style.undefined.or(base.undefined),
+        color: style.color.or(base.color),
+    }
+}
+
+/// `text_builtins::LogoMetrics` from the `ec-lm*` TFMs pdfTeX sets the
+/// logo with (T1 codes), the current face's quad/x-height, and the formula
+/// fonts' `ε` box for `\LaTeXe`.
+struct TfmLogoMetrics {
+    current: Option<Rc<crate::tfm::Tfm>>,
+    small: Option<Rc<crate::tfm::Tfm>>,
+    size: f64,
+    sf: f64,
+    quad: f64,
+    x_height: f64,
+    /// Width and height of `\varepsilon` at text style, in points.
+    epsilon: (f64, f64),
+}
+
+impl flashtex_compiler::text_builtins::LogoMetrics for TfmLogoMetrics {
+    fn char_box(&self, font: flashtex_compiler::text_builtins::LogoFont, ch: char) -> flashtex_compiler::text_builtins::CharBox {
+        use crate::ids::{Encoding, EncodingCode};
+        use flashtex_compiler::text_builtins::{pt_to_sp, CharBox, LogoFont};
+        let (tfm, size) = match font {
+            LogoFont::MathItalic => {
+                return CharBox { width: pt_to_sp(self.epsilon.0), height: pt_to_sp(self.epsilon.1), depth: 0, italic: 0 };
+            }
+            LogoFont::ScriptSize => (&self.small, self.sf),
+            LogoFont::Current => (&self.current, self.size),
+        };
+        let m = tfm.as_ref().and_then(|t| EncodingCode::for_char(ch, Encoding::T1).and_then(|code| t.metrics(code.0)));
+        match m {
+            Some(m) => CharBox {
+                width: pt_to_sp(crate::tfm::Tfm::pt(m.width, size)),
+                height: pt_to_sp(crate::tfm::Tfm::pt(m.height, size)),
+                depth: pt_to_sp(crate::tfm::Tfm::pt(m.depth, size)),
+                italic: pt_to_sp(crate::tfm::Tfm::pt(m.italic, size)),
+            },
+            // No TFM (reported by `face`): Latin Modern's cap height stands
+            // in; the boxes still land at their widths' positions.
+            None => CharBox { width: 0, height: pt_to_sp(0.683 * size), depth: 0, italic: 0 },
+        }
+    }
+
+    fn quad(&self) -> i32 {
+        flashtex_compiler::text_builtins::pt_to_sp(self.quad)
+    }
+
+    fn x_height(&self) -> i32 {
+        flashtex_compiler::text_builtins::pt_to_sp(self.x_height)
+    }
+
+    /// lmsy10's `\fontdimen16` (sub1, .15em) and `\fontdimen5` (.430555em)
+    /// at the text size and the script symbol font's `\fontdimen19`
+    /// (sub_drop, .05em at `\sf@size`): the formula `max` is decided by sub1
+    /// at every class size.
+    fn math_sub_params(&self) -> flashtex_compiler::text_builtins::MathSubParams {
+        use flashtex_compiler::text_builtins::{pt_to_sp, MathSubParams};
+        MathSubParams {
+            sub1: pt_to_sp(0.15 * self.size),
+            math_x_height: pt_to_sp(0.430555 * self.size),
+            script_sub_drop: pt_to_sp(0.05 * self.sf),
         }
     }
 }
@@ -3606,6 +4002,8 @@ pub fn class_override_of(text: &str, at: usize) -> Option<ml::AtomClass> {
         "mathpunct" => ml::AtomClass::Punct,
         "bot" => ml::AtomClass::Ord,
         "bigtriangleup" => ml::AtomClass::Bin,
+        // amsfonts' dashed arrows: a `\mathrel` group of msam pieces.
+        "dashrightarrow" | "dasharrow" | "dashleftarrow" => ml::AtomClass::Rel,
         _ => return None,
     })
 }
@@ -3733,6 +4131,68 @@ pub fn convert_math_classed(
                 let class = class(&a.span).unwrap_or(ml::AtomClass::Ord);
                 vec![ml::Atom::new(class, ml::Nucleus::List(sub(body, sink)))]
             }
+            // amssymb/amsfonts symbols (compiler `MathAtom.ams_symbol`): one
+            // atom of the declared class whose sentinel carries the msam/msbm
+            // slot to the metrics providers.
+            N::Symbol(_) if a.ams_symbol.is_some() => {
+                use flashtex_compiler::amssymb::SymbolClass as C;
+                let ams = a.ams_symbol.expect("checked");
+                let class = match ams.class {
+                    C::Ord => ml::AtomClass::Ord,
+                    C::Bin => ml::AtomClass::Bin,
+                    C::Rel => ml::AtomClass::Rel,
+                    C::Open => ml::AtomClass::Open,
+                    C::Close => ml::AtomClass::Close,
+                };
+                vec![ml::Atom::new(class, ml::Nucleus::Symbol(crate::mathfont::ams_sentinel(ams)))]
+            }
+            // Math-mode `\rule` (compiler `Nucleus::Rule`): math-layout has no
+            // rule atom, so the box's width is kept as glue and nothing is
+            // painted (reported by `math_approximations`). Font-relative
+            // widths resolve against no font here (0).
+            N::Rule(rule) => {
+                let cx = flashtex_compiler::text_builtins::DimenContext::default();
+                let width = flashtex_compiler::text_builtins::sp_to_pt(rule.width.resolve(&cx));
+                vec![ml::Atom::glue(0.0, width)]
+            }
+            // `\mathsf{AB}`, `\mathtt`, `\mathit` (compiler: Unicode
+            // mathematical alphanumerics): runs of one text-font alphabet go
+            // to the text sink in that font (kerns, ligatures, last italic
+            // correction); fraktur and any other character stay symbols.
+            // A single character stays a math character (TeX §1186 unpacks
+            // the one-Ord group): `TexMathMetrics` boxes it from the TFM.
+            N::Symbol(s) if s.chars().count() > 1 && s.chars().any(|c| crate::mathalpha::classify(c).is_some_and(|(al, _)| al.text_key().is_some())) => {
+                let mut parts: Vec<ml::Atom> = Vec::new();
+                let mut run = String::new();
+                let mut run_key = None;
+                let flush = |run: &mut String, run_key: &mut Option<crate::nfss::FontKey>, parts: &mut Vec<ml::Atom>, sink: &mut crate::mathtext::TextSink| {
+                    if let Some(key) = run_key.take() {
+                        parts.push(sink.atom_in(run, key));
+                    }
+                    run.clear();
+                };
+                for c in s.chars() {
+                    match crate::mathalpha::classify(c).and_then(|(al, letter)| al.text_key().map(|k| (k, letter))) {
+                        Some((key, letter)) => {
+                            if run_key != Some(key) {
+                                flush(&mut run, &mut run_key, &mut parts, sink);
+                                run_key = Some(key);
+                            }
+                            run.push(letter);
+                        }
+                        None => {
+                            flush(&mut run, &mut run_key, &mut parts, sink);
+                            parts.extend(symbol_atoms(c, None));
+                        }
+                    }
+                }
+                flush(&mut run, &mut run_key, &mut parts, sink);
+                if parts.len() == 1 {
+                    parts
+                } else {
+                    vec![ml::Atom::group(ml::MathList::new(parts))]
+                }
+            }
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -3767,9 +4227,20 @@ pub fn convert_math_classed(
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
-            // `\mathbf{...}`: set like `\text` in the roman face (the text
-            // sink has no bold role); `math_box` reports it once per formula.
-            N::Bold(text) => vec![sink.atom(text)],
+            // `\mathbf{...}` (fontmath.ltx OT1/cmr/bx/n): a run in the bold
+            // roman text font; spaces in math take no part.
+            N::Bold(text) => {
+                use crate::mathalpha::{alphanumeric, MathAlphabet};
+                let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                let mut chars = letters.chars();
+                match (chars.next(), chars.next()) {
+                    // One letter or digit: a math character (TeX §1186).
+                    (Some(c), None) if alphanumeric(MathAlphabet::Bold, c).is_some() => {
+                        symbol_atoms(alphanumeric(MathAlphabet::Bold, c).expect("checked"), None)
+                    }
+                    _ => vec![sink.atom_in(&letters, MathAlphabet::Bold.text_key().expect("a text alphabet"))],
+                }
+            }
             // `\overline`/`\underline` are Appendix G Rules 9/10 atoms;
             // `\boxed` has no frame atom, so the body is set as a group and
             // reported by `math_box`.
@@ -3780,6 +4251,21 @@ pub fn convert_math_classed(
                     Frame::Over => ml::Atom::overline(body),
                     Frame::Under => ml::Atom::underline(body),
                     Frame::Box => ml::Atom::group(body),
+                    // `\mathop{..}\limits` (`fontmath.ltx` 430-437): the
+                    // compiler's scripts attach below as limits.
+                    Frame::OverBrace => ml::Atom::brace(body, false),
+                    Frame::UnderBrace => ml::Atom::brace(body, true),
+                    // amsmath `\overarrow@`/`\underarrow@` over the
+                    // `\arrowfill@` pieces (`amsmath.sty` 977-979).
+                    arrow_frame => {
+                        use flashtex_compiler::math::ExtArrow as X;
+                        let pieces = match arrow_frame.arrow() {
+                            Some(X::Left) => ['\u{2190}', '-', '-'],
+                            Some(X::LeftRight) => ['\u{2190}', '-', '\u{2192}'],
+                            _ => ['-', '-', '\u{2192}'],
+                        };
+                        ml::Atom::over_arrow(pieces, body, arrow_frame.is_under(), 1.3 * ams_ex(sink.body_size_pt))
+                    }
                 }]
             }
             // amsmath's `\overset{a}{b}` is `\mathop{b}\limits^{a}` wrapped
@@ -3802,6 +4288,19 @@ pub fn convert_math_classed(
             // combining mark Latin Modern Math carries for each command
             // (`\widehat`/`\widetilde` use the same mark; the horizontal
             // variants are not read, so a wide base gets the plain one).
+            // amsfonts' `\widehat`/`\widetilde` (`amsfonts.sty` 78-86): the cmex
+            // chain up to 2em of the text font, msbm's extra-wide form past it.
+            N::Accent { accent: accent @ (flashtex_compiler::math::Accent::WideHat | flashtex_compiler::math::Accent::WideTilde), body }
+                if sink.amsfonts && sink.text_quad.is_some() =>
+            {
+                let wide = if *accent == flashtex_compiler::math::Accent::WideHat { "widehat@" } else { "widetilde@" };
+                let threshold = 2.0 * sink.text_quad.map_or(0.0, |(q, _)| q);
+                let base = sub(body, sink);
+                match flashtex_compiler::amssymb::piece(wide) {
+                    Some(ams) => vec![ml::Atom::measured_accent(accent_char(*accent), crate::mathfont::ams_sentinel(ams), threshold, base)],
+                    None => vec![ml::Atom::accent(accent_char(*accent), base)],
+                }
+            }
             N::Accent { accent, body } => vec![ml::Atom::accent(accent_char(*accent), sub(body, sink))],
             // `array`/`cases`/matrix/`aligned` grids below the top level (a
             // top-level grid without scripts is split out by `grid_pieces`):
@@ -4055,6 +4554,55 @@ fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Spa
     out
 }
 
+/// Every `array`/`cases`/matrix grid in `list` and its sub-formulas as
+/// `(rows, columns)`; see the `Matrix` arm of [`convert_math_fenced`].
+fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, usize)>) {
+    use flashtex_compiler::math::Nucleus as N;
+    for a in &list.atoms {
+        match &a.nucleus {
+            N::Matrix { rows, .. } => {
+                out.push((rows.len(), rows.iter().map(Vec::len).max().unwrap_or(0)));
+                for cell in rows.iter().flatten() {
+                    math_grids(cell, out);
+                }
+            }
+            N::Fraction { numerator, denominator } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_grids(r, out),
+            N::Rule(_) => {}
+            N::Stacked { base, over, under } => {
+                math_grids(base, out);
+                for part in [over, under].into_iter().flatten() {
+                    math_grids(part, out);
+                }
+            }
+            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
+            #[cfg(feature = "amsmath-inline")]
+            N::GenFraction { numerator, denominator, .. } => {
+                math_grids(numerator, out);
+                math_grids(denominator, out);
+            }
+            #[cfg(feature = "amsmath-inline")]
+            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
+            #[cfg(feature = "amsmath-inline")]
+            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_grids(above, out);
+                math_grids(below, out);
+            }
+        }
+        if let Some(s) = &a.superscript {
+            math_grids(s, out);
+        }
+        if let Some(s) = &a.subscript {
+            math_grids(s, out);
+        }
+    }
+}
+
 /// `em` of a compiler `Space` atom in family-2 quads: text-font ems
 /// (`\quad`) are scaled by `ratio`.
 fn space_em(a: &flashtex_compiler::math::MathAtom, em: f64, ratio: f64) -> f64 {
@@ -4081,7 +4629,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                     math_glue_em(base) + [over, under].into_iter().flatten().map(math_glue_em).sum::<f64>()
                 }
                 N::Matrix { rows, .. } => rows.iter().flatten().map(math_glue_em).sum(),
-                N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } => 0.0,
+                N::Symbol(_) | N::Text(_) | N::Bold(_) | N::SizedDelimiter { .. } | N::Rule(_) => 0.0,
                 #[cfg(feature = "amsmath-inline")]
                 N::GenFraction { numerator, denominator, .. } => math_glue_em(numerator) + math_glue_em(denominator),
                 #[cfg(feature = "amsmath-inline")]
@@ -4100,18 +4648,52 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
 /// what Latin Modern Math's `MATH` table carries accent attachment for.
 fn accent_char(a: flashtex_compiler::math::Accent) -> char {
     use flashtex_compiler::math::Accent as A;
+    // The character math-layout's `cm` table slots each `\mathaccent` at
+    // (`fontmath.ltx` 410-421): the `operators` (roman) spacing accents
+    // "5E `\hat`, "7E `\tilde`, "16 `\bar`, "5F `\dot`, "7F `\ddot`, "14
+    // `\check`, "15 `\breve`, "13 `\acute`, "12 `\grave`; `\vec` letters
+    // "7E; `\widehat`/`\widetilde` the `largesymbols` chains from "62/"65,
+    // which math-layout keys by the combining marks.
     match a {
-        A::Hat | A::WideHat => '\u{0302}',
-        A::Bar => '\u{0304}',
+        A::Hat => '\u{02C6}',
+        A::WideHat => '\u{0302}',
+        A::Bar => '\u{00AF}',
         A::Vec => '\u{20D7}',
-        A::Tilde | A::WideTilde => '\u{0303}',
-        A::Dot => '\u{0307}',
-        A::Ddot => '\u{0308}',
-        A::Check => '\u{030C}',
-        A::Breve => '\u{0306}',
-        A::Acute => '\u{0301}',
-        A::Grave => '\u{0300}',
+        A::Tilde => '\u{02DC}',
+        A::WideTilde => '\u{0303}',
+        A::Dot => '\u{02D9}',
+        A::Ddot => '\u{00A8}',
+        A::Check => '\u{02C7}',
+        A::Breve => '\u{02D8}',
+        A::Acute => '\u{00B4}',
+        A::Grave => '`',
     }
+}
+
+/// amsmath's `\ex@` at a font size (`amsgen.sty` 104-125, `\compute@ex@`):
+/// 1pt at 10pt, growing by 3% compounding per 0.5pt of size over 10pt (and
+/// shrinking below), 1.5pt past 20pt. Used for `\underarrow@`'s
+/// `\kern1.3\ex@`.
+fn ams_ex(size_pt: f64) -> f64 {
+    if size_pt <= 0.0 {
+        return 1.0;
+    }
+    if -size_pt < -20.0 {
+        return 1.5;
+    }
+    // In scaled points, as TeX computes it.
+    let mut d: i64 = ((10.0 - size_pt) * 2.0 * 65536.0).round() as i64;
+    let negative = d > 0;
+    d = d.abs() - 1000;
+    let mut vfuzz: i64 = 65536;
+    while d > 0 {
+        // `\vfuzz=.97\vfuzz`: `.97` scans as 63570/65536.
+        vfuzz = vfuzz * 63570 / 65536;
+        d -= 65536;
+    }
+    let delta = 65536 - vfuzz;
+    let ex = if negative { 65536 - delta } else { 65536 + delta };
+    ex as f64 / 65536.0
 }
 
 /// Constructs in `list` and its sub-formulas the pipeline sets only
@@ -4122,7 +4704,11 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
     use flashtex_compiler::math::{Frame, Nucleus as N};
     for a in &list.atoms {
         match &a.nucleus {
-            N::Bold(text) => out.push(format!("\\mathbf{{{text}}} set in the regular roman face: the math text sink has no bold role")),
+            // `\mathbf` is now set through the text sink's bold alphabet role
+            // (or a Unicode bold math alphanumeric for one letter/digit), not
+            // the regular roman face, so it is no longer a math_limitation.
+            N::Bold(_) => {}
+            N::Rule(_) => out.push("math-mode \\rule set as horizontal space of its width: math-layout has no rule atom, nothing painted".to_string()),
             N::Framed { body, frame } => {
                 if *frame == Frame::Box {
                     out.push("\\boxed frame dropped: math-layout has no framed-box atom".to_string());
@@ -4357,6 +4943,10 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         if cache.is_none() {
             return (None, None);
         }
+        // A footnote's record indices and note table are per build.
+        if items.iter().any(|i| matches!(i, AItem::Footnote { .. })) {
+            return (None, None);
+        }
         let Some((document, base)) = incremental::block_origin(items) else {
             return (None, None);
         };
@@ -4368,7 +4958,15 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         incremental::hash_items(items, base, &mut h);
         (Some(h.finish()), Some((document, base)))
     };
-    for block in &doc.blocks {
+    // Two-column documents: blocks that start a page (`\clearpage`,
+    // `\chapter`, `\part`) rather than a column, and blocks set across the
+    // text width (`\onecolumn` material), by built-block index.
+    let mut page_start_blocks: Vec<usize> = Vec::new();
+    let mut wide_blocks: Vec<usize> = Vec::new();
+    for (doc_index, block) in doc.blocks.iter().enumerate() {
+        if doc.page_starts.binary_search(&doc_index).is_ok() {
+            page_start_blocks.push(blocks.len());
+        }
         match block {
             Block::Heading {
                 level,
@@ -4415,7 +5013,87 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     after_heading = true;
                 }
             }
-            Block::Chapter { number, items, title, span, mark } => {
+            Block::TocEntry(entry) => {
+                if let Some(mut b) = ctx.toc_entry_block(entry) {
+                    // `\addpenalty` does nothing under `\@nobreak` (right
+                    // after the list's heading).
+                    if after_heading {
+                        b.vertical.penalty_before = None;
+                    }
+                    // `\addvspace`: only the excess over the previous skip.
+                    if entry.style.addvspace {
+                        if let (Some(before), Some(prev)) = (b.vertical.space_before, blocks.last_mut()) {
+                            if let Some(last) = prev.vertical.space_after {
+                                if last.0 < before.0 {
+                                    prev.vertical.space_after = None;
+                                } else {
+                                    b.vertical.space_before = None;
+                                }
+                            }
+                        }
+                    }
+                    if entry.wide {
+                        wide_blocks.push(blocks.len());
+                    }
+                    blocks.push(b);
+                    // report/book `\l@part`: `\global\@nobreaktrue`.
+                    after_heading = entry.style.nobreak_after;
+                }
+            }
+            Block::Part { number, items, span, eject_before, clear_before } => {
+                let Some(g) = geo else { continue };
+                if *clear_before {
+                    page_start_blocks.push(blocks.len());
+                }
+                let spec = &g.part;
+                let first = blocks.len();
+                // `\markboth{}{}` (and report/book `\thispagestyle{plain}`).
+                let empty_marks = adapter::ChromeEvent::MarkBoth(String::new(), String::new());
+                if spec.own_page {
+                    events.push((first, adapter::ChromeEvent::ThisPageStyle(flashtex_class_geometry::PageStyle::Plain), *span));
+                    events.push((first, empty_marks, *span));
+                    // report/book `\part`: `\if@twocolumn \onecolumn`.
+                    let width = if n_columns > 1 { crate::style::frame_pt(g.frame.text_width) } else { ctx.style.text_width_pt };
+                    let built = ctx.part_page_blocks(number.as_deref(), items, *span, spec, g.options.size, width);
+                    if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
+                        chapter_starts.push((first, events.len()));
+                    }
+                    blocks.extend(built);
+                    if spec.blank_page_after {
+                        // `\@endpart`: `\null \thispagestyle{empty} \newpage`.
+                        let mut blank = plain_vblock(vec![(0.0, 0.0)]);
+                        blank.penalty_after = Some(pagebuild::EJECT_PENALTY);
+                        events.push((blocks.len(), adapter::ChromeEvent::ThisPageStyle(flashtex_class_geometry::PageStyle::Empty), *span));
+                        blocks.push(empty_block(blank));
+                    }
+                    page_start_blocks.push(first);
+                    if n_columns > 1 {
+                        wide_blocks.extend(first..blocks.len());
+                    }
+                    after_heading = false;
+                } else {
+                    let mut built = ctx.part_flow_blocks(number.as_deref(), items, *span, spec, g.options.size);
+                    if let (true, Some(b)) = (*eject_before, built.first_mut()) {
+                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                    }
+                    // `\addvspace{4ex}`: only the excess over the previous skip.
+                    if let (Some(b), Some(prev)) = (built.first_mut(), blocks.last_mut()) {
+                        if let (Some(before), Some(last)) = (b.vertical.space_before, prev.vertical.space_after) {
+                            if last.0 < before.0 {
+                                prev.vertical.space_after = None;
+                            } else {
+                                b.vertical.space_before = None;
+                            }
+                        }
+                    }
+                    events.push((first, empty_marks, *span));
+                    blocks.extend(built);
+                    // `\@afterheading`.
+                    after_heading = true;
+                }
+            }
+            Block::Chapter { number, appendix, items, title, span, mark } => {
+                page_start_blocks.push(blocks.len());
                 let Some((g, spec)) = geo.and_then(|g| g.chapter.as_ref().map(|c| (g, c))) else { continue };
                 // `\chapter`: `\clearpage`, `\thispagestyle{plain}`, then
                 // `\@chapter`'s `\chaptermark` before `\@makechapterhead`.
@@ -4423,6 +5101,14 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 if let (true, Some(rule)) = (*mark, mark_rules.iter().find(|r| r.command == "chapter")) {
                     events.push((blocks.len(), mark_event(rule, number.as_deref(), title, doc.secnumdepth), *span));
                 }
+                // `\appendix` makes `\@chapapp` `\appendixname`.
+                let appendix_spec;
+                let spec = if *appendix {
+                    appendix_spec = flashtex_class_geometry::ChapterSpec { prefix: "Appendix", ..spec.clone() };
+                    &appendix_spec
+                } else {
+                    spec
+                };
                 let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
                 if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
                     chapter_starts.push((blocks.len(), events.len()));
@@ -4697,7 +5383,19 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
-    for at in clears {
+    // `\twocolumn` begins with `\clearpage`: column material after
+    // full-width material starts a page (`\onecolumn`'s own `\clearpage`
+    // comes with the `\chapter*` heading of the list).
+    if n_columns > 1 && !wide_blocks.is_empty() {
+        for i in 1..blocks.len() {
+            let wide = |b: usize| wide_blocks.binary_search(&b).is_ok();
+            if wide(i - 1) && !wide(i) {
+                blocks[i].vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                page_start_blocks.push(i);
+            }
+        }
+    }
+    for &at in &clears {
         if let Some(b) = blocks.get_mut(at) {
             b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
         }
@@ -4706,13 +5404,22 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     let params = page_params(s);
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
+    // Footnote blocks are appended after the body's (not in `vblocks`).
+    let insertions = footnotes::prepare(ctx, &mut blocks, &params, !floats.is_empty());
     // Two-column documents: the page builder fills columns of `\textheight`
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = n_columns;
     let (mut built, images, float_labels) = if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
-        (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new())
+        match &insertions {
+            Some(ins) => {
+                let (mut pages, areas) = pagebuild::break_pages_inserts(&params, &list, short_pages, short, ins);
+                footnotes::place(ctx, &mut blocks, &mut pages, areas);
+                (pages, Vec::new(), Vec::new())
+            }
+            None => (pagebuild::break_pages_shortened(&params, &list, short_pages, short), Vec::new(), Vec::new()),
+        }
     } else {
         if let Some((first, ..)) = &top_title {
             let span = blocks.get(*first).and_then(|b| b.recs.iter().flatten().next().copied()).and_then(|r| match &ctx.recs[r] {
@@ -4753,10 +5460,26 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // `\c@page` and `\thepage` of every page; `\cleardoublepage`'s empty
     // page (`\hbox{}\newpage`) before an `openright` chapter that would
     // start on an even page of a two-sided document.
+    // Two-column documents: a page start or `\onecolumn` material that the
+    // page builder put in a later column moves to the next page.
+    let mut aligned: Vec<usize> = Vec::new();
+    page_start_blocks.extend(clears.iter().copied());
+    if columns > 1 && !(page_start_blocks.is_empty() && wide_blocks.is_empty()) {
+        let flags = |list: &[usize]| {
+            let mut v = vec![false; blocks.len()];
+            for &b in list {
+                if let Some(f) = v.get_mut(b) {
+                    *f = true;
+                }
+            }
+            v
+        };
+        aligned = align_columns(&mut built, columns, &flags(&page_start_blocks), &flags(&wide_blocks));
+    }
     let mut blank_pages: Vec<usize> = Vec::new();
     let counters = geo.map_or_else(Vec::new, |g| {
-        if columns == 1 && g.flags.twoside && !chapter_starts.is_empty() {
-            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering);
+        if g.flags.twoside && !chapter_starts.is_empty() {
+            blank_pages = open_right(&mut built, &chapter_starts, blocks.len(), &events, g.numbering, columns);
         }
         page_counters(&built, columns, blocks.len(), &events, g.numbering)
     });
@@ -4826,7 +5549,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // `\evensidemargin`, the second column).
     let column_page = |n: u32| -> (u32, usize) {
         let mut ci = n.saturating_sub(1) as usize;
-        for &b in &blank_pages {
+        // Both insertion lists, in the order they were made.
+        for &b in aligned.iter().chain(&blank_pages) {
             if b <= ci {
                 ci += 1;
             }
@@ -4867,6 +5591,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             src,
         ));
     }
+    let page_text = counters.iter().map(|(n, numbering)| numbering.format(*n)).collect();
     Laid {
         blocks,
         pages,
@@ -4875,6 +5600,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         images,
         float_labels,
         line_dx,
+        page_text,
     }
 }
 
@@ -4957,23 +5683,57 @@ fn page_counters(built: &[pagebuild::BuiltPage], columns: usize, n_blocks: usize
 /// `\cleardoublepage` before an `openright` chapter (one-column,
 /// two-sided): an empty page (`\hbox{}\newpage`, the page style in force)
 /// when the chapter's page would be even.
-fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[(usize, usize)], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering) -> Vec<usize> {
-    // Indices (in the final list, ascending) of the inserted empty pages.
+fn open_right(built: &mut Vec<pagebuild::BuiltPage>, chapter_starts: &[(usize, usize)], n_blocks: usize, events: &[(usize, adapter::ChromeEvent, Span)], numbering: flashtex_class_geometry::Numbering, columns: usize) -> Vec<usize> {
+    // Indices (in the final list, ascending) of the inserted empty columns:
+    // a whole page of them (`\cleardoublepage`'s `\if@twocolumn\hbox{}
+    // \newpage\fi`).
+    let columns = columns.max(1);
     let mut inserted = Vec::new();
     let mut k = 0;
     while k < built.len() {
-        // The first `\cleardoublepage` recorded for the page's first block.
-        let start = built[k].lines.first().and_then(|l| chapter_starts.iter().find(|(b, _)| *b == l.payload.0).copied());
+        // The first `\cleardoublepage` recorded for the page's first block
+        // (a page start is always a page's first column).
+        let start = built[k].lines.first().filter(|_| k % columns == 0).and_then(|l| chapter_starts.iter().find(|(b, _)| *b == l.payload.0).copied());
         if let Some((block, cut)) = start {
             // `\ifodd\c@page` is tested before the counter commands issued
             // after the clear (book `\mainmatter`'s `\pagenumbering{arabic}`).
             let before: Vec<(usize, adapter::ChromeEvent, Span)> = events.iter().enumerate().filter(|(i, (b, _, _))| !(*b == block && *i >= cut)).map(|(_, e)| e.clone()).collect();
-            if page_counters(built, 1, n_blocks, &before, numbering)[k].0 % 2 == 0 {
+            if page_counters(built, columns, n_blocks, &before, numbering)[k / columns].0 % 2 == 0 {
+                for _ in 0..columns {
+                    built.insert(k, pagebuild::BuiltPage::default());
+                    inserted.push(k);
+                    k += 1;
+                }
+            }
+        }
+        k += 1;
+    }
+    inserted
+}
+
+/// Two-column documents (`\@outputdblcol`): the page builder fills
+/// columns, but material after `\clearpage` (and `\chapter`/`\part`) starts
+/// a new page, and `\onecolumn` material (report/book contents lists, the
+/// report/book `\part` page, set at `\textwidth`) takes the whole page.
+/// Inserts empty columns so such a column is a page's first and the column
+/// after `\onecolumn` material starts the next page; returns the inserted
+/// indices (in the final list, ascending).
+fn align_columns(built: &mut Vec<pagebuild::BuiltPage>, columns: usize, page_start: &[bool], wide: &[bool]) -> Vec<usize> {
+    let flag = |v: &[bool], b: usize| v.get(b).copied().unwrap_or(false);
+    let mut inserted = Vec::new();
+    let mut prev_wide = false;
+    let mut k = 0;
+    while k < built.len() {
+        let starts = built[k].lines.first().is_some_and(|l| flag(page_start, l.payload.0));
+        let has_wide = built[k].lines.iter().any(|l| flag(wide, l.payload.0));
+        if (starts || has_wide || prev_wide) && k % columns != 0 {
+            while k % columns != 0 {
                 built.insert(k, pagebuild::BuiltPage::default());
                 inserted.push(k);
                 k += 1;
             }
         }
+        prev_wide = has_wide;
         k += 1;
     }
     inserted
@@ -5161,6 +5921,19 @@ pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
         out.insert(key.clone(), *page);
     }
     out
+}
+
+/// `\thepage` of every contents-list entry, from the pages of its synthetic
+/// label (`crate::toc::key`) in `pages` ([`label_pages`] of `laid`).
+pub fn toc_pages(laid: &Laid, pages: &BTreeMap<String, u32>) -> BTreeMap<String, String> {
+    pages
+        .iter()
+        .filter(|(key, _)| crate::toc::is_key(key))
+        .map(|(key, page)| {
+            let text = laid.page_text.get((*page as usize).wrapping_sub(1)).cloned().unwrap_or_else(|| page.to_string());
+            (key.clone(), text)
+        })
+        .collect()
 }
 
 /// Converts the placed pages into the display list.
@@ -5397,10 +6170,11 @@ fn assemble_block(
                     depth,
                     continues,
                     style,
+                    raise,
                     ..
                 } => {
                     used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
-                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of, Paint::of(style.color)) {
+                    if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, *raise, source_of, Paint::of(style.color)) {
                         match (items.last_mut(), item) {
                             (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size && prev.paint == next.paint => {
                                 join_runs(prev, next);
@@ -5493,11 +6267,16 @@ fn assemble_block(
                         items.push(block_rule(x0, cb.depth - r, cb.width, r, frame));
                     }
                 }
-                BoxRec::Rule { width, height, span } => {
-                    // Line-local like text: the rule's bottom is the baseline.
+                BoxRec::Rule { width, height, bottom, span } => {
+                    // Line-local like text: the rule's bottom is `bottom`
+                    // above the baseline (0 for `\hrule`); a strut paints
+                    // nothing.
+                    if *width <= 0.0 || *height <= 0.0 {
+                        continue;
+                    }
                     items.push(display::Item::Rule(Rule {
                         x: Tick::from_tex_pt(local.x),
-                        top: Tick::from_tex_pt(-height),
+                        top: Tick::from_tex_pt(-(bottom + height)),
                         width: Tick::from_tex_pt(*width).max(Tick(1)),
                         height: Tick::from_tex_pt(*height).max(Tick(1)),
                         paint: Paint::BLACK,
@@ -5762,13 +6541,14 @@ fn text_item(
     recs: &[GlyphRec],
     height: f64,
     depth: f64,
+    raise: f64,
     source_of: &dyn Fn(Span) -> SourceRange,
     paint: Paint,
 ) -> Option<display::Item> {
     // Line-local: the baseline is 0 and every y is an offset from it; the
     // page position is added as an integer tick move when the line is
     // placed, so a block placed anywhere yields identical ticks.
-    let baseline = 0.0;
+    let baseline = -raise;
     let top = Tick::from_tex_pt(baseline - height);
     let box_height = Tick::from_tex_pt(height + depth);
     let mut glyphs = Vec::with_capacity(run.glyphs.len());
@@ -5855,7 +6635,7 @@ fn math_items(
     items: &mut Vec<display::Item>,
     used: &mut BTreeMap<Rc<str>, Rc<LoadedFace>>,
 ) {
-    let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height));
+    let flat = ml::positioned_runs(&m.root, (run.x, -m.root.height - m.raise));
     let src = source_of(m.span);
     // Group consecutive glyphs of one face and size into a run; each glyph
     // is a cluster.
@@ -5911,6 +6691,22 @@ fn math_items(
             Some((th, td)) if !b.empty => g.baseline_y + ((td - th) - (d - h)) / 2.0,
             _ => g.baseline_y,
         };
+        // Where the painted outline starts. `\overbrace`/`\underbrace`: Latin
+        // Modern Math's assembly parts stand for cmex's four pieces
+        // (`TexMathMetrics::otf_gid`), the left end at the first piece, the
+        // middle centred on the cusp between the two middle pieces, the right
+        // end flush with the last piece, each advancing by its own width.
+        // amsfonts' dashed-arrow head ("4B): the 1em arrow is right-aligned
+        // in the msam box. Everything else starts at its TeX box.
+        let face_adv = face.pt(i64::from(face.face().advance(crate::ids::GlyphId(gid)).unwrap_or(0)), g.size);
+        let ams = crate::mathfont::ams_of(g.ch);
+        let (paint_x, adv) = match (g.ch, g.gid) {
+            ('\u{23DE}', 0x7D) | ('\u{23DF}', 0x7B) => (g.x + g.width - face_adv / 2.0, face_adv),
+            ('\u{23DE}', 0x7B) | ('\u{23DF}', 0x7D) => (g.x + g.width - face_adv, face_adv),
+            ('\u{23DE}' | '\u{23DF}', _) => (g.x, face_adv),
+            _ if ams.is_some_and(|a| a.name == "dashrightarrow@") => (g.x + g.width - face_adv, adv),
+            _ => (g.x, adv),
+        };
         let start = r.text.len();
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
@@ -5919,6 +6715,8 @@ fn math_items(
             // stands for U+2205 everywhere outside the metrics/painting
             // lookup that needs to tell it apart from plain `\emptyset`.
             None if g.ch == crate::mathfont::VARNOTHING_SENTINEL => r.text.push('\u{2205}'),
+            // An amssymb sentinel stands for its table text.
+            None if ams.is_some() => r.text.push_str(ams.expect("checked").text),
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;
@@ -5926,12 +6724,32 @@ fn math_items(
         let hh = Tick::from_tex_pt((h + d).max(0.01));
         r.glyphs.push(Glyph {
             gid,
-            origin_x: Tick::from_tex_pt(g.x),
+            origin_x: Tick::from_tex_pt(paint_x),
             baseline_y: Tick::from_tex_pt(baseline_y),
             advance_x: Tick::from_tex_pt(adv),
             advance_y: Tick(0),
             cluster: ci,
         });
+        // A negated amssymb relation Unicode spells as base + U+0338: the
+        // painting face's combining long solidus, its ink centred on the
+        // base's ink, in the same cluster.
+        if let Some(slash) = ams
+            .filter(|a| a.text.chars().nth(1) == Some('\u{0338}'))
+            .and_then(|_| face.face().glyph_id('\u{0338}'))
+        {
+            let sb = face.bounds(slash, Some('\u{0338}'));
+            if !b.empty && !sb.empty {
+                let centre = |x0: i32, x1: i32| face.pt(i64::from(x0) + i64::from(x1), g.size) / 2.0;
+                r.glyphs.push(Glyph {
+                    gid: slash.0,
+                    origin_x: Tick::from_tex_pt(paint_x + centre(b.x_min, b.x_max) - centre(sb.x_min, sb.x_max)),
+                    baseline_y: Tick::from_tex_pt(baseline_y),
+                    advance_x: Tick(0),
+                    advance_y: Tick(0),
+                    cluster: ci,
+                });
+            }
+        }
         r.clusters.push(Cluster {
             text_start_byte: start,
             text_end_byte: r.text.len(),

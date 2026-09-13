@@ -64,7 +64,8 @@ pub struct LineBreakParams {
     /// `\tolerance` (200).
     pub tolerance: f64,
     /// `\emergencystretch` (0). When positive, a third pass adds it to every
-    /// line's stretchability.
+    /// line's stretchability for badness and feasibility only; the chosen
+    /// lines are set with their real glue (tex.web §§851, 863, 889).
     pub emergency_stretch: f64,
     /// `\linepenalty` (10).
     pub line_penalty: f64,
@@ -960,11 +961,6 @@ fn layout_impl(
         1 => params.pretolerance,
         _ => params.tolerance,
     };
-    let extra = if pass == 3 {
-        params.emergency_stretch
-    } else {
-        0.0
-    };
 
     // Position lines.
     let mut lines = Vec::with_capacity(chosen.breaks.len());
@@ -984,7 +980,13 @@ fn layout_impl(
     let mut y = 0.0;
     let mut prev_depth = 0.0;
     for (li, bp) in chosen.breaks.iter().enumerate() {
-        let m = measure_any(items, &p, params, ctx, prev, bp.item, li, extra);
+        // tex.web §§851, 863: `\emergencystretch` enters `background[2]` only
+        // while the final pass computes badness and feasibility. The chosen
+        // lines are then packed by `post_line_break` with `hpack(…, hsize,
+        // exactly)` over the glue actually on the line (§§889, 657–667), so
+        // the line is always set to the measure with its real stretch ratio,
+        // and hpack's badness drives the underfull/overfull reports.
+        let m = measure_any(items, &p, params, ctx, prev, bp.item, li, 0.0);
         let mut line = match ctx {
             None => set_line(items, params, prev, bp.item, li, &m),
             Some(c) => {
@@ -993,10 +995,12 @@ fn layout_impl(
                 line
             }
         };
-        if m.badness >= AWFUL_BAD || line.set_width > params.line_width + 1e-9 {
+        if line.badness >= AWFUL_BAD || line.set_width > params.line_width + 1e-9 {
             let excess = line.set_width - params.line_width;
             stats.overfull.push(Overfull { line: li, excess });
-            if excess > params.hfuzz {
+            // §664: reported when the excess beyond total shrink exceeds
+            // `\hfuzz`, or whenever `\hbadness < 100`.
+            if excess > params.hfuzz || params.hbadness < 100.0 {
                 diagnostics.push(diagnose(
                     &line,
                     li,
@@ -1008,28 +1012,23 @@ fn layout_impl(
                     "line set at maximum shrink; content extends past the measure",
                 ));
             }
-        } else if m.badness > tolerance_in_force {
-            stats.underfull.push((li, m.badness));
+        } else if line.badness > tolerance_in_force {
+            stats.underfull.push((li, line.badness));
         }
-        // Like TeX's hpack, judge underfullness by the glue actually on the
-        // line: emergency stretch only helps the breaker choose, so a line
-        // chosen in pass 3 is usually reported underfull afterwards.
-        let real = if extra > 0.0 {
-            measure_any(items, &p, params, ctx, prev, bp.item, li, 0.0)
-        } else {
-            m
-        };
-        if real.badness < AWFUL_BAD && real.badness > params.hbadness && real.natural < real.target
+        // §660: a stretched line with finite stretch whose badness exceeds
+        // `\hbadness` is reported underfull (TeX says "Loose" at ≤ 100, which
+        // only shows with `\hbadness < 100`).
+        if line.badness < AWFUL_BAD
+            && line.badness > params.hbadness
+            && line.natural_width < params.line_width
         {
             diagnostics.push(diagnose(
                 &line,
                 li,
-                DiagnosticKind::Underfull {
-                    badness: real.badness,
-                },
+                DiagnosticKind::Underfull { badness: line.badness },
                 format!(
                     "Underfull \\hbox (badness {}) in paragraph, line {}",
-                    real.badness,
+                    line.badness,
                     li + 1
                 ),
                 "interword glue stretched beyond \\hbadness",
@@ -1076,7 +1075,7 @@ fn set_line_mt(
     after: Option<usize>,
     brk: usize,
     index: usize,
-    m: &Measure,
+    _m: &Measure,
 ) -> (Line, MicroLine) {
     let items = c.items;
     let start = line_start(items, after).min(brk);
@@ -1100,7 +1099,7 @@ fn set_line_mt(
         natural_width: pk.natural,
         set_width: pk.set_width,
         ratio: pk.ratio,
-        badness: m.badness,
+        badness: pk.badness,
         items: start..brk,
         hyphenated: is_flagged(items, brk),
     };
@@ -1215,7 +1214,9 @@ fn set_line(
         depth,
         natural_width: m.natural,
         set_width: x,
-        ratio: m.ratio,
+        // hpack leaves `glue_set` 0 when the line has no glue of the needed
+        // kind (§§658, 664).
+        ratio: if m.ratio.is_finite() { m.ratio } else { 0.0 },
         badness: m.badness,
         items: start..brk,
         hyphenated,

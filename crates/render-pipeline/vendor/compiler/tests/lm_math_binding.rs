@@ -30,7 +30,8 @@ fn advances_are_read_from_the_pinned_font_program() {
     let bytes = std::fs::read(BUNDLED_FONT).expect("bundled Latin Modern Math");
     assert_eq!(sha256::hex(&sha256::digest(&bytes)), lm_math::SHA256);
     let face = TrueTypeFace::parse(bytes).expect("parse Latin Modern Math");
-    for (c, advance) in lm_math::ADVANCES {
+    // amssymb/amsfonts symbols bound to the same program (`amssymb::LM_ADVANCES`).
+    for (c, advance) in lm_math::ADVANCES.iter().chain(flashtex_compiler::amssymb::LM_ADVANCES) {
         let gid = face
             .char_map()
             .get(&(*c as u32))

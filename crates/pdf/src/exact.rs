@@ -1566,6 +1566,18 @@ fn validate(
 /// Renders an exact document. Returns the bytes plus notes (never silent
 /// substitutions: there are none on this route).
 pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError> {
+    render_exact_with(doc, &crate::navigation::Navigation::default())
+}
+
+/// [`render_exact`] plus link annotations, named destinations, outlines and
+/// document information ([`crate::navigation`]). An empty [`Navigation`]
+/// writes exactly the bytes [`render_exact`] writes.
+///
+/// [`Navigation`]: crate::navigation::Navigation
+pub fn render_exact_with(
+    doc: &ExactDocument,
+    navigation: &crate::navigation::Navigation,
+) -> Result<crate::PdfOutput, ExactError> {
     if doc.pages.is_empty() {
         return Err(ExactError::Invalid("a PDF needs at least one page".into()));
     }
@@ -1644,6 +1656,8 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
         image_objects.insert(name, next);
         next += img.objects.len();
     }
+    // Annotations, destinations, name tree and outlines follow the images.
+    let nav = crate::navigation::plan(navigation, page_count, |i| first_page + 2 * i, &mut next)?;
     let mut page_resources: Vec<String> = Vec::with_capacity(page_count);
     for (i, page) in doc.pages.iter().enumerate() {
         let mut resources = String::from("/Font <<");
@@ -1721,7 +1735,10 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
     }
 
     let mut d = Document::new();
-    d.object(1, b"<< /Type /Catalog /Pages 2 0 R >>");
+    d.object(
+        1,
+        format!("<< /Type /Catalog /Pages 2 0 R{} >>", nav.catalog_entries).as_bytes(),
+    );
     let mut kids = String::new();
     for i in 0..page_count {
         let _ = write!(kids, "{} 0 R ", first_page + 2 * i);
@@ -1732,14 +1749,14 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
     );
     d.object(
         3,
-        format!("<< /Producer ({PRODUCER}) /Creator (FlashTeX) >>").as_bytes(),
+        format!("<< /Producer ({PRODUCER}){} >>", nav.info_entries).as_bytes(),
     );
     for (i, page) in doc.pages.iter().enumerate() {
         let page_obj = first_page + 2 * i;
         d.object(
             page_obj,
             format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R{} >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [ 0 0 {} {} ] /Resources << {} >> /Contents {} 0 R{}{} >>",
                 page.width,
                 page.height,
                 page_resources[i],
@@ -1748,7 +1765,8 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                     format!(" /Group {}", crate::images::PAGE_TRANSPARENCY_GROUP)
                 } else {
                     String::new()
-                }
+                },
+                nav.page_entries[i]
             )
             .as_bytes(),
         );
@@ -1766,6 +1784,9 @@ pub fn render_exact(doc: &ExactDocument) -> Result<crate::PdfOutput, ExactError>
                 None => d.object(base + k, dict.as_bytes()),
             }
         }
+    }
+    for (number, body) in &nav.objects {
+        d.object(*number, body.as_bytes());
     }
     Ok(crate::PdfOutput {
         bytes: d.finish_with_info(3),

@@ -479,6 +479,10 @@ pub(crate) struct Packed {
     pub natural: f64,
     pub set_width: f64,
     pub ratio: f64,
+    /// hpack's `last_badness` over the packed (expanded) line: badness of
+    /// the shortfall against finite stretch, 0 with infinite stretch,
+    /// `awful_bad` when the line is wider than its shrink allows.
+    pub badness: f64,
 }
 
 impl<'a> MtCtx<'a> {
@@ -612,6 +616,13 @@ impl<'a> MtCtx<'a> {
         }
         let (x, st, sh) = totals(&nodes, &expansion);
         let excess = target - x;
+        let badness = if excess > 0 {
+            if top(&st) != 0 { 0.0 } else { f64::from(tex_badness(clamp(excess), clamp(st[0]))) }
+        } else if excess < 0 {
+            if sh < -excess { crate::linebreak::AWFUL_BAD } else { f64::from(tex_badness(clamp(-excess), clamp(sh))) }
+        } else {
+            0.0
+        };
         // hpack's glue setting.
         #[derive(PartialEq, Clone, Copy)]
         enum Sign {
@@ -733,6 +744,7 @@ impl<'a> MtCtx<'a> {
             // A line set exactly to the measure reports the measure itself.
             set_width: if cur_h == target { line_width } else { pt(cur_h) },
             ratio: signed,
+            badness,
         }
     }
 }
