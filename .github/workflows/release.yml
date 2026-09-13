@@ -234,6 +234,10 @@ jobs:
   publish:
     name: GitHub release + website
     needs: [version, macos, linux]
+    # `if: always()` means a failed `linux` job never blocks this: the release and
+    # site publish as long as `macos` (the app + its own CLI tarball) succeeded.
+    # The assets step below only includes the Linux CLI tarball when that job
+    # actually produced one (see "Write release notes header").
     if: always() && needs.macos.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
