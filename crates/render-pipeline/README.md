@@ -176,7 +176,6 @@ Not implemented (reported, not approximated silently): hyphenation, lists
 paragraphs), `\angle`, `\bigl`/`\bigr`, `\mathbb`, `\mid`, `\setminus`,
 `\quad`/`\qquad` and `array` in math (the compiler's math parser rejects
 them; see `coordination/mac-math-symbols.md`), tables, footnotes,
-two-column, page numbers/headers (`\pagestyle{empty}` behaviour only),
 non-Latin scripts (`unsupported_script`), RTL.
 
 ## Page frame (`flashtex-class-geometry`)
@@ -205,11 +204,58 @@ default of 8.5in x 11in. The pipeline reproduces that: the page is 612 x
 top-left corner (`tests/class_geometry_frame.rs`, pdflatex `\pdfsavepos`
 readings). With geometry the page is the paper (`595.276 x 841.89` bp).
 
-Not laid out yet (the frame carries them; each changes output and needs its
-own pdflatex-gated change): two-sided left edges (`frame.text_left(page)`
-for even pages), two-column frames (`frame.columns`), page numbers and
-running heads at `frame.head_baseline`/`foot_baseline` (`head_foot(page)`),
-report/book `\chapter` layout.
+### Two-sided pages, two columns, headers and footers (CONTRACT steps 4–5)
+
+- **Left edge per page.** Blocks are assembled at `\oddsidemargin`; every
+  placed line carries an x offset (`Laid::line_dx`: `frame.text_left(page)`
+  minus that edge, plus the column offset), applied in `assemble`.
+- **Two columns.** The page builder fills columns of `\textheight`; pairs
+  become one page, the second column `\columnwidth + \columnsep` to the right
+  (LaTeX's order, no balancing). `\columnseprule` (class default or a
+  preamble `\setlength`) is a rule centred in `\columnsep`, as tall as the
+  column boxes, on every page. Two-column documents get `\parindent 1em` and
+  `\sloppy` (`\tolerance 9999`, `\emergencystretch 3em`).
+- **`\flushbottom`.** The standard classes keep the kernel's `\flushbottom`
+  for two-sided or two-column documents: a page ended at an ordinary break
+  is `\vbox to\textheight` with its glue stretched/shrunk (`pagebuild`);
+  `\newpage`/`\clearpage` pages and the last page stay natural.
+- **Page styles.** `\@oddhead`/`\@evenhead`/`\@oddfoot`/`\@evenfoot` from
+  class-geometry's `StyleMacros` (class default, preamble `\pagestyle`),
+  changed by body `\pagestyle` (in force when the page ships) and
+  `\thispagestyle` (that page only). Each line is `\hb@xt@\textwidth{L\hfil
+  C\hfil R}` in the `\normalsize` body face at `head_baseline`/
+  `foot_baseline`; `\thepage` upright, marks in `\slshape`
+  (`lmromanslant*`, `ec-lmro*` metrics).
+- **Marks.** `\sectionmark`/`\subsectionmark`/`\chaptermark` per the class's
+  `\ps@headings` (number + `\quad`, or `Chapter n.` and `n.` followed by a
+  space-factor-3000 space and `\ `; uppercased where the class does);
+  `\markboth`/`\markright` in the body (their arguments, which the compiler
+  sets as text, are dropped). `\leftmark` is the page's last mark,
+  `\rightmark` its first, the previous page's last when it has none.
+- **`\chapter` (report/book).** `\clearpage`, `\thispagestyle{plain}`,
+  `\vspace*{50pt}` (a zero-height box at `\topskip`), `\huge` bold
+  `Chapter n`, 20pt, `\Huge` bold title (`\raggedright`), 40pt, first
+  paragraph unindented. Sections number `chapter.section`.
+- **`\noindent`** directly before a paragraph's first material removes its
+  indent (the compiler treats the command as a no-op).
+- Body-only input and non-standard classes keep `\pagestyle{empty}`.
+
+Oracle: `tests/page_frame.rs` over 22 fixtures in `fixtures/page-frame/`
+(article/report/book; oneside, twoside, twocolumn with and without rule,
+plain/empty/headings/myheadings, `\thispagestyle`, body `\pagestyle`,
+geometry, 10/11/12pt, `\noindent`). Expected word origins and baselines come
+from pdflatex's content streams (`tools/page-frame-oracle/generate.py`); the
+test gates header/footer words, rules and per-page/per-column left edges
+within 0.1pt, and every matched line start's x and baseline within 0.1pt
+(line starts whose first words differ, i.e. a different line break, are
+counted, not failed).
+
+Not implemented: `\cleardoublepage`'s blank page before an `openright`
+chapter on an even page, `\pagenumbering` (always arabic from 1),
+`\maketitle`'s `\thispagestyle{plain}`, two-column `\chapter`
+(`\@topnewpage`), float and footnote placement, commands and marks inside
+`\input` files, macros inside mark/chapter titles (their source text is
+used).
 
 ## Sibling pins and requested API changes
 

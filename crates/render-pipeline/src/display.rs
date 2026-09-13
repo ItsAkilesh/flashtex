@@ -198,6 +198,15 @@ pub enum PathCmd {
 
 impl PathCmd {
     /// The command with every y coordinate mapped by `f`.
+    pub fn map_x(self, f: &dyn Fn(Tick) -> Tick) -> PathCmd {
+        match self {
+            PathCmd::Move(x, y) => PathCmd::Move(f(x), y),
+            PathCmd::Line(x, y) => PathCmd::Line(f(x), y),
+            PathCmd::Cubic(a, b, c, d, e, g) => PathCmd::Cubic(f(a), b, f(c), d, f(e), g),
+            PathCmd::Close => PathCmd::Close,
+        }
+    }
+
     pub fn map_y(self, f: &dyn Fn(Tick) -> Tick) -> PathCmd {
         match self {
             PathCmd::Move(x, y) => PathCmd::Move(x, f(y)),
@@ -261,6 +270,37 @@ pub enum Item {
     GlyphRun(GlyphRun),
     Rule(Rule),
     Path(PathItem),
+}
+
+/// Moves every x of `item` by `dx` (an even page's left margin, the second
+/// column).
+pub fn shift_x(item: &mut Item, dx: Tick) {
+    let add = |t: Tick| Tick(t.0 + dx.0);
+    match item {
+        Item::GlyphRun(r) => {
+            for g in &mut r.glyphs {
+                g.origin_x = add(g.origin_x);
+            }
+            for c in &mut r.clusters {
+                c.hit_rect.x = add(c.hit_rect.x);
+                c.carets.first.x = add(c.carets.first.x);
+                if let Some(l) = &mut c.carets.last {
+                    l.x = add(l.x);
+                }
+            }
+        }
+        Item::Rule(rule) => rule.x = add(rule.x),
+        Item::Path(p) => {
+            for c in &mut p.commands {
+                *c = c.map_x(&add);
+            }
+            for clip in &mut p.clips {
+                for c in &mut clip.commands {
+                    *c = c.map_x(&add);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

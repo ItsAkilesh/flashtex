@@ -2,7 +2,9 @@
 
 Status: steps 1–3 adopted by `crates/render-pipeline` (branch
 `agent/kabir-claude/render-pipeline-class-geometry`, see its README "Page
-frame"); steps 4–5 open. The original proposal text follows. This document says what the crate
+frame"); steps 4–5 adopted on `agent/kabir-claude/render-pipeline-class-geometry-2`
+(per-page left edges, two-column frames, page styles and marks, chapter
+openers; `tests/page_frame.rs`, 22 pdflatex fixtures); step 6 open. The original proposal text follows. This document says what the crate
 guarantees, what render-pipeline would change, and in what order.
 
 ## What the crate provides

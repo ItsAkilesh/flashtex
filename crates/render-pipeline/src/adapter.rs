@@ -16,7 +16,7 @@ use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
 use flashtex_compiler::{DocumentId, Span};
 
-use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput};
+use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput, PageStyle};
 
 use crate::display::Diagnostic;
 use crate::style::Stylesheet;
@@ -32,6 +32,8 @@ pub struct TextStyle {
     /// `\normalfont`/`\mdseries` in force inside a heading: the block's
     /// own weight (`\bfseries` from `\@startsection`) is not applied.
     pub medium: bool,
+    /// `\slshape` (upright medium only; running heads).
+    pub slanted: bool,
 }
 
 impl TextStyle {
@@ -252,7 +254,25 @@ pub enum Block {
         items: Vec<Item>,
         eject_before: bool,
         vspace_before: f64,
+        /// The displayed number (`""` for a starred heading) and the title
+        /// as plain source text, for the `\sectionmark` running head.
+        number: String,
+        title: String,
+        span: Span,
     },
+    /// `\chapter` in report/book (the compiler reports the command and sets
+    /// its argument as body text, which is dropped): `\clearpage`,
+    /// `\thispagestyle{plain}`, `\chaptermark` and `\@makechapterhead`.
+    /// `number` is `None` for `\chapter*`.
+    Chapter {
+        number: Option<String>,
+        items: Vec<Item>,
+        title: String,
+        span: Span,
+    },
+    /// A page-style or mark command in the body, attached to the material
+    /// that follows it.
+    Chrome { event: ChromeEvent, span: Span },
     /// A `tikzpicture`, found from the source bytes (the compiler reports the
     /// environment as unknown and sets its body as text, which is dropped
     /// here): its bounding box as one box on a line of its own, flush left
@@ -312,6 +332,18 @@ pub enum ListMargin {
     Widest(String),
 }
 
+/// Body commands that decide the header and footer (latex.ltx
+/// `\pagestyle`/`\thispagestyle`/`\markboth`/`\markright`). Mark text is
+/// the argument's source with whitespace collapsed; a `\quad` inside a
+/// class-generated mark is U+2003.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChromeEvent {
+    PageStyle(PageStyle),
+    ThisPageStyle(PageStyle),
+    MarkBoth(String, String),
+    MarkRight(String),
+}
+
 /// How a paragraph-shape environment began (see [`Block::Paragraph`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EnvOpen {
@@ -329,6 +361,8 @@ pub struct Doc {
     /// approximately or dropped: `(code, source span, message)`, reported
     /// as warnings against the document paths by the caller.
     pub limitations: Vec<(&'static str, Span, String)>,
+    /// `secnumdepth` in force (numbers in running heads).
+    pub secnumdepth: u8,
 }
 
 /// Label values (`\ref`) and the pages they fell on in a previous layout
@@ -546,21 +580,20 @@ pub fn adapt_cached(
     let size = class_size(&class_options);
     // LaTeX's own \parindent (size1x.clo) applies when the document declares a
     // class; body-only input keeps the compiler's implicit 0pt.
-    let latex_parindent = match size {
-        12 => 17.62482,
-        11 => 16.5,
-        _ => 15.0,
-    };
-    let parindent = parindent(source, size).unwrap_or(if explicit_class.is_some() {
-        latex_parindent
-    } else {
-        options.default_parindent_pt
-    });
     let mut style = Stylesheet::from_resolved(
         &flashtex_class_geometry::resolve(&document_setup(source, explicit_class.is_some(), &class_options)),
         Stylesheet::family_of(&parsed.packages),
     );
-    style.parindent_pt = parindent;
+    // The class's `\parindent` (`size1x.clo`: 15pt / 17pt / 1.5em; `1em` in
+    // two-column mode) comes with the resolved frame.
+    style.parindent_pt = parindent(source, size).unwrap_or(if explicit_class.is_some() {
+        style.parindent_pt
+    } else {
+        options.default_parindent_pt
+    });
+    if let Some(pt) = setlength(source, "columnseprule", size) {
+        style.columnseprule_pt = pt;
+    }
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
@@ -585,7 +618,19 @@ pub fn adapt_cached(
     };
     let items_for = |inlines: &[Inline], heading: bool| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, size, heading, cache) };
     let mut blocks = Vec::new();
-    let (lowered, mut limitations) = lower_blocks(texts, &parsed.blocks);
+    let (mut lowered, mut limitations) = lower_blocks(texts, &parsed.blocks);
+    // Page-style, mark, `\chapter` and `\noindent` commands in the entry
+    // document's body, read from the source: the compiler accepts the first
+    // two as no-ops, sets the arguments of marks and `\chapter` as body text
+    // (dropped here) and ignores `\noindent`.
+    let entry_doc = DocumentId(entry);
+    let has_chapters = style.class_geometry.as_ref().is_some_and(|d| d.chapter.is_some());
+    let commands = body_commands(source, has_chapters);
+    strip_command_text(&mut lowered, entry_doc, &commands);
+    let mut next_command = 0usize;
+    let mut noindent_at: Option<usize> = None;
+    // report/book: `\thesection` is `\thechapter.\arabic{section}`.
+    let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
     let mut after_heading = false;
     // Last source span of the previous paragraph block (None after a
     // heading or rule), for rejoining a display with its paragraph.
@@ -594,6 +639,39 @@ pub fn adapt_cached(
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
+        let unit_start = match &unit.kind {
+            UnitKind::Heading { number_span, .. } => Some(*number_span),
+            UnitKind::Paragraph { inlines, .. } => inlines.iter().map(inline_span).next(),
+            UnitKind::Rule { span } => Some(*span),
+            UnitKind::Picture { document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
+        };
+        if let Some(at) = unit_start.filter(|s| s.document == entry_doc) {
+            while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at.start) {
+                next_command += 1;
+                match &cmd.kind {
+                    BodyKind::Event(event) => blocks.push(Block::Chrome {
+                        event: event.clone(),
+                        span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                    }),
+                    BodyKind::NoIndent => noindent_at = Some(cmd.end),
+                    BodyKind::Chapter { starred, title } => {
+                        let number = (!*starred).then(|| {
+                            chapter_no += 1;
+                            section_nos = [0; 3];
+                            chapter_no.to_string()
+                        });
+                        blocks.push(Block::Chapter {
+                            number,
+                            items: words_from_source(source, entry_doc, title.0, title.1),
+                            title: plain_text(&source[title.0..title.1]),
+                            span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                        });
+                        after_heading = true;
+                        prev_para_end = None;
+                    }
+                }
+            }
+        }
         match unit.kind {
             UnitKind::Heading {
                 level,
@@ -601,6 +679,23 @@ pub fn adapt_cached(
                 number_span,
                 content,
             } => {
+                let number: String = if has_chapters && !number.is_empty() && (1..=3).contains(&level) {
+                    let l = usize::from(level) - 1;
+                    section_nos[l] += 1;
+                    for n in &mut section_nos[l + 1..] {
+                        *n = 0;
+                    }
+                    std::iter::once(chapter_no).chain(section_nos[..=l].iter().copied()).map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+                } else {
+                    number.to_string()
+                };
+                let title = match (content.first(), content.last()) {
+                    (Some(a), Some(b)) => {
+                        let (a, b) = (inline_span(a), inline_span(b));
+                        texts.get(a.document.0).and_then(|t| t.get(a.start..b.end)).map(plain_text).unwrap_or_default()
+                    }
+                    _ => String::new(),
+                };
                 // LaTeX `\@seccntformat`: the counter, then `\quad`, then the
                 // title; the number's bytes are the `\section` command's.
                 let mut items = Vec::new();
@@ -622,6 +717,9 @@ pub fn adapt_cached(
                     items,
                     eject_before,
                     vspace_before,
+                    number,
+                    title,
+                    span: number_span,
                 });
                 after_heading = true;
                 prev_para_end = None;
@@ -744,13 +842,17 @@ pub fn adapt_cached(
                     }
                 }
                 prev_para_end = inlines.iter().map(inline_span).last();
+                // `\noindent` right before the paragraph's first material.
+                let noindent = noindent_at.take().is_some_and(|end| {
+                    first_span.is_some_and(|f| f.document == entry_doc && source.get(end..f.start).is_some_and(|gap| gap.trim().is_empty()))
+                });
                 // `\centering` sets `\parindent 0pt`; a list item's first
                 // paragraph carries no indent and `\list` sets
                 // `\parindent\listparindent` (0pt in article) for the
                 // ones after it, `quote` likewise.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && styled.is_none() && !after_env && list.is_none(),
+                    indent: !after_heading && !caption && styled.is_none() && !after_env && list.is_none() && !noindent,
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
@@ -781,11 +883,21 @@ pub fn adapt_cached(
             }
         }
     }
+    // Page-style and mark commands after the last material.
+    for cmd in &commands[next_command..] {
+        if let BodyKind::Event(event) = &cmd.kind {
+            blocks.push(Block::Chrome {
+                event: event.clone(),
+                span: Span::in_document(entry_doc, cmd.start, cmd.end),
+            });
+        }
+    }
     Doc {
         style,
         blocks,
         diagnostics: Vec::new(),
         limitations,
+        secnumdepth,
     }
 }
 
@@ -1410,6 +1522,9 @@ pub fn document_setup(source: &str, has_class: bool, class_options: &str) -> Doc
         }
     }
     let mut setup = DocumentSetup::new(ClassKind::Article, class_options);
+    // No header or footer: the compiler's implicit preamble (and a class
+    // this crate does not model) never had page chrome.
+    setup.pagestyle = Some(PageStyle::Empty);
     setup.geometry = match package_options(source, "geometry") {
         Some(opts) => Some(GeometryInput {
             package_options: opts,
@@ -2271,6 +2386,184 @@ fn matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
     None
 }
 
+/// A body command read from the source (see [`body_commands`]); `start..end`
+/// covers the command and its arguments.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BodyCommand {
+    pub start: usize,
+    pub end: usize,
+    pub kind: BodyKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BodyKind {
+    Event(ChromeEvent),
+    /// `\chapter[*][short]{title}`: `title` is the argument's inner range.
+    Chapter { starred: bool, title: (usize, usize) },
+    NoIndent,
+}
+
+/// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`
+/// and (when the class has chapters) `\chapter` after `\begin{document}`,
+/// in source order, skipping comments.
+pub fn body_commands(source: &str, chapters: bool) -> Vec<BodyCommand> {
+    let bytes = source.as_bytes();
+    let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
+    let group = |from: usize| -> Option<(usize, usize, usize)> {
+        let rest = source.get(from..)?;
+        let k = from + rest.len() - rest.trim_start().len();
+        if bytes.get(k) != Some(&b'{') {
+            return None;
+        }
+        let close = matching_brace(bytes, k)?;
+        Some((k + 1, close, close + 1))
+    };
+    let mut out = Vec::new();
+    let mut i = begin;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'\\' => {}
+            _ => {
+                i += 1;
+                continue;
+            }
+        }
+        let mut j = i + 1;
+        while j < bytes.len() && bytes[j].is_ascii_alphabetic() {
+            j += 1;
+        }
+        if j == i + 1 {
+            i += 2;
+            continue;
+        }
+        let name = &source[i + 1..j];
+        let found = match name {
+            "pagestyle" | "thispagestyle" => group(j).and_then(|(s, e, after)| {
+                let ps = PageStyle::parse(&source[s..e])?;
+                let event = if name == "pagestyle" { ChromeEvent::PageStyle(ps) } else { ChromeEvent::ThisPageStyle(ps) };
+                Some((BodyKind::Event(event), after))
+            }),
+            "markboth" => group(j).and_then(|(s1, e1, a1)| group(a1).map(|(s2, e2, a2)| (BodyKind::Event(ChromeEvent::MarkBoth(plain_text(&source[s1..e1]), plain_text(&source[s2..e2]))), a2))),
+            "markright" => group(j).map(|(s, e, after)| (BodyKind::Event(ChromeEvent::MarkRight(plain_text(&source[s..e]))), after)),
+            "chapter" if chapters => {
+                let mut k = j;
+                let starred = bytes.get(k) == Some(&b'*');
+                if starred {
+                    k += 1;
+                }
+                let rest = &source[k..];
+                let trimmed = rest.trim_start();
+                if trimmed.starts_with('[') {
+                    if let Some(close) = trimmed.find(']') {
+                        k += rest.len() - trimmed.len() + close + 1;
+                    }
+                }
+                group(k).map(|(s, e, after)| (BodyKind::Chapter { starred, title: (s, e) }, after))
+            }
+            "noindent" => Some((BodyKind::NoIndent, j)),
+            _ => None,
+        };
+        match found {
+            Some((kind, end)) => {
+                out.push(BodyCommand { start: i, end, kind });
+                i = end;
+            }
+            None => i = j,
+        }
+    }
+    out
+}
+
+/// Drops the compiler's text for the arguments of `\markboth`,
+/// `\markright` and `\chapter` (it sets them as body text), and the
+/// paragraphs left empty.
+fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
+    let ranges: Vec<(usize, usize)> = commands
+        .iter()
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_))))
+        .map(|c| (c.start, c.end))
+        .collect();
+    if ranges.is_empty() {
+        return;
+    }
+    let inside = |i: &Inline| {
+        let s = inline_span(i);
+        s.document == document && ranges.iter().any(|(a, b)| s.start >= *a && s.start < *b)
+    };
+    for block in blocks.iter_mut() {
+        match block {
+            CBlock::Paragraph(inlines) | CBlock::Styled { content: inlines, .. } | CBlock::ListItem { content: inlines, .. } | CBlock::FigureCaption { content: inlines } => inlines.retain(|i| !inside(i)),
+            _ => {}
+        }
+    }
+    blocks.retain(|b| !matches!(b, CBlock::Paragraph(i) | CBlock::Styled { content: i, .. } if i.is_empty()));
+}
+
+/// Body-font words of `source[start..end]` split at whitespace, every
+/// character carrying its own bytes.
+fn words_from_source(source: &str, document: DocumentId, start: usize, end: usize) -> Vec<Item> {
+    let mut items = Vec::new();
+    let text = &source[start..end];
+    let mut offset = 0usize;
+    for word in text.split_whitespace() {
+        let at = start + offset + text[offset..].find(word).unwrap_or(0);
+        offset = at - start + word.len();
+        if !items.is_empty() {
+            items.push(Item::Space {
+                style: TextStyle::default(),
+                factor: 1000,
+                no_break: false,
+            });
+        }
+        let chars = word
+            .char_indices()
+            .map(|(k, c)| CharSrc {
+                document,
+                start: at + k,
+                end: at + k + c.len_utf8(),
+            })
+            .collect();
+        push_segment(&mut items, word.to_string(), chars, TextStyle::default());
+    }
+    items
+}
+
+/// Words of generated text (`Chapter 1`) whose characters all point at
+/// `span` (the command that produced them).
+pub fn command_words(text: &str, span: Span) -> Vec<Item> {
+    let mut items = Vec::new();
+    for word in text.split_whitespace() {
+        if !items.is_empty() {
+            items.push(Item::Space {
+                style: TextStyle::default(),
+                factor: 1000,
+                no_break: false,
+            });
+        }
+        let chars = word
+            .chars()
+            .map(|_| CharSrc {
+                document: span.document,
+                start: span.start,
+                end: span.end,
+            })
+            .collect();
+        push_segment(&mut items, word.to_string(), chars, TextStyle::default());
+    }
+    items
+}
+
+/// Source text with runs of whitespace collapsed to one space.
+fn plain_text(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// The style groups of one document, indexed for point queries: the
 /// intervals in source order (sorted by start, properly nested), the
 /// running maximum of their ends (so a backward scan can stop as soon as no
@@ -2940,7 +3233,7 @@ mod tests {
                 _ => panic!(),
             },
             Block::Heading { items, .. } => items.clone(),
-            Block::Rule { .. } | Block::Picture { .. } => panic!("a rule or picture holds no items"),
+            _ => panic!("a rule, picture, chapter or page-style block holds no items"),
         }
     }
 
@@ -3053,6 +3346,8 @@ mod tests {
                     .collect(),
                 Block::Rule { .. } => "R".to_string(),
                 Block::Picture { .. } => "P".to_string(),
+                Block::Chapter { .. } => "C".to_string(),
+                Block::Chrome { .. } => "M".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.
