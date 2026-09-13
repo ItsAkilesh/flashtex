@@ -70,9 +70,24 @@ impl TexMathMetrics {
     /// glyph program; `fonts` supplies `rm-lmr<d>.tfm` (digest-bound for
     /// the 12 pt set).
     pub fn new(base: u32, otf: Rc<MathFonts>, fonts: &FontSet) -> TexMathMetrics {
-        let (cm, roman_names) = match base {
-            10 => (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"]),
-            11 => (
+        let text = match base {
+            10 => 10.0,
+            11 => 10.95,
+            _ => 12.0,
+        };
+        Self::at_text_size(text, otf, fonts).expect("the class sizes are embedded")
+    }
+
+    /// The metrics `\DeclareMathSizes` selects for text at `text_pt`
+    /// (10, 10.95, 12, and 8 pt: `\footnotesize` of the 10pt class, 8/6/5 pt
+    /// with cmr/cmmi/cmsy 8, 6 and 5); `None` for a size whose TFMs
+    /// math-layout does not embed (9 pt needs cmr9/cmmi9/cmsy9).
+    pub fn at_text_size(text_pt: f64, otf: Rc<MathFonts>, fonts: &FontSet) -> Option<TexMathMetrics> {
+        let close = |at: f64| (text_pt - at).abs() < 0.01;
+        let (cm, roman_names) = if close(10.0) {
+            (CmMathMetrics::latex_10pt(), ["rm-lmr10", "rm-lmr7", "rm-lmr5"])
+        } else if close(10.95) {
+            (
                 // size11.clo: \DeclareMathSizes{\@xipt}{\@xipt}{8}{6} with the
                 // 10pt designs scaled to 10.95pt for text.
                 CmMathMetrics {
@@ -85,8 +100,25 @@ impl TexMathMetrics {
                     ],
                 },
                 ["rm-lmr10", "rm-lmr8", "rm-lmr6"],
-            ),
-            _ => (CmMathMetrics::latex_12pt(), ["rm-lmr12", "rm-lmr8", "rm-lmr6"]),
+            )
+        } else if close(12.0) {
+            (CmMathMetrics::latex_12pt(), ["rm-lmr12", "rm-lmr8", "rm-lmr6"])
+        } else if close(8.0) {
+            (
+                // fontmath.ltx: \DeclareMathSizes{\@viiipt}{\@viiipt}{\@vipt}{\@vpt}.
+                CmMathMetrics {
+                    sizes: [8.0, 6.0, 5.0],
+                    extension: cm::ExtensionSizing::Fixed,
+                    families: [
+                        [&cm_tfm::CMR8, &cm_tfm::CMR6, &cm_tfm::CMR5],
+                        [&cm_tfm::CMMI8, &cm_tfm::CMMI6, &cm_tfm::CMMI5],
+                        [&cm_tfm::CMSY8, &cm_tfm::CMSY6, &cm_tfm::CMSY5],
+                    ],
+                },
+                ["rm-lmr8", "rm-lmr6", "rm-lmr5"],
+            )
+        } else {
+            return None;
         };
         let sizes = MathSizes {
             text: cm.sizes[0],
@@ -111,7 +143,7 @@ impl TexMathMetrics {
             if r.substituted.is_some() { None } else { Some(r.face) }
         };
         let roman_faces = [text_face(cm.sizes[0]), text_face(cm.sizes[1]), text_face(cm.sizes[2])];
-        TexMathMetrics {
+        Some(TexMathMetrics {
             cm,
             sizes,
             roman,
@@ -120,7 +152,7 @@ impl TexMathMetrics {
             otf,
             unmapped: RefCell::new(Vec::new()),
             resources: RefCell::new(std::collections::BTreeMap::new()),
-        }
+        })
     }
 
     /// `(TFM font, face drawn, exact optical design)` for every TFM font a
