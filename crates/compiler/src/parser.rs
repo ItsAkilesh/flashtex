@@ -1021,7 +1021,8 @@ impl P<'_> {
             "vspace" => {
                 let (tokens, argument_span) = self.required_group(name, span);
                 let raw = token_text(&tokens);
-                match parse_dimen_pt(&raw) {
+                let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+                match parse_dimen_pt_at(&raw, body) {
                     Some(pt) => {
                         self.flush_paragraph(blocks, para);
                         blocks.push(Block::VSpace { pt });
@@ -1233,6 +1234,9 @@ impl P<'_> {
     /// enumitem key (`leftmargin`, `label`, `parsep`, `partopsep`, ...) has
     /// no equivalent in this layout engine and is reported once, by name.
     fn set_list(&mut self, span: Span) {
+        // `em` is the document's body size here, as in `\setlength`.
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let parse_dimen_pt = |value: &str| parse_dimen_pt_at(value, body);
         let environments = self
             .optional_bracket_argument()
             .map(|(options, _)| options)
@@ -2354,6 +2358,21 @@ impl P<'_> {
         if paragraph.is_empty() && label.is_none() {
             return;
         }
+        // The item's topsep/itemsep belongs to its labelled first paragraph,
+        // even when a blank line inside the item flushes that paragraph
+        // through `flush_paragraph` (which passes `0.0`); later paragraphs
+        // of the same item never get it.
+        let extra_gap_before_pt = match (&label, self.list_stack.last()) {
+            (Some(_), Some((_, count, _, spacing))) if *count > 0 => {
+                if *count <= 1 {
+                    spacing.topsep_pt
+                } else {
+                    spacing.itemsep_pt
+                }
+            }
+            (Some(_), _) => extra_gap_before_pt,
+            (None, _) => 0.0,
+        };
         let content = std::mem::take(paragraph);
         // A list level is "current" only once its first `\item` has been
         // seen (`count > 0`); text typed directly inside `itemize`/

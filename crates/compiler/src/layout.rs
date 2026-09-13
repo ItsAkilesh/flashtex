@@ -276,6 +276,8 @@ pub struct FlowState {
     /// fragment would leave `content_end` stale, so a reused block's first
     /// glued item (`space_before: false`) could rewind to the wrong `x`.
     content_end: f64,
+    /// See `LayoutCursor::closed_line_skip`.
+    closed_line_skip: Option<f64>,
 }
 
 impl FlowState {
@@ -287,6 +289,7 @@ impl FlowState {
             && self.line_descent.to_bits() == other.line_descent.to_bits()
             && self.trailing_line_items == other.trailing_line_items
             && self.content_end.to_bits() == other.content_end.to_bits()
+            && self.closed_line_skip.map(f64::to_bits) == other.closed_line_skip.map(f64::to_bits)
     }
 }
 
@@ -326,6 +329,13 @@ pub struct LayoutCursor {
     /// outside one. Unlike `style`, this only ever affects `left_edge` —
     /// lists don't pull in the right margin the way `quote` does.
     list_margin_pt: f64,
+    /// Set when a display or heading has already ended its line and advanced
+    /// past its own trailing skip (`\belowdisplayskip` or the sectioning
+    /// after-skip), so `y` sits on a fresh, still-empty baseline. The next
+    /// block starts on that baseline instead of ending another (empty) line,
+    /// and its own `\addvspace`-style gap only adds what exceeds this skip.
+    /// Cleared by `newline`.
+    closed_line_skip: Option<f64>,
 }
 
 impl LayoutCursor {
@@ -360,6 +370,7 @@ impl LayoutCursor {
             diagnostics: Vec::new(),
             style: None,
             list_margin_pt: 0.0,
+            closed_line_skip: None,
         }
     }
 
@@ -408,6 +419,7 @@ impl LayoutCursor {
     }
 
     fn newline(&mut self, size: f64) {
+        self.closed_line_skip = None;
         self.resolve_hfill();
         self.align_current_line();
         self.x = self.left_edge();
@@ -485,6 +497,38 @@ impl LayoutCursor {
     /// `\newpage`: start a fresh page unconditionally, even if the current
     /// one still has room. Unlike `newline`'s overflow break, this always
     /// creates a new page rather than only doing so past the bottom margin.
+    /// LaTeX's `\predisplaypenalty` is 10000: a page never breaks between a
+    /// display and the line just before it. When the display's own line
+    /// would start a new page, carry that preceding line over with it.
+    fn keep_line_with_display(&mut self, size: f64) {
+        let overflows = self.y + self.line_descent + size > PAGE_HEIGHT_PT - MARGIN_PT;
+        let page = self.pages.last().expect("at least one page");
+        if !overflows || self.line_start == 0 || page.items.len() == self.line_start {
+            return;
+        }
+        self.resolve_hfill();
+        let items = self
+            .pages
+            .last_mut()
+            .expect("at least one page")
+            .items
+            .split_off(self.line_start);
+        let shift = MARGIN_PT + self.line_ascent - self.y;
+        self.force_page_break();
+        self.y = MARGIN_PT + self.line_ascent;
+        let page = self.pages.last_mut().expect("at least one page");
+        page.items = items
+            .into_iter()
+            .map(|mut item| {
+                item.baseline_y_pt = round2(item.baseline_y_pt + shift);
+                if let Some(rule) = item.rule.as_mut() {
+                    rule.y_pt = round2(rule.y_pt + shift);
+                }
+                item
+            })
+            .collect();
+    }
+
     fn force_page_break(&mut self) {
         self.x = MARGIN_PT;
         self.content_end = self.x;
@@ -597,23 +641,45 @@ impl LayoutCursor {
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
-        if self.x > MARGIN_PT
+        let left = self.left_edge();
+        let display_x = left + (self.right_edge() - left - b.width).max(0.0) / 2.0;
+        // TeX's short-skip test: the text before the display (an `\item`
+        // label hangs outside it, so it counts as empty) plus 2em ends
+        // before the display starts.
+        let short = self.content_end + 2.0 * size < display_x;
+        if self.x > left
             || self
                 .pages
                 .last()
                 .is_some_and(|p| p.items.len() > self.line_start)
         {
+            self.keep_line_with_display(size);
             self.newline(size);
         }
-        self.vertical_gap(PARAGRAPH_GAP_PT);
-        self.x = MARGIN_PT + (self.right_edge() - MARGIN_PT - b.width).max(0.0) / 2.0;
+        let (above, below) = self.display_skips(short);
+        self.vertical_gap(above);
+        self.x = display_x;
         self.place_math(b, size, true);
         if let Some((number, span)) = number {
             self.place_equation_number(number, span, size);
         }
         self.newline(self.constraints.font_size_pt);
-        self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.vertical_gap(below);
+        self.closed_line_skip = Some(below);
         self.style = style;
+    }
+
+    /// `\abovedisplayskip`/`\belowdisplayskip` (both the class size: 10, 11
+    /// or 12pt) or, for a short pre-display line, `\abovedisplayshortskip`
+    /// (0pt) and `\belowdisplayshortskip` (6pt, or 6.5pt in the 11pt and
+    /// 12pt classes), from `size10.clo`..`size12.clo`.
+    fn display_skips(&self, short: bool) -> (f64, f64) {
+        let body = self.constraints.font_size_pt;
+        if short {
+            (0.0, if body <= 10.5 { 6.0 } else { 6.5 })
+        } else {
+            (body, body)
+        }
     }
 
     /// Draws an `\item` label (bullet/number) right-aligned so it ends
@@ -664,15 +730,18 @@ impl LayoutCursor {
     fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
-        if self.x > MARGIN_PT
+        if self.x > self.left_edge()
             || self
                 .pages
                 .last()
                 .is_some_and(|p| p.items.len() > self.line_start)
         {
+            self.keep_line_with_display(size);
             self.newline(size);
         }
-        self.vertical_gap(PARAGRAPH_GAP_PT);
+        // amsmath's multi-row displays always use the full skips.
+        let (above, below) = self.display_skips(false);
+        self.vertical_gap(above);
         let boxes: Vec<Vec<MathBox>> = rows
             .iter()
             .map(|row| {
@@ -724,7 +793,8 @@ impl LayoutCursor {
             }
         }
         self.newline(self.constraints.font_size_pt);
-        self.vertical_gap(PARAGRAPH_GAP_PT);
+        self.vertical_gap(below);
+        self.closed_line_skip = Some(below);
         self.style = style;
     }
 
@@ -735,33 +805,76 @@ impl LayoutCursor {
         {
             return self.state();
         }
+        // A display or heading already closed its line (see
+        // `closed_line_skip`): start this block on that fresh baseline.
+        let closed = self
+            .closed_line_skip
+            .take()
+            .filter(|_| self.state().trailing_line_items == 0);
+        let parskip = self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT);
+        // Lists reset `\parskip` to `\parsep`, so a document's custom
+        // `\parskip` never reaches its items. Without one, the fixed
+        // `PARAGRAPH_GAP_PT` stand-in is kept for both.
+        let item_parskip = match self.constraints.parskip_pt {
+            Some(_) => list_parsep_pt(body_size),
+            None => PARAGRAPH_GAP_PT,
+        };
         match block {
+            Block::Paragraph(_)
+            | Block::FigureCaption { .. }
+            | Block::Styled { .. }
+            | Block::Rule { .. }
+                if closed.is_some() =>
+            {
+                let gap = match block {
+                    Block::Paragraph(_) => parskip,
+                    // A `\\` that ended a centred paragraph is `\@centercr`,
+                    // which cancels the next paragraph's `\parskip`.
+                    Block::Styled { .. } if closed == Some(0.0) => 0.0,
+                    _ => PARAGRAPH_GAP_PT,
+                };
+                self.vertical_gap(gap);
+            }
+            Block::ListItem {
+                extra_gap_before_pt,
+                ..
+            } if closed.is_some() => {
+                // `\item`'s `\addvspace{\itemsep}` merges with the skip
+                // already there instead of adding to it.
+                let skip = closed.unwrap_or(0.0);
+                self.vertical_gap(item_parskip + (extra_gap_before_pt - skip).max(0.0));
+            }
+            Block::Heading { level, .. } if closed.is_some() => {
+                let skip = closed.unwrap_or(0.0);
+                let size = heading_size(*level, body_size);
+                self.vertical_gap(
+                    (size - body_size).max(0.0)
+                        + (heading_before_skip(*level, body_size) - skip).max(0.0)
+                        + parskip,
+                );
+            }
             Block::Paragraph(_) => {
                 if !self.first_block {
                     self.newline(body_size);
-                    self.vertical_gap(self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT));
+                    self.vertical_gap(parskip);
                 }
             }
-            // Same base inter-block gap as an ordinary paragraph (so a
-            // custom `\parskip` still applies), plus any `\setlist`
-            // itemsep/topsep override before this item.
+            // The list's paragraph gap (see `item_parskip`), plus any
+            // `\setlist` itemsep/topsep override before this item.
             Block::ListItem {
                 extra_gap_before_pt,
                 ..
             } => {
                 if !self.first_block {
                     self.newline(body_size);
-                    self.vertical_gap(
-                        self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
-                            + extra_gap_before_pt,
-                    );
+                    self.vertical_gap(item_parskip + extra_gap_before_pt);
                 }
             }
             Block::Heading { level, .. } => {
                 let size = heading_size(*level, body_size);
                 if !self.first_block {
                     self.newline(size);
-                    self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
+                    self.vertical_gap(heading_before_skip(*level, body_size) + parskip);
                 }
             }
             Block::FigureCaption { .. } | Block::Styled { .. } => {
@@ -814,6 +927,14 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.resolve_hfill();
                 self.align_current_line();
+                if *style != ParagraphStyle::Quote
+                    && matches!(content.last(), Some(Inline::LineBreak { .. }))
+                    && self.state().trailing_line_items == 0
+                {
+                    // In `center`/`flushleft`/`flushright` a trailing `\\`
+                    // ends the paragraph rather than adding an empty line.
+                    self.closed_line_skip = Some(0.0);
+                }
                 self.style = None;
             }
             Block::ListItem {
@@ -836,7 +957,15 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.list_margin_pt = 0.0;
                 if *extra_gap_after_pt != 0.0 {
-                    self.vertical_gap(*extra_gap_after_pt);
+                    // The list's closing `\addvspace{\topsep}` merges with a
+                    // display's below-skip instead of adding to it.
+                    match self.closed_line_skip {
+                        Some(skip) => {
+                            self.vertical_gap((extra_gap_after_pt - skip).max(0.0));
+                            self.closed_line_skip = Some(skip.max(*extra_gap_after_pt));
+                        }
+                        None => self.vertical_gap(*extra_gap_after_pt),
+                    }
                 }
             }
             Block::Heading {
@@ -861,7 +990,9 @@ impl LayoutCursor {
                     Font::TimesBold,
                 );
                 self.newline(body_size);
-                self.vertical_gap(PARAGRAPH_GAP_PT);
+                let after = heading_after_skip(*level, body_size);
+                self.vertical_gap(after);
+                self.closed_line_skip = Some(after);
                 self.x = MARGIN_PT;
             }
             Block::FigureCaption { content } => {
@@ -932,6 +1063,7 @@ impl LayoutCursor {
             line_descent: self.line_descent,
             trailing_line_items: self.pages[page_index].items.len() - self.line_start,
             content_end: self.content_end,
+            closed_line_skip: self.closed_line_skip,
         }
     }
 
@@ -958,6 +1090,7 @@ impl LayoutCursor {
         }
         self.x = end.x;
         self.content_end = end.content_end;
+        self.closed_line_skip = end.closed_line_skip;
         self.y = end.y;
         self.line_ascent = end.line_ascent;
         self.line_descent = end.line_descent;
@@ -993,6 +1126,34 @@ impl LayoutCursor {
         self.resolve_hfill();
         (self.pages, self.collected_labels, self.diagnostics)
     }
+}
+
+/// `\parsep` for a first-level list: 4pt, 4.5pt or 5pt in the 10pt, 11pt
+/// and 12pt classes (`size1x.clo`'s `\@listi`).
+fn list_parsep_pt(body_size: f64) -> f64 {
+    if body_size <= 10.5 {
+        4.0
+    } else if body_size <= 11.5 {
+        4.5
+    } else {
+        5.0
+    }
+}
+
+/// One `ex` of the body font (cmr10's x-height is 0.4306em), the unit
+/// `article.cls`'s `\@startsection` skips are written in.
+fn body_ex(body_size: f64) -> f64 {
+    0.4306 * body_size
+}
+
+/// `\@startsection` before-skip: 3.5ex for `\section`, 3.25ex below it.
+fn heading_before_skip(level: u8, body_size: f64) -> f64 {
+    body_ex(body_size) * if level == 1 { 3.5 } else { 3.25 }
+}
+
+/// `\@startsection` after-skip: 2.3ex for `\section`, 1.5ex below it.
+fn heading_after_skip(level: u8, body_size: f64) -> f64 {
+    body_ex(body_size) * if level == 1 { 2.3 } else { 1.5 }
 }
 
 fn heading_size(level: u8, body_size: f64) -> f64 {
