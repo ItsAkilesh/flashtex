@@ -527,6 +527,7 @@ struct EditorPreferencesView: View {
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
                 Toggle("Check spelling", isOn: $prefs.spellCheck)
                     .accessibilityHint("Underlines misspelled words in prose; commands, math, comments and labels are skipped.")
+                ErrorLensPreferenceRows() // inline diagnostic text at line ends (ErrorLens.swift)
             }
             if showConversion { ConversionPreferencesSection() } // provider picker, model, API key (Keychain) (ConversionPreferencesView.swift)
             Section {

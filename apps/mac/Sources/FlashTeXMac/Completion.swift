@@ -2191,6 +2191,14 @@ final class CompletingTextView: NSTextView {
         backgroundDecorator?(rect)
     }
 
+    /// Draws over the text (error-lens messages at line ends; ErrorLens.swift).
+    var foregroundDecorator: ((NSRect) -> Void)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        foregroundDecorator?(dirtyRect)
+    }
+
     /// Scroll view + text view pair, like `NSTextView.scrollableTextView()`
     /// but with this subclass as the document view.
     static func scrollable() -> NSScrollView {

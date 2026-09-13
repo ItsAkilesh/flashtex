@@ -157,6 +157,7 @@ struct SourceEditorView: NSViewRepresentable {
         }
         co.marks.update(marks, in: tv, reset: textReset)
         co.gutter?.update(marks: marks)
+        co.errorLens.update(marks: marks)
         if textReset { co.refreshBraceHighlight(tv) }
         if let selection, selection.token != co.appliedToken {
             co.appliedToken = selection.token
@@ -685,6 +686,8 @@ struct SourceEditorView: NSViewRepresentable {
         private(set) var gutter: LineNumberGutter?
         /// Hover quick-info popover.
         let hover = HoverController()
+        /// Inline diagnostic text at line ends (ErrorLens.swift).
+        let errorLens = ErrorLensPainter()
         /// Index of the caret's line, for the current-line band and the gutter.
         private(set) var currentLine: Int?
         /// Definition targets routed to the owner (evidence for tests).
@@ -788,6 +791,9 @@ struct SourceEditorView: NSViewRepresentable {
                 // calls this hook once, right after it places the caret).
                 completing.onCloserInserted = { [weak self] offset in self?.registerPendingCloser(offset) }
             }
+            errorLens.lineTable = { [weak self] in self?.syntax.highlighter ?? SyntaxHighlighter() }
+            errorLens.attach(tv)
+            errorLens.update(marks: parent.marks)
             setLineNumbers(lineNumbers, on: scroll)
             updateCurrentLine(tv)
         }
