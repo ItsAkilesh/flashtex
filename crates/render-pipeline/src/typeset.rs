@@ -3605,6 +3605,9 @@ fn merge_base(style: TextStyle, base: TextStyle) -> TextStyle {
         size_cpt: style.size_cpt,
         medium: style.medium,
         slanted: style.slanted || base.slanted,
+        caps: style.caps || base.caps,
+        family: if style.family != crate::nfss::FamilyKind::Rm { style.family } else { base.family },
+        undefined: style.undefined.or(base.undefined),
     }
 }
 

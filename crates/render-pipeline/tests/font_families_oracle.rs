@@ -20,18 +20,12 @@ const TOL_BP: f64 = 0.5;
 
 /// Fixtures that depend on work not on this branch, with the reason. They
 /// must still differ (so the entry is removed when the dependency lands).
-const PENDING: [(&str, &str); 4] = [
-    (
-        "41-t1-sans-latex.tex",
-        "\\LaTeX logo glyph boxes (PR #129, text-logos-rule-symbols) are not on main: the logo is set as the literal word",
-    ),
-    ("48-t1-math-alphabets.tex", MATH_ALPHABETS_PENDING),
-    ("49-ot1-math-alphabets.tex", MATH_ALPHABETS_PENDING),
-    ("50-lm-math-alphabets.tex", MATH_ALPHABETS_PENDING),
-];
-
-const MATH_ALPHABETS_PENDING: &str =
-    "\\mathsf/\\mathtt/\\mathit/\\mathfrak as Unicode alphanumerics need compiler PR #136 in vendor/compiler (re-pin)";
+///
+/// Empty on integration/2026-09-13k: PR #129 (text-logos-rule-symbols-pipeline)
+/// and the vendor/compiler re-pin carrying PR #136 (font-families-compiler)
+/// are both merged, so the `\LaTeX` logo and `\mathsf`/`\mathtt`/`\mathit`/
+/// `\mathfrak` Unicode-alphanumeric fixtures below now match pdfLaTeX.
+const PENDING: [(&str, &str); 0] = [];
 
 #[derive(Debug, Clone)]
 struct Seg {
