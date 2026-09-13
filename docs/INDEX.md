@@ -5,6 +5,7 @@ your task; do not load the entire repository history into every prompt.
 
 | Need | Authoritative location | Writer |
 |---|---|---|
+| End-user guides (install, Mac app, iPad companion, CLI tools, supported LaTeX) | [docs/user/README.md](user/README.md) | mac-user-docs (parent mac-claude-a) |
 | Required collaboration behavior | [AGENTS.md](../AGENTS.md) | Integration owner with user direction |
 | Command, dispatch, reporting, integration | [ORCHESTRATION.md](../ORCHESTRATION.md) | Commander |
 | Actual coordination commands and patch submissions | [Coordination CLI](coordination-cli.md) | Commander |

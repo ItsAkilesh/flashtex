@@ -1,6 +1,15 @@
 # flashtex
 super duper cool project
 
+## Documentation
+
+User guides live in [`docs/user/`](docs/user/README.md):
+
+- [Getting started](docs/user/README.md) — install on macOS 14+ (Apple Silicon) and a 5-minute quick start.
+- [The Mac app](docs/user/gui.md) — workspace, editing, compiling, preview, problems, PDF export, the AI assistant, the Nearby companion, and every keyboard shortcut.
+- [FlashTeXPad for iPad](docs/user/ipad.md) — the Pencil/photo capture companion.
+- [Command-line tools and supported LaTeX](docs/user/compiler.md) — `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`, building from source, what LaTeX is supported, diagnostic codes.
+
 ## Working with agents
 
 **Executable tools:** [coordination CLI](docs/coordination-cli.md).
