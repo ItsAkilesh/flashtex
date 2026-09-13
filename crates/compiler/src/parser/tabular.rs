@@ -121,7 +121,8 @@ fn block_inlines(block: Block) -> Vec<Inline> {
         | Block::PageBreak
         | Block::Verbatim { .. }
         | Block::TableOfContents { .. }
-        | Block::TitleBlock { .. } => Vec::new(),
+        | Block::TitleBlock { .. }
+        | Block::VFill => Vec::new(),
     }
 }
 

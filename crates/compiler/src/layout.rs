@@ -1059,6 +1059,21 @@ impl LayoutCursor {
                 }
                 self.vertical_gap(2.0 * body_size);
             }
+            // `\vfill`: stretch to fill whatever room is left below the
+            // current line on this page. Real TeX distributes stretch across
+            // every `\vfill` sharing a page equally; this layout instead
+            // gives the first one all the remaining room, which matches the
+            // common single-`\vfill`-per-page idiom (pushing a signature or
+            // footer to the bottom) exactly, and degrades to a hard bottom
+            // clamp — rather than an overlap or a fabricated split — for the
+            // rarer multi-`\vfill` case.
+            Block::VFill => {
+                if !self.first_block && self.state().trailing_line_items > 0 {
+                    self.newline(body_size);
+                }
+                let remaining = (PAGE_HEIGHT_PT - MARGIN_PT - self.y).max(0.0);
+                self.vertical_gap(remaining);
+            }
         }
         self.first_block = false;
         self.state()
@@ -1173,7 +1188,7 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.newline(body_size);
             }
-            Block::VSpace { .. } | Block::PageBreak => {}
+            Block::VSpace { .. } | Block::PageBreak | Block::VFill => {}
             Block::TableOfContents { span } => {
                 self.render_prepared_block(&Block::Heading {
                     level: 1,
@@ -1716,7 +1731,8 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
             | Block::Rule { .. }
             | Block::PageBreak
             | Block::Verbatim { .. }
-            | Block::TableOfContents { .. } => {}
+            | Block::TableOfContents { .. }
+            | Block::VFill => {}
         }
     }
 }

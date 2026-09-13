@@ -450,6 +450,7 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
                 None => None,
             },
         },
+        Block::VFill => Block::VFill,
     })
 }
 
@@ -727,7 +728,8 @@ fn block_signature(block: &Block) -> BlockSignature {
         | Block::Rule { .. }
         | Block::PageBreak
         | Block::Verbatim { .. }
-        | Block::TableOfContents { .. } => &[],
+        | Block::TableOfContents { .. }
+        | Block::VFill => &[],
         // Signature only, not identity (see the doc comment above): using
         // just `title` here (never `authors`/`date`) can only widen the
         // candidate set on an author/date-only edit, never produce a wrong
@@ -779,7 +781,8 @@ fn shifted_signature(
         | Block::Rule { .. }
         | Block::PageBreak
         | Block::Verbatim { .. }
-        | Block::TableOfContents { .. } => &[],
+        | Block::TableOfContents { .. }
+        | Block::VFill => &[],
         // Signature only, not identity (see the doc comment above): using
         // just `title` here (never `authors`/`date`) can only widen the
         // candidate set on an author/date-only edit, never produce a wrong
