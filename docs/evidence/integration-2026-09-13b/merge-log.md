@@ -468,6 +468,33 @@ general implementation rather than by keeping both.
 - Checks: every error this merge introduced is resolved. Remaining
   render-pipeline errors are #152, #158, #165, #170 and `Piece::Caption::short`.
 
+### #152 list-structure-pipeline (render-pipeline) @ d98279ef
+
+- `src/style.rs`: main's five-element `headings` array (#151's three display
+  styles plus two run-in) with #152's `em_pt`; `labelsep_pt` keeps main's
+  class-geometry value (`list.labelsep.0`) over #152's `0.5 * em` literal.
+- `src/adapter.rs`: #152 refactors the list machinery — `list_seps` splits
+  into `class_seps` + `apply_sep_keys`, `is_key_list`/`ENUMITEM_KEYS` replace
+  main's `nosep`/`noitemsep` heuristic for telling an enumitem key list from a
+  shortlabels template, `list_stack_at` returns three-tuples, and `env_shape`
+  and `list_labelsep` are new. Took #152's throughout: it is a superset of
+  main's inline loop, and `list_end_skip` supersedes main's
+  `gap_has_list_end` reconstruction of the closing list's own options.
+- `src/typeset.rs`:
+  - `Context` fields and initialisers: both.
+  - Item-paragraph `\parskip`: took #152's `env_shape` match but kept main's
+    `self.outer_parskip()` as the default arm rather than #152's
+    `self.style.parskip`, so a nested list still adds the enclosing level's
+    `\parsep`.
+  - `display_opener_block` and the paragraph margins: took #152's label words,
+    `description` flag and `left`/`right` margins, but kept main's
+    `self.hsize()` in place of `style.text_width_pt` — #135 introduced
+    `hsize()` so a paragraph inside a float or minipage box is set to the box
+    width, and `text_width_pt` would silently widen those back to the column.
+- Checks: the `Block::Styled { lists, line_break_before }` errors are gone.
+  Remaining render-pipeline errors are #158 (`ColorBox`), #165
+  (`MathBox::tag`), #170 (`Graphic`/`Transform`) and `Piece::Caption::short`.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
