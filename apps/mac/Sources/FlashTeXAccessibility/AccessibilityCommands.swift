@@ -6,7 +6,7 @@ import Foundation
 /// "Accessibility help" list; the test target checks it against the README.
 public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case editorPreferences
-    case openLaTeXFile, save, saveAs, openFixture, reloadFixture
+    case openLaTeXFile, newProject, newFile, save, saveAs, openFixture, reloadFixture
     case attachBuiltCompiler, attachRenderPipeline, attachWorker, compile
     case exportPDF, exportPDFViaRust, exportPDFExact
     case pinInsertionPoint, openCaptureProposal, submitSampleCapture, convertCapture, nearbyCompanion
@@ -55,6 +55,15 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
             return Entry(command: self, title: "Open LaTeX file", shortcuts: ["⌘O"], menu: "File",
                          description: "Opens a .tex file as the main.tex entry document and compiles it when a worker is attached.",
                          menuItem: "Open LaTeX File…")
+        case .newProject:
+            return Entry(command: self, title: "New Project", shortcuts: ["⌘⌥N"], menu: "File",
+                         description: "Opens the New Project sheet: choose a folder, a project name and a template (Blank article, Article with sections, Report with chapters, Homework sheet); the files are written under <folder>/<name>, main.tex opens as the entry document and its include tree shows in the sidebar. Existing files are never overwritten without confirmation.",
+                         menuItem: "New Project…")
+        case .newFile:
+            return Entry(command: self, title: "New File", shortcuts: ["⌘N"], menu: "File",
+                         description: "Opens the New File sheet (also the sidebar's + button and the project row's context menu): a rooted .tex name, subfolders allowed, never above the project root; “Insert \\input at the caret” (on by default while the entry document is active) posts one undoable edit, then the new file opens in a tab.",
+                         requires: "a saved entry document (a project root)",
+                         menuItem: "New File…")
         case .save:
             return Entry(command: self, title: "Save", shortcuts: ["⌘S"], menu: "File",
                          description: "Saves the entry document as UTF-8; the editor header says “edited” while unsaved.",

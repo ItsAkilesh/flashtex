@@ -61,6 +61,8 @@ enum CommandPaletteModel {
         case .editorPreferences:
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         case .openLaTeXFile: model.openTexPanel()
+        case .newProject: model.scaffold.presentNewProject() // ProjectScaffoldViews.swift
+        case .newFile: model.scaffold.presentNewFile()
         case .save: model.saveTexInteractive()
         case .saveAs: _ = model.saveTexAs()
         case .openFixture: model.openFixturePanel()

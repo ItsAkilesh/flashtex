@@ -329,6 +329,9 @@ struct DiagnosticsListView: View {
                x.suggestions.contains(where: { !$0.edits.isEmpty }) {
                 Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
                     .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
+            } else if let fix = MissingIncludeFix.quickFix(for: d, projectRoot: model.project.projectRoot) { // ProjectScaffold.swift
+                Button("Create \(fix.path)") { Task { await model.project.createMissingInclude(fix.argument, from: fix.from); model.navigationNote = model.project.status } }
+                    .help("Create the empty file \(fix.path) under the project root and open it as included from \(fix.from)")
             }
         }
         .contextMenu {

@@ -125,6 +125,24 @@ established fixtures need (`ec-lmr10`, `ec-lmr12`, `rm-lmr12`, `rm-lmr8`,
 
 - Editor: `NSTextView` (monospaced, undo, no smart substitutions). Footer shows
   UTF-8 byte and UTF-16 unit counts of the active document.
+- Projects from scratch (`ProjectScaffold.swift`, `ProjectScaffoldViews.swift`):
+  *File › New Project…* (⌘⌥N) writes a template (`ProjectTemplate`: Blank article,
+  Article with sections via `\input`, Report with chapters via `\include`,
+  Homework sheet with the HW1-style preamble and `\problem`) into
+  `<folder>/<name>/` and opens `main.tex` through `openTex` — existing template
+  files are refused unless confirmed. *New File…* (⌘N, sidebar +, project-row
+  context menu) resolves a rooted `.tex` name (`NewFilePath`: subfolders yes,
+  `..`/absolute no, `main.tex` no), writes it under `ProjectDocuments.rootedFile`,
+  opens it via `openDocument`, and optionally posts `\input{name}` at the caret
+  as one `pendingEdit`. A literal `\input`/`\include` with no file is a
+  "missing — create" sidebar row, and the compiler's `included file not found:
+  looked for 'x' and 'x.tex'` diagnostic gets a **Create x.tex** button on its
+  Problems row (`MissingIncludeFix`, deterministic message parse). Context-menu
+  *Rename…* moves the file, retargets the member's metadata and rewrites
+  references in open documents (`ReferenceRewrite.plan`: one grouped
+  `pendingEdit` per document, applied in sequence as the editor consumes each);
+  *Delete…* detaches and `FileManager.trashItem`s. Both refuse the entry
+  document and unsaved edits. Tests: `ProjectScaffoldTests`.
 - Preview: pages drawn at 1pt = 1 screen point, origin top-left; text items are
   placed by `x_pt` / `baseline_y_pt` / `font_size_pt`. Hover highlights an item;
   clicking it navigates to its `source` range. Diagnostics list with "Go to source".
@@ -885,6 +903,8 @@ explain that nothing is loaded.
 |---|---|
 | ⌘, | Settings window (editor preferences: font, wrapping, tab width, indent, appearance, auto-close brackets & math, completion list; Tab walks the controls top to bottom) |
 | ⌘O | Open LaTeX file… (becomes the `main.tex` entry document; compiles if a worker is attached) |
+| ⌘⌥N | New Project… sheet (folder, name, template: Blank article / Article with sections / Report with chapters / Homework sheet; writes `<folder>/<name>/main.tex` plus its `\input`/`\include` members, opens `main.tex` as the entry document with the include tree in the sidebar; asks before replacing existing template files) |
+| ⌘N | New File… sheet (also the sidebar's + button and the project row's context menu): a rooted `.tex` name, subfolders allowed, never above the project root; "Insert `\input` at the caret" (on by default while the entry document is active) is one undoable edit; the file opens in a tab |
 | ⌘S / ⌘⇧S | Save / Save As… (UTF-8; header shows "— edited" when dirty) |
 | Edit > Restore Discarded Buffer | Brings back the unsaved text replaced by a "Discard" decision when opening another file |
 | ⌘⇧O | Open compile result fixture… (sibling `-request.json` seeds the editor) |
