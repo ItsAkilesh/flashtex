@@ -7,7 +7,7 @@ glyph runs for the preview and PDF back ends. Edition 2024, no external crates,
 no TeX engine involved.
 
 ```
-cargo test            # 24 tests: unit, golden (hand-derived numbers), pdflatex oracle
+cargo test            # 72 tests: unit, golden (hand-derived numbers), pdflatex oracles (incl. 30-paragraph hyphenation corpus)
 ```
 
 ## API tour
@@ -17,7 +17,7 @@ use flashtex_paragraph_layout::*;
 use flashtex_paragraph_layout::core14::Core14Times;
 
 // 1. Items: boxes, glue, penalties, kerns.
-let hyph = ExplicitDiscretionary;            // honours `\-`; NoHyphenation also shipped
+let hyph = LiangHyphenator::english();       // pdflatex's default patterns; ExplicitDiscretionary / NoHyphenation also shipped
 let mut b = ParagraphBuilder::new(&hyph);
 b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0)?;
 b.text(&Core14Times::BOLD, 12.0, "expects", 28)?;
@@ -142,6 +142,32 @@ oracle comparison (`docs/comparison.md`) uses the former.
 article: before 3.5 ex (18.9 pt), after 2.3 ex (12.42 pt), keep-with-next. Use
 `\Large` = 17.28 pt bold for the heading text itself.
 
+## Hyphenation (FT-064)
+
+* `LiangHyphenator` (`src/liang.rs`): Liang pattern matching over the TeX
+  pattern files vendored verbatim in `patterns/` (licences in their headers,
+  summarised in the module docs). `LiangHyphenator::english()` loads Knuth's
+  `hyphen.tex`, which is what TeX Live's `language.dat` loads for pdflatex's
+  default `english`; `en_us_max()` loads hyph-utf8 `hyph-en-us.tex`
+  (`usenglishmax`). `add_exceptions("ta-ble as-so-ciate")` is `\hyphenation`;
+  `left_min`/`right_min` are `\lefthyphenmin`/`\righthyphenmin` (2/3) and apply
+  to exceptions too. Words over 63 letters, and chunks containing an explicit
+  hyphen or `\-`, get no automatic points (TeX §894–903).
+* `ParagraphBuilder::text` only hyphenates a word that directly follows glue
+  (never a paragraph's first word, as in TeX); an explicit `-` is followed by an
+  empty discretionary with `ex_hyphen_penalty`; `\-` and automatic points use
+  `hyphen_penalty` and add a hyphen glyph when the line breaks there.
+* `ParagraphBuilder::discretionary(font, size, pre, post, nobreak, source)` is
+  `\discretionary{pre}{post}{nobreak}`: `Penalty::post_break` starts the next
+  line and the `Penalty::replace_count` no-break items are dropped at a break.
+* The breaker ignores automatic points in the `\pretolerance` pass, charges
+  `\doublehyphendemerits`/`\finalhyphendemerits`, and counts pre-/post-break
+  widths in the lines they end/start.
+* Oracle: `tests/hyphenation_oracle.rs` checks that 30 paragraphs (91 lines, 20
+  hyphenated) break exactly where pdflatex breaks them (`tests/oracle/`,
+  regenerate with `python3 tests/oracle/gen_hyphenation_oracle.py`; TeX is
+  never used outside that generator).
+
 ## Algorithms
 
 * **Total-fit**: Knuth–Plass with TeX's specifics — legal breaks (glue after a
@@ -170,9 +196,10 @@ Everything is deterministic: no hashing, randomness, or time; equal inputs give
   footnotes, marginpars, math (FT-020), `\flushbottom`, `\addvspace` merging,
   vertical glue stretch/shrink, per-character heights/depths (the font
   ascender/descender is used), infinite-order *shrink*.
-* Automatic (pattern) hyphenation: only the `Hyphenator` trait, `NoHyphenation`
-  and `ExplicitDiscretionary` (`\-`) are shipped. A pattern hyphenator plugs in
-  by returning `HyphenationPoint { automatic: true, marker_len: 0, .. }`.
+* Hyphenation of words set in several fonts, non-ASCII `\lccode`s beyond
+  Unicode `is_alphabetic`, `\uchyph=0`, and TeX's ligature/kern
+  reconstitution at automatic hyphen points (we kern across the point; no kern
+  is applied across an explicit `\-`).
 * Ligature/kern interaction across a discretionary (TeX reconstitutes; we kern
   around the break point as a separate `Item::Kern`).
 * Right-to-left or vertical scripts; combining marks (a mark is a glyph with
