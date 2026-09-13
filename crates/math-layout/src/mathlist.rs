@@ -156,6 +156,12 @@ pub enum Nucleus {
     /// Upright operator text such as `\lim` or `\sin` (`\operator@font`):
     /// each character is a text glyph of the roman font, no italic correction.
     Text(String),
+    /// One character of the upright text family (`\fam0`: `\mathrm{K}`,
+    /// `\mathop{\operator@font d}`) set as a math character: TeX §1186 turns
+    /// a group holding a single ordinary character into that character, so
+    /// its scripts follow Rule 18a (`shift_up` starts at 0) and an operator is
+    /// centred on the axis. A [`Nucleus::Text`] of several characters is a box.
+    TextChar(char),
     /// `\overline{body}`: body under a rule (Rule 9).
     Overline(MathList),
     /// `\underline{body}`: body over a rule (Rule 10).
