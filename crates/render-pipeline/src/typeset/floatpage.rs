@@ -58,6 +58,8 @@ pub struct PreparedGraphic {
     /// `None` when the file could not be read but its size was known from
     /// `width` and `height` (space is kept, nothing is painted).
     pub resource: Option<Rc<ImageResource>>,
+    /// graphicx `clip` with a viewport/trim: the unit square's visible part.
+    pub clip: Option<[f64; 4]>,
     pub span: Span,
 }
 
@@ -91,7 +93,7 @@ impl FloatParams {
 enum Elem {
     /// A caption line: block/line in `blocks`, baseline from the box top.
     Line { block: usize, line: usize, baseline: f64, height: f64, depth: f64 },
-    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, provenance: Provenance },
+    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, clip: Option<[f64; 4]>, provenance: Provenance },
 }
 
 struct FloatBox {
@@ -133,7 +135,7 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
         let mut x = if centered { ((tw - w) / 2.0).max(0.0) } else { 0.0 };
         let b = add_box(h, d, y, prev);
         for g in pending.drain(..) {
-            elems.push(Elem::Image { x, baseline: b, gbox: g.gbox, resource: g.resource.clone(), provenance: Provenance::Source(ctx.source(g.span)) });
+            elems.push(Elem::Image { x, baseline: b, gbox: g.gbox, resource: g.resource.clone(), clip: g.clip, provenance: Provenance::Source(ctx.source(g.span)) });
             x += g.gbox.width;
         }
     };
@@ -393,7 +395,7 @@ impl Placer<'_> {
         for e in &b.elems {
             match e {
                 Elem::Line { block, line, baseline, height, depth } => lines.push(Placed { payload: (*block, *line), baseline: top + baseline, height: *height, depth: *depth }),
-                Elem::Image { x, baseline, gbox, resource, provenance } => {
+                Elem::Image { x, baseline, gbox, resource, clip, provenance } => {
                     let Some(resource) = resource else { continue };
                     let left = self.text_x + x;
                     let base = self.text_y + top + baseline;
@@ -409,6 +411,7 @@ impl Placer<'_> {
                             transform: [m[0] * k, -m[1] * k, m[2] * k, -m[3] * k, (left + m[4]) * k, (base - m[5]) * k],
                             resource: resource.clone(),
                             provenance: provenance.clone(),
+                            clip: *clip,
                         }),
                     ));
                 }
@@ -459,6 +462,8 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
             BoxRec::Rule { span, .. } => Some(*span),
             BoxRec::Picture(p) => Some(p.span),
             BoxRec::Table(t) => Some(t.span),
+            BoxRec::Graphic(g) => Some(g.span),
+            BoxRec::Transform(t) => Some(t.span),
         })
         .collect()
 }

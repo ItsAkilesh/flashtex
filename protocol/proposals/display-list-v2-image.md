@@ -120,12 +120,23 @@ glyph runs; paint in array order. Text selection/hit testing ignores images;
   first `angle` size the unrotated image; after it they rescale the rotated
   box). Units `pt bp in cm mm pc dd cc sp em ex` and factors of `\textwidth`,
   `\linewidth`, `\columnwidth`, `\textheight`, `\paperwidth`, `\paperheight`.
-  `trim`/`clip`/`viewport`/`bb`/`origin` are reported (`graphics_option`)
-  and not honoured yet.
+  `trim`/`viewport`/`bb`/`clip`/`origin`/`draft` follow graphicx.sty
+  `\Gin@ii` and pdftex.def `\Ginclude@@pdftex` (branch
+  `agent/kabir-claude/inline-graphics`): the natural size becomes the
+  viewport's, the image is offset by its lower-left corner inside the box,
+  and with `clip` the item's box is the visible part only. The clip itself
+  is carried by `display-list-v2-transforms` (`image.clip`, see
+  `display-list-v2-transforms.md`); `pagebox`, `decodearray`, `interpolate`
+  are reported (`graphics_option`).
 - Extension search for names without one: `.pdf .png .jpg .jpeg .PDF .PNG .JPG`.
-- Scope today: `\includegraphics` inside `figure`/`table` floats (see
-  `crates/render-pipeline/src/typeset/floatpage.rs`). An `\includegraphics`
-  in running text keeps the compiler's existing "unsupported" warning.
+- Scope: `\includegraphics` inside `figure`/`table` floats (see
+  `crates/render-pipeline/src/typeset/floatpage.rs`) and, on branch
+  `agent/kabir-claude/inline-graphics` (needs the compiler's
+  `Inline::Graphic`/`Inline::Transform`), in running text and inside
+  `\scalebox`/`\resizebox`/`\rotatebox`/`\reflectbox`
+  (`src/typeset/graphics_boxes.rs`), with `\graphicspath`. Image items then
+  sit anywhere on a line; their `transform` composes the enclosing box
+  transforms.
 
 ## 5. Consumer obligations (for the co-sign)
 

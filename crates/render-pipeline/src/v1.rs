@@ -26,6 +26,12 @@ pub const CAP_DISPLAY_LIST: &str = "display-list-v2";
 /// items on the `display_list` line. Accepted only together with
 /// `display-list-v2`; without it image items are never serialised.
 pub const CAP_IMAGES: &str = "display-list-v2-images";
+/// PROPOSAL (`protocol/proposals/display-list-v2-transforms.md`): glyph runs
+/// may carry `glyph_transform` (text in rotated, reflected or unevenly
+/// scaled boxes) and image items `clip` (graphicx `clip`). Accepted only
+/// together with `display-list-v2`; without it neither field is written
+/// (glyph origins and image boxes are the same either way).
+pub const CAP_TRANSFORMS: &str = "display-list-v2-transforms";
 
 /// Capabilities the producer accepted for one request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +40,7 @@ pub struct Capabilities {
     pub font_hints: bool,
     pub display_list: bool,
     pub images: bool,
+    pub transforms: bool,
 }
 
 impl Capabilities {
@@ -59,6 +66,10 @@ impl Capabilities {
                 }
                 CAP_IMAGES if !caps.images && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
                     caps.images = true;
+                    accepted.push(r.clone());
+                }
+                CAP_TRANSFORMS if !caps.transforms && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
+                    caps.transforms = true;
                     accepted.push(r.clone());
                 }
                 _ => {}

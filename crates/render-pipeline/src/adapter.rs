@@ -126,6 +126,14 @@ impl Word {
     }
 }
 
+/// A graphics box transform and its content (compiler `Inline::Transform`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransformItem {
+    pub kind: flashtex_compiler::graphics::TransformKind,
+    pub content: Vec<Item>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Word(Word),
@@ -156,6 +164,12 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// `\includegraphics` in running text (compiler `Inline::Graphic`): one
+    /// image box (`typeset::graphics_boxes`).
+    Graphic(Box<flashtex_compiler::graphics::Graphic>),
+    /// `\scalebox`/`\resizebox`/`\rotatebox`/`\reflectbox`: the content set
+    /// as an `\hbox`, then transformed as one box.
+    Transform(Box<TransformItem>),
     /// `\TeX`/`\LaTeX`/`\LaTeXe` (compiler `Inline::Logo`): latex.ltx's
     /// construction, set by `typeset` from the face's TFM metrics.
     Logo { logo: TextLogo, style: TextStyle, span: Span },
@@ -1351,6 +1365,8 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Rule { span, .. }
         | Inline::Kern { span, .. } => *span,
         Inline::Tabular(t) => t.span,
+        Inline::Graphic(g) => g.span,
+        Inline::Transform(t) => t.span,
     }
 }
 
@@ -1377,6 +1393,11 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
         }
         Inline::Verbatim { text, span, .. } => {
             out.push(("unsupported_block", *span, format!("\\verb {text:?} set in the body face: the pipeline has no monospaced face")));
+        }
+        Inline::Transform(t) => {
+            for i in &t.content {
+                unsupported_inlines(i, out);
+            }
         }
         #[cfg(feature = "amsmath-inline")]
         Inline::MathRows { rows, .. } => {
@@ -3463,7 +3484,7 @@ fn items_cached(
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
     // Table items nest item lists the relocation does not walk.
-    if inlines.iter().any(|i| matches!(i, Inline::Tabular(_))) {
+    if inlines.iter().any(|i| matches!(i, Inline::Tabular(_) | Inline::Graphic(_) | Inline::Transform(_))) {
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     }
     let Some(first) = inlines.first().map(inline_span) else {
@@ -3547,6 +3568,15 @@ fn items_cached(
                 10u8.hash(&mut h);
                 t.entries.len().hash(&mut h);
                 t.inline_lists().iter().map(|l| l.len()).sum::<usize>().hash(&mut h);
+            }
+            // Never cached (see the guard above); hashed for completeness.
+            Inline::Graphic(g) => {
+                23u8.hash(&mut h);
+                (&g.options, &g.path, g.starred).hash(&mut h);
+            }
+            Inline::Transform(t) => {
+                24u8.hash(&mut h);
+                format!("{:?}", t.kind).hash(&mut h);
             }
             Inline::Verbatim { text, .. } => {
                 11u8.hash(&mut h);
@@ -3698,6 +3728,35 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_end = Some(span.end);
                 prev_span = Some(span);
                 factor = 1000;
+            }
+            Inline::Graphic(g) => {
+                // `\leavevmode` and the image box, the space before it read
+                // like a formula's.
+                let span = g.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                items.push(Item::Graphic(g.clone()));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+                pending_accent = None;
+            }
+            Inline::Transform(t) => {
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let content = items_from_inlines_styled(texts, &t.content, styles, labels, size, false, compiler_weight);
+                items.push(Item::Transform(Box::new(TransformItem { kind: t.kind.clone(), content, span })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+                pending_accent = None;
             }
             Inline::LineBreak { span } => {
                 let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);

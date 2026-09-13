@@ -177,7 +177,7 @@ pub fn block_origin(items: &[Item]) -> Option<(DocumentId, usize)> {
             }
             // A table's cell blocks hold absolute record indices and
             // spans: blocks containing one are never cached.
-            Item::Table(_) => return None,
+            Item::Table(_) | Item::Graphic(_) | Item::Transform(_) => return None,
             Item::Math { span, .. } => {
                 if !note(&CharSrc {
                     document: span.document,
@@ -266,6 +266,14 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
             }
             Item::Table(t) => {
                 9u8.hash(h);
+                format!("{t:?}").hash(h);
+            }
+            Item::Graphic(g) => {
+                12u8.hash(h);
+                format!("{g:?}").hash(h);
+            }
+            Item::Transform(t) => {
+                13u8.hash(h);
                 format!("{t:?}").hash(h);
             }
             Item::Footnote { number, mark, span, text } => {

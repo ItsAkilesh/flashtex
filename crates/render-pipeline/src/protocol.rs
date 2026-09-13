@@ -250,7 +250,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: 
         // Size first (an upper-bound estimate, then the exact line), so an
         // oversized frame is declined without serialising 16+ MB in vain.
         let estimate = rendered.v2.estimated_json_bytes();
-        let dl = if estimate > limit { None } else { Some(rendered.v2.write_json_with(&id, caps.images)) };
+        let dl = if estimate > limit { None } else { Some(rendered.v2.write_json_caps(&id, caps.images, caps.transforms)) };
         let too_big = dl.as_ref().map_or(estimate, String::len);
         match dl {
             Some(dl) if dl.len() <= limit => extra_lines.push(dl),

@@ -394,13 +394,25 @@ type Loaded = Result<(Rc<ImageResource>, ImageInfo), String>;
 pub struct ImageCache {
     root: Option<Result<ProjectRoot, String>>,
     entries: HashMap<(String, u32), Loaded>,
+    /// `\graphicspath` directories, tried after the name as given (LaTeX's
+    /// `\IfFileExists` searches `\input@path`, which graphics.sty sets to
+    /// `\Ginput@path`), for each extension in turn.
+    paths: Vec<String>,
 }
 
 impl ImageCache {
-    fn load(&mut self, options: &RenderOptions, raw: &str, page: u32) -> Loaded {
+    pub fn set_search_path(&mut self, paths: Vec<String>) {
+        if self.paths != paths {
+            self.paths = paths;
+            self.entries.clear();
+        }
+    }
+
+    pub(crate) fn load(&mut self, options: &RenderOptions, raw: &str, page: u32) -> Loaded {
         if let Some(hit) = self.entries.get(&(raw.to_string(), page)) {
             return hit.clone();
         }
+        let prefixes: Vec<String> = std::iter::once(String::new()).chain(self.paths.iter().cloned()).collect();
         let root = self.root.get_or_insert_with(|| match &options.project_root {
             Some(dir) => ProjectRoot::open(dir).map_err(|e| format!("project root {} cannot be opened: {e:?}", dir.display())),
             None => Err("no project root was supplied with the request, so image files cannot be read".into()),
@@ -414,6 +426,7 @@ impl ImageCache {
                     candidates.push(raw.to_string());
                 }
                 candidates.extend(graphics::EXTENSIONS.iter().map(|e| format!("{raw}{e}")));
+                let candidates: Vec<String> = candidates.iter().flat_map(|c| prefixes.iter().map(move |p| format!("{p}{c}"))).collect();
                 let mut found: Loaded = Err(format!("image file '{raw}' not found (tried {})", candidates.join(", ")));
                 for c in candidates {
                     let Ok(path) = ProjectPath::normalize(&c) else {
@@ -527,8 +540,8 @@ pub fn prepare(
                         let page = keys.iter().find_map(|k| if let GKey::Page(p) = k { Some(*p) } else { None }).unwrap_or(1);
                         match images.load(options, file, page) {
                             Ok((resource, info)) => {
-                                let gbox = graphics::size_box(info.width_bp / graphics::BP_PER_PT, info.height_bp / graphics::BP_PER_PT, &keys);
-                                parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: Some(resource), span: *span }));
+                                let placed = graphics::place_image(info.width_bp / graphics::BP_PER_PT, info.height_bp / graphics::BP_PER_PT, &keys, false, false, &env);
+                                parts.push(FloatPart::Graphic(PreparedGraphic { gbox: placed.gbox, resource: Some(resource), clip: placed.clip, span: *span }));
                             }
                             Err(msg) => {
                                 let w = keys.iter().rev().find_map(|k| if let GKey::Width(v) = k { Some(*v) } else { None });
@@ -537,7 +550,7 @@ pub fn prepare(
                                     (Some(w), Some(h)) => {
                                         diags.push(Diagnostic::error("image_unavailable", format!("{msg} (its requested size is kept empty)"), vec![src(*span)]));
                                         let gbox = graphics::GraphicBox { width: w, height: h, depth: 0.0, matrix: [w, 0.0, 0.0, h, 0.0, 0.0] };
-                                        parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: *span }));
+                                        parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, clip: None, span: *span }));
                                     }
                                     _ => diags.push(Diagnostic::error("image_unavailable", msg, vec![src(*span)])),
                                 }

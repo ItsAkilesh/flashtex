@@ -129,6 +129,12 @@ pub fn render_cached(
     let mut image_cache = floats::ImageCache::default();
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
     let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
+    // `\graphicspath` and graphics' `draft`/`final` options, read from the
+    // entry document; the search path serves floats and running text.
+    let entry_source = documents.get(entry_index).map_or("", |d| d.text);
+    let graphics_path = graphics::graphics_path(entry_source);
+    let graphics_draft = typeset::graphics_boxes::draft_option(entry_source);
+    image_cache.set_search_path(graphics_path.clone());
     // The compiler does not know `tikzpicture`: it reports the environment
     // and every TikZ command inside it, and the pipeline typesets the
     // picture itself (`adapter` / `tikz`). Those compiler diagnostics are
@@ -193,6 +199,7 @@ pub fn render_cached(
         }
         diagnostics.extend(float_diagnostics);
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
+        ctx.set_graphics(options, graphics_path.clone(), graphics_draft);
         let laid = typeset::build_with_floats(&mut ctx, &doc, cache, &float_specs);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {
