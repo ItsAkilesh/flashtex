@@ -67,6 +67,7 @@ final class SignatureHelpTests: XCTestCase {
 
     @MainActor
     func testPanelOpensOnBraceFollowsTheArgumentAndCloses() throws {
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         let scroll = CompletingTextView.scrollable()
         scroll.frame = window.contentView!.bounds

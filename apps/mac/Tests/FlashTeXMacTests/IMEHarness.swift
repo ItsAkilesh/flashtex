@@ -97,6 +97,7 @@ final class IMEHarness {
     }
 
     private func host() async throws {
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: Host(model: model, probe: probe))

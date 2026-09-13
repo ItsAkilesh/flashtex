@@ -76,6 +76,7 @@ final class OverlayTests: XCTestCase {
     /// page's size, as the preview does, and hands the page to it.
     func hostPage(_ page: RuntimeV1.Page, totalPages: Int, scale: CGFloat = 1,
                   onSelect: @escaping (RuntimeV1.SourceRange?, String?) -> Void = { _, _ in }) -> (NSWindow, PageAXView) {
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 40, y: 40, width: page.widthPt * scale, height: page.heightPt * scale),
                               styleMask: [.titled], backing: .buffered, defer: false)
         let view = PageAXView(frame: window.contentView!.bounds)
@@ -239,6 +240,7 @@ final class OverlayTests: XCTestCase {
                 Text(d.message).accessibleDiagnostic(d, index: i, total: res.diagnostics.count, status: res.status) { navigated += 1 }
             }
         }
+        HostedWindowSupport.prepare() // non-activating: hosted windows must never pull the app forward
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
         let host = NSHostingView(rootView: list)
         window.contentView = host
