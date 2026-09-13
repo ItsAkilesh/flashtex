@@ -1321,7 +1321,7 @@ impl<'a> Context<'a> {
         // Across requests (a fresh `Context` per render): resolving parses
         // nothing but still walks the config per font, so the result and any
         // warning are kept per thread for the face, size and options.
-        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}", setup.options, self.style.family));
+        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}|{:?}", setup.options, self.style.family, self.style.nfss));
         if let Some((hit, warning)) = MICROTYPE_FONTS.with(|c| c.borrow().get(&global_key).cloned()) {
             if let Some((k, message)) = warning {
                 self.emit(Some(k), Diagnostic::warning("microtype_unsupported", message, Vec::new()));
@@ -1330,9 +1330,21 @@ impl<'a> Context<'a> {
             return hit;
         }
         let mut warning: Option<(String, String)> = None;
+        // The NFSS font LaTeX loads for this style (family slot, series and
+        // shape after substitutions), named in the document's scheme: `cmr`/
+        // `cmss`/`cmtt` or `lmr`/`lmss`/`lmtt`, OT1 or T1 (mt-cmr.cfg and
+        // mt-lmr.cfg list both encodings).
+        let scheme = self.style.nfss;
+        let loaded = match self.text_role(style, size).0 {
+            Role::Font(key) => key,
+            _ => style.key(),
+        };
         let families = match self.style.family {
-            Family::ComputerModern => Some(("cmr", "cmss", "cmtt")),
-            Family::LatinModern => Some(("lmr", "lmss", "lmtt")),
+            Family::ComputerModern | Family::LatinModern => Some((
+                scheme.family_name(crate::nfss::FamilyKind::Rm),
+                scheme.family_name(crate::nfss::FamilyKind::Sf),
+                scheme.family_name(crate::nfss::FamilyKind::Tt),
+            )),
             Family::Times => None,
         };
         let resolved = match (families, face.tfm.clone()) {
@@ -1350,15 +1362,24 @@ impl<'a> Context<'a> {
                     }
                 }
                 static CONFIG: OnceLock<flashtex_microtype::MicrotypeConfig> = OnceLock::new();
+                // `ENC/family/series/shape` as `nfss::Scheme::describe` spells it.
+                let described = scheme.describe(loaded);
+                let mut parts = described.split('/').skip(2);
+                let (series, shape) = (parts.next().unwrap_or("m"), parts.next().unwrap_or("n"));
                 let font = flashtex_microtype::NfssFont {
-                    encoding: "T1".to_string(),
-                    family: rm.to_string(),
-                    series: if style.bold && !style.medium { "bx" } else { "m" }.to_string(),
-                    shape: if style.italic { "it" } else if style.slanted { "sl" } else { "n" }.to_string(),
+                    encoding: scheme.encoding().to_string(),
+                    family: match loaded.family {
+                        crate::nfss::FamilyKind::Rm => rm,
+                        crate::nfss::FamilyKind::Sf => sf,
+                        crate::nfss::FamilyKind::Tt => tt,
+                    }
+                    .to_string(),
+                    series: if style.medium && !loaded.bold() { "m" } else { series }.to_string(),
+                    shape: shape.to_string(),
                     size: format!("{size}"),
                 };
                 let metrics = Metrics { tfm: &tfm, z: (size * 65536.0).round() as i32 };
-                let defaults = flashtex_microtype::NfssDefaults::latex("T1", rm, sf, tt);
+                let defaults = flashtex_microtype::NfssDefaults::latex(scheme.encoding(), rm, sf, tt);
                 match CONFIG.get_or_init(flashtex_microtype::MicrotypeConfig::bundled).resolve(&setup.options, &defaults, &font, &metrics) {
                     Ok(r) => Some(Rc::new(r.params)),
                     Err(e) => {

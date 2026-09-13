@@ -1227,6 +1227,54 @@ mod tests {
     }
 
     #[test]
+    fn nfss_shapes_select_the_fd_metrics_and_latin_modern_designs() {
+        use crate::nfss::{FamilyKind::*, FontKey, Series::*, Shape::*};
+        let role = |f, s, sh| Role::Font(FontKey::new(f, s, sh));
+        // The roman roles spelled the old way resolve identically.
+        assert_eq!(Role::Text { bold: true, italic: false }.key(), role(Rm, Bx, N).key());
+        assert_eq!(Role::Slanted.key(), role(Rm, M, Sl).key());
+        // t1cmss.fd / t1cmtt.fd: `<5><6><7><8>ecss0800`, genb sizes above.
+        assert_eq!(ec_tfm_file(role(Sf, M, N), 10.95).as_deref(), Some("ecss1095.tfm"));
+        assert_eq!(ec_tfm_file(role(Sf, M, N), 6.0).as_deref(), Some("ecss0800.tfm"));
+        assert_eq!(ec_tfm_file(role(Sf, M, It), 10.0).as_deref(), Some("ecsi1000.tfm"));
+        assert_eq!(ec_tfm_file(role(Sf, Bx, Sl), 12.0).as_deref(), Some("ecso1200.tfm"));
+        assert_eq!(ec_tfm_file(role(Tt, M, N), 8.0).as_deref(), Some("ectt0800.tfm"));
+        assert_eq!(ec_tfm_file(role(Tt, M, Sc), 10.95).as_deref(), Some("ectc1095.tfm"));
+        // t1cmr.fd shapes.
+        assert_eq!(ec_tfm_file(role(Rm, M, Sc), 10.95).as_deref(), Some("eccc1095.tfm"));
+        assert_eq!(ec_tfm_file(role(Rm, Bx, Sc), 10.0).as_deref(), Some("ecxc1000.tfm"));
+        assert_eq!(ec_tfm_file(role(Rm, M, Scsl), 10.0).as_deref(), Some("ecsc1000.tfm"));
+        assert_eq!(ec_tfm_file(role(Rm, Bx, Sl), 10.0).as_deref(), Some("ecbl1000.tfm"));
+        // t1lmss.fd / t1lmtt.fd design sizes and the ec-lm* pairing.
+        assert_eq!(FontSet::latin_modern_file(role(Sf, M, N), 10.95), "lmsans10-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(role(Sf, M, N), 14.4), "lmsans12-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(role(Sf, M, Sl), 17.28), "lmsans17-oblique.otf");
+        assert_eq!(FontSet::latin_modern_file(role(Tt, M, N), 8.0), "lmmono8-regular.otf");
+        assert_eq!(FontSet::latin_modern_file(role(Tt, B, N), 10.0), "lmmonolt10-bold.otf");
+        assert_eq!(FontSet::latin_modern_file(role(Rm, M, Sc), 12.0), "lmromancaps10-regular.otf");
+        for (stem, tfm) in [
+            ("lmsans10-regular", "ec-lmss10.tfm"),
+            ("lmsans12-oblique", "ec-lmsso12.tfm"),
+            ("lmsans10-bold", "ec-lmssbx10.tfm"),
+            ("lmsans10-boldoblique", "ec-lmssbo10.tfm"),
+            ("lmromancaps10-regular", "ec-lmcsc10.tfm"),
+            ("lmromancaps10-oblique", "ec-lmcsco10.tfm"),
+            ("lmromanslant10-bold", "ec-lmbxo10.tfm"),
+            ("lmromanslant12-regular", "ec-lmro12.tfm"),
+            ("lmmono9-regular", "ec-lmtt9.tfm"),
+            ("lmmono10-italic", "ec-lmtti10.tfm"),
+            ("lmmonolt10-bold", "ec-lmtk10.tfm"),
+            ("lmroman10-bolditalic", "ec-lmbxi10.tfm"),
+        ] {
+            assert_eq!(latin_modern_tfm(stem).as_deref(), Some(tfm), "{stem}");
+        }
+        // No Latin Modern bold small caps: the medium design, with a note.
+        let (file, note) = latin_modern_outline(FontKey::new(Rm, Bx, Sc), 10.0);
+        assert_eq!(file, "lmromancaps10-regular.otf");
+        assert!(note.is_some());
+    }
+
+    #[test]
     fn missing_latin_modern_is_reported_not_silent() {
         let set = FontSet::new(vec![PathBuf::from("/nonexistent/flashtex-fonts")]);
         let r = set.resolve(Family::LatinModern, Role::Text { bold: false, italic: false }, 10.0);

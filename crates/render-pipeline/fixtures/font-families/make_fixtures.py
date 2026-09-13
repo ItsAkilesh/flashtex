@@ -57,8 +57,7 @@ EXTRAS = [
      "and {\\bf old bold \\it old italic} with {\\ttfamily typewriter words} and "
      "{\\slshape slanted \\upshape upright} words in the end."),
     ("t1", "sans-latex",
-     "The \\textsf{\\LaTeX} logo in sans, \\textsf{Sans \\textsc{caps substituted}} and "
-     "\\textsf{\\textsl{sans slanted}} with \\textsf{\\textbf{\\textit{bold sans italic}}} words."),
+     "The \\textsf{\\LaTeX} logo in sans."),
     ("lm", "sizes",
      "Plain {\\small\\textsf{small sans words}} and {\\Large\\textsc{Large Caps}} then "
      "{\\footnotesize\\texttt{footnote typewriter}} and {\\large\\textsl{large slanted}} words."),
@@ -71,6 +70,10 @@ EXTRAS = [
     ("lm", "substitutions",
      "Words \\textsf{\\textbf{\\textit{bold sans italic}}} and \\textbf{\\textsc{Bold Caps}} "
      "then \\textsf{\\textsc{Sans Caps}} and \\texttt{\\textbf{bold typewriter}} to finish."),
+    ("t1", "sans-shapes",
+     "Plain \\textsf{Sans \\textsc{caps substituted}} and "
+     "\\textsf{\\textsl{sans slanted}} with \\textsf{\\textbf{\\textit{bold sans italic}}} words "
+     "and \\texttt{\\textsl{slanted typewriter} \\textit{italic typewriter} \\textsc{Typewriter Caps}} end."),
 ]
 
 
