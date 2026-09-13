@@ -10,6 +10,11 @@ User guides live in [`docs/user/`](docs/user/README.md):
 - [FlashTeXPad for iPad](docs/user/ipad.md) — the Pencil/photo capture companion.
 - [Command-line tools and supported LaTeX](docs/user/compiler.md) — `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`, building from source, what LaTeX is supported, diagnostic codes.
 
+**Releases & CI:** `.github/workflows/ci.yml` builds and tests every crate, the
+Mac app and the iPad companion on each push/PR; tagging `vX.Y.Z` runs
+`release.yml`, which publishes `FlashTeX.dmg`, the CLI tarballs and `SHA256SUMS`
+to GitHub Releases and updates the website. See [docs/ci-cd.md](docs/ci-cd.md).
+
 ## Working with agents
 
 **Executable tools:** [coordination CLI](docs/coordination-cli.md).

@@ -1,0 +1,162 @@
+# FlashTeX CI: every helper crate builds and tests on Linux and macOS, the
+# Mac app builds and tests against the freshly built helpers, and the iPad
+# companion builds for the simulator. See docs/ci-cd.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  rust:
+    name: rust ${{ matrix.crate }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      # The pinned Latin Modern faces and rooted TFM metrics vendored for the
+      # app bundle, so the render-pipeline/pdf tests that need them run
+      # instead of skipping (no TeX installation on the runners).
+      FLASHTEX_FONT_DIRS: ${{ github.workspace }}/apps/mac/Fonts
+      FLASHTEX_TFM_DIRS: ${{ github.workspace }}/apps/mac/Fonts/texmf/fonts/tfm/public/lm
+      FLASHTEX_LM_DIR: ${{ github.workspace }}/apps/mac/Fonts
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 and later GitHub runners are Apple Silicon (arm64).
+        os: [ubuntu-latest, macos-15]
+        crate:
+          - compiler
+          - pdf
+          - bridge
+          - edit-ledger
+          - render-pipeline
+          - preview-controller
+          - project-files
+          - assistant-context
+        include:
+          - crate: assistant-context
+            features: --features grok
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/${{ matrix.crate }}
+          key: ${{ matrix.crate }}
+      - name: cargo build --release
+        working-directory: crates/${{ matrix.crate }}
+        run: cargo build --release --locked ${{ matrix.features }}
+      - name: cargo test --release
+        working-directory: crates/${{ matrix.crate }}
+        run: cargo test --release --locked ${{ matrix.features }}
+
+  mac-app:
+    name: mac app (swift build + test)
+    # Xcode 26 / Swift 6.x. If the macos-26 label is unavailable, use
+    # macos-15 and pin the newest Xcode with maxim-lobanov/setup-xcode.
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      CI: "1"
+      FLASHTEX_NO_ACTIVATE: "1"
+      FLASHTEX_KEYCHAIN_OFF: "1"
+      FLASHTEX_REVIEW_HISTORY_DIR: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift --version && xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/compiler
+            crates/pdf
+            crates/bridge
+            crates/edit-ledger
+            crates/render-pipeline
+            crates/preview-controller
+            crates/project-files
+            crates/assistant-context
+          key: helpers
+      - name: Build every bundled helper (release)
+        # Prints FLASHTEX_<NAME>=<path> lines; the app and its tests read them.
+        run: scripts/ci/build-helpers.sh | tee -a "$GITHUB_ENV"
+      - name: swift build
+        working-directory: apps/mac
+        run: swift build
+      - name: swift test
+        working-directory: apps/mac
+        # Serial, as rehearsed locally (877 tests in ~5 min on an M1 Max):
+        # the Nearby tests bind loopback ports and share fixtures.
+        run: swift test 2>&1 | tee swift-test.log | grep -vE '^\s*$' | tail -n 400
+      - name: Upload swift test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-swift-test-log
+          path: apps/mac/swift-test.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ipad:
+    name: iPad companion (simulator build + tests)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Pick an iPad simulator from the runner image
+        id: sim
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available iPad -j > sims.json
+          name="$(python3 - <<'PY'
+          import json
+          data = json.load(open("sims.json"))
+          ipads = [d["name"] for devs in data["devices"].values() for d in devs
+                   if d.get("isAvailable") and d["name"].startswith("iPad")]
+          # Prefer the 11-inch Air (what the README uses), else any iPad.
+          pick = next((n for n in ipads if "Air 11-inch" in n), ipads[0] if ipads else "")
+          print(pick)
+          PY
+          )"
+          [ -n "$name" ] || { echo "no available iPad simulator on this image"; xcrun simctl list devices available; exit 1; }
+          echo "iPad simulator: $name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: xcodebuild build
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project FlashTeXPad.xcodeproj -scheme FlashTeXPad \
+            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.name }}' \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 200
+      - name: xcodebuild test (unit tests only; UI tests are skipped)
+        working-directory: apps/ios
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          xcodebuild -project FlashTeXPad.xcodeproj -scheme FlashTeXPad \
+            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.name }}' \
+            -skipPackagePluginValidation -skipMacroValidation \
+            -only-testing:FlashTeXPadTests \
+            CODE_SIGNING_ALLOWED=NO test | tail -n 300
