@@ -329,6 +329,89 @@ impl ProjectRoot {
         Ok(Some((obs, bytes)))
     }
 
+    /// Resolves `path`'s leaf to the name that actually backs it in `dir`,
+    /// mirroring `Discovery::resolve_existing` / `resolve_via_directory_listing`
+    /// in `graph.rs` for the save/conflict-detection path (issue #45 finding
+    /// 3, save-path extension).
+    ///
+    /// The literal spelling (`path.file_name()`) is tried first via the
+    /// existing fd-rooted, `O_NOFOLLOW` `open_target`. On a
+    /// normalization-insensitive filesystem (APFS) that alone already finds
+    /// an NFD-spelled reference to an NFC-spelled on-disk file. On a
+    /// normalization-*sensitive* filesystem (ext4) the literal lookup for
+    /// whichever spelling isn't on disk fails (`ENOENT`), so this lists the
+    /// parent directory — a plain, non-fd-rooted read, the same trust level
+    /// `Discovery::resolve_existing`'s literal `is_file()` check already has
+    /// — and matches entries by [`ProjectPath`] identity (Unicode-NFC
+    /// comparison), which is spelling-insensitive regardless of what the
+    /// filesystem does.
+    ///
+    /// This never grants extra trust: the returned name is only ever used as
+    /// the `name` argument to the existing fd-rooted, symlink-refusing
+    /// `openat`/`renameat` calls the rest of `save_with` already makes,
+    /// exactly like a literal candidate would be. A symlink at the literal
+    /// spelling is still refused directly by `open_target` (it errors rather
+    /// than reporting "missing"), and a genuinely absent target — no match
+    /// under any spelling — falls back to the literal name unchanged, so
+    /// `check_expected` still sees `None` and reports `DeletedExternally` /
+    /// allows `NewFile` as before.
+    fn resolve_target_name(&self, dir: &File, path: &ProjectPath) -> Result<String, SaveError> {
+        let literal = path.file_name();
+        if Self::open_target(dir, literal)?.is_some() {
+            return Ok(literal.to_string());
+        }
+        Ok(self
+            .resolve_leaf_via_directory_listing(path)
+            .unwrap_or_else(|| literal.to_string()))
+    }
+
+    /// The directory-listing fallback itself, factored out so it can be unit
+    /// tested directly (see `tests::directory_listing_fallback_resolves_nfd_candidate_to_nfc_name`
+    /// below) without depending on `open_target`'s literal lookup, whose
+    /// result varies by host filesystem: APFS's own lookup is already
+    /// normalization-insensitive and would find the file before this ever
+    /// runs, so calling only `resolve_target_name` on this (macOS) machine
+    /// cannot, by itself, prove this fallback works -- exactly the same
+    /// reasoning `graph.rs`'s `resolve_via_directory_listing` unit test
+    /// documents for the discovery path this mirrors.
+    fn resolve_leaf_via_directory_listing(&self, path: &ProjectPath) -> Option<String> {
+        let parent_dir = path.parent_dir();
+        let mut dir_os_path = self.path.clone();
+        if !parent_dir.is_empty() {
+            for seg in parent_dir.split('/') {
+                dir_os_path.push(seg);
+            }
+        }
+        let entries = std::fs::read_dir(&dir_os_path).ok()?;
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            // Filtered here too, belt-and-suspenders: a symlink entry never
+            // reaches the fd-rooted open/rename calls that follow because
+            // they use this resolved name with `O_NOFOLLOW` exactly as they
+            // would the literal spelling.
+            if !file_type.is_file() {
+                continue;
+            }
+            let Some(name) = entry.file_name().into_string().ok() else {
+                continue; // not valid UTF-8; cannot match a ProjectPath
+            };
+            let candidate_str = if parent_dir.is_empty() {
+                name.clone()
+            } else {
+                format!("{parent_dir}/{name}")
+            };
+            let Ok(on_disk) = ProjectPath::normalize(&candidate_str) else {
+                continue;
+            };
+            if &on_disk == path {
+                return Some(name);
+            }
+        }
+        None
+    }
+
     /// Reads `path` (at most `limit` bytes) without following any symlink.
     /// `Ok(None)` when the file does not exist.
     pub fn read(&self, path: &ProjectPath, limit: u64) -> Result<Option<RootedRead>, SaveError> {
@@ -458,8 +541,14 @@ impl ProjectLock<'_> {
         force: bool,
         hooks: &Hooks<'_>,
     ) -> Result<SaveReceipt, SaveError> {
-        let name = path.file_name();
         let dir = self.root.walk(path, true)?;
+        // Resolve the literal spelling to whatever actually backs it on
+        // disk (NFC/NFD-insensitive), so conflict detection below compares
+        // against the real file even when `path`'s raw bytes are a
+        // differently-normalized spelling of an existing name (ext4; see
+        // `resolve_target_name`).
+        let name = self.root.resolve_target_name(&dir, path)?;
+        let name = name.as_str();
 
         // Step 2: observe and compare.
         let before = ProjectRoot::observe(&dir, name, DEFAULT_READ_LIMIT)?.map(|(o, _)| o);
@@ -770,5 +859,157 @@ mod tests {
                 .is_symlink(),
             "symlink left in place"
         );
+    }
+
+    /// CI failure at `tests/recovery.rs:287`
+    /// (`nfc_nfd_spelling_does_not_bypass_save_conflict_detection`): on ext4
+    /// an NFD-spelled path is a *different* file from the NFC one, so a
+    /// literal `openat` lookup for the NFD candidate against an NFC on-disk
+    /// file fails (`ENOENT`) and used to make save-conflict detection
+    /// observe "target missing" (`DeletedExternally`) instead of "modified
+    /// by A" (`ModifiedExternally`).
+    ///
+    /// This deterministically simulates that ext4 behavior by calling the
+    /// directory-listing fallback (`resolve_leaf_via_directory_listing`)
+    /// directly, bypassing the literal `open_target` lookup that precedes it
+    /// in `resolve_target_name`. That bypass is necessary for the test to be
+    /// meaningful on any host: APFS's own `openat` is normalization
+    /// *insensitive*, so it already finds an NFC file for an NFD-spelled
+    /// lookup before the fallback would ever run -- calling only the
+    /// composed `resolve_target_name` on this (macOS) machine would pass
+    /// whether or not this fallback existed, exactly as `graph.rs`'s
+    /// `resolve_via_directory_listing` unit test documents for the
+    /// discovery path this mirrors.
+    #[test]
+    fn directory_listing_fallback_resolves_nfd_candidate_to_nfc_name_simulating_ext4() {
+        let t = Temp::new("save-nfc-nfd-fallback");
+        let nfc_stem = "caf\u{e9}"; // "café", 'é' precomposed (NFC) -- the only file written to disk
+        let nfd_stem = "cafe\u{301}"; // "café", 'e' + combining acute (NFD) -- how it's looked up
+        fs::write(t.0.join(format!("{nfc_stem}.tex")), "original").unwrap();
+
+        let root = ProjectRoot::open(&t.0).unwrap();
+        let nfd_candidate = pp(&format!("{nfd_stem}.tex"));
+        let resolved = root
+            .resolve_leaf_via_directory_listing(&nfd_candidate)
+            .expect(
+                "directory listing must find the on-disk NFC file for an NFD-spelled candidate",
+            );
+        assert_eq!(
+            resolved,
+            format!("{nfc_stem}.tex"),
+            "must resolve to the on-disk (NFC) raw bytes, not the NFD spelling it was looked up with"
+        );
+
+        // Exactly one physical file backs this -- the fallback must never
+        // itself create or duplicate anything, only report a name.
+        assert_eq!(fs::read_dir(&t.0).unwrap().count(), 1);
+    }
+
+    /// Full pipeline, through the public `save` API: an NFD-spelled save
+    /// against a since-modified NFC file must be refused as
+    /// `ModifiedExternally` (never bypassed into `DeletedExternally` or a
+    /// silent overwrite), and the refusal must leave exactly the original
+    /// NFC file on disk -- no NFD-spelled duplicate or leftover temp file
+    /// from the attempted write. `directory_listing_fallback_resolves_nfd_candidate_to_nfc_name_simulating_ext4`
+    /// above proves the resolution primitive itself is correct on any
+    /// filesystem; this proves `save_with` actually wires it in.
+    #[test]
+    fn save_through_nfd_spelling_conflicts_against_modified_nfc_file_without_duplicating() {
+        let t = Temp::new("save-nfc-nfd-conflict");
+        let nfc_stem = "caf\u{e9}";
+        let nfd_stem = "cafe\u{301}";
+        let path_nfc = pp(&format!("{nfc_stem}.tex"));
+        let path_nfd = pp(&format!("{nfd_stem}.tex"));
+        assert_eq!(path_nfc, path_nfd, "sanity: same ProjectPath identity");
+
+        let root = ProjectRoot::open(&t.0).unwrap();
+        let lock = root.lock().unwrap();
+        let base = lock
+            .save(&path_nfc, b"original", Expected::NewFile, false)
+            .unwrap();
+
+        // "Editor A" saves under the NFC spelling.
+        lock.save(&path_nfc, b"edit-A", Expected::Hash(base.sha256), false)
+            .unwrap();
+
+        // "Editor B" saves under the NFD spelling with the stale base hash.
+        let err = lock
+            .save(&path_nfd, b"edit-B", Expected::Hash(base.sha256), false)
+            .unwrap_err();
+        match err {
+            SaveError::Conflict(c) => {
+                assert_eq!(c.kind, SaveConflictKind::ModifiedExternally);
+                assert_eq!(c.theirs, Some(sha256(b"edit-A")));
+            }
+            other => panic!("expected ModifiedExternally, got {other:?}"),
+        }
+
+        // Exactly one `.tex` file on disk, still holding A's content, spelled
+        // NFC (`.flashtex/` -- the project lock directory `root.lock()`
+        // created -- is unrelated to this check and excluded).
+        let entries: Vec<_> = fs::read_dir(&t.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n != ".flashtex")
+            .collect();
+        assert_eq!(
+            entries,
+            vec![format!("{nfc_stem}.tex")],
+            "no second (NFD-spelled or temp) file may exist after the refused save"
+        );
+        assert_eq!(
+            fs::read_to_string(t.0.join(format!("{nfc_stem}.tex"))).unwrap(),
+            "edit-A"
+        );
+    }
+
+    /// A target that was never created under any spelling -- not a
+    /// normalization twin of an existing file -- must still resolve to the
+    /// literal (missing) name and report `DeletedExternally`, exactly as
+    /// before this change: the directory-listing fallback must not invent a
+    /// match, and a genuinely absent file is not confused with a
+    /// differently-spelled reference to an existing one.
+    #[test]
+    fn truly_missing_target_still_reports_deleted_externally() {
+        let t = Temp::new("save-missing-target");
+        let root = ProjectRoot::open(&t.0).unwrap();
+        let lock = root.lock().unwrap();
+
+        let missing = pp("never-existed.tex");
+        let err = lock
+            .save(
+                &missing,
+                b"new content",
+                Expected::Hash(sha256(b"whatever")),
+                false,
+            )
+            .unwrap_err();
+        match err {
+            SaveError::Conflict(c) => {
+                assert_eq!(c.kind, SaveConflictKind::DeletedExternally);
+                assert_eq!(c.theirs, None);
+            }
+            other => panic!("expected DeletedExternally, got {other:?}"),
+        }
+        assert!(!t.0.join("never-existed.tex").exists());
+
+        // Also true for an NFD-spelled path with no NFC twin on disk.
+        let missing_nfd = pp("cafe\u{301}-missing.tex");
+        assert!(
+            root.resolve_leaf_via_directory_listing(&missing_nfd)
+                .is_none()
+        );
+        let err2 = lock
+            .save(
+                &missing_nfd,
+                b"new content",
+                Expected::Hash(sha256(b"whatever")),
+                false,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err2,
+            SaveError::Conflict(c) if c.kind == SaveConflictKind::DeletedExternally
+        ));
     }
 }
