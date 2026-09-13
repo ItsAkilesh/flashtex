@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{amsthm}
+\newtheoremstyle{note}{3pt}{3pt}{\itshape}{}{\bfseries}{:}{.5em}{}
+\theoremstyle{note}
+\newtheorem{claim}{Claim}
+\begin{document}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{claim}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{claim}
+Text after the environment, which starts a new paragraph of its own.
+\begin{claim}[Sharp]
+Let $n$ be a positive integer and consider the product of all primes up to $n$ plus one; none of the listed primes divides it, which is the classical argument.
+\end{claim}
+\end{document}

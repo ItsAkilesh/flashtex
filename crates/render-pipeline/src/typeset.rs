@@ -108,6 +108,19 @@ pub enum BoxRec {
     /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
     /// whose origin is the table's reference baseline.
     Table(Rc<TableRec>),
+    /// A box drawn as rules (amsthm's `\openbox`; `\hbox{}` with none),
+    /// line-local like a glyph run: x from the box's left edge, `top`
+    /// measured down from the baseline (negative above it).
+    Rules { rules: Vec<LocalRule>, span: Span },
+}
+
+/// One rule of a [`BoxRec::Rules`] box, in points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocalRule {
+    pub x: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 /// A laid-out table (`Context::table_box`): every entry or `@{}` box as
@@ -1450,6 +1463,24 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None)
                 }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
+                AItem::Glue { pt, plus, minus, spaces, style: st } => {
+                    let space = if *spaces != 0.0 { spaces * self.text_params(*st, st.size_or(size)).space } else { 0.0 };
+                    push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::finite(pt + space, *plus, *minus)), None)
+                }
+                AItem::Rigid { pt, quads, spaces, xheights, style: st } => {
+                    let p = self.text_params(*st, st.size_or(size));
+                    push(&mut out, &mut recs, pl::Item::kern(pt + quads * p.quad + spaces * p.space + xheights * p.x_height), None)
+                }
+                AItem::Penalty { value } => push(&mut out, &mut recs, pl::Item::penalty(*value), None),
+                AItem::EmptyBox { span } => {
+                    let (run, rec) = self.rules_box(Vec::new(), 0.0, 0.0, *span, size);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
+                AItem::Qed { style: st, span } => {
+                    let em = self.text_params(*st, st.size_or(size)).quad;
+                    let (run, rec) = self.qed_box(em, *span, size);
+                    push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
                 AItem::Table(table) => {
                     if let Some((run, rec)) = self.table_box(table, size) {
                         push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
@@ -1782,6 +1813,38 @@ impl<'a> Context<'a> {
             labelwidth = w;
         }
         (hang, labelwidth)
+    }
+
+    /// A box `width` x `height` (depth 0) painted as `rules` (see
+    /// [`BoxRec::Rules`]).
+    fn rules_box(&mut self, rules: Vec<LocalRule>, width: f64, height: f64, span: Span, size: f64) -> (pl::GlyphRun, usize) {
+        self.recs.push(BoxRec::Rules { rules, span });
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width,
+            height,
+            depth: 0.0,
+            source: span.start..span.end,
+        };
+        (run, self.recs.len() - 1)
+    }
+
+    /// amsthm.sty `\openbox` (the default `\qedsymbol`): `\hbox to.77778em
+    /// {\hfil\vrule \vbox to.675em{\hrule width.6em\vfil\hrule}\vrule\hfil}`
+    /// with the default 0.4pt rules, `em` being the current font's quad.
+    fn qed_box(&mut self, em: f64, span: Span, size: f64) -> (pl::GlyphRun, usize) {
+        let (rule, inner) = (0.4, 0.6 * em);
+        let (width, height) = (0.77778 * em, 0.675 * em);
+        let x = (width - inner - 2.0 * rule) / 2.0;
+        let rules = vec![
+            LocalRule { x, top: -height, width: rule, height },
+            LocalRule { x: x + rule, top: -height, width: inner, height: rule },
+            LocalRule { x: x + rule, top: -rule, width: inner, height: rule },
+            LocalRule { x: x + rule + inner, top: -height, width: rule, height },
+        ];
+        self.rules_box(rules, width, height, span, size)
     }
 
     /// Width of `text` shaped in the body font at `size`, in points.
@@ -2679,12 +2742,14 @@ impl<'a> Context<'a> {
     /// right (`\eqno`). `style` and `list_geom` give the paragraph's
     /// `\parshape` (§1149): the display is centred in `\displaywidth`
     /// (`\linewidth`) starting `\displayindent` (`\@totalleftmargin`) in.
+    #[allow(clippy::too_many_arguments)]
     fn display_block(
         &mut self,
         list: &flashtex_compiler::math::MathList,
         span: Span,
         pre_display_size: Option<f64>,
         number: Option<&(String, Span)>,
+        qed: Option<Span>,
         style: ParaStyle,
         list_geom: Option<&ListGeom>,
     ) -> Option<BuiltBlock> {
@@ -2720,6 +2785,16 @@ impl<'a> Context<'a> {
                 depth = depth.max(nrun.depth);
                 eqno = Some((nrun, nrec));
             }
+        }
+        // amsthm `\qedhere` in a display (amsmath's `\displaymath@qed`,
+        // amsthm.sty 316-328): `\eqno \hbox{\qedsymbol}`.
+        if let (None, Some(qspan)) = (&eqno, qed) {
+            let em = self.text_params(TextStyle::default(), size).quad;
+            let (qrun, qrec) = self.qed_box(em, qspan, size);
+            e = qrun.width;
+            q = e + em;
+            height = height.max(qrun.height);
+            eqno = Some((qrun, qrec));
         }
         // §1199: centre the formula in the measure; if it would collide with
         // the number, shift it (d) so both fit; `l` marks a display wider
@@ -3269,7 +3344,7 @@ impl<'a> Context<'a> {
                 .filter_map(|r| match &self.recs[r] {
                     BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                     BoxRec::Math(m) => Some(self.maths[*m].span),
-                    BoxRec::Rule { span, .. } => Some(*span),
+                    BoxRec::Rule { span, .. } | BoxRec::Rules { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
                 })
@@ -4392,6 +4467,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 eject_before,
                 vspace_before,
                 addvspace_before,
+                addvspace_flex,
                 endlist_adjust,
                 list,
             } => {
@@ -4410,9 +4486,15 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 }
                 // `\addvspace`: only the excess over the skip the previous
                 // block already left (`\@xaddvskip`).
+                let mut addv_flex = None;
                 if *addvspace_before != 0.0 {
                     let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
                     vspace += (addvspace_before - prev_after).max(0.0);
+                    // The skip `\addvspace` leaves is the larger one, with its
+                    // own stretch and shrink.
+                    if *addvspace_before > prev_after && *addvspace_flex != (0.0, 0.0) {
+                        addv_flex = Some((0.0, addvspace_flex.0, addvspace_flex.1));
+                    }
                 }
                 // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
                 // `\partopsep` from vertical mode) before the first paragraph;
@@ -4464,6 +4546,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                 }
                                 add_vspace(&mut b.vertical, std::mem::take(&mut vspace));
                                 add_skip_before(&mut b.vertical, env_before.take());
+                                add_skip_before(&mut b.vertical, addv_flex.take());
                                 blocks.push(b);
                             }
                         }
@@ -4475,6 +4558,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                 }
                                 add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
                                 add_skip_before(&mut opener.vertical, env_before.take());
+                                add_skip_before(&mut opener.vertical, addv_flex.take());
                                 blocks.push(opener);
                             }
                             let (key, origin) = if cache.is_some() {
@@ -4512,6 +4596,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             span,
                             number,
                             bracket,
+                            qed,
                         } => {
                             if first {
                                 let (mut opener, size) = ctx.display_opener_block(*bracket, geom);
@@ -4520,6 +4605,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                 }
                                 add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
                                 add_skip_before(&mut opener.vertical, env_before.take());
+                                add_skip_before(&mut opener.vertical, addv_flex.take());
                                 blocks.push(opener);
                                 pre_display = Some(size);
                             }
@@ -4535,6 +4621,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                     n.hash(&mut h);
                                     (ns.start.wrapping_sub(span.start), ns.end.wrapping_sub(span.start)).hash(&mut h);
                                 }
+                                qed.map(|q| q.start.wrapping_sub(span.start)).hash(&mut h);
                                 bracket.hash(&mut h);
                                 (*style as u64).hash(&mut h);
                                 list_fp.hash(&mut h);
@@ -4544,7 +4631,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             };
                             let pd = pre_display;
                             let st = *style;
-                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), *qed, st, geom)) {
                                 blocks.push(b);
                             }
                             pre_display = None;
@@ -4752,7 +4839,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             .and_then(|r| match &ctx.recs[r] {
                 BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
                 BoxRec::Math(m) => Some(ctx.maths[*m].span),
-                BoxRec::Rule { span, .. } => Some(*span),
+                BoxRec::Rule { span, .. } | BoxRec::Rules { span, .. } => Some(*span),
                 BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
             });
@@ -5161,7 +5248,7 @@ pub fn assemble(
             if reported.insert((font.clone(), *code)) {
                 let span = block.recs.iter().flatten().find_map(|r| match &laid.recs[*r] {
                     BoxRec::Math(mi) => Some(laid.maths[*mi].span),
-                    BoxRec::Rule { span, .. } => Some(*span),
+                    BoxRec::Rule { span, .. } | BoxRec::Rules { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
                     BoxRec::Text { .. } => None,
@@ -5327,6 +5414,18 @@ fn assemble_block(
                         paint: Paint::BLACK,
                         provenance: Provenance::Source(source_of(*span)),
                     }));
+                }
+                BoxRec::Rules { rules, span } => {
+                    for r in rules {
+                        items.push(display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(local.x + r.x),
+                            top: Tick::from_tex_pt(r.top),
+                            width: Tick::from_tex_pt(r.width).max(Tick(1)),
+                            height: Tick::from_tex_pt(r.height).max(Tick(1)),
+                            paint: Paint::BLACK,
+                            provenance: Provenance::Source(source_of(*span)),
+                        }));
+                    }
                 }
             }
         }

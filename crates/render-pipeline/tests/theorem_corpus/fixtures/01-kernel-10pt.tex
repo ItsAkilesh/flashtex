@@ -1,0 +1,17 @@
+\documentclass{article}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\begin{document}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{theorem}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{theorem}
+Text after the environment, which starts a new paragraph of its own.
+\begin{lemma}[Euclid]
+Let $n$ be a positive integer and consider the product of all primes up to $n$ plus one; none of the listed primes divides it, which is the classical argument.
+\end{lemma}
+\begin{theorem}
+Short.
+\end{theorem}
+Closing words.
+\end{document}

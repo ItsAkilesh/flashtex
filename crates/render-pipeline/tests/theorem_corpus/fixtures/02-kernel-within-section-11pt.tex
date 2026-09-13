@@ -1,0 +1,18 @@
+\documentclass[11pt]{article}
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{cor}[thm]{Corollary}
+\begin{document}
+\section{First}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{thm}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{thm}
+\begin{cor}
+Let $n$ be a positive integer and consider the product of all primes up to $n$ plus one; none of the listed primes divides it, which is the classical argument.
+\end{cor}
+\section{Second}
+\begin{thm}[Note]
+Reset numbering.
+\end{thm}
+Text after the environment, which starts a new paragraph of its own.
+\end{document}

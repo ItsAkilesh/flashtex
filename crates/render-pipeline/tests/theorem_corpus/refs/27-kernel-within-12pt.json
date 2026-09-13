@@ -1,0 +1,223 @@
+{
+ "fixture": "27-kernel-within-12pt.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, word origin, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "1",
+    "x": 110.854,
+    "y_top": 137.753
+   },
+   {
+    "text": "Setup",
+    "x": 139.905,
+    "y_top": 137.753
+   },
+   {
+    "text": "Definition",
+    "x": 110.854,
+    "y_top": 164.038
+   },
+   {
+    "text": "1.1",
+    "x": 173.626,
+    "y_top": 164.038
+   },
+   {
+    "text": "(Prime)",
+    "x": 195.2948,
+    "y_top": 164.038
+   },
+   {
+    "text": "There",
+    "x": 247.3752,
+    "y_top": 164.038
+   },
+   {
+    "text": "are",
+    "x": 279.9472,
+    "y_top": 164.038
+   },
+   {
+    "text": "infinitely",
+    "x": 298.7826,
+    "y_top": 164.038
+   },
+   {
+    "text": "many",
+    "x": 346.7468,
+    "y_top": 164.038
+   },
+   {
+    "text": "prime",
+    "x": 377.6869,
+    "y_top": 164.038
+   },
+   {
+    "text": "numbers,",
+    "x": 410.2708,
+    "y_top": 164.038
+   },
+   {
+    "text": "and",
+    "x": 459.4963,
+    "y_top": 164.038
+   },
+   {
+    "text": "this",
+    "x": 481.1711,
+    "y_top": 164.038
+   },
+   {
+    "text": "sentence",
+    "x": 110.854,
+    "y_top": 178.484
+   },
+   {
+    "text": "is",
+    "x": 156.6305,
+    "y_top": 178.484
+   },
+   {
+    "text": "long",
+    "x": 168.0357,
+    "y_top": 178.484
+   },
+   {
+    "text": "enough",
+    "x": 192.0059,
+    "y_top": 178.484
+   },
+   {
+    "text": "that",
+    "x": 230.6092,
+    "y_top": 178.484
+   },
+   {
+    "text": "it",
+    "x": 253.3719,
+    "y_top": 178.484
+   },
+   {
+    "text": "has",
+    "x": 263.8806,
+    "y_top": 178.484
+   },
+   {
+    "text": "to",
+    "x": 283.6545,
+    "y_top": 178.484
+   },
+   {
+    "text": "wrap",
+    "x": 296.5541,
+    "y_top": 178.484
+   },
+   {
+    "text": "onto",
+    "x": 323.6506,
+    "y_top": 178.484
+   },
+   {
+    "text": "a",
+    "x": 349.1152,
+    "y_top": 178.484
+   },
+   {
+    "text": "second",
+    "x": 358.1294,
+    "y_top": 178.484
+   },
+   {
+    "text": "line",
+    "x": 394.0428,
+    "y_top": 178.484
+   },
+   {
+    "text": "of",
+    "x": 415.61,
+    "y_top": 178.484
+   },
+   {
+    "text": "the",
+    "x": 428.2108,
+    "y_top": 178.484
+   },
+   {
+    "text": "paragraph.",
+    "x": 446.4903,
+    "y_top": 178.484
+   },
+   {
+    "text": "Text",
+    "x": 110.854,
+    "y_top": 205.881
+   },
+   {
+    "text": "after",
+    "x": 138.1716,
+    "y_top": 205.881
+   },
+   {
+    "text": "the",
+    "x": 165.8073,
+    "y_top": 205.881
+   },
+   {
+    "text": "environment,",
+    "x": 185.9637,
+    "y_top": 205.881
+   },
+   {
+    "text": "which",
+    "x": 256.5281,
+    "y_top": 205.881
+   },
+   {
+    "text": "starts",
+    "x": 290.0194,
+    "y_top": 205.881
+   },
+   {
+    "text": "a",
+    "x": 322.6619,
+    "y_top": 205.881
+   },
+   {
+    "text": "new",
+    "x": 332.4245,
+    "y_top": 205.881
+   },
+   {
+    "text": "paragraph",
+    "x": 356.4831,
+    "y_top": 205.881
+   },
+   {
+    "text": "of",
+    "x": 412.4096,
+    "y_top": 205.881
+   },
+   {
+    "text": "its",
+    "x": 425.7492,
+    "y_top": 205.881
+   },
+   {
+    "text": "own.",
+    "x": 442.068,
+    "y_top": 205.881
+   },
+   {
+    "text": "1",
+    "x": 302.199,
+    "y_top": 702.137
+   }
+  ]
+ ],
+ "rules": [
+  []
+ ]
+}

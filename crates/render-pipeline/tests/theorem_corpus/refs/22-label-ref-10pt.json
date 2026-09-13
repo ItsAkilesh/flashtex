@@ -1,0 +1,223 @@
+{
+ "fixture": "22-label-ref-10pt.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, word origin, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "1",
+    "x": 133.768,
+    "y_top": 134.765
+   },
+   {
+    "text": "Results",
+    "x": 157.9772,
+    "y_top": 134.765
+   },
+   {
+    "text": "Lemma",
+    "x": 133.768,
+    "y_top": 156.586
+   },
+   {
+    "text": "1.1.",
+    "x": 175.3858,
+    "y_top": 156.586
+   },
+   {
+    "text": "There",
+    "x": 198.7162,
+    "y_top": 156.586
+   },
+   {
+    "text": "are",
+    "x": 228.1497,
+    "y_top": 156.586
+   },
+   {
+    "text": "infinitely",
+    "x": 245.8811,
+    "y_top": 156.586
+   },
+   {
+    "text": "many",
+    "x": 288.4254,
+    "y_top": 156.586
+   },
+   {
+    "text": "prime",
+    "x": 316.4671,
+    "y_top": 156.586
+   },
+   {
+    "text": "numbers,",
+    "x": 345.8996,
+    "y_top": 156.586
+   },
+   {
+    "text": "and",
+    "x": 389.5458,
+    "y_top": 156.586
+   },
+   {
+    "text": "this",
+    "x": 409.6942,
+    "y_top": 156.586
+   },
+   {
+    "text": "sentence",
+    "x": 429.5785,
+    "y_top": 156.586
+   },
+   {
+    "text": "is",
+    "x": 470.3505,
+    "y_top": 156.586
+   },
+   {
+    "text": "long",
+    "x": 133.768,
+    "y_top": 168.541
+   },
+   {
+    "text": "enough",
+    "x": 155.1567,
+    "y_top": 168.541
+   },
+   {
+    "text": "that",
+    "x": 189.0206,
+    "y_top": 168.541
+   },
+   {
+    "text": "it",
+    "x": 209.3801,
+    "y_top": 168.541
+   },
+   {
+    "text": "has",
+    "x": 219.3119,
+    "y_top": 168.541
+   },
+   {
+    "text": "to",
+    "x": 237.136,
+    "y_top": 168.541
+   },
+   {
+    "text": "wrap",
+    "x": 249.104,
+    "y_top": 168.541
+   },
+   {
+    "text": "onto",
+    "x": 273.1567,
+    "y_top": 168.541
+   },
+   {
+    "text": "a",
+    "x": 295.8177,
+    "y_top": 168.541
+   },
+   {
+    "text": "second",
+    "x": 304.4762,
+    "y_top": 168.541
+   },
+   {
+    "text": "line",
+    "x": 336.0506,
+    "y_top": 168.541
+   },
+   {
+    "text": "of",
+    "x": 355.393,
+    "y_top": 168.541
+   },
+   {
+    "text": "the",
+    "x": 367.107,
+    "y_top": 168.541
+   },
+   {
+    "text": "paragraph.",
+    "x": 383.6579,
+    "y_top": 168.541
+   },
+   {
+    "text": "Theorem",
+    "x": 133.768,
+    "y_top": 188.466
+   },
+   {
+    "text": "1.2.",
+    "x": 182.4154,
+    "y_top": 188.466
+   },
+   {
+    "text": "By",
+    "x": 205.2178,
+    "y_top": 188.466
+   },
+   {
+    "text": "Lemma",
+    "x": 220.6349,
+    "y_top": 188.466
+   },
+   {
+    "text": "1.1",
+    "x": 255.9115,
+    "y_top": 188.466
+   },
+   {
+    "text": "the",
+    "x": 272.7174,
+    "y_top": 188.466
+   },
+   {
+    "text": "statement",
+    "x": 289.2583,
+    "y_top": 188.466
+   },
+   {
+    "text": "holds.",
+    "x": 334.8332,
+    "y_top": 188.466
+   },
+   {
+    "text": "Theorem",
+    "x": 148.712,
+    "y_top": 208.391
+   },
+   {
+    "text": "1.2",
+    "x": 190.8,
+    "y_top": 208.391
+   },
+   {
+    "text": "uses",
+    "x": 206.8577,
+    "y_top": 208.391
+   },
+   {
+    "text": "Lemma",
+    "x": 227.9964,
+    "y_top": 208.391
+   },
+   {
+    "text": "1.1.",
+    "x": 263.5628,
+    "y_top": 208.391
+   },
+   {
+    "text": "1",
+    "x": 303.133,
+    "y_top": 702.635
+   }
+  ]
+ ],
+ "rules": [
+  []
+ ]
+}

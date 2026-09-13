@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\begin{document}
+\section{Results}
+\begin{lemma}\label{lem:a}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{lemma}
+\begin{theorem}\label{thm:b}
+By Lemma~\ref{lem:a} the statement holds.
+\end{theorem}
+Theorem~\ref{thm:b} uses Lemma~\ref{lem:a}.
+\end{document}

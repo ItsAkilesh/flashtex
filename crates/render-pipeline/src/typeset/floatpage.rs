@@ -456,7 +456,7 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
         .filter_map(|r| match &ctx.recs[r] {
             BoxRec::Text { clusters, .. } => clusters.first().map(|c| c.span),
             BoxRec::Math(m) => Some(ctx.maths[*m].span),
-            BoxRec::Rule { span, .. } => Some(*span),
+            BoxRec::Rule { span, .. } | BoxRec::Rules { span, .. } => Some(*span),
             BoxRec::Picture(p) => Some(p.span),
             BoxRec::Table(t) => Some(t.span),
         })
