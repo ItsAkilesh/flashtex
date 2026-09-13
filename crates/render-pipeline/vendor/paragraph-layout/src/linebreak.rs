@@ -25,6 +25,7 @@
 
 use std::ops::Range;
 
+use crate::adapter::LayoutError;
 use crate::items::{FORCED_BREAK, Glue, GlueOrder, GlyphRun, INFINITE_PENALTY, Item};
 use crate::metrics::FontId;
 
@@ -352,6 +353,13 @@ fn is_flagged(items: &[Item], i: usize) -> bool {
     matches!(&items[i], Item::Penalty(p) if p.flagged)
 }
 
+fn post_break(items: &[Item], i: usize) -> Option<&GlyphRun> {
+    match &items[i] {
+        Item::Penalty(p) => p.post_break.as_ref(),
+        _ => None,
+    }
+}
+
 fn pre_break(items: &[Item], i: usize) -> Option<&GlyphRun> {
     match &items[i] {
         Item::Penalty(p) => p.pre_break.as_ref(),
@@ -361,13 +369,32 @@ fn pre_break(items: &[Item], i: usize) -> Option<&GlyphRun> {
 
 /// First item of the line that starts after a break at `after` (skips
 /// discardables). `None` = paragraph start.
+///
+/// The result may lie *past* the next legal break when everything after
+/// `after` up to that break is discardable (a forced break followed only by
+/// penalties and glue: `\\` at the end of a paragraph, where
+/// [`crate::items::ParagraphBuilder::finish`] appends `\penalty10000
+/// \parfillskip \penalty-10000`; or two consecutive `\\`). Such a line is
+/// empty, as in TeX (§837 `break_width` drops the discardables' widths and
+/// §879 prunes them, but the break at the penalty is still taken, giving the
+/// familiar "Underfull \hbox (badness 10000)" empty line). Every consumer
+/// clamps the start to the break: [`measure`], [`set_line`] and first-fit's
+/// [`resume_after_cut`].
 fn line_start(items: &[Item], after: Option<usize>) -> usize {
     match after {
         None => 0,
         Some(b) => {
             let mut s = b + 1;
-            while s < items.len() && items[s].is_discardable() {
-                s += 1;
+            // `\discretionary` no-break text is not typeset after a break there.
+            if let Item::Penalty(p) = &items[b] {
+                s = (s + p.replace_count).min(items.len());
+            }
+            // Post-break text starts the line; TeX prunes discardables only
+            // when there is none (§879, §882).
+            if post_break(items, b).is_none() {
+                while s < items.len() && items[s].is_discardable() {
+                    s += 1;
+                }
             }
             s
         }
@@ -406,11 +433,15 @@ fn measure(
     items: &[Item],
     p: &Prefix,
     params: &LineBreakParams,
-    start: usize,
+    after: Option<usize>,
     brk: usize,
     line_no: usize,
     extra_stretch: f64,
 ) -> Measure {
+    let start = line_start(items, after);
+    // A break inside the discardable run after the previous break sets an
+    // empty line (see `line_start`); `start > brk` must not read backwards.
+    let start = start.min(brk);
     let right = params.effective_right_skip();
     let left = &params.left_skip;
     let mut natural = p.width[brk] - p.width[start] + left.width + right.width;
@@ -418,6 +449,9 @@ fn measure(
         natural += params.parindent;
     }
     if let Some(h) = pre_break(items, brk) {
+        natural += h.width;
+    }
+    if let Some(h) = after.and_then(|a| post_break(items, a)) {
         natural += h.width;
     }
     let mut stretch = [0.0; 4];
@@ -538,8 +572,7 @@ fn total_fit_pass(
         let n_active = active.len();
         for (k, &a) in active.iter().enumerate() {
             let node = &arena[a];
-            let start = line_start(items, node.pos);
-            let m = measure(items, p, params, start, b, node.line, extra_stretch);
+            let m = measure(items, p, params, node.pos, b, node.line, extra_stretch);
             let overfull = m.badness >= AWFUL_BAD;
             // TeX deactivates a node once the line from it is overfull (later
             // breaks only make it longer) or when the break is forced.
@@ -681,29 +714,35 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
     let mut breaks = Vec::new();
     let mut line_no = 0;
     let mut start = 0;
+    let mut after: Option<usize> = None;
     let mut last_legal: Option<usize> = None;
     let mut b = 0;
     // Emits a break at `at` and advances to the next line.
-    let cut = |at: usize, line_no: &mut usize, breaks: &mut Vec<BreakPoint>, start: &mut usize| {
-        let m = measure(items, p, params, *start, at, *line_no, 0.0);
+    let cut = |at: usize,
+               line_no: &mut usize,
+               breaks: &mut Vec<BreakPoint>,
+               start: &mut usize,
+               after: &mut Option<usize>| {
+        let m = measure(items, p, params, *after, at, *line_no, 0.0);
         push_break(breaks, items, at, &m);
+        *after = Some(at);
         *start = line_start(items, Some(at));
         *line_no += 1;
     };
     while b < items.len() {
         if is_legal_break(items, b, true) {
             let forced = penalty_value(items, b) <= FORCED_BREAK;
-            let m = measure(items, p, params, start, b, line_no, 0.0);
+            let m = measure(items, p, params, after, b, line_no, 0.0);
             let fits = m.natural <= m.target + 1e-9;
             if forced {
                 if !fits && let Some(lb) = last_legal {
                     // Overflow before a forced break: cut at the last legal
                     // point first, then honour the forced break.
-                    cut(lb, &mut line_no, &mut breaks, &mut start);
+                    cut(lb, &mut line_no, &mut breaks, &mut start, &mut after);
                 }
-                cut(b, &mut line_no, &mut breaks, &mut start);
+                cut(b, &mut line_no, &mut breaks, &mut start, &mut after);
                 last_legal = None;
-                b = start.max(b + 1);
+                b = resume_after_cut(items, b, start);
                 continue;
             }
             if fits {
@@ -712,10 +751,10 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
                 // Overflow: break at the last legal point, or here if none
                 // (an overfull line; content is never dropped).
                 let at = last_legal.unwrap_or(b);
-                cut(at, &mut line_no, &mut breaks, &mut start);
+                cut(at, &mut line_no, &mut breaks, &mut start, &mut after);
                 last_legal = None;
                 // Re-examine from the new line start; `b` may still lie ahead.
-                b = start.max(at + 1);
+                b = resume_after_cut(items, at, start);
                 continue;
             }
         }
@@ -723,6 +762,16 @@ fn first_fit(items: &[Item], p: &Prefix, params: &LineBreakParams) -> Chosen {
     }
     let total = breaks.iter().map(|bp| bp.demerits).sum();
     Chosen { breaks, total }
+}
+
+/// Where first-fit resumes scanning after a cut at `at` whose next line
+/// starts at `start`: the discardables in between are never legal first-fit
+/// breaks (an empty line always "fits"), except a forced penalty, which must
+/// still be honoured with an empty line exactly as total-fit and TeX do.
+fn resume_after_cut(items: &[Item], at: usize, start: usize) -> usize {
+    (at + 1..start.min(items.len()))
+        .find(|&i| penalty_value(items, i) <= FORCED_BREAK)
+        .unwrap_or_else(|| start.max(at + 1))
 }
 
 fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measure) {
@@ -745,7 +794,28 @@ fn push_break(breaks: &mut Vec<BreakPoint>, items: &[Item], at: usize, m: &Measu
 /// `items` must end with a forced break (see
 /// [`crate::items::ParagraphBuilder::finish`]); if it does not, one is
 /// appended internally so no content is ever dropped.
-pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
+///
+/// ## Authoritative validation
+///
+/// This function — not [`crate::adapter::try_layout_paragraph`] — is where
+/// "is this input valid" is decided: it rejects a non-finite or
+/// [`MAX_DIMEN_PT`](crate::adapter::MAX_DIMEN_PT)-overflowing dimension, and
+/// an oversized item list, exactly the way [`try_layout_paragraph`] already
+/// documented doing. Before this fix, that validation lived only in
+/// `try_layout_paragraph`, so calling this raw entry point directly (as the
+/// crate's own doc comments always showed as a legitimate, supported way to
+/// use the crate — see [`crate::items::ParagraphBuilder`]'s docs) silently
+/// fed NaN or overflowing dimensions straight into the breaker's `f64`
+/// arithmetic, producing garbage geometry (or, depending on the exact
+/// values, an internal panic) instead of a typed rejection. Silently
+/// computing layout from NaN/overflowing input is never useful output, so
+/// this raw entry point is made to reject it the same way the checked one
+/// always did, and `try_layout_paragraph` now simply delegates to this
+/// validation instead of duplicating it — one validation path, so the two
+/// entry points cannot disagree about what counts as valid input.
+pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Lines, LayoutError> {
+    crate::adapter::validate_params(params)?;
+    crate::adapter::validate_items(items)?;
     let owned;
     let items: &[Item] = if matches!(items.last(), Some(Item::Penalty(p)) if p.value <= FORCED_BREAK)
     {
@@ -828,9 +898,8 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
     let mut y = 0.0;
     let mut prev_depth = 0.0;
     for (li, bp) in chosen.breaks.iter().enumerate() {
-        let start = line_start(items, prev);
-        let m = measure(items, &p, params, start, bp.item, li, extra);
-        let mut line = set_line(items, params, start, bp.item, li, &m);
+        let m = measure(items, &p, params, prev, bp.item, li, extra);
+        let mut line = set_line(items, params, prev, bp.item, li, &m);
         if m.badness >= AWFUL_BAD || line.set_width > params.line_width + 1e-9 {
             let excess = line.set_width - params.line_width;
             stats.overfull.push(Overfull { line: li, excess });
@@ -853,7 +922,7 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         // line: emergency stretch only helps the breaker choose, so a line
         // chosen in pass 3 is usually reported underfull afterwards.
         let real = if extra > 0.0 {
-            measure(items, &p, params, start, bp.item, li, 0.0)
+            measure(items, &p, params, prev, bp.item, li, 0.0)
         } else {
             m
         };
@@ -895,13 +964,13 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Lines {
         lines.push(line);
     }
     let height = lines.last().map_or(0.0, |l| l.baseline_y + l.depth);
-    Lines {
+    Ok(Lines {
         lines,
         breaks: chosen.breaks,
         stats,
         diagnostics,
         height,
-    }
+    })
 }
 
 fn diagnose(
@@ -930,11 +999,14 @@ fn diagnose(
 fn set_line(
     items: &[Item],
     params: &LineBreakParams,
-    start: usize,
+    after: Option<usize>,
     brk: usize,
     index: usize,
     m: &Measure,
 ) -> Line {
+    let start = line_start(items, after);
+    // Same clamp as `measure`: an empty line has `items == brk..brk`.
+    let start = start.min(brk);
     let right = params.effective_right_skip();
     let r = if m.ratio < -1.0 { -1.0 } else { m.ratio };
     let set_glue = |g: &Glue| -> f64 {
@@ -985,6 +1057,9 @@ fn set_line(
         height = height.max(run.height);
         depth = depth.max(run.depth);
     };
+    if let Some(h) = after.and_then(|a| post_break(items, a)) {
+        place(h, &mut x, false);
+    }
     for it in &items[start..brk] {
         match it {
             Item::Box(b) => place(b, &mut x, false),

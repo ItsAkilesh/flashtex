@@ -7,7 +7,7 @@ glyph runs for the preview and PDF back ends. Edition 2024, no external crates,
 no TeX engine involved.
 
 ```
-cargo test            # 40 tests: unit, golden (hand-derived numbers), page metrics, incremental property, pdflatex oracles
+cargo test            # unit, golden (hand-derived numbers), page metrics, incremental property, pdflatex oracles (incl. 30-paragraph hyphenation corpus)
 tools/preview_pdf_agreement.sh   # macOS: same runtime-v1 JSON through flashtex-pdf and CoreText, word boxes compared
 ```
 
@@ -21,15 +21,17 @@ use flashtex_paragraph_layout::*;
 use flashtex_paragraph_layout::core14::Core14Times;
 
 // 1. Items: boxes, glue, penalties, kerns.
-let hyph = LiangHyphenator::en_us_subset();  // TeX patterns; ExplicitDiscretionary / NoHyphenation also shipped
+let hyph = LiangHyphenator::english();       // pdflatex's default patterns (hyphen.tex); `en_us_subset()` is the small embedded table; ExplicitDiscretionary / NoHyphenation also shipped
 let mut b = ParagraphBuilder::new(&hyph);
-b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0);
-b.text(&Core14Times::BOLD, 12.0, "expects", 28);
+b.text(&Core14Times::ROMAN, 12.0, "A naïve reader at the café ", 0)?;
+b.text(&Core14Times::BOLD, 12.0, "expects", 28)?;
 let items: Vec<Item> = b.finish(Glue::fil());   // strips trailing glue, adds \parfillskip + forced break
 
-// 2. Lines.
+// 2. Lines. `layout_paragraph` validates dimensions/item count itself (NaN,
+// overflow, oversized input) and returns a typed error for bad input, same
+// as `try_layout_paragraph` below.
 let params = LineBreakParams::article_12pt_letter_1in();   // 469.755pt measure, TeX defaults
-let lines: Lines = layout_paragraph(&items, &params);
+let lines: Lines = layout_paragraph(&items, &params)?;
 for line in &lines.lines {
     for run in &line.runs {
         // run.x, run.baseline_y (paragraph frame), run.font (FontId), run.size,
@@ -231,6 +233,32 @@ oracle comparison (`docs/comparison.md`) uses the former.
 article: before 3.5 ex (18.9 pt), after 2.3 ex (12.42 pt), keep-with-next. Use
 `\Large` = 17.28 pt bold for the heading text itself.
 
+## Hyphenation (FT-064)
+
+* `LiangHyphenator` (`src/liang.rs`): Liang pattern matching over the TeX
+  pattern files vendored verbatim in `patterns/` (licences in their headers,
+  summarised in the module docs). `LiangHyphenator::english()` loads Knuth's
+  `hyphen.tex`, which is what TeX Live's `language.dat` loads for pdflatex's
+  default `english`; `en_us_max()` loads hyph-utf8 `hyph-en-us.tex`
+  (`usenglishmax`). `add_exceptions("ta-ble as-so-ciate")` is `\hyphenation`;
+  `left_min`/`right_min` are `\lefthyphenmin`/`\righthyphenmin` (2/3) and apply
+  to exceptions too. Words over 63 letters, and chunks containing an explicit
+  hyphen or `\-`, get no automatic points (TeX §894–903).
+* `ParagraphBuilder::text` only hyphenates a word that directly follows glue
+  (never a paragraph's first word, as in TeX); an explicit `-` is followed by an
+  empty discretionary with `ex_hyphen_penalty`; `\-` and automatic points use
+  `hyphen_penalty` and add a hyphen glyph when the line breaks there.
+* `ParagraphBuilder::discretionary(font, size, pre, post, nobreak, source)` is
+  `\discretionary{pre}{post}{nobreak}`: `Penalty::post_break` starts the next
+  line and the `Penalty::replace_count` no-break items are dropped at a break.
+* The breaker ignores automatic points in the `\pretolerance` pass, charges
+  `\doublehyphendemerits`/`\finalhyphendemerits`, and counts pre-/post-break
+  widths in the lines they end/start.
+* Oracle: `tests/hyphenation_oracle.rs` checks that 30 paragraphs (91 lines, 20
+  hyphenated) break exactly where pdflatex breaks them (`tests/oracle/`,
+  regenerate with `python3 tests/oracle/gen_hyphenation_oracle.py`; TeX is
+  never used outside that generator).
+
 ## Algorithms
 
 * **Pages**: geometry and class spacing from `flashtex-document-style`;
@@ -265,11 +293,12 @@ Everything is deterministic: no hashing, randomness, or time; equal inputs give
   footnotes, marginpars, math (FT-020), `\flushbottom`, `\addvspace` merging,
   vertical glue stretch/shrink, per-character heights/depths (the font
   ascender/descender is used), infinite-order *shrink*.
-* Hyphenation patterns: only the documented 420-pattern American-English
-  subset is embedded (see above); other languages and the rest of `hyphen.tex`
-  are a data addition through `LiangHyphenator::new(patterns, exceptions, l, r)`.
-  `\uchyph=0`, `\hyphenchar` other than `-`, and TeX's ligature/kern
-  reconstitution across a discretionary are not modelled.
+* Hyphenation of words set in several fonts, non-ASCII `\lccode`s beyond
+  Unicode `is_alphabetic`, `\uchyph=0`, `\hyphenchar` other than `-`, and
+  TeX's ligature/kern reconstitution at automatic hyphen points (we kern
+  across the point; no kern is applied across an explicit `\-`). Other
+  languages are a data addition through `LiangHyphenator::from_tex` /
+  `LiangHyphenator::new(patterns, exceptions, l, r)`.
 * Ligature/kern interaction across a discretionary (TeX reconstitutes; we kern
   around the break point as a separate `Item::Kern`).
 * Right-to-left or vertical scripts; combining marks (a mark is a glyph with

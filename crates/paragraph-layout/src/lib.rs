@@ -8,14 +8,20 @@
 
 pub mod adapter;
 pub mod core14;
+pub mod document;
 pub mod hyphenate;
 pub mod items;
 pub mod liang;
 pub mod linebreak;
 pub mod metrics;
 pub mod pages;
+pub mod runtime_v1;
+pub mod style;
 
 pub use adapter::{LayoutError, MAX_DIMEN_PT, MAX_DIMEN_SP, MAX_ITEMS, try_layout_paragraph};
+pub use document::{
+    DocumentLayout, DocumentSpec, ParagraphLayout, RelayoutStats, layout_document, relayout,
+};
 pub use hyphenate::{
     ExplicitDiscretionary, HyphenationPoint, Hyphenator, HyphenatorError, NoHyphenation,
 };
@@ -25,8 +31,8 @@ pub use items::{
 };
 pub use liang::LiangHyphenator;
 pub use linebreak::{
-    Algorithm, BreakMode, BreakPoint, Fitness, Line, LineBreakParams, Lines, Overfull,
-    PositionedGlyph, PositionedRun, Stats, layout_paragraph,
+    Algorithm, BreakMode, BreakPoint, Diagnostic, DiagnosticKind, Fitness, Line, LineBreakParams,
+    Lines, Overfull, PositionedGlyph, PositionedRun, Severity, Stats, layout_paragraph,
 };
 pub use metrics::{FontId, FontMetricsSource, Ligature};
 pub use pages::{Page, PageOverflow, PageParams, Pages, ParagraphBlock, PlacedLine, layout_pages};

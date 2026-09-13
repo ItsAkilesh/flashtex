@@ -88,6 +88,12 @@ pub struct LineBreakParams {
     pub lineskip: f64,
     /// `\lineskiplimit` (0pt).
     pub lineskiplimit: f64,
+    /// `\hfuzz` (0.1pt): an overfull line is diagnosed only when it exceeds
+    /// the measure by more than this.
+    pub hfuzz: f64,
+    /// `\hbadness` (1000): an underfull line is diagnosed only when its
+    /// badness exceeds this.
+    pub hbadness: f64,
 }
 
 impl LineBreakParams {
@@ -111,6 +117,8 @@ impl LineBreakParams {
             baselineskip: 14.5,
             lineskip: 1.0,
             lineskiplimit: 0.0,
+            hfuzz: 0.1,
+            hbadness: 1000.0,
         }
     }
 
@@ -211,6 +219,40 @@ pub struct Overfull {
     pub excess: f64,
 }
 
+/// runtime-v1 diagnostic severity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DiagnosticKind {
+    /// The line is `excess` wider than the measure even at full shrink.
+    Overfull { excess: f64 },
+    /// The line's badness exceeds `\hbadness`.
+    Underfull { badness: f64 },
+}
+
+/// A layout diagnostic in the shape of runtime-v1 (`severity`, `message`,
+/// `source`, `recovery`) plus exact box provenance: the line number and the
+/// source byte ranges of every box on the offending line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+    /// Span from the first to the last box on the line (`None` for an empty line).
+    pub source: Option<Range<usize>>,
+    /// What was rendered instead.
+    pub recovery: Option<String>,
+    pub kind: DiagnosticKind,
+    /// Zero-based line index within the paragraph.
+    pub line: usize,
+    /// Source byte ranges of the boxes (runs) set on the line, in order; a
+    /// discretionary hyphen contributes its marker range.
+    pub boxes: Vec<Range<usize>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stats {
     pub algorithm: Algorithm,
@@ -222,6 +264,8 @@ pub struct Stats {
     /// Lines whose badness exceeds the tolerance in force.
     pub underfull: Vec<(usize, f64)>,
     pub hyphenated_lines: usize,
+    /// True when the paragraph needed the `emergency_stretch` pass.
+    pub emergency_pass_used: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +273,8 @@ pub struct Lines {
     pub lines: Vec<Line>,
     pub breaks: Vec<BreakPoint>,
     pub stats: Stats,
+    /// `\hfuzz`/`\hbadness` diagnostics with box provenance.
+    pub diagnostics: Vec<Diagnostic>,
     /// Total height: last baseline + last depth.
     pub height: f64,
 }
@@ -846,19 +892,55 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         overfull: Vec::new(),
         underfull: Vec::new(),
         hyphenated_lines: 0,
+        emergency_pass_used: pass == 3,
     };
+    let mut diagnostics = Vec::new();
     let mut y = 0.0;
     let mut prev_depth = 0.0;
     for (li, bp) in chosen.breaks.iter().enumerate() {
         let m = measure(items, &p, params, prev, bp.item, li, extra);
         let mut line = set_line(items, params, prev, bp.item, li, &m);
         if m.badness >= AWFUL_BAD || line.set_width > params.line_width + 1e-9 {
-            stats.overfull.push(Overfull {
-                line: li,
-                excess: line.set_width - params.line_width,
-            });
+            let excess = line.set_width - params.line_width;
+            stats.overfull.push(Overfull { line: li, excess });
+            if excess > params.hfuzz {
+                diagnostics.push(diagnose(
+                    &line,
+                    li,
+                    DiagnosticKind::Overfull { excess },
+                    format!(
+                        "Overfull \\hbox ({excess:.3}pt too wide) in paragraph, line {}",
+                        li + 1
+                    ),
+                    "line set at maximum shrink; content extends past the measure",
+                ));
+            }
         } else if m.badness > tolerance_in_force {
             stats.underfull.push((li, m.badness));
+        }
+        // Like TeX's hpack, judge underfullness by the glue actually on the
+        // line: emergency stretch only helps the breaker choose, so a line
+        // chosen in pass 3 is usually reported underfull afterwards.
+        let real = if extra > 0.0 {
+            measure(items, &p, params, prev, bp.item, li, 0.0)
+        } else {
+            m
+        };
+        if real.badness < AWFUL_BAD && real.badness > params.hbadness && real.natural < real.target
+        {
+            diagnostics.push(diagnose(
+                &line,
+                li,
+                DiagnosticKind::Underfull {
+                    badness: real.badness,
+                },
+                format!(
+                    "Underfull \\hbox (badness {}) in paragraph, line {}",
+                    real.badness,
+                    li + 1
+                ),
+                "interword glue stretched beyond \\hbadness",
+            ));
         }
         if line.hyphenated {
             stats.hyphenated_lines += 1;
@@ -886,8 +968,32 @@ pub fn layout_paragraph(items: &[Item], params: &LineBreakParams) -> Result<Line
         lines,
         breaks: chosen.breaks,
         stats,
+        diagnostics,
         height,
     })
+}
+
+fn diagnose(
+    line: &Line,
+    li: usize,
+    kind: DiagnosticKind,
+    message: String,
+    recovery: &str,
+) -> Diagnostic {
+    let boxes: Vec<Range<usize>> = line.runs.iter().map(|r| r.source.clone()).collect();
+    let source = match (boxes.first(), boxes.last()) {
+        (Some(a), Some(b)) => Some(a.start.min(b.start)..a.end.max(b.end)),
+        _ => None,
+    };
+    Diagnostic {
+        severity: Severity::Warning,
+        message,
+        source,
+        recovery: Some(recovery.to_string()),
+        kind,
+        line: li,
+        boxes,
+    }
 }
 
 fn set_line(

@@ -10,6 +10,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flashtex-document-style"
+version = "0.1.0"
+
+[[package]]
 name = "flashtex-font-engine"
 version = "0.1.0"
 dependencies = [
@@ -27,6 +31,7 @@ name = "flashtex-paragraph-layout"
 version = "0.1.0"
 dependencies = [
  "flashtex-compiler",
+ "flashtex-document-style",
  "flashtex-font-engine",
 ]
 
