@@ -372,7 +372,12 @@ fn write_integer(value: i64, out: &mut String) {
     if value < 0 {
         out.push('-');
     }
-    out.push_str(std::str::from_utf8(&digits[start..]).expect("ASCII digits"));
+    // ASCII digits: pushed as chars (FT-065: `str::from_utf8` validating the
+    // slice showed up as a top frame of a display-list-v2 reply).
+    out.reserve(digits.len() - start);
+    for &d in &digits[start..] {
+        out.push(char::from(d));
+    }
 }
 
 /// Writes a non-integer `n` that is exactly `k / 100.0` with |n| < 10 000 (all
