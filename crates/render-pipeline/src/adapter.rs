@@ -214,8 +214,12 @@ pub enum ParaStyle {
     FlushLeft,
     /// `flushright`: `\raggedleft`.
     FlushRight,
-    /// `quote`/`quotation`: a level-1 list with `\rightmargin=\leftmargin`.
+    /// `quote`: a level-1 list with `\rightmargin=\leftmargin`.
     Quote,
+    /// `quotation`: `quote`'s margins with `\listparindent 1.5em` and
+    /// `\itemindent\listparindent` (article.cls), so every paragraph,
+    /// the first included, is indented 1.5em.
+    Quotation,
 }
 
 impl ParaStyle {
@@ -1031,7 +1035,7 @@ pub fn adapt_cached(
                 // ones after it, `quote` likewise.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: !after_heading && !caption && styled.is_none() && !after_env && list.is_none() && !noindent,
+                    indent: styled == Some(ParaStyle::Quotation) || (!after_heading && !caption && styled.is_none() && !after_env && list.is_none() && !noindent),
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
@@ -1434,7 +1438,12 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
         prev_list = list.is_some();
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
-            CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
+            // The compiler reads `quote` and `quotation` alike; the source
+            // tells them apart.
+            CBlock::Styled { style, .. } => Some(match ParaStyle::of(*style) {
+                ParaStyle::Quote if first.is_some_and(|f| innermost_quote_env(texts.get(f.document.0).copied().unwrap_or(""), f.start) == Some("quotation")) => ParaStyle::Quotation,
+                s => s,
+            }),
             _ => None,
         };
         // The environment opens here when the gap before the block holds
@@ -2010,6 +2019,28 @@ fn list_seps(source: &str, env: &str, options: &str, depth: usize, size: u32, st
         apply_sep_keys(&mut seps, options, size);
     }
     seps
+}
+
+/// The innermost `quote`/`quotation` environment open at byte `at`.
+fn innermost_quote_env(source: &str, at: usize) -> Option<&'static str> {
+    let mut stack: Vec<&'static str> = Vec::new();
+    let mut from = 0;
+    while from < at {
+        let next_begin = find_command(&source[from..at], "begin").map(|i| (from + i, true));
+        let next_end = find_command(&source[from..at], "end").map(|i| (from + i, false));
+        let Some((pos, is_begin)) = [next_begin, next_end].into_iter().flatten().min_by_key(|(p, _)| *p) else { break };
+        from = pos + 1;
+        let rest = source[pos + if is_begin { "\\begin".len() } else { "\\end".len() }..].trim_start();
+        let env = ["quotation", "quote"].into_iter().find(|e| rest.strip_prefix('{').is_some_and(|r| r.starts_with(e) && r[e.len()..].starts_with('}')));
+        match (env, is_begin) {
+            (Some(e), true) => stack.push(e),
+            (Some(e), false) if stack.last() == Some(&e) => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    stack.last().copied()
 }
 
 /// `\labelsep` of an `env` list: the class's, then enumitem `labelsep=`

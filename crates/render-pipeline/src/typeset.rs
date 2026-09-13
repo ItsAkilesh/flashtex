@@ -1671,7 +1671,7 @@ impl<'a> Context<'a> {
             ParaStyle::Center => (pl::BreakMode::Justified, fil.clone(), fil),
             ParaStyle::FlushRight => (pl::BreakMode::Justified, fil, pl::Glue::fixed(0.0)),
             ParaStyle::FlushLeft => (pl::BreakMode::RaggedRight, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
-            ParaStyle::Quote => (pl::BreakMode::Justified, margin.clone(), margin),
+            ParaStyle::Quote | ParaStyle::Quotation => (pl::BreakMode::Justified, margin.clone(), margin),
         };
         // `\list`: `\parshape` every line `\@totalleftmargin` in (`\rightmargin`
         // is 0pt), on top of any `quote` margin.
@@ -1687,7 +1687,12 @@ impl<'a> Context<'a> {
             adj_demerits: s.adjdemerits,
             double_hyphen_demerits: 10_000.0,
             final_hyphen_demerits: 5_000.0,
-            parindent: if indent { s.parindent_pt } else { 0.0 },
+            // `quotation`: `\listparindent 1.5em`.
+            parindent: match (indent, style) {
+                (false, _) => 0.0,
+                (true, ParaStyle::Quotation) => 1.5 * s.em_pt,
+                (true, _) => s.parindent_pt,
+            },
             left_skip,
             right_skip,
             baselineskip,
@@ -2562,7 +2567,7 @@ impl<'a> Context<'a> {
     /// list its `\@totalleftmargin`).
     fn display_shape(&mut self, style: ParaStyle, list_geom: Option<&ListGeom>) -> (f64, f64) {
         let size = self.style.body_size_pt;
-        let quote = if matches!(style, ParaStyle::Quote) { self.style.leftmargini_pt } else { 0.0 };
+        let quote = if matches!(style, ParaStyle::Quote | ParaStyle::Quotation) { self.style.leftmargini_pt } else { 0.0 };
         let hang = list_geom.map_or(0.0, |g| self.list_geometry(g, size).0);
         let s = quote + hang;
         (s, (self.style.text_width_pt - s - quote).max(0.0))
