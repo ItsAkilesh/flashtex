@@ -160,9 +160,11 @@ fn page_color_and_target_models() {
     assert!(p.diagnostics.is_empty(), "{:?}", messages(&p));
     assert_eq!(p.page_color.map(|c| c.fill_operator()).as_deref(), Some("1 1 0.8 rg"));
     assert_eq!(color_of(&p, "X").as_deref(), Some("0 1 1 rg"));
+    assert_eq!(p.default_color.map(|c| c.fill_operator()).as_deref(), Some("0 0 0 rg"));
     let p = doc("\\usepackage{color}", "\\textcolor{blue}{X}");
     assert!(p.diagnostics.is_empty(), "{:?}", messages(&p));
     assert_eq!(color_of(&p, "X").as_deref(), Some("0 0 1 rg"));
+    assert_eq!(p.default_color, None);
 }
 
 #[test]

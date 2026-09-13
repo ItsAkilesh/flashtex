@@ -860,6 +860,15 @@ impl Colors {
         self.xcolor
     }
 
+    /// The document's default colour when it is not pdfTeX's page default
+    /// `0 g`: xcolor's `\color{black}` at load converted to a target model
+    /// (`\default@color`, written by `\normalcolor` at every shipout).
+    pub fn default_color(&self) -> Option<DeviceColor> {
+        let target = self.target.filter(|_| self.xcolor)?;
+        let black = Spec { model: Model::Gray, values: vec!["0".into()] };
+        convert(&black, target).ok().and_then(|s| driver(&s).ok())
+    }
+
     /// `\selectcolormodel{model}`: later definitions and uses convert to it.
     pub fn select_target(&mut self, model_name: &str) -> Result<(), ColorError> {
         self.require_xcolor("\\selectcolormodel")?;

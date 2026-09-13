@@ -533,6 +533,9 @@ pub struct Parsed {
     pub document_global_state: bool,
     /// `\pagecolor`: the page background, document-wide (`None`: none).
     pub page_color: Option<DeviceColor>,
+    /// The default text colour when xcolor converts to a target model
+    /// (`0 0 0 rg` under `[rgb]`); `None` is pdfTeX's `0 g`.
+    pub default_color: Option<DeviceColor>,
     /// Every run of macro replacement text in the parser's input, in input
     /// order: the invocation span its tokens carry, and the exact bytes of
     /// the definition they were copied from (see `crate::expansion`).
@@ -1001,6 +1004,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         incremental_safe,
         document_global_state: p.document_global_state,
         page_color: p.page_color,
+        default_color: p.colors.as_ref().and_then(|c| c.default_color()),
         expansions,
     }
 }
