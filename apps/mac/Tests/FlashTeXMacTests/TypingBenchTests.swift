@@ -120,6 +120,12 @@ final class TypingBenchTests: XCTestCase {
         XCTAssertEqual(TypingBenchConfig.insertionOffset(in: doc, beforeEndDocument: true), (doc as NSString).range(of: "\\end{document}").location)
         XCTAssertEqual(TypingBenchConfig.insertionOffset(in: doc, beforeEndDocument: false), (doc as NSString).length)
         XCTAssertEqual(TypingBenchConfig.insertionOffset(in: "no end", beforeEndDocument: true), 6)
+        // FLASHTEX_TYPING_BENCH_AT: after a literal needle, or the end of the first paragraph after \begin{document}.
+        let body = "\\documentclass{article}\n\\begin{document}\nFirst para.\n\nSecond para.\n\\end{document}\n"
+        XCTAssertEqual(TypingBenchConfig.insertionOffset(in: body, beforeEndDocument: true, afterNeedle: "First para."), (body as NSString).range(of: "\n\nSecond").location)
+        XCTAssertEqual(TypingBenchConfig.insertionOffset(in: body, beforeEndDocument: true, afterNeedle: "first-paragraph"), (body as NSString).range(of: "\n\nSecond").location)
+        XCTAssertEqual(TypingBenchConfig.insertionOffset(in: body, beforeEndDocument: true, afterNeedle: "absent"), (body as NSString).range(of: "\\end{document}").location)
+        XCTAssertEqual(TypingBenchConfig.parse(["FLASHTEX_TYPING_BENCH": "s.txt", "FLASHTEX_TYPING_BENCH_AT": "first-paragraph"])?.insertAfterNeedle, "first-paragraph")
     }
 
     // MARK: insertion path against fake_worker.py

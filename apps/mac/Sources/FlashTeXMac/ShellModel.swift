@@ -20,7 +20,7 @@ final class ShellModel {
 
     var documents: [RuntimeV1.Document] = []
     var activePath: String = "main.tex"
-    var result: RuntimeV1.CompileResult?
+    var result: RuntimeV1.CompileResult? { didSet { refreshToolbarMirrors() } }
     var resultID: String?
     var fixtureURL: URL?
     var loadError: String?
@@ -56,7 +56,7 @@ final class ShellModel {
     }
     /// Fit-to-width scale the preview pane last laid out with (written by the pane; drives Actual Size and the percentage).
     var previewFitScale: CGFloat = 1
-    var displayListV2: V2PreviewState?
+    var displayListV2: V2PreviewState? { didSet { refreshToolbarMirrors() } }
     var previewSource: PreviewSource = .none
     /// File backing the entry document, if any, and its last saved contents.
     var documentURL: URL?
@@ -99,7 +99,38 @@ final class ShellModel {
     private(set) var bridge: BridgeSession?
     /// Deadline for each `capture_status` during restart reconciliation.
     var bridgeStatusTimeout: TimeInterval = 15
-    var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus) } }
+    var workerStatus: String = "no worker attached" { didSet { FlashTeXLog.write("status: " + workerStatus); refreshToolbarMirrors() } }
+
+    // MARK: change-only mirrors for the window toolbar (ContentView.WorkspaceToolbar)
+    //
+    // The toolbar's body read `result`, `displayListV2`, `displayedDiagnostics`
+    // and `workerStatus` directly, so every compile result, every v2 frame and
+    // both status lines of every request re-evaluated the toolbar content and
+    // re-laid out the NSToolbar with the whole window (typing-bench sample,
+    // 2026-09-13: the toolbar preference update and NSToolbarItemViewer layout
+    // were ~20% of a saturated main thread while typing; app code < 2%).
+    // These mirrors are assigned only when their value changes, so observation
+    // fires for the toolbar exactly when something it shows changes.
+    private(set) var toolbarHasResult = false
+    private(set) var toolbarHasV2Frame = false
+    private(set) var toolbarProblemCount = 0
+    /// The producer as attached ("attached: flashtex-render"), not the
+    /// per-request status line: tooltips read this instead of `workerStatus`.
+    private(set) var producerSummary = "no worker attached"
+
+    private func refreshToolbarMirrors() {
+        let hasResult = result != nil
+        if toolbarHasResult != hasResult { toolbarHasResult = hasResult }
+        let hasFrame = displayListV2?.frame != nil
+        if toolbarHasV2Frame != hasFrame { toolbarHasV2Frame = hasFrame }
+        let problems = displayedDiagnostics.count
+        if toolbarProblemCount != problems { toolbarProblemCount = problems }
+        let summary: String
+        if controllerAttached { summary = "helper attached: \(controller?.executable.lastPathComponent ?? "flashtex-preview-controller")" }
+        else if let worker, worker.isRunning { summary = "attached: \(worker.executable.lastPathComponent)" }
+        else { summary = "no worker attached" }
+        if producerSummary != summary { producerSummary = summary }
+    }
     let nearbyInbox = NearbyInbox() // captures from paired companions (ShellModel+Nearby.swift)
     let captureInbox = CaptureInbox() // Captures inspector rows (CaptureInbox.swift)
     var captureInboxVisible = ProcessInfo.processInfo.environment["FLASHTEX_SHOW_CAPTURES"] == "1" // View > Captures (⌘⇧I)
@@ -178,7 +209,7 @@ final class ShellModel {
     private(set) var fontSubstitutions: [PreviewFonts.Substitution] = []
     /// Source-aware errors for unknown primitives in the applied result
     /// (negotiated route only; the legacy route still skips unknown kinds).
-    private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = []
+    private(set) var layoutDiagnostics: [RuntimeV1.Diagnostic] = [] { didSet { refreshToolbarMirrors() } }
     /// Producer diagnostics followed by the shell's own layout diagnostics.
     var displayedDiagnostics: [RuntimeV1.Diagnostic] { (result?.diagnostics ?? []) + layoutDiagnostics }
 
