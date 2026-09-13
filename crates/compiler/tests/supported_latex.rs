@@ -191,7 +191,7 @@ fn math_inventory_equals_the_math_arms() {
     let mut expected = arms(region(
         &math,
         "fn command_atom(",
-        "            _ => match command_glyph(&name) {",
+        "            _ => match (crate::amssymb::by_name(&name), command_glyph(&name)) {",
     ));
     for line in region(&math, "fn list_inner(", "fn script_argument(").lines() {
         if line.contains("TokenKind::Command(ref ") {

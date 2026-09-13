@@ -566,6 +566,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
         subscript,
         class_override: _,
         width_em: _,
+        ams_symbol: _,
     } in &mut list.atoms
     {
         match nucleus {

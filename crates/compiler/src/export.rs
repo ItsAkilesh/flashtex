@@ -188,6 +188,12 @@ pub fn map_char(c: char) -> Glyph {
     if crate::lm_math::advance(c).is_some() {
         return Glyph::LatinModernMath;
     }
+    if crate::amssymb::newcm_advance(c).is_some() {
+        return Glyph::Unrepresentable {
+            reason: "this amssymb symbol is drawn from New Computer Modern Math (newcm.math), \
+                     which the Mac producer bundles but the base-14 PDF writer does not embed",
+        };
+    }
     if crate::newcm_math::advance(c).is_some() {
         return Glyph::Unrepresentable {
             reason: "\\mathcal letters are drawn from New Computer Modern Math (newcm.math), \
@@ -274,6 +280,19 @@ mod tests {
                     Glyph::Unrepresentable { reason } => {
                         panic!("\\{command} renders {c:?} which cannot be exported: {reason}");
                     }
+                }
+            }
+        }
+        // amssymb symbols: Latin Modern Math, or the decided New Computer
+        // Modern Math outcome (bundled by the Mac producer, not embedded by
+        // the base-14 writer) for the few Latin Modern Math lacks.
+        for symbol in crate::amssymb::SYMBOLS {
+            for c in symbol.text.chars() {
+                match map_char(c) {
+                    Glyph::LatinModernMath => {}
+                    Glyph::Unrepresentable { .. }
+                        if crate::amssymb::newcm_advance(c).is_some() => {}
+                    other => panic!("\\{} renders {c:?}: {other:?}", symbol.name),
                 }
             }
         }

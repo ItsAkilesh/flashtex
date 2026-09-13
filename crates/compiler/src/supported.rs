@@ -406,6 +406,33 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["overbrace", "underbrace"],
+        "{body}",
+        "cmex brace pieces with rule fills over or under a display-style body; scripts are limits",
+        true,
+    ),
+    (
+        &[
+            "overrightarrow",
+            "overleftarrow",
+            "overleftrightarrow",
+            "underrightarrow",
+            "underleftarrow",
+            "underleftrightarrow",
+        ],
+        "{body}",
+        "amsmath \\arrowfill@ as wide as the body, over or under it",
+        true,
+    ),
+    (
+        &["dashrightarrow", "dasharrow", "dashleftarrow"],
+        "",
+        "amsfonts dashed arrow: two msam \\dabar@ pieces and a head in one relation",
+        true,
+    ),
+    (&["Bbb"], "{A-Z}", "obsolete amsfonts alias of \\mathbb", true),
+    (&["bold"], "{text}", "obsolete amsfonts alias of \\mathbf", true),
+    (
         &[
             "hat", "bar", "vec", "tilde", "dot", "ddot", "acute", "grave",
         ],
@@ -416,7 +443,7 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (
         &["widehat", "widetilde"],
         "{body}",
-        "unstretched accent; warns over more than one symbol",
+        "cmex successor-chain accent grown to the body (msbm extra-wide form past 2em with amsfonts)",
         true,
     ),
     (
@@ -682,6 +709,7 @@ pub fn inventory() -> Inventory {
         if MATH_STRUCTURES
             .iter()
             .any(|(names, ..)| names.contains(&name))
+            || crate::amssymb::by_name(name).is_some()
         {
             continue;
         }
@@ -692,6 +720,28 @@ pub fn inventory() -> Inventory {
             arguments: "",
             description: format!("symbol {glyph}"),
             glyph: Some(glyph),
+            renders: true,
+        });
+    }
+    // amssymb/amsfonts symbols (`crate::amssymb`), which take precedence over
+    // the glyph rows above for the names both list.
+    for name in crate::amssymb::command_names() {
+        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+            continue;
+        }
+        let ams = crate::amssymb::by_name(name).expect("a listed amssymb command");
+        let font = match ams.font {
+            crate::amssymb::SymbolFont::Msam => "msam",
+            crate::amssymb::SymbolFont::Msbm => "msbm",
+        };
+        let class = format!("{:?}", ams.class).to_lowercase();
+        commands.push(Command {
+            name,
+            mode: Mode::Math,
+            origin: Origin::MathSymbol,
+            arguments: "",
+            description: format!("symbol {} (\\math{class}, {font} \"{:02X})", ams.text, ams.slot),
+            glyph: Some(ams.text),
             renders: true,
         });
     }
