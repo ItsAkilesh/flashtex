@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use flashtex_compiler::parser::SourceDocument;
 use flashtex_render_pipeline::display::Severity;
-use flashtex_render_pipeline::fonts::{ec_tfm_file, latin_modern_outline, latin_modern_tfm, Role};
+use flashtex_render_pipeline::fonts::{ec_tfm_file, latin_modern_outline, latin_modern_tfm, Discovery, Role};
 use flashtex_render_pipeline::nfss::{self, FamilyKind, FontKey, Scheme, Series, Shape};
 use flashtex_render_pipeline::{render, FontSet, RenderOptions};
 
@@ -180,6 +180,103 @@ fn the_vendored_typewriter_files_are_pinned() {
             assert!(metrics.contains(&path), "{path} is on disk but not in SUPPLEMENTARY-METRICS.json");
         }
     }
+}
+
+/// Every discovery route a shipped binary can use must reach the bundled
+/// typewriter files, not only an explicit `FLASHTEX_TFM_DIRS`.
+///
+/// `Discovery::bundle_texmf_roots` probes `<exe>/../Resources/texmf`,
+/// `<exe>/texmf` and `<exe>/../share/flashtex/texmf`; `Discovery::font_dirs`
+/// probes the matching `Fonts` directories. `FontSet::texmf_roots` in turn
+/// derives a texmf root from any `FLASHTEX_TFM_DIRS` entry spelled
+/// `<root>/fonts/tfm/public/lm`, which is why the environment route works
+/// **only** with that exact suffix — pointing the variable at
+/// `apps/mac/Fonts` itself finds no root and no flat root, and every metric
+/// falls back. That is the whole 0/59-vs-59/59 difference on the amsmath
+/// corpus, and it is a spelling trap, not a missing code path.
+#[test]
+fn the_bundled_typewriter_files_are_reachable_by_every_discovery_route() {
+    let root = bundle();
+    let texmf = root.join("texmf/fonts/tfm");
+    let rooted = |exe_dir: PathBuf| FontSet::from_discovery(&Discovery { exe_dir: Some(exe_dir), ..Discovery::default() });
+
+    // The two bundle layouts, staged as a shipped binary would see them.
+    let stage = std::env::temp_dir().join(format!("flashtex-tt-roots-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&stage);
+    for (label, exe_rel, texmf_rel, fonts_rel) in [
+        ("app bundle", "Contents/MacOS", "Contents/Resources/texmf", "Contents/Resources/Fonts"),
+        ("tarball", "bin", "bin/texmf", "bin/Fonts"),
+    ] {
+        let here = stage.join(label.replace(' ', "-"));
+        std::fs::create_dir_all(here.join(exe_rel)).unwrap();
+        copy_tree(&root.join("texmf"), &here.join(texmf_rel));
+        std::fs::create_dir_all(here.join(fonts_rel)).unwrap();
+        for f in std::fs::read_dir(&root).unwrap().flatten() {
+            let name = f.file_name();
+            if name.to_string_lossy().ends_with(".otf") {
+                std::fs::copy(f.path(), here.join(fonts_rel).join(&name)).unwrap();
+            }
+        }
+        let fonts = rooted(here.join(exe_rel));
+        assert!(fonts.required_metrics().is_ok(), "{label}: {:?}", fonts.required_metrics().err());
+        assert_no_substitution(&fonts, label);
+    }
+    let _ = std::fs::remove_dir_all(&stage);
+
+    // The environment route, spelled correctly.
+    let env = FontSet::with_dirs(
+        vec![root.clone()],
+        vec![texmf.join("public/lm"), texmf.join("jknappen/ec"), texmf.join("public/amsfonts/symbols")],
+    );
+    assert!(env.required_metrics().is_ok(), "{:?}", env.required_metrics().err());
+    assert_no_substitution(&env, "FLASHTEX_TFM_DIRS = the three rooted metric directories");
+
+    // The trap: the same files, named by a directory no root can be derived
+    // from. This must FAIL, or a fallback run would pass a gate.
+    let trap = FontSet::with_dirs(vec![root.clone()], vec![root.clone()]);
+    assert!(trap.required_metrics().is_err(), "apps/mac/Fonts is not a texmf root and holds no flat required set");
+}
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() {
+            copy_tree(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
+/// Renders the typewriter probe documents through `fonts` and asserts that
+/// none of the four substitution diagnostics appears.
+fn assert_no_substitution(fonts: &FontSet, label: &str) {
+    for (scheme, preamble) in PROBES {
+        let text = probe(preamble);
+        let docs = [SourceDocument { path: "main.tex", text: &text }];
+        let r = render(&docs, "main.tex", 1, "p", fonts, &RenderOptions::default());
+        let bad: Vec<_> = r.v2.diagnostics.iter().filter(|d| SUBSTITUTION_CODES.contains(&d.code.as_str())).collect();
+        assert!(bad.is_empty(), "{label} / {scheme}: the bundle substituted a typewriter face or its metrics: {bad:?}");
+        assert!(!r.v2.pages.is_empty(), "{label} / {scheme}: nothing was laid out");
+    }
+}
+
+const PROBES: [(&str, &str); 4] = [
+    ("OT1", "\\documentclass{article}"),
+    ("T1", "\\documentclass{article}\\usepackage[T1]{fontenc}"),
+    ("lmodern", "\\documentclass{article}\\usepackage[T1]{fontenc}\\usepackage{lmodern}"),
+    ("12pt T1", "\\documentclass[12pt]{article}\\usepackage[T1]{fontenc}"),
+];
+
+fn probe(preamble: &str) -> String {
+    format!(
+        "{preamble}\\begin{{document}}\
+         Body text, then \\texttt{{typewriter 0123}} and {{\\ttfamily more}}.\n\n\
+         {{\\small\\texttt{{small}}}} {{\\large\\texttt{{large}}}} {{\\Huge\\texttt{{huge}}}}\n\n\
+         \\textbf{{\\texttt{{bold}}}} \\textit{{\\texttt{{italic}}}} \\textsl{{\\texttt{{slanted}}}}\n\
+         \\end{{document}}"
+    )
 }
 
 /// The end-to-end property the corpus measures: a `\texttt` document laid
