@@ -3903,6 +3903,13 @@ fn join_runs(prev: &mut GlyphRun, next: GlyphRun) {
     prev.clusters.extend(next.clusters.into_iter().map(|mut c| {
         c.text_start_byte += offset;
         c.text_end_byte += offset;
+        // Carets are byte offsets into the same run text: re-base them too
+        // (a caret outside its cluster is refused by rendering-core and the
+        // Mac consumer, which then shows no frame at all).
+        c.carets.first.text_byte += offset;
+        if let Some(last) = c.carets.last.as_mut() {
+            last.text_byte += offset;
+        }
         c
     }));
 }
