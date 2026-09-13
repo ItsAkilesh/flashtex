@@ -258,15 +258,52 @@ pub struct MathBox {
 }
 
 pub fn parse_tokens(tokens: &[Token], diagnostics: &mut Vec<Diagnostic>) -> MathList {
+    let (list, unclosed) = parse_tokens_reporting_unclosed(tokens, diagnostics, false);
+    if let Some(open) = unclosed {
+        diagnostics.push(Diagnostic::error(
+            "math group is missing its closing brace",
+            Some(open),
+            Some("closed the group at the math delimiter".into()),
+        ));
+    }
+    list
+}
+
+/// Parses a math token list and returns, instead of reporting it, the `{`
+/// of the innermost braced group left open when the tokens ran out. Every
+/// enclosing open group and every argument that could not be read because
+/// the tokens ran out is a consequence of that one opener, so none of them
+/// is diagnosed separately: the caller emits one primary diagnostic whose
+/// wording depends on where the math ended (its closing delimiter, or the
+/// end of the paragraph when the math itself is unterminated).
+///
+/// `cut_off` says the tokens end because the math was unterminated, not at
+/// a closing delimiter: an argument missing at the very end is then input
+/// not typed yet, covered by the caller's diagnostic, and is not reported.
+pub fn parse_tokens_reporting_unclosed(
+    tokens: &[Token],
+    diagnostics: &mut Vec<Diagnostic>,
+    cut_off: bool,
+) -> (MathList, Option<Span>) {
     let split = split_word_tokens(tokens);
-    MathParser {
+    let mut parser = MathParser {
         tokens: &split,
         i: 0,
         depth: 0,
         diagnostics,
         pending: Vec::new(),
-    }
-    .list(false)
+        unclosed: None,
+        cut_off,
+    };
+    let list = parser.list(false);
+    (list, parser.unclosed)
+}
+
+/// Math environments this crate typesets inside math mode. Any other
+/// `\begin`/`\end` ends an unterminated math scan (see the parser's
+/// paragraph-boundary recovery).
+pub fn is_math_environment(name: &str) -> bool {
+    GRID_ENVIRONMENTS.iter().any(|(env, ..)| *env == name)
 }
 
 /// Maximum nesting of braced math groups, scripts, fractions and radicals.
@@ -288,6 +325,12 @@ struct MathParser<'a> {
     /// Atoms produced by the last `atom()` call beyond the one it returned
     /// (a flattened style group, a root index), in order after it.
     pending: Vec<MathAtom>,
+    /// The `{` of the first (innermost) group found still open at the end of
+    /// the tokens. Once set, the tokens are exhausted, so later "missing
+    /// argument" failures at the end are cascades and are not reported.
+    unclosed: Option<Span>,
+    /// The tokens end where unterminated math was cut off.
+    cut_off: bool,
 }
 
 impl MathParser<'_> {
@@ -309,7 +352,21 @@ impl MathParser<'_> {
         result
     }
 
+    /// Whether an argument missing here is only a consequence of the tokens
+    /// having run out inside an unclosed group or unterminated math, which
+    /// the caller already diagnoses once.
+    fn argument_cut_off(&self) -> bool {
+        (self.unclosed.is_some() || self.cut_off) && self.i >= self.tokens.len()
+    }
+
     fn list_inner(&mut self, stop_at_brace: bool) -> MathList {
+        // Every caller consumes the `{` immediately before a braced list.
+        let open = self
+            .i
+            .checked_sub(1)
+            .and_then(|index| self.tokens.get(index))
+            .filter(|token| token.kind == TokenKind::LBrace)
+            .map(|token| token.span);
         let mut atoms: Vec<MathAtom> = Vec::new();
         while self.i < self.tokens.len() {
             let token = self.tokens[self.i].clone();
@@ -412,13 +469,8 @@ impl MathParser<'_> {
                 }
             }
         }
-        if stop_at_brace {
-            let span = self.tokens.last().map(|t| t.span);
-            self.diagnostics.push(Diagnostic::error(
-                "math group is missing its closing brace",
-                span,
-                Some("closed the group at the math delimiter".into()),
-            ));
+        if stop_at_brace && self.unclosed.is_none() {
+            self.unclosed = open.or_else(|| self.tokens.last().map(|t| t.span));
         }
         MathList { atoms }
     }
@@ -442,6 +494,9 @@ impl MathParser<'_> {
             atoms.append(&mut self.pending);
             MathList { atoms }
         } else {
+            if self.argument_cut_off() {
+                return MathList { atoms: Vec::new() };
+            }
             self.diagnostics.push(Diagnostic::error(
                 "math script is missing its argument",
                 Some(marker),
@@ -832,16 +887,30 @@ impl MathParser<'_> {
             return None;
         }
         self.i = end + 1;
-        Some(
-            MathParser {
-                tokens: &self.tokens[start..end],
-                i: 0,
-                depth: self.depth,
-                diagnostics: self.diagnostics,
-                pending: Vec::new(),
-            }
-            .list(false),
-        )
+        Some(self.sub_list(&self.tokens[start..end]))
+    }
+
+    /// Parses a delimited sub-list (an optional argument, a grid cell). A
+    /// group left open inside it closes at the sub-list's own delimiter.
+    fn sub_list(&mut self, tokens: &[Token]) -> MathList {
+        let mut parser = MathParser {
+            tokens,
+            i: 0,
+            depth: self.depth,
+            diagnostics: self.diagnostics,
+            pending: Vec::new(),
+            unclosed: None,
+            cut_off: false,
+        };
+        let list = parser.list(false);
+        if let Some(open) = parser.unclosed {
+            self.diagnostics.push(Diagnostic::error(
+                "math group is missing its closing brace",
+                Some(open),
+                Some("closed the group at the math delimiter".into()),
+            ));
+        }
+        list
     }
 
     fn skip_star(&mut self) {
@@ -889,6 +958,9 @@ impl MathParser<'_> {
             self.i += 1;
         }
         let Some(token) = self.tokens.get(self.i).cloned() else {
+            if self.argument_cut_off() {
+                return symbol(String::new(), span);
+            }
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{command} requires a following delimiter"),
                 Some(span),
@@ -1197,21 +1269,7 @@ impl MathParser<'_> {
         }
         let rows = rows
             .into_iter()
-            .map(|cells| {
-                cells
-                    .into_iter()
-                    .map(|cell| {
-                        MathParser {
-                            tokens: &cell,
-                            i: 0,
-                            depth: self.depth,
-                            diagnostics: self.diagnostics,
-                            pending: Vec::new(),
-                        }
-                        .list(false)
-                    })
-                    .collect()
-            })
+            .map(|cells| cells.into_iter().map(|cell| self.sub_list(&cell)).collect())
             .collect::<Vec<Vec<MathList>>>();
         let width = rows.iter().map(Vec::len).max().unwrap_or(0);
         let mut columns: String = columns.chars().take(width).collect();
@@ -1246,6 +1304,9 @@ impl MathParser<'_> {
             self.i += 1;
             self.list(true)
         } else {
+            if self.argument_cut_off() {
+                return MathList { atoms: Vec::new() };
+            }
             self.diagnostics.push(Diagnostic::error(
                 format!("\\{} requires a braced math argument", command),
                 Some(span),
