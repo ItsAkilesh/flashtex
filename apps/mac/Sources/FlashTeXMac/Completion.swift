@@ -403,6 +403,62 @@ enum Completion {
         }
     }
 
+    // MARK: what typing opens on its own
+
+    /// The token at the caret together with its UTF-16 start in the whole text.
+    struct CaretToken: Equatable {
+        /// What the caret is on. Read this for the token's *kind* — a control
+        /// word, or a word and its argument context. Its `start`/`end` are
+        /// UTF-8 offsets into the window `caretToken` read, **not** into the
+        /// whole text; rebasing them would cost a scan of everything before
+        /// the window, which is exactly what this type exists to avoid.
+        /// `startUTF16` is the only offset that indexes the whole text.
+        let token: Token
+        /// UTF-16 offset of the token's first character (its `\` for a control
+        /// word) in the whole text.
+        let startUTF16: Int
+    }
+
+    /// How much text before the caret `caretToken` reads. Every token this
+    /// file recognises is short — a control word, or an argument key plus the
+    /// `\command{` opener that gives it meaning — so a window this wide gives
+    /// the same answer as scanning the whole document, at a cost that does not
+    /// grow with it. Only a pathological token (a `\cite{…}` key list longer
+    /// than this) is missed, and the miss is one-sided: the list does not open
+    /// by itself, ⌃Space still reads the whole text.
+    static let caretTokenWindow = 1024
+
+    /// The token at the caret, read from at most `window` UTF-16 units before
+    /// it. This is the cheap main-thread gate for automatic completion: it is
+    /// O(window), never O(document), so it may run on every keystroke.
+    static func caretToken(in text: NSString, caretUTF16: Int, window: Int = caretTokenWindow) -> CaretToken? {
+        let caret = max(0, min(caretUTF16, text.length))
+        var from = max(0, caret - max(1, window))
+        if from > 0, from < text.length { from = text.rangeOfComposedCharacterSequence(at: from).location }
+        guard from <= caret else { return nil }
+        let slice = text.substring(with: NSRange(location: from, length: caret - from))
+        guard let token = token(in: slice, caretUTF16: (slice as NSString).length),
+              let ns = slice.nsRange(utf8Bytes: .init(path: "", startByte: token.start, endByte: token.end))
+        else { return nil }
+        return CaretToken(token: token, startUTF16: from + ns.location)
+    }
+
+    /// Whether typing should open the list without an explicit ⌃Space.
+    ///
+    /// Yes for a control word — including the `\` on its own, which lists the
+    /// vocabulary — and for an argument key whose command gives it meaning
+    /// (`\begin{`, `\end{`, `\ref{`, `\cite{`, `\label{`, `\usepackage{`,
+    /// `\input{`). No for a plain prose word: `wordSuggestions` offers words
+    /// counted from the document, which is worth asking for with ⌃Space and is
+    /// noise over every fourth letter of a sentence.
+    static func opensAutomatically(_ token: Token?) -> Bool {
+        switch token {
+        case .command: return true
+        case .word(_, _, _, let context): return context != .none
+        case nil: return false
+        }
+    }
+
     // MARK: fuzzy matching
 
     /// 0 exact, 1 prefix, 2 subsequence (the typed characters appear in order,
@@ -2165,6 +2221,98 @@ final class CompletingTextView: NSTextView {
     private var lastCaret: NSRange?
     private var storageObserver: NSObjectProtocol?
 
+    // MARK: automatic completion (typing opens the list; no ⌃Space needed)
+
+    /// How long typing must pause before the list opens on its own. The wait
+    /// is what keeps the automatic list cheap: the scan reads the whole
+    /// document, so one burst of typing must cost one scan, not one per
+    /// keystroke. Narrowing an already-open list stays immediate.
+    var automaticCompletionDelay: TimeInterval = 0.05
+    private var automaticTimer: Timer?
+    /// Typing is waiting to open the list.
+    var hasPendingAutomaticCompletion: Bool { automaticTimer != nil }
+    /// Lists opened by typing alone, for tests and evidence.
+    private(set) var automaticOpenCount = 0
+    /// True only while a key event this view received is being delivered to
+    /// AppKit, so a text change that follows is known to be the user typing.
+    /// A programmatic replacement (a document switch, the owner's paste) is
+    /// not a key event and never opens the list.
+    private var typingKey = false
+    /// UTF-16 start of the token Esc dismissed the list for. Typing more of
+    /// that same token must not bring it back; any other token, or a caret
+    /// move, re-arms the automatic open. ⌃Space and Esc always work.
+    private var escapeSuppressedTokenStart: Int?
+
+    /// Whether `event` types a character, as opposed to a shortcut, a
+    /// deletion, or a navigation/function key. Deleting back through a word
+    /// must not pop the list open, so only insertion arms it.
+    static func typesACharacter(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .control]).isEmpty,
+              let characters = event.characters, !characters.isEmpty else { return false }
+        for scalar in characters.unicodeScalars {
+            // Control characters (Return, Tab, Esc, Delete) and the private-use
+            // range AppKit gives arrows and function keys never type text.
+            if scalar.value < 0x20 || scalar.value == 0x7F { return false }
+            if (0xF700...0xF8FF).contains(scalar.value) { return false }
+        }
+        return true
+    }
+
+    /// The token at the caret, read from a bounded window (O(window), never
+    /// O(document)) so this may run on every keystroke.
+    private var caretToken: Completion.CaretToken? {
+        guard let storage = textStorage else { return nil }
+        let caret = selectedRange()
+        guard caret.length == 0 else { return nil }
+        // `mutableString` is the storage's own NSString, not a bridged copy.
+        return Completion.caretToken(in: storage.mutableString, caretUTF16: caret.location)
+    }
+
+    /// Arms the automatic open after a typed character. Nothing is scanned
+    /// here: the token at the caret decides, and it is read from a window.
+    private func scheduleAutomaticCompletion() {
+        cancelAutomaticCompletion()
+        guard EditorPreferences.shared.completionPopup, !hasMarkedText() else { return }
+        let token = caretToken
+        if escapeSuppressedTokenStart != nil, escapeSuppressedTokenStart != token?.startUTF16 {
+            escapeSuppressedTokenStart = nil // a different token: Esc's dismissal is spent
+        }
+        guard escapeSuppressedTokenStart == nil, Completion.opensAutomatically(token?.token) else { return }
+        let timer = Timer(timeInterval: max(0, automaticCompletionDelay), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.fireAutomaticCompletion() }
+        }
+        automaticTimer = timer
+        // `.common`, so the list still opens while a scroll or menu tracks.
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func cancelAutomaticCompletion() {
+        automaticTimer?.invalidate()
+        automaticTimer = nil
+    }
+
+    /// Fires a pending automatic open now instead of when its timer would.
+    /// Tests use it to stay synchronous; nothing in the app calls it.
+    func flushAutomaticCompletion() {
+        guard automaticTimer != nil else { return }
+        cancelAutomaticCompletion()
+        fireAutomaticCompletion()
+    }
+
+    private func fireAutomaticCompletion() {
+        automaticTimer = nil
+        // The caret may have moved, or the token ended, while the timer waited.
+        guard escapeSuppressedTokenStart == nil, Completion.opensAutomatically(caretToken?.token) else { return }
+        automaticOpenCount += 1
+        requestCompletion()
+    }
+
+    /// Records the token Esc dismissed, so typing more of it stays quiet.
+    private func suppressAutomaticCompletionForCurrentToken() {
+        cancelAutomaticCompletion()
+        escapeSuppressedTokenStart = caretToken?.startUTF16
+    }
+
     // Editor-intelligence hooks (SourceEditorView's coordinator sets them; EditorIntelligence.swift).
     /// ⌘-click on a character index; return true to consume the click.
     var commandClickHandler: ((Int) -> Bool)?
@@ -2218,6 +2366,7 @@ final class CompletingTextView: NSTextView {
 
     deinit {
         if let storageObserver { NotificationCenter.default.removeObserver(storageObserver) }
+        automaticTimer?.invalidate()
     }
 
     // MARK: synchronous AppKit completion API (kept for callers and tests)
@@ -2306,6 +2455,7 @@ final class CompletingTextView: NSTextView {
 
     func close(_ reason: CloseReason) {
         lastCloseReason = reason
+        if reason == .escape { suppressAutomaticCompletionForCurrentToken() } else { cancelAutomaticCompletion() }
         guard session != nil else { return }
         session = nil
         popup.hide()
@@ -2314,6 +2464,16 @@ final class CompletingTextView: NSTextView {
     func moveSelection(by delta: Int) {
         guard let s = session, !s.items.isEmpty else { return }
         selectCompletion(at: (s.selectedIndex + delta + s.items.count) % s.items.count)
+    }
+
+    /// Drops the session's selection (to an index no item has) so tests can
+    /// check that a list with nothing selected hands keys back to the editor
+    /// instead of eating them. No app path produces this state today; the
+    /// guard in `keyDown` exists so a future one cannot swallow Return.
+    func dropSessionSelectionForTesting() {
+        guard var s = session else { return }
+        s.selectedIndex = -1
+        session = s
     }
 
     func selectCompletion(at index: Int) {
@@ -2466,7 +2626,11 @@ final class CompletingTextView: NSTextView {
             if event.keyCode == 53, plain {
                 requestCompletion()
             } else {
+                // A typed character arms the automatic open (`textChanged`);
+                // everything else (deletion, navigation, Return) does not.
+                typingKey = Self.typesACharacter(event)
                 super.keyDown(with: event)
+                typingKey = false
             }
             return
         }
@@ -2474,6 +2638,13 @@ final class CompletingTextView: NSTextView {
             // Shortcuts (⌘Z, ⌘A, …) act on the editor, never on the list.
             scheduler.cancel()
             close(.caretMoved)
+            super.keyDown(with: event)
+            return
+        }
+        // A session with nothing selected must not swallow keys — least of all
+        // Return and Tab, which the editor owns. Close it and pass the event on.
+        guard session?.selected != nil else {
+            close(.noCandidates)
             super.keyDown(with: event)
             return
         }
@@ -2503,6 +2674,12 @@ final class CompletingTextView: NSTextView {
         let caret = selectedRange()
         if isSnippetActive, caret.length != 0 || caret.location < snippetStart || caret.location > (snippetStops.last ?? 0) { endSnippet() }
         if isSignatureHelpVisible { refreshSignatureHelp(open: false) }
+        if !typingKey {
+            // Moving the caret (click, arrow, Find) abandons a pending open and
+            // spends Esc's dismissal: the list may open again where the caret is.
+            cancelAutomaticCompletion()
+            escapeSuppressedTokenStart = nil
+        }
         guard let last = lastCaret, caret != last else { return }
         lastCaret = caret
         scheduler.cancel()
@@ -2554,12 +2731,15 @@ final class CompletingTextView: NSTextView {
         guard !typingThroughSession, !applyingCompletion else { return }
         scheduler.cancel()
         if session != nil { close(.textChanged) }
+        // Typing opens the list on its own; a programmatic replacement (a
+        // document switch, the owner's paste) only cancels a pending open.
+        if typingKey { scheduleAutomaticCompletion() } else { cancelAutomaticCompletion() }
     }
 
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         if ok, session != nil { scheduler.cancel(); close(.resignedFirstResponder) }
-        if ok { hideSignatureHelp() }
+        if ok { cancelAutomaticCompletion(); hideSignatureHelp() }
         return ok
     }
 }
