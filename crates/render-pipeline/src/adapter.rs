@@ -892,6 +892,15 @@ pub fn adapt_cached(
     }
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
+    // amsmath's `leqno`/`fleqn` options (global class options reach it too).
+    // Without amsmath, `leqno.clo`/`fleqn.clo` build displays differently
+    // (a zero-width `\eqno`, a `trivlist`), which is not modelled.
+    if amsmath {
+        let package = package_options(source, "amsmath").unwrap_or_default();
+        let has = |name: &str| class_options.split(',').chain(package.split(',')).any(|o| o.trim() == name);
+        style.leqno = has("leqno");
+        style.fleqn = has("fleqn");
+    }
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
@@ -1378,7 +1387,7 @@ pub fn adapt_cached(
                                 let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag)).collect();
                                 let number = match tag {
                                     Some(t) => Some((t, row.span)),
-                                    None => row.number.clone().map(|n| (n, row.span)),
+                                    None => row.number.clone().map(|n| (format!("({n})"), row.span)),
                                 };
                                 #[cfg(feature = "amsmath-inline")]
                                 let intertext = row
@@ -1411,9 +1420,13 @@ pub fn adapt_cached(
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
                             let mut tag = None;
                             let list = strip_tag(texts, &list, &mut tag);
-                            let number = match tag {
-                                Some(t) => Some((t, span)),
-                                None => display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}")),
+                            let (list, eqno) = strip_eqno(texts, list, span);
+                            let number = match (tag, eqno) {
+                                (Some(t), _) => Some((t, span)),
+                                (None, Some(n)) => Some(n),
+                                (None, None) => display_number(inlines, span)
+                                    .filter(|_| rest.starts_with("\\begin{equation}"))
+                                    .map(|(n, s)| (format!("({n})"), s)),
                             };
                             let bracket = !amsmath && (rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}"));
                             parts.push(ParaPart::Display {
@@ -1432,7 +1445,7 @@ pub fn adapt_cached(
                 let only_labels = parts
                     .iter()
                     .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
-                if parts.is_empty() || only_labels {
+                if parts.is_empty() {
                     continue;
                 }
                 // A display environment inside a paragraph (no blank line or
@@ -1444,22 +1457,59 @@ pub fn adapt_cached(
                 let first_span = inlines.iter().map(inline_span).next();
                 let starts_display = matches!(parts.first(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
                 if let (Some(Block::Paragraph { parts: prev_parts, style: prev_style, list: prev_list, .. }), Some(f), Some(p)) = (blocks.last_mut(), first_span, prev_para_end) {
-                    let prev_ends_display = matches!(prev_parts.last(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                    // Labels only, or a `label_line` (labels then one space).
+                    let label_only = |p: &ParaPart| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. } | Item::Space { .. })));
+                    // A display's `\label` is flushed after it as a part of
+                    // labels only.
+                    let prev_ends_display = matches!(prev_parts.iter().rev().find(|p| !label_only(p)), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                    // Inside `quote` and friends or a list item, the same
+                    // environment (and item) continues.
+                    let same_list = match (list.as_ref(), prev_list.as_ref()) {
+                        (None, None) => true,
+                        (Some(g), Some(pg)) => g.label.is_none() && g.level == pg.level && g.margins == pg.margins,
+                        _ => false,
+                    };
                     let same_flow = !eject_before
                         && vspace_before == 0.0
                         && unit.addvspace_before == 0.0
-                        && styled.is_none()
-                        && list.is_none()
+                        && styled.unwrap_or_default() == *prev_style
+                        && same_list
                         && !caption
-                        && env_open.is_none()
-                        && *prev_style == ParaStyle::Plain
-                        && prev_list.is_none();
+                        && env_open.is_none();
                     if same_flow && (starts_display || prev_ends_display) && gap_continues(texts, p, f) {
+                        if only_labels {
+                            // A `\label` outside the display, still in the
+                            // paragraph's horizontal mode (`\begin{subequations}
+                            // \label{..}`): a whatsit TeX sets on a line of its
+                            // own when a display or the paragraph end follows.
+                            // Kept as a `label_line` (labels, then one space)
+                            // that text following it absorbs below.
+                            let mut items: Vec<Item> = parts
+                                .into_iter()
+                                .flat_map(|p| match p {
+                                    ParaPart::Lines(items) => items,
+                                    _ => Vec::new(),
+                                })
+                                .collect();
+                            items.push(Item::Space { style: TextStyle::default(), factor: 1000, no_break: false });
+                            prev_parts.push(ParaPart::Lines(items));
+                            prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
+                            continue;
+                        }
+                        if matches!(parts.first(), Some(ParaPart::Lines(_))) && prev_parts.last().is_some_and(label_only) {
+                            if let (Some(ParaPart::Lines(labels)), Some(ParaPart::Lines(head))) = (prev_parts.pop(), parts.first_mut()) {
+                                let at = usize::from(matches!(head.first(), Some(Item::Space { .. })));
+                                head.splice(at..at, labels.into_iter().filter(|i| matches!(i, Item::Label { .. })));
+                            }
+                        }
                         prev_parts.extend(parts);
                         prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
                         after_heading = false;
                         continue;
                     }
+                }
+                if only_labels {
+                    continue;
                 }
                 prev_para_end = inlines.iter().map(inline_span).last();
                 // `\noindent` right before the paragraph's first material.
@@ -2117,7 +2167,8 @@ fn math_row_of(inlines: &[Inline], span: Span) -> Option<(Span, &flashtex_compil
 
 /// `list` without the atoms the compiler makes of `\tag{..}`/`\tag*{..}` (the
 /// label text and the `2\quad` glue it inserts, both spanning the command);
-/// the label, parentheses removed, goes to `tag`.
+/// the label as set goes to `tag`: `\tagform@`'s parentheses for `\tag`,
+/// none for `\tag*`.
 fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathList {
     use flashtex_compiler::math::Nucleus;
     let is_tag = |span: Span| texts.get(span.document.0).and_then(|t| t.get(span.start..)).is_some_and(|r| r.starts_with("\\tag"));
@@ -2125,14 +2176,33 @@ fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathL
     for a in &list.atoms {
         if is_tag(a.span) {
             if let Nucleus::Text(s) | Nucleus::Symbol(s) = &a.nucleus {
-                let inner = s.strip_prefix('(').and_then(|r| r.strip_suffix(')')).unwrap_or(s);
-                *tag = Some(inner.to_string());
+                *tag = Some(s.clone());
             }
             continue;
         }
         atoms.push(a.clone());
     }
     MathList { atoms }
+}
+
+/// `$$ ... \eqno <number> $$` (or `\leqno`): the compiler reads the
+/// primitive as text, so the atoms from it on are dropped and the source
+/// after the command (before the closing `$$`) becomes the number, set as
+/// is; its span starts at the command, which tells the typesetter the side.
+fn strip_eqno(texts: &[&str], list: MathList, display: Span) -> (MathList, Option<(String, Span)>) {
+    let src = texts.get(display.document.0).copied().unwrap_or("");
+    let is_eqno = |start: usize| src.get(start..).is_some_and(|r| r.starts_with("\\eqno") || r.starts_with("\\leqno"));
+    let Some(i) = list.atoms.iter().position(|a| a.span.document == display.document && is_eqno(a.span.start)) else {
+        return (list, None);
+    };
+    let start = list.atoms[i].span.start;
+    let end = display.end.min(src.len()).max(start);
+    let body = &src[start..end];
+    let body = body.strip_prefix("\\leqno").or_else(|| body.strip_prefix("\\eqno")).unwrap_or(body).trim_end();
+    let body = body.strip_suffix("$$").unwrap_or(body).trim();
+    let mut atoms = list.atoms;
+    atoms.truncate(i);
+    (MathList { atoms }, Some((body.to_string(), Span::in_document(display.document, start, end))))
 }
 
 /// Whether the source between two consecutive pieces of material keeps TeX

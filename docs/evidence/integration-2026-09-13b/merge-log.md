@@ -518,6 +518,53 @@ be picked: its three residual fixes were grafted onto the newer structure.
 - Checks: no new errors. Remaining render-pipeline errors are #158, #165,
   #170 and `Piece::Caption::short`.
 
+### #145 verbatim-fidelity (render-pipeline) @ 5a8d626d — NOT MERGED, needs a decision
+
+Aborted with `git merge --abort`; the branch is unchanged by it. This is a
+scope question for the Commander, not a conflict that can be resolved by
+picking sides.
+
+`main` has since implemented monospaced text by a different route than #145:
+the compiler carries `TextStyle::family = TextFamily::Mono`, the adapter lowers
+`Block::Verbatim` and `Inline::Verbatim` to Mono-family text, and the pipeline
+resolves the face through the NFSS model (`nfss::FamilyKind::Tt`,
+`nfss::Scheme::for_document`), which already selects `lmmono`/`lmmonolt`/
+`lmmonoslant`/`lmmonocaps` outlines and `ectt`/`ecst`/`ecit`/`ectc` metrics at
+every declared design size. #145 predates all of that and brings its own
+parallel font layer: a `Role::Mono` variant, `MonoMetrics`, `mono_design`,
+`mono_tfm_file`, `resolve_mono`, and a second "is typewriter" flag
+(`TextStyle::mono`) beside main's `family`.
+
+Merging it mechanically would:
+
+- reintroduce a second font-selection model next to NFSS (the conflicts in
+  `fonts.rs` are `latin_modern_file`, `ec_tfm_file`, `core14_for` and
+  `resolve` — in each case main's key-based version against #145's
+  hand-written ladder);
+- leave two fields that can disagree about the same fact (`style.mono` vs
+  `style.family == Tt`);
+- revert main's real `\tableofcontents` support (`crate::toc`) to #145's
+  "Contents heading only" limitation, and main's `\verb`/`Verbatim` Mono
+  lowering to #145's "no monospaced face" diagnostic.
+
+What #145 still adds that main does not have: `\lstinline` and listings
+(`Item::InlineListing` and its options) and the `literal` flag (no ligatures,
+no font kerns, no hyphenation — latex.ltx `\@noligs`, `\hyphenchar` -1).
+Rebasing just those onto main's NFSS model is new engineering rather than
+integration, so it is left for the owning agent to decide.
+
+Everything else in the stage-3 queue continues past it.
+
+### #157 display-too-wide (render-pipeline) @ 6b9f7f70
+
+- One conflict, `src/typeset.rs`: #157 sets an empty line for a `\label`-only
+  horizontal-mode remnant after a display (so `\predisplaysize` is
+  `-\maxdimen`, tex.web §1145-1146) while main computes `pre_display` through
+  `stretched_left` (§1146: a stretched `\leftskip` line has no known
+  position). Both kept: #157's `label_line` branch, with main's
+  `stretched_left` test inside the `else` branch's `pre_display`.
+- Checks: no new errors; #157's own `MathBox` literal is owed to #165.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

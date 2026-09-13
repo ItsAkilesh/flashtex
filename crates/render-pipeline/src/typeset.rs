@@ -3636,6 +3636,104 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// A paragraph line with no boxes (only whatsits such as `\label`, its
+    /// trailing space dropped by line_break): height and depth 0, set with
+    /// the usual interline glue, no `\parskip` (the paragraph continues).
+    fn empty_line_block(&mut self) -> BuiltBlock {
+        let line = pl::Line {
+            index: 0,
+            runs: Vec::new(),
+            baseline_y: 0.0,
+            height: 0.0,
+            depth: 0.0,
+            natural_width: 0.0,
+            set_width: self.style.text_width_pt,
+            ratio: 0.0,
+            badness: 0.0,
+            items: 0..0,
+            hyphenated: false,
+        };
+        let vertical = VBlock {
+            lines: vec![(0.0, 0.0)],
+            penalty_before: None,
+            space_before: None,
+            parskip: None,
+            interline_penalty: 0,
+            club_penalty: 0,
+            widow_penalty: 0,
+            penalty_after: None,
+            space_after: None,
+            no_interline_first: false,
+            no_interline_after: false,
+            baselineskip: None,
+            vskip_after: Vec::new(),
+            pre_space_after: None,
+        };
+        BuiltBlock {
+            block: pl::ParagraphBlock {
+                lines: pl::Lines {
+                    lines: vec![line],
+                    breaks: Vec::new(),
+                    stats: pl::Stats {
+                        algorithm: pl::Algorithm::TotalFit,
+                        lines: 1,
+                        pass: 1,
+                        total_demerits: 0.0,
+                        overfull: Vec::new(),
+                        underfull: Vec::new(),
+                        hyphenated_lines: 0,
+                        emergency_pass_used: false,
+                    },
+                    diagnostics: Vec::new(),
+                    height: 0.0,
+                },
+                space_before: pl::Glue::fixed(0.0),
+                space_after: pl::Glue::fixed(0.0),
+                keep_with_next: false,
+            },
+            items: Vec::new(),
+            recs: Vec::new(),
+            vertical,
+            labels: Vec::new(),
+            cache_key: None,
+        }
+    }
+
+    /// An equation number or `\tag` label as amsmath's `\maketag@@@` sets
+    /// it: an `\hbox` of the text in the body face whose interword spaces
+    /// are TeX's glue at natural width (`\ignorespaces`/`\unskip` drop the
+    /// outer ones), not the T1 visible-space glyph one shaped run would use.
+    /// Each word is its own text box at its offset.
+    fn number_box(&mut self, text: &str, nspan: Span, size: f64) -> Option<NumberBox> {
+        let space = self.space_glue(TextStyle::default(), size, 1000).width;
+        let mut pieces = Vec::new();
+        let (mut x, mut height, mut depth) = (0.0f64, 0.0f64, 0.0f64);
+        for (i, word) in text.split_whitespace().enumerate() {
+            if i > 0 {
+                x += space;
+            }
+            let seg = adapter::Segment {
+                text: word.to_string(),
+                chars: word
+                    .chars()
+                    .map(|_| adapter::CharSrc {
+                        document: nspan.document,
+                        start: nspan.start,
+                        end: nspan.end,
+                    })
+                    .collect(),
+                style: TextStyle::default(),
+            };
+            let (run, rec) = self.text_box(&seg, size)?;
+            height = height.max(run.height);
+            depth = depth.max(run.depth);
+            let w = run.width;
+            pieces.push((run, rec, x));
+            x += w;
+        }
+        (!pieces.is_empty()).then_some(NumberBox { pieces, width: x, height, depth })
+    }
+
     /// A display equation. `pre_display_size` is TeX's measure of the line
     /// before it (its material width plus 2em, or `None` when the display
     /// starts the paragraph); `number` is the `equation` counter set flush
@@ -3653,70 +3751,125 @@ impl<'a> Context<'a> {
     ) -> Option<BuiltBlock> {
         let rec = self.math_box(list, span, true)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
-        let root = &self.maths[*mi].root;
+        let mi = *mi;
         let size = self.style.body_size_pt;
-        let run = math_run(root, size, span);
-        let width = run.width;
-        let (mut height, mut depth) = (run.height, run.depth);
+        let natural_width = self.maths[mi].root.width;
         let (s, z) = self.display_shape(style, list_geom);
-        // \eqno: the number's box (§1202) reduces the room for the formula.
-        let mut eqno: Option<(pl::GlyphRun, usize)> = None;
+        let source: &str = self.texts.get(span.document.0).copied().unwrap_or("");
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        // The number's box `a` (§1199): its width reduces the room for the
+        // formula. `\leqno` (amsmath `leqno`, or the primitive) puts it left.
+        let mut eqno: Option<NumberBox> = None;
+        let mut left = false;
         let mut e = 0.0;
         let mut q = 0.0;
         if let Some((text, nspan)) = number {
-            let seg = adapter::Segment {
-                text: format!("({text})"),
-                chars: format!("({text})")
-                    .chars()
-                    .map(|_| adapter::CharSrc {
-                        document: nspan.document,
-                        start: nspan.start,
-                        end: nspan.end,
-                    })
-                    .collect(),
-                style: TextStyle::default(),
+            let at = source.get(nspan.start..).unwrap_or("");
+            left = if at.starts_with("\\leqno") {
+                true
+            } else if at.starts_with("\\eqno") {
+                false
+            } else {
+                self.style.leqno
             };
-            if let Some((nrun, nrec)) = self.text_box(&seg, size) {
-                e = nrun.width;
-                q = e + self.text_params(TextStyle::default(), size).quad;
-                height = height.max(nrun.height);
-                depth = depth.max(nrun.depth);
-                eqno = Some((nrun, nrec));
+            if let Some(nb) = self.number_box(text, *nspan, size) {
+                e = nb.width;
+                q = e + quad;
+                eqno = Some(nb);
             }
         }
-        // §1199: centre the formula in the measure; if it would collide with
-        // the number, shift it (d) so both fit; `l` marks a display wider
-        // than the room left.
-        let mut w = width;
-        let l = w + q > z;
-        if l {
-            w = (z - q).max(0.0);
-        }
-        let mut d = (z - w) / 2.0;
-        if e > 0.0 && d < 2.0 * e {
-            d = (z - w - e) / 2.0;
-            if d < 0.0 {
-                d = 0.0;
+        let rest = source.get(span.start..).unwrap_or("");
+        // amsmath's `\mathdisplay` honours `fleqn`; a primitive `$$` does not.
+        let fleqn = self.style.fleqn && !rest.starts_with("$$");
+        // §1201: a number that cannot sit beside the squeezed formula goes on
+        // a line of its own (TeX sets e := 0).
+        let mut separate = false;
+        let mut overfull = (natural_width - z).max(0.0);
+        // (formula x, number x, d of §1202)
+        let (x, number_x, d) = if fleqn {
+            // amsmath `fleqn` (`\endmathdisplay@fleqn`): the formula is set
+            // in an `\hbox to\displaywidth` after `\@mathmargin`
+            // (`\leftmargini`); the tag follows `\hfil` flush right
+            // (`\emdf@R`) or comes first with at least `\mintagsep` before
+            // the formula (`\emdf@L`). TeX sees one display-wide box and no
+            // `\eqno`: d = 0.
+            let mintagsep = 0.5 * size;
+            let margin = self.style.leftmargini_pt;
+            if left && e > 0.0 {
+                (s + margin.max(e + mintagsep), s, 0.0)
+            } else {
+                (s + margin, s + z - e, 0.0)
             }
+        } else {
+            // §1199-§1201: a formula too wide beside its number is squeezed.
+            // With a number, `hpack(p, z - q, exactly)` when its finite
+            // shrink reaches (or any infinite shrink exists); otherwise the
+            // number goes on a line of its own and the formula alone is
+            // packed to `z` if it is still wider. The glue set comes from
+            // math-layout's `pack_to` (tex.web §649-§667).
+            let mut w = natural_width;
+            if w + q > z {
+                let root = &self.maths[mi].root;
+                let totals = root.glue_totals();
+                let infinite = totals.shrink[1..].iter().any(|t| *t != 0.0);
+                let packed = if e != 0.0 && (w - totals.shrink[0] + q <= z || infinite) {
+                    Some(root.pack_to(z - q))
+                } else {
+                    separate = e != 0.0;
+                    (w > z).then(|| root.pack_to(z))
+                };
+                if let Some(p) = packed {
+                    w = p.root.width;
+                    overfull = p.overfull;
+                    self.maths[mi].root = p.root;
+                }
+            }
+            let e = if separate { 0.0 } else { e };
+            // §1202: centred, or moved off a number closer than 2e (to 0
+            // when the formula starts with glue).
+            let mut d = (z - w) / 2.0;
+            if e > 0.0 && d < 2.0 * e {
+                d = (z - w - e) / 2.0;
+                if let ml::BoxKind::HBox(children) = &self.maths[mi].root.kind {
+                    if children.first().is_some_and(|c| matches!(c.content.kind, ml::BoxKind::Glue { .. })) {
+                        d = 0.0;
+                    }
+                }
+            }
+            // §1204: `\leqno` packs [a, kern z-w-e-d, b] at s; `\eqno`
+            // [b, kern z-w-e-d, a] at s + d. §1203/§1205: a number on its own
+            // line sits at s (`\leqno`, above) or s + z - width(a) (below).
+            if left && e > 0.0 {
+                (s + z - w - d, s, d)
+            } else if left && separate {
+                (s + d, s, d)
+            } else {
+                (s + d, s + z - eqno.as_ref().map_or(0.0, |n| n.width), d)
+            }
+        };
+        let run = math_run(&self.maths[mi].root, size, span);
+        let width = run.width;
+        let (formula_height, formula_depth) = (run.height, run.depth);
+        let (mut height, mut depth) = (formula_height, formula_depth);
+        if let (Some(nb), false) = (&eqno, separate) {
+            height = height.max(nb.height);
+            depth = depth.max(nb.depth);
         }
-        // §1199: "not enough clearance" when the display starts left of
-        // where the line before it ended (`d + s <= pre_display_size`).
-        let x = s + d.max(0.0);
         // amsmath sets `equation{split}` through `\gather@`'s `\halign`, a
         // display alignment: always the non-short skips (§1206).
-        let split = self
-            .texts
-            .get(span.document.0)
-            .and_then(|t| t.get(span.start..))
-            .and_then(|r| r.strip_prefix("\\begin{equation*}").or_else(|| r.strip_prefix("\\begin{equation}")))
+        let split = rest
+            .strip_prefix("\\begin{equation*}")
+            .or_else(|| rest.strip_prefix("\\begin{equation}"))
             .is_some_and(|r| r.trim_start().starts_with("\\begin{split}"));
-        let long = pre_display_size.is_some_and(|p| x <= p) || l || split;
+        // §1203: "not enough clearance" (`d + s <= \predisplaysize`) or a
+        // `\leqno` number takes the normal skips.
+        let long = pre_display_size.is_some_and(|p| s + d <= p) || (left && eqno.is_some() && !fleqn) || split;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
         } else {
             (self.style.abovedisplayshortskip, self.style.belowdisplayshortskip)
         };
-        let mut runs = vec![pl::PositionedRun {
+        let formula_run = pl::PositionedRun {
             x,
             baseline_y: height,
             width,
@@ -3725,34 +3878,78 @@ impl<'a> Context<'a> {
             glyphs: Vec::new(),
             source: run.source.clone(),
             is_hyphen: false,
-        }];
-        let mut items = vec![pl::Item::Box(run)];
-        let mut recs = vec![Some(rec)];
-        if let Some((nrun, nrec)) = eqno {
-            runs.push(position_run(&nrun, s + z - e, height));
-            items.push(pl::Item::Box(nrun));
-            recs.push(Some(nrec));
-        }
-        let n = items.len();
-        let line = pl::Line {
-            index: 0,
-            runs,
-            baseline_y: height,
-            height,
-            depth,
-            natural_width: s + width,
-            set_width: s + z,
-            ratio: 0.0,
-            badness: 0.0,
-            items: 0..n,
-            hyphenated: false,
         };
+        // Each output line: (runs, items, recs, height, depth, natural width).
+        type OutLine = (Vec<pl::PositionedRun>, Vec<pl::Item>, Vec<Option<usize>>, f64, f64, f64);
+        let mut out_lines: Vec<OutLine> = Vec::new();
+        // The number's word boxes at `number_x`, on a baseline of `baseline`.
+        let number_parts = |nb: NumberBox, baseline: f64| {
+            let mut runs = Vec::new();
+            let mut items = Vec::new();
+            let mut recs = Vec::new();
+            for (nrun, nrec, dx) in nb.pieces {
+                runs.push(position_run(&nrun, number_x + dx, baseline));
+                items.push(pl::Item::Box(nrun));
+                recs.push(Some(nrec));
+            }
+            (runs, items, recs)
+        };
+        match eqno {
+            Some(nb) if separate => {
+                let (nh, nd, nw) = (nb.height, nb.depth, nb.width);
+                let (runs, line_items, line_recs) = number_parts(nb, nh);
+                let number_line: OutLine = (runs, line_items, line_recs, nh, nd, number_x + nw);
+                let formula_line: OutLine = (vec![formula_run], vec![pl::Item::Box(run)], vec![Some(rec)], formula_height, formula_depth, x + width);
+                if left {
+                    out_lines.push(number_line);
+                    out_lines.push(formula_line);
+                } else {
+                    out_lines.push(formula_line);
+                    out_lines.push(number_line);
+                }
+            }
+            Some(nb) => {
+                let (number_runs, number_items, number_recs) = number_parts(nb, height);
+                let mut runs = vec![formula_run];
+                runs.extend(number_runs);
+                let mut line_items = vec![pl::Item::Box(run)];
+                line_items.extend(number_items);
+                let mut line_recs = vec![Some(rec)];
+                line_recs.extend(number_recs);
+                out_lines.push((runs, line_items, line_recs, height, depth, s + width));
+            }
+            None => out_lines.push((vec![formula_run], vec![pl::Item::Box(run)], vec![Some(rec)], height, depth, s + width)),
+        }
+        let mut items = Vec::new();
+        let mut recs = Vec::new();
+        let mut line_list = Vec::new();
+        let mut extents = Vec::new();
+        for (index, (runs, line_items, line_recs, h, dp, natural)) in out_lines.into_iter().enumerate() {
+            let start = items.len();
+            items.extend(line_items);
+            recs.extend(line_recs);
+            line_list.push(pl::Line {
+                index,
+                runs,
+                baseline_y: h,
+                height: h,
+                depth: dp,
+                natural_width: natural,
+                set_width: s + z,
+                ratio: 0.0,
+                badness: 0.0,
+                items: start..items.len(),
+                hyphenated: false,
+            });
+            extents.push((h, dp));
+        }
+        let n_lines = line_list.len();
         let lines = pl::Lines {
-            lines: vec![line],
+            lines: line_list,
             breaks: Vec::new(),
             stats: pl::Stats {
                 algorithm: pl::Algorithm::TotalFit,
-                lines: 1,
+                lines: n_lines,
                 pass: 1,
                 total_demerits: 0.0,
                 overfull: Vec::new(),
@@ -3761,28 +3958,37 @@ impl<'a> Context<'a> {
                 emergency_pass_used: false,
             },
             diagnostics: Vec::new(),
-            height: height + depth,
+            height: extents.iter().map(|(h, dp)| h + dp).sum(),
         };
-        if width > z + 1e-6 {
+        if overfull > 1e-6 {
             let src = self.source(span);
             self.emit(None, Diagnostic::warning(
                 "overfull_display",
-                format!("display is {:.2}pt wider than the {}", width - z, if s > 0.0 { "line width" } else { "text width" }),
+                format!("display is {:.2}pt wider than the {}", overfull, if s > 0.0 { "line width" } else { "text width" }),
                 vec![src],
             ));
         }
         // $$: \penalty\predisplaypenalty, \abovedisplayskip, the display,
-        // \penalty\postdisplaypenalty (0), \belowdisplayskip.
+        // \penalty\postdisplaypenalty (0), \belowdisplayskip. A number on its
+        // own line is kept with the formula (\penalty10000, interline glue
+        // between them); above the formula (`\leqno`) it replaces the
+        // above-display skip, below it (`\eqno`) the below-display skip
+        // (§1203, §1205).
+        let (space_before, space_after) = match (separate, left) {
+            (true, true) => (None, Some(skip_tuple(below))),
+            (true, false) => (Some(skip_tuple(above)), None),
+            _ => (Some(skip_tuple(above)), Some(skip_tuple(below))),
+        };
         let vertical = VBlock {
-            lines: vec![(height, depth)],
+            lines: extents,
             penalty_before: Some(PREDISPLAY_PENALTY),
-            space_before: Some(skip_tuple(above)),
+            space_before,
             parskip: None,
-            interline_penalty: 0,
+            interline_penalty: if separate { pagebuild::INF_PENALTY } else { 0 },
             club_penalty: 0,
             widow_penalty: 0,
             penalty_after: None,
-            space_after: Some(skip_tuple(below)),
+            space_after,
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: None,
@@ -3792,8 +3998,8 @@ impl<'a> Context<'a> {
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
                 lines,
-                space_before: above.glue(),
-                space_after: below.glue(),
+                space_before: if space_before.is_some() { above.glue() } else { pl::Glue::fixed(0.0) },
+                space_after: if space_after.is_some() { below.glue() } else { pl::Glue::fixed(0.0) },
                 keep_with_next: false,
             },
             items,
@@ -3822,6 +4028,9 @@ impl<'a> Context<'a> {
         let dw = self.hsize();
         // `\mintagsep`: half of cmsy's quad at the text size.
         let mintagsep = 0.5 * size;
+        // amsmath `fleqn` (`\@mathmargin` = `\leftmargini`) and `leqno`.
+        let (fleqn, leqno) = (self.style.fleqn, self.style.leqno);
+        let margin = self.style.leftmargini_pt;
         let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
         // Cell boxes: (run, rec) per row per cell; right-hand (even-index
         // from 1) align cells and every multline row start with `{}`.
@@ -3859,7 +4068,7 @@ impl<'a> Context<'a> {
         let mut tags: Vec<Option<(pl::GlyphRun, usize)>> = Vec::with_capacity(rows.len());
         for row in rows {
             tags.push(row.number.as_ref().and_then(|(text, nspan)| {
-                let label = format!("({text})");
+                let label = text.clone();
                 let seg = adapter::Segment {
                     text: label.clone(),
                     chars: label
@@ -3891,7 +4100,8 @@ impl<'a> Context<'a> {
                         colw[ci] = colw[ci].max(width(c));
                     }
                 }
-                let totwidth: f64 = colw.iter().sum();
+                // `\measure@`: under `fleqn` `\totwidth@` includes `\@mathmargin`.
+                let totwidth: f64 = colw.iter().sum::<f64>() + if fleqn { margin } else { 0.0 };
                 let d = dw - totwidth;
                 let p = (maxfields / 2) as i64;
                 let (mut eqnshift, mut alignsep, minalignsep, tempcntb, tempcnta);
@@ -3900,8 +4110,15 @@ impl<'a> Context<'a> {
                         alignsep = 0.0;
                         minalignsep = 0.0;
                         tempcntb = 0i64;
-                        tempcnta = 2i64;
-                        eqnshift = d / 2.0;
+                        tempcnta = if fleqn { 1i64 } else { 2i64 };
+                        eqnshift = if fleqn { margin } else { d / 2.0 };
+                    }
+                    RowsEnv::Align if fleqn => {
+                        tempcntb = p - 1;
+                        tempcnta = p;
+                        eqnshift = margin;
+                        alignsep = if tempcnta != 0 { d / tempcnta as f64 } else { d };
+                        minalignsep = MINALIGNSEP;
                     }
                     RowsEnv::Align => {
                         tempcntb = p - 1;
@@ -3914,6 +4131,7 @@ impl<'a> Context<'a> {
                         tempcntb = p - 1;
                         tempcnta = p - 1;
                         eqnshift = 0.0;
+                        let d = if fleqn { d + margin } else { d };
                         // TeX's \divide by zero leaves the dimension unchanged.
                         alignsep = if tempcntb > 0 { d / tempcntb as f64 } else { d };
                         minalignsep = MINALIGNSEP;
@@ -3921,13 +4139,15 @@ impl<'a> Context<'a> {
                 }
                 if alignsep < minalignsep {
                     alignsep = minalignsep;
-                    if eqnshift > 0.0 {
+                    if eqnshift > 0.0 && !fleqn {
                         eqnshift = (dw - totwidth - tempcntb as f64 * alignsep) / 2.0;
                     }
                 }
                 eqnshift = eqnshift.max(0.0);
                 // `\calc@shift@align` (tags right, not fleqn): last row first.
-                for ri in (0..cells.len()).rev() {
+                // The `fleqn`/`leqno` variants only move tags that do not
+                // fit onto their own line, which is not modelled.
+                for ri in (0..cells.len()).rev().filter(|_| !(fleqn || leqno)) {
                     let t = tagw(ri);
                     if t <= 0.0 {
                         continue;
@@ -4010,7 +4230,15 @@ impl<'a> Context<'a> {
                             shift -= t;
                         }
                     }
-                    let mut x = (shift / 2.0).max(0.0);
+                    // `\calc@shift@gather`: `\@mathmargin` under `fleqn`;
+                    // with `leqno` the shift is mirrored.
+                    let mut x = if fleqn {
+                        margin
+                    } else if leqno {
+                        (dw - w - shift / 2.0).max(0.0)
+                    } else {
+                        (shift / 2.0).max(0.0)
+                    };
                     for (ci, c) in row.iter().enumerate() {
                         xs[ri][ci] = x;
                         x += width(c);
@@ -4119,7 +4347,7 @@ impl<'a> Context<'a> {
             if let Some((nrun, nrec)) = &tags[ri] {
                 h = h.max(nrun.height);
                 d = d.max(nrun.depth);
-                runs.push(position_run(nrun, dw - nrun.width, 0.0));
+                runs.push(position_run(nrun, if leqno { 0.0 } else { dw - nrun.width }, 0.0));
                 items.push(pl::Item::Box(nrun.clone()));
                 recs.push(Some(*nrec));
             }
@@ -4609,6 +4837,15 @@ fn seg_span(seg: &adapter::Segment) -> Option<Span> {
     Some(Span::in_document(first.document, first.start.min(last.start), first.end.max(last.end)))
 }
 
+/// A display's equation number (see `Context::number_box`): word boxes
+/// with their x offsets inside the number, and the number's dimensions.
+struct NumberBox {
+    pieces: Vec<(pl::GlyphRun, usize, f64)>,
+    width: f64,
+    height: f64,
+    depth: f64,
+}
+
 fn math_run(root: &ml::MathBox, size: f64, span: Span) -> pl::GlyphRun {
     pl::GlyphRun {
         font: MATH_SENTINEL,
@@ -5068,24 +5305,56 @@ fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, 
     let classes = ml::layout::effective_classes(&all_atoms);
     let params = metrics.params(style.size_class());
     let (quad, mu) = (params.quad, params.mu());
-    let mut boxes = Vec::new();
+    // One flat hlist, as TeX's mlist_to_hlist makes: each run's own list
+    // (atoms and inter-atom glue) is spliced in at its offset rather than
+    // nested as a rigid box, and the spacing across the split is real muskip
+    // glue, so `MathBox::glue_totals`/`pack_to` see every glue of the formula
+    // (a too-wide display is squeezed by it, §1201). Positions are unchanged.
+    let mut children: Vec<ml::Child> = Vec::new();
+    let (mut x, mut height, mut depth) = (0.0f64, 0.0f64, 0.0f64);
+    let mut push = |children: &mut Vec<ml::Child>, x: &mut f64, b: ml::MathBox| {
+        let w = b.width;
+        match b.kind {
+            ml::BoxKind::HBox(kids) => {
+                for c in kids {
+                    height = height.max(c.content.height - c.dy);
+                    depth = depth.max(c.content.depth + c.dy);
+                    children.push(ml::Child { dx: *x + c.dx, dy: c.dy, content: c.content });
+                }
+            }
+            _ => {
+                height = height.max(b.height);
+                depth = depth.max(b.depth);
+                children.push(ml::Child { dx: *x, dy: 0.0, content: b });
+            }
+        }
+        *x += w;
+    };
     let mut limitations = Vec::new();
     let mut at = 0usize;
     for (i, l) in runs.iter().enumerate() {
         let part = ml::layout_with_report(l, style, metrics);
         limitations.extend(part.limitations);
-        boxes.push((0.0, part.root));
+        push(&mut children, &mut x, part.root);
         at += l.atoms.len();
         if let Some(em) = glue.get(i).copied().flatten() {
-            let spacing = match (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
-                (Some(&left), Some(&right)) => ml::between(left, right, style).mu() * mu,
-                _ => 0.0,
-            };
-            boxes.push((0.0, ml::MathBox::kern(em * quad + spacing)));
+            push(&mut children, &mut x, ml::MathBox::kern(em * quad));
+            if let (Some(&left), Some(&right)) = (at.checked_sub(1).and_then(|j| classes.get(j)), classes.get(at)) {
+                let space = ml::between(left, right, style);
+                if space != ml::Space::None {
+                    let flex = |amount: f64| ml::Flex::pt(amount * mu);
+                    push(&mut children, &mut x, ml::MathBox::glue_flex(space.mu() * mu, space.mu(), flex(space.stretch_mu()), flex(space.shrink_mu())));
+                }
+            }
         }
     }
     ml::Layout {
-        root: ml::MathBox::hbox(boxes),
+        root: ml::MathBox {
+            kind: ml::BoxKind::HBox(children),
+            width: x,
+            height,
+            depth,
+        },
         limitations,
     }
 }
@@ -6152,7 +6421,22 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                             let (ind, starts, ah) = (*indent && first, first, after_heading && first);
                             let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
                             let st = *style;
-                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
+                            // `\label` whatsits and a space left in horizontal
+                            // mode after a display (the adapter's
+                            // `label_line` part): TeX's line_break still sets
+                            // them as an empty line, and `\predisplaysize` of a
+                            // display after it is -\maxdimen (§1145-§1146).
+                            let label_line = !items.is_empty()
+                                && matches!(items.last(), Some(AItem::Space { .. }))
+                                && items.iter().all(|i| matches!(i, AItem::Label { .. } | AItem::Space { .. }))
+                                && items.iter().any(|i| matches!(i, AItem::Label { .. }));
+                            if label_line && !first {
+                                blocks.push(ctx.empty_line_block());
+                                pre_display = None;
+                            } else if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
+                                // §1146: a line whose `\leftskip` is stretched
+                                // has no known position, so `\predisplaysize`
+                                // is `\maxdimen` (main), not the line width.
                                 pre_display = b.block.lines.lines.last().map(|l| if stretched_left(st) { f64::MAX } else { l.natural_width + 2.0 * quad });
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -6208,7 +6492,16 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                             number,
                             bracket,
                         } => {
-                            if first {
+                            // TeX §1145: a display that opens a paragraph whose
+                            // list is still empty sets no line — after a
+                            // heading, `\@afterheading`'s `\everypar` has
+                            // removed the indent box — so only `\parskip`
+                            // precedes it and `\predisplaysize` is -\maxdimen.
+                            let mut empty_start = None;
+                            if first && after_heading && geom.is_none_or(|g| g.label.is_none()) {
+                                empty_start = Some((std::mem::take(&mut eject), std::mem::take(&mut vspace), env_before.take()));
+                                pre_display = None;
+                            } else if first {
                                 let (mut opener, size) = ctx.display_opener_block(*bracket, geom);
                                 if std::mem::take(&mut eject) {
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
@@ -6239,7 +6532,16 @@ pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], page_starts
                             };
                             let pd = pre_display;
                             let st = *style;
-                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                            if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
+                                if let Some((ej, vs, env)) = empty_start {
+                                    let parskip = geom.map_or(ctx.style.parskip, |g| g.parsep);
+                                    if ej {
+                                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                    }
+                                    add_skip_before(&mut b.vertical, Some(skip_tuple(parskip)));
+                                    add_vspace(&mut b.vertical, vs);
+                                    add_skip_before(&mut b.vertical, env);
+                                }
                                 blocks.push(b);
                             }
                             pre_display = None;
