@@ -809,6 +809,8 @@ pub fn adapt_cached(
     strip_command_text(&mut lowered, entry_doc, &commands);
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
+    // The `\input`/`\include`d document whose units are being laid out.
+    let mut input_doc: Option<DocumentId> = None;
     // report/book: `\thesection` is `\thechapter.\arabic{section}`.
     let (mut chapter_no, mut section_nos) = (0u32, [0u32; 3]);
     // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
@@ -846,10 +848,28 @@ pub fn adapt_cached(
             UnitKind::Rule { span } => Some(*span),
             UnitKind::Picture { document, picture, .. } => Some(Span::in_document(*document, picture.start, picture.end)),
         };
-        if let Some(at) = unit_start.filter(|s| s.document == entry_doc) {
-            while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at.start) {
+        // Entry-document commands are laid out before the first unit that
+        // follows them in the entry source. A unit of an `\input`/`\include`d
+        // document follows the `\input` command that read it, so everything
+        // before that command (a `\maketitle` ahead of `\input{intro}`)
+        // precedes the file's first unit; later units of the same file flush
+        // nothing until the entry document resumes.
+        let flush_before = match unit_start {
+            Some(at) if at.document == entry_doc => {
+                input_doc = None;
+                Some(at.start)
+            }
+            Some(at) if input_doc != Some(at.document) => {
+                input_doc = Some(at.document);
+                commands[next_command..].iter().find(|c| matches!(c.kind, BodyKind::Input)).map(|c| c.start)
+            }
+            _ => None,
+        };
+        if let Some(at) = flush_before {
+            while let Some(cmd) = commands.get(next_command).filter(|c| c.start < at) {
                 next_command += 1;
                 match &cmd.kind {
+                    BodyKind::Input => {}
                     BodyKind::Event(event) => blocks.push(Block::Chrome {
                         event: event.clone(),
                         span: Span::in_document(entry_doc, cmd.start, cmd.end),
@@ -1013,6 +1033,10 @@ pub fn adapt_cached(
                         prev_para_end = None;
                     }
                 }
+            }
+            // The `\input` command that read this unit's document is spent.
+            if input_doc.is_some() && commands.get(next_command).is_some_and(|c| c.start == at && matches!(c.kind, BodyKind::Input)) {
+                next_command += 1;
             }
         }
         match unit.kind {
@@ -3049,6 +3073,10 @@ pub enum BodyKind {
     Appendix,
     /// `\part[<short>]{<title>}` / `\part*{<title>}` (inner ranges).
     Part { starred: bool, short: Option<(usize, usize)>, title: (usize, usize) },
+    /// `\input{<file>}` / `\include{<file>}`: where the entry document
+    /// reads another document, so that commands before it precede that
+    /// document's material.
+    Input,
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -3063,9 +3091,9 @@ pub enum Matter {
 }
 
 /// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`,
-/// `\maketitle`, (when the class has chapters) `\chapter` and (book)
-/// `\frontmatter`/`\mainmatter`/`\backmatter` after `\begin{document}`,
-/// in source order, skipping comments.
+/// `\maketitle`, `\input`/`\include`, (when the class has chapters)
+/// `\chapter` and (book) `\frontmatter`/`\mainmatter`/`\backmatter` after
+/// `\begin{document}`, in source order, skipping comments.
 pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyCommand> {
     let bytes = source.as_bytes();
     let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
@@ -3181,6 +3209,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i64>().ok().map(|n| (BodyKind::Event(ChromeEvent::SetPage(n)), a2)))
             }),
             "maketitle" => Some((BodyKind::MakeTitle, j)),
+            "input" | "include" => group(j).map(|(_, _, after)| (BodyKind::Input, after)),
             "frontmatter" if book => Some((BodyKind::Matter(Matter::Front), j)),
             "mainmatter" if book => Some((BodyKind::Matter(Matter::Main), j)),
             "backmatter" if book => Some((BodyKind::Matter(Matter::Back), j)),
