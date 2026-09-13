@@ -310,9 +310,11 @@ fn write_into(v: &Value, out: &mut String) {
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Num(n) => {
             if n.is_finite() && *n == n.trunc() && n.abs() < 1e15 {
-                let _ = write!(out, "{}", *n as i64);
+                write_integer(*n as i64, out);
             } else if n.is_finite() {
-                let _ = write!(out, "{}", n);
+                if !write_hundredths(*n, out) {
+                    let _ = write!(out, "{}", n);
+                }
             } else {
                 out.push_str("null");
             }
@@ -353,8 +355,65 @@ pub fn write_number_into(n: f64, out: &mut String) {
     write_into(&Value::Num(n), out);
 }
 
+/// Same bytes as `write!(out, "{}", value)`, without the formatting machinery;
+/// replies carry several integers per item (issue #65).
+fn write_integer(value: i64, out: &mut String) {
+    let mut digits = [0u8; 20];
+    let mut start = digits.len();
+    let mut rest = value.unsigned_abs();
+    loop {
+        start -= 1;
+        digits[start] = b'0' + (rest % 10) as u8;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    if value < 0 {
+        out.push('-');
+    }
+    out.push_str(std::str::from_utf8(&digits[start..]).expect("ASCII digits"));
+}
+
+/// Writes a non-integer `n` that is exactly `k / 100.0` with |n| < 10 000 (all
+/// `layout::round2` page coordinates) as the same shortest round-trip digits
+/// `write!(out, "{}", n)` produces, which is the dominant cost of a large reply
+/// (issue #65). Returns false, writing nothing, for any other value. The
+/// equivalence is checked exhaustively over that range by
+/// `json_fast_paths_match_the_formatting_machinery`.
+fn write_hundredths(n: f64, out: &mut String) -> bool {
+    if n.abs() >= 10_000.0 {
+        return false;
+    }
+    let hundredths = (n * 100.0).round();
+    if hundredths / 100.0 != n {
+        return false;
+    }
+    let hundredths = hundredths as i64;
+    let (whole, fraction) = (hundredths.abs() / 100, hundredths.abs() % 100);
+    if hundredths < 0 {
+        out.push('-');
+    }
+    write_integer(whole, out);
+    out.push('.');
+    out.push(char::from(b'0' + (fraction / 10) as u8));
+    if fraction % 10 != 0 {
+        out.push(char::from(b'0' + (fraction % 10) as u8));
+    }
+    true
+}
+
 fn write_string(s: &str, out: &mut String) {
     out.push('"');
+    if !s
+        .bytes()
+        .any(|byte| byte == b'"' || byte == b'\\' || byte < 0x20)
+    {
+        // Nothing to escape: one copy instead of a push per char.
+        out.push_str(s);
+        out.push('"');
+        return;
+    }
     for c in s.chars() {
         match c {
             '"' => out.push_str("\\\""),
