@@ -492,12 +492,17 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                     cells,
                     number: _,
                     span,
+                    intertext,
                 } in rows
                 {
                     for cell in cells {
                         shift_math_list(cell, changes, deltas)?;
                     }
                     map_span(span, changes, deltas)?;
+                    for text in intertext {
+                        shift_inlines(&mut text.content, changes, deltas)?;
+                        map_span(&mut text.span, changes, deltas)?;
+                    }
                 }
                 map_span(span, changes, deltas)?;
             }
@@ -563,7 +568,7 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
         match nucleus {
             Nucleus::Symbol(_) | Nucleus::Text(_) | Nucleus::Bold(_) => {}
             Nucleus::SizedDelimiter { .. } => {}
-            Nucleus::Space { em: _ } => {}
+            Nucleus::Space { .. } => {}
             Nucleus::Fraction {
                 numerator,
                 denominator,
@@ -604,6 +609,10 @@ fn shift_math_list(list: &mut MathList, changes: &[ChangedBytes], deltas: &[isiz
             }
             Nucleus::Phantom { body, .. } | Nucleus::Operator { body, .. } => {
                 shift_math_list(body, changes, deltas)?
+            }
+            Nucleus::ExtArrow { above, below, .. } => {
+                shift_math_list(above, changes, deltas)?;
+                shift_math_list(below, changes, deltas)?;
             }
             Nucleus::SubArray { rows, align: _ } => {
                 for row in rows.iter_mut() {
