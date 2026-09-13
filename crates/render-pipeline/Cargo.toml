@@ -51,6 +51,14 @@ amsmath-inline = []
 # (`MathRec::span_paints`). Builds only against a vendor/math-layout that
 # carries `SourceTag`; off until vendor/ is re-pinned.
 math-glyph-spans = []
+# The compiler exposes `MathAtom::class_override` and `math::AtomClass`
+# publicly, so the forced atom class is read from the atom instead of being
+# re-derived by matching the control word at its span
+# (`typeset::class_override_of`). Needed for `\colon`, whose class depends on
+# whether amsmath is loaded and so cannot be recovered from the source text at
+# all; the re-derivation stays as the fallback. Builds only against a
+# vendor/compiler that carries the public field; off until vendor/ is re-pinned.
+math-class-override = []
 
 [dependencies]
 flashtex-compiler = { path = "vendor/compiler" }
