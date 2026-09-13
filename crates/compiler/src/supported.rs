@@ -120,6 +120,20 @@ const TEXT_EXTRA_ARMS: &[&str] = &["newtheorem", "theoremstyle"];
 const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("documentclass", "[options]{class}", "records the class and its 10pt/11pt/12pt size option; only the document body is typeset"),
     ("usepackage", "[options]{a,b,c}", "records packages; layout-neutral ones are silent, every other package warns that it is not implemented"),
+    ("definecolor", "[class]{name}{model}{spec}", "colour definition in rgb, cmy, cmyk, gray, RGB, HTML or Gray (model lists pick the target model)"),
+    ("providecolor", "[class]{name}{model}{spec}", "\\definecolor unless the colour is already defined"),
+    ("xdefinecolor", "[class]{name}{model}{spec}", "xcolor synonym of \\definecolor"),
+    ("colorlet", "[class]{name}[model]{expression}", "names an xcolor expression, optionally converted to a model"),
+    ("definecolorset", "[class]{models}{head}{tail}{set}", "defines name,spec;... colours in one go"),
+    ("DefineNamedColor", "{named}{name}{model}{spec}", "driver named colour, as dvipsnam.def uses it"),
+    ("selectcolormodel", "{model}", "xcolor target model: natural, rgb, cmy, cmyk or gray"),
+    ("color", "[model]{expression}", "text colour for the rest of the group; pdfTeX's exact operator values"),
+    ("textcolor", "[model]{expression}{text}", "text in a colour"),
+    ("pagecolor", "[model]{expression}", "page background colour, document-wide"),
+    ("nopagecolor", "", "removes the page background colour"),
+    ("normalcolor", "", "back to the default text colour"),
+    ("colorbox", "[model]{expression}{text}", "text on a filled box \\fboxsep larger than its content"),
+    ("fcolorbox", "[model]{frame}{fill}{text}", "\\colorbox inside a \\fboxrule frame"),
     ("setlength", "{\\length}{dimension}", "preamble \\parskip, and \\parindent of 0pt; other lengths warn"),
     ("setlist", "[list]{options}", "enumitem itemsep and topsep; other keys warn"),
     ("newcolumntype", "{X}[n]{spec}", "array column type expanded in later tabular specifications"),
@@ -243,6 +257,8 @@ const SIZE_DECLARATIONS: &[&str] = &[
 /// Math `command_atom` arms and list-level switches, grouped by behaviour:
 /// (names, arguments, description, renders).
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
+    (&["color"], "[model]{expression}", "colours the rest of the math group", true),
+    (&["textcolor"], "[model]{expression}{body}", "math body in a colour", true),
     (
         &["frac", "cfrac"],
         "{num}{den}",
@@ -536,6 +552,12 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "source text is already decoded as UTF-8",
     ),
     ("fontenc", "T1", "text glyphs are mapped from Unicode"),
+    ("color", "dvipsnames, usenames", "color.sty colours with pdfTeX's exact operator values"),
+    (
+        "xcolor",
+        "natural, rgb, cmy, cmyk, gray, dvipsnames, svgnames, x11names, table",
+        "xcolor 3.02 definitions, expressions and target models with pdfTeX's exact operator values; hsb models, colour series and table colours are diagnosed",
+    ),
     (
         "amsthm",
         "",
@@ -563,7 +585,7 @@ pub const CANONICAL_TSV: &str = include_str!("../supported/canonical-latex.tsv")
 
 /// Canonical sets, in report order.
 pub const CANONICAL_SETS: &[&str] = &[
-    "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz",
+    "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz", "xcolor",
 ];
 
 fn text_description(name: &str) -> &'static str {

@@ -476,8 +476,13 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 number_span,
                 span,
                 space_before: _,
+                color: _,
+                color_ranges,
             } => {
                 shift_math_list(list, changes, deltas)?;
+                for (range, _) in color_ranges.iter_mut() {
+                    map_span(range, changes, deltas)?;
+                }
                 if let Some(number_span) = number_span {
                     map_span(number_span, changes, deltas)?;
                 }
@@ -550,6 +555,10 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 space_before: _,
             } => map_span(span, changes, deltas)?,
+            Inline::ColorBox(b) => {
+                map_span(&mut b.span, changes, deltas)?;
+                shift_inlines(&mut b.content, changes, deltas)?;
+            }
         }
     }
     Some(())
@@ -717,6 +726,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Footnote { span, .. } => *span,
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
+        Inline::ColorBox(b) => b.span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);

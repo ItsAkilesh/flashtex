@@ -472,6 +472,17 @@ impl MathParser<'_> {
                 TokenKind::Command(ref switch) if switch == "limits" || switch == "nolimits" => {
                     self.i += 1;
                 }
+                // xcolor in math: `\color[model]{c}` recolours the rest of the
+                // group, `\textcolor[model]{c}{body}` its body. The atoms are
+                // unchanged; the text parser resolves the colours into
+                // `Inline::Math::color_ranges` from the same tokens.
+                TokenKind::Command(ref paint) if paint == "color" || paint == "textcolor" => {
+                    self.i += 1;
+                    self.skip_color_arguments();
+                    if paint == "textcolor" {
+                        atoms.extend(self.required_group("textcolor", token.span).atoms);
+                    }
+                }
                 TokenKind::Command(ref infix) if infix == "choose" || infix == "over" => {
                     // TeX infix forms: everything before in this group is the
                     // top, everything after (to the group's end) the bottom.
@@ -1555,6 +1566,43 @@ impl MathParser<'_> {
     /// `\vec\nabla`), skipping leading spaces. `self.atom()` is exactly the
     /// "parse one token into one atom" step the top-level list and
     /// `script_argument` already use for this same rule (`x^ab` = `x^a b`).
+    /// Skips xcolor's `[model]` and one `{colour}` argument.
+    fn skip_color_arguments(&mut self) {
+        let space = |p: &Self| matches!(p.tokens.get(p.i).map(|t| &t.kind), Some(TokenKind::Space));
+        while space(self) {
+            self.i += 1;
+        }
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w.starts_with('[')) {
+            while self.i < self.tokens.len() {
+                let closes = matches!(&self.tokens[self.i].kind, TokenKind::Word(w) if w.contains(']'));
+                self.i += 1;
+                if closes {
+                    break;
+                }
+            }
+            while space(self) {
+                self.i += 1;
+            }
+        }
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::LBrace)) {
+            let mut depth = 0usize;
+            while self.i < self.tokens.len() {
+                let kind = self.tokens[self.i].kind.clone();
+                self.i += 1;
+                match kind {
+                    TokenKind::LBrace => depth += 1,
+                    TokenKind::RBrace => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn required_group(&mut self, command: &str, span: Span) -> MathList {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),

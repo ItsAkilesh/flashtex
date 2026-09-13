@@ -60,7 +60,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "eqref", "autoref", "cref", "Cref", "nameref", "url", "href", "hyperref", "hyperlink",
     "hypertarget", "citep", "citet", "citeauthor", "addbibresource", "printbibliography",
     // Colour and graphics packages.
-    "color", "textcolor", "colorbox", "fcolorbox", "definecolor", "pagecolor", "tikz",
+    "tikz",
     "usetikzlibrary", "draw", "node", "fill", "path", "scalebox", "resizebox", "rotatebox",
     "subcaption", "captionof", "listoflistings", "lstinline", "mintinline",
     // amsmath and amssymb.

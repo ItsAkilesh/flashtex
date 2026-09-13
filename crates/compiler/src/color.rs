@@ -790,7 +790,7 @@ impl Colors {
                     }
                 }
                 "usenames" => usenames = true,
-                "pdftex" | "nodvipsnames" | "monochrome" if option != "monochrome" => {}
+                "pdftex" => {}
                 other => unsupported.push(other.to_string()),
             }
         }
@@ -858,6 +858,19 @@ impl Colors {
 
     pub fn is_xcolor(&self) -> bool {
         self.xcolor
+    }
+
+    /// `\selectcolormodel{model}`: later definitions and uses convert to it.
+    pub fn select_target(&mut self, model_name: &str) -> Result<(), ColorError> {
+        self.require_xcolor("\\selectcolormodel")?;
+        self.target = match model_name.trim() {
+            "natural" => None,
+            name => match model(name)? {
+                m @ (Model::Rgb | Model::Cmy | Model::Cmyk | Model::Gray) => Some(m),
+                _ => return Err(ColorError::Unsupported(format!("target model `{name}`"))),
+            },
+        };
+        Ok(())
     }
 
     /// Whether `name` is a defined colour.
