@@ -786,12 +786,16 @@ pub fn adapt_cached(
     // amsmath's `leqno`/`fleqn` options (global class options reach it too).
     // Without amsmath, `leqno.clo`/`fleqn.clo` build displays differently
     // (a zero-width `\eqno`, a `trivlist`), which is not modelled.
+    let mut amsmath_cmex10 = false;
     if amsmath {
         let package = package_options(source, "amsmath").unwrap_or_default();
         let has = |name: &str| class_options.split(',').chain(package.split(',')).any(|o| o.trim() == name);
         style.leqno = has("leqno");
         style.fleqn = has("fleqn");
+        // `\usepackage[cmex10]{amsmath}` keeps the kernel's `sfixed*cmex10`.
+        amsmath_cmex10 = package.split(',').any(|o| o.trim() == "cmex10");
     }
+    style.cmex_designs = crate::style::cmex_designs(&parsed.packages, amsmath_cmex10);
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
