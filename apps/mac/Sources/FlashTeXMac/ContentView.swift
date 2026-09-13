@@ -109,7 +109,8 @@ private struct WorkspaceToolbar: ToolbarContent {
             } label: {
                 Label(model.workerAttached ? "Producer" : "Attach", systemImage: model.workerAttached ? "cpu.fill" : "cpu")
             }
-            .help("Producer: " + (model.isFixture ? "fixture (not a real compile)" : model.workerStatus) + " — attach the built compiler (⌘⇧K), the Latin Modern render pipeline (⌘⇧R) or any executable (⌘K)")
+            // `producerSummary`, not `workerStatus`: the toolbar must not re-evaluate per request (ShellModel toolbar mirrors).
+            .help("Producer: " + (model.isFixture ? "fixture (not a real compile)" : model.producerSummary) + " — attach the built compiler (⌘⇧K), the Latin Modern render pipeline (⌘⇧R) or any executable (⌘K)")
         }
         ToolbarItemGroup(placement: .automatic) {
             Toggle(isOn: $model.previewV2) { Label("v2 pane", systemImage: "rectangle.on.rectangle") }
@@ -125,9 +126,9 @@ private struct WorkspaceToolbar: ToolbarContent {
             Button { openWindow(id: EditHistoryPanel.windowID) } label: { Label("Durable History", systemImage: "clock.arrow.circlepath") }
                 .help("Durable History… (Edit): undo/redo on the helper's edit ledger")
             Menu {
-                Button("Export PDF…") { model.exportPDF() }.disabled(model.result == nil)
-                Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }.disabled(model.result == nil)
-                Button("Export PDF (exact, v2)…") { model.exportPDFExact() }.disabled(model.displayListV2?.frame == nil)
+                Button("Export PDF…") { model.exportPDF() }.disabled(!model.toolbarHasResult)
+                Button("Export PDF via Rust Writer…") { model.exportPDFViaRust() }.disabled(!model.toolbarHasResult)
+                Button("Export PDF (exact, v2)…") { model.exportPDFExact() }.disabled(!model.toolbarHasV2Frame)
             } label: { Label("Export", systemImage: "square.and.arrow.up") }
                 .help("Export PDF… (⌘⇧E), via Rust writer (⌘⌥E), or exact from the v2 display list (File menu)")
             Button { openWindow(id: "nearby") } label: { Label("Nearby", systemImage: "ipad.and.iphone") }
@@ -140,7 +141,7 @@ private struct WorkspaceToolbar: ToolbarContent {
             .help("Show or hide the Captures inspector (View, ⌘⇧I): captures from the iPad, their proposals, Insert at caret")
             .accessibilityIdentifier("toolbar.captures")
             Toggle(isOn: $model.problemsVisible) {
-                let n = model.displayedDiagnostics.count
+                let n = model.toolbarProblemCount
                 Label(n > 0 ? "Problems \(n)" : "Problems", systemImage: n > 0 ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
             }
             .toggleStyle(.button)
@@ -375,7 +376,7 @@ private struct PreviewHeader: View {
             .font(.caption2.bold())
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.25), in: Capsule())
-            .help(model.isFixture ? "Not a real compile." : model.workerStatus)
+            .help(model.isFixture ? "Not a real compile." : model.producerSummary)
     }
 
     private var sourceName: String {
