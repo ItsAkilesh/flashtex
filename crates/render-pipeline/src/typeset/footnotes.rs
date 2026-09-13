@@ -222,6 +222,7 @@ impl<'a> Context<'a> {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: pagebuild::DepthAfter::default(),
         };
         Some(BuiltBlock { block: pl::ParagraphBlock::body(lines), items: list, recs, vertical, labels, cache_key: None })
     }

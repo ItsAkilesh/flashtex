@@ -159,13 +159,32 @@ pub struct VBlock {
     /// instead of the club/widow/interline penalties. Sorted by index; an
     /// index equal to the line count puts the penalty after the last line.
     pub line_penalty: Vec<(usize, i32)>,
+    /// What the block leaves in `\prevdepth`.
+    pub depth_after: DepthAfter,
+}
+
+/// `\prevdepth` after a block, for the interline glue of whatever follows.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum DepthAfter {
+    /// The last line's depth: an ordinary `\box` appended in vertical mode
+    /// (TeX §679 `append_to_vlist`).
+    #[default]
+    LastLine,
+    /// Unchanged. longtable `\unvbox`es each chunk into the page's vertical
+    /// list (longtable.sty 252, 322, 334), and `\unvbox` sets no
+    /// `\prevdepth`, so a table with no head or foot box leaves the value
+    /// the material before it had.
+    Unchanged,
+    /// The depth of a box the package appended itself: longtable's
+    /// `\box\LT@firsthead` (239) or `\box\LT@lastfoot` (506).
+    Fixed(f64),
 }
 
 /// A stretch of the vertical list that carries its own page-breaking rules:
 /// longtable's region between `\LT@start` and `\endlongtable`
 /// (longtable.sty 196-241, 487-517). Inside it `\pagegoal` is reduced by
-/// `\ht\LT@foot` and `\maxdepth` is zero; a break appends `\LT@foot` to
-/// the page that ends and starts the next one with `\LT@head`.
+/// `\ht\LT@foot`; a break appends `\LT@foot` to the page that ends and
+/// starts the next one with `\LT@head`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Region {
     /// The block's contributed line indices the region covers.
@@ -208,6 +227,7 @@ pub fn vlist(p: &PageParams, blocks: &[VBlock]) -> Vec<VItem> {
         if b.lines.is_empty() {
             continue;
         }
+        let depth_before = prev_depth;
         if let Some(pen) = b.penalty_before {
             // \addpenalty: skipped at the very top of the list (\if@nobreak).
             if !out.is_empty() {
@@ -255,6 +275,11 @@ pub fn vlist(p: &PageParams, blocks: &[VBlock]) -> Vec<VItem> {
         }
         if let Some((_, pen)) = b.line_penalty.iter().find(|(i, _)| *i == n) {
             out.push(VItem::Penalty(*pen));
+        }
+        match b.depth_after {
+            DepthAfter::LastLine => {}
+            DepthAfter::Unchanged => prev_depth = depth_before,
+            DepthAfter::Fixed(d) => prev_depth = Some(d),
         }
         if let Some(pen) = b.penalty_after {
             out.push(VItem::Penalty(pen));
@@ -381,9 +406,9 @@ pub fn break_pages_shortened(base: &PageParams, list: &[VItem], short_pages: usi
 }
 
 /// [`break_pages_shortened`] with longtable regions: inside one, the page
-/// goal is reduced by `\ht\LT@foot` and `\maxdepth` is zero
-/// (longtable.sty 226-231), a page broken inside it ends with `\LT@foot`
-/// and the next begins with `\LT@head` (`\LT@output`, 487-517).
+/// goal is reduced by `\ht\LT@foot` (longtable.sty 226-229), a page broken
+/// inside it ends with `\LT@foot` and the next begins with `\LT@head`
+/// (`\LT@output`, 487-517).
 pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize, short: f64, regions: &[ResolvedRegion]) -> Vec<BuiltPage> {
     let mut pages: Vec<BuiltPage> = Vec::new();
     let mut start = 0usize;
@@ -474,11 +499,18 @@ pub fn break_pages_regions(base: &PageParams, list: &[VItem], short_pages: usize
                     st.total += if st.has_box { st.depth + height } else { baseline };
                     st.has_box = true;
                     st.depth = *depth;
-                    // `\maxdepth\z@` inside a longtable (longtable.sty 230).
-                    let maxdepth = if region_at(i).is_some() { 0.0 } else { p.maxdepth };
-                    if st.depth > maxdepth {
-                        st.total += st.depth - maxdepth;
-                        st.depth = maxdepth;
+                    // `\LT@start`'s `\maxdepth\z@` (longtable.sty 230) does
+                    // not reach the page: TeX froze `page_max_depth` when
+                    // the page's first box landed (§987), which for a table
+                    // starting mid-page is before `\LT@start` runs, and
+                    // `\@makecol` ends every page with
+                    // `\global\maxdepth\@maxdepth`, so each continuation
+                    // page freezes the class value again. Measured against
+                    // pdflatex on a three-page longtable: a zeroed maxdepth
+                    // loses one row per continuation page.
+                    if st.depth > p.maxdepth {
+                        st.total += st.depth - p.maxdepth;
+                        st.depth = p.maxdepth;
                     }
                     st.lines.push(Placed {
                         payload: *payload,
@@ -1234,6 +1266,7 @@ mod tests {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: DepthAfter::default(),
         }
     }
 
@@ -1386,6 +1419,7 @@ mod tests {
             lineskip: None,
             contributed: None,
             line_penalty: Vec::new(),
+            depth_after: DepthAfter::default(),
             baselineskip: Some(22.0),
         };
         let mut after = para(3);
