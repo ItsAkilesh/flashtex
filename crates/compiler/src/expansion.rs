@@ -922,11 +922,11 @@ thread_local! {
 /// Documents kept warm per thread.
 const MAX_CACHES: usize = 4;
 
-/// Source bytes between engine checkpoints. Each checkpoint clones and, when
-/// converging, compares the engine's whole assignment state; measured on
-/// HW1/HW2, denser checkpoints (every 256-320 bytes) made keystrokes slower
-/// than this interval despite shorter re-expansion.
-const CHECKPOINT_INTERVAL: usize = 2048;
+/// Source bytes between engine checkpoints. Engine state is copy-on-write, so
+/// a checkpoint costs a few reference-count bumps and a convergence check
+/// compares only what the two runs assigned since they diverged; a keystroke
+/// then re-expands at most about two intervals of source.
+const CHECKPOINT_INTERVAL: usize = 512;
 
 /// [`expand_project`], re-expanding incrementally when the entry document
 /// was expanded before on this thread (same path). Output is identical to
