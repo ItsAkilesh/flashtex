@@ -1338,7 +1338,7 @@ impl P<'_> {
     }
 
     fn define_macro(&mut self, kind: &str, span: Span) {
-        let (name_tokens, name_span) = self.required_group(kind, span);
+        let (name_tokens, name_span) = self.long_required_group(kind, span);
         let macro_name = name_tokens
             .iter()
             .filter(|t| !matches!(t.token.kind, TokenKind::Space | TokenKind::Comment))
@@ -1382,7 +1382,7 @@ impl P<'_> {
             },
             None => 0,
         };
-        let (body, _) = self.required_group(kind, span);
+        let (body, _) = self.long_required_group(kind, span);
         let definition = MacroDef {
             argument_count,
             body: body.into_iter().map(|t| t.token).collect(),
@@ -1428,7 +1428,7 @@ impl P<'_> {
     ) {
         let mut arguments = Vec::new();
         for _ in 0..definition.argument_count {
-            let (argument, argument_span) = self.required_group(name, span);
+            let (argument, argument_span) = self.long_required_group(name, span);
             if argument_span != span
                 && argument.iter().all(|token| {
                     matches!(
@@ -1682,6 +1682,9 @@ impl P<'_> {
                 found_end = true;
                 break;
             }
+            if paragraph_boundary_at(&self.t, self.i) {
+                break;
+            }
             if matches!(&self.t[self.i].token.kind, TokenKind::Command(name) if name == "label") {
                 let label_span = self.t[self.i].token.span;
                 self.i += 1;
@@ -1712,7 +1715,14 @@ impl P<'_> {
             self.diags.push(Diagnostic::error(
                 format!("unterminated environment '{name}' — no matching \\end"),
                 Some(open),
-                Some("closed the equation at end of input".into()),
+                Some(
+                    if self.i < self.t.len() {
+                        "closed the equation at the end of the paragraph"
+                    } else {
+                        "closed the equation at end of input"
+                    }
+                    .into(),
+                ),
             ));
         }
         let list = math::parse_tokens(&raw, &mut self.diags);
@@ -1765,6 +1775,9 @@ impl P<'_> {
                     found_end = true;
                     break;
                 }
+            }
+            if paragraph_boundary_at(&self.t, self.i) {
+                break;
             }
             let token = self.t[self.i].token.clone();
             let row = rows.last_mut().expect("at least one row");
@@ -1835,7 +1848,14 @@ impl P<'_> {
             self.diags.push(Diagnostic::error(
                 format!("unterminated environment '{name}' — no matching \\end"),
                 Some(open),
-                Some("closed the display at end of input".into()),
+                Some(
+                    if self.i < self.t.len() {
+                        "closed the display at the end of the paragraph"
+                    } else {
+                        "closed the display at end of input"
+                    }
+                    .into(),
+                ),
             ));
         }
         // A trailing `\\` before `\end` does not start a real row.
@@ -1926,6 +1946,12 @@ impl P<'_> {
             if self.expand_current_macro() {
                 continue;
             }
+            // Unterminated math ends with its paragraph (TeX: "Missing $
+            // inserted"), never at a `$` pages later.
+            if paragraph_boundary_at(&self.t, self.i) {
+                content_end = self.i;
+                break;
+            }
             if self.t[self.i].token.kind == TokenKind::MathShift {
                 let closes = !display
                     || self.t.get(self.i + 1).map(|t| &t.token.kind) == Some(&TokenKind::MathShift);
@@ -1963,13 +1989,18 @@ impl P<'_> {
             if self.expand_current_macro() {
                 continue;
             }
-            if self.t[self.i].token.kind == TokenKind::DisplayMathClose {
+            if self.t[self.i].token.kind == TokenKind::DisplayMathClose
+                || paragraph_boundary_at(&self.t, self.i)
+            {
                 break;
             }
             self.i += 1;
         }
         let content_end = self.i;
-        let found = self.i < self.t.len();
+        let found = matches!(
+            self.t.get(self.i).map(|input| &input.token.kind),
+            Some(TokenKind::DisplayMathClose)
+        );
         let close_end = if found {
             let end = self.t[self.i].token.span.end;
             self.i += 1;
@@ -2045,22 +2076,44 @@ impl P<'_> {
             }
             raw.push(input.token.clone());
         }
-        let list = math::parse_tokens(&raw, &mut self.diags);
+        let (list, unclosed) = math::parse_tokens_reporting_unclosed(&raw, &mut self.diags, !found);
         let end = if found {
             close_end
         } else {
             raw.last().map_or(open.end, |t| t.span.end)
         };
-        if !found {
-            self.diags.push(Diagnostic::error(
+        match (found, unclosed) {
+            (true, Some(group)) => self.diags.push(Diagnostic::error(
+                "math group is missing its closing brace",
+                Some(group),
+                Some("closed the group at the math delimiter".into()),
+            )),
+            // One primary diagnostic at the innermost opener: closing it is
+            // the next thing the author has to type.
+            (false, Some(group)) => self.diags.push(Diagnostic::error(
+                "'{' opened here is not closed before the end of the paragraph",
+                Some(group),
+                Some(
+                    if display {
+                        "closed the group and the display math at the end of the paragraph"
+                    } else {
+                        "closed the group and the inline math at the end of the paragraph"
+                    }
+                    .into(),
+                ),
+            )),
+            (false, None) => self.diags.push(Diagnostic::error(
                 if display {
                     "display math is missing its closing delimiter"
                 } else {
                     "inline math is missing its closing '$'"
                 },
                 Some(open),
-                Some("closed math mode at end of input and typeset its contents".into()),
-            ));
+                Some(
+                    "closed math mode at the end of the paragraph and typeset its contents".into(),
+                ),
+            )),
+            (true, None) => {}
         }
         // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
         // print a number or advance the equation counter.
@@ -2074,7 +2127,30 @@ impl P<'_> {
         });
     }
 
+    /// A non-`\long` argument: like TeX, it cannot run past the end of the
+    /// paragraph, so an unclosed one is closed there.
     fn required_group(&mut self, command: &str, command_span: Span) -> (Vec<InputToken>, Span) {
+        self.required_group_bounded(command, command_span, false)
+    }
+
+    /// A `\long` argument (macro bodies and arguments of `\newcommand`
+    /// macros) may legitimately span paragraphs; only when it is never
+    /// closed at all is it closed at the end of its first paragraph rather
+    /// than swallowing the rest of the document.
+    fn long_required_group(
+        &mut self,
+        command: &str,
+        command_span: Span,
+    ) -> (Vec<InputToken>, Span) {
+        self.required_group_bounded(command, command_span, true)
+    }
+
+    fn required_group_bounded(
+        &mut self,
+        command: &str,
+        command_span: Span,
+        long: bool,
+    ) -> (Vec<InputToken>, Span) {
         self.skip_spaces();
         let open = match self.peek() {
             Some(token) if token.kind == TokenKind::LBrace => token.span,
@@ -2091,7 +2167,14 @@ impl P<'_> {
         let start = self.i;
         let mut depth = 1usize;
         let mut end = open.end;
+        let mut boundary = None;
         while self.i < self.t.len() {
+            if boundary.is_none() && paragraph_boundary_at(&self.t, self.i) {
+                boundary = Some((self.i, end));
+                if !long {
+                    break;
+                }
+            }
             let token = &self.t[self.i].token;
             match token.kind {
                 TokenKind::LBrace => depth += 1,
@@ -2109,13 +2192,21 @@ impl P<'_> {
             end = token.span.end;
             self.i += 1;
         }
+        let (stop, recovery) = match boundary {
+            Some((index, before)) => {
+                end = before;
+                (index, "closed the argument at the end of the paragraph")
+            }
+            None => (self.t.len(), "closed the argument at end of input"),
+        };
+        self.i = stop;
         self.diags.push(Diagnostic::error(
             format!("argument to \\{} is missing its closing brace", command),
             Some(open),
-            Some("closed the argument at end of input".into()),
+            Some(recovery.into()),
         ));
         (
-            self.t[start..].to_vec(),
+            self.t[start..stop].to_vec(),
             Span::in_document(open.document, open.start, end),
         )
     }
@@ -2778,6 +2869,50 @@ fn environment_end_at(
         return None;
     }
     Some((cursor + 1, command.token.span.merge(close.token.span)))
+}
+
+/// The environment name of a complete `\begin{name}` / `\end{name}` at
+/// `index`, if the token there is one.
+fn environment_name_at(tokens: &[InputToken], index: usize) -> Option<&str> {
+    let command = tokens.get(index)?;
+    if !matches!(&command.token.kind, TokenKind::Command(name) if name == "begin" || name == "end")
+    {
+        return None;
+    }
+    let mut cursor = index + 1;
+    while matches!(
+        tokens.get(cursor).map(|input| &input.token.kind),
+        Some(TokenKind::Space | TokenKind::Comment)
+    ) {
+        cursor += 1;
+    }
+    let [open, name, close] = tokens.get(cursor..cursor + 3)? else {
+        return None;
+    };
+    match (&open.token.kind, &name.token.kind, &close.token.kind) {
+        (TokenKind::LBrace, TokenKind::Word(name), TokenKind::RBrace) => Some(name),
+        _ => None,
+    }
+}
+
+/// Whether the token at `index` ends the paragraph for error recovery, the
+/// way TeX's `\par` stops a runaway argument or unterminated math: a blank
+/// line, `\par`, or a command that starts a new vertical-mode block (`\item`,
+/// a sectioning command, or `\begin`/`\end` of an environment that is not
+/// typeset inside math). An unclosed argument, group or math span is closed
+/// at this token so the rest of the document is laid out as if it were
+/// balanced — one keystroke of half-typed input never reflows later pages.
+fn paragraph_boundary_at(tokens: &[InputToken], index: usize) -> bool {
+    match tokens.get(index).map(|input| &input.token.kind) {
+        Some(TokenKind::ParBreak) => true,
+        Some(TokenKind::Command(name)) => match name.as_str() {
+            "par" | "item" | "section" | "subsection" => true,
+            "begin" | "end" => environment_name_at(tokens, index)
+                .is_some_and(|environment| !math::is_math_environment(environment)),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn has_document_environment(tokens: &[Token]) -> bool {

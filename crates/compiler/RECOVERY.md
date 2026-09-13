@@ -1,8 +1,10 @@
-Generated from commit `79986817cb0b3065d86f730e827891304af36a03` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `a448e015b11ef20676c1c76cfdde252fc79d9c01` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
 Generated from the real compiler by the command above. Status, diagnostics, recovery notes, ranges, and positioned items are observed rather than handwritten.
+
+Locality policy: recovery stays inside the paragraph that contains the error, mirroring TeX's runaway-argument and `Missing $ inserted` behaviour. An unterminated `$`, `$$` or `\[` math span, an unterminated display environment (`equation`, `align`, ...) and an unclosed command argument (`\section{`, `\label{`, or a `\textbf{` with no matching `}` anywhere later) are closed at the end of their paragraph: a blank line, `\par`, `\item`, `\section`/`\subsection`, or `\begin`/`\end` of an environment that is not typeset inside math. A math group left open inside math closes at the math delimiter, or with the math at the end of the paragraph; either way one primary diagnostic names the innermost unclosed `{`, and arguments that could not be read because that group swallowed the rest of the math are not reported again. Arguments of `\newcommand` macros and macro bodies are long, so they may span paragraphs; only when never closed at all are they closed at the end of their first paragraph. A bare `{` group still extends to its matching `}` or the end of input, because groups spanning paragraphs are valid TeX and only scope style and macro definitions. Everything after the paragraph lays out exactly as in the balanced document (`tests/local_recovery.rs`).
 
 ## unmatched open brace
 
@@ -509,7 +511,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `inline math is missing its closing '$'` — recovery: `closed math mode at end of input and typeset its contents`; byte range: `8..9`
+- `inline math is missing its closing '$'` — recovery: `closed math mode at the end of the paragraph and typeset its contents`; byte range: `8..9`
 
 Positioned text items:
 
@@ -530,7 +532,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `display math is missing its closing delimiter` — recovery: `closed math mode at end of input and typeset its contents`; byte range: `8..9`
+- `display math is missing its closing delimiter` — recovery: `closed math mode at the end of the paragraph and typeset its contents`; byte range: `8..9`
 
 Positioned text items:
 
@@ -551,7 +553,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `display math is missing its closing delimiter` — recovery: `closed math mode at end of input and typeset its contents`; byte range: `8..10`
+- `display math is missing its closing delimiter` — recovery: `closed math mode at the end of the paragraph and typeset its contents`; byte range: `8..10`
 
 Positioned text items:
 
@@ -559,6 +561,162 @@ Positioned text items:
 - `x` — byte range `10..11`
 - `+` — byte range `11..12`
 - `1` — byte range `12..13`
+
+## unclosed inline math ends at its paragraph
+
+Input:
+
+```text
+Visible $x+1
+
+Tail $y$.
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `inline math is missing its closing '$'` — recovery: `closed math mode at the end of the paragraph and typeset its contents`; byte range: `8..9`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `x` — byte range `9..10`
+- `+` — byte range `10..11`
+- `1` — byte range `11..12`
+- `Tail` — byte range `14..18`
+- `y` — byte range `20..21`
+- `.` — byte range `22..23`
+
+## unclosed math group in unclosed inline math ends at its paragraph
+
+Input:
+
+```text
+Visible $x^2 + \frac{a
+
+Tail $y$.
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `'{' opened here is not closed before the end of the paragraph` — recovery: `closed the group and the inline math at the end of the paragraph`; byte range: `20..21`
+- `'─' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully` — recovery: `the preview shows it correctly; the exported PDF will not`; byte range: `15..20`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `x` — byte range `9..10`
+- `2` — byte range `11..12`
+- `+` — byte range `13..14`
+- `a` — byte range `21..22`
+- `─` — byte range `15..20`
+- `Tail` — byte range `24..28`
+- `y` — byte range `30..31`
+- `.` — byte range `32..33`
+
+## unclosed display math group ends at its paragraph
+
+Input:
+
+```text
+Visible \[x+\frac{a
+
+Tail $y$.
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `'{' opened here is not closed before the end of the paragraph` — recovery: `closed the group and the display math at the end of the paragraph`; byte range: `17..18`
+- `'─' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully` — recovery: `the preview shows it correctly; the exported PDF will not`; byte range: `12..17`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `x` — byte range `10..11`
+- `+` — byte range `11..12`
+- `a` — byte range `18..19`
+- `─` — byte range `12..17`
+- `Tail` — byte range `21..25`
+- `y` — byte range `27..28`
+- `.` — byte range `29..30`
+
+## unclosed inline math ends before a block environment
+
+Input:
+
+```text
+Visible $x
+\begin{itemize}\item Tail $y$.\end{itemize}
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `inline math is missing its closing '$'` — recovery: `closed math mode at the end of the paragraph and typeset its contents`; byte range: `8..9`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `x` — byte range `9..10`
+- `•` — byte range `26..31`
+- `Tail` — byte range `32..36`
+- `y` — byte range `38..39`
+- `.` — byte range `40..41`
+
+## required argument missing closing brace ends at its paragraph
+
+Input:
+
+```text
+Visible \textbf{Tail
+
+Next $y$.
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `argument to \textbf is missing its closing brace` — recovery: `closed the argument at the end of the paragraph`; byte range: `15..16`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `Tail` — byte range `16..20`
+- `Next` — byte range `22..26`
+- `y` — byte range `28..29`
+- `.` — byte range `30..31`
+
+## unterminated display environment ends at its paragraph
+
+Input:
+
+```text
+Visible \begin{align} x
+
+Tail $y$.
+```
+
+Status: `recovered`
+
+Diagnostics:
+
+- `unterminated environment 'align' — no matching \end` — recovery: `closed the display at the end of the paragraph`; byte range: `8..14`
+
+Positioned text items:
+
+- `Visible` — byte range `0..7`
+- `x` — byte range `22..23`
+- `(1)` — byte range `21..23`
+- `Tail` — byte range `25..29`
+- `y` — byte range `31..32`
+- `.` — byte range `33..34`
 
 ## unmatched math closing brace
 
@@ -633,7 +791,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `math group is missing its closing brace` — recovery: `closed the group at the math delimiter`; byte range: `12..13`
+- `math group is missing its closing brace` — recovery: `closed the group at the math delimiter`; byte range: `11..12`
 
 Positioned text items:
 
