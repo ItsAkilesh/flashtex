@@ -20,7 +20,7 @@
 //! - `*-err`: the `! ...` error lines of the TeX log vs. the last line of
 //!   each of our error diagnostics (line numbers normalised).
 
-use flashtex_tex_expansion::{expand_str, tokens_to_display_string, Severity, Token, TokenKind};
+use flashtex_tex_expansion::{expand_str, is_group_token, tokens_to_display_string, Severity, Token, TokenKind};
 use serde_json::Value;
 use std::fs;
 
@@ -72,6 +72,9 @@ fn evaluate(case: &Value) -> (String, String, String) {
         .tokens
         .iter()
         .filter(|t| !matches!(&t.kind, TokenKind::ControlSequence(n) if n == "document" || n == "relax"))
+        // Grouping tokens are emitted for the typesetter; TeX neither
+        // writes executed braces nor typesets them.
+        .filter(|t| !is_group_token(t))
         .cloned()
         .collect();
     if mode.ends_with("-err") {

@@ -1,4 +1,11 @@
-use flashtex_tex_expansion::{expand_str, tokens_to_display_string};
+use flashtex_tex_expansion::{expand_str, is_group_token, tokens_to_display_string, Token};
+
+/// Content text with grouping tokens removed (they are emitted for the
+/// typesetter; see `grouping_tokens_are_emitted_with_spans`).
+fn text(tokens: &[Token]) -> String {
+    let content: Vec<Token> = tokens.iter().filter(|t| !is_group_token(t)).cloned().collect();
+    tokens_to_display_string(&content)
+}
 
 fn run(src: &str) -> String {
     let r = expand_str(src);
@@ -7,12 +14,12 @@ fn run(src: &str) -> String {
         "unexpected diagnostics for {src:?}: {:?}",
         r.diagnostics
     );
-    tokens_to_display_string(&r.tokens)
+    text(&r.tokens)
 }
 
 fn run_allow_diag(src: &str) -> (String, usize) {
     let r = expand_str(src);
-    (tokens_to_display_string(&r.tokens), r.diagnostics.len())
+    (text(&r.tokens), r.diagnostics.len())
 }
 
 #[test]
@@ -303,4 +310,57 @@ fn futurelet_peeks_without_consuming() {
     // Z), then reinserts "X\a" unchanged so \a still expands normally;
     // calling \next afterward shares that same meaning.
     assert_eq!(run(r"\def\a{Z}\futurelet\next X\a\next"), "XZZ");
+}
+
+
+#[test]
+fn grouping_tokens_are_emitted_with_spans() {
+    let src = r"a{b}\begingroup c\endgroup\bgroup d\egroup";
+    let r = expand_str(src);
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let shown: Vec<String> = r.tokens.iter().map(|t| tokens_to_display_string(std::slice::from_ref(t))).collect();
+    assert_eq!(shown, ["a", "{", "b", "}", "\\begingroup ", "c", "\\endgroup ", "{", "d", "}"]);
+    // Explicit braces keep their exact source spans...
+    assert_eq!((r.tokens[1].span.start, r.tokens[1].span.end), (1, 2));
+    assert_eq!((r.tokens[3].span.start, r.tokens[3].span.end), (3, 4));
+    // ...and \bgroup/\egroup emit the implicit brace with the control
+    // sequence's span; \begingroup keeps its own.
+    let span_text = |i: usize| &src[r.tokens[i].span.start as usize..r.tokens[i].span.end as usize];
+    assert_eq!(span_text(4), "\\begingroup");
+    assert_eq!(span_text(7), "\\bgroup");
+    assert_eq!(span_text(9), "\\egroup");
+}
+
+#[test]
+fn aftergroup_tokens_follow_the_closing_brace() {
+    let r = expand_str(r"{\aftergroup Xy}z");
+    let shown: Vec<String> = r.tokens.iter().map(|t| tokens_to_display_string(std::slice::from_ref(t))).collect();
+    assert_eq!(shown, ["{", "y", "}", "X", "z"]);
+}
+
+#[test]
+fn macro_arguments_keep_group_boundaries() {
+    // The typesetter must see that `\textbf`'s argument is one group.
+    let r = expand_str(r"\def\wrap#1{\textbf{#1}}\wrap{ab}");
+    let shown: Vec<String> = r.tokens.iter().map(|t| tokens_to_display_string(std::slice::from_ref(t))).collect();
+    assert_eq!(shown, ["\\textbf ", "{", "a", "b", "}"]);
+}
+
+#[test]
+fn runaway_recursion_inside_edef_terminates() {
+    use flashtex_tex_expansion::{Engine, Limits};
+    let limits = Limits { max_expansion_steps: 20_000, ..Limits::default() };
+    let mut e = Engine::with_limits(r"\def\a{x\a}\edef\b{\a}\b", limits);
+    e.run();
+    let d = e.take_diagnostics();
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert!(d[0].message.contains("step limit"));
+}
+
+#[test]
+fn tail_recursive_loop_does_not_grow_the_input_stack() {
+    // 50k iterations of LaTeX's \loop run within the default limits.
+    let r = expand_str(r"\count1=0 \loop\advance\count1 by 1 \ifnum\count1<50000 \repeat\the\count1");
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    assert!(run_allow_diag(r"\count1=0 \loop\advance\count1 by 1 \ifnum\count1<50000 \repeat\the\count1").0.ends_with("50000"));
 }

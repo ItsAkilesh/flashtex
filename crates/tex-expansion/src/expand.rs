@@ -460,6 +460,7 @@ impl Engine {
         if toks.is_empty() {
             return;
         }
+        self.prune_exhausted();
         let pend = toks.into_iter().map(|tok| Pending { tok, frozen: false }).collect();
         self.sources.push(Input::Toks(pend, 0));
     }
@@ -468,10 +469,12 @@ impl Engine {
         if toks.is_empty() {
             return;
         }
+        self.prune_exhausted();
         self.sources.push(Input::Toks(toks, 0));
     }
 
     fn push_frozen(&mut self, tok: Token) {
+        self.prune_exhausted();
         self.sources.push(Input::Toks(vec![Pending { tok, frozen: true }], 0));
     }
 
@@ -624,10 +627,7 @@ impl Engine {
     /// `None` at end of input).
     pub fn next_content_token(&mut self) -> Option<Token> {
         loop {
-            self.steps += 1;
-            if self.steps > self.limits.max_expansion_steps {
-                self.err("expansion step limit exceeded (possible infinite macro loop)", Span::synthetic());
-                self.stopped = true;
+            if !self.tick() {
                 return None;
             }
             if let Some(t) = self.emit_queue.pop() {
@@ -653,6 +653,24 @@ impl Engine {
                 Step::Eof => return None,
             }
         }
+    }
+
+    /// Count one expansion step outside the main loop (macro calls,
+    /// expand-only reads). Past `max_expansion_steps` the engine stops
+    /// with one diagnostic -- the analogue of TeX's "capacity exceeded"
+    /// for e.g. `\def\a{x\a}\edef\b{\a}`, which otherwise never returns
+    /// to the main loop.
+    fn tick(&mut self) -> bool {
+        if self.stopped {
+            return false;
+        }
+        self.steps += 1;
+        if self.steps > self.limits.max_expansion_steps {
+            self.err("expansion step limit exceeded (possible infinite macro loop)", Span::synthetic());
+            self.stopped = true;
+            return false;
+        }
+        true
     }
 
     fn prefix_pending(&self) -> bool {
@@ -885,11 +903,13 @@ impl Engine {
 
     // ---- grouping (`{`/`}` characters) --------------------------------
 
-    /// Characters with catcode BeginGroup/EndGroup open/close scopes just
-    /// like `\begingroup`/`\endgroup`. A bare grouping brace is pure
-    /// bookkeeping in real TeX's main control (`new_save_level`/`unsave`
-    /// append nothing to the current list), so it produces no output
-    /// token; `\aftergroup` tokens are reinserted where the `}` was.
+    /// Characters with catcode BeginGroup/EndGroup (explicit, or implicit
+    /// via `\let\bgroup={`) open/close scopes. The token itself is also
+    /// emitted, with its span: after expansion TeX hands `{`/`}` to the
+    /// stomach, and downstream consumers need the group/argument
+    /// boundaries. `\aftergroup` tokens are reinserted right after the
+    /// emitted `}`. Unbalanced `}` ("Too many }'s") is dropped, as TeX
+    /// does.
     fn maybe_handle_brace(&mut self, tok: &Token) -> Option<Step> {
         if let TokenKind::Char(_, cat) = tok.kind {
             match cat {
@@ -899,7 +919,7 @@ impl Engine {
                         return Some(Step::Continue);
                     }
                     self.st.scopes.push_group();
-                    return Some(Step::Continue);
+                    return Some(Step::Emit(tok.clone()));
                 }
                 CatCode::EndGroup => {
                     if self.st.scopes.depth() <= 1 {
@@ -908,7 +928,7 @@ impl Engine {
                     }
                     let after = self.st.scopes.pop_group();
                     self.push_tokens(after);
-                    return Some(Step::Continue);
+                    return Some(Step::Emit(tok.clone()));
                 }
                 _ => {}
             }
@@ -1047,6 +1067,9 @@ impl Engine {
     /// and expandable primitives.
     fn next_expanding_raw(&mut self) -> Option<Pending> {
         loop {
+            if !self.tick() {
+                return None;
+            }
             let pending = self.next_raw()?;
             if pending.frozen {
                 return Some(pending);
@@ -1134,6 +1157,9 @@ impl Engine {
     }
 
     fn call_macro(&mut self, call_tok: &Token, def: &Rc<MacroDef>) {
+        if !self.tick() {
+            return;
+        }
         let mut args: HashMap<u8, Vec<Token>> = HashMap::new();
         let warning_name = self.cs_display(call_tok);
         let saved_status = std::mem::replace(&mut self.st.scanner_status, ScannerStatus::Matching(warning_name.clone()));
@@ -1792,9 +1818,11 @@ impl Engine {
                 self.finish_assignment();
                 Step::Continue
             }
+            // Emitted (canonically named, with the source span) so the
+            // typesetter sees semi-simple group boundaries too.
             Begingroup => {
                 self.st.scopes.push_group();
-                Step::Continue
+                Step::Emit(Token::new(TokenKind::ControlSequence("begingroup".into()), tok.span))
             }
             Endgroup => {
                 if self.st.scopes.depth() <= 1 {
@@ -1803,7 +1831,7 @@ impl Engine {
                 }
                 let after = self.st.scopes.pop_group();
                 self.push_tokens(after);
-                Step::Continue
+                Step::Emit(Token::new(TokenKind::ControlSequence("endgroup".into()), tok.span))
             }
             Aftergroup => {
                 if let Some(t) = self.next_raw_token() {
@@ -2052,7 +2080,7 @@ impl Engine {
             Label => {
                 let key = self.read_name_arg();
                 let toks = vec![Token::synthetic(TokenKind::ControlSequence("@currentlabel".into()))];
-                let content = self.expand_fully(toks, true);
+                let content: Vec<Token> = self.expand_fully(toks, true).into_iter().filter(|t| !is_group_token(t)).collect();
                 let current_label = crate::tokens_to_display_string(&content);
                 self.labels.push(LabelRecord { key, current_label, span: tok.span });
                 Step::Continue
@@ -2241,6 +2269,7 @@ impl Engine {
         // surrounding (real) input stream once the braced content is
         // exhausted.
         toks.push(Token::synthetic(TokenKind::ControlSequence("relax".to_string())));
+        self.prune_exhausted();
         let depth = self.sources.len();
         self.push_tokens(toks);
         let v = self.scan_number();
@@ -3957,6 +3986,16 @@ impl Engine {
 }
 
 // ---- free helpers ------------------------------------------------------
+
+/// A grouping token as emitted into the output stream: a catcode-1/2
+/// character or `\begingroup`/`\endgroup`.
+pub fn is_group_token(t: &Token) -> bool {
+    match &t.kind {
+        TokenKind::Char(_, CatCode::BeginGroup | CatCode::EndGroup) => true,
+        TokenKind::ControlSequence(n) => n == "begingroup" || n == "endgroup",
+        _ => false,
+    }
+}
 
 fn meaning_is_outer(m: &Meaning) -> bool {
     match m {
