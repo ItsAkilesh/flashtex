@@ -90,6 +90,13 @@ are explicit; native retention UI is still required before history is full.
 
 File-backed startup replaces `store_paths` with `project_root` and an existing
 application-owned `private_ledger_root`. These modes are mutually exclusive.
+PROPOSAL (FT-063, `protocol/proposals/display-list-v2-image.md` §2): a
+file-backed helper forwards its canonical project directory to the producer,
+as `--project-root <dir>` at launch and `payload.project_root` on every compile
+request (also after `restart`), so `\includegraphics` resolves. Store-backed
+helpers forward nothing and their producer argv/request bytes are unchanged.
+The runtime accepts an echoed `display-list-v2-images` only when requested and
+accepted together with `display-list-v2`.
 The helper imports discovered source into private ledgers and preserves existing
 ledger edits on restart, even when disk source has changed or disappeared.
 `file_status:{path}` rereads disk and returns `matches_source`,
