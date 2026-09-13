@@ -37,28 +37,47 @@ diagnostics are exactly the ones that invalidate a geometry comparison — the
 renderer says, in so many words, "the layout is not the reference geometry" —
 so `font_diagnostics` finds them and harnesses fail loudly on any hit.
 
-There are two font-resolution paths, and the environment only feeds one
+There are two required-metrics roots, and `FLASHTEX_TFM_DIRS` feeds both
 -----------------------------------------------------------------------
 
 `FLASHTEX_FONT_DIRS` / `FLASHTEX_TFM_DIRS` feed the general discovery list
 (`render-pipeline/src/fonts.rs::font_dirs` / `tfm_dirs_for`). The *rooted*
-required-metrics reader is separate: it only accepts a `texmf` tree found
-relative to the executable -- `<exe>/../Resources/texmf`, `<exe>/texmf`,
-`<exe>/../share/flashtex/texmf` -- and it refuses symlinked path components,
-which is why a NixOS texmf-dist never satisfies it.
+required-metrics reader is **not** cut off from the environment, as an earlier
+revision of this file claimed. `FontSet::required_metrics` builds its candidate
+roots from `self.tfm_dirs` -- which is exactly `FLASHTEX_TFM_DIRS` -- twice:
 
-So a correct environment is not always sufficient, and neither path announces
-itself. Do not try to tell them apart from the outside: the reliable assertion
-is the one below, `font_diagnostics` returning empty, because it catches
-whichever path failed. Reports differ between machines on whether the env
-alone satisfies the rooted reader (it did on the NixOS PC for the amsmath
-corpus, 59/59 with the env and a loud `required_metrics_unavailable` without
-it); that disagreement is exactly why the gate asserts on the diagnostics
-rather than on the configuration.
+* `FontSet::texmf_roots` strips the `fonts/tfm/public/lm` suffix off each TFM
+  directory and offers what is left as a `texmf-dist` root;
+* every TFM directory is then also offered as a *flat* root.
 
-If the rooted reader is the one failing, the fix is a real `texmf` directory
-next to the binary (or in `../Resources`/`../share/flashtex`), not more
-environment variables.
+Only if both come up empty does it fall back to the executable-relative trees
+(`<exe>/../Resources/texmf`, `<exe>/texmf`, `<exe>/../share/flashtex/texmf`),
+which is the path an installed app or CLI tarball uses.
+
+Three consequences, each measured on this checkout rather than assumed:
+
+* The three-directory spelling -- `.../public/lm`, `.../jknappen/ec`,
+  `.../public/amsfonts/symbols` -- is sufficient on its own. No `texmf` tree
+  next to the binary is needed: amsmath scores 59/59 with only the environment
+  set.
+* `--fonts <dir>` alone is *also* sufficient now, which it was not before this
+  module existed: when the metrics directories are unset, `tfm_dirs()` below
+  derives them by walking `<fonts>/texmf`. Measured: amsmath 59/59 with
+  `FLASHTEX_FONT_DIRS`/`FLASHTEX_TFM_DIRS` both unset and only `--fonts` given.
+* The remaining trap is an *explicitly exported but too narrow*
+  `FLASHTEX_TFM_DIRS`. An exported value always wins over the derivation (that
+  is the whole point of this module), so naming only `public/lm` drops the EC
+  metrics under `jknappen/ec`, and a T1 document silently gets roman widths.
+  This is not hypothetical: CI exported exactly that, and
+  `render-pipeline`'s `enumitem_keys_oracle` failed on it with the *y*
+  baselines exact and only the *x* positions drifting 0.5-2 bp -- it passes the
+  moment `jknappen/ec` is added. The amsmath corpus does not catch this,
+  because its fixtures are OT1 math and never load an EC face: it reads 59/59
+  under `public/lm` alone.
+
+The assertion below still keys on `font_diagnostics` being empty rather than on
+configuration, because that catches whichever root failed and needs no theory
+about which one was consulted.
 
 Usage in a harness
 ------------------
