@@ -33,6 +33,7 @@ pub mod item;
 pub mod json;
 pub mod path;
 pub mod pdf;
+pub mod tikz;
 
 pub use clip::{Clip, ClipStack};
 pub use color::{Color, Paint};
