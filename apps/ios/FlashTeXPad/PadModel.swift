@@ -88,6 +88,156 @@ final class PadModel: ObservableObject {
 
     func discard(_ id: String) { queue.discard(id); captures = queue.records }
 
+    // MARK: one-tap send (lane mac-capture-fluid)
+
+    /// Instruction chips: the last few instructions sent, newest first, seeded
+    /// with the three the Mac's converter is best at. Persisted per iPad.
+    static let defaultInstructions = ["Convert to TikZ", "Transcribe as LaTeX", "This is a matrix"]
+    static let recentInstructionsKey = "flashtexpad.recentInstructions"
+    static let maxRecentInstructions = 6
+    @Published var recentInstructions: [String] = {
+        let saved = UserDefaults.standard.stringArray(forKey: PadModel.recentInstructionsKey) ?? []
+        return PadModel.merged(recent: saved, defaults: PadModel.defaultInstructions)
+    }()
+
+    /// Pure: `recent` first (deduplicated, trimmed), the defaults appended once, bounded.
+    static func merged(recent: [String], defaults: [String], limit: Int = maxRecentInstructions) -> [String] {
+        var out: [String] = []
+        for s in recent + defaults {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, !out.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) else { continue }
+            out.append(t)
+            if out.count == limit { break }
+        }
+        return out
+    }
+
+    func rememberInstruction(_ text: String) {
+        recentInstructions = Self.merged(recent: [text] + recentInstructions, defaults: Self.defaultInstructions)
+        UserDefaults.standard.set(recentInstructions, forKey: Self.recentInstructionsKey)
+    }
+
+    /// Prepare + Send as one tap: validates (the same `CaptureQueue.validate`
+    /// as before), drafts the record so it is on disk before the bytes leave,
+    /// sends it, and starts outcome polling. Returns the problem instead of
+    /// sending when validation fails or no Mac is connected; the capture id
+    /// otherwise.
+    @discardableResult
+    func sendNow(png: Data, source: CaptureRecord.Source, instructions: String, pixelSize: (width: Int, height: Int)? = nil) async -> Result<String, SendProblem> {
+        let text = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let why = CaptureQueue.validate(png: png, instructions: text) { return .failure(.invalid(why)) }
+        guard link.isConnected else { return .failure(.notConnected(linkStatus)) }
+        let r = draft(CaptureRecord(source: source, png: png, instructions: text, pixelSize: pixelSize))
+        rememberInstruction(text)
+        await send(r.id)
+        return .success(r.id)
+    }
+
+    enum SendProblem: Error, Equatable, CustomStringConvertible {
+        case invalid(String), notConnected(String)
+        var description: String {
+            switch self {
+            case .invalid(let why): return why
+            case .notConnected(let status): return "not connected to a Mac (\(status)) — pair or reconnect first"
+            }
+        }
+    }
+
+    // MARK: auto-reconnect and discovery
+
+    /// Last address the stored pairing was reached at (per Mac fingerprint),
+    /// so a relaunch tries it before browsing Bonjour.
+    static func lastEndpointKey(_ fingerprint: String) -> String { "flashtexpad.lastEndpoint.\(fingerprint)" }
+    func rememberEndpoint(host: String, port: UInt16, fingerprint: String) {
+        UserDefaults.standard.set("\(host):\(port)", forKey: Self.lastEndpointKey(fingerprint))
+    }
+    static func lastEndpoint(fingerprint: String, defaults: UserDefaults = .standard) -> (host: String, port: UInt16)? {
+        guard let s = defaults.string(forKey: lastEndpointKey(fingerprint)), let colon = s.lastIndex(of: ":"),
+              let port = UInt16(s[s.index(after: colon)...]) else { return nil }
+        return (String(s[..<colon]), port)
+    }
+
+    @Published var reconnecting = false
+    /// Macs advertising `_flashtex-nearby._tcp` right now (Bonjour), for tap-to-pair.
+    @Published var nearbyMacs: [DiscoveredMac] = []
+    @Published var browsing = false
+
+    /// At launch (and from the Mac link panel): connect to the last paired Mac
+    /// with the stored key — the remembered address first, else the Mac found
+    /// by Bonjour with the same fingerprint. Never pairs; a Mac that is not
+    /// there leaves the pairing stored and the status honest. `endpoint`
+    /// overrides both lookups (tests: the fake Mac on loopback).
+    @discardableResult
+    func autoReconnect(endpoint: (host: String, port: UInt16)? = nil, browseSeconds: TimeInterval = 4) async -> Bool {
+        guard let pair = pairedMac, !link.isConnected, !reconnecting else { return link.isConnected }
+        reconnecting = true
+        defer { reconnecting = false }
+        linkError = nil
+        var candidates: [(String, UInt16)] = []
+        if let endpoint { candidates.append(endpoint) }
+        else if let last = Self.lastEndpoint(fingerprint: pair.fingerprint) { candidates.append(last) }
+        for (host, port) in candidates {
+            linkStatus = "reconnecting to \(pair.macName) at \(host):\(port)…"
+            do {
+                try await link.connect(host: host, port: port, pair: pair)
+                connected(pair, host: host, port: port)
+                return true
+            } catch { linkStatus = "\(pair.macName) not at \(host):\(port); browsing…" }
+        }
+        guard endpoint == nil else { linkError = "reconnect failed"; linkStatus = "stored pairing: \(pair.macName) — Mac not reachable"; return false }
+        do {
+            let found = try await NearbyBrowser.discover(seconds: browseSeconds) { $0.fingerprint == pair.fingerprint }
+            guard let mac = found.first(where: { $0.fingerprint == pair.fingerprint }) else {
+                linkStatus = "stored pairing: \(pair.macName) — not advertising nearby (open Captures on the Mac)"
+                return false
+            }
+            let session = try await NearbyClient.connect(endpoint: mac.endpoint, pair: pair)
+            link.adopt(session: session, pair: pair)
+            if case .hostPort(let h, let p) = mac.endpoint { rememberEndpoint(host: "\(h)", port: p.rawValue, fingerprint: pair.fingerprint) }
+            destination = link.destination
+            linkStatus = "connected to \(pair.macName)"
+            resumeOutcomePolling()
+            return true
+        } catch {
+            linkError = "\(error)"
+            linkStatus = "stored pairing: \(pair.macName) — reconnect failed"
+            return false
+        }
+    }
+
+    private func connected(_ pair: PairedMac, host: String, port: UInt16) {
+        rememberEndpoint(host: host, port: port, fingerprint: pair.fingerprint)
+        destination = link.destination
+        linkStatus = "connected to \(pair.macName)"
+        resumeOutcomePolling()
+    }
+
+    /// Lists nearby FlashTeX Macs for `seconds`; the panel shows them as
+    /// tap-to-pair rows (the code is still required — nearby-v1 §2).
+    func browseNearby(seconds: TimeInterval = 3) async {
+        guard !browsing else { return }
+        browsing = true
+        defer { browsing = false }
+        do { nearbyMacs = try await NearbyBrowser.discover(seconds: seconds).filter(\.isSupported) }
+        catch { linkError = "browse: \(error)" }
+    }
+
+    /// Tap-to-pair with a discovered Mac: the same bootstrap as the QR path.
+    @discardableResult
+    func pair(mac: DiscoveredMac, code: String) async -> Bool {
+        linkError = nil
+        linkStatus = "pairing with \(mac.macName)…"
+        do {
+            let pair = try await link.pair(discovered: mac, code: code, companionName: "FlashTeXPad (\(UIDevice.current.name))")
+            pairedMac = pair
+            destination = link.destination
+            linkStatus = "paired with \(pair.macName) (\(pair.pairId)); connected"
+            if case .hostPort(let h, let p) = mac.endpoint { rememberEndpoint(host: "\(h)", port: p.rawValue, fingerprint: pair.fingerprint) }
+            resumeOutcomePolling()
+            return true
+        } catch { linkError = "\(error)"; linkStatus = "pairing failed"; return false }
+    }
+
     func send(_ id: String) async {
         captures = queue.records
         await queue.send(id)
@@ -279,6 +429,7 @@ final class PadModel: ObservableObject {
             pairedMac = pair
             destination = link.destination
             linkStatus = "paired with \(pair.macName) (\(pair.pairId)); connected"
+            rememberEndpoint(host: host, port: p, fingerprint: pair.fingerprint)
             resumeOutcomePolling()
         } catch { linkError = "\(error)"; linkStatus = "pairing failed" }
     }
@@ -320,9 +471,7 @@ final class PadModel: ObservableObject {
         linkError = nil
         do {
             try await link.connect(host: host, port: p, pair: pair)
-            destination = link.destination
-            linkStatus = "connected to \(pair.macName)"
-            resumeOutcomePolling()
+            connected(pair, host: host, port: p)
         } catch { linkError = "\(error)"; linkStatus = "connect failed" }
     }
 

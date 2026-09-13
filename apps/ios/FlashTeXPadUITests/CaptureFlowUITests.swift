@@ -78,9 +78,9 @@ final class CaptureFlowUITests: XCTestCase {
         // keyboard over the buttons; keyboard-free keeps the run deterministic).
         XCTAssertTrue(el(app, "capture.instructions").exists)
 
-        el(app, "capture.prepare").tap()
-        XCTAssertTrue(el(app, "capture.send").waitForExistence(timeout: 5))
-        attach(app, "11-capture-prepared")
+        // One tap: Prepare + Send are one step (lane mac-capture-fluid).
+        XCTAssertTrue(el(app, "capture.chips").exists, "recent-instruction chips")
+        attach(app, "11-capture-ready")
         el(app, "capture.send").tap()
         XCTAssertTrue(text(app, startingWith: "received — Mac inbox").waitForExistence(timeout: 15), app.debugDescription)
         attach(app, "12-capture-received")
@@ -90,7 +90,7 @@ final class CaptureFlowUITests: XCTestCase {
         let cap = try XCTUnwrap(mac.captures.first)
         XCTAssertEqual(cap.destinationId, "dest-tikz")
         XCTAssertEqual(cap.baseRevision, 3)
-        XCTAssertEqual(cap.instructions, "Convert this drawing to TikZ")
+        XCTAssertEqual(cap.instructions, "Convert to TikZ")
         XCTAssertEqual(cap.image.mimeType, "image/png")
         let png = try XCTUnwrap(Data(base64Encoded: cap.image.dataBase64))
         XCTAssertNil(NearbyWire.checkImage(png, mimeType: "image/png"))
@@ -120,18 +120,17 @@ final class CaptureFlowUITests: XCTestCase {
         var app = launchPaired()
         el(app, "capture.sample").tap()
         XCTAssertTrue(el(app, "capture.pickedImage").waitForExistence(timeout: 5))
-        el(app, "capture.prepare").tap()
-        XCTAssertTrue(el(app, "capture.send").waitForExistence(timeout: 5))
         el(app, "capture.send").tap()
         XCTAssertTrue(text(app, startingWith: "received — Mac inbox").waitForExistence(timeout: 15), app.debugDescription)
         let cap = try XCTUnwrap(mac.captures.first)
         mac.setStatus(cap.captureId, state: "inserted", latex: "\\alpha", newRevision: 7)
         XCTAssertTrue(text(app, startingWith: "Mac: inserted on the Mac (revision 7)").waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(el(app, "capture.inserted.\(cap.captureId)").exists, "Inserted on Mac ✓")
         app.terminate()
 
         // Relaunch without -flashtexpad-fresh and without the pairing argument.
         app = XCUIApplication()
-        app.launchArguments = []
+        app.launchArguments = ["-flashtexpad-no-autoreconnect"] // the runner Mac only holds the bootstrap key; auto-reconnect is covered by FluidCaptureTests
         app.launch()
         XCTAssertTrue(el(app, "capture.row.\(cap.captureId)").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(text(app, startingWith: "received — Mac inbox").exists)
@@ -147,25 +146,24 @@ final class CaptureFlowUITests: XCTestCase {
         attach(app, "19-stored-pairing")
     }
 
-    func testDiscardBeforeSendSendsNothing() throws {
+    /// Clear before Send: an empty canvas is refused locally; nothing is drafted or sent.
+    func testClearBeforeSendSendsNothing() throws {
         let app = launchPaired()
         draw(app)
-        el(app, "capture.prepare").tap()
-        XCTAssertTrue(el(app, "capture.discard").waitForExistence(timeout: 5))
-        el(app, "capture.discard").tap()
-        XCTAssertTrue(text(app, startingWith: "discarded before sending").waitForExistence(timeout: 5))
+        el(app, "capture.clear").tap()
+        XCTAssertTrue(text(app, startingWith: "0 strokes").waitForExistence(timeout: 5))
+        el(app, "capture.send").tap()
+        XCTAssertTrue(text(app, startingWith: "draw something first").waitForExistence(timeout: 5), app.debugDescription)
         Thread.sleep(forTimeInterval: 1)
         XCTAssertEqual(mac.captures.count, 0, "nothing reaches the Mac")
-        attach(app, "13-capture-discarded")
+        attach(app, "13-capture-cleared")
     }
 
     func testSampleImagePath() throws {
         let app = launchPaired()
         el(app, "capture.sample").tap()
         XCTAssertTrue(el(app, "capture.pickedImage").waitForExistence(timeout: 5))
-        el(app, "capture.prepare").tap()
-        XCTAssertTrue(el(app, "capture.send").waitForExistence(timeout: 5))
-        attach(app, "14-sample-image-prepared")
+        attach(app, "14-sample-image-ready")
         el(app, "capture.send").tap()
         XCTAssertTrue(text(app, startingWith: "received — Mac inbox").waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertEqual(mac.captures.count, 1)

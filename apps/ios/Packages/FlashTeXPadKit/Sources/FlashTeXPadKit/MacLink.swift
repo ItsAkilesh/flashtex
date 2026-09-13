@@ -117,6 +117,27 @@ public final class MacLink: @unchecked Sendable {
         lock.withLock { _session = session; _pair = pair }
     }
 
+    /// Adopts a session another path opened (auto-reconnect through Bonjour).
+    public func adopt(session: NearbySession, pair: PairedMac) {
+        session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
+        lock.withLock { _session = session; _pair = pair }
+        log(.note, "connected to \(pair.macName) (\(pair.pairId)) via discovery")
+    }
+
+    /// Tap-to-pair with a Mac found by Bonjour (same bootstrap as the QR path;
+    /// the code is still typed by the user).
+    @discardableResult
+    public func pair(discovered mac: DiscoveredMac, code: String, companionName: String) async throws -> PairedMac {
+        log(.note, "pairing with \(mac.macName) at \(mac.endpoint)")
+        let (pair, session) = try await NearbyClient.pair(mac: mac, code: code, companionName: companionName,
+                                                          onLine: { [weak self] in self?.onLine($0, $1) })
+        session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
+        lock.withLock { _session = session; _pair = pair }
+        storePairing(pair)
+        log(.note, "paired: \(pair.macName) pair_id=\(pair.pairId)")
+        return pair
+    }
+
     public func destinationQuery() async throws -> NearbyWire.Destination? {
         guard let s = session else { throw NearbyError.closed("not connected") }
         return try await s.destinationQuery()

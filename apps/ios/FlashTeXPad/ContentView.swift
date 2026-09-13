@@ -307,6 +307,42 @@ struct MacLinkPanel: View {
                 if let p = model.pairedMac {
                     Text("Stored in the Keychain (this iPad only): \(p.macName) fp=\(p.fingerprint) pair_id=\(p.pairId), paired \(p.pairedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption.monospaced()).foregroundStyle(.secondary).accessibilityIdentifier("pair.stored")
+                    if !model.link.isConnected {
+                        Button { Task { await model.autoReconnect() } } label: {
+                            Label(model.reconnecting ? "Reconnecting…" : "Reconnect to \(p.macName)", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent).disabled(model.reconnecting).accessibilityIdentifier("link.reconnect")
+                    }
+                }
+            }
+            // Bonjour discovery: nearby FlashTeX Macs, tap to pair (the Mac's code is still required).
+            Section("Nearby Macs (Bonjour \(NearbyWire.serviceType))") {
+                HStack {
+                    Button { Task { await model.browseNearby() } } label: { Label(model.browsing ? "Browsing…" : "Find nearby Macs", systemImage: "dot.radiowaves.left.and.right") }
+                        .buttonStyle(.bordered).disabled(model.browsing).accessibilityIdentifier("pair.browse")
+                    TextField("6-digit code from the Mac", text: $code).keyboardType(.numberPad).frame(maxWidth: 220).accessibilityIdentifier("pair.code")
+                }
+                if model.nearbyMacs.isEmpty {
+                    Text(model.browsing ? "listening…" : "none found yet — on the Mac open Captures (⌘⇧I) or Nearby Companion (⌘⇧N); advertising starts there")
+                        .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("pair.nearby.none")
+                } else {
+                    ForEach(model.nearbyMacs, id: \.self) { mac in
+                        Button {
+                            Task { await model.pair(mac: mac, code: code) }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(mac.macName)
+                                    Text("fp \(mac.fingerprint ?? "?") · \(mac.fingerprint == model.pairedMac?.fingerprint ? "already paired" : "tap to pair with the code")")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "laptopcomputer")
+                            }
+                        }
+                        .disabled(code.count != 6)
+                        .accessibilityIdentifier("pair.nearby.\(mac.fingerprint ?? mac.name)")
+                    }
                 }
             }
             Section("Pair by QR (the Mac's Nearby window shows it beside the code)") {

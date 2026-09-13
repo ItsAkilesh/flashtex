@@ -4,11 +4,15 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 
-/// Primary screen: draw with Apple Pencil (or a finger in the simulator) or
-/// pick a photo, add an instruction, and send it to the Mac as a transfer-v1
-/// `capture_submit`. The Mac's bridge converts it (the configured conversion provider when a key exists,
-/// else the deterministic local provider) into a reviewed LaTeX/TikZ proposal
-/// and the Mac user approves insertion; the iPad only receives the receipt.
+/// Primary screen, one tap to the Mac (lane mac-capture-fluid): draw with
+/// Apple Pencil (or a finger in the simulator), take a photo with the camera
+/// (the Photos picker where there is no camera, e.g. the simulator), pick an
+/// instruction chip or type one, tap **Send**. Prepare and Send are one step:
+/// the PNG is rendered, validated (`CaptureQueue.validate`), drafted to disk
+/// and sent as a transfer-v1 `capture_submit`; the list below follows the
+/// Mac's states (received → converting → proposal ready → inserted) and shows
+/// the returned LaTeX/TikZ read-only. The Mac converts and the Mac user
+/// approves insertion; the iPad only ever receives receipts and status.
 struct CaptureView: View {
     @EnvironmentObject var model: PadModel
     @State private var drawing = PKDrawing()
@@ -16,25 +20,17 @@ struct CaptureView: View {
     @State private var photo: PhotosPickerItem?
     @State private var picked: UIImage?
     @State private var pickedSource: CaptureRecord.Source = .photo
-    @State private var instructions = "Convert this drawing to TikZ"
-    @State private var draft: CaptureRecord?
+    @State private var instructions = PadModel.defaultInstructions[0]
     @State private var problem: String?
     @State private var toolsVisible = true
+    @State private var sending = false
+    @State private var cameraShown = false
+
+    static var cameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack {
-                Text(model.link.isConnected ? "Connected to \(model.pairedMac?.macName ?? "Mac")"
-                     : "Not connected — \(model.linkStatus)\(model.linkError.map { ": \($0)" } ?? "") — pair in Mac link")
-                    .font(.footnote).foregroundStyle(model.link.isConnected ? .green : .secondary)
-                    .accessibilityIdentifier("capture.connection")
-                Spacer()
-                if let d = model.destination {
-                    Text("destination \(d.destinationId) @ \(d.path) rev \(d.baseRevision)").font(.footnote.monospaced()).foregroundStyle(.secondary)
-                } else {
-                    Text("no insertion point pinned on the Mac").font(.footnote).foregroundStyle(.secondary)
-                }
-            }.padding(.horizontal)
+            connectionRow
 
             if let img = picked {
                 Image(uiImage: img).resizable().scaledToFit().frame(maxHeight: 360)
@@ -52,9 +48,13 @@ struct CaptureView: View {
             }
 
             HStack {
-                Button { drawing = PKDrawing(); picked = nil; toolsVisible = true } label: { Label("Clear", systemImage: "trash") }
+                Button { drawing = PKDrawing(); picked = nil; toolsVisible = true; problem = nil } label: { Label("Clear", systemImage: "trash") }
                     .accessibilityIdentifier("capture.clear")
-                PhotosPicker(selection: $photo, matching: .images) { Label("Photo…", systemImage: "photo") }
+                if Self.cameraAvailable {
+                    Button { cameraShown = true } label: { Label("Camera", systemImage: "camera") }
+                        .accessibilityIdentifier("capture.camera")
+                }
+                PhotosPicker(selection: $photo, matching: .images) { Label(Self.cameraAvailable ? "Photo…" : "Photo… (no camera here)", systemImage: "photo") }
                     .accessibilityIdentifier("capture.photo")
                 Button { loadSample() } label: { Label("Sample image", systemImage: "photo.on.rectangle") }
                     .accessibilityIdentifier("capture.sample")
@@ -63,21 +63,31 @@ struct CaptureView: View {
                     .accessibilityIdentifier("capture.strokes")
             }.padding(.horizontal)
 
-            TextField("Instruction for the Mac (≤ 4096 bytes), e.g. “convert this to TikZ”, “this is a matrix”", text: $instructions, axis: .vertical)
+            // One instruction field with recent-instruction chips.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(model.recentInstructions, id: \.self) { chip in
+                        Button(chip) { instructions = chip }
+                            .buttonStyle(.bordered).controlSize(.small)
+                            .tint(chip.caseInsensitiveCompare(instructions) == .orderedSame ? .accentColor : .secondary)
+                            .accessibilityIdentifier("capture.chip.\(chip)")
+                    }
+                }.padding(.horizontal)
+            }
+            .accessibilityIdentifier("capture.chips")
+            TextField("Instruction for the Mac, e.g. “convert this to TikZ”, “this is a matrix”", text: $instructions, axis: .vertical)
                 .textFieldStyle(.roundedBorder).padding(.horizontal)
                 .accessibilityIdentifier("capture.instructions")
 
             HStack {
-                Button { prepare() } label: { Label("Prepare capture", systemImage: "square.and.arrow.up") }
-                    .buttonStyle(.bordered).accessibilityIdentifier("capture.prepare")
-                if let d = draft {
-                    Text("\(d.id.prefix(12))… \(d.png.count) PNG bytes" + (d.pixelSize.map { " \($0.width)×\($0.height)" } ?? ""))
-                        .font(.footnote.monospaced()).accessibilityIdentifier("capture.draft")
-                    Button("Discard") { model.discard(d.id); draft = nil }
-                        .buttonStyle(.bordered).accessibilityIdentifier("capture.discard")
-                    Button { let id = d.id; draft = nil; Task { await model.send(id) } } label: { Label("Send to Mac", systemImage: "paperplane.fill") }
-                        .buttonStyle(.borderedProminent).disabled(!model.link.isConnected)
-                        .accessibilityIdentifier("capture.send")
+                Button { Task { await send() } } label: {
+                    Label(sending ? "Sending…" : "Send", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(sending)
+                .accessibilityIdentifier("capture.send")
+                if !model.link.isConnected {
+                    Text("not connected").font(.footnote).foregroundStyle(.secondary)
                 }
                 Spacer()
             }.padding(.horizontal)
@@ -96,6 +106,31 @@ struct CaptureView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $cameraShown) {
+            CameraPicker { img in picked = img; pickedSource = .photo; cameraShown = false } onCancel: { cameraShown = false }
+                .ignoresSafeArea()
+        }
+    }
+
+    private var connectionRow: some View {
+        HStack {
+            Text(model.link.isConnected ? "Connected to \(model.pairedMac?.macName ?? "Mac")"
+                 : "Not connected — \(model.linkStatus)\(model.linkError.map { ": \($0)" } ?? "") — pair in Mac link")
+                .font(.footnote).foregroundStyle(model.link.isConnected ? .green : .secondary)
+                .accessibilityIdentifier("capture.connection")
+            if !model.link.isConnected, model.pairedMac != nil, !model.reconnecting {
+                Button("Reconnect") { Task { await model.autoReconnect() } }.buttonStyle(.bordered).controlSize(.small)
+                    .accessibilityIdentifier("capture.reconnect")
+            }
+            if model.reconnecting { ProgressView().controlSize(.small) }
+            Spacer()
+            if let d = model.destination {
+                Text("→ \(d.path) rev \(d.baseRevision)").font(.footnote.monospaced()).foregroundStyle(.secondary)
+                    .help("destination \(d.destinationId)")
+            } else {
+                Text("→ the Mac's caret").font(.footnote).foregroundStyle(.secondary)
+            }
+        }.padding(.horizontal)
     }
 
     func loadSample() {
@@ -104,26 +139,57 @@ struct CaptureView: View {
         picked = img; pickedSource = .sample
     }
 
-    /// Renders the canvas (or the picked image) to PNG and drafts a record;
-    /// nothing is sent until "Send to Mac".
-    func prepare() {
+    /// Renders the canvas (or the picked image) to PNG; the model validates,
+    /// drafts and sends in one step (`PadModel.sendNow`).
+    func send() async {
         problem = nil
-        let png: Data
-        let source: CaptureRecord.Source
-        let size: (Int, Int)
-        if let img = picked {
-            guard let d = img.pngData() else { problem = "could not encode the image as PNG"; return }
-            png = d; source = pickedSource; size = (Int(img.size.width * img.scale), Int(img.size.height * img.scale))
-        } else {
-            guard !drawing.strokes.isEmpty else { problem = "draw something first (or pick a photo)"; return }
-            let bounds = CGRect(origin: .zero, size: canvasSize)
-            let img = drawing.image(from: bounds, scale: 2)
-            guard let d = img.pngData() else { problem = "could not encode the drawing as PNG"; return }
-            png = d; source = .pencil; size = (Int(img.size.width * img.scale), Int(img.size.height * img.scale))
+        guard let (png, source, size) = renderCapture() else { return }
+        sending = true
+        defer { sending = false }
+        switch await model.sendNow(png: png, source: source, instructions: instructions, pixelSize: (width: size.0, height: size.1)) {
+        case .success:
+            toolsVisible = false // hide the PencilKit tool picker so the status list is readable
+            drawing = PKDrawing(); picked = nil
+        case .failure(let why):
+            problem = "\(why)"
         }
-        if let why = CaptureQueue.validate(png: png, instructions: instructions) { problem = why; return }
-        toolsVisible = false // hide the PencilKit tool picker so the status list is readable
-        draft = model.draft(CaptureRecord(source: source, png: png, instructions: instructions, pixelSize: (width: size.0, height: size.1)))
+    }
+
+    func renderCapture() -> (Data, CaptureRecord.Source, (Int, Int))? {
+        if let img = picked {
+            guard let d = img.pngData() else { problem = "could not encode the image as PNG"; return nil }
+            return (d, pickedSource, (Int(img.size.width * img.scale), Int(img.size.height * img.scale)))
+        }
+        guard !drawing.strokes.isEmpty else { problem = "draw something first (or take a photo)"; return nil }
+        let img = drawing.image(from: CGRect(origin: .zero, size: canvasSize), scale: 2)
+        guard let d = img.pngData() else { problem = "could not encode the drawing as PNG"; return nil }
+        return (d, .pencil, (Int(img.size.width * img.scale), Int(img.size.height * img.scale)))
+    }
+}
+
+/// In-app camera (AVFoundation through `UIImagePickerController`), shown only
+/// where `isSourceTypeAvailable(.camera)`; the simulator gets the Photos picker.
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let c = UIImagePickerController()
+        c.sourceType = .camera
+        c.cameraCaptureMode = .photo
+        c.delegate = context.coordinator
+        return c
+    }
+    func updateUIViewController(_ c: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ p: CameraPicker) { parent = p }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let img = (info[.editedImage] ?? info[.originalImage]) as? UIImage { parent.onImage(img) } else { parent.onCancel() }
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.onCancel() }
     }
 }
 
@@ -190,6 +256,11 @@ struct CapturesList: View {
                                 if let d = c.destinationId, let rev = c.baseRevision {
                                     Text("sent for destination \(d) base_revision \(rev)").font(.caption2.monospaced()).foregroundStyle(.secondary)
                                 }
+                                if c.outcome?.state == "inserted" {
+                                    Label("Inserted on Mac ✓", systemImage: "checkmark.circle.fill").font(.footnote.bold()).foregroundStyle(.green)
+                                        .transition(.scale.combined(with: .opacity))
+                                        .accessibilityIdentifier("capture.inserted.\(c.id)")
+                                }
                                 if let label = c.outcomeLabel {
                                     Text("Mac: \(label)").font(.footnote).foregroundStyle(c.outcomeIsFinal ? .primary : .secondary)
                                         .accessibilityIdentifier("capture.outcome.\(c.id)")
@@ -228,6 +299,7 @@ struct CapturesList: View {
                         }
                     }
                     .accessibilityIdentifier("capture.row.\(c.id)")
+                    .animation(.default, value: c.outcome?.state)
                 }
             }
             Section {
