@@ -1,6 +1,11 @@
 # flashtex
 super duper cool project
 
+**Releases & CI:** `.github/workflows/ci.yml` builds and tests every crate, the
+Mac app and the iPad companion on each push/PR; tagging `vX.Y.Z` runs
+`release.yml`, which publishes `FlashTeX.dmg`, the CLI tarballs and `SHA256SUMS`
+to GitHub Releases and updates the website. See [docs/ci-cd.md](docs/ci-cd.md).
+
 ## Working with agents
 
 **Executable tools:** [coordination CLI](docs/coordination-cli.md).

@@ -55,6 +55,10 @@ HELPER_ROOT="$REPO_ROOT"
 SIGN_IDENTITY=""
 ENTITLEMENTS="$RESOURCES_SRC/FlashTeX.entitlements"
 NOTARY_PROFILE=""
+# Keychain file holding the notarytool profile (CI's temporary keychain);
+# empty means notarytool's default, the login keychain.
+NOTARY_KEYCHAIN="${FLASHTEX_NOTARY_KEYCHAIN:-}"
+NOTARY_KEYCHAIN_ARGS=()
 DO_OPEN=0
 DO_INSTALL=0
 INSTALL_DIR="$HOME/Applications"
@@ -218,11 +222,17 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   xcrun --find notarytool >/dev/null 2>&1 || die "--notarize: xcrun notarytool not found (Xcode 13+ command line tools required)"
   xcrun --find stapler >/dev/null 2>&1 || die "--notarize: xcrun stapler not found"
   # notarytool store-credentials keeps the profile as a keychain item with
-  # service com.apple.gke.notary.tool and the profile name as the account.
-  if ! security find-generic-password -s com.apple.gke.notary.tool -a "$NOTARY_PROFILE" >/dev/null 2>&1; then
-    die "--notarize: no notarytool keychain profile named \"$NOTARY_PROFILE\". Create it once with: xcrun notarytool store-credentials \"$NOTARY_PROFILE\" --apple-id <id> --team-id <TEAMID> (app-specific password prompted, never passed on the command line), or omit --notarize."
+  # service com.apple.gke.notary.tool and the profile name as the account,
+  # in the login keychain unless it was stored with --keychain <file>; CI
+  # uses a temporary keychain and names it in FLASHTEX_NOTARY_KEYCHAIN.
+  if [[ -n "$NOTARY_KEYCHAIN" ]]; then
+    [[ -f "$NOTARY_KEYCHAIN" ]] || die "--notarize: FLASHTEX_NOTARY_KEYCHAIN is not a keychain file: $NOTARY_KEYCHAIN"
+    NOTARY_KEYCHAIN_ARGS=(--keychain "$NOTARY_KEYCHAIN")
   fi
-  echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\""
+  if ! security find-generic-password -s com.apple.gke.notary.tool -a "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN:+"$NOTARY_KEYCHAIN"} >/dev/null 2>&1; then
+    die "--notarize: no notarytool keychain profile named \"$NOTARY_PROFILE\"${NOTARY_KEYCHAIN:+ in $NOTARY_KEYCHAIN}. Create it once with: xcrun notarytool store-credentials \"$NOTARY_PROFILE\" --apple-id <id> --team-id <TEAMID> (app-specific password prompted, never passed on the command line), or omit --notarize."
+  fi
+  echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\"${NOTARY_KEYCHAIN:+ (keychain $NOTARY_KEYCHAIN)}"
 fi
 
 # --- Pre-flight: pinned rooted TFM metrics must verify before the build -------
@@ -504,7 +514,7 @@ fi
 notarize_path() {  # $1=path to submit (zip/dmg) $2=what it is (for messages)
   local submit_log="$MAC_DIR/build/notarytool-$2.log"
   echo "==> Submitting $2 for notarization (xcrun notarytool submit --wait, profile \"$NOTARY_PROFILE\")"
-  if ! xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1 | tee "$submit_log"; then
+  if ! xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} --wait 2>&1 | tee "$submit_log"; then
     die "notarytool submit failed for $2 (see $submit_log; no credential is written there)"
   fi
   if ! grep -qE '^ *status: Accepted' "$submit_log"; then

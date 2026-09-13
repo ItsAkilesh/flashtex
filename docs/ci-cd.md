@@ -1,0 +1,129 @@
+# CI/CD: build, test, release and publish FlashTeX
+
+Two GitHub Actions workflows live in `.github/workflows/`, backed by three
+scripts in `scripts/ci/` that also run locally.
+
+| Piece | What it does |
+|---|---|
+| `ci.yml` | On push to `main`, pull requests and manual runs: builds and tests every helper crate on Linux and macOS, builds and tests the Mac app against freshly built helpers, builds and unit-tests the iPad companion in the simulator. |
+| `release.yml` | On a `v*` tag or a manual run with a version: builds the helpers, packages `FlashTeX.app` into `FlashTeX.dmg` (signed + notarized when the secrets exist), tars the CLI tools for macOS arm64 and Linux x86_64, publishes the GitHub release with `SHA256SUMS`, then points the website at it. |
+| `scripts/ci/build-helpers.sh` | Builds every helper `apps/mac/scripts/make-app.sh` bundles in release mode and prints `FLASHTEX_<NAME>=<path>` lines (the variables the app and its tests read). |
+| `scripts/ci/package-cli.sh` | Stages `flashtex-render`, `flashtex-compiler`, `flashtex-pdf`, `flashtex-pdf-exact` plus the pinned Latin Modern faces and TFM metrics into `flashtex-cli-<version>-<platform>.tar.gz` with a README. |
+| `scripts/ci/update-site.sh` | Rewrites `install.sh`, `download/index.html` and `index.html` on the `gh-pages` branch for a new release and pushes. |
+
+## `ci.yml`
+
+* **`rust`** — matrix of `ubuntu-latest` × `macos-15` (Apple Silicon) and the
+  crates `compiler, pdf, bridge, edit-ledger, render-pipeline,
+  preview-controller, project-files, assistant-context` (the last with
+  `--features grok`). Each cell runs `cargo build --release --locked` then
+  `cargo test --release --locked` in that crate directory; the crates are
+  independent (no workspace) so each has its own `Swatinem/rust-cache` key.
+  `FLASHTEX_FONT_DIRS` / `FLASHTEX_TFM_DIRS` / `FLASHTEX_LM_DIR` point at the
+  vendored `apps/mac/Fonts` so the font-dependent render-pipeline and pdf tests
+  run instead of skipping; tests that need a pdfTeX oracle skip themselves.
+* **`mac-app`** — `macos-26` (Xcode 26; `maxim-lobanov/setup-xcode` selects the
+  newest stable Xcode on the image). Runs `scripts/ci/build-helpers.sh` into
+  `$GITHUB_ENV`, then `swift build` and `swift test --parallel` in `apps/mac`
+  with `CI=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_KEYCHAIN_OFF=1
+  FLASHTEX_REVIEW_HISTORY_DIR=off`. Tests that need a real window session are
+  opt-in already (`FLASHTEX_NEARBY_APP_EVIDENCE_DIR` etc. — they `XCTSkip`
+  otherwise); the full log is uploaded as the `mac-swift-test-log` artifact.
+* **`ipad`** — `macos-26`; picks an available iPad simulator from the runner
+  image (preferring "iPad Air 11-inch"), `xcodebuild build` then
+  `xcodebuild test -only-testing:FlashTeXPadTests` (the XCUITest target is not
+  run in CI). Signing is disabled (`CODE_SIGNING_ALLOWED=NO`).
+
+Every job has a `timeout-minutes`; pull-request runs cancel superseded runs.
+
+## `release.yml`
+
+1. **`version`** resolves the tag (`v0.2.0` from the pushed tag, or the
+   `version` input of a manual run; a missing `v` is added).
+2. **`macos`** (`macos-26`, arm64) builds the helpers, imports the signing
+   certificate when configured (below), runs
+   `apps/mac/scripts/make-app.sh --version <x.y.z> --dmg [--sign … --notarize flashtex-ci]`,
+   then produces `FlashTeX.dmg`, `FlashTeX-<ver>-macos-arm64.dmg` (the same
+   file under a versioned name) and `flashtex-cli-<ver>-macos-arm64.tar.gz`
+   (using the hash-verified fonts/metrics staged inside the app bundle), and
+   smoke-tests the extracted CLI with `flashtex-render --tex`. The temporary
+   keychain is deleted afterwards.
+3. **`linux`** (`ubuntu-latest`) builds `render-pipeline`, `compiler` and
+   `pdf` individually; whatever builds is packaged as
+   `flashtex-cli-<ver>-linux-x86_64.tar.gz` and the README inside lists any
+   crate that did not build on Linux. A Linux failure does not block the
+   release.
+4. **`publish`** downloads both artifact sets, writes `SHA256SUMS`, creates
+   the GitHub release (`gh release create … --generate-notes`, with a header
+   describing the assets and the signing status; re-runs upload with
+   `--clobber` instead), then runs `scripts/ci/update-site.sh <tag> <dmg-sha256>`
+   which commits to `gh-pages` as `github-actions[bot]` and pushes.
+
+### Secrets (all optional)
+
+| Secret | Purpose |
+|---|---|
+| `MAC_CERT_P12` | Base64 of a `.p12` export containing the "Developer ID Application: …" certificate and its private key. |
+| `MAC_CERT_PASSWORD` | Password of that `.p12`. |
+| `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID`, `NOTARY_PASSWORD` | Apple ID, team ID and an app-specific password for `notarytool`; stored in the temporary keychain as profile `flashtex-ci` (`FLASHTEX_NOTARY_KEYCHAIN` tells `make-app.sh` where). |
+
+Without `MAC_CERT_P12`/`MAC_CERT_PASSWORD` the app is ad-hoc signed and the
+release notes say so (Gatekeeper then needs right-click > Open, or the site's
+`install.sh`, which verifies the checksum and strips quarantine). With the
+certificate but without the `NOTARY_*` trio the app is signed but not
+notarized. Nothing in the workflow prints a secret; identities are matched by
+name and the keychain is discarded after packaging.
+
+Creating the `.p12` secret: export the Developer ID Application identity from
+Keychain Access as `cert.p12`, then `base64 -i cert.p12 | pbcopy` and paste it
+into the repository secret.
+
+### Cutting a release
+
+```sh
+git checkout main && git pull
+git tag v0.2.0
+git push origin v0.2.0        # or: git push --tags
+```
+
+Or run the **Release** workflow manually from the Actions tab with
+`version: v0.2.0`; the tag is created on that commit by `gh release create`.
+The app version in `Info.plist` comes from the tag (`make-app.sh --version`),
+so nothing in the repository needs editing for a release. The default version
+`make-app.sh` uses when no `--version`/`APP_VERSION` is given is the last
+released one; bump `DEFAULT_APP_VERSION` there when convenient.
+
+### How the website is updated
+
+The site is the `gh-pages` branch (`https://flash-tex.github.io/flashtex/`):
+`index.html`, `download/index.html`, `install.sh`, `site.css`, `.nojekyll`.
+`scripts/ci/update-site.sh <version> <dmg-sha256>` clones that branch into a
+temporary directory, reads the current `VERSION=`/`SHA256=` from `install.sh`
+and uses them as the anchors for every rewrite:
+
+* `install.sh`: `VERSION="v…"` and `SHA256="…"`;
+* `download/index.html`: the version badge, the date next to it (today, or
+  `--date "October 1, 2026"`), the release-notes link, both `FlashTeX.dmg`
+  download links and the checksum (+ its copy button);
+* `index.html`: the version line and the download link.
+
+It refuses to publish if no page mentioned the old version or if the old
+checksum survives, commits as `github-actions[bot]` (or the `GIT_AUTHOR_*`
+already in the environment) and pushes `HEAD:gh-pages`. To rehearse without
+touching the real site:
+
+```sh
+git init --bare /tmp/site.git && git push /tmp/site.git origin/gh-pages:gh-pages
+scripts/ci/update-site.sh v0.2.0 <sha256> --remote /tmp/site.git --no-push --keep
+```
+
+## Running the pieces locally
+
+```sh
+scripts/ci/build-helpers.sh                      # builds all helpers, prints FLASHTEX_* lines
+set -a; source <(scripts/ci/build-helpers.sh --check); set +a   # just export the paths
+cd apps/mac && swift build && CI=1 FLASHTEX_NO_ACTIVATE=1 FLASHTEX_KEYCHAIN_OFF=1 FLASHTEX_REVIEW_HISTORY_DIR=off swift test
+apps/mac/scripts/make-app.sh --version 0.2.0 --dmg
+scripts/ci/package-cli.sh 0.2.0 macos-arm64 dist
+actionlint                                       # brew install actionlint
+```

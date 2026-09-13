@@ -24,6 +24,7 @@ your task; do not load the entire repository history into every prompt.
 | Shared interfaces | `docs/contracts/<interface>.md` when created | Assigned interface owner |
 | Durable decisions | `docs/decisions/<id>-<topic>.md` when created | Decision owner |
 | Reproduction evidence / large outputs | Paths linked from the relevant handoff | Producing agent |
+| CI, releases, website publication | [CI/CD](ci-cd.md) | Release lane (mac-ci-release) |
 
 Some interface and decision directories will be created as implementation starts;
 their listing here does not imply those designs already exist.
