@@ -1389,6 +1389,25 @@ impl MathParser<'_> {
             return symbol(String::new(), span);
         };
         let mut columns = String::new();
+        // `array[t]{cc}`, `aligned[b]`, `gathered[c]`, `alignedat[t]{2}`: the
+        // box-position argument (latex.ltx `\@array`, amsmath
+        // `\ams@start@box`) comes before the preamble. It is not a cell; the
+        // render pipeline reads the letter from the source at `\begin`.
+        if matches!(name.as_str(), "array" | "aligned" | "alignedat" | "gathered") {
+            let mut cursor = self.i;
+            while matches!(self.tokens.get(cursor).map(|t| &t.kind), Some(TokenKind::Space)) {
+                cursor += 1;
+            }
+            if matches!(self.tokens.get(cursor).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[") {
+                while let Some(t) = self.tokens.get(cursor) {
+                    cursor += 1;
+                    if matches!(&t.kind, TokenKind::Word(w) if w == "]") {
+                        break;
+                    }
+                }
+                self.i = cursor;
+            }
+        }
         if name == "array" {
             if let Some(TokenKind::LBrace) = self.tokens.get(self.i).map(|t| &t.kind) {
                 self.i += 1;
@@ -3074,6 +3093,33 @@ fn shift(span: Span, delta: isize) -> Span {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+
+    #[test]
+    fn grid_position_argument_is_not_a_cell() {
+        for (src, want_columns) in [
+            (r"\begin{aligned}[t] a &= b \end{aligned}", None),
+            (r"\begin{array}[b]{cc} a & b \end{array}", Some("cc")),
+            (r"\begin{gathered} [c] a \end{gathered}", None),
+            (r"\begin{alignedat}[t]{1} a &= b \end{alignedat}", None),
+        ] {
+            let mut diagnostics = Vec::new();
+            let tokens = crate::lexer::tokenize(src);
+            let list = parse_tokens(&tokens, &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{src}: {diagnostics:?}");
+            let Nucleus::Matrix { rows, columns, .. } = &list.atoms[0].nucleus else {
+                panic!("{src}: not a grid: {:?}", list.atoms)
+            };
+            let brackets = rows[0][0]
+                .atoms
+                .iter()
+                .any(|a| matches!(&a.nucleus, Nucleus::Symbol(s) if s == "[" || s == "]"));
+            assert!(!brackets, "{src}: first cell {:?}", rows[0][0]);
+            assert_eq!(rows[0][0].atoms.len(), 1, "{src}: first cell is just `a`");
+            if let Some(want) = want_columns {
+                assert_eq!(columns, want, "{src}");
+            }
+        }
+    }
 
     #[test]
     fn big_delimiters_scale_like_cmex_and_keep_tex_classes() {

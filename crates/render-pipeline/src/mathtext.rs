@@ -80,9 +80,77 @@ pub struct TextSink {
     /// Arguments beyond [`MAX_TEXT_ATOMS`], in order: refused before any
     /// state changed, reported by the caller as `math_text_overflow`.
     pub refused: Vec<String>,
+    /// Grid environments set as boxes inside the formula (see
+    /// [`TextSink::grid_atom`]); each reserves a handle (an empty entry of
+    /// `texts`).
+    pub grids: Vec<GridCells>,
 }
 
+/// An `array`/`cases`/matrix/`aligned` grid met inside a sub-formula (a
+/// fraction, a script, a radicand, a `\left...\right` body, another grid's
+/// cell, or a top-level grid carrying scripts), its cells already converted.
+/// TeX sets it as a `\vcenter`/`\vtop`/`\vbox` in the math list — an Ord
+/// atom, or, for the fenced environments, the Inner atom of the
+/// `\left...\right` around it — so it enters math-layout as a handle whose
+/// metrics are the laid-out box at the size the layout asks for.
+#[derive(Debug, Clone)]
+pub struct GridCells {
+    /// Index of the handle character (as for `\text`).
+    pub handle: usize,
+    pub cells: Vec<Vec<ml::MathList>>,
+    pub columns: String,
+    pub left: String,
+    pub right: String,
+    /// The environment's `\begin`, where its spec is read.
+    pub span: flashtex_compiler::Span,
+}
+
+/// A [`GridCells`] with its environment spec resolved from the source.
+#[derive(Debug, Clone)]
+pub struct NestedGrid {
+    pub grid: GridCells,
+    pub spec: crate::mathgrid::GridSpec,
+    pub pitch: crate::mathgrid::Pitch,
+}
+
+/// A nested grid laid out at one size: substituted for the placeholder
+/// glyph (`ch` at `size`) after layout.
+#[derive(Debug, Clone)]
+pub struct GridBox {
+    pub ch: char,
+    pub size: f64,
+    pub hbox: ml::MathBox,
+}
+
+/// `font_id` of a nested grid's placeholder glyph (never drawn: every one
+/// is replaced by [`substitute_grids`]).
+pub const GRID_FONT_ID: u32 = RUN_FONT_BASE - 1;
+
 impl TextSink {
+    /// An atom of `class` standing for a grid (see [`GridCells`]); an empty
+    /// atom of that class once the handle space is exhausted.
+    pub fn grid_atom(&mut self, class: ml::AtomClass, cells: Vec<Vec<ml::MathList>>, columns: &str, left: &str, right: &str, span: flashtex_compiler::Span) -> ml::Atom {
+        let index = self.texts.len();
+        match handle_char(index) {
+            Some(handle) => {
+                self.grids.push(GridCells {
+                    handle: index,
+                    cells,
+                    columns: columns.to_string(),
+                    left: left.to_string(),
+                    right: right.to_string(),
+                    span,
+                });
+                self.texts.push(String::new());
+                ml::Atom::new(class, ml::Nucleus::Text(handle.to_string()))
+            }
+            None => {
+                self.refused.push("\\begin{...} grid".to_string());
+                ml::Atom::new(class, ml::Nucleus::Empty)
+            }
+        }
+    }
+
     /// An `Ord` atom for `text` (TeX §1076: an hbox in math is an Ord); an
     /// empty Ord (scripts still attach) once the handle space is exhausted.
     pub fn atom(&mut self, text: &str) -> ml::Atom {
@@ -187,6 +255,9 @@ pub struct TextRunMetrics<'a> {
     texts: &'a [String],
     runs: RefCell<Vec<TextRun>>,
     notices: RefCell<Vec<Notice>>,
+    grids: &'a [NestedGrid],
+    grid_boxes: RefCell<Vec<GridBox>>,
+    grid_limitations: RefCell<Vec<ml::Limitation>>,
 }
 
 impl<'a> TextRunMetrics<'a> {
@@ -199,7 +270,93 @@ impl<'a> TextRunMetrics<'a> {
             texts,
             runs: RefCell::new(Vec::new()),
             notices: RefCell::new(Vec::new()),
+            grids: &[],
+            grid_boxes: RefCell::new(Vec::new()),
+            grid_limitations: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Answers the handles of `grids` with their laid-out boxes.
+    pub fn with_grids(mut self, grids: &'a [NestedGrid]) -> TextRunMetrics<'a> {
+        self.grids = grids;
+        self
+    }
+
+    /// The nested grid boxes laid out so far (for [`substitute_grids`]) and
+    /// the limitations met inside their cells and fences.
+    pub fn take_grids(&self) -> (Vec<GridBox>, Vec<ml::Limitation>) {
+        (self.grid_boxes.take(), self.grid_limitations.take())
+    }
+
+    /// Lays out `grid` at `size` (cached per handle and size): each cell a
+    /// formula in the environment's own style — the `$##$` of `\halign`
+    /// starts a new list, so the cells do not shrink in a script (only
+    /// `smallmatrix` is `\scriptstyle`) — placed by `mathgrid` on the axis of
+    /// `size`, and for the fenced environments `\left`/`\right` delimiters
+    /// of `size` (Rule 19). Returns width, height and depth.
+    fn grid_box(&self, grid: &NestedGrid, ch: char, size: SizeClass) -> (f64, f64, f64) {
+        use crate::mathgrid as mg;
+        let p = self.inner.params(size);
+        if let Some(b) = self.grid_boxes.borrow().iter().find(|b| b.ch == ch && b.size == p.size) {
+            return (b.hbox.width, b.hbox.height, b.hbox.depth);
+        }
+        let quad = self.inner.params(SizeClass::Text).quad;
+        let mut limitations = Vec::new();
+        let cells: Vec<Vec<ml::MathBox>> = grid
+            .grid
+            .cells
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .enumerate()
+                    .map(|(ci, cell)| {
+                        // amsmath `aligned`: a right-hand cell is `{}##`.
+                        let laid = if grid.spec.gaps == mg::Gaps::Pairs && ci % 2 == 1 {
+                            let mut prefixed = cell.clone();
+                            prefixed.atoms.insert(0, ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty));
+                            ml::layout_with_report(&prefixed, grid.spec.style, self)
+                        } else {
+                            ml::layout_with_report(cell, grid.spec.style, self)
+                        };
+                        limitations.extend(laid.limitations);
+                        laid.root
+                    })
+                    .collect()
+            })
+            .collect();
+        let body = mg::layout_grid(cells, &grid.grid.columns, &grid.spec, grid.pitch, &p, quad);
+        let hbox = if grid.grid.left.is_empty() && grid.grid.right.is_empty() {
+            body
+        } else {
+            let style = match size {
+                SizeClass::Text => ml::Style::TEXT,
+                SizeClass::Script => ml::Style::SCRIPT,
+                SizeClass::ScriptScript => ml::Style::SCRIPT_SCRIPT,
+            };
+            let one = |s: &str| {
+                let mut it = s.chars();
+                match (it.next(), it.next()) {
+                    (Some(c), None) => Some(c),
+                    _ => None,
+                }
+            };
+            let (h, d) = (body.height, body.depth);
+            let mut fence = |s: &str| {
+                let ch = one(s);
+                let (b, short) = mg::delimiter(self, ch, h, d, style, &p);
+                if let (Some(ch), Some((wanted, used))) = (ch, short) {
+                    limitations.push(ml::Limitation::DelimiterTooSmall { ch, wanted, used });
+                }
+                b
+            };
+            let open = fence(&grid.grid.left);
+            let close = fence(&grid.grid.right);
+            ml::MathBox::hlist(vec![open, body, close])
+        };
+        let dims = (hbox.width, hbox.height, hbox.depth);
+        self.grid_limitations.borrow_mut().extend(limitations);
+        self.grid_boxes.borrow_mut().push(GridBox { ch, size: p.size, hbox });
+        dims
     }
 
     /// The runs shaped so far and the notices, in order.
@@ -267,6 +424,20 @@ impl MathFontMetrics for TextRunMetrics<'_> {
             return self.inner.text_glyph(ch, size);
         };
         let at = self.inner.params(size).size;
+        if let Some(grid) = self.grids.iter().find(|g| g.grid.handle == text_index) {
+            let (width, height, depth) = self.grid_box(grid, ch, size);
+            return Some(Glyph {
+                font_id: MathFontId(GRID_FONT_ID),
+                gid: 0,
+                ch,
+                size: at,
+                width,
+                height,
+                depth,
+                italic: 0.0,
+                skew: 0.0,
+            });
+        }
         let i = self.run_for(text_index, at)?;
         let runs = self.runs.borrow();
         let run = &runs[i];
@@ -291,6 +462,27 @@ pub fn abbreviate(text: &str) -> String {
         s.push('…');
     }
     s
+}
+
+/// Replaces every nested grid placeholder in `root` by its box, then the
+/// grids nested in that box's cells. Run [`substitute`] afterwards for the
+/// `\text` runs inside the grids.
+pub fn substitute_grids(root: &mut ml::MathBox, grids: &[GridBox]) {
+    if grids.is_empty() {
+        return;
+    }
+    let found = match &root.kind {
+        ml::BoxKind::Glyph { ch, size, .. } => grids.iter().find(|b| b.ch == *ch && b.size == *size),
+        _ => None,
+    };
+    if let Some(b) = found {
+        *root = b.hbox.clone();
+    }
+    if let ml::BoxKind::HBox(children) | ml::BoxKind::VBox(children) = &mut root.kind {
+        for c in children {
+            substitute_grids(&mut c.content, grids);
+        }
+    }
 }
 
 /// Replaces every placeholder glyph box in `root` by its shaped hbox.

@@ -106,3 +106,31 @@ fn cases_is_fenced_with_a_brace_sized_to_the_rows_and_quad_between_columns() {
     let brace_y = braces[0].2;
     assert!(brace_y > rows[0] - 1.0 && brace_y < rows[2] + 1.0, "brace between the rows: {brace_y} vs {rows:?}");
 }
+
+#[test]
+fn grids_nested_in_sub_formulas_keep_their_rows() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    // A pmatrix in a fraction numerator, a matrix inside `\left(...\right)^T`
+    // and a matrix inside another matrix's cell: each is a box of rows, not
+    // one flattened row, and the fences are sized to the rows.
+    for body in [
+        "\\frac{\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}}{2}",
+        "\\left( \\begin{matrix} a & b \\\\ c & d \\end{matrix} \\right)^{T}",
+        "\\begin{pmatrix} \\begin{matrix} a & b \\\\ c & d \\end{matrix} & 0 \\\\ 0 & 1 \\end{pmatrix}",
+    ] {
+        let src = format!("\\documentclass[12pt]{{article}}\\usepackage{{amsmath}}\\begin{{document}}\n\\[ {body} \\]\n\\end{{document}}");
+        let (glyphs, diags) = math_glyphs(&src);
+        assert!(!diags.iter().any(|d| d.code == "math_limitation"), "{body}: {diags:?}");
+        let y = |ch: char| glyphs.iter().find(|g| g.0 == ch).map(|g| (g.1, g.2)).unwrap_or_else(|| panic!("{body}: no {ch}"));
+        let (a, b, c, d) = (y('a'), y('b'), y('c'), y('d'));
+        assert!((a.1 - b.1).abs() < 1e-6 && (c.1 - d.1).abs() < 1e-6, "{body}: a/b and c/d share rows");
+        assert!(c.1 - a.1 > 10.0, "{body}: the second row sits below the first: {a:?} {c:?}");
+        // Centred columns: `a` and `c` (different widths) share a column.
+        assert!((a.0 - c.0).abs() < 2.0 && b.0 > a.0 + 5.0, "{body}: columns line up: {a:?} {b:?} {c:?}");
+        let parens: Vec<f64> = glyphs.iter().filter(|g| g.0 == '(').map(|g| g.2).collect();
+        assert!(!parens.is_empty(), "{body}: an opening fence is drawn");
+    }
+}
