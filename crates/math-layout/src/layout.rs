@@ -4,7 +4,7 @@
 //! Every rule is implemented against [`MathFontMetrics`] parameters, so the
 //! numbers below are TeX's when the Computer Modern adapter is used.
 
-use crate::boxes::{BoxKind, Child, MathBox};
+use crate::boxes::{BoxKind, Child, Flex, MathBox};
 use crate::mathlist::{Atom, AtomClass, Limits, MathList, Nucleus};
 use crate::metrics::{Extensible, Glyph, MathFontMetrics, MathParams};
 use crate::spacing::{Space, between};
@@ -114,8 +114,19 @@ impl Engine<'_> {
         let mut prev: Option<AtomClass> = None;
         for (atom, class) in list.atoms.iter().zip(classes) {
             if is_glue(atom) {
-                if let Nucleus::Glue { mu: g, pt } = atom.nucleus {
-                    items.push(MathBox::glue(g * mu + pt, g));
+                if let Nucleus::Glue {
+                    mu: g,
+                    pt,
+                    stretch,
+                    shrink,
+                } = atom.nucleus
+                {
+                    items.push(MathBox::glue_flex(
+                        g * mu + pt,
+                        g,
+                        stretch.resolve(mu),
+                        shrink.resolve(mu),
+                    ));
                 }
                 continue;
             }
@@ -123,7 +134,14 @@ impl Engine<'_> {
             if let Some(p) = prev {
                 let space = between(p, class, style);
                 if space != Space::None {
-                    items.push(MathBox::glue(space.mu() * mu, space.mu()));
+                    // Rule 20 with plain.tex's muskips, stretch and shrink
+                    // included (§716 `math_glue` scales all three by mu).
+                    items.push(MathBox::glue_flex(
+                        space.mu() * mu,
+                        space.mu(),
+                        Flex::pt(space.stretch_mu() * mu),
+                        Flex::pt(space.shrink_mu() * mu),
+                    ));
                 }
             }
             items.push(b);
@@ -204,7 +222,7 @@ impl Engine<'_> {
                 false,
             ),
             // Scripted glue (not a TeX construct): a kern carrying the scripts.
-            Nucleus::Glue { mu, pt } => {
+            Nucleus::Glue { mu, pt, .. } => {
                 (MathBox::kern(mu * self.params(style).mu() + pt), 0.0, false)
             }
             Nucleus::Radical { radicand, degree } => (
@@ -248,7 +266,11 @@ impl Engine<'_> {
                 let reported = self.limitations.len();
                 let measured = self.clean_box(base, Style::TEXT).width;
                 self.limitations.truncate(reported);
-                let accent = if measured > *threshold { *wide } else { *narrow };
+                let accent = if measured > *threshold {
+                    *wide
+                } else {
+                    *narrow
+                };
                 let inner = Atom {
                     nucleus: Nucleus::Accent {
                         accent,

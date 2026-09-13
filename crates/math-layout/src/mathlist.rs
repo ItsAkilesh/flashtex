@@ -1,5 +1,64 @@
 //! The math list model: atoms with a class, a nucleus, and optional scripts.
 
+use crate::boxes::{Flex, GlueOrder};
+
+/// A `plus`/`minus` component of explicit math glue before the style's math
+/// unit is known: `mu` math units plus `pt` points for a finite order; for
+/// `fil`/`fill`/`filll` the amount is `mu + pt` in fil units, never scaled
+/// by the math unit (tex.web §716 multiplies only `normal` components).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct MathFlex {
+    pub mu: f64,
+    pub pt: f64,
+    pub order: GlueOrder,
+}
+
+impl MathFlex {
+    pub const ZERO: MathFlex = MathFlex {
+        mu: 0.0,
+        pt: 0.0,
+        order: GlueOrder::Normal,
+    };
+
+    /// A finite component in math units (`\mskip ... plus 2mu`).
+    pub fn mu(mu: f64) -> MathFlex {
+        MathFlex {
+            mu,
+            ..MathFlex::ZERO
+        }
+    }
+
+    /// A finite component in points (`\hskip ... minus 1pt`).
+    pub fn pt(pt: f64) -> MathFlex {
+        MathFlex {
+            pt,
+            ..MathFlex::ZERO
+        }
+    }
+
+    /// An infinite component (`plus 1fill` is `infinite(1.0, Fill)`).
+    pub fn infinite(amount: f64, order: GlueOrder) -> MathFlex {
+        MathFlex {
+            mu: 0.0,
+            pt: amount,
+            order,
+        }
+    }
+
+    /// The component in points (fil units for infinite orders) with the
+    /// math unit `mu_pt`.
+    pub fn resolve(self, mu_pt: f64) -> Flex {
+        let amount = match self.order {
+            GlueOrder::Normal => self.mu * mu_pt + self.pt,
+            _ => self.mu + self.pt,
+        };
+        Flex {
+            amount,
+            order: self.order,
+        }
+    }
+}
+
 /// TeX's eight atom classes (TeXbook ch. 17).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AtomClass {
@@ -78,8 +137,16 @@ pub enum Nucleus {
     /// Explicit math glue (`\,` `\:` `\;` `\!` `\mskip`, `\quad` `\hskip`):
     /// `mu` math units of the current style plus `pt` points. Like TeX's glue
     /// node it takes no part in inter-atom spacing (it does not change
-    /// `r_type`, tex.web §760), so the atom's class is ignored.
-    Glue { mu: f64, pt: f64 },
+    /// `r_type`, tex.web §760), so the atom's class is ignored. `stretch`
+    /// and `shrink` are its `plus`/`minus` components (`\hfill` is
+    /// `plus 1fill`); finite ones are converted from mu with the style's
+    /// math unit like the natural size (§716).
+    Glue {
+        mu: f64,
+        pt: f64,
+        stretch: MathFlex,
+        shrink: MathFlex,
+    },
     /// `\sqrt{radicand}` or `\sqrt[degree]{radicand}`.
     Radical {
         radicand: MathList,
@@ -277,9 +344,46 @@ impl Atom {
         )
     }
 
-    /// Explicit math glue of `mu` math units plus `pt` points.
+    /// Explicit rigid math glue of `mu` math units plus `pt` points.
     pub fn glue(mu: f64, pt: f64) -> Atom {
-        Atom::new(AtomClass::Ord, Nucleus::Glue { mu, pt })
+        Atom::glue_flex(mu, pt, MathFlex::ZERO, MathFlex::ZERO)
+    }
+
+    /// Explicit math glue with `plus`/`minus` components:
+    /// `\mskip 4mu plus 2mu minus 4mu` is
+    /// `glue_flex(4.0, 0.0, MathFlex::mu(2.0), MathFlex::mu(4.0))`,
+    /// `\hskip 2pt plus 3pt minus 1pt` is
+    /// `glue_flex(0.0, 2.0, MathFlex::pt(3.0), MathFlex::pt(1.0))`.
+    pub fn glue_flex(mu: f64, pt: f64, stretch: MathFlex, shrink: MathFlex) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::Glue {
+                mu,
+                pt,
+                stretch,
+                shrink,
+            },
+        )
+    }
+
+    /// `\hfill` in math: `\hskip 0pt plus 1fill`.
+    pub fn hfill() -> Atom {
+        Atom::glue_flex(
+            0.0,
+            0.0,
+            MathFlex::infinite(1.0, GlueOrder::Fill),
+            MathFlex::ZERO,
+        )
+    }
+
+    /// `\hfil` in math: `\hskip 0pt plus 1fil`.
+    pub fn hfil() -> Atom {
+        Atom::glue_flex(
+            0.0,
+            0.0,
+            MathFlex::infinite(1.0, GlueOrder::Fil),
+            MathFlex::ZERO,
+        )
     }
 
     /// amsmath `\substack` (`align` `c`) / `subarray{l}`.
