@@ -1530,7 +1530,9 @@ impl P<'_> {
             }
             "setcitestyle" => {
                 let (tokens, _) = self.required_group(name, span);
-                self.citer.style.setcitestyle(&token_text(&tokens));
+                self.citer
+                    .style
+                    .setcitestyle(&bib::braced_text(tokens.iter().map(|t| &t.token)));
             }
             // article.cls/natbib: `\hskip .11em\@plus.33em\@minus.07em`
             // between blocks of an entry; the layouts read the glue from

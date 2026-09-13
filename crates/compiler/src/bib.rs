@@ -512,12 +512,19 @@ impl CiteStyle {
         self.bibstyle = false;
     }
 
-    /// `\setcitestyle{<keywords and key=value>}`.
+    /// `\setcitestyle{<keywords and key=value>}` (the argument with its
+    /// braces: `\@for` splits at top-level commas and a braced value keeps
+    /// its spaces, `notesep={: }`).
     pub fn setcitestyle(&mut self, list: &str) {
-        for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        for entry in split_top_level(list).iter().map(|e| e.trim()).filter(|e| !e.is_empty()) {
             match entry.split_once('=') {
                 Some((key, value)) => {
-                    let value = value.trim().to_string();
+                    let value = value.trim();
+                    let value = value
+                        .strip_prefix('{')
+                        .and_then(|v| v.strip_suffix('}'))
+                        .unwrap_or(value)
+                        .to_string();
                     match key.trim() {
                         "open" => self.open = value,
                         "close" => self.close = value,
@@ -572,6 +579,46 @@ impl CiteStyle {
             self.bibstyle = true;
         }
     }
+}
+
+/// `list` split at commas outside braces.
+fn split_top_level(list: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0;
+    for (at, c) in list.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(&list[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&list[start..]);
+    parts
+}
+
+/// The text of an argument's tokens with its inner braces kept (unlike
+/// the parser's `token_text`), for key=value lists whose braces matter.
+pub fn braced_text<'t>(tokens: impl Iterator<Item = &'t Token>) -> String {
+    let mut text = String::new();
+    for token in tokens {
+        match &token.kind {
+            TokenKind::Word(word) => text.push_str(word),
+            TokenKind::Command(name) => {
+                text.push('\\');
+                text.push_str(name);
+            }
+            TokenKind::LBrace => text.push('{'),
+            TokenKind::RBrace => text.push('}'),
+            TokenKind::Space | TokenKind::ParBreak => text.push(' '),
+            _ => {}
+        }
+    }
+    text
 }
 
 /// Which citation command, with its natbib `\NAT@swa`/`\NAT@par`/
@@ -1242,8 +1289,9 @@ mod tests {
         let mut style = CiteStyle::natbib("").0;
         style.bibpunct(None, &["[", "]", ",", "a", ",", ","].map(String::from));
         assert_eq!(cite_text(style.clone(), "citep", &[], "k84,kp", &bib), "[Knuth, 1984, Knuth and Plass, 1981]");
-        style.setcitestyle("round,semicolon,aysep={},notesep={; }");
-        assert_eq!(cite_text(style, "citep", &[], "k84", &bib), "(Knuth{} 1984)");
+        style.setcitestyle("round,semicolon,aysep={},notesep={: }");
+        assert_eq!(cite_text(style.clone(), "citep", &[], "k84", &bib), "(Knuth 1984)");
+        assert_eq!(cite_text(style, "citep", &["p.~3"], "kp", &bib), "(Knuth and Plass 1981: p.~3)");
         let mut plainnat = CiteStyle::natbib("").0;
         plainnat.named_style("plainnat", false);
         assert_eq!(cite_text(plainnat, "citep", &[], "k84,kp", &bib), "[Knuth, 1984, Knuth and Plass, 1981]");
