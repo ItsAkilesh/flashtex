@@ -79,21 +79,23 @@ fn load() -> (Vec<(String, String, String)>, HashMap<String, Expected>, HashMap<
     (fixtures, expected, params)
 }
 
-fn new_engine(line: i32) -> BoxEngine {
+fn new_engine(line: i32, term_dirty: bool) -> BoxEngine {
     let mut e = BoxEngine::new(Box::new(NoChars));
     latex::setup_article_10pt(&mut e);
     e.set_int("showboxdepth", 10000, true);
     e.set_int("showboxbreadth", 10000, true);
     e.max_print_line = 100000;
     e.line = line;
-    // In the oracle run every fixture follows `\showbox0`'s error context
-    // (or the `(./oracle.aux)` banner), so pdfTeX's terminal line is non-empty.
-    e.term_offset = 1;
+    // pdfTeX's terminal state at the start of a fixture in the oracle run:
+    // `\showbox0`'s error() ends with print_ln (§90), leaving the terminal
+    // clean, but a preceding position pass ships out a page and leaves ` [n]`
+    // on the terminal line. The first fixture follows `(./oracle.aux)`.
+    e.term_offset = usize::from(term_dirty);
     e
 }
 
-fn run(setup: &str, body: &str, line: i32, with_pos: bool) -> Result<BoxEngine, String> {
-    let mut e = new_engine(line);
+fn run(setup: &str, body: &str, line: i32, with_pos: bool, term_dirty: bool) -> Result<BoxEngine, String> {
+    let mut e = new_engine(line, term_dirty);
     let src = format!("\\begingroup {setup}\\global\\setbox0{body}\\endgroup");
     dsl::execute(&mut e, &src, with_pos).map_err(|err| format!("{err}"))?;
     Ok(e)
@@ -102,7 +104,7 @@ fn run(setup: &str, body: &str, line: i32, with_pos: bool) -> Result<BoxEngine, 
 #[test]
 fn article_parameters_match_oracle() {
     let (_, _, params) = load();
-    let e = new_engine(0);
+    let e = new_engine(0, false);
     assert_eq!(params["baselineskip"], i64::from(e.skip("baselineskip").0.width));
     assert_eq!(params["strutht"], i64::from(e.box_dimen(latex::STRUTBOX, BoxDim::Height)));
     assert_eq!(params["strutdp"], i64::from(e.box_dimen(latex::STRUTBOX, BoxDim::Depth)));
@@ -122,9 +124,11 @@ fn oracle_fixtures() {
     let mut failures = Vec::new();
     let mut counts = [0usize; 5]; // dims, badness, box, diag, pos
     let mut pos_total = 0;
+    let mut term_dirty = true;
     for (name, setup, body) in &fixtures {
         let exp = expected.get(name).unwrap_or_else(|| panic!("no expected data for {name}; rerun generate.py"));
-        let e = match run(setup, body, exp.line, false) {
+        let dirty = std::mem::replace(&mut term_dirty, exp.pos.is_some());
+        let e = match run(setup, body, exp.line, false, dirty) {
             Ok(e) => e,
             Err(err) => {
                 failures.push(format!("{name}: interpreter error: {err}"));
@@ -162,7 +166,7 @@ fn oracle_fixtures() {
         }
         if let Some(want) = &exp.pos {
             pos_total += 1;
-            match run(setup, body, exp.line, true) {
+            match run(setup, body, exp.line, true, dirty) {
                 Ok(mut e) => {
                     let b = e.take_box_register(0).expect("box0");
                     let wrapper = hpack(
