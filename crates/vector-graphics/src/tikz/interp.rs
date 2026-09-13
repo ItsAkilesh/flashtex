@@ -2175,7 +2175,7 @@ impl<'a> Interp<'a> {
             Some(n) => self.nodes.get(n).map(|g| g.angle_anchor(inn)).unwrap_or(p),
             None => p,
         };
-        let dist = len(sub(b, a)) * TO_CONTROL * local.looseness;
+        let dist = pgf_veclen(sub(b, a)) * TO_CONTROL * local.looseness;
         let c1 = add(a, mul(v(rad(out).cos(), rad(out).sin()), dist));
         let c2 = add(b, mul(v(rad(inn).cos(), rad(inn).sin()), dist));
         pb.segs.push((Seg::C(c1, c2, b), ps.rounded));
@@ -2231,17 +2231,22 @@ impl<'a> Interp<'a> {
         let c = sub(sub(p0, mul(u, s.cos())), mul(w, s.sin()));
         let pt = |t: f64| add(c, add(mul(u, t.cos()), mul(w, t.sin())));
         let dp = |t: f64| add(mul(u, -t.sin()), mul(w, t.cos()));
+        // PGF splits arcs into quarter turns from the start angle plus a
+        // remainder; the control points (which count for the bounding box)
+        // then match its output.
         let total = e - s;
-        let n = ((total.abs() / std::f64::consts::FRAC_PI_2) - 1e-9).ceil().max(1.0) as usize;
-        let step = total / n as f64;
-        let k = 4.0 / 3.0 * (step / 4.0).tan();
+        let quarter = std::f64::consts::FRAC_PI_2.copysign(total);
         let mut last = Last::None;
-        for q in 0..n {
-            let t0 = s + q as f64 * step;
-            let t1 = t0 + step;
+        let mut t0 = s;
+        let mut guard = 0;
+        while (e - t0).abs() > 1e-9 && guard < 64 {
+            guard += 1;
+            let t1 = if (e - t0).abs() > quarter.abs() + 1e-9 { t0 + quarter } else { e };
+            let k = 4.0 / 3.0 * ((t1 - t0) / 4.0).tan();
             let (a, c1, c2, b) = (pt(t0), add(pt(t0), mul(dp(t0), k)), sub(pt(t1), mul(dp(t1), k)), pt(t1));
             pb.segs.push((Seg::C(c1, c2, b), None));
             last = Last::Curve(a, c1, c2, b);
+            t0 = t1;
         }
         pb.cur = pt(e);
         pb.rel = pb.cur;
@@ -2260,20 +2265,19 @@ impl<'a> Interp<'a> {
             self.warn("grid step is too small; grid skipped");
             return;
         }
-        let eps = 1e-4;
-        let mut k = (x0 / sx - eps).ceil();
-        while k * sx <= x1 + eps * sx {
-            let x = k * sx;
-            pb.segs.push((Seg::M(ps.tf.apply(v(x, y0))), None));
-            pb.segs.push((Seg::L(ps.tf.apply(v(x, y1))), None));
-            k += 1.0;
+        // PGF computes grid lines in scaled points with TeX's integer
+        // division; emulate it so lines at (or rounding-close to) the ends
+        // appear or vanish exactly as in its output.
+        let (xa, xb, xs) = (tex_sp(x0), tex_sp(x1), tex_sp(sx));
+        let (ya, yb, ys) = (tex_sp(y0), tex_sp(y1), tex_sp(sy));
+        let sp = |s: i64| s as f64 / 65536.0;
+        for y in grid_lines(ya, yb, ys) {
+            pb.segs.push((Seg::M(ps.tf.apply(v(sp(xa), sp(y)))), None));
+            pb.segs.push((Seg::L(ps.tf.apply(v(sp(xb), sp(y)))), None));
         }
-        let mut k = (y0 / sy - eps).ceil();
-        while k * sy <= y1 + eps * sy {
-            let y = k * sy;
-            pb.segs.push((Seg::M(ps.tf.apply(v(x0, y))), None));
-            pb.segs.push((Seg::L(ps.tf.apply(v(x1, y))), None));
-            k += 1.0;
+        for x in grid_lines(xa, xb, xs) {
+            pb.segs.push((Seg::M(ps.tf.apply(v(sp(x), sp(ya)))), None));
+            pb.segs.push((Seg::L(ps.tf.apply(v(sp(x), sp(yb)))), None));
         }
         pb.segs.push((Seg::M(to), None));
         pb.cur = to;
@@ -2445,8 +2449,10 @@ impl<'a> Interp<'a> {
             };
             let segs: Vec<(Seg, Option<f64>)> = segs.into_iter().map(|(sg, r)| (map_seg(sg, &m), r)).collect();
             let segs = round_corners(&segs);
-            // PGF's picture size grows by the node's shape (with outer sep).
-            for q in [v(g.xmin - g.outer, g.ymin - g.outer), v(g.xmax + g.outer, g.ymin - g.outer), v(g.xmax + g.outer, g.ymax + g.outer), v(g.xmin - g.outer, g.ymax + g.outer)] {
+            // PGF's picture size grows by the node's shape (without outer
+            // sep), plus half the line width when the shape is drawn.
+            let h = if ns.do_draw { ns.lw / 2.0 } else { 0.0 };
+            for q in [v(g.xmin - h, g.ymin - h), v(g.xmax + h, g.ymin - h), v(g.xmax + h, g.ymax + h), v(g.xmin - h, g.ymax + h)] {
                 self.bbox_add(m.apply(q));
             }
             let path = to_path(&segs);
@@ -2565,7 +2571,8 @@ impl<'a> Interp<'a> {
 
     fn finish_path(&mut self, pb: Pb, ps: &St) -> bool {
         let segs = round_corners(&pb.segs);
-        for (sg, _) in &segs {
+        // PGF protocols the corner points before rounding replaces them.
+        for (sg, _) in &pb.segs {
             match *sg {
                 Seg::M(p) | Seg::L(p) => self.bbox_add(p),
                 Seg::C(a, b, c) => {
@@ -2581,7 +2588,7 @@ impl<'a> Interp<'a> {
         if drawable {
             // Stroked paths grow the picture by half the line width.
             if ps.do_draw {
-                if let Some([x0, y0, x1, y1]) = path_extent(&segs) {
+                if let Some([x0, y0, x1, y1]) = path_extent(&pb.segs) {
                     let h = ps.lw / 2.0;
                     self.bbox_add(v(x0 - h, y0 - h));
                     self.bbox_add(v(x1 + h, y1 + h));
@@ -2765,6 +2772,69 @@ impl<'a> Interp<'a> {
 enum CoordKind {
     User(V),
     Canvas(V, Option<String>),
+}
+
+/// The `to` path's distance estimate (`\tikz@to@compute@distance@main`):
+/// the larger normalised component, truncated to 1/255, divides the
+/// matching absolute component in scaled points. It is up to ~0.4 % short
+/// of the true length, and PGF's control points inherit that.
+fn pgf_veclen(d: V) -> f64 {
+    let (xa, ya) = (d.x.abs(), d.y.abs());
+    let l = xa.hypot(ya);
+    if l < 1e-9 {
+        return 0.0;
+    }
+    let (nx, ny) = ((xa / l * 65536.0).round() as i64, (ya / l * 65536.0).round() as i64);
+    let (comp, n) = if nx > ny { (xa, nx) } else { (ya, ny) };
+    let count = n / 255;
+    if count == 0 {
+        return xa;
+    }
+    let comp_sp = (comp * 65536.0).round() as i64;
+    (16 * ((16 * comp_sp) / count)) as f64 / 65536.0
+}
+
+/// TeX scaled points for a length. Whole or decimal multiples of a
+/// centimetre are converted the way TeX does (`1cm` = 1864679sp, a decimal
+/// factor truncates), since TikZ coordinates are multiples of the x/y
+/// vectors; other lengths are rounded.
+fn tex_sp(pt: f64) -> i64 {
+    const CM_SP: f64 = 1_864_679.0;
+    let n = pt / PT_PER_CM;
+    let scaled = n * 100_000.0;
+    if (scaled - scaled.round()).abs() < 1e-3 {
+        let n = scaled.round() / 100_000.0;
+        let v = (n.abs() * CM_SP + 1e-6).trunc();
+        (v as i64) * if n < 0.0 { -1 } else { 1 }
+    } else {
+        (pt * 65536.0).round() as i64
+    }
+}
+
+/// PGF's grid loop (`\pgfpathgrid`): the first multiple of `step` at or
+/// after `a` (integer division truncates), lines while below `b`, and one
+/// last line when within 0.01pt of `b`.
+fn grid_lines(a: i64, b: i64, step: i64) -> Vec<i64> {
+    let mut out = Vec::new();
+    if step <= 655 {
+        return out;
+    }
+    let mut t = (a / step) * step;
+    if t < a {
+        t += step;
+    }
+    loop {
+        out.push(t);
+        t += step;
+        if t >= b || out.len() > 10_000 {
+            break;
+        }
+    }
+    t -= 655;
+    if t < b {
+        out.push(t);
+    }
+    out
 }
 
 fn single_char(s: &str) -> Option<char> {
