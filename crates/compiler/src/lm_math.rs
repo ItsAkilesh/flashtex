@@ -1,12 +1,18 @@
 //! Glyphs drawn from the pinned Latin Modern Math resource, not the base-14 fonts.
 //!
-//! Blackboard bold, `\setminus` and the long `\Longrightarrow` arrow have no
-//! glyph in the base-14 Symbol face. Rather than substitute a look-alike, the
-//! compiler emits their real Unicode code points and binds them to the
-//! `lm.math` resource the font-engine manifest already pins (the same file the
-//! Mac app bundles as `apps/mac/Fonts/latinmodern-math.otf`). Advance widths
-//! come from that exact font program; `tests/lm_math_binding.rs` re-reads the
-//! file and fails if the digest or any advance drifts.
+//! Blackboard bold, `\setminus`, the long `\Longrightarrow` arrow, a
+//! further set of common amssymb/latexsym symbols (issue #62: `\mp`, `\ll`,
+//! `\gg`, `\simeq`, `\vdots`, `\ddots`, the floor/ceiling fences, `\oint`,
+//! `\mapsto`, `\ell`, `\hbar`, `\circ`, `\parallel`, and the relations/order
+//! symbols below), and the HW2 follow-up (the remaining long double/single
+//! arrows, `\triangle`/`\bigtriangleup`/`\bigtriangledown`, and the proof QED
+//! mark) have no glyph in the base-14 Symbol face. Rather than
+//! substitute a look-alike, the compiler emits their real Unicode code points
+//! and binds them to the `lm.math` resource the font-engine manifest already
+//! pins (the same file the Mac app bundles as
+//! `apps/mac/Fonts/latinmodern-math.otf`). Advance widths come from that exact
+//! font program; `tests/lm_math_binding.rs` re-reads the file and fails if the
+//! digest or any advance drifts.
 //!
 //! Fidelity limitation: this is the `unicode-math` design of Latin Modern
 //! Math. pdfLaTeX draws `\mathbb` from `msbm10` and `\setminus` from `cmsy10`,
@@ -52,6 +58,64 @@ pub const ADVANCES: &[(char, u16)] = &[
     ('\u{2124}', 667),  // \mathbb{Z}
     ('\u{2216}', 568),  // \setminus
     ('\u{27F9}', 1457), // \Longrightarrow
+    // amssymb/latexsym symbols with no base-14 Symbol glyph (issue #62).
+    ('\u{2213}', 778),  // \mp
+    ('\u{226A}', 1000), // \ll
+    ('\u{226B}', 1000), // \gg
+    ('\u{2243}', 778),  // \simeq
+    ('\u{22EE}', 218),  // \vdots
+    ('\u{22F1}', 613),  // \ddots
+    ('\u{230A}', 444),  // \lfloor
+    ('\u{230B}', 444),  // \rfloor
+    ('\u{2308}', 444),  // \lceil
+    ('\u{2309}', 444),  // \rceil
+    ('\u{222E}', 665),  // \oint
+    ('\u{21A6}', 977),  // \mapsto
+    ('\u{2113}', 417),  // \ell
+    ('\u{210F}', 576),  // \hbar
+    ('\u{2218}', 412),  // \circ
+    ('\u{2225}', 500),  // \parallel
+    ('\u{2224}', 388),  // \nmid
+    ('\u{2270}', 778),  // \nleq
+    ('\u{2271}', 778),  // \ngeq
+    ('\u{228A}', 778),  // \subsetneq
+    ('\u{228B}', 778),  // \supsetneq
+    ('\u{2272}', 776),  // \lesssim
+    ('\u{2273}', 776),  // \gtrsim
+    ('\u{225C}', 778),  // \triangleq
+    ('\u{2254}', 906),  // \coloneqq
+    ('\u{2204}', 556),  // \nexists
+    ('\u{2201}', 556),  // \complement
+    ('\u{21DD}', 997),  // \rightsquigarrow
+    ('\u{21AA}', 997),  // \hookrightarrow
+    ('\u{21C6}', 1018), // \leftrightarrows
+    ('\u{22A8}', 612),  // \models
+    ('\u{22A2}', 611),  // \vdash
+    ('\u{22A3}', 611),  // \dashv
+    ('\u{22A4}', 778),  // \top
+    ('\u{2221}', 778),  // \measuredangle
+    ('\u{25A1}', 778),  // \square
+    ('\u{25A0}', 778),  // \blacksquare
+    ('\u{25CA}', 572),  // \lozenge
+    ('\u{2713}', 833),  // \checkmark
+    // HW2 coverage (issue #62 follow-up): long arrows, \triangle family, \bot,
+    // and the amsthm QED mark, all drawn from the same pinned resource.
+    ('\u{27FA}', 1534), // \Longleftrightarrow, and \iff (\;\Longleftrightarrow\;)
+    ('\u{27F6}', 1463), // \longrightarrow
+    ('\u{27F5}', 1463), // \longleftarrow
+    ('\u{27F8}', 1457), // \Longleftarrow, and \impliedby (\;\Longleftarrow\;)
+    ('\u{27F7}', 1442), // \longleftrightarrow
+    // \triangle (Ord) and \bigtriangleup (Bin) share this one real glyph;
+    // \bigtriangleup gets a per-atom class override rather than a second glyph.
+    ('\u{25B3}', 968), // \triangle, \bigtriangleup
+    ('\u{25BD}', 968), // \bigtriangledown (a distinct glyph, no override needed)
+    // \bot shares \perp's exact U+22A5 glyph; only its class differs (Ord vs
+    // Rel), handled with a per-atom class override, not a second glyph.
+    // Proof QED mark (U+220E): not emitted by any command here yet, but
+    // pinning its advance stops it being reported as an unrepresentable/lossy
+    // export if it reaches an item's text (e.g. typed literally by an
+    // amsthm-style proof ending).
+    ('\u{220E}', 666), // ∎ QED
 ];
 
 /// The double-struck code point for `\mathbb{letter}`: the Mathematical
@@ -116,7 +180,7 @@ mod tests {
         assert_eq!(double_struck('A'), Some('\u{1D538}'));
         assert_eq!(double_struck('a'), None);
         assert_eq!(double_struck('1'), None);
-        assert_eq!(ADVANCES.len(), 28);
+        assert_eq!(ADVANCES.len(), 75);
     }
 
     #[test]
