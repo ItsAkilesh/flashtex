@@ -266,6 +266,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["xrightarrow", "xleftarrow", "xleftrightarrow"],
+        "[below]{above}",
+        "amsmath/mathtools extensible arrow stretched to its labels (\\ext@arrow)",
+        true,
+    ),
+    (
         &["substack"],
         "{a \\\\ b}",
         "amsmath centred script-style rows for limits",

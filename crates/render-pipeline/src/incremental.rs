@@ -266,9 +266,13 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 3u8.hash(h);
                 s.hash(h);
             }
-            Nucleus::Space { em } => {
+            Nucleus::Space { em, .. } => {
                 4u8.hash(h);
                 em.to_bits().hash(h);
+                #[cfg(feature = "amsmath-inline")]
+                if let Nucleus::Space { font_em, .. } = &a.nucleus {
+                    font_em.hash(h);
+                }
             }
             Nucleus::Matrix { rows, columns, left, right } => {
                 5u8.hash(h);
@@ -357,6 +361,13 @@ pub fn hash_math(list: &MathList, h: &mut DefaultHasher) {
                 for r in rows {
                     hash_math(r, h);
                 }
+            }
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::ExtArrow { arrow, above, below } => {
+                16u8.hash(h);
+                arrow.hash(h);
+                hash_math(above, h);
+                hash_math(below, h);
             }
         }
         match &a.superscript {
@@ -539,6 +550,11 @@ fn shift_math(list: &mut MathList, delta: isize) {
             Nucleus::Phantom { body, .. } | Nucleus::Operator { body, .. } => shift_math(body, delta),
             #[cfg(feature = "amsmath-inline")]
             Nucleus::SubArray { rows, .. } => rows.iter_mut().for_each(|r| shift_math(r, delta)),
+            #[cfg(feature = "amsmath-inline")]
+            Nucleus::ExtArrow { above, below, .. } => {
+                shift_math(above, delta);
+                shift_math(below, delta);
+            }
         }
         if let Some(s) = &mut a.superscript {
             shift_math(s, delta);

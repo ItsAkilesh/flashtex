@@ -44,6 +44,7 @@ import rank  # noqa: E402
 FIXTURES = os.path.join(HERE, "fixtures")
 REFS = os.path.join(HERE, "refs")
 TOL = 0.5
+TIE = 0.05
 Q = float(2 ** 20)
 # cmex10 at its design size, in bp.
 EXT_SIZE_BP = 10 * 72 / 72.27
@@ -57,6 +58,16 @@ OMS_TEXT = dict(enumerate(
 
 def regroup(glyphs):
     glyphs = sorted((dict(g, bt=0) for g in glyphs), key=lambda g: (round(g["y_top"], 1), g["x"]))
+    # Glyphs whose origins coincide within TIE bp (amsmath's `\relbar`
+    # and arrow head, 14mu apart by construction) have no reading order:
+    # pdfTeX's quantised TJ offsets and FlashTeX's exact arithmetic may put
+    # them either way round, so they are ordered by text.
+    for i in range(1, len(glyphs)):
+        j = i
+        while (j > 0 and round(glyphs[j]["y_top"], 1) == round(glyphs[j - 1]["y_top"], 1)
+               and glyphs[j]["x"] - glyphs[j - 1]["x"] < TIE and glyphs[j]["text"] < glyphs[j - 1]["text"]):
+            glyphs[j], glyphs[j - 1] = glyphs[j - 1], glyphs[j]
+            j -= 1
     return [{"text": w["text"], "x": round(w["x"], 4), "y_top": round(w["y_top"], 4)}
             for w in pdftext.words_from_glyphs(glyphs)]
 
