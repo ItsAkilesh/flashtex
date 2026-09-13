@@ -864,20 +864,19 @@ Positioned text items:
 - `\bogus` — byte range `11..17`
 - `Tail.` — byte range `19..24`
 
-## missing braced math argument
+## missing math argument
 
 Input:
 
 ```text
-Visible $x+\frac a{b}$ Tail.
+Visible $x+\frac{a}^2$ Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `\frac requires a braced math argument` — recovery: `used an empty argument and continued`; byte range: `11..16`
-- `\frac requires a braced math argument` — recovery: `used an empty argument and continued`; byte range: `11..16`
+- `\frac requires an argument` — recovery: `used an empty argument and continued`; byte range: `11..16`
 - `'─' (U+2500) will not survive PDF export: fraction rules are drawn with a box-drawing character as a stand-in; runtime-v1 has no rule item type yet, so they cannot be exported faithfully` — recovery: `the preview shows it correctly; the exported PDF will not`; byte range: `11..16`
 
 Positioned text items:
@@ -885,9 +884,9 @@ Positioned text items:
 - `Visible` — byte range `0..7`
 - `x` — byte range `9..10`
 - `+` — byte range `10..11`
-- `─` — byte range `11..16`
 - `a` — byte range `17..18`
-- `b` — byte range `19..20`
+- `─` — byte range `11..16`
+- `2` — byte range `20..21`
 - `Tail.` — byte range `23..28`
 
 ## include naming a document the request did not supply
