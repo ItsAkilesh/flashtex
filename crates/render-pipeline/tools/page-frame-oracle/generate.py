@@ -118,6 +118,30 @@ def fixtures():
     f["20-article-twoside-headings-subsections"] = doc("article", "twoside", sectioned(22, 3, 2, sub=True), "\\pagestyle{headings}\n")
     f["21-report-twoside-headings"] = doc("report", "twoside", "\\chapter{Main Part}\n" + sectioned(23, 3, 3), "\\pagestyle{headings}\n")
     f["22-article-pagestyle-in-body"] = doc("article", "", paras(24, 5) + "\n\n\\pagestyle{empty}\n\n" + paras(25, 6))
+    f["23-article-roman-then-arabic"] = doc(
+        "article", "", "\\pagenumbering{roman}\n" + paras(26, 8) + "\n\n\\clearpage\n\\pagenumbering{arabic}\n" + paras(27, 8)
+    )
+    f["24-article-Roman-twoside-headings"] = doc(
+        "article", "twoside", "\\pagenumbering{Roman}\n" + sectioned(28, 3, 3), "\\pagestyle{headings}\n"
+    )
+    f["25-article-setcounter-page"] = doc("article", "", "\\setcounter{page}{7}\n" + paras(29, 11))
+    f["26-article-twoside-setcounter-even"] = doc("article", "twoside", "\\setcounter{page}{4}\n" + paras(30, 12))
+    f["27-article-alph-Alph"] = doc(
+        "article", "", "\\pagenumbering{alph}\n" + paras(31, 8) + "\n\n\\clearpage\n\\pagenumbering{Alph}\n" + paras(32, 8)
+    )
+    f["28-book-openright"] = doc("book", "", "\\chapter{Opening}\n" + paras(33, 3) + "\n\n\\chapter{Second}\n" + paras(34, 6))
+    f["29-book-openright-headings"] = doc(
+        "book", "", "\\chapter{Opening}\n" + paras(35, 3) + "\n\n\\chapter{Second}\n" + paras(36, 6), "\\pagestyle{headings}\n"
+    )
+    f["30-report-twoside-openright"] = doc(
+        "report", "twoside,openright", "\\chapter{Alpha}\n" + paras(37, 3) + "\n\n\\chapter{Beta}\n" + paras(38, 5)
+    )
+    f["31-article-maketitle-headings"] = doc(
+        "article", "", "\\maketitle\n" + sectioned(39, 3, 3), "\\pagestyle{headings}\n\\title{A Title}\n\\author{An Author}\n\\date{1 May 2020}\n"
+    )
+    f["32-article-maketitle-empty"] = doc(
+        "article", "", "\\maketitle\n" + paras(40, 11), "\\pagestyle{empty}\n\\title{A Title}\n\\author{An Author}\n\\date{1 May 2020}\n"
+    )
     return f
 
 
