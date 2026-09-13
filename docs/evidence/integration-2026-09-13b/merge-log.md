@@ -495,6 +495,29 @@ general implementation rather than by keeping both.
   Remaining render-pipeline errors are #158 (`ColorBox`), #165
   (`MathBox::tag`), #170 (`Graphic`/`Transform`) and `Piece::Caption::short`.
 
+### #171 hw-residuals-2 (render-pipeline) @ e5ca5f36
+
+#171 predates #151/#152 in every conflicting region, so nothing could simply
+be picked: its three residual fixes were grafted onto the newer structure.
+
+- `src/adapter.rs`, `em`/`ex` units: took #171's `parse_dimen_in`, which
+  evaluates a document's own `\setlength`/enumitem lengths in the body font
+  actually in force (`ec_em_ex`: `\usepackage[T1]{fontenc}` without lmodern
+  selects the EC fonts, whose `\fontdimen6` is not the class quad), over
+  main's `size_params(base).normal.quad`. #171 had changed `list_seps`, which
+  #152 has since split, so the em/ex pair is now threaded through
+  `apply_sep_keys` (a new `em_ex` argument) and `list_labelsep`.
+- `src/typeset.rs`, item labels: kept #152's multi-word label box
+  (`label_words`, description and llap handling) and added #171's protrusion
+  cancellation — under microtype the item's first character protrudes into the
+  margin, and `\@item`'s label box must not be shifted by it, so the lead ends
+  with `kern(-item_left_protrusion)`.
+- `src/typeset.rs`, `label_box`: kept #152's math/bold-aware `text_box_in`
+  and added #171's `label_recs` bookkeeping, which is what keeps a label box
+  out of the microtype runs (`micro_run` filters on it).
+- Checks: no new errors. Remaining render-pipeline errors are #158, #165,
+  #170 and `Piece::Caption::short`.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
