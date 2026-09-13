@@ -35,6 +35,15 @@ default = ["amsmath-inline"]
 # it; it builds only against a compiler that carries the variant. Off by
 # default so the crate builds against the pinned vendor.
 compiler-text-nucleus = []
+# The request's date reaches `\today` (`RenderOptions::today`,
+# `protocol/proposals/runtime-v1-request-date.md`). Builds only against a
+# compiler carrying `parser::parse_project_with`/`date::TodayDate`
+# (crates/compiler of branch engine/today-date-compiler, PR #220); off until
+# vendor/compiler is re-pinned to it, exactly like `amsmath-inline` and
+# `compiler-text-nucleus` before their re-pins. With the feature off the
+# request's date is still validated, carried and cache-keyed -- only the
+# substitution is missing, so `\today` renders the epoch as it always has.
+request-date = []
 # FT-061 amsmath inline constructs: the compiler's `GenFraction`
 # (`\dfrac`/`\tfrac`/`\binom`/`\genfrac`), `Phantom`, `Operator`
 # (`\operatorname`, `\DeclareMathOperator`) and `SubArray` (`\substack`)
