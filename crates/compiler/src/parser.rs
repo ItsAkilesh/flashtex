@@ -21,6 +21,7 @@ use crate::{DocumentId, Span};
 use flashtex_tex_text_encoding::encoding::Encoding;
 
 mod hyperlinks;
+mod boxes;
 mod tabular;
 
 /// Maximum number of active nested `\input`/`\include` calls.
@@ -184,6 +185,21 @@ pub enum Inline {
         span: Span,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+    },
+    /// A LaTeX box command (`\mbox`, `\fbox`, `\parbox`, `minipage`,
+    /// `\raisebox`, `\phantom`, `\usebox`, `\strut`, ...; see
+    /// `crate::boxes`). One unbreakable box in the paragraph.
+    Box(Box<crate::boxes::TextBox>),
+    /// `\settowidth{\len}{..}` & co., or `\setlength{\len}{..}` of a
+    /// `\newlength`: no material, assigns the length for later
+    /// [`Inline::LengthGlue`] and box dimensions.
+    SetLength(Box<crate::boxes::LengthAssignment>),
+    /// `\hspace{<dimen>}` whose dimension names a length (`\hspace{\w}`,
+    /// `\hspace{.5\textwidth}`), resolved by the typesetter. Plain
+    /// dimensions stay `Inline::HSpace`.
+    LengthGlue {
+        dimen: crate::boxes::BoxDimen,
+        span: Span,
     },
 }
 
@@ -631,7 +647,29 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "theoremautorefname",
     "hfill",
     "hfil",
+    "hss",
     "hspace",
+    "mbox",
+    "makebox",
+    "fbox",
+    "framebox",
+    "parbox",
+    "raisebox",
+    "phantom",
+    "hphantom",
+    "vphantom",
+    "smash",
+    "llap",
+    "rlap",
+    "strut",
+    "newsavebox",
+    "sbox",
+    "savebox",
+    "usebox",
+    "newlength",
+    "settowidth",
+    "settoheight",
+    "settodepth",
     "footnote",
     "footnotemark",
     "footnotetext",
@@ -992,6 +1030,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         no_hyper_depth: 0,
         bookmark_level: None,
         list_label_state: Vec::new(),
+        saved_boxes: HashMap::new(),
+        lengths: std::collections::HashSet::new(),
         column_types: HashMap::new(),
     };
     p.diags.extend(bibliography_diags);
@@ -1176,6 +1216,13 @@ struct P<'a> {
     /// `enumerate` `\begin`: the list is a TeX group, so an item's
     /// `\@currentlabel` does not outlive `\end`.
     list_label_state: Vec<(Option<String>, String)>,
+    /// `\newsavebox` names and the box last stored by `\sbox`/`\savebox`/
+    /// `lrbox` (`None` while void). Box registers are global here: LaTeX's
+    /// `\sbox` is local, but a group-scoped save stack for boxes is not
+    /// modelled (see `crate::boxes`).
+    saved_boxes: HashMap<String, Option<crate::boxes::TextBox>>,
+    /// Names declared by `\newlength` in this document.
+    lengths: std::collections::HashSet<String>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1350,7 +1397,7 @@ impl P<'_> {
 
         match name {
             "documentclass" => self.document_class(span),
-            "setlength" => self.set_length(span),
+            "setlength" => self.set_length(span, para),
             "usepackage" => self.use_package(span),
             "newcolumntype" => self.new_column_type(span),
             // array.sty 247: `\let\\\tabularnewline`; this parser already
@@ -1402,6 +1449,8 @@ impl P<'_> {
             "pdfstringdefDisableCommands" | "hyperbaseurl" | "setpdflinkmargin" => {
                 let _ = self.required_group(name, span);
             }
+            // Register declarations belong in the preamble as often as the body.
+            "newsavebox" | "newlength" => self.box_register_command(name, span, para),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1755,7 +1804,16 @@ impl P<'_> {
                 }
             }
             _ if style_declaration(name) => self.style = apply_style(self.style, name),
-            "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            // `\hss` is `0pt plus 1fil minus 1fil`; it shares `HFill` (the
+            // typesetter re-reads the control word for the glue's order).
+            "hfill" | "hfil" | "hss" => para.push(Inline::HFill { span }),
+            "mbox" | "makebox" | "fbox" | "framebox" | "raisebox" | "phantom" | "hphantom"
+            | "vphantom" | "smash" | "llap" | "rlap" | "strut" | "parbox" | "usebox" => {
+                self.box_command(name, span, para)
+            }
+            "sbox" | "savebox" | "settowidth" | "settoheight" | "settodepth" => {
+                self.box_register_command(name, span, para)
+            }
             "footnote" | "footnotemark" | "footnotetext" => self.footnote(name, span, para),
             // `\linebreak[n]`/`\nolinebreak[n]`: real TeX's 0-4 priority only
             // ever hints a badness-based line-breaking algorithm this greedy
@@ -1787,6 +1845,10 @@ impl P<'_> {
                 match parse_dimen_pt(&raw) {
                     Some(pt) => para.push(Inline::HSpace {
                         pt,
+                        span: span.merge(argument_span),
+                    }),
+                    None if self.length_dimen(&tokens).is_some() => para.push(Inline::LengthGlue {
+                        dimen: self.length_dimen(&tokens).expect("checked above"),
                         span: span.merge(argument_span),
                     }),
                     None => self.diags.push(Diagnostic::error(
@@ -2089,7 +2151,7 @@ impl P<'_> {
     /// `\setlength{\parskip}{..}` and `\setlength{\parindent}{..}` in the
     /// preamble. `em`/`ex` resolve against the class body size. This engine
     /// never indents paragraphs, so only a zero `\parindent` is exact.
-    fn set_length(&mut self, span: Span) {
+    fn set_length(&mut self, span: Span, para: &mut Vec<Inline>) {
         let (target_tokens, _) = self.required_group("setlength", span);
         let (value_tokens, value_span) = self.required_group("setlength", span);
         let span = span.merge(value_span);
@@ -2097,6 +2159,9 @@ impl P<'_> {
             .trim()
             .trim_start_matches('\\')
             .to_string();
+        if self.set_box_length(&target, &value_tokens, span, para) {
+            return;
+        }
         let raw = token_text(&value_tokens);
         let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
         let Some(pt) = parse_dimen_pt_at(&raw, body) else {
@@ -2467,6 +2532,10 @@ impl P<'_> {
             }
             if matches!(environment.as_str(), "tabular" | "tabular*") && self.in_body {
                 self.tabular_environment(span, &environment, para);
+                return;
+            }
+            if matches!(environment.as_str(), "minipage" | "lrbox") && self.in_body {
+                self.box_environment(span, &environment, para);
                 return;
             }
             if matches!(
@@ -3400,6 +3469,18 @@ impl P<'_> {
     /// paragraph, so an unclosed one is closed there.
     fn required_group(&mut self, command: &str, command_span: Span) -> (Vec<InputToken>, Span) {
         self.required_group_bounded(command, command_span, false)
+    }
+
+    /// A `\long` argument (macro bodies and arguments of `\newcommand`
+    /// macros) may legitimately span paragraphs; only when it is never
+    /// closed at all is it closed at the end of its first paragraph rather
+    /// than swallowing the rest of the document.
+    fn long_required_group(
+        &mut self,
+        command: &str,
+        command_span: Span,
+    ) -> (Vec<InputToken>, Span) {
+        self.required_group_bounded(command, command_span, true)
     }
 
     fn required_group_bounded(

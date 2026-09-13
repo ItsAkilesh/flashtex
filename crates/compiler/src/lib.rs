@@ -11,6 +11,7 @@
 
 pub mod amssymb;
 pub mod bib;
+pub mod boxes;
 pub mod diagnostics;
 pub mod export;
 pub mod expansion;

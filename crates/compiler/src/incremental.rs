@@ -557,6 +557,19 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 space_before: _,
             } => map_span(span, changes, deltas)?,
+            Inline::Box(b) => {
+                map_span(&mut b.span, changes, deltas)?;
+                for list in b.inline_lists_mut() {
+                    shift_inlines(list, changes, deltas)?;
+                }
+            }
+            Inline::SetLength(assignment) => {
+                map_span(&mut assignment.span, changes, deltas)?;
+                if let crate::boxes::LengthValue::Measure { content, .. } = &mut assignment.value {
+                    shift_inlines(content, changes, deltas)?;
+                }
+            }
+            Inline::LengthGlue { dimen: _, span } => map_span(span, changes, deltas)?,
         }
     }
     Some(())
@@ -727,6 +740,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
         Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
+        Inline::Box(b) => b.span,
+        Inline::SetLength(assignment) => assignment.span,
+        Inline::LengthGlue { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
