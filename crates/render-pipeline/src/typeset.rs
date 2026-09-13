@@ -339,6 +339,12 @@ pub struct Context<'a> {
     path_rcs: std::cell::RefCell<BTreeMap<usize, Rc<str>>>,
     /// microtype's per-font pdfTeX parameters by (metrics identity, size).
     microtype_fonts: BTreeMap<(Rc<str>, u64), Option<Rc<flashtex_microtype::FontParams>>>,
+    /// Box records of `\item` labels. LaTeX sets a label inside the
+    /// `\@labels` hbox, so pdfTeX's line packer never expands its
+    /// characters (`hpack` adds `char_stretch` only for character nodes
+    /// of the line itself) and they take no part in the line's font
+    /// stretch/shrink.
+    label_recs: BTreeSet<usize>,
     /// Footnote texts met while building horizontal lists, and for each
     /// the box record its `\insert` follows (the mark, or the box before
     /// `\footnotetext`): see [`footnotes`].
@@ -369,6 +375,7 @@ impl<'a> Context<'a> {
             capture: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
             microtype_fonts: BTreeMap::new(),
+            label_recs: BTreeSet::new(),
             notes: Vec::new(),
             note_anchors: Vec::new(),
         }
@@ -1408,7 +1415,7 @@ impl<'a> Context<'a> {
             let rec = recs.get(i).copied().flatten();
             let mut mi = pl::MicroItem::default();
             match item {
-                pl::Item::Box(run) => mi.run = rec.and_then(|r| self.micro_run(r, run)),
+                pl::Item::Box(run) => mi.run = rec.filter(|r| !self.label_recs.contains(r)).and_then(|r| self.micro_run(r, run)),
                 pl::Item::Penalty(p) => {
                     if let Some(pre) = &p.pre_break {
                         mi.pre_break = rec.and_then(|r| self.micro_run(r, pre));
@@ -2054,7 +2061,11 @@ impl<'a> Context<'a> {
                 .collect(),
             style: TextStyle::default(),
         };
-        self.text_box(&seg, size)
+        let boxed = self.text_box(&seg, size);
+        if let Some((_, rec)) = &boxed {
+            self.label_recs.insert(*rec);
+        }
+        boxed
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
