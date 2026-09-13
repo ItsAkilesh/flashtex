@@ -207,6 +207,8 @@ impl Unit {
 const INF: i32 = 10_000;
 const LOW: i32 = -1;
 const MED: i32 = -2;
+/// `\break` (longtable.sty 135): `\penalty-\@M` forces the page out.
+const EJECT: i32 = -10_000;
 
 /// The vertical-list items of a chunk, in order. Data rows and rule rows
 /// are boxes; `\noalign` skips between them are glue, which is where the
@@ -240,6 +242,11 @@ pub fn units(table: &TableItem, ch: &Chunk) -> Vec<Unit> {
                 out.push(Unit { kind: UnitKind::Box, top: second_top, bottom: band.bottom, baseline: None, penalty_before: None, entry });
                 // `\penalty\@M` closes `\LT@@hline`.
                 out.push(Unit { kind: UnitKind::Glue, top: band.bottom, bottom: band.bottom, baseline: None, penalty_before: Some(INF), entry });
+            }
+            // `\newpage`/`\pagebreak` inside a longtable: `\noalign{\break}`
+            // (longtable.sty 135-137), an eject penalty before the next row.
+            Some(TableEntry::PageBreak) => {
+                out.push(Unit { kind: UnitKind::Glue, top: band.top, bottom: band.top, baseline: None, penalty_before: Some(EJECT), entry });
             }
             // A `\kill` row leaves no band at all; the rest are `\noalign`
             // rules or skips. Rules are boxes (a `\multispan` leader row or
