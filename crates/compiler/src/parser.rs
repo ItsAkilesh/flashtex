@@ -410,6 +410,7 @@ const BUILT_INS: &[&str] = &[
     "newpage",
     "pagestyle",
     "listfiles",
+    "DeclarePairedDelimiter",
     "noindent",
     "verb",
     "url",
@@ -818,6 +819,23 @@ impl P<'_> {
             // behaviour is a documented no-op rather than an "unsupported"
             // diagnostic for a command every corpus fixture's preamble carries.
             "listfiles" => {}
+            // `\DeclarePairedDelimiter{\name}{\open}{\close}` (mathtools)
+            // defines a new paired-delimiter command; unlike ordinary
+            // preamble content, its three arguments are never-executed
+            // command *names*, not prose. Left to the ordinary token loop,
+            // each of those `\`-prefixed names reaches the wildcard arm
+            // below on its own and gets its own "not supported" diagnostic,
+            // as if it had been invoked directly — three extra diagnostics
+            // for the one real gap (paired delimiters are not implemented).
+            // Skipping all three groups first keeps it to the one.
+            "DeclarePairedDelimiter" if self.has_document && !self.in_body => {
+                for _ in 0..3 {
+                    if !self.try_skip_braced_group(None) {
+                        break;
+                    }
+                }
+                self.unsupported_preamble(name, span);
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" => {
                 let level = if name == "section" { 1 } else { 2 };
@@ -3737,6 +3755,26 @@ mod tests {
         assert_eq!(url.font, Font::Courier);
         assert!(items.iter().any(|item| item.text == "now"));
         assert!(items.iter().any(|item| item.text == "unaffected"));
+    }
+
+    #[test]
+    fn declare_paired_delimiter_skips_its_three_command_name_arguments() {
+        // mathtools' \DeclarePairedDelimiter{\abs}{\lvert}{\rvert} takes
+        // three never-executed command *names*. Left unconsumed, each
+        // \-prefixed name would independently reach the same wildcard arm
+        // and get its own "not supported" diagnostic, as if it had been
+        // invoked directly: one real gap must not become four.
+        let source = r"\documentclass{article}\DeclarePairedDelimiter{\abs}{\lvert}{\rvert}\begin{document}body\end{document}";
+        let (parsed, _items) = items(source);
+        assert_eq!(
+            parsed.diagnostics.len(),
+            1,
+            "expected exactly one diagnostic: {:?}",
+            parsed.diagnostics
+        );
+        assert!(parsed.diagnostics[0]
+            .message
+            .contains(r"\DeclarePairedDelimiter is not supported in the document preamble"));
     }
 
     fn size_of(items: &[crate::layout::TextItem], text: &str) -> f64 {
