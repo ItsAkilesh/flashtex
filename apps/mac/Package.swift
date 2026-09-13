@@ -20,7 +20,12 @@ let package = Package(
         .target(name: "FlashTeXProtocol"),
         .executableTarget(
             name: "FlashTeXMac",
-            dependencies: ["FlashTeXProtocol", "FlashTeXAccessibility"]
+            dependencies: ["FlashTeXProtocol", "FlashTeXAccessibility"],
+            // The compiler's command inventory (crates/compiler/supported/
+            // supported-latex.json), synced by scripts/sync-supported-latex.sh;
+            // Completion.Vocabulary is decoded from it. make-app.sh copies it
+            // into Contents/Resources.
+            resources: [.copy("Resources/supported-latex.json")]
         ),
         .testTarget(
             name: "FlashTeXProtocolTests",

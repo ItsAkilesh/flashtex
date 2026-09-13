@@ -234,6 +234,15 @@ if [[ -n "$NOTARY_PROFILE" ]]; then
   echo "==> notarytool keychain profile found: \"$NOTARY_PROFILE\"${NOTARY_KEYCHAIN:+ (keychain $NOTARY_KEYCHAIN)}"
 fi
 
+# --- Pre-flight: the completion vocabulary is the compiler's inventory --------
+# Completion.Vocabulary decodes Sources/FlashTeXMac/Resources/supported-latex.json,
+# a byte-identical copy of crates/compiler/supported/supported-latex.json kept
+# by scripts/sync-supported-latex.sh; a stale copy refuses the build.
+SUPPORTED_LATEX_SYNC="$SCRIPT_DIR/sync-supported-latex.sh"
+SUPPORTED_LATEX_JSON="$MAC_DIR/Sources/FlashTeXMac/Resources/supported-latex.json"
+[[ -f "$SUPPORTED_LATEX_SYNC" ]] || die "missing $SUPPORTED_LATEX_SYNC"
+"$SUPPORTED_LATEX_SYNC" --check --root "$REPO_ROOT" || die "bundled supported-latex.json is stale; run apps/mac/scripts/sync-supported-latex.sh and commit"
+
 # --- Pre-flight: pinned rooted TFM metrics must verify before the build -------
 # GH36: flashtex-render loads its required metrics only from a rooted texmf
 # tree; a flat Fonts directory or the build machine's TeX cannot stand in.
@@ -338,6 +347,12 @@ cp "$BUNDLE_FONTS_DIR/"*.TXT "$RESOURCES_DIR/Fonts/"
 if [[ -d "$MAC_DIR/Samples" ]]; then
   cp -R "$MAC_DIR/Samples/." "$SAMPLES_DIR/"
 fi
+# The compiler's command inventory the editor's completion reads at first use
+# (Completion.Vocabulary looks in Contents/Resources first, then in the SwiftPM
+# resource bundle that only exists in the .build tree).
+cp "$SUPPORTED_LATEX_JSON" "$RESOURCES_DIR/supported-latex.json"
+cmp -s "$SUPPORTED_LATEX_JSON" "$RESOURCES_DIR/supported-latex.json" || die "supported-latex.json was not copied into Contents/Resources"
+echo "==> Bundled supported-latex.json ($(shasum -a 256 "$RESOURCES_DIR/supported-latex.json" | cut -c1-12)) into Contents/Resources"
 
 # --- Pinned rooted TFM metrics + faces (GH36; before signing, no download/host TeX)
 # Re-verifies each source file, copies it to Contents/Resources/texmf/… or

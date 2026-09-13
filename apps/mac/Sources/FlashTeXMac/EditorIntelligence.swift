@@ -325,6 +325,23 @@ enum EditorIntelligence {
 
         static func documentation(for name: String) -> String? { table[name] }
 
+        /// Standard LaTeX commands and environments the hover documents
+        /// although the compiler does not render them (it diagnoses them, so
+        /// the editor still explains what the user typed). Every other `table`
+        /// / `environments` key names a command or environment of the
+        /// compiler's inventory (`Completion.Vocabulary.inventory`;
+        /// `CompletionTests.testCommandDocsNameOnlyKnownCommands`), and a
+        /// name listed here must leave the list once the compiler renders it.
+        static let beyondCompiler: Set<String> = [
+            "chapter", "part", "paragraph", "autoref", "cref", "citep", "citet", "includegraphics", "textsc",
+            "providecommand", "newenvironment", "DeclareMathOperator", "def", "newline", "hline", "toprule", "midrule",
+            "bottomrule", "multicolumn", "verb", "today", "LaTeX", "TeX", "%", "$", "&", "#", "_", "{", "}",
+            "geometry", "graphicspath", "onehalfspacing", "doublespacing",
+        ]
+        static let environmentsBeyondCompiler: Set<String> = [
+            "description", "table", "abstract", "minted", "theorem", "tikzpicture", "subequations", "minipage", "frame", "comment",
+        ]
+
         static func environmentDocumentation(for name: String) -> String? {
             let base = name.hasSuffix("*") ? String(name.dropLast()) : name
             guard let doc = environments[base] else { return nil }

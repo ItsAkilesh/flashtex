@@ -32,10 +32,16 @@ final class SignatureHelpTests: XCTestCase {
         let extra = SignatureHelp.info(in: "\\section{a}{", caretUTF16: 12)
         XCTAssertEqual(extra?.activeArgument, 1)
         XCTAssertNil(extra?.display.active)
-        // Only CommandDocs knows it: the pattern is empty, the doc line shows.
-        let doc = SignatureHelp.info(in: "\\footnote{", caretUTF16: 10)
+        // Only CommandDocs knows it (the compiler does not render \chapter):
+        // the pattern is empty, the doc line shows.
+        let doc = SignatureHelp.info(in: "\\chapter{", caretUTF16: 9)
+        XCTAssertNil(Completion.Vocabulary.byName["chapter"])
         XCTAssertEqual(doc?.arguments, "")
-        XCTAssertEqual(doc?.description, "\\footnote{text}: a numbered footnote.")
+        XCTAssertEqual(doc?.description, "\\chapter{title}: a chapter heading (report and book classes).")
+        // In the vocabulary and CommandDocs: the compiler's shape, CommandDocs' line.
+        let foot = SignatureHelp.info(in: "\\footnote{", caretUTF16: 10)
+        XCTAssertEqual(foot?.arguments, "[n]{...}")
+        XCTAssertEqual(foot?.description, "\\footnote{text}: a numbered footnote.")
 
         // Nothing: outside braces, after the closing brace, escaped braces,
         // a comment, an unknown command, a brace with no command, a bad caret.
