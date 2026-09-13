@@ -735,29 +735,10 @@ impl<'a> Context<'a> {
         // Likewise a top-level `array`/`cases`/matrix grid (compiler
         // `Matrix`) is laid out on this side (`mathgrid`) from its cells,
         // each a formula of its own; a grid nested in a sub-formula (a
-        // fraction, a script, inside `\left...\right`) stays reported.
+        // fraction, a script, inside `\left...\right`, another grid's cell)
+        // enters math-layout as a box handle (`mathtext::GridCells`).
         let segments = split_at_spaces(list, &fence, sink.font_em_ratio());
         let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_classed(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence, &class)).collect();
-        let mut grids = Vec::new();
-        for (atoms, _) in &segments {
-            for a in atoms {
-                match &a.nucleus {
-                    flashtex_compiler::math::Nucleus::Matrix { rows, .. } if a.superscript.is_none() && a.subscript.is_none() => {
-                        for cell in rows.iter().flatten() {
-                            math_grids(cell, &mut grids);
-                        }
-                    }
-                    _ => math_grids(&flashtex_compiler::math::MathList { atoms: vec![a.clone()] }, &mut grids),
-                }
-            }
-        }
-        for (rows, cols) in grids {
-            if rows > 1 {
-                let src = self.source(span);
-                let msg = format!("{rows}x{cols} array/cases/matrix inside a sub-formula set as a single row inside its fences: only a top-level grid is laid out as rows");
-                self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
-            }
-        }
         // Glue at a top-level grid cell's own top level is split out like
         // the formula's; only deeper glue is dropped.
         let nested_glue_em: f64 = segments
@@ -788,17 +769,35 @@ impl<'a> Context<'a> {
             self.report_once(format!("mathlim:{msg}"), Diagnostic::warning("math_limitation", msg, vec![src]));
         }
         let style = if display { ml::Style::DISPLAY } else { ml::Style::TEXT };
-        let has_grid = segments.iter().flat_map(|(atoms, _)| atoms.iter()).any(|a| matches!(a.nucleus, flashtex_compiler::math::Nucleus::Matrix { .. }) && a.superscript.is_none() && a.subscript.is_none());
+        let has_grid = segments.iter().any(|(atoms, _)| top_level_grids(atoms, &fence).into_iter().any(|top| top));
         // Every `\text` must be collected before the metrics borrow the sink.
         let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence, &class, texts) } else { Vec::new() };
-        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
+        let pitch = crate::mathgrid::Pitch {
+            baselineskip: self.style.baselineskip_pt,
+            lineskip: self.style.lineskip_pt,
+            lineskiplimit: self.style.lineskiplimit_pt,
+        };
+        let class_size = crate::adapter::class_size_of(self.style.body_size_pt);
+        let nested: Vec<crate::mathtext::NestedGrid> = sink
+            .grids
+            .iter()
+            .map(|g| crate::mathtext::NestedGrid {
+                spec: crate::mathgrid::GridSpec::from_source(texts.get(g.span.document.0).copied().unwrap_or(""), g.span, class_size),
+                pitch,
+                grid: g.clone(),
+            })
+            .collect();
+        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts).with_grids(&nested);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
             let glue: Vec<Option<f64>> = segments.iter().map(|(_, em)| *em).collect();
             layout_kerned(&ml_lists, &glue, style, &text_metrics)
         };
+        let (grid_boxes, grid_limitations) = text_metrics.take_grids();
+        laid.limitations.extend(grid_limitations);
         let (text_runs, notices) = text_metrics.finish();
+        crate::mathtext::substitute_grids(&mut laid.root, &grid_boxes);
         crate::mathtext::substitute(&mut laid.root, &text_runs);
         for text in &sink.refused {
             let src = self.source(span);
@@ -970,7 +969,7 @@ impl<'a> Context<'a> {
                                 .collect()
                         })
                         .collect();
-                    let grid = crate::mathgrid::layout_grid(cells, columns, &spec, pitch, &params);
+                    let grid = crate::mathgrid::layout_grid(cells, columns, &spec, pitch, &params, params.quad);
                     let fence_char = |s: &str| {
                         let mut it = s.chars();
                         match (it.next(), it.next()) {
@@ -3207,29 +3206,18 @@ pub fn convert_math_classed(
             // (`\widehat`/`\widetilde` use the same mark; the horizontal
             // variants are not read, so a wide base gets the plain one).
             N::Accent { accent, body } => vec![ml::Atom::accent(accent_char(*accent), sub(body, sink))],
-            // `array`/`cases`/matrix grids: math-layout has no array atom,
-            // so the cells are set in reading order as one row inside the
-            // environment's fences (`\left`/`\right`-sized when they are
-            // single characters). `math_box` reports the grid once per
-            // formula as a typed math_limitation.
-            N::Matrix { rows, left, right, .. } => {
-                let mut body = Vec::new();
-                for row in rows {
-                    for cell in row {
-                        body.extend(sub(cell, sink).atoms);
-                    }
-                }
-                let fence_char = |s: &str| {
-                    let mut it = s.chars();
-                    match (it.next(), it.next()) {
-                        (Some(c), None) => Some(c),
-                        _ => None,
-                    }
-                };
-                match (fence_char(left), fence_char(right), left.is_empty() && right.is_empty()) {
-                    (_, _, true) => vec![ml::Atom::group(ml::MathList::new(body))],
-                    (l, r, false) => vec![ml::Atom::left_right(l, r, ml::MathList::new(body))],
-                }
+            // `array`/`cases`/matrix/`aligned` grids below the top level (a
+            // top-level grid without scripts is split out by `grid_pieces`):
+            // math-layout has no array atom, so the grid is a handle whose
+            // box `mathtext::TextRunMetrics` lays out with `mathgrid` at the
+            // size it is met — a `\vcenter` (Ord), or `\left...\right` around
+            // it (Inner) for the fenced environments — so atom spacing,
+            // Rule 19 delimiters, Rule 18 scripts, fractions and radicals
+            // treat it as the box TeX builds.
+            N::Matrix { rows, columns, left, right } => {
+                let cells = rows.iter().map(|row| row.iter().map(|cell| sub(cell, sink)).collect()).collect();
+                let atom_class = if left.is_empty() && right.is_empty() { ml::AtomClass::Ord } else { ml::AtomClass::Inner };
+                vec![sink.grid_atom(atom_class, cells, columns, left, right, a.span)]
             }
         };
         if let Some(last) = out.last_mut() {
@@ -3338,9 +3326,9 @@ fn grid_pieces(
                 pieces.push(GridPiece::Run(convert_math_classed(&CList { atoms: std::mem::take(run) }, sink, fence, class)));
             }
         };
-        for a in atoms {
+        for (a, top) in atoms.iter().zip(top_level_grids(atoms, fence)) {
             match &a.nucleus {
-                N::Matrix { rows, columns, left, right } if a.superscript.is_none() && a.subscript.is_none() => {
+                N::Matrix { rows, columns, left, right } if top => {
                     flush(&mut run, &mut pieces, sink);
                     // amsmath `aligned`/`alignedat`/`split`: a right-hand
                     // cell is `{}##`, so a leading relation or operator is
@@ -3387,6 +3375,38 @@ fn grid_pieces(
         }
     }
     pieces
+}
+
+/// Which of `atoms` are grids at the formula's top level, laid out by
+/// `grid_formula`: without scripts and outside every `\left...\right` pair
+/// (the compiler lists `\left`/`\right` as sibling atoms; a grid between
+/// them belongs to that Inner atom's body and is set as a nested box).
+fn top_level_grids(atoms: &[flashtex_compiler::math::MathAtom], fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<bool> {
+    use flashtex_compiler::math::{DelimiterRole, Nucleus as N};
+    let mut depth = 0usize;
+    atoms
+        .iter()
+        .map(|a| match &a.nucleus {
+            N::Symbol(sym) if sym.chars().count() <= 1 => {
+                match fence(&a.span) {
+                    Some(Fence::Left) => depth += 1,
+                    Some(Fence::Right) => depth = depth.saturating_sub(1),
+                    None => {}
+                }
+                false
+            }
+            N::SizedDelimiter { role, .. } => {
+                match role {
+                    DelimiterRole::Left => depth += 1,
+                    DelimiterRole::Right => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                false
+            }
+            N::Matrix { .. } => depth == 0 && a.superscript.is_none() && a.subscript.is_none(),
+            _ => false,
+        })
+        .collect()
 }
 
 /// Splits `list` at its top-level `Space` atoms (outside `\left...\right`
@@ -3436,54 +3456,6 @@ fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Spa
     // box (an empty run follows it).
     out.push((current, None));
     out
-}
-
-/// Every `array`/`cases`/matrix grid in `list` and its sub-formulas as
-/// `(rows, columns)`; see the `Matrix` arm of [`convert_math_fenced`].
-fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, usize)>) {
-    use flashtex_compiler::math::Nucleus as N;
-    for a in &list.atoms {
-        match &a.nucleus {
-            N::Matrix { rows, .. } => {
-                out.push((rows.len(), rows.iter().map(Vec::len).max().unwrap_or(0)));
-                for cell in rows.iter().flatten() {
-                    math_grids(cell, out);
-                }
-            }
-            N::Fraction { numerator, denominator } => {
-                math_grids(numerator, out);
-                math_grids(denominator, out);
-            }
-            N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_grids(r, out),
-            N::Stacked { base, over, under } => {
-                math_grids(base, out);
-                for part in [over, under].into_iter().flatten() {
-                    math_grids(part, out);
-                }
-            }
-            N::Symbol(_) | N::Text(_) | N::Space { .. } | N::Bold(_) | N::SizedDelimiter { .. } => {}
-            #[cfg(feature = "amsmath-inline")]
-            N::GenFraction { numerator, denominator, .. } => {
-                math_grids(numerator, out);
-                math_grids(denominator, out);
-            }
-            #[cfg(feature = "amsmath-inline")]
-            N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
-            #[cfg(feature = "amsmath-inline")]
-            N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
-            #[cfg(feature = "amsmath-inline")]
-            N::ExtArrow { above, below, .. } => {
-                math_grids(above, out);
-                math_grids(below, out);
-            }
-        }
-        if let Some(s) = &a.superscript {
-            math_grids(s, out);
-        }
-        if let Some(s) = &a.subscript {
-            math_grids(s, out);
-        }
-    }
 }
 
 /// `em` of a compiler `Space` atom in family-2 quads: text-font ems

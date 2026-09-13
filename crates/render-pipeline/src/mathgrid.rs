@@ -50,6 +50,10 @@ pub struct GridSpec {
     /// Math glue (mu) before and after the `\vcenter` (`smallmatrix`:
     /// `\null\,` ... `\,`).
     pub outer_mu: f64,
+    /// The box's vertical position: `\vtop` (`t`), `\vbox` (`b`) or
+    /// `\vcenter` (`c`), from `array[t]` (latex.ltx `\@array`) or amsmath's
+    /// `aligned[t]`/`gathered[b]` (`\ams@start@box`).
+    pub vpos: char,
 }
 
 /// amsgen.sty `\compute@ex@` (lines 104-125): amsmath's `\ex@` at font size
@@ -90,7 +94,7 @@ impl GridSpec {
     /// `src`; the row skips are read from the environment's `\\[<dimen>]`s.
     /// `size` is the class size (for `em`).
     pub fn from_source(src: &str, span: Span, size: u32) -> GridSpec {
-        let (env, row_skips) = grid_env(src, span, size).unwrap_or_else(|| ("array".to_string(), Vec::new()));
+        let (env, row_skips, vpos) = grid_env(src, span, size).unwrap_or_else(|| ("array".to_string(), Vec::new(), 'c'));
         let mut spec = GridSpec {
             env: env.clone(),
             row_skips,
@@ -103,6 +107,7 @@ impl GridSpec {
             pitch: None,
             strut: true,
             outer_mu: 0.0,
+            vpos,
         };
         match env.as_str() {
             "cases" => {
@@ -153,15 +158,27 @@ impl GridSpec {
     }
 }
 
-/// The environment name at `\begin{...}` and the `\\[<dimen>]` row skips
-/// of its body (depth 0, in order; a row without one gets 0).
-fn grid_env(src: &str, span: Span, size: u32) -> Option<(String, Vec<f64>)> {
+/// The environment name at `\begin{...}`, the `\\[<dimen>]` row skips of
+/// its body (depth 0, in order; a row without one gets 0) and the box
+/// position letter of `array`/`aligned`/`alignedat`/`gathered` (`c` when
+/// absent or unrecognised, as amsmath's `\ams@start@box` falls back to
+/// `\vcenter`).
+fn grid_env(src: &str, span: Span, size: u32) -> Option<(String, Vec<f64>, char)> {
     let rest = src.get(span.start..)?;
     let rest = rest.strip_prefix("\\begin")?.trim_start();
     let inner = rest.strip_prefix('{')?;
     let close = inner.find('}')?;
     let name = inner[..close].trim().to_string();
     let body = &inner[close + 1..];
+    let vpos = if matches!(name.as_str(), "array" | "aligned" | "alignedat" | "gathered") {
+        match body.trim_start().strip_prefix('[').and_then(|r| r.split(']').next()).map(str::trim) {
+            Some("t") => 't',
+            Some("b") => 'b',
+            _ => 'c',
+        }
+    } else {
+        'c'
+    };
     let end = format!("\\end{{{name}}}");
     let body = body.split(&end).next().unwrap_or(body);
     let bytes = body.as_bytes();
@@ -194,7 +211,7 @@ fn grid_env(src: &str, span: Span, size: u32) -> Option<(String, Vec<f64>)> {
         }
         i += 1;
     }
-    Some((name, skips))
+    Some((name, skips, vpos))
 }
 
 /// Line pitch parameters of the enclosing text (`\baselineskip`,
@@ -207,8 +224,13 @@ pub struct Pitch {
 }
 
 /// Places laid-out cells (`rows[i][j]`) as `\@array` does and `\vcenter`s
-/// the result on the axis. `columns` are the `l`/`c`/`r` letters.
-pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitch: Pitch, p: &MathParams) -> MathBox {
+/// the result on the axis (or sets it as a `\vtop`/`\vbox`, `spec.vpos`).
+/// `columns` are the `l`/`c`/`r` letters. `p` holds the parameters of the
+/// size the grid sits at (its axis, and the mu of `smallmatrix`'s outer
+/// `\,`); `quad` is the text font's em that the column gaps (`\quad`,
+/// `\thickspace`, written in the preamble's text mode) are measured in,
+/// which does not shrink when the grid sits in a script.
+pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitch: Pitch, p: &MathParams, quad: f64) -> MathBox {
     let ncols = rows.iter().map(Vec::len).max().unwrap_or(0);
     let cols: Vec<char> = columns.chars().chain(std::iter::repeat('c')).take(ncols).collect();
     let widths: Vec<f64> = (0..ncols).map(|j| rows.iter().filter_map(|r| r.get(j)).map(|b| b.width).fold(0.0, f64::max)).collect();
@@ -217,7 +239,6 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
     // Column x origins and the total width.
     let mut xs = Vec::with_capacity(ncols);
     let mut x = outer;
-    let quad = p.quad;
     match spec.gaps {
         Gaps::ColSep => {
             for (j, w) in widths.iter().enumerate() {
@@ -281,10 +302,16 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
         y += dist;
         baselines.push(y);
     }
-    let total = y + extents.last().map_or(0.0, |e| e.1);
-    // `\vcenter`: centred on the axis.
-    let height = total / 2.0 + p.axis_height;
-    let depth = total / 2.0 - p.axis_height;
+    let last_depth = extents.last().map_or(0.0, |e| e.1);
+    let total = y + last_depth;
+    let (height, depth) = match spec.vpos {
+        // `\vtop` (tex.web §1087): the height of the first row box.
+        't' => (extents[0].0, total - extents[0].0),
+        // `\vbox`: the depth of the last row box.
+        'b' => (total - last_depth, last_depth),
+        // `\vcenter` (§736): centred on the axis.
+        _ => (total / 2.0 + p.axis_height, total / 2.0 - p.axis_height),
+    };
     let mut children = Vec::new();
     for (i, row) in rows.into_iter().enumerate() {
         for (j, cell) in row.into_iter().enumerate() {
@@ -401,9 +428,15 @@ mod tests {
     fn row_skips_are_read_from_the_environment_body() {
         let src = "\\[\\begin{array}{ll}\\text{(a)} & x,\\\\[2pt]\\text{(b)} & {y\\\\[9pt]},\\\\ \\text{(c)} & z\\end{array}\\]";
         let at = src.find("\\begin").unwrap();
-        let (name, skips) = grid_env(src, Span::in_document(Default::default(), at, at + 6), 11).unwrap();
+        let (name, skips, vpos) = grid_env(src, Span::in_document(Default::default(), at, at + 6), 11).unwrap();
         assert_eq!(name, "array");
         assert_eq!(skips, vec![2.0, 0.0]);
+        assert_eq!(vpos, 'c');
+        let pos = |s: &str| grid_env(s, Span::in_document(Default::default(), 0, 6), 12).unwrap().2;
+        assert_eq!(pos("\\begin{array}[t]{cc} a & b \\end{array}"), 't');
+        assert_eq!(pos("\\begin{aligned} [b] a &= b \\end{aligned}"), 'b');
+        assert_eq!(pos("\\begin{gathered}[c] a \\end{gathered}"), 'c');
+        assert_eq!(pos("\\begin{matrix}[t] a \\end{matrix}"), 'c', "matrix takes no position argument");
         let spec = GridSpec::from_source(src, Span::in_document(Default::default(), at, at + 6), 11);
         assert_eq!(spec.gaps, Gaps::ColSep);
         assert_eq!(spec.stretch, 1.0);
@@ -444,6 +477,7 @@ mod tests {
             pitch: None,
             strut: true,
             outer_mu: 0.0,
+            vpos: 'c',
         };
         let pitch = Pitch {
             baselineskip: 12.0,
@@ -453,7 +487,14 @@ mod tests {
         let mut p = ml::CmMathMetrics::latex_10pt().params(ml::SizeClass::Text);
         p.axis_height = 2.5;
         p.quad = 10.0;
-        let g = layout_grid(rows, "lr", &spec, pitch, &p);
+        // `\vtop`: height of the first row (strut 8.4); `\vbox`: depth of
+        // the last row (strut 3.6); the total (26) is unchanged.
+        for (vpos, h, d) in [('t', 8.4, 17.6), ('b', 22.4, 3.6)] {
+            let spec = GridSpec { vpos, ..spec.clone() };
+            let g = layout_grid(rows.clone(), "lr", &spec, pitch, &p, p.quad);
+            assert!((g.height - h).abs() < 1e-9 && (g.depth - d).abs() < 1e-9, "{vpos}: {} {}", g.height, g.depth);
+        }
+        let g = layout_grid(rows, "lr", &spec, pitch, &p, p.quad);
         // 5 + 30 + 5 + 5 + 20 + 5.
         assert!((g.width - 70.0).abs() < 1e-9, "{}", g.width);
         // Strut 8.4/3.6: rows stack (`\baselineskip\z@`), 2pt extra depth
