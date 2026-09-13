@@ -20,10 +20,18 @@ const TOL_BP: f64 = 0.5;
 
 /// Fixtures that depend on work not on this branch, with the reason. They
 /// must still differ (so the entry is removed when the dependency lands).
-const PENDING: [(&str, &str); 1] = [(
-    "41-t1-sans-latex.tex",
-    "\\LaTeX logo glyph boxes (PR #129, text-logos-rule-symbols) are not on main: the logo is set as the literal word",
-)];
+const PENDING: [(&str, &str); 4] = [
+    (
+        "41-t1-sans-latex.tex",
+        "\\LaTeX logo glyph boxes (PR #129, text-logos-rule-symbols) are not on main: the logo is set as the literal word",
+    ),
+    ("48-t1-math-alphabets.tex", MATH_ALPHABETS_PENDING),
+    ("49-ot1-math-alphabets.tex", MATH_ALPHABETS_PENDING),
+    ("50-lm-math-alphabets.tex", MATH_ALPHABETS_PENDING),
+];
+
+const MATH_ALPHABETS_PENDING: &str =
+    "\\mathsf/\\mathtt/\\mathit/\\mathfrak as Unicode alphanumerics need compiler PR #136 in vendor/compiler (re-pin)";
 
 #[derive(Debug, Clone)]
 struct Seg {
@@ -39,6 +47,9 @@ struct Seg {
 /// (`LMSans10-Bold`), all written as the OpenType family without its
 /// optical size (`LMSans-Bold`).
 fn design_of_pdf_font(name: &str) -> String {
+    if name.starts_with("LMMath") {
+        return "LatinModernMath-Regular".to_string();
+    }
     if name.starts_with("LM") {
         return name.chars().filter(|c| !c.is_ascii_digit()).collect();
     }
@@ -63,6 +74,9 @@ fn design_of_pdf_font(name: &str) -> String {
         "CMITT" | "SFIT" => "LMMono-Italic",
         "CMSLTT" | "SFST" => "LMMonoSlant-Regular",
         "CMTCSC" | "SFTC" => "LMMonoCaps-Regular",
+        // Math: Latin Modern Math draws the math italic, symbol, extension
+        // and (Euler) fraktur fonts.
+        "CMMI" | "CMSY" | "CMEX" | "EUFM" => "LatinModernMath-Regular",
         other => return format!("unmapped:{other}"),
     };
     design.to_string()
@@ -90,7 +104,7 @@ fn ours(r: &flashtex_render_pipeline::Rendered) -> Vec<Seg> {
     for page in &v2.pages {
         for it in &page.items {
             let Item::GlyphRun(run) = it else { continue };
-            if run.role != RunRole::Text || run.glyphs.is_empty() {
+            if !matches!(run.role, RunRole::Text | RunRole::Math) || run.glyphs.is_empty() {
                 continue;
             }
             let face = v2.fonts.iter().find(|f| f.font_id == run.font_id).map(|f| f.postscript_name.clone()).unwrap_or_default();
@@ -103,10 +117,17 @@ fn ours(r: &flashtex_render_pipeline::Rendered) -> Vec<Seg> {
             let joins = segs.last().is_some_and(|s| {
                 s.page == page.number && s.design == design && (s.baseline - baseline).abs() < 0.01 && (x - last_end).abs() < 0.15 * last_size.max(size)
             });
+            // Math alphabet characters carry their mathematical alphanumeric
+            // code point; pdfLaTeX's ToUnicode spells the ASCII letter.
+            let run_text: String = run
+                .text
+                .chars()
+                .map(|c| flashtex_render_pipeline::mathalpha::classify(c).map_or(c, |(_, letter)| letter))
+                .collect();
             if joins {
-                segs.last_mut().expect("joined").text.push_str(&run.text);
+                segs.last_mut().expect("joined").text.push_str(&run_text);
             } else {
-                segs.push(Seg { page: page.number, text: run.text.clone(), design, x, baseline });
+                segs.push(Seg { page: page.number, text: run_text, design, x, baseline });
             }
             last_end = end;
             last_size = size;

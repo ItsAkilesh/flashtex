@@ -63,7 +63,17 @@ pub struct TexMathMetrics {
     /// The OpenType face drawn (Latin Modern Math) and its variant table.
     otf: Rc<MathFonts>,
     unmapped: RefCell<Vec<(String, u8, char)>>,
+    /// `\mathfrak` metrics (`ueuf.fd`: `eufm5/7/10`) at text/script/
+    /// scriptscript, when installed.
+    fraktur: [Option<Rc<Tfm>>; 3],
+    /// Text faces and TFMs of the math alphabets the document uses
+    /// ([`TexMathMetrics::with_alphabets`]): alphabet, size index, face, TFM.
+    alphabets: Vec<(crate::mathalpha::MathAlphabet, usize, Rc<LoadedFace>, Rc<Tfm>)>,
 }
+
+/// Font ids of fraktur glyphs laid out from `eufm` at the three sizes: far
+/// below the `\text` run ids and above math-layout's embedded CM ids.
+pub const FRAKTUR_FONTS: [MathFontId; 3] = [MathFontId(0x100), MathFontId(0x101), MathFontId(0x102)];
 
 impl TexMathMetrics {
     /// `base` is the document's body size (10/11/12). `otf` supplies the
@@ -111,7 +121,10 @@ impl TexMathMetrics {
             if r.substituted.is_some() { None } else { Some(r.face) }
         };
         let roman_faces = [text_face(cm.sizes[0]), text_face(cm.sizes[1]), text_face(cm.sizes[2])];
+        let fraktur = cm.sizes.map(|at| fonts.tfm(&format!("{}.tfm", crate::mathalpha::fraktur_tfm(at))).ok());
         TexMathMetrics {
+            fraktur,
+            alphabets: Vec::new(),
             cm,
             sizes,
             roman,
@@ -140,6 +153,22 @@ impl TexMathMetrics {
     /// is loaded, reported once as its own resource profile because its
     /// script design is not cmsy10's calligraphic one.
     pub fn otf_glyph(&self, font: MathFontId, code: u8, ch: char) -> Option<(Rc<LoadedFace>, u16)> {
+        // `\mathfrak`: eufm boxes, Latin Modern Math's fraktur outlines
+        // (its fraktur alphabet is the Euler design).
+        if let Some(i) = FRAKTUR_FONTS.iter().position(|f| *f == font) {
+            let face = self.otf.face();
+            let gid = face.face().glyph_id(ch)?;
+            self.resources
+                .borrow_mut()
+                .entry(crate::mathalpha::fraktur_tfm(self.cm.sizes[i]).to_string())
+                .or_insert((face.name.clone(), false));
+            return Some((face.clone(), gid.0));
+        }
+        if let Some((_, _, face, _)) = self.alphabets.iter().find(|(a, i, ..)| Self::alphabet_font(*a, *i) == font) {
+            let gid = face.face().glyph_id(char::from(code))?;
+            self.resources.borrow_mut().entry(face.name.clone()).or_insert((face.name.clone(), true));
+            return Some((face.clone(), gid.0));
+        }
         let name = self.cm.font_name(font);
         if name.starts_with("cmr") {
             let idx = (0..3).find(|i| self.cm.families[0][*i].name == name).unwrap_or(0);
@@ -197,6 +226,75 @@ impl TexMathMetrics {
         let mut g = self.otf.glyph(ch, size)?;
         g.font_id = if g.font_id == crate::mathfont::BB_FONT { OTF_FALLBACK_BB_FONT } else { OTF_FALLBACK_FONT };
         Some(g)
+    }
+
+    /// Loads the text fonts of the math alphabets `used` (`\mathbf`,
+    /// `\mathsf`, `\mathit`, `\mathtt`: fontmath.ltx OT1 cmr/bx/n, cmss/m/n,
+    /// cmr/m/it, cmtt/m/n) at the three math sizes, with Latin Modern's
+    /// metrics of those designs. A one-character argument is a math
+    /// character (TeX §1186 unpacks a group holding one Ord): its box comes
+    /// from here, while longer runs go through the math text sink.
+    pub fn with_alphabets(mut self, fonts: &FontSet, used: &[crate::mathalpha::MathAlphabet]) -> TexMathMetrics {
+        for &alphabet in used {
+            let Some(key) = alphabet.text_key() else { continue };
+            for (i, &at) in self.cm.sizes.iter().enumerate() {
+                if self.alphabets.iter().any(|(a, j, ..)| *a == alphabet && *j == i) {
+                    continue;
+                }
+                let r = fonts.resolve(crate::fonts::Family::LatinModern, Role::Font(key), at);
+                if r.substituted.is_some() {
+                    continue;
+                }
+                if let Some(tfm) = r.face.tfm.clone() {
+                    self.alphabets.push((alphabet, i, r.face, tfm));
+                }
+            }
+        }
+        self
+    }
+
+    /// Font id of a math-alphabet character at size index `i`.
+    fn alphabet_font(alphabet: crate::mathalpha::MathAlphabet, i: usize) -> MathFontId {
+        MathFontId(0x110 + 3 * alphabet.index() as u32 + i as u32)
+    }
+
+    /// A one-character math alphabet box from its text font's TFM.
+    fn alphabet_glyph(&self, alphabet: crate::mathalpha::MathAlphabet, letter: char, ch: char, size: SizeClass) -> Option<Glyph> {
+        let i = Self::size_index(size);
+        let (_, _, _, tfm) = self.alphabets.iter().find(|(a, j, ..)| *a == alphabet && *j == i)?;
+        let m = tfm.metrics(letter as u8)?;
+        let at = self.cm.sizes[i];
+        Some(Glyph {
+            font_id: Self::alphabet_font(alphabet, i),
+            gid: letter as u16,
+            ch,
+            size: at,
+            width: Tfm::pt(m.width, at),
+            height: Tfm::pt(m.height, at),
+            depth: Tfm::pt(m.depth, at),
+            italic: Tfm::pt(m.italic, at),
+            skew: 0.0,
+        })
+    }
+
+    /// A `\mathfrak` character's box from the `eufm` TFM of the size class
+    /// (letters at their ASCII slots, U encoding); `None` when that TFM is
+    /// not installed (Latin Modern Math's own box is used then).
+    fn fraktur_glyph(&self, letter: char, ch: char, size: SizeClass) -> Option<Glyph> {
+        let i = Self::size_index(size);
+        let m = self.fraktur[i].as_ref()?.metrics(letter as u8)?;
+        let at = self.cm.sizes[i];
+        Some(Glyph {
+            font_id: FRAKTUR_FONTS[i],
+            gid: letter as u16,
+            ch,
+            size: at,
+            width: Tfm::pt(m.width, at),
+            height: Tfm::pt(m.height, at),
+            depth: Tfm::pt(m.depth, at),
+            italic: Tfm::pt(m.italic, at),
+            skew: 0.0,
+        })
     }
 
     /// The first roman-TFM failure, if any.
@@ -394,10 +492,26 @@ impl MathFontMetrics for TexMathMetrics {
         if font == OTF_FALLBACK_BB_FONT {
             return self.otf.font_name(crate::mathfont::BB_FONT);
         }
+        if let Some(i) = FRAKTUR_FONTS.iter().position(|f| *f == font) {
+            return crate::mathalpha::fraktur_tfm(self.cm.sizes[i]).to_string();
+        }
+        if let Some((_, _, face, _)) = self.alphabets.iter().find(|(a, i, ..)| Self::alphabet_font(*a, *i) == font) {
+            return face.name.clone();
+        }
         self.cm.font_name(font)
     }
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
+        if let Some((crate::mathalpha::MathAlphabet::Fraktur, letter)) = crate::mathalpha::classify(ch) {
+            if let Some(g) = self.fraktur_glyph(letter, ch, size) {
+                return Some(g);
+            }
+        }
+        if let Some((alphabet, letter)) = crate::mathalpha::classify(ch).filter(|(a, _)| a.text_key().is_some()) {
+            if let Some(g) = self.alphabet_glyph(alphabet, letter, ch, size) {
+                return Some(g);
+            }
+        }
         match cm::symbol_slot(ch) {
             Some((Family::Roman, code)) => self.roman_glyph(code, ch, size),
             Some(_) => self.cm.glyph(ch, size),

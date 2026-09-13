@@ -77,8 +77,19 @@ EXTRAS = [
 ]
 
 
-def document(scheme, body):
-    return ("\\documentclass{article}\n" + SCHEMES[scheme] + "\\pagestyle{empty}\n"
+MATH_ALPHABETS = ("Letters $\\mathsf{ABC} + \\mathtt{T}x + \\mathit{diff} + \\mathfrak{g}\\mathfrak{A} "
+                  "+ \\mathsf{A}^2$ in math.")
+
+MATH = [
+    ("t1", "math-bold", "Vectors $\\mathbf{v} + \\mathbf{Ab}_2 = x$ and $\\mathbf{F}^2$ in bold."),
+    ("t1", "math-alphabets", MATH_ALPHABETS),
+    ("ot1", "math-alphabets", MATH_ALPHABETS),
+    ("lm", "math-alphabets", MATH_ALPHABETS),
+]
+
+
+def document(scheme, body, extra=""):
+    return ("\\documentclass{article}\n" + SCHEMES[scheme] + extra + "\\pagestyle{empty}\n"
             "\\begin{document}\n" + body + "\n\\end{document}\n")
 
 
@@ -92,6 +103,9 @@ def main():
     for scheme, name, body in EXTRAS:
         n += 1
         open(os.path.join(HERE, f"{n:02d}-{scheme}-{name}.tex"), "w").write(document(scheme, body))
+    for scheme, name, body in MATH:
+        n += 1
+        open(os.path.join(HERE, f"{n:02d}-{scheme}-{name}.tex"), "w").write(document(scheme, body, "\\usepackage{amssymb}\n"))
     print(n, "fixtures")
 
 

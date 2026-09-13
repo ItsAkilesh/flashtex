@@ -253,6 +253,16 @@ impl Discovery {
                 push(PathBuf::from(format!("{}/{EC_TFM_DIR}", &d[..at])));
             }
         }
+        // `\mathfrak`'s `eufm` metrics (amsfonts `euler`), after the EC ones.
+        for root in self.bundle_texmf_roots() {
+            push(root.join(AMS_EULER_TFM_DIR));
+        }
+        for d in font_dirs {
+            let d = d.to_string_lossy();
+            if let Some(at) = d.find("/fonts/opentype/public/lm") {
+                push(PathBuf::from(format!("{}/{AMS_EULER_TFM_DIR}", &d[..at])));
+            }
+        }
         dirs
     }
 }
@@ -407,6 +417,9 @@ fn metric_family_label(tfm: &str) -> &'static str {
 /// Where TeX Live keeps the EC metrics (`jknappen/ec`), relative to a
 /// texmf root.
 pub const EC_TFM_DIR: &str = "fonts/tfm/jknappen/ec";
+
+/// Where TeX Live keeps the Euler (`eufm`) metrics `\mathfrak` uses.
+pub const AMS_EULER_TFM_DIR: &str = "fonts/tfm/public/amsfonts/euler";
 
 /// The sizes `t1cmr.fd` declares for every EC shape
 /// (`<5><6><7><8><9><10><10.95><12><14.4><17.28><20.74><24.88><29.86><35.83>genb*ecrm`)
@@ -1222,7 +1235,9 @@ mod tests {
         let lm = dirs.iter().position(|p| p == Path::new("/tl/texmf-dist/fonts/tfm/public/lm")).unwrap();
         let ec = dirs.iter().position(|p| p == Path::new("/tl/texmf-dist/fonts/tfm/jknappen/ec")).unwrap();
         assert!(lm < ec);
-        assert_eq!(dirs.last().unwrap(), Path::new("/tl/texmf-dist/fonts/tfm/jknappen/ec"));
+        let euler = dirs.iter().position(|p| p == Path::new("/tl/texmf-dist/fonts/tfm/public/amsfonts/euler")).unwrap();
+        assert!(ec < euler);
+        assert_eq!(dirs.last().unwrap(), Path::new("/tl/texmf-dist/fonts/tfm/public/amsfonts/euler"));
         assert!(!dirs.iter().any(|p| p.starts_with("/flat") && p.ends_with(EC_TFM_DIR)));
     }
 

@@ -579,7 +579,13 @@ impl<'a> Context<'a> {
                     flashtex_document_style::BaseSize::Pt11 => 11,
                     flashtex_document_style::BaseSize::Pt12 => 12,
                 };
-                let tex = TexMathMetrics::new(base, m.clone(), self.fonts);
+                // The math alphabets the sources name get their text fonts.
+                let used: Vec<crate::mathalpha::MathAlphabet> = crate::mathalpha::TEXT_ALPHABETS
+                    .iter()
+                    .copied()
+                    .filter(|a| self.texts.iter().any(|t| t.contains(a.command())))
+                    .collect();
+                let tex = TexMathMetrics::new(base, m.clone(), self.fonts).with_alphabets(self.fonts, &used);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
                 } else {
@@ -845,7 +851,7 @@ impl<'a> Context<'a> {
         let has_grid = segments.iter().flat_map(|(atoms, _)| atoms.iter()).any(|a| matches!(a.nucleus, flashtex_compiler::math::Nucleus::Matrix { .. }) && a.superscript.is_none() && a.subscript.is_none());
         // Every `\text` must be collected before the metrics borrow the sink.
         let grid_pieces = if has_grid { grid_pieces(&segments, &mut sink, &fence, &class, texts) } else { Vec::new() };
-        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts);
+        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts, &sink.keys);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
@@ -3684,6 +3690,44 @@ pub fn convert_math_classed(
                 let class = class(&a.span).unwrap_or(ml::AtomClass::Ord);
                 vec![ml::Atom::new(class, ml::Nucleus::List(sub(body, sink)))]
             }
+            // `\mathsf{AB}`, `\mathtt`, `\mathit` (compiler: Unicode
+            // mathematical alphanumerics): runs of one text-font alphabet go
+            // to the text sink in that font (kerns, ligatures, last italic
+            // correction); fraktur and any other character stay symbols.
+            // A single character stays a math character (TeX §1186 unpacks
+            // the one-Ord group): `TexMathMetrics` boxes it from the TFM.
+            N::Symbol(s) if s.chars().count() > 1 && s.chars().any(|c| crate::mathalpha::classify(c).is_some_and(|(al, _)| al.text_key().is_some())) => {
+                let mut parts: Vec<ml::Atom> = Vec::new();
+                let mut run = String::new();
+                let mut run_key = None;
+                let flush = |run: &mut String, run_key: &mut Option<crate::nfss::FontKey>, parts: &mut Vec<ml::Atom>, sink: &mut crate::mathtext::TextSink| {
+                    if let Some(key) = run_key.take() {
+                        parts.push(sink.atom_in(run, key));
+                    }
+                    run.clear();
+                };
+                for c in s.chars() {
+                    match crate::mathalpha::classify(c).and_then(|(al, letter)| al.text_key().map(|k| (k, letter))) {
+                        Some((key, letter)) => {
+                            if run_key != Some(key) {
+                                flush(&mut run, &mut run_key, &mut parts, sink);
+                                run_key = Some(key);
+                            }
+                            run.push(letter);
+                        }
+                        None => {
+                            flush(&mut run, &mut run_key, &mut parts, sink);
+                            parts.extend(symbol_atoms(c, None));
+                        }
+                    }
+                }
+                flush(&mut run, &mut run_key, &mut parts, sink);
+                if parts.len() == 1 {
+                    parts
+                } else {
+                    vec![ml::Atom::group(ml::MathList::new(parts))]
+                }
+            }
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -3718,9 +3762,20 @@ pub fn convert_math_classed(
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
-            // `\mathbf{...}`: set like `\text` in the roman face (the text
-            // sink has no bold role); `math_box` reports it once per formula.
-            N::Bold(text) => vec![sink.atom(text)],
+            // `\mathbf{...}` (fontmath.ltx OT1/cmr/bx/n): a run in the bold
+            // roman text font; spaces in math take no part.
+            N::Bold(text) => {
+                use crate::mathalpha::{alphanumeric, MathAlphabet};
+                let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                let mut chars = letters.chars();
+                match (chars.next(), chars.next()) {
+                    // One letter or digit: a math character (TeX §1186).
+                    (Some(c), None) if alphanumeric(MathAlphabet::Bold, c).is_some() => {
+                        symbol_atoms(alphanumeric(MathAlphabet::Bold, c).expect("checked"), None)
+                    }
+                    _ => vec![sink.atom_in(&letters, MathAlphabet::Bold.text_key().expect("a text alphabet"))],
+                }
+            }
             // `\overline`/`\underline` are Appendix G Rules 9/10 atoms;
             // `\boxed` has no frame atom, so the body is set as a group and
             // reported by `math_box`.
@@ -4100,7 +4155,7 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
     use flashtex_compiler::math::{Frame, Nucleus as N};
     for a in &list.atoms {
         match &a.nucleus {
-            N::Bold(text) => out.push(format!("\\mathbf{{{text}}} set in the regular roman face: the math text sink has no bold role")),
+            N::Bold(_) => {}
             N::Framed { body, frame } => {
                 if *frame == Frame::Box {
                     out.push("\\boxed frame dropped: math-layout has no framed-box atom".to_string());
