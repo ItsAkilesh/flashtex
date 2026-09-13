@@ -246,6 +246,23 @@ Merged on nixos-pc-kabir (Linux, TeX Live 2025) after the session handoff.
 - Checks: `cargo test --release --no-fail-fast` in crates/compiler: all pass
   except `supported_latex::generated_artifacts_are_current`.
 
+### #148 math-glue-shrink (math-layout) @ 1dc371bc
+
+- No conflicts; the merge applied cleanly.
+- Checks: `cargo test --release --no-fail-fast` in crates/math-layout: 43 pass,
+  0 fail. `crates/compiler` (which depends on math-layout) is unchanged: all
+  pass except `supported_latex::generated_artifacts_are_current`.
+- Not yet gated: the FT-061 amsmath corpus is a standalone harness
+  (`crates/compiler/tests/amsmath_corpus/oracle.py check`) that measures the
+  `flashtex-render` binary, so it can only run once stage 2/3 have re-pinned
+  the vendored crates and render-pipeline builds. Its pinned refs are MacTeX
+  output and must never be regenerated here.
+- **Watch at stage 3:** main has since gained `2c373747` and `a2f85bfa`
+  (render-pipeline: inline-math break points, and medmuskip/thickmuskip
+  stretching with the line). Those touch the same math glue this PR changes,
+  from the render-pipeline side, and are owned by the Mac lanes. Expect an
+  interaction when main is merged in; do not resolve it unilaterally.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.
