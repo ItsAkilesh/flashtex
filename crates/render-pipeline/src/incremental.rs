@@ -438,6 +438,13 @@ pub fn place_item(item: &crate::display::Item, dy: crate::display::Tick, path: &
             rule.provenance = shift_prov(&rule.provenance);
             Item::Rule(rule)
         }
+        Item::Image(img) => {
+            let mut img = img.clone();
+            img.top = add(img.top);
+            img.transform[5] += dy.to_bp();
+            img.provenance = shift_prov(&img.provenance);
+            Item::Image(img)
+        }
     }
 }
 

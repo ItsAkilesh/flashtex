@@ -184,10 +184,47 @@ pub struct Rule {
     pub provenance: Provenance,
 }
 
+/// PROPOSAL (FT-063, `protocol/proposals/display-list-v2-image.md`): one
+/// image file referenced by content hash; the consumer fetches the bytes
+/// through project-files by `path` and verifies `sha256`/`byte_length`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageResource {
+    /// SHA-256 hex of the file bytes (also the image id).
+    pub sha256: std::rc::Rc<str>,
+    pub byte_length: u64,
+    /// `png`, `jpeg` or `pdf`.
+    pub format: &'static str,
+    /// Project-relative path the bytes were read from.
+    pub path: String,
+    pub pixels: Option<(u32, u32)>,
+    /// PDF: 1-based page, the clip box in the page's own space, `/Rotate`.
+    pub pdf_page: u32,
+    pub pdf_box: Option<[f64; 4]>,
+    pub pdf_rotate: i32,
+}
+
+/// PROPOSAL (FT-063): a placed image. `x/top/width/height` is the bounding
+/// box; `transform` maps the image's unit square (u right, v up, (0,0) at
+/// the image's lower-left) to page points, y down:
+/// `page = (e + a*u + c*v, f + b*u + d*v)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub x: Tick,
+    pub top: Tick,
+    pub width: Tick,
+    pub height: Tick,
+    pub transform: [f64; 6],
+    pub resource: std::rc::Rc<ImageResource>,
+    pub provenance: Provenance,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     GlyphRun(GlyphRun),
     Rule(Rule),
+    /// Only serialised when the request negotiated `display-list-v2-images`
+    /// (see [`DisplayList::to_json_with`]).
+    Image(Image),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,6 +345,7 @@ impl DisplayList {
                 n += match it {
                     Item::GlyphRun(r) => 220 + 2 * r.text.len() + 120 * r.glyphs.len() + 280 * r.clusters.len(),
                     Item::Rule(_) => 240,
+                    Item::Image(i) => 520 + 2 * i.resource.path.len(),
                 };
             }
         }
@@ -315,6 +353,11 @@ impl DisplayList {
     }
 
     pub fn required_features(&self) -> Vec<&'static str> {
+        self.required_features_with(false)
+    }
+
+    /// `images`: whether image items are serialised (adds `image`).
+    pub fn required_features_with(&self, images: bool) -> Vec<&'static str> {
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
             f.insert(1, "rule");
@@ -322,11 +365,26 @@ impl DisplayList {
         if self.fonts.iter().any(|r| r.format == "static-truetype") {
             f.push("static-truetype");
         }
+        if images && self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(_)))) {
+            f.push("image");
+        }
         f
     }
 
-    /// The `display_list` envelope of rendering-v2 as a JSON value.
+    /// Whether any page carries an image item.
+    pub fn has_images(&self) -> bool {
+        self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(_))))
+    }
+
+    /// The `display_list` envelope of rendering-v2 as a JSON value, exactly
+    /// as frozen: image items (an FT-063 proposal) are not serialised.
     pub fn to_json(&self, id: &str) -> Value {
+        self.to_json_with(id, false)
+    }
+
+    /// [`to_json`](Self::to_json); `images` also serialises image items
+    /// and lists the `image` feature (negotiated `display-list-v2-images`).
+    pub fn to_json_with(&self, id: &str, images: bool) -> Value {
         let mut payload = Value::obj();
         payload.set("render_format", json::str_("display-list-v2"));
         payload.set("coordinate_unit", json::str_("bp_2pow20"));
@@ -336,7 +394,7 @@ impl DisplayList {
         payload.set("revision", json::num(self.revision as f64));
         payload.set(
             "required_features",
-            Value::Arr(self.required_features().into_iter().map(json::str_).collect()),
+            Value::Arr(self.required_features_with(images).into_iter().map(json::str_).collect()),
         );
         payload.set(
             "documents",
@@ -374,7 +432,7 @@ impl DisplayList {
                     .collect(),
             ),
         );
-        payload.set("pages", Value::Arr(self.pages.iter().map(page_json).collect()));
+        payload.set("pages", Value::Arr(self.pages.iter().map(|p| page_json(p, images)).collect()));
         payload.set(
             "diagnostics",
             Value::Arr(self.diagnostics.iter().map(diagnostic_json).collect()),
@@ -440,7 +498,7 @@ pub fn diagnostic_json(d: &Diagnostic) -> Value {
     o
 }
 
-fn page_json(p: &Page) -> Value {
+fn page_json(p: &Page, images: bool) -> Value {
     let mut o = Value::obj();
     o.set("number", json::num(f64::from(p.number)));
     o.set("width", tick(p.width));
@@ -450,6 +508,7 @@ fn page_json(p: &Page) -> Value {
         Value::Arr(
             p.items
                 .iter()
+                .filter(|it| images || !matches!(it, Item::Image(_)))
                 .map(|it| match it {
                     Item::GlyphRun(r) => {
                         let mut o = Value::obj();
@@ -521,10 +580,42 @@ fn page_json(p: &Page) -> Value {
                         provenance_into(&mut o, &r.provenance);
                         o
                     }
+                    Item::Image(i) => image_json(i),
                 })
                 .collect(),
         ),
     );
+    o
+}
+
+fn image_json(i: &Image) -> Value {
+    let mut o = Value::obj();
+    o.set("kind", json::str_("image"));
+    o.set("x", tick(i.x));
+    o.set("top", tick(i.top));
+    o.set("width", tick(i.width));
+    o.set("height", tick(i.height));
+    // Points with 1/1000 pt resolution: the transform is a paint hint, the
+    // bounding box above is the exact geometry.
+    o.set("transform", Value::Arr(i.transform.iter().map(|v| json::num((v * 1000.0).round() / 1000.0 + 0.0)).collect()));
+    let r = &i.resource;
+    let mut res = Value::obj();
+    res.set("image_id", json::str_(r.sha256.to_string()));
+    res.set("sha256", json::str_(r.sha256.to_string()));
+    res.set("byte_length", json::num(r.byte_length as f64));
+    res.set("format", json::str_(r.format));
+    res.set("path", json::str_(r.path.clone()));
+    if let Some((w, h)) = r.pixels {
+        res.set("pixel_width", json::num(f64::from(w)));
+        res.set("pixel_height", json::num(f64::from(h)));
+    }
+    if let Some(b) = r.pdf_box {
+        res.set("pdf_page", json::num(f64::from(r.pdf_page)));
+        res.set("pdf_box", Value::Arr(b.iter().map(|v| json::num(*v)).collect()));
+        res.set("pdf_rotate", json::num(f64::from(r.pdf_rotate)));
+    }
+    o.set("image", res);
+    provenance_into(&mut o, &i.provenance);
     o
 }
 
