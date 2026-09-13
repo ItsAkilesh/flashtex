@@ -188,7 +188,15 @@ fi
 
 # --- 2. Launch --------------------------------------------------------------
 COMPILER_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-compiler"
+RENDER_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-render"
 BRIDGE_IN_BUNDLE="$APP_DIR/Contents/MacOS/flashtex-bridge"
+if [[ -x "$RENDER_IN_BUNDLE" ]]; then
+  PRODUCER_NAME="flashtex-render"
+  PRODUCER_IN_BUNDLE="$RENDER_IN_BUNDLE"
+else
+  PRODUCER_NAME="flashtex-compiler"
+  PRODUCER_IN_BUNDLE="$COMPILER_IN_BUNDLE"
+fi
 LOG_FILE="$WORK_DIR/flashtex.log"
 : > "$LOG_FILE"
 step "Launching $APP_DIR"
@@ -197,12 +205,12 @@ if [[ "$PIDS_BEFORE" != "  " ]]; then
   note "other FlashTeX instance(s) already running (pids:$PIDS_BEFORE) — left untouched; a new instance is launched with open -n"
 fi
 OPEN_ENV=(--env "FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE" --env "FLASHTEX_LOG=$LOG_FILE")
-if [[ -x "$COMPILER_IN_BUNDLE" || -x "$BRIDGE_IN_BUNDLE" ]]; then
+if [[ -x "$PRODUCER_IN_BUNDLE" || -x "$BRIDGE_IN_BUNDLE" ]]; then
   open -n "${OPEN_ENV[@]}" --env FLASHTEX_AUTOATTACH=1 "$APP_DIR"
-  note "bundled compiler/bridge present; launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_AUTOATTACH=1 --env FLASHTEX_LOG=$LOG_FILE"
+  note "bundled producer/bridge present; launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_AUTOATTACH=1 --env FLASHTEX_LOG=$LOG_FILE"
 else
   open -n "${OPEN_ENV[@]}" "$APP_DIR"
-  note "launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_LOG=$LOG_FILE; no bundled flashtex-compiler/flashtex-bridge in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --compiler <path> --bridge <path>' to exercise the attach/kill/log checks below"
+  note "launched with open -n --env FLASHTEX_NO_ACTIVATE=$NO_ACTIVATE --env FLASHTEX_LOG=$LOG_FILE; no bundled producer/flashtex-bridge in $APP_DIR/Contents/MacOS; rebuild with 'make-app.sh --render <path> --compiler <path> --bridge <path>' to exercise the attach/kill/log checks below"
 fi
 
 # The launched instance is the new FlashTeX pid whose executable lives inside
@@ -245,19 +253,19 @@ else
   note "window not confirmed via CGWindowList (probe unavailable, headless session, or timed out)"
 fi
 
-# --- 4. Confirm the bundled compiler attached (log + child process) --------
-COMPILER_PID=""
-if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
-  step "Checking for a flashtex-compiler child of pid $APP_PID"
+# --- 4. Confirm the preferred bundled producer attached (log + child process)
+PRODUCER_PID=""
+if [[ -x "$PRODUCER_IN_BUNDLE" ]]; then
+  step "Checking for a $PRODUCER_NAME child of pid $APP_PID"
   for _ in $(seq 1 10); do
-    COMPILER_PID="$(pgrep -P "$APP_PID" -x flashtex-compiler || true)"
-    [[ -n "$COMPILER_PID" ]] && break
+    PRODUCER_PID="$(pgrep -P "$APP_PID" -x "$PRODUCER_NAME" || true)"
+    [[ -n "$PRODUCER_PID" ]] && break
     sleep 0.5
   done
-  if [[ -n "$COMPILER_PID" ]]; then
-    note "flashtex-compiler attached, pid=$COMPILER_PID (child of $APP_PID)"
+  if [[ -n "$PRODUCER_PID" ]]; then
+    note "$PRODUCER_NAME attached, pid=$PRODUCER_PID (child of $APP_PID)"
   else
-    fail "no flashtex-compiler child process found under pid $APP_PID within 5s"
+    fail "no $PRODUCER_NAME child process found under pid $APP_PID within 5s"
   fi
 
   step "Checking FLASHTEX_LOG for an 'attached:' status line"
@@ -275,18 +283,18 @@ if [[ -x "$COMPILER_IN_BUNDLE" ]]; then
   fi
 fi
 
-# --- 5. Kill the compiler child and assert the app survives and logs it ----
-if [[ -n "$COMPILER_PID" ]]; then
-  step "Killing flashtex-compiler (pid $COMPILER_PID) and checking app survival"
-  kill "$COMPILER_PID"
+# --- 5. Kill the producer child and assert the app survives and logs it -----
+if [[ -n "$PRODUCER_PID" ]]; then
+  step "Killing $PRODUCER_NAME (pid $PRODUCER_PID) and checking app survival"
+  kill "$PRODUCER_PID"
   sleep 2
   if kill -0 "$APP_PID" 2>/dev/null; then
-    note "FlashTeX (pid $APP_PID) is still running after its compiler child was killed"
+    note "FlashTeX (pid $APP_PID) is still running after its producer child was killed"
   else
-    fail "FlashTeX (pid $APP_PID) exited after its compiler child was killed"
+    fail "FlashTeX (pid $APP_PID) exited after its producer child was killed"
   fi
-  if ! kill -0 "$COMPILER_PID" 2>/dev/null; then
-    note "flashtex-compiler (pid $COMPILER_PID) confirmed gone"
+  if ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
+    note "$PRODUCER_NAME (pid $PRODUCER_PID) confirmed gone"
   fi
 
   step "Checking FLASHTEX_LOG for a 'worker exited (' status line"
@@ -359,7 +367,21 @@ for _ in $(seq 1 10); do
   sleep 0.5
 done
 if kill -0 "$APP_PID" 2>/dev/null; then
-  fail "FlashTeX (pid $APP_PID) is still running 5s after $QUIT_HOW"
+  # NSRunningApplication.terminate() only reports that the quit request was
+  # delivered. A modal sheet or AppKit shutdown race may leave this exact
+  # test instance alive, so finish with the same pid-bounded SIGTERM that the
+  # cleanup trap uses. Never signal by process name.
+  kill -TERM "$APP_PID" 2>/dev/null || true
+  for _ in $(seq 1 10); do
+    kill -0 "$APP_PID" 2>/dev/null || break
+    sleep 0.5
+  done
+  if kill -0 "$APP_PID" 2>/dev/null; then
+    fail "FlashTeX (pid $APP_PID) is still running after $QUIT_HOW and pid-bounded SIGTERM"
+  else
+    note "FlashTeX quit after $QUIT_HOW required pid-bounded SIGTERM fallback"
+    APP_PID=""
+  fi
 else
   note "FlashTeX quit cleanly ($QUIT_HOW)"
   APP_PID=""
@@ -393,6 +415,8 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
     [[ -n "$DMG_PATH" ]] && echo "DMG: $DMG_PATH"
     echo "FLASHTEX_NO_ACTIVATE: $NO_ACTIVATE"
     echo "Compiler bundled: $([[ -x "$COMPILER_IN_BUNDLE" ]] && echo yes || echo no)"
+    echo "Render pipeline bundled: $([[ -x "$RENDER_IN_BUNDLE" ]] && echo yes || echo no)"
+    echo "Preferred producer: $PRODUCER_NAME"
     echo "Bridge bundled: $([[ -x "$BRIDGE_IN_BUNDLE" ]] && echo yes || echo no)"
     echo
     printf '%s\n' "${REPORT_LINES[@]}"
