@@ -21,6 +21,7 @@ pub mod parser;
 pub mod protocol;
 pub mod tabular;
 pub mod theorems;
+pub mod xref;
 
 /// Stable identity of one document in a compile request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

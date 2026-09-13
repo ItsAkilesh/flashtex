@@ -433,6 +433,9 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
                 .collect::<Option<Vec<_>>>()?,
             span: mapped_span(*span, changes, deltas)?,
         },
+        Block::TableOfContents { span } => Block::TableOfContents {
+            span: mapped_span(*span, changes, deltas)?,
+        },
     })
 }
 
@@ -507,10 +510,18 @@ fn shift_inlines(
                 value: value.clone(),
                 span: mapped_span(*span, changes, deltas)?,
             }),
-            Inline::Reference { key, page, span } => Some(Inline::Reference {
+            Inline::Reference {
+                key,
+                page,
+                equation,
+                span,
+                space_before,
+            } => Some(Inline::Reference {
                 key: key.clone(),
                 page: *page,
+                equation: *equation,
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::HFill { span } => Some(Inline::HFill {
                 span: mapped_span(*span, changes, deltas)?,
@@ -698,9 +709,11 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Verbatim { .. } => {
-            &[]
-        }
+        Block::VSpace { .. }
+        | Block::Rule { .. }
+        | Block::PageBreak
+        | Block::Verbatim { .. }
+        | Block::TableOfContents { .. } => &[],
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -743,9 +756,11 @@ fn shifted_signature(
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak | Block::Verbatim { .. } => {
-            &[]
-        }
+        Block::VSpace { .. }
+        | Block::Rule { .. }
+        | Block::PageBreak
+        | Block::Verbatim { .. }
+        | Block::TableOfContents { .. } => &[],
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
