@@ -50,7 +50,7 @@ impl CatCode {
 /// only assign catcodes to ASCII/Latin-1 code points in practice) with a
 /// save stack of `(char, old_value)` pairs pushed on group entry, mirroring
 /// how the compiler will eventually restore all other local assignments.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatCodeTable {
     table: [CatCode; 256],
 }
@@ -64,8 +64,10 @@ impl CatCodeTable {
         table[b'\\' as usize] = CatCode::Escape;
         table[b'%' as usize] = CatCode::Comment;
         table[b' ' as usize] = CatCode::Space;
+        // ^^M is the end-of-line character. ^^J (`\n`) is an ordinary
+        // "other" character, as in INITEX: physical line breaks are
+        // recognised by the lexer itself and stand for \endlinechar.
         table[b'\r' as usize] = CatCode::EndLine;
-        table[b'\n' as usize] = CatCode::EndLine;
         table[0] = CatCode::Ignored; // null
         table[127] = CatCode::Invalid; // delete
         for c in b'a'..=b'z' {

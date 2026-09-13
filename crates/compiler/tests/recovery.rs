@@ -106,32 +106,32 @@ const SOURCE_CASES: &[SourceCase] = &[
     SourceCase {
         name: "invalid macro name",
         input: r"Visible \newcommand{oops}{body} Tail.",
-        message: r"\newcommand requires a single command name",
+        message: "Missing control sequence inserted.",
     },
     SourceCase {
         name: "invalid macro argument count",
         input: r"\newcommand{\x}[10]{x} Visible.",
-        message: "argument count must be an integer from 0 to 9",
+        message: "You already have nine parameters.",
     },
     SourceCase {
         name: "newcommand redefines existing command",
         input: r"\newcommand{\section}{x} Visible.",
-        message: r"cannot redefine existing command \section",
+        message: r"LaTeX Error: Command \section already defined.",
     },
     SourceCase {
         name: "renewcommand targets undefined command",
         input: r"\renewcommand{\missing}{x} Visible.",
-        message: r"cannot redefine undefined command \missing",
+        message: r"LaTeX Error: Command \missing undefined.",
     },
     SourceCase {
         name: "macro recursion limit",
-        input: r"\newcommand{\loop}{\loop} Visible \loop Tail.",
+        input: r"\newcommand{\recurse}{\recurse} Visible \recurse Tail.",
         message: "expansion step limit exceeded",
     },
     SourceCase {
         name: "undeclared macro replacement parameter",
         input: r"\newcommand{\oops}{#1} Visible \oops Tail.",
-        message: "replacement references #1",
+        message: r"Illegal parameter number in definition of \oops.",
     },
     SourceCase {
         name: "stray display math close",

@@ -12,6 +12,10 @@ pub enum IfBranch {
     /// We are actively skipping (this level's condition failed and we have
     /// not yet reached `\else`/the right `\or`).
     Skipping,
+    /// The condition itself is still being scanned (tex.web `if_limit =
+    /// if_code`): a `\fi`/`\else`/`\or` met now gets `\relax` inserted
+    /// before it (§510).
+    Testing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,20 +26,23 @@ pub enum IfShape {
     Case,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionalFrame {
     pub shape: IfShape,
     pub branch: IfBranch,
+    /// TeX's `cur_if` as printed by `print_cmd_chr` (e.g. `ifx`), for the
+    /// "Incomplete \\if...; all text was ignored" message.
+    pub name: &'static str,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConditionalStack {
     frames: Vec<ConditionalFrame>,
 }
 
 impl ConditionalStack {
-    pub fn push(&mut self, shape: IfShape, branch: IfBranch) {
-        self.frames.push(ConditionalFrame { shape, branch });
+    pub fn push(&mut self, shape: IfShape, branch: IfBranch, name: &'static str) {
+        self.frames.push(ConditionalFrame { shape, branch, name });
     }
 
     pub fn pop(&mut self) -> Option<ConditionalFrame> {

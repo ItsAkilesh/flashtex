@@ -25,8 +25,10 @@ mod catcode;
 mod conditionals;
 mod error;
 mod expand;
+mod incremental;
 mod lexer;
 mod macro_def;
+mod prelude;
 mod registers;
 mod scopes;
 mod span;
@@ -34,7 +36,8 @@ mod token;
 
 pub use catcode::{CatCode, CatCodeTable};
 pub use error::{Diagnostic, Limits, Severity};
-pub use expand::{Engine, Mode};
+pub use expand::{is_group_token, to_fnsymbol, BoxMeasurer, Checkpoint, DefaultBoxMeasurer, Engine, LabelRecord, Mode};
+pub use incremental::{Edit, EditStats, IncrementalExpander};
 pub use registers::{DefaultFontMetrics, FontMetrics, Glue};
 pub use span::Span;
 pub use token::{Token, TokenKind};
@@ -45,27 +48,38 @@ pub use token::{Token, TokenKind};
 pub struct ExpandResult {
     pub tokens: Vec<Token>,
     pub diagnostics: Vec<Diagnostic>,
+    pub labels: Vec<LabelRecord>,
 }
 
 pub fn expand_str(source: &str) -> ExpandResult {
     let mut engine = Engine::new(source);
     let tokens = engine.run();
-    let diagnostics = engine.diagnostics().to_vec();
-    ExpandResult { tokens, diagnostics }
+    let diagnostics = engine.take_diagnostics();
+    let labels = engine.take_labels();
+    ExpandResult { tokens, diagnostics, labels }
 }
 
 /// Render a token stream back to a plain string (concatenating character
 /// tokens; control sequences render as `\name `, matching how `\message`
 /// would print them) -- mainly useful for tests and the oracle harness.
+/// The null control sequence renders as `\ ` (a known simplification).
 pub fn tokens_to_display_string(tokens: &[Token]) -> String {
     let mut out = String::new();
     for t in tokens {
         match &t.kind {
             TokenKind::Char(c, _) => out.push(*c),
             TokenKind::ControlSequence(name) => {
+                // tex.web §262 `print_cs` with the default `\escapechar`
+                // and catcodes: multi-letter names are always followed
+                // by a space, one-character names only if a letter.
                 out.push('\\');
                 out.push_str(name);
-                if name.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) {
+                let mut cs = name.chars();
+                let space = match (cs.next(), cs.next()) {
+                    (Some(c), None) => c.is_ascii_alphabetic(),
+                    _ => true,
+                };
+                if space {
                     out.push(' ');
                 }
             }

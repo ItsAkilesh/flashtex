@@ -1,246 +1,239 @@
 # `crates/tex-expansion` — adoption contract
 
-**Owner:** kabir-claude (task KC-101). **Status:** standalone, not yet wired
-into `crates/compiler` — this document proposes how another agent would do
-that; I have not modified `crates/compiler` myself (other agents are
-actively editing it).
+**Owner:** kabir-claude (task KC-101, rounds 1-2). **Status:** standalone;
+adoption into `crates/compiler` is being done by another agent on
+`agent/kabir-claude/compiler-tex-expansion`. This document is the contract
+that adoption can rely on.
 
 ## What this crate is
 
-A faithful implementation of TeX's *expansion processor*: category codes
-and tokenization (TeXbook ch. 7-8), the control-sequence table with
-grouping/save-stack semantics (ch. 24), `\def`/`\edef`/`\gdef`/`\xdef` and
-macro calling with delimited/undelimited/`#{`-delimited parameters (ch.
-20), `\let`/`\futurelet`, `\expandafter`/`\noexpand`/`\csname`, TeX and
-e-TeX conditionals, `\count`/`\dimen`/`\skip`/`\toks` registers with
-`\advance`/`\multiply`/`\divide`/`\numexpr`/`\dimexpr`, and a LaTeX layer
-(`\newcommand`/`\newenvironment`/counters/`\@ifnextchar`/`\@ifstar`/
-`\@namedef`/`\@nameuse`).
+A faithful implementation of TeX's *expansion processor* plus the part of
+main control that executes assignments: category codes and tokenization
+(TeXbook ch. 7-8, `\endlinechar`, `^^` notation), the control-sequence
+table with grouping/save-stack semantics (ch. 24), `\def`/`\edef`/`\gdef`/
+`\xdef` with delimited/undelimited/`#{` parameters (ch. 20), `\let`/
+`\futurelet`, `\expandafter`/`\noexpand`/`\csname`, TeX and e-TeX
+conditionals, registers and `\numexpr`/`\dimexpr`, e-TeX/pdfTeX expandables
+(`\unexpanded`, `\detokenize`, `\expanded`, `\scantokens`, `\pdfstrcmp`),
+`\uppercase`/`\lowercase` with `\uccode`/`\lccode`, `\chardef`/
+`\mathchardef`, `\afterassignment`/`\aftergroup`, `\long`/`\outer`/
+`\protected` with TeX's errors and recovery, and a LaTeX layer (the kernel
+macros real documents and packages use: `\newcommand` and friends built
+exactly as `ltdefns` builds them, `\DeclareRobustCommand`/`\protect`/
+`\protected@edef`, environments, counters with reset lists, lengths,
+`\@ifundefined`, `\@ifnextchar`, `\@for`/`\@tfor`, `\loop`,
+`\g@addto@macro`, `\AtBeginDocument`, keyval, `\label` data).
 
-Its public entry point (`src/lib.rs`):
+## Public API (`src/lib.rs`)
 
 ```rust
-pub fn expand_str(source: &str) -> ExpandResult; // { tokens: Vec<Token>, diagnostics: Vec<Diagnostic> }
-pub struct Engine<'a> { ... } // lower-level: new(), run(), diagnostics(), set_mode(), set_font_metrics()
+pub fn expand_str(source: &str) -> ExpandResult; // { tokens, diagnostics, labels }
+pub fn tokens_to_display_string(tokens: &[Token]) -> String;
+pub fn is_group_token(t: &Token) -> bool;        // `{`/`}` (explicit or implicit), \begingroup/\endgroup
+
+pub struct Engine;            // new(src), with_limits(src, limits), run(), next_content_token(),
+                              // take_diagnostics(), take_labels(), set_mode(Mode),
+                              // set_font_metrics(..), set_box_measurer(..),
+                              // set_file_reader(..), opened_files(), new_initex(src, limits)
+pub struct IncrementalExpander; // new(src), with_options(src, limits, interval), edit(&Edit) -> EditStats,
+                                // tokens(), diagnostics(), labels(), source()
+pub trait BoxMeasurer;        // \settowidth/\settoheight/\settodepth callback (sp)
+pub struct LabelRecord;       // \label{key}: key, expanded \@currentlabel, span
+pub fn to_fnsymbol(n: i64) -> Option<String>;
 ```
 
-`Token` carries a `Span { source_id, start, end }` back into the original
-source string for every token that came from real source bytes (tokens
-synthesized purely by expansion use `Span::synthetic()`), which is what the
-IDE needs to map preview glyphs back to exact source characters.
+Every token carries `Span { source_id, start, end }`: source 0 is the
+document, other ids are `\scantokens` pseudo-files and `\input` files
+(`Engine::opened_files`). Synthesized tokens use `Span::synthetic()`.
 
-## What it deliberately is not
+## The output token stream
 
-It does not typeset. Register/macro assignments *execute* as they are
-encountered (interleaved with expansion, exactly like real TeX's main
-control), so **the output token stream contains no `\def`/`\let`/register
-assignments, no conditionals, and no bare grouping braces** — only content
-(`Char`/`ActiveChar` tokens) and any control sequence this crate doesn't
-recognize, left untouched for the typesetting layer (e.g. `\section`,
-`\hskip`, font-switching commands, anything from a class/package we have
-no model of). An unrecognized control sequence is *not* flagged as an
-error — this crate only knows the TeX/e-TeX/LaTeX-kernel primitives it
-implements, not the rest of the LaTeX universe, so treating "not ours" as
-"undefined" would be wrong.
+Assignments execute as they are met, so the stream contains **no**
+definitions, register assignments or conditionals. It contains:
+
+- character tokens (content);
+- **grouping tokens, with spans**: every `{`/`}` main control processes
+  (explicit, or implicit via `\bgroup`/`\egroup`, which appear as the
+  brace character with the control sequence's span), and `\begingroup`/
+  `\endgroup`. `\aftergroup` tokens follow the closing token. An unbalanced
+  `}` ("Too many }'s") is dropped, as TeX does. Consumers that only want
+  content filter with `is_group_token`. *(Round 2 change, requested by
+  KC-110/PR #96; round 1 swallowed them.)*
+- `\relax` for any token whose meaning is `\relax` (`\protect`, an
+  undefined `\csname`), and `\par`;
+- control sequences this crate does not model (`\section`, `\hskip`,
+  `\textwidth`, ...), untouched, for the typesetter. With pending
+  `\global`/`\long`/... prefixes, those prefix tokens are passed through
+  in front (e.g. `\global\setbox`). An unmodelled control sequence is not
+  an error: the crate does not know the whole LaTeX universe.
 
 ## Proposed adoption path for `crates/compiler`
 
-1. **Add the dependency.** `crates/compiler/Cargo.toml`:
-   `flashtex-tex-expansion = { path = "../tex-expansion" }`.
+1. Depend on the crate; run `Engine` (or `IncrementalExpander`) before the
+   compiler's parser, feeding it the token stream instead of raw text.
+2. Delete the parser's own bounded `\newcommand` substitution; macro calls
+   are gone by the time the parser sees tokens.
+3. Map `Diagnostic { severity, message, span }` 1:1; spans share the
+   source's byte offsets. Messages are TeX's/LaTeX's own texts (oracle-
+   checked), last line being the `! ...` line.
+4. Wire `set_font_metrics` (`em`/`ex`) and `set_box_measurer`
+   (`\settowidth`) to the font engine; the defaults are 10pt-CM placeholders
+   and a zero-width measurer.
+5. `set_file_reader` makes `\input` read files (spans get their own
+   `source_id`); without it `\input` passes through as today.
+6. `\ifvmode`/`\ifhmode`/`\ifmmode`/`\ifinner` read `Engine::set_mode`; a
+   real feed needs expansion interleaved with layout.
 
-2. **Preprocessing stage, before the existing lexer/parser.** Today
-   `crates/compiler/src/parser.rs` does its own bounded `\newcommand`
-   substitution inline while parsing (see `define_macro` around
-   parser.rs:1392, and the hardcoded `"newcommand"|"renewcommand"` match at
-   parser.rs:811/374-375) — there is no `\def`, no conditionals, no
-   registers at all. The proposed split:
+## Incremental expansion (IDE)
 
-   ```
-   source text
-     -> flashtex_tex_expansion::Engine::run()   // NEW: expansion stage
-     -> Vec<Token>  (content tokens + span provenance)
-     -> crates/compiler's existing lexer/parser, adapted to consume
-        Vec<Token> instead of re-lexing raw characters
-     -> layout (unchanged)
-   ```
+`IncrementalExpander` snapshots the whole assignment state at *safe points*
+(input stack = base lexer just past a line break, nothing pending) every
+`checkpoint_interval` bytes. An edit restarts from the nearest checkpoint
+before it, and stops as soon as the new run reaches an old checkpoint
+(shifted by the edit) with an equivalent state, splicing in the old suffix
+with shifted spans.
 
-   Concretely: `crates/compiler/src/lexer.rs` currently turns source bytes
-   into whatever token type `parser.rs` consumes. The adoption diff is to
-   insert the expansion pass *before* that: run `expand_str` (or drive
-   `Engine` incrementally, see "Incremental compilation" below) first, then
-   feed its `Token` stream through a thin adapter that turns
-   `flashtex_tex_expansion::TokenKind` into whatever `crates/compiler`'s
-   parser expects (`Char` -> existing character token; `ControlSequence`
-   -> existing control-sequence token; span carried through unchanged so
-   existing diagnostic code keeps working).
-
-3. **Remove the compiler's inline `\newcommand` handling.** Once macro
-   expansion happens upstream, `parser.rs`'s `define_macro`/`PARSABLE`
-   command list (parser.rs:374-375) and the `newcommand`/`renewcommand`
-   match arm (parser.rs:811) should be deleted — by that point in the
-   pipeline `\greet{world}` has *already* become `Hello, world!` as plain
-   character tokens; the parser never sees a macro call at all. (I have
-   **not** made this edit — it is squarely inside `crates/compiler`, owned
-   by other in-flight agents per the task's ownership rules.)
-
-4. **Diagnostics.** `flashtex_tex_expansion::Diagnostic` is a plain
-   `{ severity, message, span }` struct — map it 1:1 onto whatever
-   diagnostic type `crates/compiler/src/diagnostics.rs` uses; the spans
-   are already in the same byte-offset space as the original source.
-
-5. **Font metrics for `em`/`ex`.** `Engine::set_font_metrics` takes a
-   `Box<dyn FontMetrics>` (`quad_sp()`, `x_height_sp()`); wire this to
-   whatever `crates/font-engine`/`crates/font-resources` expose for the
-   current font at the point expansion runs. Until that's wired,
-   `DefaultFontMetrics` (10pt CM-like defaults) is used, which will be
-   *wrong* for any document using `em`/`ex` in a different font — flagged
-   here rather than silently shipped as correct.
-
-6. **Mode-dependent conditionals.** `\ifvmode`/`\ifhmode`/`\ifmmode`/
-   `\ifinner` need real typesetting-mode state, which this crate does not
-   have (no typesetter). `Engine::set_mode(Mode)` is a manual override the
-   host must call before/while expanding if a document actually uses these
-   (rare in practice; most documents don't inspect their own mode). A
-   fuller integration would thread mode changes from the compiler's layout
-   stage back into the engine, which requires interleaving expansion with
-   layout rather than doing it as one upfront pass — out of scope for this
-   task; flagged as a real limitation for documents that use `\ifmmode`
-   etc. structurally.
-
-7. **Incremental compilation.** `crates/compiler/src/incremental.rs`
-   exists and is tested against `\newcommand`/`\renewcommand` edits
-   already (see its tests around line 829-845). `Engine` as built runs
-   start-to-finish over a whole source string; it is **not** yet
-   incremental. A real integration needs either (a) accept the
-   full-reparse cost for now (macro expansion is fast — pure Rust, no I/O)
-   and let `incremental.rs`'s existing diffing operate on the *output*
-   token stream instead of raw source, or (b) extend `Engine` with a
-   restart-from-checkpoint API (save/restore `Scopes` state at paragraph
-   boundaries). I have not built (b); it's the main piece of follow-up
-   work I'd flag for whoever adopts this.
-
-## Known deviations from real TeX (found via the oracle corpus)
-
-- **Bare grouping braces produce no token.** Verified against real TeX:
-  `{\def\a{inner}}\a` written via `\write` (which is itself a
-  `scan_toks`-style capture, *not* real document typesetting) still
-  observably yields just the macro's expansion with no literal `{`/`}`
-  characters once you account for where the braces actually are. Real
-  TeX's main control does *not* append a character node for catcode-1/2
-  tokens — it only does the grouping bookkeeping — so this crate matches
-  that (swallows them after pushing/popping scope), which is the correct
-  behavior for feeding a typesetter. The flip side: `\write`'s *own*
-  argument-scanning is a different TeX subsystem (`scan_toks`) that *does*
-  preserve nested braces literally as balanced delimiters — this is why
-  the oracle generator (`tests/oracle/gen/cases.py`) cannot use `\write`
-  to validate constructs like `#{` (brace-delimited last parameter) whose
-  leftover brace group is meant to be processed at the top level; those
-  are covered by Rust-only unit tests instead (see comments in both
-  files).
-- **`\let`-to-a-character tokens are substituted immediately.** `\let\a=b`
-  then using `\a` produces the character `b` directly in this crate's
-  output. Real TeX's `\write` would instead print the literal token `\a `
-  (since such a token isn't "expandable" in the technical sense `\write`'s
-  restricted scan checks for) — but real TeX's *main control*, when
-  actually typesetting, treats that same token exactly as if `b` had been
-  typed. Since this crate's job is to feed a typesetter, we match main
-  control, not `\write`. (No oracle case exercises this specific
-  distinction for that reason — see the comment above `let_to_char` in
-  `tests/oracle/gen/cases.py`.)
-- **`\fnsymbol`** renders ASCII approximations (`*`, `**`, ..., `#`, `##`,
-  `###`) instead of real LaTeX's math-mode footnote symbols
-  (asterisk-operator, dagger, double-dagger, ...), since those aren't
-  representable as plain catcode-Other characters without a math/symbol
-  font this crate has no access to.
-- **Catcode assignments are grouped/restored correctly**, but there is
-  **no font/family/other "current font" state** at all — this crate only
-  models the macro-expansion layer, not `\font`/`\textfont` etc.
-- **`\newcounter`'s `[within]` parent is recorded but not acted on** —
-  stepping a parent counter does not yet reset its children (LaTeX's
-  `@removefromreset`/`@addtoreset` machinery isn't modeled). Flagged, not
-  fixed, for time reasons.
-- **`\long`/`\outer` flags are parsed and stored on `MacroDef` but not
-  enforced** (a non-`\long` macro should reject `\par` inside an argument;
-  `\outer` macros should be rejected in certain contexts). Parsing is
-  correct; enforcement is a follow-up.
-- **e-TeX `\numexpr`/`\dimexpr`**: implemented with standard `+ - * /` and
-  parentheses, matching e-TeX's round-to-nearest (ties away from zero)
-  division semantics (verified against real `etex` via the oracle). Unary
-  minus and other e-TeX expression forms beyond this are not implemented.
+- **Equivalence:** `tests/incremental_tests.rs` checks tokens (kind *and*
+  span), labels and diagnostics against a from-scratch run after every one
+  of: 12 random edits on each of the 415 oracle documents, 240 on HW1/HW2
+  (origin/main `fixtures/real-world/hw{1,2}`), 150 on a macro-heavy
+  document. All pass.
+- **Latency** (`cargo run --release --example bench_incremental`, 500 KB
+  synthetic LaTeX document, Apple M5 Pro, default `Limits`): full expansion
+  154 ms; initial incremental run 132 ms with 230 checkpoints; 300 random
+  single-character keystrokes each followed by its undo (600 edits):
+  **p50 5.9 ms, p95 115 ms, max 379 ms**, 536/600 converged early, final
+  tokens identical to a from-scratch run. The p95 is the non-converging
+  edits below; the max is an edit that created an infinite macro loop and
+  ran to the 2M-step limit.
+- An edit that changes state for the rest of the document (e.g. typing into
+  `\stepcounter{para}`) cannot converge and costs a re-expansion from the
+  checkpoint (≤ one full run, ~130 ms here). An edit that creates an
+  infinite macro loop costs up to `Limits::max_expansion_steps`.
 
 ## Oracle corpus
 
-`tests/oracle/gen/cases.py` drives real `tex`, `etex`, and `pdflatex`
-(MacTeX, oracle-only per KC-101 — never a build/runtime dependency of this
-crate or the product) to capture ground-truth output for each case, three
-ways depending on what the case needs:
+`tests/oracle/gen/cases.py` runs real `tex`/`etex`/`pdflatex` (MacTeX 2026;
+oracle-only, never a build dependency) and commits `(setup, expr, expected,
+mode)` to `tests/oracle/manifest.json`; `tests/oracle_tests.rs` compares
+without running TeX. Modes:
 
-- **`"tex"`/`"etex"` mode**: wraps the case in `\immediate\write` and reads
-  back the written file. Fast and exact, but `\write`'s argument scanning
-  is itself a `scan_toks` context (see "Known deviations" above) — not
-  usable for cases whose observable behavior depends on real top-level
-  grouping, or on non-expandable-token identity.
-- **`"latex-render"` mode**: typesets the case as ordinary `article` body
-  content between two unique marker strings, renders to PDF via
-  `pdflatex`, and extracts the text between the markers with `pdftotext`.
-  Used for the LaTeX-kernel macros (`\newcommand`, counters,
-  `\@ifnextchar`, ...) whose internals use `\let`/`\futurelet` and so
-  cannot be captured through `\write`'s restricted scan.
+| mode | TeX side | compared with |
+| --- | --- | --- |
+| `tex`, `etex` | plain format, `\immediate\write` of expr | display string |
+| `latex-write` | pdflatex, setup + write in the body | display string |
+| `latex-doc` | setup in the preamble, write after `\begin{document}` | display string |
+| `latex-render` | typeset body, `pdftotext` | content text, whitespace collapsed |
+| `tex-err`, `etex-err`, `latex-err` | `! ...` lines of the log | our error messages |
 
-Each case's `(setup, expr, expected)` is committed to
-`tests/oracle/manifest.json`; `tests/oracle_tests.rs` reads that fixture
-and asserts `expand_str(setup + expr)` matches `expected` **without ever
-invoking TeX itself** at `cargo test` time. To add cases or regenerate
-after an engine change that legitimately changes output, run (with
-MacTeX/TeX Live's `tex`/`etex`/`pdflatex`/`pdftotext` on `PATH`):
+Executed `\relax` and grouping tokens are dropped before comparing (TeX
+neither writes nor typesets them). **415 / 415 cases pass** (round 1: 108),
+covering everything listed in "What this crate is" plus `\meaning` of every
+token kind, `\string` with `\escapechar`, `\csname`'s implicit `\relax`,
+dimension/glue arithmetic and units, and ~37 error-message cases.
 
-```
-python3 tests/oracle/gen/cases.py
-```
+## `\long` / `\outer`
 
-**108 / 108 oracle cases pass** as of this commit, plus **46 Rust-only unit
-tests** in `tests/expand_tests.rs` covering the same feature areas (plus
-the two documented brace/let-to-char distinctions the oracle mechanism
-itself can't validate). This is short of the ≥150-case target in the task
-brief — see "What's not done" below.
+Enforced as tex.web does (`check_outer_validity`, §392-§399): a `\par` in
+the argument of a non-`\long` macro gives "Runaway argument? / ! Paragraph
+ended before \foo was complete." and aborts the call; an `\outer` macro
+while scanning a definition/argument/`\uppercase`-style text/skipped
+conditional gives "Forbidden control sequence found while scanning
+definition|use|text of \foo." or "Incomplete \iffalse; all text was ignored
+after line N.", with TeX's recovery insertions (`}`, `\par`, `\fi`). Extra
+`}` in an argument, "Use of \foo doesn't match its definition", prefix
+errors ("You can't use a prefix with ..."), `\newcommand*` vs.
+`\newcommand` (`\long` only when the command has parameters, like
+`\@yargd@f`) are oracle-checked against the real logs.
 
-## What's done vs. not done
+## Counters
 
-**Done and oracle/unit-tested:** catcodes + tokenizer (incl. `^^`
-notation, comments, `\par` from blank lines), `\def`/`\edef`/`\gdef`/
-`\xdef` with delimited/undelimited/`#{` parameters, `\let`/`\futurelet`,
-`\expandafter`/`\noexpand`/`\csname`/`\endcsname`, `\string`/`\number`/
-`\romannumeral`/`\the`, grouping with `\global`/`\aftergroup`, `\catcode`/
-`\makeatletter`/`\makeatother`, all listed TeX+e-TeX conditionals
-including `\ifcase`/`\newif`/`\unless`, `\count`/`\dimen`/`\skip`/`\toks`
-registers with the `...def` family and `\advance`/`\multiply`/`\divide`/
-`\numexpr`/`\dimexpr`, and the LaTeX layer (`\newcommand`/`\renewcommand`/
-`\providecommand` incl. `*` and optional-first-argument default,
-`\newenvironment`/`\renewenvironment`, `\newcounter`/`\setcounter`/
-`\addtocounter`/`\stepcounter`/`\refstepcounter`/`\value`/`\arabic`/
-`\roman`/`\Roman`/`\alph`/`\Alph`/`\fnsymbol`, `\@ifnextchar`/`\@ifstar`/
-`\@namedef`/`\@nameuse`). Resource limits (`Limits`: max expansion steps,
-max output tokens) prevent infinite macro loops from hanging; a runaway
-argument/group hits a diagnostic instead of panicking anywhere in the
-engine (no `unwrap`/`expect`/panic on malformed input was intentionally
-left in the hot paths — see error.rs).
+`\newcounter{c}[within]`, `\@addtoreset`, `\@removefromreset`,
+`\counterwithin(*)`, `\counterwithout(*)`, recursive resets on
+`\stepcounter`/`\refstepcounter` (LaTeX's `\@stpelt`), `\@currentlabel`
+with `\p@c`, and `\label` recording `LabelRecord`s. All oracle-checked.
 
-**Not done** (see "Known deviations" for why, where applicable):
-- `\long`/`\outer` enforcement (parsed, not enforced).
-- Mode-aware `\ifvmode`/`\ifhmode`/`\ifmmode`/`\ifinner` (manual override
-  only, no real typesetting-mode feed).
-- `\newcounter`'s `[within]` reset propagation.
-- Incremental/checkpointed expansion (whole-document pass only).
-- The oracle corpus is 108 cases, not ≥150 — time-bounded; the highest
-  syntactic-risk areas (delimited params, `#{`, grouping/`\global`
-  interaction, all conditional forms, counters, optional-arg
-  `\newcommand`) are covered, but plenty of TeXbook corner cases (e.g.
-  deeper `\edef`+`\noexpand` interactions, `\aftergroup` ordering with
-  multiple queued tokens, catcode-13 active-character macros beyond the
-  one `~` case) are not yet exercised.
-- No fuzzing/property testing against the resource limits — only the one
-  direct case is verified (`infinite_macro_loop_terminates_with_diagnostic`
-  in `tests/expand_tests.rs`: `\def\loop{\loop}\loop` terminates with a
-  single diagnostic and no panic, rather than hanging), not a broader
-  sweep of worst-case shapes (e.g. loops that also grow the output-token
-  count, deeply nested group/conditional recursion, etc).
+## `\fnsymbol`
+
+Unicode, matching what pdfLaTeX's text-mode symbols extract to (oracle
+`fnsymbol_1`..`fnsymbol_9`): 1 ∗ U+2217, 2 † U+2020, 3 ‡ U+2021,
+4 § U+00A7, 5 ¶ U+00B6, 6 ‖ U+2016, 7 ∗∗, 8 ††, 9 ‡‡; other values are
+"Counter too large".
+
+## Real-document smoke (`examples/smoke.rs`)
+
+All 44 `.tex` files under `fixtures/` and `tests/` on origin/main
+(dbf6ec78): **42 clean, 2 with errors**, both legitimate:
+`tests/tex-corpus/cases/extra-closing-group` ("Too many }'s", the case's
+point) and `include-scope/local.tex` (a fragment that `\renewcommand`s a
+macro its includer defines). Each expands in < 1 ms. Unmodelled primitives
+passed through, by documents: `\parindent` 12, `\parskip` 11, `\hfill` 4,
+`\input` 4, `\left`/`\right` 3, `\displaystyle` 2, `\hrule` 2, `\kern`,
+`\vfill`, `\mathbin`, `\noindent` 1. Top class/package commands passed
+through: `\documentclass` 40, `\usepackage` 27, `\pagestyle` 20, `\[`/`\]`
+16, `\frac` 11, `\\` 10, page-geometry lengths 8-9, `\section` 7.
+
+## Kernel feasibility probe (`examples/kernel_probe.rs`)
+
+Runs the real `latex.ltx` (read in place via `kpsewhich`, not vendored)
+from `Engine::new_initex` (INITEX catcodes, TeX/e-TeX/pdfTeX primitives
+only, TeX parameters as registers, I/O stand-ins, `\input` through
+kpathsea). Result at this commit: **reaches line 1147 of 22 470 (5.1 %) in
+226 ms**, having read `texsys.cfg`, `expl3.ltx` and `expl3-code.tex`. The
+first failures, in order:
+
+1. `\sfcode` (and the other code tables `\mathcode`/`\delcode`) — not modelled;
+2. the `\.`/`\?`/`\!`/`\:`/`\;`/`\,` spacing commands — defined by code
+   that uses the missing primitives;
+3. `\batchmode` (interaction modes);
+4. the expl3 bootstrap: expl3 renames *every* engine primitive to
+   `\tex_...:D` and checks for pdfTeX ones (`\lastnamedcs`,
+   `\pdfprimitive`, ...); with them missing it reports "LaTeX requires
+   expl3" / "This is one for The LaTeX3 Project: bailing out".
+
+Static gap (every `\name` in the files that is an engine primitive, from
+LuaTeX's primitive list): `latex.ltx` references 310 primitives, **180
+modelled, 130 missing**; with `expl3-code.tex` 717, 202 modelled, 515
+missing, of which 162 are LuaTeX-only. The missing ones are overwhelmingly
+typesetting primitives: boxes (`\box`, `\hbox`, `\vbox`, `\setbox`, `\wd`/
+`\ht`/`\dp`, `\copy`, `\unhbox`...), glue/kern/penalty/rules, fonts
+(`\font`, `\fontdimen`, `\char`), math classes, alignment (`\cr`,
+`\noalign`, `\omit`), marks/inserts/`\shipout`, plus the code tables and
+pdfTeX utilities.
+
+**Estimate.** Loading the kernel for real is not an expansion-layer task
+alone: the expansion side needs roughly 40 more primitives (code tables,
+interaction modes, `\lastnamedcs`/`\pdfprimitive`/`\ifpdfprimitive`,
+`\show*`, `\numexpr`-family (`\glueexpr`/`\muexpr`...), string/file
+utilities, `\currentgrouplevel`/`\currentiftype`, `\everyeof`) — about
+1-2 rounds of this task — but ~250 of the missing primitives only make
+sense with a typesetter's data structures (boxes with dimensions, fonts
+with metrics, math lists, alignments). A feasible plan is either (a) an
+executable TeX core that owns boxes/fonts, where this crate is its
+expansion front end, or (b) keep the hand-modelled LaTeX layer for
+documents and use the probe as a regression gauge. Expanding what the
+engine can currently takes < 0.25 s; `expl3-code.tex` alone is 35 k lines.
+
+## Known deviations
+
+- **`\write` vs. main control.** The stream models main control. A let-to-
+  `\relax` token is emitted as `\relax`; `\unexpanded` outside an
+  expand-only context expands its tokens later (e-TeX main control).
+- **No final `\endlinechar`** after the last line of a buffer that does not
+  end in a line break (TeX appends one to every line).
+- **`\ifvmode`...** use `set_mode`; **`\ifeof`** is true and `\ifvoid` true,
+  `\ifhbox`/`\ifvbox` false (no boxes).
+- **INITEX-only modelling** of TeX parameters (`\tolerance`, `\parindent`,
+  ...) and of `\write`/`\message`/`\read` stand-ins: in the default engine
+  these remain pass-through for the typesetter. `\write` text is not
+  expanded; `\read` defines the target as empty with a warning.
+- **`\settowidth`** uses the host measurer (default: zero).
+- **Implicit braces** (`\bgroup`) are emitted as the brace character, so a
+  consumer cannot distinguish `{` from `\bgroup`.
+
+## Tests
+
+`cargo test`: 55 unit tests (`tests/expand_tests.rs`), 3 incremental
+equivalence tests, the 415-case oracle. Helpers: `examples/probe.rs`
+(expand lines of a file), `examples/oracle_scan.rs`, `examples/inc_hunt.rs`,
+`examples/dbg.rs`.

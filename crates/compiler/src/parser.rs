@@ -4648,10 +4648,10 @@ mod tests {
         );
         assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
             .message
-            .contains(r"\newcommand cannot redefine existing command \same")));
+            .contains(r"LaTeX Error: Command \same already defined.")));
         assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
             .message
-            .contains(r"\renewcommand cannot redefine undefined command \missing")));
+            .contains(r"LaTeX Error: Command \missing undefined.")));
     }
 
     #[test]

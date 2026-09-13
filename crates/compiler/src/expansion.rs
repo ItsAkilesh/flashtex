@@ -31,8 +31,14 @@
 //!   `\newenvironment` definition runs); an undefined `\name` produced that
 //!   way is turned back into `\begin`, `{`, `name`, `}` with the exact spans
 //!   of each piece.
-//! - **Diagnostics.** Engine diagnostics become compiler diagnostics at the
-//!   engine's span, mapped into the owning document.
+//! - **Diagnostics.** Engine diagnostics (TeX's/LaTeX's own messages) become
+//!   compiler diagnostics at the engine's span, mapped into the owning
+//!   document. Messages the parser already reports itself (unbalanced
+//!   environments, unterminated `\verb`/verbatim) and the engine's
+//!   "environment passed through to the typesetter" notes are dropped.
+//! - **Tables.** `\arraystretch` is read where LaTeX reads it, at
+//!   `\begin{tabular}`: a host prelude makes the engine emit its value there
+//!   (see [`HOST_PRELUDE`]), recorded in [`Expansion::arraystretch`].
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -72,8 +78,36 @@ pub struct Expansion {
     pub arraystretch: HashMap<(usize, usize), String>,
 }
 
-/// Kernel definitions the parser relies on reading back.
-const PRELUDE: &str = "\\def\\arraystretch{1}";
+/// Host definitions run before the document. LaTeX's `\tabular`/`\array`
+/// read `\arraystretch` when the environment begins; here they emit a
+/// marker plus `\arraystretch`'s current expansion, which the converter
+/// turns back into `\begin{<env>}` and records for the parser.
+///
+/// Kernel definitions that would intercept a command the parser typesets
+/// itself (`\\setlength`, `\\label`, and `\\verb`, whose argument the pass
+/// has already hidden) are removed, so they pass through.
+pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
+\\let\\label\\flashtexundefined
+\\let\\verb\\flashtexundefined
+\\def\\arraystretch{1}%
+\\def\\tabular{\\flashtexbegintabular\\expandafter{\\arraystretch}}%
+\\expandafter\\def\\csname tabular*\\endcsname{\\flashtexbegintabularstar\\expandafter{\\arraystretch}}%
+\\def\\array{\\flashtexbeginarray\\expandafter{\\arraystretch}}%
+";
+
+/// Engine diagnostics that duplicate the parser's own reports, or only note
+/// a pass-through.
+fn parser_reports_itself(message: &str) -> bool {
+    (message.starts_with("Environment ") && message.contains("undefined (passed through"))
+        || message.contains("ended by \\end{")
+        || message.contains("without matching \\begin")
+        || message == "Too many }'s."
+        || message.contains("\\verb illegal in command argument")
+        || message.contains("verbatim illegal in command argument")
+        || message.contains("\\verb ended by end of line")
+        || message.contains("while scanning text of \\begin{verbatim")
+        || message.contains("while scanning text of \\begin{lstlisting")
+}
 
 /// A document as the engine reads it: verbatim regions blanked.
 struct Prepared<'a> {
@@ -86,6 +120,18 @@ struct Prepared<'a> {
     /// same-length undefined control words so the engine's counter
     /// primitives do not consume them; by backslash offset.
     renamed: HashMap<usize, &'static str>,
+    /// Byte ranges whose engine tokens are not parser input (a `\verb`
+    /// argument after its control word; a verbatim-like body), sorted.
+    skip: Vec<(usize, usize)>,
+    /// `\begin{verbatim}` offset -> offset of its `\end{verbatim}`.
+    verbatim_ends: HashMap<usize, usize>,
+}
+
+impl Prepared<'_> {
+    fn skips(&self, offset: usize) -> bool {
+        let i = self.skip.partition_point(|(start, _)| *start <= offset);
+        i > 0 && offset < self.skip[i - 1].1
+    }
 }
 
 /// Counter formats enumitem accepts as `\<format>*` in a `label` template.
@@ -97,6 +143,8 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
         verbs: HashMap::new(),
         verb_markers: HashSet::new(),
         renamed: HashMap::new(),
+        skip: Vec::new(),
+        verbatim_ends: HashMap::new(),
     };
     let has_labels = text.contains('*') && LABEL_FORMATS.iter().any(|f| text.contains(&format!("\\{f}*")));
     let has_urls = text.contains("\\url") || text.contains("\\href") || text.contains("\\nolinkurl");
@@ -118,6 +166,7 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
             TokenKind::Verb { .. } => {
                 let (start, end) = (token.span.start, token.span.end);
                 prepared.verbs.insert(start, token.clone());
+                prepared.skip.push((start + 1, end));
                 // `\verb` + blanks + `\/`: the engine reads one undefined
                 // control word (mapped back to this token) and a control
                 // symbol that restores mid-line state, so a space after the
@@ -192,6 +241,10 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
                 for b in &mut bytes[content_start..tag_start] {
                     *b = b' ';
                 }
+                prepared.skip.push((content_start, tag_start));
+                if env != "lstlisting" {
+                    prepared.verbatim_ends.insert(token.span.start, tag_start);
+                }
                 blanked = true;
                 i = close + 1;
                 while i < tokens.len() && tokens[i].span.start < tag_start {
@@ -201,6 +254,7 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
             _ => i += 1,
         }
     }
+    prepared.skip.sort_unstable();
     if blanked {
         // Only whole UTF-8 sequences were replaced by ASCII spaces.
         prepared.text = Cow::Owned(String::from_utf8(bytes).expect("blanking keeps UTF-8 valid"));
@@ -287,6 +341,9 @@ struct Converter<'d> {
     /// Characters of the word being assembled, with its provenance.
     word: Option<PendingWord>,
     last_span: Span,
+    /// Reading the `{<\arraystretch>}` group after a table marker: the key
+    /// it is recorded under, brace depth, and the text so far.
+    stretch: Option<((usize, usize), usize, String)>,
 }
 
 struct PendingWord {
@@ -480,25 +537,24 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
     };
     let entry_text: &str = prepared.get(entry).map_or("", |p| p.text.as_ref());
     let mut engine = Engine::with_limits(entry_text, limits);
-    engine.set_emit_grouping(true);
+    engine.run_host_prelude(HOST_PRELUDE);
+    engine.set_emit_unbalanced_close(true);
     for name in BUILT_INS {
         engine.declare_host_command(name);
     }
-    for name in ["verb", "input", "include"] {
-        engine.declare_host_command(name);
-    }
-    let prelude_id = engine.push_input(PRELUDE);
+    engine.declare_host_command("include");
 
     let mut conv = Converter {
         documents,
         document_by_path: documents.iter().enumerate().map(|(i, d)| (d.path, i)).collect(),
-        source_documents: HashMap::from([(0, Some(entry)), (prelude_id, None)]),
+        source_documents: HashMap::from([(0, Some(entry))]),
         entry,
         out: Vec::new(),
         diagnostics: Vec::new(),
         arraystretch: HashMap::new(),
         word: None,
         last_span: Span::in_document(DocumentId(entry), 0, 0),
+        stretch: None,
     };
     let _ = conv.entry;
 
@@ -511,6 +567,37 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
         };
         let Some((token, origin)) = next else { break };
         let at = conv.place(&token, origin);
+        if let Some((key, depth, mut text)) = conv.stretch.take() {
+            match &token.kind {
+                TexKind::Char(_, CatCode::BeginGroup) => {
+                    if depth > 0 {
+                        text.push('{');
+                    }
+                    conv.stretch = Some((key, depth + 1, text));
+                }
+                TexKind::Char(_, CatCode::EndGroup) if depth <= 1 => {
+                    conv.arraystretch.insert(key, text);
+                }
+                TexKind::Char(_, CatCode::EndGroup) => {
+                    text.push('}');
+                    conv.stretch = Some((key, depth - 1, text));
+                }
+                TexKind::Char(c, _) | TexKind::ActiveChar(c) => {
+                    text.push(*c);
+                    conv.stretch = Some((key, depth, text));
+                }
+                TexKind::ControlSequence(cs) => {
+                    text.push('\\');
+                    text.push_str(cs);
+                    conv.stretch = Some((key, depth, text));
+                }
+                _ => conv.stretch = Some((key, depth, text)),
+            }
+            continue;
+        }
+        if !at.maps && at.real.is_some_and(|real| prepared[real.document.0].skips(real.start)) {
+            continue;
+        }
         match &token.kind {
             TexKind::Char(c, cat) => match cat {
                 CatCode::BeginGroup => conv.push(TokenKind::LBrace, at),
@@ -530,11 +617,28 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
             TexKind::ControlSequence(name) => {
                 let real_text = at.real.map_or("", |real| conv.source_text(real));
                 match name.as_str() {
+                    // Grouping bookkeeping and `\relax` produce nothing for the
+                    // parser (LaTeX's environment groups included).
+                    "begingroup" | "endgroup" | "relax" => {}
+                    "flashtexbegintabular" | "flashtexbegintabularstar" | "flashtexbeginarray" => {
+                        let env = match name.as_str() {
+                            "flashtexbegintabular" => "tabular",
+                            "flashtexbegintabularstar" => "tabular*",
+                            _ => "array",
+                        };
+                        let begin = origin
+                            .and_then(|o| conv.span(o))
+                            .filter(|b| conv.source_text(*b) == "\\begin")
+                            .map(|b| Placement { span: b, definition: None, maps: false, real: Some(b) })
+                            .unwrap_or(at);
+                        conv.stretch = Some(((begin.span.document.0, begin.span.start), 0, String::new()));
+                        conv.push_environment("begin", env, begin);
+                    }
                     "\\" => conv.push(TokenKind::LineBreak, at),
                     "[" => conv.push(TokenKind::DisplayMathOpen, at),
                     "]" => conv.push(TokenKind::DisplayMathClose, at),
                     "par" if !real_text.starts_with('\\') && at.real.is_some() => conv.push(TokenKind::ParBreak, at),
-                    "verb" => {
+                    "verb" | "verb*" => {
                         let verb = at
                             .real
                             .and_then(|real| prepared[real.document.0].verbs.get(&real.start).cloned());
@@ -604,12 +708,22 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
                         conv.flush_word();
                         conv.push(TokenKind::Word(name.clone()), at);
                     }
+                    // r2 reads a verbatim body itself and ends it with a frozen
+                    // `\end<name>` carrying the `\begin` span.
+                    _ if real_text == "\\begin"
+                        && name.starts_with("endverbatim")
+                        && at.real.is_some_and(|real| prepared[real.document.0].verbatim_ends.contains_key(&real.start)) =>
+                    {
+                        let real = at.real.expect("checked above");
+                        let tag = prepared[real.document.0].verbatim_ends[&real.start];
+                        let end = Span::in_document(real.document, tag, tag + 4);
+                        conv.push_environment(
+                            "end",
+                            &name[3..],
+                            Placement { span: end, definition: None, maps: false, real: Some(end) },
+                        );
+                    }
                     _ if real_text == "\\begin" && name != "begin" => {
-                        if matches!(name.as_str(), "tabular" | "tabular*" | "array") {
-                            if let Some(text) = engine.macro_replacement_text("arraystretch") {
-                                conv.arraystretch.insert((at.span.document.0, at.span.start), text);
-                            }
-                        }
                         conv.push_environment("begin", name, at);
                     }
                     _ if real_text == "\\end" && name.len() > 3 && name.starts_with("end") => {
@@ -622,10 +736,39 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
     }
     conv.flush_word();
 
+    // A runaway expansion (`\def\x{\x}\x`, common mid-edit) stops the engine
+    // for good. Keep the rest of the document visible: its remaining bytes
+    // are typeset from the parser's own tokenizer, without macro expansion.
+    // The engine's diagnostic below names the invocation that looped.
     let fallback = conv.last_span;
+    let halted = engine
+        .diagnostics()
+        .iter()
+        .any(|d| d.message.contains("expansion step limit exceeded"));
+    if halted {
+        if let Some((source, offset)) = engine.input_position() {
+            if let Some(Some(document)) = conv.source_documents.get(&source).copied() {
+                let text = documents[document].text;
+                let offset = offset.min(text.len());
+                if text.is_char_boundary(offset) {
+                    for token in tokenize_document(&text[offset..], DocumentId(document)) {
+                        let span = Span::in_document(
+                            DocumentId(document),
+                            token.span.start + offset,
+                            token.span.end + offset,
+                        );
+                        conv.out.push(ExpandedToken {
+                            token: Token { kind: token.kind, span },
+                            definition: None,
+                            maps_to_invocation: false,
+                        });
+                    }
+                }
+            }
+        }
+    }
     for diagnostic in engine.diagnostics() {
-        // The parser reports unbalanced environments itself.
-        if diagnostic.message.contains("without matching \\begin") {
+        if parser_reports_itself(&diagnostic.message) {
             continue;
         }
         let span = conv.span(diagnostic.span).or(if diagnostic.span.is_synthetic() {
@@ -644,21 +787,21 @@ pub fn expand_project(documents: &[SourceDocument<'_>], entry: usize) -> Expansi
 }
 
 fn recovery_for(message: &str) -> &'static str {
-    if message.contains("\\newcommand cannot redefine") {
+    if message.contains("LaTeX Error: Command") && message.contains("already defined") {
         "kept the existing command definition"
-    } else if message.contains("\\renewcommand cannot redefine") {
+    } else if message.contains("LaTeX Error: Command") && message.contains("undefined") {
         "defined the command anyway"
     } else if message.contains("limit exceeded") {
-        "stopped expanding; the rest of the input was not typeset"
+        "stopped expanding; the rest of the document was typeset without macro expansion"
     } else {
         "continued expanding after the problem"
     }
 }
 
-fn include<'p>(
+fn include(
     conv: &mut Converter<'_>,
-    engine: &mut Engine<'p>,
-    prepared: &'p [Prepared<'_>],
+    engine: &mut Engine,
+    prepared: &[Prepared<'_>],
     command: &str,
     requested: &str,
     span: Span,

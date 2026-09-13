@@ -1,4 +1,4 @@
-Generated from commit `a7876004a9724764c0f02dc53a89c806af66bfe5` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
+Generated from commit `686ef6a289d6fa668961b8660990eec2e17690a2` by `cargo test --test recovery generate_recovery_evidence -- --ignored --exact`.
 
 # FlashTeX recovery evidence
 
@@ -343,7 +343,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand requires a single command name as its first argument` — recovery: `continued expanding after the problem`; byte range: `8..19`
+- `Missing control sequence inserted.` — recovery: `continued expanding after the problem`; byte range: `8..19`
 
 Positioned text items:
 
@@ -362,7 +362,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand argument count must be an integer from 0 to 9` — recovery: `continued expanding after the problem`; byte range: `0..11`
+- `You already have nine parameters.` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 
@@ -380,7 +380,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\newcommand cannot redefine existing command \section` — recovery: `kept the existing command definition`; byte range: `0..11`
+- `LaTeX Error: Command \section already defined.` — recovery: `kept the existing command definition`; byte range: `0..11`
 
 Positioned text items:
 
@@ -398,7 +398,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `\renewcommand cannot redefine undefined command \missing` — recovery: `defined the command anyway`; byte range: `0..13`
+- `LaTeX Error: Command \missing undefined.` — recovery: `defined the command anyway`; byte range: `0..13`
 
 Positioned text items:
 
@@ -409,18 +409,19 @@ Positioned text items:
 Input:
 
 ```text
-\newcommand{\loop}{\loop} Visible \loop Tail.
+\newcommand{\recurse}{\recurse} Visible \recurse Tail.
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `expansion step limit exceeded (possible infinite macro loop)` — recovery: `stopped expanding; the rest of the input was not typeset`; byte range: `33..34`
+- `expansion step limit exceeded (possible infinite macro loop)` — recovery: `stopped expanding; the rest of the document was typeset without macro expansion`; byte range: `40..48`
 
 Positioned text items:
 
-- `Visible` — byte range `26..33`
+- `Visible` — byte range `32..39`
+- `Tail.` — byte range `49..54`
 
 ## undeclared macro replacement parameter
 
@@ -434,7 +435,7 @@ Status: `recovered`
 
 Diagnostics:
 
-- `macro replacement references #1 but that argument is not declared` — recovery: `continued expanding after the problem`; byte range: `0..11`
+- `Illegal parameter number in definition of \oops.` — recovery: `continued expanding after the problem`; byte range: `0..11`
 
 Positioned text items:
 
