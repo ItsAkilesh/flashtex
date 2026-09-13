@@ -1840,16 +1840,15 @@ fn layout_nucleus(
 
 /// Places `accent`'s mark over `body`.
 ///
-/// Horizontal: plain symmetric centering, `(body.width - glyph.width) / 2`.
-/// TeX adds a "skew" term here from the base character's TFM skewchar kern
-/// (a slant correction for math-italic letters).
-/// That term does not apply here: this compiler's math letters render in
-/// upright Times-Roman, never math-italic (`crate::layout::math_font` never
-/// selects an italic face), and Adobe Core 14 AFM metrics
-/// (`crate::layout::x_height_pt`'s sibling, `Core14Face`) have no skewchar
-/// kerning concept at all — that is a TeX TFM construct, not an AFM one.
-/// Adding a foreign skew constant to an unslanted glyph would miscenter it,
-/// not fix it.
+/// Horizontal: symmetric centering, `(body.width - glyph.width) / 2`, plus a
+/// skew term when `body` is a single italic Latin letter (a math variable —
+/// `crate::layout::math_font` puts those in Times-Italic). TeX shifts an
+/// accent right in that case by the base character's TFM skewchar kern
+/// (TeXbook Appendix G, rule 12); Adobe Core 14 AFM metrics have no skewchar
+/// concept to borrow that from, so `crate::layout::italic_skew_pt` derives an
+/// equivalent shift from Times-Italic's real `ItalicAngle` (-15.5 degrees)
+/// instead — see that function for the reasoning. Upright bodies (digits,
+/// multi-letter names, Symbol-font Greek) keep plain symmetric centering.
 ///
 /// Vertical: TeX's real rule, `raise = min(nucleus_height, accent font's
 /// x-height)`, using the real Times-Roman x-height
@@ -1874,8 +1873,22 @@ fn layout_accent(
     let accent_font = crate::layout::math_font(&glyph_text);
     let accent_width =
         crate::layout::shaped_width(&glyph_text, size, accent_font, atom.span, diagnostics).0;
-    let dx = (b.width - accent_width) / 2.0;
     let raise = b.ascent.min(crate::layout::x_height_pt(accent_font, size));
+    // Skew only a single italic Latin letter (a math variable, per
+    // `crate::layout::math_font`): a digit, a multi-letter name and
+    // Symbol-font Greek are all upright and keep plain symmetric centering.
+    let skew = match body.atoms.as_slice() {
+        [MathAtom {
+            nucleus: Nucleus::Symbol(text),
+            superscript: None,
+            subscript: None,
+            ..
+        }] if crate::layout::math_font(text) == crate::layout::Font::TimesItalic => {
+            crate::layout::italic_skew_pt(crate::layout::Font::TimesItalic, raise)
+        }
+        _ => 0.0,
+    };
+    let dx = (b.width - accent_width) / 2.0 + skew;
     // A thin mark, not a full-height glyph: ~0.15em is enough for a
     // circumflex/tilde/dot/acute stroke without inflating every accented
     // atom's box to a full line height.
@@ -2400,11 +2413,14 @@ mod accent_tests {
     }
 
     /// The measurement the task brief asked for: `\hat{A}`'s horizontal
-    /// offset in this compiler. The math variable "A" is Times-Italic; the
-    /// accent is still centred symmetrically, with no italic skew correction
-    /// (a known limitation: TeX shifts accents right over slanted letters).
+    /// offset in this compiler. The math variable "A" is Times-Italic, so
+    /// the accent now carries an italic-angle skew on top of symmetric
+    /// centering — see `layout_accent` and `crate::layout::italic_skew_pt`
+    /// for the derivation (TeX's real skewchar-kern rule has no equivalent
+    /// in Adobe Core 14 AFM metrics, so this uses the font's real
+    /// `ItalicAngle` instead).
     #[test]
-    fn hat_a_centers_symmetrically_with_no_skew_term() {
+    fn hat_a_skews_right_by_the_italic_angle_at_the_accent_height() {
         let size = 10.0;
         let (b, diagnostics) = laid_out(r"\hat{A}", size);
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
@@ -2428,18 +2444,52 @@ mod accent_tests {
             &mut d,
         )
         .0;
-        let expected_dx = (a_width - accent_width) / 2.0;
+        let center_dx = (a_width - accent_width) / 2.0;
+        let raise = crate::layout::x_height_pt(crate::layout::Font::TimesRoman, size);
+        let skew = crate::layout::italic_skew_pt(crate::layout::Font::TimesItalic, raise);
+        let expected_dx = center_dx + skew;
 
         assert!(
             (accent_item.x - a_item.x - expected_dx).abs() < 1e-9,
-            "expected symmetric centering dx {expected_dx}, got {}",
+            "expected skewed centering dx {expected_dx}, got {}",
             accent_item.x - a_item.x
         );
-        // At 10pt Times-Italic A (611) and the circumflex (333) give ~1.39pt.
+        // At 10pt: symmetric centering alone gives ~1.39pt (Times-Italic A
+        // is 611 units wide, the circumflex 333). Adding the italic-angle
+        // skew at the accent's raise height (Times-Roman's x-height, 450
+        // units) brings the total to ~2.64pt — pdflatex measures cmmi10's
+        // real skewchar kern for `\hat A` at 2.639pt.
         assert!(
-            (expected_dx - 1.39).abs() < 0.01,
-            "expected ~1.39pt at 10pt, got {expected_dx}"
+            (expected_dx - 2.64).abs() < 0.01,
+            "expected ~2.64pt at 10pt, got {expected_dx}"
         );
+    }
+
+    /// Upright bodies never get the italic skew: a digit, a multi-letter
+    /// name, and Symbol-font Greek all keep plain symmetric centering.
+    #[test]
+    fn upright_accent_bodies_keep_symmetric_centering() {
+        let size = 10.0;
+        for source in [r"\hat{5}", r"\hat{AB}", r"\hat{\alpha}"] {
+            let (b, diagnostics) = laid_out(source, size);
+            assert!(diagnostics.is_empty(), "{source}: {diagnostics:?}");
+            let accent_item = b.items.iter().find(|i| i.text == "\u{2C6}").unwrap();
+            let mut d = Vec::new();
+            let accent_width = crate::layout::shaped_width(
+                "\u{2C6}",
+                size,
+                crate::layout::Font::TimesRoman,
+                accent_item.span,
+                &mut d,
+            )
+            .0;
+            let expected_dx = (b.width - accent_width) / 2.0;
+            assert!(
+                (accent_item.x - expected_dx).abs() < 1e-9,
+                "{source}: expected symmetric centering dx {expected_dx}, got {}",
+                accent_item.x
+            );
+        }
     }
 
     #[test]
