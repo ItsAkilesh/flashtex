@@ -16,7 +16,7 @@ use flashtex_compiler::math::MathList;
 use flashtex_compiler::parser::{Block as CBlock, Inline, Parsed};
 use flashtex_compiler::{DocumentId, Span};
 
-use flashtex_document_style::{Geometry, Pt};
+use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput};
 
 use crate::display::Diagnostic;
 use crate::style::Stylesheet;
@@ -557,14 +557,11 @@ pub fn adapt_cached(
     } else {
         options.default_parindent_pt
     });
-    // Body-only input inherits the compiler's implicit preamble (1in margins);
-    // a declared class uses article's own margins unless geometry says otherwise.
-    let geometry = match package_options(source, "geometry") {
-        Some(opts) => Some(Stylesheet::geometry_from_options(&opts)),
-        None if explicit_class.is_none() => Some(Geometry::margin(Pt::inches(1.0))),
-        None => None,
-    };
-    let mut style = Stylesheet::from_document(&class_options, &parsed.packages, geometry, parindent);
+    let mut style = Stylesheet::from_resolved(
+        &flashtex_class_geometry::resolve(&document_setup(source, explicit_class.is_some(), &class_options)),
+        Stylesheet::family_of(&parsed.packages),
+    );
+    style.parindent_pt = parindent;
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
@@ -1397,6 +1394,35 @@ pub fn package_options(source: &str, name: &str) -> Option<String> {
         from = abs + 1;
     }
     None
+}
+
+/// The preamble facts that decide the page frame, read by
+/// `flashtex_class_geometry::DocumentSetup::from_preamble` (standard class,
+/// every `\usepackage[..]{geometry}` option, `\geometry{..}` calls,
+/// `\pagestyle`). Body-only input (`has_class == false`) inherits the
+/// compiler's implicit preamble: article with `class_options` and
+/// `\usepackage[margin=1in]{geometry}`. A declared non-standard class
+/// (`amsart`, ...) keeps the previous behaviour: article geometry with the
+/// class options and the `geometry` package options, if loaded.
+pub fn document_setup(source: &str, has_class: bool, class_options: &str) -> DocumentSetup {
+    if has_class {
+        if let Some(setup) = DocumentSetup::from_preamble(source) {
+            return setup;
+        }
+    }
+    let mut setup = DocumentSetup::new(ClassKind::Article, class_options);
+    setup.geometry = match package_options(source, "geometry") {
+        Some(opts) => Some(GeometryInput {
+            package_options: opts,
+            calls: Vec::new(),
+        }),
+        None if !has_class => Some(GeometryInput {
+            package_options: "margin=1in".into(),
+            calls: Vec::new(),
+        }),
+        None => None,
+    };
+    setup
 }
 
 /// `\documentclass[opts]{...}` options, if the source has a class line.
