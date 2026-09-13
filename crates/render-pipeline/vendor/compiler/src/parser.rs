@@ -9,18 +9,26 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use crate::bib;
+use crate::color::{Colors, DeviceColor};
 use crate::diagnostics::Diagnostic;
 use crate::expansion::{self, ExpansionSite};
 use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
 #[cfg(test)]
 use crate::lexer::tokenize;
 use crate::math::{self, MathList};
+use crate::siunitx;
 use crate::text_builtins::{self, SymbolOutcome, TextDimen, TextLogo, TextRule};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 use flashtex_tex_text_encoding::encoding::Encoding;
 
+mod colors;
+mod lists;
 mod tabular;
+
+pub use lists::{
+    CounterStyle, ItemLabel, ListEnvironment, ListFrame, ListLength, ListOption, ListSkip,
+};
 
 /// Maximum number of active nested `\input`/`\include` calls.
 pub const INCLUDE_DEPTH_LIMIT: usize = 64;
@@ -78,6 +86,12 @@ pub enum Inline {
         span: Span,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+        /// The text colour where the formula starts (`TextStyle::color`).
+        color: Option<DeviceColor>,
+        /// Source ranges inside the formula recoloured by `\color` or
+        /// `\textcolor`, merged per colour in source order; an atom takes
+        /// the colour of the range containing its span, else `color`.
+        color_ranges: Vec<(Span, DeviceColor)>,
     },
     /// A multi-row amsmath display (`gather`, `align` and their starred forms).
     /// `aligned` cells alternate right/left alignment around shared tab stops.
@@ -172,6 +186,33 @@ pub enum Inline {
         /// See `Inline::Text::space_before`.
         space_before: bool,
     },
+    /// xcolor `\colorbox`/`\fcolorbox` (see [`ColorBox`]).
+    ColorBox(Box<ColorBox>),
+    /// `\includegraphics` in running text: an image box (see
+    /// `crate::graphics`). Figures and tables re-derive their graphics from
+    /// the source instead.
+    Graphic(Box<crate::graphics::Graphic>),
+    /// `\scalebox`, `\resizebox`, `\rotatebox`, `\reflectbox` around
+    /// horizontal material (see `crate::graphics`).
+    Transform(Box<crate::graphics::TransformBox>),
+}
+
+/// `\colorbox[model]{fill}{text}` or `\fcolorbox[model]{frame}{fill}{text}`
+/// (xcolor.sty 3.02 `\color@b@x`, `\XC@frameb@x`): `content` in an
+/// unbreakable box, behind it a `fill` rectangle `\fboxsep` larger on
+/// every side, and for `\fcolorbox` a `frame` of `\fboxrule` around that.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorBox {
+    pub fill: DeviceColor,
+    pub frame: Option<DeviceColor>,
+    pub content: Vec<Inline>,
+    /// `\fboxsep` and `\fboxrule` when the box was made, in TeX points.
+    pub fboxsep_pt: f64,
+    pub fboxrule_pt: f64,
+    /// From the command through its last argument's closing brace.
+    pub span: Span,
+    /// See `Inline::Text::space_before`.
+    pub space_before: bool,
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -208,11 +249,20 @@ pub enum Block {
     FigureCaption {
         content: Vec<Inline>,
     },
-    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote` or
-    /// `quotation`.
+    /// A paragraph inside `center`, `flushleft`, `flushright`, `quote`,
+    /// `quotation` or `verse` (the last three report `ParagraphStyle::Quote`;
+    /// `lists` tells them apart).
     Styled {
         style: ParagraphStyle,
         content: Vec<Inline>,
+        /// Every enclosing `\list`-based environment, outermost first
+        /// (a `quote` inside an `itemize` item has both).
+        lists: Vec<ListFrame>,
+        /// `verse` only: this paragraph was started by the previous line's
+        /// `\\` (article.cls `\let\\\@centercr`: `\par`,
+        /// `\addvspace{-\parskip}`, then the optional `\vskip`), not by a
+        /// blank line.
+        line_break_before: Option<LineBreakBefore>,
     },
     /// One paragraph of an `itemize`/`enumerate` `\item`. `level` (1 =
     /// outermost) drives the hanging-indent margin; `label` carries the
@@ -242,6 +292,12 @@ pub enum Block {
         /// `\settowidth\labelwidth{\@biblabel{#1}}`. `None` for an ordinary
         /// `itemize`/`enumerate` item, which keeps using `level`'s indent.
         widest_label: Option<String>,
+        /// Every enclosing `\list`-based environment, outermost first; the
+        /// last is the list this item belongs to.
+        lists: Vec<ListFrame>,
+        /// How the label was produced (`None` exactly when `label` is: a
+        /// later paragraph of the same item).
+        item: Option<ItemLabel>,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -288,6 +344,17 @@ pub enum Block {
     VFill,
 }
 
+/// verse's `\\` (`\@centercr`, latex.ltx `\@xcentercr`/`\@icentercr`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineBreakBefore {
+    /// The `\\` (with its `*` and `[<dimen>]`).
+    pub span: Span,
+    /// `\\[<dimen>]`, in TeX points.
+    pub skip_pt: Option<f64>,
+    /// `\\*` (`\nobreak`).
+    pub star: bool,
+}
+
 /// One physical source line of a `Block::Verbatim`. `text` is already
 /// tab-expanded (and dot-marked for a starred environment); `span` is the
 /// exact original source bytes for that line, excluding its trailing `\n`.
@@ -327,6 +394,10 @@ pub struct TextStyle {
     /// `layout::size_declaration_pt`, against the layout's own body size
     /// rather than here, since that is the one authoritative value.
     pub size: Option<FontSizeLevel>,
+    /// The text colour (`\color`, `\textcolor`), scoped like the face.
+    /// `None` is the page's default colour: pdfTeX writes no operator.
+    /// `Some` carries the exact operator values (`crate::color`).
+    pub color: Option<DeviceColor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -364,6 +435,7 @@ impl TextStyle {
         italic: false,
         family: TextFamily::Roman,
         size: None,
+        color: None,
     };
 }
 
@@ -465,6 +537,8 @@ fn apply_style(style: TextStyle, name: &str) -> TextStyle {
         "Huge" => next.size = Some(FontSizeLevel::Huge2),
         _ => {}
     }
+    // Font commands (`\normalfont`, `\bf`) never change the colour.
+    next.color = style.color;
     next
 }
 
@@ -505,6 +579,11 @@ pub struct Parsed {
     pub incremental_safe: bool,
     /// True when counters or the label table make layout document-global.
     pub document_global_state: bool,
+    /// `\pagecolor`: the page background, document-wide (`None`: none).
+    pub page_color: Option<DeviceColor>,
+    /// The default text colour when xcolor converts to a target model
+    /// (`0 0 0 rg` under `[rgb]`); `None` is pdfTeX's `0 g`.
+    pub default_color: Option<DeviceColor>,
     /// Every run of macro replacement text in the parser's input, in input
     /// order: the invocation span its tokens carry, and the exact bytes of
     /// the definition they were copied from (see `crate::expansion`).
@@ -526,6 +605,20 @@ impl Parsed {
 }
 
 pub(crate) const BUILT_INS: &[&str] = &[
+    "num",
+    "qty",
+    "unit",
+    "si",
+    "SI",
+    "numlist",
+    "numrange",
+    "qtylist",
+    "qtyrange",
+    "SIlist",
+    "SIrange",
+    "ang",
+    "sisetup",
+    "DeclareSIUnit",
     "section",
     "subsection",
     "subsubsection",
@@ -547,6 +640,20 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "documentclass",
     "setlength",
     "usepackage",
+    "definecolor",
+    "providecolor",
+    "xdefinecolor",
+    "colorlet",
+    "definecolorset",
+    "DefineNamedColor",
+    "selectcolormodel",
+    "color",
+    "textcolor",
+    "pagecolor",
+    "nopagecolor",
+    "normalcolor",
+    "colorbox",
+    "fcolorbox",
     "newcolumntype",
     "arraybackslash",
     "setlist",
@@ -559,9 +666,17 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "ref",
     "pageref",
     "eqref",
+    "numberwithin",
+    "counterwithin",
+    "counterwithout",
     "caption",
     "item",
     "includegraphics",
+    "scalebox",
+    "resizebox",
+    "rotatebox",
+    "reflectbox",
+    "graphicspath",
     "url",
     "href",
     "nolinkurl",
@@ -604,6 +719,10 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "linebreak",
     "nolinebreak",
     "vfill",
+    "columnbreak",
+    "newcolumn",
+    "raggedcolumns",
+    "flushcolumns",
     "pagestyle",
     "thispagestyle",
     "pagenumbering",
@@ -865,6 +984,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             }
         }
     }
+    siunitx::reset();
     let mut p = P {
         t: std::mem::replace(&mut expanded.tokens, Rc::new(Vec::new())),
         entry_path: entry_document.path,
@@ -893,13 +1013,18 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             .collect(),
         include_stack: vec![entry],
         counters: crate::xref::Counters::article(),
-        equation_counter: 0,
-        figure_counter: 0,
+        subequations: Vec::new(),
         footnote_counter: 0,
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
+        list_frames: Vec::new(),
+        setlists: Vec::new(),
+        resume_counters: HashMap::new(),
+        resume_keys: HashMap::new(),
         pending_item_label: None,
+        pending_item: None,
+        pending_line_break: None,
         paragraph_styles: Vec::new(),
         document_global_state: false,
         style: TextStyle::default(),
@@ -919,7 +1044,12 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         author: None,
         date: None,
         titlepage_option: false,
+        twocolumn_option: false,
         column_types: HashMap::new(),
+        colors: None,
+        page_color: None,
+        fboxsep_pt: 3.0,
+        fboxrule_pt: 0.4,
     };
     p.diags.extend(bibliography_diags);
     p.diags.extend(expanded.diagnostics);
@@ -957,6 +1087,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         preamble_source,
         incremental_safe,
         document_global_state: p.document_global_state,
+        page_color: p.page_color,
+        default_color: p.colors.as_ref().and_then(|c| c.default_color()),
         expansions,
     }
 }
@@ -995,6 +1127,13 @@ struct P<'a> {
     packages: Vec<String>,
     /// array's `\newcolumntype{X}[n]{spec}` definitions (`parser/tabular.rs`).
     column_types: HashMap<char, (usize, Vec<InputToken>)>,
+    /// The loaded colour package (`crate::color`), `None` before one.
+    colors: Option<Colors>,
+    /// `\pagecolor`.
+    page_color: Option<DeviceColor>,
+    /// `\fboxsep`/`\fboxrule` in TeX points (latex.ltx: 3pt, 0.4pt).
+    fboxsep_pt: f64,
+    fboxrule_pt: f64,
     /// The current text font encoding: OT1 unless `fontenc` selected another
     /// (`text_builtins::fontenc_encoding`).
     font_encoding: Encoding,
@@ -1003,10 +1142,12 @@ struct P<'a> {
     documents: &'a [SourceDocument<'a>],
     document_by_path: HashMap<&'a str, usize>,
     include_stack: Vec<usize>,
-    /// Sectioning counters (see `crate::xref`).
+    /// Sectioning, `equation`, `figure` and `table` counters (see
+    /// `crate::xref`).
     counters: crate::xref::Counters,
-    equation_counter: u32,
-    figure_counter: u32,
+    /// The `\theequation` in force outside each open `subequations`
+    /// environment, restored at its `\end` (amsmath's group).
+    subequations: Vec<Vec<crate::xref::Piece>>,
     /// LaTeX's `footnote` counter; article never resets it.
     footnote_counter: u32,
     current_counter: Option<String>,
@@ -1016,13 +1157,26 @@ struct P<'a> {
     /// `blocks` length at that point (where this list's own items start, for
     /// the `leftmargin=*` backpatch once every item is known — see
     /// `environment`).
-    list_stack: Vec<(String, u32, Option<String>, ListSpacing, usize)>,
+    list_stack: Vec<OpenList>,
+    /// Every open `\list`-based environment (lists and `quote`/`quotation`/
+    /// `verse`), outermost first; see `Block::ListItem::lists`.
+    list_frames: Vec<ListFrame>,
+    /// `\setlist[<target>]{<keys>}` calls so far, in order.
+    setlists: Vec<(lists::SetlistTarget, Vec<ListOption>)>,
+    /// enumitem `resume` state: the last counter value and the `\begin`
+    /// keys of each environment name / `series@<name>`.
+    resume_counters: HashMap<String, i64>,
+    resume_keys: HashMap<String, Vec<ListOption>>,
     /// The marker text and span set by the most recent `\item`, consumed by
     /// the next `flush_paragraph`/`flush_list_item` call (its own paragraph,
     /// or a later one if the item's text is empty). `None` once consumed, so
     /// later paragraphs of the same item render with the hanging indent but
     /// no repeated label.
     pending_item_label: Option<(String, Span)>,
+    /// The structured form of `pending_item_label`, taken with it.
+    pending_item: Option<ItemLabel>,
+    /// verse's `\\` waiting for the next paragraph.
+    pending_line_break: Option<LineBreakBefore>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
     /// Every `\bibitem`'s resolved citation label, built once by
@@ -1081,6 +1235,33 @@ struct P<'a> {
     /// primitive, so `P::maketitle` renders the ordinary compact block and
     /// says so once, rather than silently ignoring the option.
     titlepage_option: bool,
+    /// The `twocolumn` class option: multicol.sty's `twocolumn` option
+    /// handler (lines 111-113) warns when the package is loaded with it.
+    twocolumn_option: bool,
+}
+
+/// One open `itemize`/`enumerate`/`description`/`thebibliography`.
+#[derive(Debug, Clone)]
+struct OpenList {
+    kind: String,
+    /// `\item`s seen so far.
+    count: u32,
+    /// An enumitem label as `enumitem_label` reads it (`label=<t>` or a
+    /// shortlabels template); `thebibliography`'s widest-label argument.
+    template: Option<String>,
+    spacing: ListSpacing,
+    /// `blocks.len()` at `\begin`.
+    start: usize,
+    /// The enumerate counter (`\c@enum<i>`), after `start=`/`resume`.
+    counter: i64,
+    /// `label*=<t>`: appended to the enclosing enumerate's current label.
+    label_star: Option<String>,
+    /// The label text of the latest counted `\item` (for `label*` below).
+    current_label: String,
+    /// `series=<name>`: the counter is also saved under `series@<name>`.
+    series: Option<String>,
+    /// The `\begin` keys (saved for `resume*`).
+    begin_options: Vec<ListOption>,
 }
 
 /// Extra vertical space `\setlist{itemsep=...,topsep=...}` adds on top of
@@ -1165,6 +1346,32 @@ impl P<'_> {
                 }
                 TokenKind::LineBreak => {
                     self.i += 1;
+                    // article.cls 390 `verse`: `\let\\\@centercr`, which ends
+                    // the paragraph (latex.ltx `\@centercr`: `\par`, then
+                    // `\@xcentercr` `\addvspace{-\parskip}` and `\@icentercr`
+                    // `\vskip #1`); `\\*` adds `\nobreak`.
+                    if render
+                        && self.in_body
+                        && self
+                            .list_frames
+                            .last()
+                            .is_some_and(|frame| frame.environment == ListEnvironment::Verse)
+                    {
+                        let star = self.take_optional_star();
+                        let end_before = self.i;
+                        let skip_pt = self.skip_line_break_length();
+                        let end = self
+                            .t
+                            .get(end_before.max(1) - 1)
+                            .map_or(tok.span.end, |t| t.token.span.end.max(tok.span.end));
+                        self.flush_paragraph(blocks, para);
+                        self.pending_line_break = Some(LineBreakBefore {
+                            span: Span::in_document(tok.span.document, tok.span.start, end),
+                            skip_pt,
+                            star,
+                        });
+                        continue;
+                    }
                     // `\\[<length>]`: the vertical space is not modelled, but the
                     // argument must not be typeset as text.
                     self.skip_line_break_length();
@@ -1257,6 +1464,14 @@ impl P<'_> {
             "documentclass" => self.document_class(span),
             "setlength" => self.set_length(span),
             "usepackage" => self.use_package(span),
+            "definecolor" | "providecolor" | "xdefinecolor" | "colorlet" | "definecolorset"
+            | "DefineNamedColor" => self.define_color(name, span),
+            "selectcolormodel" => self.select_color_model(span),
+            "color" => self.color_declaration(span),
+            "textcolor" => self.text_color(span, para),
+            "pagecolor" | "nopagecolor" => self.page_color_command(name, span),
+            "normalcolor" => self.style.color = None,
+            "colorbox" | "fcolorbox" => self.color_box(name, span, para),
             "newcolumntype" => self.new_column_type(span),
             // array.sty 247: `\let\\\tabularnewline`; this parser already
             // ends table rows at `\\` inside `p`-column entries.
@@ -1302,7 +1517,32 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // Preamble or body: amsmath's `\numberwithin` and the kernel's
+            // `\counterwithin`/`\counterwithout` (handed to the parser by
+            // `expansion::HOST_PRELUDE`).
+            "numberwithin" => self.counter_numbering(name, span),
+            "counterwithin" | "counterwithout" => self.counter_numbering(name, span),
+            // siunitx settings are ordinary preamble material (`crate::siunitx`).
+            "sisetup" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let keys = siunitx::raw_text(tokens.iter().map(|t| &t.token));
+                siunitx::sisetup(&keys, span.merge(argument_span), &mut self.diags);
+            }
+            "DeclareSIUnit" => {
+                let _ = self.siunitx_bracket();
+                let unit = self.command_or_group(name, span);
+                let (tokens, _) = self.required_group(name, span);
+                siunitx::declare_unit(&unit, &siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+            }
+            // `\def\graphicspath#1{\def\Ginput@path{#1}}` (graphics.sty): no
+            // material. The search list is re-read from the source by the
+            // consumer that loads image files (see `crate::graphics`).
+            "graphicspath" => {
+                let _ = self.required_group(name, span);
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
+            "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
+            | "qtyrange" | "SIlist" | "SIrange" | "ang" => self.siunitx(name, span, para),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
                     "section" => 1,
@@ -1446,10 +1686,10 @@ impl P<'_> {
                     para.extend(self.inlines_from_tokens(tokens, style));
                 } else {
                     self.flush_paragraph(blocks, para);
-                    self.figure_counter += 1;
-                    self.current_counter = Some(self.figure_counter.to_string());
+                    let number = self.counters.step("figure").unwrap_or_default();
+                    self.current_counter = Some(number.clone());
                     let mut content = vec![Inline::Text {
-                        text: format!("Figure {}:", self.figure_counter),
+                        text: format!("Figure {number}:"),
                         span,
                         style: TextStyle::default(),
                         space_before: true,
@@ -1463,27 +1703,19 @@ impl P<'_> {
                 let gap_before = self
                     .list_stack
                     .last()
-                    .map(|(_, count, _, spacing, _)| {
-                        if *count <= 1 {
-                            spacing.topsep_pt
+                    .map(|list| {
+                        if list.count <= 1 {
+                            list.spacing.topsep_pt
                         } else {
-                            spacing.itemsep_pt
+                            list.spacing.itemsep_pt
                         }
                     })
                     .unwrap_or(0.0);
                 self.flush_list_item(blocks, para, gap_before, 0.0);
-                match self.list_stack.last_mut() {
-                    Some((kind, count, template, _, _)) => {
-                        *count += 1;
-                        let marker = if kind == "enumerate" {
-                            match template {
-                                Some(template) => enumitem_label(template, *count),
-                                None => format!("{}.", count),
-                            }
-                        } else {
-                            "•".to_string()
-                        };
-                        self.pending_item_label = Some((marker, span));
+                match self.list_stack.last() {
+                    Some(_) => {
+                        let explicit = self.item_label_argument();
+                        self.begin_item(span, explicit);
                     }
                     None => self.diags.push(Diagnostic::error(
                         "\\item is only supported inside itemize or enumerate",
@@ -1494,7 +1726,7 @@ impl P<'_> {
             }
             "bibitem" => {
                 let in_bibliography =
-                    matches!(self.list_stack.last(), Some((kind, ..)) if kind == "thebibliography");
+                    matches!(self.list_stack.last(), Some(list) if list.kind == "thebibliography");
                 if !in_bibliography {
                     self.diags.push(Diagnostic::error(
                         "\\bibitem is only supported inside thebibliography",
@@ -1507,11 +1739,11 @@ impl P<'_> {
                     let gap_before = self
                         .list_stack
                         .last()
-                        .map(|(_, count, _, spacing, _)| {
-                            if *count <= 1 {
-                                spacing.topsep_pt
+                        .map(|list| {
+                            if list.count <= 1 {
+                                list.spacing.topsep_pt
                             } else {
-                                spacing.itemsep_pt
+                                list.spacing.itemsep_pt
                             }
                         })
                         .unwrap_or(0.0);
@@ -1536,20 +1768,17 @@ impl P<'_> {
                         (self.bib_cursor + 1).to_string()
                     });
                     self.bib_cursor += 1;
-                    if let Some((_, count, _, _, _)) = self.list_stack.last_mut() {
-                        *count += 1;
+                    if let Some(list) = self.list_stack.last_mut() {
+                        list.count += 1;
                     }
-                    self.pending_item_label = Some((bib::label_bracket(&label), span));
+                    let text = bib::label_bracket(&label);
+                    self.pending_item = Some(ItemLabel::Template { text: text.clone() });
+                    self.pending_item_label = Some((text, span));
                 }
             }
-            "includegraphics" => {
-                let _ = self.optional_bracket_argument();
-                let _ = self.required_group(name, span);
-                self.diags.push(Diagnostic::warning(
-                    "\\includegraphics is unsupported; image loading is not implemented",
-                    Some(span),
-                    Some("omitted the image and continued".into()),
-                ));
+            "includegraphics" => self.include_graphics(span, para),
+            "scalebox" | "resizebox" | "rotatebox" | "reflectbox" => {
+                self.transform_box(name, span, para)
             }
             // See `url_argument` for why the URL is read from raw source
             // bytes rather than the ordinary token stream, and
@@ -1738,6 +1967,23 @@ impl P<'_> {
                 blocks.push(Block::VFill);
                 self.finish_block_dependencies();
             }
+            // multicol.sty 919-950: `\columnbreak[n]` and `\newcolumn` end a
+            // column of `multicols` (set by the render pipeline); outside the
+            // environment multicol raises an error.
+            "columnbreak" | "newcolumn" => {
+                if name == "columnbreak" {
+                    let _ = self.optional_bracket_argument();
+                }
+                if !self.env_stack.iter().any(|(environment, _)| environment == "multicols" || environment == "multicols*") {
+                    self.diags.push(Diagnostic::error(
+                        format!("Package multicol Error: \\{name} outside multicols; this command can only be used within a multicols or multicols* environment"),
+                        Some(span),
+                        Some("ignored the command".into()),
+                    ));
+                }
+            }
+            // multicol.sty 564-567: column heights at output time.
+            "raggedcolumns" | "flushcolumns" => {}
             "pagestyle" => {
                 // No header/footer rendering exists yet, so every style is
                 // accepted with the same (honest) effect: none. `empty` and
@@ -1909,6 +2155,9 @@ impl P<'_> {
         if option_list.contains(&"titlepage") {
             self.titlepage_option = true;
         }
+        if option_list.contains(&"twocolumn") {
+            self.twocolumn_option = true;
+        }
         let (tokens, _) = self.required_group("documentclass", span);
         let class = token_text(&tokens).trim().to_string();
         if class.is_empty() {
@@ -1948,6 +2197,9 @@ impl P<'_> {
         };
         let in_preamble = self.has_document && !self.in_body;
         match target.as_str() {
+            // Read by `\colorbox`/`\fcolorbox` (not group-scoped here).
+            "fboxsep" => self.fboxsep_pt = pt,
+            "fboxrule" => self.fboxrule_pt = pt,
             "parskip" if in_preamble => self.parskip_pt = Some(pt),
             "parindent" if in_preamble && pt == 0.0 => {}
             "parindent" if in_preamble => self.diags.push(Diagnostic::warning(
@@ -1983,8 +2235,16 @@ impl P<'_> {
             .unwrap_or_default();
         let (tokens, argument_span) = self.required_group("setlist", span);
         let full_span = span.merge(argument_span);
+        self.setlists.push((
+            lists::SetlistTarget::parse(&environments),
+            lists::parse_options(&token_source(&tokens), body, false),
+        ));
         let envs: Vec<String> = if environments.trim().is_empty() {
-            vec!["itemize".to_string(), "enumerate".to_string()]
+            vec![
+                "itemize".to_string(),
+                "enumerate".to_string(),
+                "description".to_string(),
+            ]
         } else {
             environments
                 .split(',')
@@ -2056,6 +2316,13 @@ impl P<'_> {
     }
 
     fn use_package(&mut self, span: Span) {
+        // siunitx keys keep their braces (`output-decimal-marker={,}`).
+        let raw_options = {
+            let start = self.i;
+            let raw = self.siunitx_bracket().map(|(raw, _)| raw);
+            self.i = start;
+            raw
+        };
         let options = self
             .optional_bracket_argument()
             .map(|(options, _)| options)
@@ -2076,10 +2343,25 @@ impl P<'_> {
             return;
         }
         self.packages.extend(packages.iter().cloned());
+        for package in &packages {
+            self.load_color_package(package, &options);
+        }
+        // multicol.sty lines 111-113: the global `twocolumn` class option
+        // reaches the package's option handler.
+        if self.twocolumn_option && packages.iter().any(|package| package == "multicol") {
+            self.diags.push(Diagnostic::warning(
+                "Package multicol Warning: May not work with the twocolumn option",
+                Some(span.merge(argument_span)),
+                Some("multicols is set inside the page column".into()),
+            ));
+        }
         if packages.iter().any(|package| package == "fontenc") {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
                 self.font_encoding = encoding;
             }
+        }
+        if let Some(raw) = raw_options.filter(|_| packages.iter().any(|p| p == "siunitx")) {
+            siunitx::load_package(&raw, span.merge(argument_span), &mut self.diags);
         }
         let packages: Vec<String> = packages
             .into_iter()
@@ -2096,6 +2378,138 @@ impl P<'_> {
             Some(span.merge(argument_span)),
             Some("continued without package-specific commands or formatting".into()),
         ));
+    }
+
+    /// `\begin{multicols}{<n>}[<preface>][<premulticols>]` and `multicols*`
+    /// (multicol.sty 2025/10/21 v2.0b, lines 145-205 and 894-905). The
+    /// column count is checked as `\multicols` checks it: fewer than two
+    /// columns become two with multicol's warning, more than twenty become
+    /// twenty with its error. The preface is `#1\par` in `\mult@@cols`: it
+    /// stays in the token stream as ordinary body material, its `[` blanked
+    /// and its `]` turned into the paragraph break. `[<premulticols>]` only
+    /// decides a page break and is dropped here. The columns themselves are
+    /// laid out by the render pipeline (`typeset::multicol`).
+    fn multicols_arguments(&mut self, span: Span, environment: &str) {
+        let (tokens, count_span) = self.required_group(environment, span);
+        let count = token_text(&tokens).trim().to_string();
+        let at = Some(span.merge(count_span));
+        match count.parse::<i64>() {
+            Ok(n) if n < 2 => self.diags.push(Diagnostic::warning(
+                format!("Package multicol Warning: Using `{n}' columns doesn't seem a good idea. I therefore use two columns instead"),
+                at,
+                Some("set two columns".into()),
+            )),
+            Ok(n) if n > 20 => self.diags.push(Diagnostic::error(
+                "Package multicol Error: Too many columns; the current implementation doesn't support more than 20 columns",
+                at,
+                Some("set 20 columns".into()),
+            )),
+            Ok(_) => {}
+            Err(_) => self.diags.push(Diagnostic::warning(
+                format!("{environment} expects a number of columns, got '{count}'"),
+                at,
+                Some("set two columns".into()),
+            )),
+        }
+        self.skip_spaces();
+        let open = self.i;
+        let Some(close) = self.bracket_close(open) else { return };
+        // `[<premulticols>]` right after the preface (`\@ifnextchar[` skips
+        // spaces): in the same word as the preface's `]` (`][80pt]`), or in
+        // the words that follow.
+        let (close_token, at) = close;
+        let rest = match &self.t[close_token].token.kind {
+            TokenKind::Word(word) => word[at + 1..].to_string(),
+            _ => String::new(),
+        };
+        if rest.starts_with('[') {
+            if let Some(end) = rest.find(']') {
+                if let Some(t) = self.token_mut(close_token) {
+                    if let TokenKind::Word(word) = &mut t.token.kind {
+                        word.replace_range(at + 1..at + 2 + end, "");
+                    }
+                }
+            }
+        } else if rest.is_empty() {
+            let mut next = close_token + 1;
+            while next < self.t.len() && matches!(self.t[next].token.kind, TokenKind::Space | TokenKind::Comment) {
+                next += 1;
+            }
+            if let Some((close2, _)) = self.bracket_close(next) {
+                for k in next..=close2 {
+                    if let Some(t) = self.token_mut(k) {
+                        t.token.kind = TokenKind::Comment;
+                    }
+                }
+            }
+        }
+        self.blank_preface_brackets(open, close);
+    }
+
+    /// The token and byte offset of the `]` closing the `[` that starts the
+    /// word at `open` (brackets inside braces do not count; a blank line
+    /// ends the search).
+    fn bracket_close(&self, open: usize) -> Option<(usize, usize)> {
+        let TokenKind::Word(first) = &self.t.get(open)?.token.kind else {
+            return None;
+        };
+        if !first.starts_with('[') {
+            return None;
+        }
+        let (mut depth, mut braces) = (0i32, 0i32);
+        for k in open..self.t.len() {
+            match &self.t[k].token.kind {
+                TokenKind::LBrace => braces += 1,
+                TokenKind::RBrace => braces -= 1,
+                TokenKind::ParBreak => return None,
+                TokenKind::Word(word) if braces == 0 => {
+                    for (at, c) in word.char_indices() {
+                        match c {
+                            '[' => depth += 1,
+                            ']' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some((k, at));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// The preface's `[` disappears and its `]` becomes `\par`.
+    fn blank_preface_brackets(&mut self, open: usize, (close, at): (usize, usize)) {
+        let mut rest_of_word = false;
+        if let Some(t) = self.token_mut(close) {
+            if let TokenKind::Word(word) = &mut t.token.kind {
+                word.remove(at);
+                if word.is_empty() {
+                    t.token.kind = TokenKind::ParBreak;
+                } else {
+                    rest_of_word = true;
+                }
+            }
+        }
+        if rest_of_word && matches!(self.t.get(close + 1).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+            if let Some(t) = self.token_mut(close + 1) {
+                t.token.kind = TokenKind::ParBreak;
+            }
+        }
+        if let Some(t) = self.token_mut(open) {
+            if let TokenKind::Word(word) = &mut t.token.kind {
+                if word.starts_with('[') {
+                    word.remove(0);
+                }
+                if word.is_empty() {
+                    t.token.kind = TokenKind::Comment;
+                }
+            }
+        }
     }
 
     /// `\maketitle`: builds `Block::TitleBlock` from whatever `\title`/
@@ -2318,16 +2732,20 @@ impl P<'_> {
                 if style != ParagraphStyle::Quote {
                     self.declared_alignment = None;
                 }
-            } else if matches!(environment.as_str(), "itemize" | "enumerate") && self.in_body {
+                if let Some(kind) = ListEnvironment::from_name(&environment) {
+                    self.push_list_frame(kind, Vec::new(), span.merge(argument_span));
+                }
+            } else if matches!(
+                environment.as_str(),
+                "itemize" | "enumerate" | "description"
+            ) && self.in_body
+            {
                 self.flush_paragraph(blocks, para);
-                let template = self.optional_bracket_argument().map(|(options, _)| options);
-                let spacing = self
-                    .list_spacing
-                    .get(&environment)
-                    .copied()
-                    .unwrap_or_default();
-                self.list_stack
-                    .push((environment.clone(), 0, template, spacing, blocks.len()));
+                let options = self.optional_bracket_argument();
+                let begin_span = options
+                    .as_ref()
+                    .map_or(span.merge(argument_span), |(_, o)| span.merge(*o));
+                self.open_list(&environment, options.map(|(text, _)| text), begin_span, blocks.len());
             } else if self.in_body
                 && (self.theorems.contains_key(&environment) || environment == "proof")
             {
@@ -2359,13 +2777,25 @@ impl P<'_> {
                     .get(&environment)
                     .copied()
                     .unwrap_or_default();
-                self.list_stack.push((
-                    environment.clone(),
-                    0,
-                    Some(widest_label),
+                self.list_stack.push(OpenList {
+                    kind: environment.clone(),
+                    count: 0,
+                    template: Some(widest_label),
                     spacing,
-                    blocks.len(),
-                ));
+                    start: blocks.len(),
+                    counter: 0,
+                    label_star: None,
+                    current_label: String::new(),
+                    series: None,
+                    begin_options: Vec::new(),
+                });
+                self.push_list_frame(ListEnvironment::Bibliography, Vec::new(), heading_span);
+            } else if environment == "subequations" && self.in_body {
+                self.begin_subequations();
+            } else if matches!(environment.as_str(), "multicols" | "multicols*") && self.in_body {
+                // `\mult@@cols` starts with `\par`.
+                self.flush_paragraph(blocks, para);
+                self.multicols_arguments(span.merge(argument_span), &environment);
             } else if self.in_body {
                 self.diags.push(Diagnostic::environment_warning(
                     &environment,
@@ -2413,27 +2843,50 @@ impl P<'_> {
                 Some("ignored the stray \\end".into()),
             )),
         }
+        if environment == "subequations" && self.in_body {
+            self.end_subequations();
+        }
         if paragraph_style(&environment).is_some() && self.in_body {
             self.flush_paragraph(blocks, para);
             self.paragraph_styles.pop();
         } else if matches!(
             environment.as_str(),
-            "itemize" | "enumerate" | "thebibliography"
+            "itemize" | "enumerate" | "description" | "thebibliography"
         ) {
             let (gap_before, gap_after) = match self.list_stack.last() {
-                Some((_, count, _, spacing, _)) => (
-                    if *count <= 1 {
-                        spacing.topsep_pt
+                Some(list) => (
+                    if list.count <= 1 {
+                        list.spacing.topsep_pt
                     } else {
-                        spacing.itemsep_pt
+                        list.spacing.itemsep_pt
                     },
-                    spacing.topsep_pt,
+                    list.spacing.topsep_pt,
                 ),
                 None => (0.0, 0.0),
             };
             self.flush_list_item(blocks, para, gap_before, gap_after);
             let level = self.list_stack.len() as u8;
-            if let Some((kind, count, template, spacing, start)) = self.list_stack.pop() {
+            if let Some(open) = self.list_stack.pop() {
+                // `\enit@endlist` (enumitem.sty 1127-1146): the counter and
+                // the `\begin` keys are kept for `resume`/`resume*`.
+                if open.kind == "enumerate" {
+                    self.resume_counters.insert(open.kind.clone(), open.counter);
+                    self.resume_keys
+                        .insert(open.kind.clone(), open.begin_options.clone());
+                    if let Some(series) = &open.series {
+                        let key = format!("series@{series}");
+                        self.resume_counters.insert(key.clone(), open.counter);
+                        self.resume_keys.insert(key, open.begin_options.clone());
+                    }
+                }
+                let OpenList {
+                    kind,
+                    count,
+                    template,
+                    spacing,
+                    start,
+                    ..
+                } = open;
                 if spacing.leftmargin == LeftMarginSetting::Widest && count > 0 {
                     let labels: Vec<String> = if kind == "enumerate" {
                         // An alphabetic counter has only 26 possible single-
@@ -2469,6 +2922,9 @@ impl P<'_> {
                     }
                 }
             }
+        } else if matches!(environment.as_str(), "multicols" | "multicols*") && self.in_body {
+            // `\endmulticols` starts with `\par`.
+            self.flush_paragraph(blocks, para);
         } else if environment == "figure" || self.theorems.contains_key(&environment) {
             self.flush_paragraph(blocks, para);
         } else if environment == "proof" {
@@ -2485,6 +2941,18 @@ impl P<'_> {
             self.flush_paragraph(blocks, para);
             self.in_body = false;
             self.document_ended = true;
+        }
+        if let Some(kind) = ListEnvironment::from_name(&environment) {
+            if self
+                .list_frames
+                .last()
+                .is_some_and(|frame| frame.environment == kind)
+            {
+                self.list_frames.pop();
+            }
+            if kind == ListEnvironment::Verse {
+                self.pending_line_break = None;
+            }
         }
         // Restored only after the flushes above: environments that end their
         // paragraph do so while their own declarations are still in force.
@@ -2745,11 +3213,13 @@ impl P<'_> {
     ) {
         self.flush_paragraph(blocks, para);
         let numbered = name == "equation";
-        if numbered {
-            self.equation_counter += 1;
-            self.current_counter = Some(self.equation_counter.to_string());
-        }
-        let number = self.equation_counter.to_string();
+        let number = if numbered {
+            let number = self.counters.step("equation").unwrap_or_default();
+            self.current_counter = Some(number.clone());
+            number
+        } else {
+            self.counters.the("equation").unwrap_or_default()
+        };
         let mut raw = Vec::new();
         let mut labels = Vec::new();
         let mut end = open.end;
@@ -2806,7 +3276,10 @@ impl P<'_> {
             ));
         }
         let list = math::parse_tokens(&raw, &mut self.diags);
+        let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges,
             list,
             display: true,
             number: numbered.then_some(number),
@@ -3000,8 +3473,7 @@ impl P<'_> {
                 .reduce(Span::merge)
                 .unwrap_or(open);
             let number = (numbered && !unnumbered).then(|| {
-                self.equation_counter += 1;
-                let number = self.equation_counter.to_string();
+                let number = self.counters.step("equation").unwrap_or_default();
                 self.current_counter = Some(number.clone());
                 number
             });
@@ -3018,7 +3490,7 @@ impl P<'_> {
                     key,
                     value: number
                         .clone()
-                        .unwrap_or_else(|| self.equation_counter.to_string()),
+                        .unwrap_or_else(|| self.counters.the("equation").unwrap_or_default()),
                     span: label_span,
                 });
             }
@@ -3199,7 +3671,10 @@ impl P<'_> {
         }
         // `\[...\]` and `$$...$$` are unnumbered displays in LaTeX: they never
         // print a number or advance the equation counter.
+        let color_ranges = self.math_color_ranges(&raw);
         para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges,
             list,
             display,
             number: None,
@@ -3492,6 +3967,176 @@ impl P<'_> {
         }
     }
 
+    /// `\includegraphics*[<keys>]{<file>}`, or graphics.sty's
+    /// `[<llx>,<lly>][<urx>,<ury>]{<file>}` bounding-box form (graphicx.sty
+    /// `\Gin@ii` hands two brackets to `\Gin@iii`, which pdftex.def replaces
+    /// by `\Gin@iii@vp`: a viewport).
+    fn include_graphics(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let starred = self.take_star_prefix();
+        let mut options = self.bracket_argument().unwrap_or_default();
+        if !options.is_empty() || self.bracket_follows() {
+            if let Some(upper) = self.bracket_argument() {
+                let corner = |s: &str| s.replace(',', " ").split_whitespace().collect::<Vec<_>>().join(" ");
+                options = format!("viewport={} {}", corner(&options), corner(&upper));
+            }
+        }
+        let (tokens, argument) = self.required_group("includegraphics", span);
+        let path = self.argument_text(&tokens, argument);
+        para.push(Inline::Graphic(Box::new(crate::graphics::Graphic {
+            starred,
+            options,
+            path,
+            span: span.merge(argument),
+            space_before,
+        })));
+    }
+
+    /// `\scalebox{x}[y]{..}`, `\resizebox*{w}{h}{..}`,
+    /// `\rotatebox[keys]{angle}{..}`, `\reflectbox{..}`: the parameters as
+    /// written, then the content parsed as horizontal material in the
+    /// current style.
+    fn transform_box(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        use crate::graphics::TransformKind;
+        let space_before = self.space_precedes(self.i - 1);
+        let kind = match name {
+            "scalebox" => {
+                let (tokens, argument) = self.required_group(name, span);
+                let x = self.argument_text(&tokens, argument);
+                let y = self.bracket_argument();
+                TransformKind::Scale { x, y }
+            }
+            "resizebox" => {
+                let starred = self.take_optional_star();
+                let (tokens, argument) = self.required_group(name, span);
+                let width = self.argument_text(&tokens, argument);
+                let (tokens, argument) = self.required_group(name, span);
+                let height = self.argument_text(&tokens, argument);
+                TransformKind::Resize { starred, width, height }
+            }
+            "rotatebox" => {
+                let options = self.bracket_argument();
+                let (tokens, argument) = self.required_group(name, span);
+                let angle = self.argument_text(&tokens, argument);
+                TransformKind::Rotate { options, angle }
+            }
+            _ => TransformKind::Reflect,
+        };
+        let (tokens, argument) = self.required_group(name, span);
+        let style = self.style;
+        let content = self.argument_inlines(tokens, span, style);
+        para.push(Inline::Transform(Box::new(crate::graphics::TransformBox {
+            kind,
+            content,
+            span: span.merge(argument),
+            space_before,
+        })));
+    }
+
+    /// A `*` after a command, alone or glued to the word that follows it
+    /// (`\includegraphics*[..]` lexes as one word `*[..]`).
+    fn take_star_prefix(&mut self) -> bool {
+        if self.take_optional_star() {
+            return true;
+        }
+        let Some(input) = self.token_mut(self.i) else {
+            return false;
+        };
+        let TokenKind::Word(word) = &input.token.kind else {
+            return false;
+        };
+        let Some(rest) = word.strip_prefix('*') else {
+            return false;
+        };
+        let rest = rest.to_string();
+        let span = input.token.span;
+        if span.end - span.start == word.len() {
+            input.token.span = Span::in_document(span.document, span.start + 1, span.end);
+        }
+        input.token.kind = TokenKind::Word(rest);
+        true
+    }
+
+    /// Whether the next non-space token starts a `[..]` argument.
+    fn bracket_follows(&self) -> bool {
+        self.t[self.i..]
+            .iter()
+            .find(|input| !matches!(input.token.kind, TokenKind::Space | TokenKind::Comment))
+            .is_some_and(|input| matches!(&input.token.kind, TokenKind::Word(w) if w.starts_with('[')))
+    }
+
+    /// An optional `[..]` argument's exact source text (braces kept), or
+    /// its token reconstruction when it came from a macro expansion.
+    fn bracket_argument(&mut self) -> Option<String> {
+        if !self.bracket_follows() {
+            return None;
+        }
+        self.skip_spaces();
+        // `[a][b]` or `[a]text` lexes as one word: take the first bracket and
+        // leave the rest of the word in place.
+        if let Some(input) = self.token_mut(self.i) {
+            if let TokenKind::Word(word) = &input.token.kind {
+                if let Some(close) = word.find(']').filter(|&c| c + 1 < word.len() && !word[..c].contains('{')) {
+                    let content = word[1..close].trim().to_string();
+                    let rest = word[close + 1..].to_string();
+                    let span = input.token.span;
+                    if span.end - span.start == word.len() {
+                        input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
+                    }
+                    input.token.kind = TokenKind::Word(rest);
+                    return Some(content);
+                }
+            }
+        }
+        let from_source = !self.t[self.i..]
+            .iter()
+            .find(|input| !matches!(input.token.kind, TokenKind::Space | TokenKind::Comment))
+            .is_some_and(|input| input.maps_to_invocation);
+        let (content, span) = self.optional_bracket_argument()?;
+        if from_source {
+            if let Some(inner) = self
+                .documents
+                .get(span.document.0)
+                .and_then(|document| bracket_inner(document.text, span.start))
+            {
+                return Some(inner.trim().to_string());
+            }
+        }
+        Some(content.trim().to_string())
+    }
+
+    /// A braced argument's exact source text (without the outer braces) when
+    /// its tokens come from the source, else a reconstruction of the tokens.
+    fn argument_text(&self, tokens: &[InputToken], outer: Span) -> String {
+        if tokens.iter().all(|input| !input.maps_to_invocation) {
+            if let Some(text) = self.documents.get(outer.document.0).map(|document| document.text) {
+                let end = if text.as_bytes().get(outer.end.wrapping_sub(1)) == Some(&b'}') {
+                    outer.end - 1
+                } else {
+                    outer.end
+                };
+                if let Some(inner) = text.get(outer.start + 1..end) {
+                    return inner.trim().to_string();
+                }
+            }
+        }
+        let mut out = String::new();
+        for input in tokens {
+            match &input.token.kind {
+                TokenKind::Word(word) => out.push_str(word),
+                TokenKind::Command(name) => {
+                    out.push('\\');
+                    out.push_str(name);
+                }
+                TokenKind::Space | TokenKind::ParBreak => out.push(' '),
+                TokenKind::LBrace => out.push('{'),
+                TokenKind::RBrace => out.push('}'),
+                _ => {}
+            }
+        }
+        out.trim().to_string()
+    }
+
     fn take_optional_star(&mut self) -> bool {
         self.skip_spaces();
         if matches!(
@@ -3548,9 +4193,88 @@ impl P<'_> {
         let mut style = base;
         let mut saved = Vec::new();
         let mut pending = None;
+        // Tokens already read as a siunitx command's arguments.
+        let mut skip_until = 0usize;
         for (index, input) in expanded.iter().enumerate() {
+            if index < skip_until {
+                continue;
+            }
             let space_before = preceded_by_space(&expanded, index);
             match &input.token.kind {
+                TokenKind::Command(name) if name == "color" || name == "textcolor" => {
+                    let (next, color) = self.flat_color(&expanded, index, style.color);
+                    skip_until = next;
+                    match color {
+                        Some(color) if name == "color" => style.color = Some(color),
+                        Some(color) => pending = Some(TextStyle { color: Some(color), ..style }),
+                        None => {}
+                    }
+                }
+                // siunitx in a heading, caption or style argument: the same
+                // formula as in running text (`P::siunitx`).
+                TokenKind::Command(name) if siunitx::arity(name).is_some() => {
+                    let (required, pre_unit_bracket) = siunitx::arity(name).unwrap_or((0, false));
+                    let mut next = index + 1;
+                    let mut span = input.token.span;
+                    let widen = |span: &mut Span, other: Span| {
+                        if other.document == span.document {
+                            *span = span.merge(other);
+                        }
+                    };
+                    let options = siunitx_bracket_at(&expanded, next).map(|(raw, s, after)| {
+                        next = after;
+                        widen(&mut span, s);
+                        raw
+                    });
+                    let mut pre_unit = None;
+                    let mut args = Vec::with_capacity(required);
+                    for argument in 0..required {
+                        if pre_unit_bracket && argument == 1 {
+                            if let Some((raw, s, after)) = siunitx_bracket_at(&expanded, next) {
+                                next = after;
+                                widen(&mut span, s);
+                                pre_unit = Some(raw);
+                            }
+                        }
+                        match siunitx_group_at(&expanded, next) {
+                            Some((raw, s, after)) => {
+                                next = after;
+                                widen(&mut span, s);
+                                args.push(raw);
+                            }
+                            None => {
+                                self.diags.push(Diagnostic::error(
+                                    format!("\\{name} requires an argument"),
+                                    Some(input.token.span),
+                                    Some("used an empty argument and continued".into()),
+                                ));
+                                args.push(String::new());
+                            }
+                        }
+                    }
+                    skip_until = next;
+                    let atoms = siunitx::typeset(
+                        name,
+                        options.as_deref(),
+                        pre_unit.as_deref(),
+                        &args,
+                        false,
+                        span,
+                        &mut self.diags,
+                    );
+                    if !atoms.is_empty() {
+                        content.push(Inline::Math {
+                            color: style.color,
+                            color_ranges: Vec::new(),
+                            list: MathList { atoms },
+                            display: false,
+                            number: None,
+                            number_span: None,
+                            span,
+                            space_before,
+                        });
+                    }
+                }
                 TokenKind::Command(name) if style_command(name) => {
                     pending = Some(apply_style(style, name));
                 }
@@ -3688,6 +4412,76 @@ impl P<'_> {
         }
     }
 
+    /// A siunitx typesetting command (`crate::siunitx`): its arguments are
+    /// read as raw source and the result is one inline formula spanning the
+    /// command and its arguments.
+    fn siunitx(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let Some((required, pre_unit_bracket)) = siunitx::arity(name) else {
+            return;
+        };
+        let options = self.siunitx_bracket();
+        let mut full = options.as_ref().map_or(span, |(_, s)| span.merge(*s));
+        let mut pre_unit = None;
+        let mut args = Vec::with_capacity(required);
+        for index in 0..required {
+            if pre_unit_bracket && index == 1 {
+                if let Some((raw, s)) = self.siunitx_bracket() {
+                    full = full.merge(s);
+                    pre_unit = Some(raw);
+                }
+            }
+            let (tokens, argument_span) = self.required_group(name, span);
+            if argument_span.document == span.document {
+                full = full.merge(argument_span);
+            }
+            args.push(siunitx::raw_text(tokens.iter().map(|t| &t.token)));
+        }
+        let atoms = siunitx::typeset(
+            name,
+            options.as_ref().map(|(o, _)| o.as_str()),
+            pre_unit.as_deref(),
+            &args,
+            false,
+            full,
+            &mut self.diags,
+        );
+        if atoms.is_empty() {
+            return;
+        }
+        para.push(Inline::Math {
+            color: self.style.color,
+            color_ranges: Vec::new(),
+            list: crate::math::MathList { atoms },
+            display: false,
+            number: None,
+            number_span: None,
+            span: full,
+            space_before,
+        });
+    }
+
+    /// A `[key=value, ...]` argument read as raw source with its braces kept
+    /// (`optional_bracket_argument` drops them, which would split
+    /// `output-decimal-marker={,}` at the comma). Nothing is consumed when
+    /// no bracket follows.
+    fn siunitx_bracket(&mut self) -> Option<(String, Span)> {
+        let (raw, span, next) = siunitx_bracket_at(&self.t, self.i)?;
+        self.i = next;
+        Some((raw, span))
+    }
+
+    /// `\DeclareSIUnit\name` or `\DeclareSIUnit{\name}`: the unit's name.
+    fn command_or_group(&mut self, name: &str, span: Span) -> String {
+        self.skip_spaces();
+        if let Some(TokenKind::Command(command)) = self.peek().map(|t| t.kind.clone()) {
+            self.i += 1;
+            return command;
+        }
+        let (tokens, _) = self.required_group(name, span);
+        siunitx::raw_text(tokens.iter().map(|t| &t.token))
+    }
+
     fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
         let space_before = self.space_precedes(self.i - 1);
         if let Some(logo) = TextLogo::from_command(name) {
@@ -3795,10 +4589,18 @@ impl P<'_> {
     /// inside the argument become line breaks: the footnote is one inline
     /// sequence, not separate blocks; each break is attributed to `span`.
     fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
+        self.argument_inlines(tokens, span, TextStyle::default())
+    }
+
+    /// Parses an argument with the ordinary dispatch starting in `style`
+    /// (see [`P::footnote_inlines`]); paragraph breaks become line breaks
+    /// attributed to `span`.
+    fn argument_inlines(&mut self, tokens: Vec<InputToken>, span: Span, style: TextStyle) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
-        let outer_style = std::mem::take(&mut self.style);
+        let outer_style = std::mem::replace(&mut self.style, style);
         let outer_label = self.pending_item_label.take();
+        let outer_item = self.pending_item.take();
         let outer_dependency_blocks = self.block_dependencies.len();
         let mut blocks = Vec::new();
         let mut para = Vec::new();
@@ -3809,6 +4611,7 @@ impl P<'_> {
         self.i = outer_index;
         self.style = outer_style;
         self.pending_item_label = outer_label;
+        self.pending_item = outer_item;
 
         let mut content: Vec<Inline> = Vec::new();
         for block in blocks {
@@ -3866,16 +4669,17 @@ impl P<'_> {
         if paragraph.is_empty() && label.is_none() {
             return;
         }
+        let item = self.pending_item.take();
         // The item's topsep/itemsep belongs to its labelled first paragraph,
         // even when a blank line inside the item flushes that paragraph
         // through `flush_paragraph` (which passes `0.0`); later paragraphs
         // of the same item never get it.
         let extra_gap_before_pt = match (&label, self.list_stack.last()) {
-            (Some(_), Some((_, count, _, spacing, _))) if *count > 0 => {
-                if *count <= 1 {
-                    spacing.topsep_pt
+            (Some(_), Some(list)) if list.count > 0 => {
+                if list.count <= 1 {
+                    list.spacing.topsep_pt
                 } else {
-                    spacing.itemsep_pt
+                    list.spacing.itemsep_pt
                 }
             }
             (Some(_), _) => extra_gap_before_pt,
@@ -3886,16 +4690,23 @@ impl P<'_> {
         // seen (`count > 0`); text typed directly inside `itemize`/
         // `enumerate` before any `\item` falls back to an ordinary
         // paragraph, same as before this paragraph became list-aware.
+        // A `quote`/`quotation`/`verse` inside an item is its own `\list`:
+        // its paragraphs are `Styled`, with both frames in `lists`.
+        let in_quote = label.is_none()
+            && self
+                .list_frames
+                .last()
+                .is_some_and(|frame| frame.environment.is_quote_like());
         let list_level = self
             .list_stack
             .last()
-            .filter(|(_, count, _, _, _)| *count > 0)
+            .filter(|list| list.count > 0 && !in_quote)
             .map(|_| self.list_stack.len() as u8);
         // `leftmargin=*` needs every item's label, so it is resolved later
         // (backpatched once the list's `\end` is reached — see
         // `environment`); an explicit dimension is already known.
         let leftmargin = match self.list_stack.last() {
-            Some((_, _, _, spacing, _)) => match spacing.leftmargin {
+            Some(OpenList { spacing, .. }) => match spacing.leftmargin {
                 LeftMarginSetting::Explicit(pt) => ListLeftMargin::Explicit(pt),
                 LeftMarginSetting::Unset | LeftMarginSetting::Widest => ListLeftMargin::Default,
             },
@@ -3905,14 +4716,12 @@ impl P<'_> {
         // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
         // use it for their own unrelated `enumitem` template instead, so it
         // only carries a `widest_label` for a `thebibliography` list.
-        let widest_label = self
-            .list_stack
-            .last()
-            .and_then(|(kind, _, template, _, _)| {
-                (kind == "thebibliography")
-                    .then(|| template.clone())
-                    .flatten()
-            });
+        let widest_label = self.list_stack.last().and_then(|list| {
+            (list.kind == "thebibliography")
+                .then(|| list.template.clone())
+                .flatten()
+        });
+        let lists = self.list_frames.clone();
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -3922,14 +4731,23 @@ impl P<'_> {
                 extra_gap_after_pt,
                 leftmargin,
                 widest_label,
+                lists,
+                item,
             },
             None => match (self.paragraph_styles.last(), self.declared_alignment) {
                 // A declaration inside `quote` would otherwise drop its indent.
                 (Some(&ParagraphStyle::Quote), _) => Block::Styled {
                     style: ParagraphStyle::Quote,
                     content,
+                    lists,
+                    line_break_before: self.pending_line_break.take(),
                 },
-                (_, Some(style)) | (Some(&style), None) => Block::Styled { style, content },
+                (_, Some(style)) | (Some(&style), None) => Block::Styled {
+                    style,
+                    content,
+                    lists,
+                    line_break_before: None,
+                },
                 (None, None) => Block::Paragraph(content),
             },
         });
@@ -3967,29 +4785,292 @@ impl P<'_> {
 
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
     /// to it (`\\[3pt]Next`) as the remainder of the word.
-    fn skip_line_break_length(&mut self) {
-        let Some(input) = self.token_mut(self.i) else {
-            return;
-        };
+    /// Returns the length in TeX points when it reads as one.
+    fn skip_line_break_length(&mut self) -> Option<f64> {
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let input = self.token_mut(self.i)?;
         let TokenKind::Word(word) = &input.token.kind else {
-            return;
+            return None;
         };
         if !word.starts_with('[') {
-            return;
+            return None;
         }
-        let Some(close) = word.find(']') else {
-            return;
-        };
+        let close = word.find(']')?;
+        let length = parse_dimen_pt_at(&word[1..close], body);
         let rest = word[close + 1..].to_string();
         if rest.is_empty() {
             self.i += 1;
-            return;
+            return length;
         }
         let span = input.token.span;
         if span.end - span.start == word.len() {
             input.token.span = Span::in_document(span.document, span.start + close + 1, span.end);
         }
         input.token.kind = TokenKind::Word(rest);
+        length
+    }
+
+    /// `\item[<label>]` (latex.ltx 15964-15966: `\@ifnextchar[`, which
+    /// skips spaces): the tokens between the brackets at brace depth 0,
+    /// with the words holding `[`/`]` trimmed, and the span of the whole
+    /// bracketed argument. `None` (nothing consumed but spaces) without a
+    /// `[` or without its closing `]` before a paragraph break.
+    fn item_label_argument(&mut self) -> Option<(Vec<InputToken>, Span)> {
+        self.skip_spaces();
+        let first = self.t.get(self.i)?;
+        let TokenKind::Word(word) = &first.token.kind else {
+            return None;
+        };
+        if !word.starts_with('[') {
+            return None;
+        }
+        let open = first.token.span;
+        let piece = |input: &InputToken, from: usize, to: usize| -> InputToken {
+            let TokenKind::Word(word) = &input.token.kind else {
+                return input.clone();
+            };
+            let span = input.token.span;
+            let mut out = input.clone();
+            out.token.kind = TokenKind::Word(word[from..to].to_string());
+            if span.end - span.start == word.len() {
+                out.token.span =
+                    Span::in_document(span.document, span.start + from, span.start + to);
+            }
+            out
+        };
+        let mut tokens = Vec::new();
+        let mut depth = 0usize;
+        let mut index = self.i;
+        while index < self.t.len() {
+            let input = &self.t[index];
+            let from = usize::from(index == self.i);
+            match &input.token.kind {
+                TokenKind::ParBreak => return None,
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.checked_sub(1)?,
+                TokenKind::Word(word) if depth == 0 && word[from..].contains(']') => {
+                    let close = from + word[from..].find(']').unwrap_or(0);
+                    if close > from {
+                        tokens.push(piece(input, from, close));
+                    }
+                    let span = input.token.span;
+                    let literal = span.end - span.start == word.len();
+                    let end = if literal { span.start + close + 1 } else { span.end };
+                    if close + 1 == word.len() {
+                        self.i = index + 1;
+                    } else {
+                        let rest = piece(input, close + 1, word.len());
+                        if let Some(slot) = self.token_mut(index) {
+                            *slot = rest;
+                        }
+                        self.i = index;
+                    }
+                    return Some((tokens, Span::in_document(open.document, open.start, end)));
+                }
+                _ => {}
+            }
+            let input = &self.t[index];
+            if from == 1 {
+                if let TokenKind::Word(word) = &input.token.kind {
+                    if word.len() > 1 {
+                        tokens.push(piece(input, 1, word.len()));
+                    }
+                }
+            } else {
+                tokens.push(input.clone());
+            }
+            index += 1;
+        }
+        None
+    }
+
+    /// The label of the `\item` just read (the innermost open list is
+    /// `self.list_stack.last()`); sets `pending_item_label`/`pending_item`.
+    fn begin_item(&mut self, span: Span, explicit: Option<(Vec<InputToken>, Span)>) {
+        let frame = self
+            .list_frames
+            .iter()
+            .rev()
+            .find(|frame| !frame.environment.is_quote_like())
+            .cloned();
+        let environment = frame
+            .as_ref()
+            .map_or(ListEnvironment::Itemize, |frame| frame.environment);
+        let kind_depth = frame.as_ref().map_or(1, |frame| frame.kind_depth);
+        let explicit = explicit.map(|(tokens, arg_span)| {
+            // `\descriptionlabel`: `\normalfont\bfseries #1`.
+            let base = if environment == ListEnvironment::Description {
+                TextStyle::BOLD
+            } else {
+                TextStyle::default()
+            };
+            let content = self.inlines_from_tokens(tokens, base);
+            let mut text = String::new();
+            for inline in &content {
+                if let Inline::Text {
+                    text: word,
+                    space_before,
+                    ..
+                } = inline
+                {
+                    if *space_before && !text.is_empty() {
+                        text.push(' ');
+                    }
+                    text.push_str(word);
+                }
+            }
+            ItemLabel::Explicit {
+                content,
+                text,
+                span: arg_span,
+            }
+        });
+        // `label*`: the enclosing enumerate's current label comes first.
+        let enclosing_label = self
+            .list_stack
+            .iter()
+            .rev()
+            .skip(1)
+            .find(|list| list.kind == "enumerate")
+            .map(|list| list.current_label.clone())
+            .unwrap_or_default();
+        let Some(list) = self.list_stack.last_mut() else {
+            return;
+        };
+        list.count += 1;
+        let item = match explicit {
+            Some(item) => item,
+            None if environment == ListEnvironment::Enumerate => {
+                list.counter += 1;
+                let value = list.counter;
+                let item = match (&list.label_star, &list.template) {
+                    (Some(star), _) => ItemLabel::Template {
+                        text: format!(
+                            "{enclosing_label}{}",
+                            lists::template_label(star, value).text()
+                        ),
+                    },
+                    (None, Some(template)) => match template.strip_prefix("label=") {
+                        Some(label) => lists::template_label(label, value),
+                        None => lists::short_label(template, value),
+                    },
+                    (None, None) => lists::default_label(environment, kind_depth, value),
+                };
+                list.current_label = item.text().to_string();
+                item
+            }
+            None => match (&list.template, environment) {
+                (Some(template), ListEnvironment::Itemize) => ItemLabel::Template {
+                    text: apply_text_ligatures(
+                        template.strip_prefix("label=").unwrap_or(template),
+                    ),
+                },
+                _ => lists::default_label(environment, kind_depth, 0),
+            },
+        };
+        self.pending_item_label = Some((item.text().to_string(), span));
+        self.pending_item = Some(item);
+    }
+
+    fn push_list_frame(&mut self, environment: ListEnvironment, options: Vec<ListOption>, begin_span: Span) {
+        let kind_depth = self
+            .list_frames
+            .iter()
+            .filter(|frame| frame.environment == environment)
+            .count() as u8
+            + 1;
+        self.list_frames.push(ListFrame {
+            environment,
+            kind_depth,
+            options,
+            begin_span,
+        });
+    }
+
+    /// `\begin{itemize|enumerate|description}[<options>]`: resolves the
+    /// enumitem keys in force (every matching `\setlist`, then `resume*`'s
+    /// saved keys, then the `\begin` keys) and the counter's start value.
+    fn open_list(&mut self, environment: &str, options: Option<String>, begin_span: Span, start: usize) {
+        let Some(kind) = ListEnvironment::from_name(environment) else {
+            return;
+        };
+        let body = self.class_size_pt.unwrap_or(crate::layout::BODY_SIZE_PT);
+        let kind_depth = self
+            .list_frames
+            .iter()
+            .filter(|frame| frame.environment == kind)
+            .count() as u8
+            + 1;
+        let list_depth = self.list_frames.len() as u8 + 1;
+        let mut effective: Vec<ListOption> = self
+            .setlists
+            .iter()
+            .filter(|(target, _)| target.applies(kind, kind_depth, list_depth))
+            .flat_map(|(_, options)| options.iter().cloned())
+            .collect();
+        let begin_options = options
+            .as_deref()
+            .map(|text| lists::parse_options(text, body, true))
+            .unwrap_or_default();
+        let start_of = |options: &[ListOption]| {
+            options.iter().rev().find_map(|option| match option {
+                ListOption::Start(n) => Some(n - 1),
+                _ => None,
+            })
+        };
+        let mut counter = start_of(&effective).unwrap_or(0);
+        let mut series = None;
+        for option in &begin_options {
+            match option {
+                ListOption::Resume(name) | ListOption::ResumeStar(name) => {
+                    let key = name
+                        .as_ref()
+                        .map_or_else(|| environment.to_string(), |n| format!("series@{n}"));
+                    counter = self.resume_counters.get(&key).copied().unwrap_or(0);
+                    if matches!(option, ListOption::ResumeStar(_)) {
+                        effective.extend(self.resume_keys.get(&key).cloned().unwrap_or_default());
+                    }
+                    self.document_global_state = true;
+                }
+                ListOption::Series(name) => {
+                    series = Some(name.clone());
+                    self.document_global_state = true;
+                }
+                _ => {}
+            }
+        }
+        if let Some(value) = start_of(&begin_options) {
+            counter = value;
+        }
+        effective.extend(begin_options.iter().cloned());
+        let (template, label_star) = effective
+            .iter()
+            .rev()
+            .find_map(|option| match option {
+                ListOption::Label(label) => Some((Some(format!("label={label}")), None)),
+                ListOption::ShortLabel(label) => Some((Some(label.clone()), None)),
+                ListOption::LabelStar(label) => Some((None, Some(label.clone()))),
+                _ => None,
+            })
+            .unwrap_or((None, None));
+        let spacing = self
+            .list_spacing
+            .get(environment)
+            .copied()
+            .unwrap_or_default();
+        self.list_stack.push(OpenList {
+            kind: environment.to_string(),
+            count: 0,
+            template,
+            spacing,
+            start,
+            counter,
+            label_star,
+            current_label: String::new(),
+            series,
+            begin_options,
+        });
+        self.push_list_frame(kind, effective, begin_span);
     }
 
     fn skip_spaces(&mut self) {
@@ -3998,6 +5079,103 @@ impl P<'_> {
             Some(TokenKind::Space | TokenKind::Comment)
         ) {
             self.i += 1;
+        }
+    }
+
+    /// amsmath `\numberwithin[\style]{counter}{parent}` and the LaTeX
+    /// kernel's `\counterwithin(*)`/`\counterwithout(*){counter}{parent}`:
+    /// the counter is reset (or no longer reset) by `parent` and printed as
+    /// `\the<parent>.\<style>{counter}` (see `xref::Counters`). A
+    /// `\newtheorem` counter only follows `section` (the theorem numbering in
+    /// `theorems`); an unknown counter is LaTeX's "No counter defined" error.
+    fn counter_numbering(&mut self, name: &str, span: Span) {
+        use crate::xref::{CounterError, NumberStyle};
+        let starred = name != "numberwithin" && self.take_optional_star();
+        let mut style = NumberStyle::Arabic;
+        if name == "numberwithin" {
+            if let Some((text, style_span)) = self.optional_bracket_argument() {
+                match NumberStyle::from_command(&text) {
+                    Some(parsed) => style = parsed,
+                    None => self.diags.push(Diagnostic::warning(
+                        format!(
+                            "\\numberwithin format '{}' is not \\arabic, \\alph, \\Alph, \\roman or \\Roman",
+                            text.trim()
+                        ),
+                        Some(style_span),
+                        Some("numbered the counter in arabic".into()),
+                    )),
+                }
+            }
+        }
+        let (child_tokens, child_span) = self.required_group(name, span);
+        let (parent_tokens, parent_span) = self.required_group(name, span);
+        let child = token_text(&child_tokens).trim().to_string();
+        let parent = token_text(&parent_tokens).trim().to_string();
+        let whole = span.merge(child_span).merge(parent_span);
+        self.document_global_state = true;
+        if !self.counters.exists(&child) && self.theorems.values().any(|def| def.counter == child) {
+            if parent == "section" {
+                let within = name != "counterwithout";
+                for def in self.theorems.values_mut() {
+                    if def.counter == child {
+                        def.within_section = within;
+                    }
+                }
+            } else {
+                self.diags.push(Diagnostic::warning(
+                    format!("\\{name} for theorem counter '{child}' within '{parent}' is recognised but not implemented"),
+                    Some(whole),
+                    Some(format!("'{child}' keeps its numbering")),
+                ));
+            }
+            return;
+        }
+        let result = match name {
+            "numberwithin" => self.counters.numberwithin(&child, &parent, style),
+            "counterwithin" => self.counters.counter_within(&child, &parent, starred),
+            _ => self.counters.counter_without(&child, &parent, starred),
+        };
+        if let Err(CounterError::NoCounter(missing)) = result {
+            self.diags.push(Diagnostic::error(
+                format!("No counter '{missing}' defined"),
+                Some(whole),
+                Some(format!("ignored the \\{name}")),
+            ));
+        }
+    }
+
+    /// amsmath.sty `\subequations`: `\refstepcounter{equation}` (a `\label`
+    /// right after `\begin{subequations}` gets the parent number),
+    /// `\protected@edef\theparentequation{\theequation}`,
+    /// `\setcounter{parentequation}{\value{equation}}`,
+    /// `\setcounter{equation}{0}` and
+    /// `\def\theequation{\theparentequation\alph{equation}}`.
+    fn begin_subequations(&mut self) {
+        use crate::xref::{NumberStyle, Piece};
+        let parent = self.counters.step("equation").unwrap_or_default();
+        self.current_counter = Some(parent.clone());
+        let value = self.counters.value("equation").unwrap_or(0);
+        self.counters.set_value("parentequation", value);
+        self.counters.set_value("equation", 0);
+        let saved = self.counters.representation("equation").unwrap_or_default();
+        self.counters.set_representation(
+            "equation",
+            vec![
+                Piece::Text(parent),
+                Piece::Value("equation".into(), NumberStyle::AlphLower),
+            ],
+        );
+        self.subequations.push(saved);
+        self.document_global_state = true;
+    }
+
+    /// `\endsubequations`: `\setcounter{equation}{\value{parentequation}}`;
+    /// the group end restores `\theequation`.
+    fn end_subequations(&mut self) {
+        if let Some(saved) = self.subequations.pop() {
+            let parent = self.counters.value("parentequation").unwrap_or(0);
+            self.counters.set_value("equation", parent);
+            self.counters.set_representation("equation", saved);
         }
     }
 
@@ -4168,10 +5346,23 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // array.sty's preamble builder, column types and row strut are
         // implemented (parser/tabular.rs, crate::tabular); no options.
         "array" => options.is_empty(),
+        // siunitx v3 numbers, units, quantities, lists, ranges and angles
+        // (crate::siunitx); its options are \sisetup keys, and a key that
+        // is not modelled gets its own diagnostic there.
+        "siunitx" => true,
+        // multicols/multicols*, \columnbreak and \raggedcolumns are parsed
+        // (the render pipeline sets the columns); the tracing options change
+        // nothing typeset.
+        "multicol" => options
+            .iter()
+            .all(|option| matches!(*option, "errorshow" | "infoshow" | "balancingshow" | "markshow" | "debugshow")),
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
         // warning rather than being silently matched here.
+        // Colour packages (crate::color) with every option replayed.
+        "xcolor" => crate::color::Colors::xcolor(&options.join(","), None).1.is_empty(),
+        "color" => crate::color::Colors::color_sty(&options.join(",")).1.is_empty(),
         _ => false,
     }
 }
@@ -4344,6 +5535,123 @@ fn dimen_source(tokens: &[InputToken]) -> String {
     result
 }
 
+/// Like `token_text`, but control words keep their backslash and braces
+/// are kept (enumitem values such as `label={(\alph*)}`).
+fn token_source(tokens: &[InputToken]) -> String {
+    let mut result = String::new();
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::Word(text) => result.push_str(text),
+            TokenKind::Command(text) => {
+                result.push('\\');
+                result.push_str(text);
+            }
+            TokenKind::LBrace => result.push('{'),
+            TokenKind::RBrace => result.push('}'),
+            TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            _ => {}
+        }
+    }
+    result
+}
+
+/// A siunitx `[key=value, ...]` argument at `index` (after spaces), read as
+/// raw source with its braces kept: (options, span, index after `]`).
+fn siunitx_bracket_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let first = tokens.get(index)?;
+    if !matches!(&first.token.kind, TokenKind::Word(w) if w.starts_with('[')) {
+        return None;
+    }
+    let start = first.token.span;
+    let mut raw = String::new();
+    let mut depth = 0usize;
+    let mut cursor = index;
+    while let Some(input) = tokens.get(cursor) {
+        cursor += 1;
+        match &input.token.kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                raw.push('{');
+            }
+            TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+                raw.push('}');
+            }
+            TokenKind::ParBreak => return None,
+            _ => {
+                let mut piece = siunitx::raw_text(std::iter::once(&input.token));
+                if cursor == index + 1 {
+                    piece.remove(0);
+                }
+                if depth == 0 {
+                    if let Some(close) = piece.find(']') {
+                        raw.push_str(&piece[..close]);
+                        return Some((raw, start.merge(input.token.span), cursor));
+                    }
+                }
+                raw.push_str(&piece);
+            }
+        }
+    }
+    None
+}
+
+/// A braced siunitx argument at `index` (after spaces) as raw source without
+/// its outer braces: (argument, span, index after `}`).
+fn siunitx_group_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let open = tokens.get(index)?;
+    if open.token.kind != TokenKind::LBrace {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (offset, input) in tokens[index..].iter().enumerate() {
+        match input.token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = tokens[index + 1..index + offset].iter().map(|t| &t.token);
+                    let span = if input.token.span.document == open.token.span.document {
+                        open.token.span.merge(input.token.span)
+                    } else {
+                        open.token.span
+                    };
+                    return Some((siunitx::raw_text(inner), span, index + offset + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The text between the `[` at `open` and its `]` (brace groups may hold
+/// `]`), or `None` when `open` is not a `[` or the bracket is unclosed.
+fn bracket_inner(text: &str, open: usize) -> Option<&str> {
+    if text.as_bytes().get(open) != Some(&b'[') {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (i, c) in text[open + 1..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            ']' if depth == 0 => return Some(&text[open + 1..open + 1 + i]),
+            '\n' if text[open + 1..open + 1 + i].ends_with('\n') => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 fn token_text(tokens: &[InputToken]) -> String {
     let mut result = String::new();
     for input in tokens {
@@ -4425,7 +5733,7 @@ fn paragraph_style(environment: &str) -> Option<ParagraphStyle> {
         "center" => Some(ParagraphStyle::Center),
         "flushright" => Some(ParagraphStyle::FlushRight),
         "flushleft" => Some(ParagraphStyle::FlushLeft),
-        "quote" | "quotation" => Some(ParagraphStyle::Quote),
+        "quote" | "quotation" | "verse" => Some(ParagraphStyle::Quote),
         _ => None,
     }
 }
@@ -4559,6 +5867,37 @@ mod tests {
         let parsed = parse(source);
         let pages = layout::layout(&parsed.blocks);
         (parsed, pages)
+    }
+
+    #[test]
+    fn siunitx_commands_are_inline_formulas_in_text_and_headings() {
+        let parsed = parse(
+            "\\usepackage[output-decimal-marker={,}]{siunitx}\n\\begin{document}\n\\section{Speed \\qty{3.5}{\\metre\\per\\second}}\nA \\num[group-digits=none]{12345} b.\n\\end{document}\n",
+        );
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let math_in = |inlines: &[Inline]| {
+            inlines
+                .iter()
+                .filter_map(|i| match i {
+                    Inline::Math { list, display: false, .. } => Some(list.atoms.len()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut heading = None;
+        let mut paragraph = None;
+        for block in &parsed.blocks {
+            match block {
+                Block::Heading { content, .. } => heading = Some(math_in(content)),
+                Block::Paragraph(content) => paragraph = Some(math_in(content)),
+                _ => {}
+            }
+        }
+        // 3 , 5 (the braced comma is one Ord group), thin space, m, s^-1
+        // with its inter-unit thin space.
+        assert_eq!(heading, Some(vec![7]));
+        // 1 2 3 4 5: ungrouped digits.
+        assert_eq!(paragraph, Some(vec![5]));
     }
 
     #[test]
@@ -5333,6 +6672,51 @@ mod tests {
         );
         assert_eq!(at("After.").x_pt, crate::layout::MARGIN_PT);
         assert_eq!(at("Plain.").x_pt, crate::layout::MARGIN_PT);
+    }
+
+    #[test]
+    fn numberwithin_and_subequations_number_like_amsmath() {
+        // pdflatex (display-placement fixtures 17 and 18): (1.1), (2.1), a
+        // subequations block (2.2a)-(2.2c) whose leading \label is 2.2, then
+        // (2.3).
+        let source = r"\numberwithin{equation}{section}\section{A}\begin{equation}a\label{a}\end{equation}\section{B}\begin{equation}b\end{equation}\begin{subequations}\label{sub}\begin{align}c\label{c}\\d\end{align}\begin{equation}e\label{e}\end{equation}\end{subequations}\begin{equation}f\label{f}\end{equation}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1.1)", "(2.1)", "(2.2a)", "(2.2b)", "(2.2c)", "(2.3)"]);
+        let labels: Vec<_> = parsed
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph(inlines) => inlines.as_slice(),
+                _ => &[],
+            })
+            .filter_map(|inline| match inline {
+                Inline::Label { key, value, .. } => Some((key.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            [("a", "1.1"), ("sub", "2.2"), ("c", "2.2a"), ("e", "2.2c"), ("f", "2.3")]
+        );
+    }
+
+    #[test]
+    fn numberwithin_reports_unknown_counters_and_formats() {
+        // `[\roman]` reaches the parser as a format name (the expansion pass
+        // renames it so the engine's `\roman` does not read `]`).
+        let (parsed, items) = items(r"\numberwithin{equation}{chapter}\numberwithin[\textbf]{figure}{section}\numberwithin[\roman]{equation}{section}\section{S}\begin{equation}x\end{equation}");
+        let messages: Vec<_> = parsed.diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert!(messages.iter().any(|m| m.contains("No counter 'chapter' defined")), "{messages:?}");
+        assert!(messages.iter().any(|m| m.contains("'\\textbf' is not \\arabic")), "{messages:?}");
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        let texts: Vec<_> = items.iter().map(|i| i.text.as_str()).collect();
+        assert!(texts.contains(&"(1.i)"), "{texts:?}");
     }
 
     #[test]

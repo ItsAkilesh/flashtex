@@ -44,6 +44,7 @@ const ITALIC: TextStyle = TextStyle {
     italic: true,
     family: flashtex_compiler::parser::TextFamily::Roman,
     size: None,
+    color: None,
 };
 
 #[test]

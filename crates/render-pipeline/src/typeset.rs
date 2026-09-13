@@ -335,6 +335,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 pub mod floatpage;
 pub mod footnotes;
 mod toc;
+pub mod multicol;
 
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
@@ -379,6 +380,8 @@ pub struct Context<'a> {
     /// `\footnotetext`): see [`footnotes`].
     notes: Vec<footnotes::NoteSrc>,
     note_anchors: Vec<(usize, usize)>,
+    /// `multicols` environments of the project (`multicol::attach`).
+    multicol: multicol::State,
 }
 
 impl<'a> Context<'a> {
@@ -412,6 +415,7 @@ impl<'a> Context<'a> {
             math_colors: Default::default(),
             notes: Vec::new(),
             note_anchors: Vec::new(),
+            multicol: multicol::State::default(),
         }
     }
 
@@ -5366,6 +5370,9 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
 /// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
 /// ([`floatpage`]); without floats the page builder is unchanged.
 pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
+    if let Some(outer) = multicol::outer_doc(ctx, doc, floats) {
+        return build_with_floats(ctx, &outer, cache, floats);
+    }
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
@@ -5894,7 +5901,9 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // (`\@colht`); `\@outputdblcol` ships the first column and the second
     // side by side, the second `\columnwidth + \columnsep` to the right.
     let columns = n_columns;
-    let (mut built, images, float_labels) = if floats.is_empty() {
+    let (mut built, images, float_labels) = if let Some(b) = multicol::paginate(ctx, doc, &mut blocks, &params) {
+        (b, Vec::new(), Vec::new())
+    } else if floats.is_empty() {
         let (short_pages, short) = top_title.as_ref().map_or((0, 0.0), |t| (columns, t.2));
         match &insertions {
             Some(ins) => {
@@ -6024,6 +6033,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
+    multicol::shift(ctx, &mut pages, &mut line_dx, &blocks);
     if let Some(g) = geo {
         page_chrome(ctx, g, &mut blocks, &mut pages, &mut line_dx, &events, &counters);
     }

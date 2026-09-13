@@ -24,6 +24,8 @@ pub(crate) const MATH_COMMANDS: &[&str] = &[
     "underline", "tag", "pmod", "text", "bigl", "bigr", "quad", "qquad", "mathbb", "hat", "bar",
     "vec", "tilde", "dot", "ddot", "check", "breve", "acute", "grave", "widehat", "widetilde",
     "overbrace", "underbrace", "overrightarrow", "overleftarrow", "overleftrightarrow",
+    "num", "qty", "unit", "si", "SI", "numlist", "numrange", "qtylist", "qtyrange", "SIlist",
+    "SIrange", "ang", "sisetup",
     "underrightarrow", "underleftarrow", "underleftrightarrow", "Bbb", "bold", "dashrightarrow",
     "dasharrow", "dashleftarrow",
 ];
@@ -63,7 +65,7 @@ const KNOWN_UNIMPLEMENTED_COMMANDS: &[&str] = &[
     "eqref", "autoref", "cref", "Cref", "nameref", "url", "href", "hyperref", "hyperlink",
     "hypertarget", "citep", "citet", "citeauthor", "addbibresource", "printbibliography",
     // Colour and graphics packages.
-    "color", "textcolor", "colorbox", "fcolorbox", "definecolor", "pagecolor", "tikz",
+    "tikz",
     "usetikzlibrary", "draw", "node", "fill", "path", "scalebox", "resizebox", "rotatebox",
     "subcaption", "captionof", "listoflistings", "lstinline", "mintinline",
     // amsmath and amssymb.

@@ -254,6 +254,15 @@ pub(crate) fn shaped_width(
     span: Span,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (f64, Span) {
+    // Symbol has no lunate epsilon (`\epsilon`, U+03F5): it is drawn with the
+    // open form, as `export::map_char` encodes it (same advance).
+    let substituted;
+    let text = if font == Font::Symbol && text.contains('\u{03F5}') {
+        substituted = text.replace('\u{03F5}', "\u{03B5}");
+        substituted.as_str()
+    } else {
+        text
+    };
     match shape_text(font, text) {
         Ok(shaped) => {
             for missing in &shaped.missing {
@@ -1381,7 +1390,7 @@ impl LayoutCursor {
                 self.justify = true;
                 emit(self, inlines, body_size, Font::TimesRoman);
             }
-            Block::Styled { style, content } => {
+            Block::Styled { style, content, .. } => {
                 self.style = Some(*style);
                 self.justify = *style == ParagraphStyle::Quote;
                 // `left_edge()` depends on `self.style` (the `quote` indent),
@@ -1428,7 +1437,7 @@ impl LayoutCursor {
                     }
                 };
                 self.justify = true;
-                if let Some((text, span)) = label {
+                if let Some((text, span)) = label.as_ref().filter(|(text, _)| !text.is_empty()) {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
                 }
                 // Same reasoning as `Block::Styled`: `left_edge()` now
@@ -2090,6 +2099,7 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
                     visit_inline_references(list, visitor);
                 }
             }
+            Inline::Transform(b) => visit_inline_references(&b.content, visitor),
             _ => {}
         }
     }
@@ -2141,6 +2151,7 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 number_span,
                 span,
                 space_before,
+                ..
             } => {
                 let b = if *display {
                     math::layout_display(list, size, &mut c.diagnostics)
@@ -2221,6 +2232,29 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 span,
                 space_before,
             } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
+            // The Core 14 layout has no box model: the content is set inline.
+            Inline::ColorBox(b) => emit(c, &b.content, size, font),
+            // This Core 14 layout reads no image files and has no transformed
+            // boxes; the rendering pipeline sets both (`crate::graphics`).
+            Inline::Graphic(g) => c.diagnostics.push(
+                Diagnostic::warning(
+                    "\\includegraphics: this layout does not load or draw images",
+                    Some(g.span),
+                    Some("left no space for the image".into()),
+                )
+                .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+            ),
+            Inline::Transform(b) => {
+                c.diagnostics.push(
+                    Diagnostic::warning(
+                        "graphics transforms are not applied by this layout",
+                        Some(b.span),
+                        Some("set the content untransformed".into()),
+                    )
+                    .with_code(crate::diagnostics::DiagnosticCode::UnsupportedFeature),
+                );
+                emit(c, &b.content, size, font);
+            }
             Inline::Logo {
                 logo,
                 span,

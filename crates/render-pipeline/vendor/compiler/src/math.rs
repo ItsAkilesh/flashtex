@@ -536,6 +536,17 @@ impl MathParser<'_> {
                 TokenKind::Command(ref switch) if switch == "limits" || switch == "nolimits" => {
                     self.i += 1;
                 }
+                // xcolor in math: `\color[model]{c}` recolours the rest of the
+                // group, `\textcolor[model]{c}{body}` its body. The atoms are
+                // unchanged; the text parser resolves the colours into
+                // `Inline::Math::color_ranges` from the same tokens.
+                TokenKind::Command(ref paint) if paint == "color" || paint == "textcolor" => {
+                    self.i += 1;
+                    self.skip_color_arguments();
+                    if paint == "textcolor" {
+                        atoms.extend(self.required_group("textcolor", token.span).atoms);
+                    }
+                }
                 TokenKind::Command(ref infix) if infix == "choose" || infix == "over" => {
                     // TeX infix forms: everything before in this group is the
                     // top, everything after (to the group's end) the bottom.
@@ -581,6 +592,35 @@ impl MathParser<'_> {
                         Some(token.span),
                         Some("ignored the stray alignment tab and continued".into()),
                     ));
+                }
+                // latex.ltx 15683-15697: a math `'` is `^\bgroup\prim@s`, which
+                // collects every following `'` as another `\prime` and a
+                // directly following `^{...}` into the same superscript.
+                TokenKind::Word(ref word) if word == "'" => {
+                    let mut script = MathList { atoms: Vec::new() };
+                    while let Some(t) = self.tokens.get(self.i) {
+                        if !matches!(&t.kind, TokenKind::Word(w) if w == "'") {
+                            break;
+                        }
+                        script.atoms.push(symbol("\u{2032}".into(), t.span));
+                        self.i += 1;
+                    }
+                    if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Superscript)) {
+                        let marker = self.tokens[self.i].span;
+                        self.i += 1;
+                        script.atoms.extend(self.script_argument(marker).atoms);
+                    }
+                    if atoms.is_empty() {
+                        atoms.push(symbol(String::new(), token.span));
+                    }
+                    let atom = atoms.last_mut().expect("an atom to carry the primes");
+                    if atom.superscript.replace(script).is_some() {
+                        self.diagnostics.push(Diagnostic::error(
+                            "duplicate script on a math atom",
+                            Some(token.span),
+                            Some("used the last script and continued".into()),
+                        ));
+                    }
                 }
                 TokenKind::Superscript | TokenKind::Subscript => {
                     self.i += 1;
@@ -918,7 +958,19 @@ impl MathParser<'_> {
                 // as Unicode mathematical alphanumerics in one atom, like
                 // `\mathbb`. Any other argument keeps the surrounding math
                 // letters.
-                if matches!(&*name, "mathit" | "mathsf" | "mathtt") && self.plain_text_argument() {
+                if name == "mathrm" && self.plain_text_argument() {
+                    // fontmath.ltx: `\mathrm` is the `operators` font (OT1
+                    // cmr/m/n), the upright roman `Text` sets, so `\mathrm{K}`
+                    // is upright; math ignores the spaces in the argument.
+                    let (text, argument_span) = self.required_text_group(&name, span);
+                    let span = span.merge(argument_span);
+                    let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                    if letters.is_empty() {
+                        space(0.0, span)
+                    } else {
+                        text_atom(letters, span)
+                    }
+                } else if matches!(&*name, "mathit" | "mathsf" | "mathtt") && self.plain_text_argument() {
                     let (text, argument_span) = self.required_text_group(&name, span);
                     let span = span.merge(argument_span);
                     let glyphs: String = text
@@ -1145,6 +1197,14 @@ impl MathParser<'_> {
                 self.pending.push(text_atom(")".into(), span));
                 space(QUAD_EM, span)
             }
+            // siunitx inside a formula (`crate::siunitx`).
+            "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
+            | "qtyrange" | "SIlist" | "SIrange" | "ang" => self.siunitx(&name, span),
+            "sisetup" => {
+                let (keys, argument_span) = self.siunitx_raw_group().unwrap_or((String::new(), span));
+                crate::siunitx::sisetup(&keys, span.merge(argument_span), self.diagnostics);
+                space(0.0, span)
+            }
             "text" => {
                 let (text, argument_span) = self.required_text_group("text", span);
                 MathAtom {
@@ -1277,6 +1337,123 @@ impl MathParser<'_> {
                 }
             },
         }
+    }
+
+    /// A siunitx command in math (`crate::siunitx::typeset`): the first atom
+    /// is returned and the rest queued, so the output joins the formula.
+    fn siunitx(&mut self, name: &str, span: Span) -> MathAtom {
+        let Some((required, pre_unit_bracket)) = crate::siunitx::arity(name) else {
+            return space(0.0, span);
+        };
+        let options = self.siunitx_raw_bracket();
+        let mut full = options.as_ref().map_or(span, |(_, s)| span.merge(*s));
+        let mut pre_unit = None;
+        let mut args = Vec::with_capacity(required);
+        for index in 0..required {
+            if pre_unit_bracket && index == 1 {
+                if let Some((raw, s)) = self.siunitx_raw_bracket() {
+                    full = full.merge(s);
+                    pre_unit = Some(raw);
+                }
+            }
+            match self.siunitx_raw_group() {
+                Some((raw, s)) => {
+                    full = full.merge(s);
+                    args.push(raw);
+                }
+                None => {
+                    if !self.argument_cut_off() {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!("\\{name} requires an argument"),
+                            Some(span),
+                            Some("used an empty argument and continued".into()),
+                        ));
+                    }
+                    args.push(String::new());
+                }
+            }
+        }
+        let mut atoms = crate::siunitx::typeset(
+            name,
+            options.as_ref().map(|(o, _)| o.as_str()),
+            pre_unit.as_deref(),
+            &args,
+            true,
+            full,
+            self.diagnostics,
+        )
+        .into_iter();
+        match atoms.next() {
+            Some(first) => {
+                self.pending.extend(atoms);
+                first
+            }
+            None => space(0.0, full),
+        }
+    }
+
+    /// A `[...]` siunitx argument as raw source, braces kept; nothing is
+    /// consumed when no bracket follows.
+    fn siunitx_raw_bracket(&mut self) -> Option<(String, Span)> {
+        let tokens = self.tokens;
+        let mut index = self.i;
+        while matches!(tokens.get(index).map(|t| &t.kind), Some(TokenKind::Space)) {
+            index += 1;
+        }
+        if !matches!(tokens.get(index).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[") {
+            return None;
+        }
+        let start = tokens[index].span;
+        let mut depth = 0usize;
+        for (offset, token) in tokens[index + 1..].iter().enumerate() {
+            match &token.kind {
+                TokenKind::Word(w) if w == "]" && depth == 0 => {
+                    let inner = &tokens[index + 1..index + 1 + offset];
+                    self.i = index + offset + 2;
+                    return Some((crate::siunitx::raw_text(inner), start.merge(token.span)));
+                }
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// A required siunitx argument as raw source: a braced group (outer
+    /// braces removed) or a single token.
+    fn siunitx_raw_group(&mut self) -> Option<(String, Span)> {
+        let tokens = self.tokens;
+        while matches!(tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Space)) {
+            self.i += 1;
+        }
+        let open = tokens.get(self.i)?;
+        match &open.kind {
+            TokenKind::LBrace => {}
+            TokenKind::Word(_) | TokenKind::Command(_) => {
+                self.i += 1;
+                return Some((crate::siunitx::raw_text([open]), open.span));
+            }
+            _ => return None,
+        }
+        let mut depth = 0usize;
+        for (offset, token) in tokens[self.i..].iter().enumerate() {
+            match &token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let inner = &tokens[self.i + 1..self.i + offset];
+                        self.i += offset + 1;
+                        return Some((crate::siunitx::raw_text(inner), open.span.merge(token.span)));
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.unclosed.get_or_insert(open.span);
+        self.i = tokens.len();
+        None
     }
 
     /// Returns the first atom of `body` and queues the rest, so the group
@@ -1872,6 +2049,43 @@ impl MathParser<'_> {
     /// `\vec\nabla`), skipping leading spaces. `self.atom()` is exactly the
     /// "parse one token into one atom" step the top-level list and
     /// `script_argument` already use for this same rule (`x^ab` = `x^a b`).
+    /// Skips xcolor's `[model]` and one `{colour}` argument.
+    fn skip_color_arguments(&mut self) {
+        let space = |p: &Self| matches!(p.tokens.get(p.i).map(|t| &t.kind), Some(TokenKind::Space));
+        while space(self) {
+            self.i += 1;
+        }
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::Word(w)) if w.starts_with('[')) {
+            while self.i < self.tokens.len() {
+                let closes = matches!(&self.tokens[self.i].kind, TokenKind::Word(w) if w.contains(']'));
+                self.i += 1;
+                if closes {
+                    break;
+                }
+            }
+            while space(self) {
+                self.i += 1;
+            }
+        }
+        if matches!(self.tokens.get(self.i).map(|t| &t.kind), Some(TokenKind::LBrace)) {
+            let mut depth = 0usize;
+            while self.i < self.tokens.len() {
+                let kind = self.tokens[self.i].kind.clone();
+                self.i += 1;
+                match kind {
+                    TokenKind::LBrace => depth += 1,
+                    TokenKind::RBrace => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn required_group(&mut self, command: &str, span: Span) -> MathList {
         while matches!(
             self.tokens.get(self.i).map(|t| &t.kind),
@@ -2205,10 +2419,12 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
     ("phi", "φ"),
     ("omega", "ω"),
     // Handwritten-homework coverage (Adobe Symbol encodes every glyph below).
-    // Symbol has only the open-form epsilon (0x65), no lunate U+03F5, so
-    // `\epsilon` shares `\varepsilon`'s glyph; the README states this.
-    ("epsilon", "ε"),
-    ("varepsilon", "ε"),
+    // fontmath.ltx: `\epsilon` is cmmi "0F (the lunate ϵ, U+03F5) and
+    // `\varepsilon` cmmi "22 (the open ε, U+03B5); TFM-driven layouts box
+    // them from those slots. The base-14 Symbol export has only the open
+    // form (0x65) and draws both with it (`export.rs`).
+    ("epsilon", "\u{03F5}"),
+    ("varepsilon", "\u{03B5}"),
     ("zeta", "ζ"),
     ("eta", "η"),
     ("vartheta", "ϑ"),
@@ -3613,6 +3829,38 @@ fn shift(span: Span, delta: isize) -> Span {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+
+    #[test]
+    fn primes_mathrm_and_epsilons_follow_latex() {
+        let parse = |src: &str| {
+            let mut diagnostics = Vec::new();
+            let list = parse_tokens(&crate::lexer::tokenize(src), &mut diagnostics);
+            assert!(diagnostics.is_empty(), "{src}: {diagnostics:?}");
+            list
+        };
+        let symbols = |list: &MathList| -> Vec<String> {
+            list.atoms
+                .iter()
+                .map(|a| match &a.nucleus {
+                    Nucleus::Symbol(s) => s.clone(),
+                    Nucleus::Text(t) => format!("text:{t}"),
+                    other => format!("{other:?}"),
+                })
+                .collect()
+        };
+        // latex.ltx `\active@math@prime`: `f''` is `f^{\prime\prime}` and a
+        // following `^` joins the same superscript.
+        let list = parse(r"f''(x) g'^2");
+        assert_eq!(symbols(&list), ["f", "(", "x", ")", "g"]);
+        assert_eq!(symbols(list.atoms[0].superscript.as_ref().unwrap()), ["\u{2032}", "\u{2032}"]);
+        assert_eq!(symbols(list.atoms[4].superscript.as_ref().unwrap()), ["\u{2032}", "2"]);
+        // `\mathrm` sets its letters upright (fontmath.ltx `operators`).
+        let list = parse(r"\mathrm{K}^{-1} \mathrm{k g}");
+        assert_eq!(symbols(&list), ["text:K", "text:kg"]);
+        assert!(list.atoms[0].superscript.is_some());
+        // cmmi "0F is `\epsilon` (lunate), "22 `\varepsilon`.
+        assert_eq!(symbols(&parse(r"\epsilon\varepsilon")), ["\u{03F5}", "\u{03B5}"]);
+    }
 
     #[test]
     fn grid_position_argument_is_not_a_cell() {

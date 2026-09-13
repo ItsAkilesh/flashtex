@@ -126,10 +126,11 @@ fn figure_caption_label_and_lists_render() {
 }
 
 #[test]
-fn includegraphics_is_explicitly_unsupported() {
+fn includegraphics_is_reported_by_the_core14_layout() {
+    // The parser records an image node; this layout never loads the file.
     let result = compile_full(r"\includegraphics{plot.png}", LayoutConstraints::default());
     assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.message.contains("includegraphics") && diagnostic.message.contains("unsupported")
+        diagnostic.message.contains("includegraphics") && diagnostic.message.contains("does not load or draw images")
     }));
 }
 
