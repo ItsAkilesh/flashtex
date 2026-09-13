@@ -13,7 +13,12 @@
 | Daniel `mac-m5pro-dq222` and Kabir `mac-m5pro-kabir` | Part B |
 | Jaysen `mac-m1max-a` | also Part B for its non-Commander clones |
 
-Nothing here was run on the real repo. The steps were exercised on `GoKubar/flashtex-beads-trial` (2026-09-13).
+The steps were exercised on `GoKubar/flashtex-beads-trial` (2026-09-13).
+
+**Real ledger: created 2026-09-13 ~08:30Z** from mac-m5pro-kabir (owner-authorized one-time init):
+- config PR #101, `refs/dolt/data` pushed, 18 seed beads
+- sync loops on mac-m5pro-kabir (launchd) and the NixOS PC (systemd user)
+- **Part A steps 1–5 are therefore done; other machines start at Part B.**
 
 > **Status: cleared on the trial repo** by soak run 4 (2026-09-13, PASS; beads.md §10). The owner authorized initial creation of the real ledger from mac-m5pro-kabir via a branch/PR plus `refs/dolt/data` (never a direct main write). The Commander still announces cutover; until then issue #2 stays the protocol.
 
@@ -26,11 +31,11 @@ Nothing here was run on the real repo. The steps were exercised on `GoKubar/flas
    scripts/beads/bd version && ~/.local/share/flashtex-beads/bin/dolt version
    scripts/beads/bd metrics | head -1        # must print: Anonymous usage metrics: OFF
    ```
-2. **Initialise the ledger** from a dedicated clean worktree on a branch.
+2. **Initialise the ledger** from a dedicated **standalone clone** on a branch. Never use a worktree of an existing checkout: bd would write `.beads/` into the main checkout.
    - `bd init` commits `.beads/` files to the *current branch* itself ("✓ Committed beads files to git"), so never run it on main.
    ```bash
-   git fetch origin && git worktree add -b commander/beads-init ../ft-beads-init origin/main
-   cd ../ft-beads-init
+   git clone --depth 1 --branch main git@github.com:flash-tex/flashtex.git ~/.local/share/flashtex-beads/ledger
+   cd ~/.local/share/flashtex-beads/ledger && git checkout -b <agent>/beads-init
    scripts/beads/bd init --prefix ft --skip-agents --skip-hooks --non-interactive
    git config beads.role maintainer && chmod 700 .beads
    scripts/beads/bd dolt remote list          # expect origin git+ssh://git@github.com/flash-tex/flashtex.git
@@ -102,16 +107,26 @@ Nothing here was run on the real repo. The steps were exercised on `GoKubar/flas
 
 ## Part B: every other machine (Daniel, Jaysen non-Commander clones, Kabir)
 
+**The ledger lives in ONE standalone clone per machine, never in your main checkout.** bd resolves any git worktree to its main clone's root. Bootstrapping or initialising inside a normal checkout (or one of its worktrees) writes `.beads/` into that checkout (VERIFIED 2026-09-13). Agents route to the ledger clone through `BEADS_DIR`. The wrapper reads its default from `~/.config/flashtex/beads-dir`.
+
 ```bash
-git fetch origin && git checkout origin/main -- scripts/beads   # or use a main worktree
-scripts/beads/install-pinned.sh
+P=~/.local/share/flashtex-beads                                   # layout used on mac-m5pro-kabir and the NixOS PC
+scripts/beads/install-pinned.sh                                   # from a checkout of the Beads tooling (PR #84 or main once merged)
+mkdir -p $P/tools && git archive <ref-with-scripts/beads> scripts/beads | tar -x -C $P/tools
 echo <machine-alias> > ~/.config/flashtex/machine
-cd <main clone of flash-tex/flashtex>                           # ONE clone per machine; worktrees share its DB
-scripts/beads/bd bootstrap --yes                                # "Synced database from git+ssh://…"
-git config beads.role maintainer && chmod 700 .beads
+git clone --depth 1 --branch main git@github.com:flash-tex/flashtex.git $P/ledger   # standalone, NOT a worktree
+cd $P/ledger && git config beads.role maintainer
+$P/tools/scripts/beads/bd bootstrap --yes                         # "Synced database from git+ssh://git@github.com/flash-tex/flashtex.git"
+chmod 700 .beads && echo $P/ledger/.beads > ~/.config/flashtex/beads-dir
+# sync loop, pointed at the ledger clone:
+#   macOS: render scripts/beads/service/dev.flashtex.beads-sync.plist with the tools path + ledger path, launchctl bootstrap gui/$(id -u) <plist>
+#   Linux: render flashtex-beads-sync.service the same way into ~/.config/systemd/user/, systemctl --user enable --now flashtex-beads-sync
+$P/tools/scripts/beads/ledger-status                              # must print FRESH
 ```
 
-Then install the machine sync loop (Part A step 7) against that clone and confirm `scripts/beads/ledger-status` prints `FRESH`.
+- **Agents** run `$P/tools/scripts/beads/{bd,claim,inbox,ledger-status}` from any directory. `BEADS_DIR` comes from `~/.config/flashtex/beads-dir`.
+- **`bd bootstrap` leaves `.beads/` untracked** in the ledger clone until the `.beads` config PR (#101) is on main. That is expected; do not commit it from the ledger clone.
+- **Linux without lingering** (`loginctl show-user $USER | grep Linger` shows `Linger=no`): the user unit stops when the last session ends. The owner enables lingering, or uses the home-manager/system service.
 
 **Verification. Each item must pass before the machine stops using issue comments:**
 1. `scripts/beads/bd version` shows `bd version 1.2.2 (6c124203e…`, and `dolt version` shows `2.3.3`. Post both, plus the tarball sha256 lines, in `docs/resources/machines/<alias>.md`.
