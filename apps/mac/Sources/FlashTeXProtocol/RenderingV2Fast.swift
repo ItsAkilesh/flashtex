@@ -326,12 +326,17 @@ public struct RenderingV2Fast {
         var x: Int64?, top: Int64?, width: Int64?, height: Int64?
         var sources: [RenderingV2.SourceRange]?, synthetic: String?
         var transform: [Double]?, image: RenderingV2.ImageResource?
+        var fillRule: String?, stroke: RenderingV2.Stroke?, commands: [RenderingV2.PathCommand]?, clips: [RenderingV2.ClipPath]?
         let start = i
         try object { key, p in
             switch key {
             case "kind": kind = try p.string()
             case "transform": transform = try p.array { try $0.double() }
             case "image": image = try p.imageResource()
+            case "fill_rule": fillRule = try p.string()
+            case "stroke": stroke = try p.stroke()
+            case "path": commands = try p.commands()
+            case "clips": clips = try p.array { try $0.clip() }
             case "font_id": fontId = try p.string()
             case "font_size": fontSize = try p.int64()
             case "text": text = try p.string()
@@ -358,6 +363,17 @@ public struct RenderingV2Fast {
         case "image":
             guard let x, let top, let width, let height, let transform, let image else { throw Error(offset: start, message: "missing image field") }
             return .image(RenderingV2.Image(x: x, top: top, width: width, height: height, transform: transform, image: image, sources: sources, syntheticReason: synthetic))
+        case "path_fill", "path_stroke":
+            guard let commands, let paint else { throw Error(offset: start, message: "missing \(kind) field") }
+            let op: RenderingV2.Path.Op
+            if kind == "path_fill" {
+                guard let rule = RenderingV2.FillRule(rawValue: fillRule ?? "nonzero") else { throw Error(offset: start, message: "unknown fill_rule") }
+                op = .fill(rule)
+            } else {
+                guard let stroke else { throw Error(offset: start, message: "path_stroke without stroke") }
+                op = .stroke(stroke)
+            }
+            return .path(RenderingV2.Path(op: op, path: commands, clips: clips ?? [], paint: paint, sources: sources, syntheticReason: synthetic))
         default:
             // Fall back so the slow path reports it after the header checks
             // (a runtime-v1 compile_result must be refused for its version, not its items).
@@ -388,6 +404,78 @@ public struct RenderingV2Fast {
         guard let id, let sha, let length, let format, let path else { throw err("missing image resource field") }
         return RenderingV2.ImageResource(imageId: id, sha256: sha, byteLength: length, format: format, path: path,
                                          pixelWidth: pw, pixelHeight: ph, pdfPage: page, pdfBox: box, pdfRotate: rotate)
+    }
+
+    /// `[["m",x,y],["l",x,y],["c",x1,y1,x2,y2,x,y],["z"]]` (path-v0).
+    private mutating func commands() throws -> [RenderingV2.PathCommand] {
+        try array { p in
+            p.ws(); try p.expect(0x5B) // [
+            let op = try p.string()
+            var n: [Int64] = []
+            while true {
+                p.ws()
+                guard p.i < p.b.count else { throw p.err("unterminated path command") }
+                if p.b[p.i] == 0x5D { p.i += 1; break }
+                try p.expect(0x2C)
+                n.append(try p.int64())
+            }
+            switch (op, n.count) {
+            case ("m", 2): return .move(x: n[0], y: n[1])
+            case ("l", 2): return .line(x: n[0], y: n[1])
+            case ("c", 6): return .cubic(x1: n[0], y1: n[1], x2: n[2], y2: n[3], x: n[4], y: n[5])
+            case ("z", 0): return .close
+            default: throw p.err("path command '\(op)' with \(n.count) operands")
+            }
+        }
+    }
+
+    private mutating func clip() throws -> RenderingV2.ClipPath {
+        var commands: [RenderingV2.PathCommand]?, rule: String?, kind: String?
+        try object { key, p in
+            switch key {
+            case "kind": kind = try p.string()
+            case "path": commands = try p.commands()
+            case "fill_rule": rule = try p.string()
+            default: try p.skip(depth: 5)
+            }
+        }
+        guard kind == nil || kind == "path" else { throw err("clip kind '\(kind ?? "")' is not path") }
+        guard let commands, let fillRule = RenderingV2.FillRule(rawValue: rule ?? "nonzero") else { throw err("malformed clip") }
+        return RenderingV2.ClipPath(path: commands, fillRule: fillRule)
+    }
+
+    private mutating func stroke() throws -> RenderingV2.Stroke {
+        var width: Int64?, cap: String?, join: String?, miter: Double?
+        var dashArray: [Int64]?, dashPhase: Int64?, dashPresent = false
+        try object { key, p in
+            switch key {
+            case "width": width = try p.int64()
+            case "cap": cap = try p.string()
+            case "join": join = try p.string()
+            case "miter_limit": miter = try p.double()
+            case "dash":
+                p.ws()
+                if try p.literalNull() { break }
+                dashPresent = true
+                try p.object { k, q in
+                    switch k {
+                    case "array": dashArray = try q.array { try $0.int64() }
+                    case "phase": dashPhase = try q.int64()
+                    default: try q.skip(depth: 5)
+                    }
+                }
+            default: try p.skip(depth: 5)
+            }
+        }
+        guard let width, let cap = RenderingV2.LineCap(rawValue: cap ?? ""), let join = RenderingV2.LineJoin(rawValue: join ?? ""), let miter else {
+            throw err("malformed stroke")
+        }
+        var dash: RenderingV2.Dash?
+        if dashPresent {
+            guard let dashArray, let dashPhase else { throw err("malformed dash") }
+            dash = RenderingV2.Dash(array: dashArray, phase: dashPhase)
+        }
+        return RenderingV2.Stroke(width: width, cap: cap, join: join, miterLimit: miter, dash: dash)
     }
 
     private mutating func optionalInt() throws -> Int? {

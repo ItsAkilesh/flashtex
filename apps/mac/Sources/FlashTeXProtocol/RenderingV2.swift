@@ -29,6 +29,8 @@ import Foundation
 ///   schema says `additionalProperties: false`. Unknown `kind` values, unknown
 ///   `required_features`, unknown protocol versions and message types are
 ///   rejected.
+/// - `path_fill` / `path_stroke` items (proposal `path-v0`, TikZ) are accepted
+///   with `clips`; see `pathFeatures`.
 /// - The schema does not require clusters to partition the run text or source
 ///   paths to name a declared document; this validator requires both (as
 ///   crates/rendering-core does) because hit-testing depends on them. It also
@@ -70,12 +72,25 @@ public enum RenderingV2 {
         public static let postscriptNameBytes = 1...256
         public static let fontByteLength: ClosedRange<Int64> = 1...67_108_864
         public static let documentByteLength: ClosedRange<Int64> = 0...8_388_608
+        public static let pathCommands = 1...65536
+        public static let clips = 0...16
+        public static let dashEntries = 1...32
     }
     /// Features this consumer understands (schema `feature` enum, plus
     /// `image` from the negotiated `display-list-v2-images` proposal —
     /// protocol/proposals/display-list-v2-image.md; a producer only emits it
     /// when the request listed `imagesCapability`).
-    public static let knownFeatures: Set<String> = ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext", "image"]
+    public static let knownFeatures: Set<String> = ["glyph_run", "rule", "static-truetype", "rgba-srgb", "cluster-actualtext", "image", "path_fill", "path_stroke", "clip"]
+    /// Vector path items (proposal `path-v0`, crates/render-pipeline `display.rs`
+    /// `PathItem`; TikZ pictures). Emitted whenever `display-list-v2` is
+    /// negotiated — there is no separate capability — as `kind: "path_fill"`
+    /// (with `fill_rule`) or `kind: "path_stroke"` (with `stroke`); each may
+    /// carry `clips` (`kind: "path"` entries with their own `fill_rule`), which
+    /// adds the `clip` feature. Commands are `["m",x,y]`, `["l",x,y]`,
+    /// `["c",x1,y1,x2,y2,x,y]`, `["z"]` in page ticks (top-left, y down); no
+    /// transform is on the wire. Bounds: `Bounds.pathCommands` per path or
+    /// clip, `Bounds.clips` per item, `Bounds.dashEntries` per stroke.
+    public static let pathFeatures: Set<String> = ["path_fill", "path_stroke", "clip"]
     /// Layout capability that lets the `display_list` line carry `image`
     /// items (accepted only alongside `display-list-v2`).
     public static let imagesCapability = "display-list-v2-images"
@@ -223,12 +238,143 @@ public enum RenderingV2 {
         public static func upright(x: Double, top: Double, width: Double, height: Double) -> [Double] { [width, 0, 0, -height, x, top + height] }
     }
 
+
+    /// One vector path command in page ticks (`path-v0`): `m`/`l` take an
+    /// end point, `c` two control points then the end point, `z` closes.
+    public enum PathCommand: Codable, Hashable {
+        case move(x: Int64, y: Int64)
+        case line(x: Int64, y: Int64)
+        case cubic(x1: Int64, y1: Int64, x2: Int64, y2: Int64, x: Int64, y: Int64)
+        case close
+
+        public init(from decoder: Decoder) throws {
+            var c = try decoder.unkeyedContainer()
+            let op = try c.decode(String.self)
+            func n() throws -> Int64 { try c.decode(Int64.self) }
+            switch op {
+            case "m": self = .move(x: try n(), y: try n())
+            case "l": self = .line(x: try n(), y: try n())
+            case "c": self = .cubic(x1: try n(), y1: try n(), x2: try n(), y2: try n(), x: try n(), y: try n())
+            case "z": self = .close
+            default: throw ValidationError(code: "invalid_display_list", message: "path command '\(op)' is not one of m, l, c, z")
+            }
+            guard c.isAtEnd else { throw ValidationError(code: "invalid_display_list", message: "path command '\(op)' carries extra operands") }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.unkeyedContainer()
+            switch self {
+            case .move(let x, let y): try c.encode("m"); try c.encode(x); try c.encode(y)
+            case .line(let x, let y): try c.encode("l"); try c.encode(x); try c.encode(y)
+            case .cubic(let x1, let y1, let x2, let y2, let x, let y): try c.encode("c"); for v in [x1, y1, x2, y2, x, y] { try c.encode(v) }
+            case .close: try c.encode("z")
+            }
+        }
+
+        /// Every coordinate the command carries (none for `z`).
+        public var coordinates: [Int64] {
+            switch self {
+            case .move(let x, let y), .line(let x, let y): return [x, y]
+            case .cubic(let x1, let y1, let x2, let y2, let x, let y): return [x1, y1, x2, y2, x, y]
+            case .close: return []
+            }
+        }
+    }
+
+    /// `nonzero` or `evenodd`.
+    public enum FillRule: String, Codable, Hashable { case nonzero, evenodd }
+    public enum LineCap: String, Codable, Hashable { case butt, round, square }
+    public enum LineJoin: String, Codable, Hashable { case miter, round, bevel }
+
+    public struct Dash: Codable, Hashable {
+        /// Alternating on/off lengths in ticks (never empty on the wire).
+        public var array: [Int64]
+        public var phase: Int64
+        public init(array: [Int64], phase: Int64) { self.array = array; self.phase = phase }
+    }
+
+    public struct Stroke: Codable, Hashable {
+        public var width: Int64
+        public var cap: LineCap
+        public var join: LineJoin
+        public var miterLimit: Double
+        public var dash: Dash?
+        enum CodingKeys: String, CodingKey { case width, cap, join, miterLimit = "miter_limit", dash }
+        public init(width: Int64, cap: LineCap = .butt, join: LineJoin = .miter, miterLimit: Double = 10, dash: Dash? = nil) {
+            self.width = width; self.cap = cap; self.join = join; self.miterLimit = miterLimit; self.dash = dash
+        }
+    }
+
+    /// One clip in page space (`kind: "path"`); an item paints only inside every clip.
+    public struct ClipPath: Codable, Hashable {
+        public var path: [PathCommand]
+        public var fillRule: FillRule
+        enum CodingKeys: String, CodingKey { case path, fillRule = "fill_rule" }
+        public init(path: [PathCommand], fillRule: FillRule = .nonzero) { self.path = path; self.fillRule = fillRule }
+    }
+
+    /// A filled (`kind: "path_fill"`) or stroked (`kind: "path_stroke"`)
+    /// vector path (TikZ). Coordinates are absolute page ticks.
+    public struct Path: Codable, Equatable {
+        public enum Op: Hashable {
+            case fill(FillRule)
+            case stroke(Stroke)
+        }
+        public var op: Op
+        public var path: [PathCommand]
+        public var clips: [ClipPath]
+        public var paint: Paint
+        public var sources: [SourceRange]?
+        public var syntheticReason: String?
+        public var isFill: Bool { if case .fill = op { return true } else { return false } }
+        public var stroke: Stroke? { if case .stroke(let s) = op { return s } else { return nil } }
+        public var fillRule: FillRule { if case .fill(let r) = op { return r } else { return .nonzero } }
+        public var kind: String { isFill ? "path_fill" : "path_stroke" }
+
+        enum CodingKeys: String, CodingKey { case kind, fillRule = "fill_rule", stroke, path, clips, paint, sources, syntheticReason = "synthetic_reason" }
+
+        public init(op: Op, path: [PathCommand], clips: [ClipPath] = [], paint: Paint, sources: [SourceRange]?, syntheticReason: String? = nil) {
+            self.op = op; self.path = path; self.clips = clips; self.paint = paint; self.sources = sources; self.syntheticReason = syntheticReason
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let kind = try c.decode(String.self, forKey: .kind)
+            switch kind {
+            case "path_fill": op = .fill(try c.decodeIfPresent(FillRule.self, forKey: .fillRule) ?? .nonzero)
+            case "path_stroke": op = .stroke(try c.decode(Stroke.self, forKey: .stroke))
+            default: throw ValidationError(code: "unknown_item_kind", message: "display list item kind '\(kind)' is not a path")
+            }
+            path = try c.decode([PathCommand].self, forKey: .path)
+            clips = try c.decodeIfPresent([ClipPath].self, forKey: .clips) ?? []
+            paint = try c.decode(Paint.self, forKey: .paint)
+            sources = try c.decodeIfPresent([SourceRange].self, forKey: .sources)
+            syntheticReason = try c.decodeIfPresent(String.self, forKey: .syntheticReason)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(kind, forKey: .kind)
+            switch op {
+            case .fill(let rule): try c.encode(rule, forKey: .fillRule)
+            case .stroke(let s): try c.encode(s, forKey: .stroke)
+            }
+            try c.encode(path, forKey: .path)
+            if !clips.isEmpty { try c.encode(clips, forKey: .clips) }
+            try c.encode(paint, forKey: .paint)
+            try c.encodeIfPresent(sources, forKey: .sources)
+            try c.encodeIfPresent(syntheticReason, forKey: .syntheticReason)
+        }
+    }
+
     /// Paint-ordered page item. Decoding an unknown `kind` throws
     /// `ValidationError.unknownItemKind`: nothing is skipped silently.
     public enum Item: Codable, Equatable {
         case glyphRun(GlyphRun)
         case rule(Rule)
         case image(Image)
+        /// `path_fill` and `path_stroke` alike (`Path.op` tells them apart).
+        case path(Path)
 
         private enum KindKey: String, CodingKey { case kind }
 
@@ -238,6 +384,7 @@ public enum RenderingV2 {
             case "glyph_run": self = .glyphRun(try GlyphRun(from: decoder))
             case "rule": self = .rule(try Rule(from: decoder))
             case "image": self = .image(try Image(from: decoder))
+            case "path_fill", "path_stroke": self = .path(try Path(from: decoder))
             default: throw ValidationError(code: "unknown_item_kind", message: "display list item kind '\(kind)' is not supported by this consumer")
             }
         }
@@ -248,6 +395,7 @@ public enum RenderingV2 {
             case .glyphRun(let r): try kind.encode("glyph_run", forKey: .kind); try r.encode(to: encoder)
             case .rule(let r): try kind.encode("rule", forKey: .kind); try r.encode(to: encoder)
             case .image(let i): try kind.encode("image", forKey: .kind); try i.encode(to: encoder)
+            case .path(let p): try p.encode(to: encoder) // writes its own kind
             }
         }
     }
@@ -509,6 +657,11 @@ public enum RenderingV2 {
                     }
                     try validateImageResource(i.image, at)
                     try validateProvenance(sources: i.sources, synthetic: i.syntheticReason, documents: documents, at)
+                case .path(let p):
+                    usedFeatures.insert(p.isFill ? "path_fill" : "path_stroke")
+                    if !p.clips.isEmpty { usedFeatures.insert("clip") }
+                    try validatePath(p, at)
+                    try validateProvenance(sources: p.sources, synthetic: p.syntheticReason, documents: documents, at)
                 case .glyphRun(let run):
                     usedFeatures.insert("glyph_run")
                     guard let font = fontsById[run.fontId] else { throw fail("invalid_resource", "\(at): font resource '\(run.fontId)' is not declared in fonts") }
@@ -632,6 +785,43 @@ public enum RenderingV2 {
         } else {
             guard let w = r.pixelWidth, let h = r.pixelHeight, w >= 1, h >= 1, w <= 1 << 20, h <= 1 << 20 else {
                 throw fail("pixel_width/pixel_height must be positive for \(r.format)")
+            }
+        }
+    }
+
+
+    /// Commands: bounded count, every coordinate an exact tick, the first
+    /// command a move (CoreGraphics has no current point before one), and
+    /// nothing but a move after `z`. Strokes need a positive exact width, a
+    /// finite miter limit ≥ 1 and a dash whose entries are nonnegative exact
+    /// ticks with at least one positive (an all-zero dash never advances).
+    static func validateCommands(_ cmds: [PathCommand], _ at: String) throws {
+        func fail(_ m: String) -> ValidationError { ValidationError(code: "invalid_display_list", message: "\(at): \(m)") }
+        guard Bounds.pathCommands.contains(cmds.count) else { throw fail("path must carry 1...\(Bounds.pathCommands.upperBound) commands (found \(cmds.count))") }
+        var open = false
+        for (i, c) in cmds.enumerated() {
+            for v in c.coordinates where !isTick(v) { throw fail("path command \(i) has a coordinate outside the exact tick range") }
+            switch c {
+            case .move: open = true
+            case .line, .cubic: guard open else { throw fail("path command \(i) needs a current point (no preceding move)") }
+            case .close: guard open else { throw fail("path command \(i) closes without an open subpath") }; open = false
+            }
+        }
+    }
+
+    static func validatePath(_ p: Path, _ at: String) throws {
+        func fail(_ m: String) -> ValidationError { ValidationError(code: "invalid_display_list", message: "\(at): \(m)") }
+        try validateCommands(p.path, at)
+        guard Bounds.clips.contains(p.clips.count) else { throw fail("at most \(Bounds.clips.upperBound) clips (found \(p.clips.count))") }
+        for (ci, clip) in p.clips.enumerated() { try validateCommands(clip.path, "\(at) clip \(ci)") }
+        try validatePaint(p.paint, at)
+        if let s = p.stroke {
+            guard isPositiveTick(s.width) else { throw fail("stroke width must be a positive exact tick count") }
+            guard s.miterLimit.isFinite, s.miterLimit >= 1 else { throw fail("stroke miter_limit must be a finite number ≥ 1") }
+            if let d = s.dash {
+                guard Bounds.dashEntries.contains(d.array.count) else { throw fail("dash array must carry 1...\(Bounds.dashEntries.upperBound) entries (found \(d.array.count))") }
+                guard d.array.allSatisfy({ $0 >= 0 && isTick($0) }), d.array.contains(where: { $0 > 0 }) else { throw fail("dash entries must be nonnegative exact ticks with at least one positive") }
+                guard d.phase >= 0, isTick(d.phase) else { throw fail("dash phase must be a nonnegative exact tick count") }
             }
         }
     }
