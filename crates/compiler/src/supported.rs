@@ -201,7 +201,7 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("TeX", "", "latex.ltx logo: T, kern -.1667em, E lowered .5ex, kern -.125em, X"),
     ("LaTeX", "", "latex.ltx logo: L, kern -.36em, script-size A raised to the T height, kern -.15em, \\TeX"),
     ("LaTeXe", "", "\\LaTeX, kern .15em, 2 and a text-style subscript varepsilon"),
-    ("rule", "[raise]{width}{height}", "filled rule box; pt/in/cm/mm/bp/dd/cc/pc/sp, em, ex, \\textwidth, \\linewidth, \\columnwidth"),
+    ("rule", "[raise]{dimension}{dimension}", "filled rule box; pt/in/cm/mm/bp/dd/cc/pc/sp, em, ex, \\textwidth, \\linewidth, \\columnwidth"),
     ("thinspace", "", "text kern .16667em (math: thin muskip)"),
     ("negthinspace", "", "text kern -.16667em"),
     ("medspace", "", "text kern .2222em"),
@@ -253,6 +253,12 @@ const SIZE_DECLARATIONS: &[&str] = &[
 /// Math `command_atom` arms and list-level switches, grouped by behaviour:
 /// (names, arguments, description, renders).
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
+    (
+        &["rule"],
+        "[raise]{dimension}{dimension}",
+        "latex.ltx \\rule box in a formula, em/ex of the text font",
+        true,
+    ),
     (
         &["frac", "cfrac"],
         "{num}{den}",

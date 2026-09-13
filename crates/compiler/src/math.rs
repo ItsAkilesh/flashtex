@@ -105,6 +105,10 @@ pub enum Nucleus {
         accent: Accent,
         body: MathList,
     },
+    /// `\rule[<raise>]{<width>}{<height>}` in math: latex.ltx's `\@rule`
+    /// `\hbox` (see `text_builtins::TextRule`), an Ord box whose `em`/`ex`
+    /// are the text font's at the formula's text size.
+    Rule(crate::text_builtins::TextRule),
     /// `\mathbin{...}`, `\mathrel{...}`, and the rest of the `\math*` class
     /// family (TeXbook Chapter 17): an arbitrary math list boxed as a single
     /// atom, laid out like a bare `{...}` group. The enclosing [`MathAtom`]'s
@@ -711,6 +715,47 @@ impl MathParser<'_> {
                     width_em: None,
                 }
             }
+            "rule" => {
+                let raise = self.raw_bracket_text();
+                let (width, width_span) = self.raw_group_text("rule", span);
+                let (height, height_span) = self.raw_group_text("rule", span);
+                let full = span.merge(width_span).merge(height_span);
+                use crate::text_builtins::{TextDimen, TextRule};
+                let dimens = (
+                    raise
+                        .as_deref()
+                        .map_or(Some(TextDimen::zero()), TextDimen::parse),
+                    TextDimen::parse(&width),
+                    TextDimen::parse(&height),
+                );
+                match dimens {
+                    (Some(raise), Some(width), Some(height)) => MathAtom {
+                        nucleus: Nucleus::Rule(TextRule {
+                            raise,
+                            width,
+                            height,
+                        }),
+                        span: full,
+                        superscript: None,
+                        subscript: None,
+                        class_override: None,
+                        width_em: None,
+                    },
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!(
+                                "\\rule requires recognised dimensions, got [{}]{{{}}}{{{}}}",
+                                raise.unwrap_or_default().trim(),
+                                width.trim(),
+                                height.trim()
+                            ),
+                            Some(full),
+                            Some("omitted the rule and continued".into()),
+                        ));
+                        space(0.0, full)
+                    }
+                }
+            }
             "phantom" | "hphantom" | "vphantom" => {
                 let body = self.required_group(&name, span);
                 MathAtom {
@@ -1040,6 +1085,87 @@ impl MathParser<'_> {
             }
             None => space(0.0, span),
         }
+    }
+
+    /// `\rule`'s optional `[<raise>]` as raw text (control words kept).
+    fn raw_bracket_text(&mut self) -> Option<String> {
+        let mut cursor = self.i;
+        while matches!(
+            self.tokens.get(cursor).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            cursor += 1;
+        }
+        if !matches!(self.tokens.get(cursor).map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "[")
+        {
+            return None;
+        }
+        let mut text = String::new();
+        let mut end = cursor + 1;
+        while let Some(token) = self.tokens.get(end) {
+            match &token.kind {
+                TokenKind::Word(w) if w == "]" => break,
+                TokenKind::Word(w) => text.push_str(w),
+                TokenKind::Command(name) => {
+                    text.push('\\');
+                    text.push_str(name);
+                }
+                TokenKind::Space => text.push(' '),
+                _ => {}
+            }
+            end += 1;
+        }
+        if end >= self.tokens.len() {
+            return None;
+        }
+        self.i = end + 1;
+        Some(text)
+    }
+
+    /// A `\rule` dimension argument as raw text: `{\textwidth}` keeps its
+    /// control word instead of being diagnosed as text-group content.
+    fn raw_group_text(&mut self, command: &str, span: Span) -> (String, Span) {
+        while matches!(
+            self.tokens.get(self.i).map(|t| &t.kind),
+            Some(TokenKind::Space)
+        ) {
+            self.i += 1;
+        }
+        match self.tokens.get(self.i).map(|t| &t.kind) {
+            Some(TokenKind::LBrace) => {}
+            _ => return self.required_text_group(command, span),
+        }
+        let open = self.tokens[self.i].span;
+        self.i += 1;
+        let mut depth = 1usize;
+        let mut text = String::new();
+        let mut end = open;
+        while let Some(token) = self.tokens.get(self.i).cloned() {
+            self.i += 1;
+            end = token.span;
+            match token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return (text, open.merge(end));
+                    }
+                }
+                TokenKind::Word(word) => text.push_str(&word),
+                TokenKind::Command(name) => {
+                    text.push('\\');
+                    text.push_str(&name);
+                }
+                TokenKind::Space => text.push(' '),
+                _ => {}
+            }
+        }
+        self.diagnostics.push(Diagnostic::error(
+            format!("\\{command} argument is missing its closing brace"),
+            Some(open.merge(end)),
+            Some("used the text up to the end of the formula".into()),
+        ));
+        (text, open.merge(end))
     }
 
     /// An optional `[...]` math argument, as in `\sqrt[n]{x}`.
@@ -2728,6 +2854,46 @@ fn layout_nucleus(
                 diagnostics,
             )
         }
+        Nucleus::Rule(rule) => {
+            use crate::text_builtins::{self as tb, DimenContext};
+            // `\rule` is an `\hbox` built with the current text font, which in
+            // a formula is the text size (`root_size`), not the script size.
+            let measure = crate::layout::LayoutConstraints::default().measure_pt;
+            let cx = DimenContext {
+                quad: tb::pt_to_sp(root_size),
+                x_height: tb::pt_to_sp(crate::layout::x_height_pt(
+                    crate::layout::Font::TimesRoman,
+                    root_size,
+                )),
+                text_width: tb::pt_to_sp(measure),
+                line_width: tb::pt_to_sp(measure),
+                column_width: tb::pt_to_sp(measure),
+            };
+            let b = rule.resolve(&cx);
+            let width = tb::sp_to_pt(b.width);
+            let mut items = Vec::new();
+            if b.painted() {
+                items.push(MathItem {
+                    font: None,
+                    text: FRACTION_RULE_CHAR.to_string(),
+                    x: 0.0,
+                    baseline: 0.0,
+                    size,
+                    span: atom.span,
+                    rule: Some(MathRule {
+                        y: -tb::sp_to_pt(b.rule_top),
+                        width,
+                        height: tb::sp_to_pt(b.rule_top - b.rule_bottom),
+                    }),
+                });
+            }
+            MathBox {
+                items,
+                width,
+                ascent: tb::sp_to_pt(b.height),
+                descent: tb::sp_to_pt(b.depth),
+            }
+        }
         Nucleus::Phantom {
             body,
             horizontal,
@@ -3067,6 +3233,7 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
                 body: shift_list(body, delta),
                 limits: *limits,
             },
+            Nucleus::Rule(rule) => Nucleus::Rule(rule.clone()),
             Nucleus::SubArray { rows, align } => Nucleus::SubArray {
                 rows: rows.iter().map(|r| shift_list(r, delta)).collect(),
                 align: *align,
@@ -4402,7 +4569,7 @@ mod shift_tests {
                     let nested = match &a.nucleus {
                         Nucleus::Symbol(_) | Nucleus::SizedDelimiter { .. } => usize::MAX,
                         Nucleus::Text(_) => usize::MAX,
-                        Nucleus::Space { .. } => usize::MAX,
+                        Nucleus::Space { .. } | Nucleus::Rule(_) => usize::MAX,
                         Nucleus::Fraction {
                             numerator,
                             denominator,
