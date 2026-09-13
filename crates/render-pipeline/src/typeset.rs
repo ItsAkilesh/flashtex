@@ -319,6 +319,9 @@ pub struct Context<'a> {
     sloppy: bool,
     /// `\baselineskip` for paragraphs of another size (`\small` in a float).
     baselineskip_override: Option<f64>,
+    /// Inside a float or minipage box (`\@parboxrestore`): `\parskip` is
+    /// 0 outside lists.
+    parbox: bool,
 }
 
 impl<'a> Context<'a> {
@@ -345,6 +348,7 @@ impl<'a> Context<'a> {
             hsize_override: None,
             sloppy: false,
             baselineskip_override: None,
+            parbox: false,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
         }
     }
@@ -1515,6 +1519,20 @@ impl<'a> Context<'a> {
     /// A body paragraph (or the part of one before/after a display).
     /// `starts_paragraph` adds `\parskip`; `after_heading` is LaTeX's
     /// `\@afterheading` (`\clubpenalty 10000`).
+    /// `\hsize`: the column, or the box being set (a float, a minipage).
+    fn hsize(&self) -> f64 {
+        self.hsize_override.unwrap_or(self.style.text_width_pt)
+    }
+
+    /// `\parskip` of a paragraph outside lists.
+    fn outer_parskip(&self) -> crate::style::Skip {
+        if self.parbox {
+            crate::style::Skip::default()
+        } else {
+            self.style.parskip
+        }
+    }
+
     fn paragraph_block(&mut self, items: &[AItem], indent: bool, starts_paragraph: bool, after_heading: bool, style: ParaStyle, list_geom: Option<&ListGeom>) -> Option<BuiltBlock> {
         let size = self.style.body_size_pt;
         let (mut list, mut recs, labels, mut skips) = self.hlist(items, size, TextStyle::default(), style);
@@ -1552,7 +1570,7 @@ impl<'a> Context<'a> {
         let lines = self.break_paragraph(&list, &params, items)?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
-        let parskip = list_geom.map_or(self.style.parskip, |g| g.parsep);
+        let parskip = list_geom.map_or(self.outer_parskip(), |g| g.parsep);
         let vertical = VBlock {
             lines: line_extents(&lines),
             penalty_before: None,
@@ -1701,7 +1719,7 @@ impl<'a> Context<'a> {
         let s = self.style;
         let size = s.body_size_pt;
         let (hang, labelwidth) = list_geom.map_or((0.0, 0.0), |g| self.list_geometry(g, size));
-        let linewidth = s.text_width_pt - hang;
+        let linewidth = self.hsize() - hang;
         let label = list_geom.and_then(|g| g.label.as_ref()).and_then(|(text, span)| self.label_box(text, *span, size));
         let mut width = hang + if bracket { 0.6 * linewidth } else { 0.0 };
         let (mut runs, mut items, mut recs) = (Vec::new(), Vec::new(), Vec::new());
@@ -1728,7 +1746,7 @@ impl<'a> Context<'a> {
             height,
             depth,
             natural_width: width,
-            set_width: s.text_width_pt,
+            set_width: self.hsize(),
             ratio: 0.0,
             badness: 0.0,
             items: 0..n,
@@ -1752,7 +1770,7 @@ impl<'a> Context<'a> {
         };
         let quad = self.text_params(TextStyle::default(), size).quad;
         // `\list` sets `\parskip\parsep`.
-        let parskip = list_geom.map_or(s.parskip, |g| g.parsep);
+        let parskip = list_geom.map_or(self.outer_parskip(), |g| g.parsep);
         let vertical = VBlock {
             lines: vec![(height, depth)],
             penalty_before: None,
@@ -1787,7 +1805,7 @@ impl<'a> Context<'a> {
     /// one-line block whose single box is a [`BoxRec::Rule`].
     fn rule_block(&mut self, span: Span) -> BuiltBlock {
         const HRULE_HEIGHT: f64 = 0.4;
-        self.rule_block_sized(span, self.style.text_width_pt, HRULE_HEIGHT, 0.0)
+        self.rule_block_sized(span, self.hsize(), HRULE_HEIGHT, 0.0)
     }
 
     /// A rule `width` x `height` whose bottom sits on the line's baseline,
@@ -2073,7 +2091,7 @@ impl<'a> Context<'a> {
         let quote = if matches!(style, ParaStyle::Quote) { self.style.leftmargini_pt } else { 0.0 };
         let hang = list_geom.map_or(0.0, |g| self.list_geometry(g, size).0);
         let s = quote + hang;
-        (s, (self.style.text_width_pt - s - quote).max(0.0))
+        (s, (self.hsize() - s - quote).max(0.0))
     }
 
     /// A `tikzpicture` (the TikZ subset of `flashtex-vector-graphics`),
@@ -2135,7 +2153,7 @@ impl<'a> Context<'a> {
             span,
         })));
         let rec = self.recs.len() - 1;
-        let x = if centered { ((self.style.text_width_pt - width) / 2.0).max(0.0) } else { 0.0 };
+        let x = if centered { ((self.hsize() - width) / 2.0).max(0.0) } else { 0.0 };
         let run = pl::GlyphRun {
             font: MATH_SENTINEL,
             size: self.style.body_size_pt,
@@ -2381,7 +2399,7 @@ impl<'a> Context<'a> {
         const MULTLINETAGGAP: f64 = 10.0;
         const JOT: f64 = 3.0;
         let size = self.style.body_size_pt;
-        let dw = self.style.text_width_pt;
+        let dw = self.hsize();
         // `\mintagsep`: half of cmsy's quad at the text size.
         let mintagsep = 0.5 * size;
         let aligned = matches!(env, RowsEnv::Align | RowsEnv::AlignAt | RowsEnv::FlAlign);
@@ -3692,9 +3710,26 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
     build_with_floats(ctx, doc, cache, &[])
 }
 
-/// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
-/// ([`floatpage`]); without floats the page builder is unchanged.
-pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
+/// TeX §1146: a line whose `\leftskip` is stretched (`\centering`,
+/// `\raggedleft`) makes `pre_display_size` `max_dimen` (the box after the
+/// glue has no known position), so a display there takes the long
+/// `\abovedisplayskip`/`\belowdisplayskip`.
+fn stretched_left(style: ParaStyle) -> bool {
+    matches!(style, ParaStyle::Center | ParaStyle::FlushRight)
+}
+
+/// What [`layout_blocks`] set: the blocks, and the page-style events,
+/// chapter starts and spanning title parts among them.
+pub(crate) struct Flow {
+    pub blocks: Vec<BuiltBlock>,
+    pub events: Vec<(usize, adapter::ChromeEvent, Span)>,
+    pub chapter_starts: Vec<usize>,
+    pub title_built: Vec<(usize, adapter::TitlePart)>,
+}
+
+/// Sets `doc_blocks` as the main text flow does (also the material of a
+/// float or minipage box, with `span_title` false and no cache).
+pub(crate) fn layout_blocks(ctx: &mut Context, doc_blocks: &[Block], title_parts: &[(usize, adapter::TitlePart)], secnumdepth: u8, span_title: bool, cache: Option<&RenderCache>) -> Flow {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let style: &Stylesheet = ctx.style;
     let geo = style.class_geometry.as_deref();
@@ -3728,12 +3763,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
         incremental::hash_items(items, base, &mut h);
         (Some(h.finish()), Some((document, base)))
     };
-    // `\twocolumn[\@maketitle]`: a two-column article's `\maketitle`, when
-    // nothing but page-style commands precede it, is set above both columns.
-    let span_title = geo.is_some_and(|g| g.frame.columns.len() > 1)
-        && doc.title_parts.first().is_some_and(|(first, _)| doc.blocks[..*first].iter().all(|b| matches!(b, Block::Chrome { .. })));
     let mut title_built: Vec<(usize, adapter::TitlePart)> = Vec::new();
-    for (doc_index, block) in doc.blocks.iter().enumerate() {
+    for (doc_index, block) in doc_blocks.iter().enumerate() {
         match block {
             Block::Heading {
                 level,
@@ -3774,7 +3805,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                         _ => "subsubsection",
                     };
                     if let Some(rule) = mark_rules.iter().find(|r| r.command == command).filter(|_| !number.is_empty()) {
-                        events.push((blocks.len(), mark_event(rule, number, title, doc.secnumdepth), *span));
+                        events.push((blocks.len(), mark_event(rule, number, title, secnumdepth), *span));
                     }
                     blocks.push(b);
                     after_heading = true;
@@ -3786,7 +3817,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 // `\@chapter`'s `\chaptermark` before `\@makechapterhead`.
                 events.push((blocks.len(), adapter::ChromeEvent::ThisPageStyle(spec.page_style), *span));
                 if let (Some(n), Some(rule)) = (number, mark_rules.iter().find(|r| r.command == "chapter")) {
-                    events.push((blocks.len(), mark_event(rule, n, title, doc.secnumdepth), *span));
+                    events.push((blocks.len(), mark_event(rule, n, title, secnumdepth), *span));
                 }
                 let built = ctx.chapter_blocks(number.as_deref(), items, *span, spec, g.options.size);
                 if spec.page_break == flashtex_class_geometry::PageBreak::ClearDoublePage {
@@ -3818,7 +3849,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 list,
             } => {
                 if span_title {
-                    if let Some((_, which)) = doc.title_parts.iter().find(|(i, _)| *i == doc_index) {
+                    if let Some((_, which)) = title_parts.iter().find(|(i, _)| *i == doc_index) {
                         // `\@topnewpage`: `\vbox{\hsize\textwidth ...}`, centred.
                         if let Some(ParaPart::Lines(items)) = parts.first() {
                             ctx.hsize_override = geo.map(|g| crate::style::frame_pt(g.frame.text_width));
@@ -3895,7 +3926,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                             let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
                             let st = *style;
                             if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
-                                pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
+                                pre_display = b.block.lines.lines.last().map(|l| if stretched_left(st) { f64::MAX } else { l.natural_width + 2.0 * quad });
                                 if std::mem::take(&mut eject) {
                                     b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
@@ -3958,7 +3989,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                 add_vspace(&mut opener.vertical, std::mem::take(&mut vspace));
                                 add_skip_before(&mut opener.vertical, env_before.take());
                                 blocks.push(opener);
-                                pre_display = Some(size);
+                                pre_display = Some(if stretched_left(*style) { f64::MAX } else { size });
                             }
                             let (key, origin) = if cache.is_some() {
                                 let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -4031,6 +4062,20 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
             }
         }
     }
+    Flow { blocks, events, chapter_starts, title_built }
+}
+
+/// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
+/// ([`floatpage`]); without floats the page builder is unchanged.
+pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
+    let style: &Stylesheet = ctx.style;
+    let geo = style.class_geometry.as_deref();
+    let quad = ctx.text_params(TextStyle::default(), ctx.style.body_size_pt).quad;
+    // `\twocolumn[\@maketitle]`: a two-column article's `\maketitle`, when
+    // nothing but page-style commands precede it, is set above both columns.
+    let span_title = geo.is_some_and(|g| g.frame.columns.len() > 1)
+        && doc.title_parts.first().is_some_and(|(first, _)| doc.blocks[..*first].iter().all(|b| matches!(b, Block::Chrome { .. })));
+    let Flow { mut blocks, events, chapter_starts, title_built } = layout_blocks(ctx, &doc.blocks, &doc.title_parts, doc.secnumdepth, span_title, cache);
     let s = style;
     let params = pagebuild::PageParams {
         vsize: s.text_height_pt,

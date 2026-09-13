@@ -49,6 +49,25 @@ pub enum Piece {
     ParBreak,
     /// Anything else that is not whitespace: not typeset (reported).
     Other { span: Span },
+    /// `\begin{minipage}[pos]{width}` .. `\end{minipage}`: `pos` is `b'c'`,
+    /// `b't'` or `b'b'`; `body` the inner bytes, split into its own pieces.
+    Minipage { span: Span, pos: u8, width: String, body: (usize, usize), pieces: Vec<Piece> },
+    /// Horizontal glue beside a graphic or minipage on its line.
+    HSkip { span: Span, glue: HGlue },
+    /// An interword space after a graphic or minipage (an end of line after
+    /// `}`; a control word's trailing blanks are skipped).
+    Space,
+}
+
+/// Horizontal glue on a line of boxes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HGlue {
+    /// `\hfil` (order 1) or `\hfill` (order 2).
+    Infinite(u8),
+    /// `\hspace{<dimen>}` as written.
+    Dimen(String),
+    /// `\quad` (1), `\qquad` (2), `\enskip` (0.5): ems of the font.
+    Em(f64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -208,15 +227,20 @@ fn pieces(text: &str, start: usize, end: usize, document: DocumentId) -> Vec<Pie
         match b[i] {
             b'%' => {
                 i = text[i..end].find('\n').map_or(end, |n| i + n + 1);
+                // The next line's leading blanks are skipped (state N).
+                while i < end && matches!(b[i], b' ' | b'\t') {
+                    i += 1;
+                }
             }
-            b'\n' => {
+            b'\n' | b' ' | b'\t' | b'\r' => {
                 let j = skip_ws(text, i, end);
                 if text[i..j].matches('\n').count() >= 2 {
                     out.push(Piece::ParBreak);
+                } else if !after_control_word(&text[start..i]) && matches!(out.last(), Some(Piece::Graphic { .. } | Piece::Minipage { .. } | Piece::HSkip { glue: HGlue::Dimen(_), .. })) {
+                    out.push(Piece::Space);
                 }
                 i = j.max(i + 1);
             }
-            b' ' | b'\t' | b'\r' => i += 1,
             b'\\' => {
                 let name_end = text[i + 1..end].find(|c: char| !c.is_ascii_alphabetic()).map_or(end, |n| i + 1 + n);
                 let name = &text[i + 1..name_end];
@@ -229,6 +253,43 @@ fn pieces(text: &str, start: usize, end: usize, document: DocumentId) -> Vec<Pie
                         out.push(Piece::ParBreak);
                         i = name_end;
                     }
+                    "hfill" | "hfil" | "quad" | "qquad" | "enskip" => {
+                        let glue = match name {
+                            "hfill" => HGlue::Infinite(2),
+                            "hfil" => HGlue::Infinite(1),
+                            "quad" => HGlue::Em(1.0),
+                            "qquad" => HGlue::Em(2.0),
+                            _ => HGlue::Em(0.5),
+                        };
+                        out.push(Piece::HSkip { span: span(i, name_end), glue });
+                        i = name_end;
+                    }
+                    "hspace" => {
+                        let mut j = skip_ws(text, name_end, end);
+                        if b.get(j) == Some(&b'*') {
+                            j = skip_ws(text, j + 1, end);
+                        }
+                        match group(text, j).filter(|(_, e)| *e < end) {
+                            Some((s, e)) => {
+                                out.push(Piece::HSkip { span: span(i, e + 1), glue: HGlue::Dimen(text[s..e].trim().to_string()) });
+                                i = e + 1;
+                            }
+                            None => {
+                                out.push(Piece::Other { span: span(i, name_end) });
+                                i = name_end;
+                            }
+                        }
+                    }
+                    "begin" if text[name_end..end].starts_with("{minipage}") => match minipage(text, i, name_end + "{minipage}".len(), end, document) {
+                        Some((piece, next)) => {
+                            out.push(piece);
+                            i = next;
+                        }
+                        None => {
+                            out.push(Piece::Other { span: span(i, name_end) });
+                            i = name_end;
+                        }
+                    },
                     "includegraphics" => {
                         let mut j = skip_ws(text, name_end, end);
                         let mut options = String::new();
@@ -284,7 +345,97 @@ fn pieces(text: &str, start: usize, end: usize, document: DocumentId) -> Vec<Pie
             }
         }
     }
-    out
+    // Glue is set on a line of boxes only beside a graphic or minipage;
+    // anywhere else it is text material the adapter sets.
+    let keep: Vec<bool> = (0..out.len()).map(|k| !matches!(out[k], Piece::HSkip { .. }) || box_beside(&out, k, false) || box_beside(&out, k, true)).collect();
+    out.into_iter()
+        .zip(keep)
+        .map(|(p, keep)| match p {
+            Piece::HSkip { span, .. } if !keep => Piece::Other { span },
+            p => p,
+        })
+        .collect()
+}
+
+/// Whether the nearest piece before (`forward` false) or after `k`, past
+/// glue and spaces, is a graphic or a minipage.
+fn box_beside(out: &[Piece], k: usize, forward: bool) -> bool {
+    let mut m = k;
+    loop {
+        if forward {
+            m += 1;
+            if m >= out.len() {
+                return false;
+            }
+        } else {
+            if m == 0 {
+                return false;
+            }
+            m -= 1;
+        }
+        match out[m] {
+            Piece::HSkip { .. } | Piece::Space => {}
+            Piece::Graphic { .. } | Piece::Minipage { .. } => return true,
+            _ => return false,
+        }
+    }
+}
+
+/// `s` ends with a control word (whose trailing blanks TeX skips).
+fn after_control_word(s: &str) -> bool {
+    let t = s.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    t.len() < s.len() && t.ends_with('\\') && !t[..t.len() - 1].ends_with('\\')
+}
+
+/// `\begin{minipage}[pos][height][inner-pos]{width}` .. `\end{minipage}`
+/// starting at `at` (`after` is just past `{minipage}`): the piece and the
+/// byte after `\end{minipage}`.
+fn minipage(text: &str, at: usize, after: usize, end: usize, document: DocumentId) -> Option<(Piece, usize)> {
+    const END: &str = "\\end{minipage}";
+    let b = text.as_bytes();
+    let mut k = after;
+    let mut pos = None;
+    loop {
+        let j = skip_ws(text, k, end);
+        if b.get(j) != Some(&b'[') {
+            break;
+        }
+        let c = text[j..end].find(']')?;
+        pos.get_or_insert_with(|| text[j + 1..j + c].trim().bytes().next().unwrap_or(b'c'));
+        k = j + c + 1;
+    }
+    let (ws, we) = group(text, skip_ws(text, k, end)).filter(|(_, e)| *e < end)?;
+    let body_start = we + 1;
+    let (mut depth, mut from) = (1, body_start);
+    let close = loop {
+        let next_end = find_uncommented(text, END, from).filter(|p| *p < end)?;
+        match find_uncommented(text, "\\begin{minipage}", from).filter(|p| *p < next_end) {
+            Some(p) => {
+                depth += 1;
+                from = p + 1;
+            }
+            None => {
+                depth -= 1;
+                if depth == 0 {
+                    break next_end;
+                }
+                from = next_end + 1;
+            }
+        }
+    };
+    let stop = close + END.len();
+    let pos = match pos {
+        Some(p @ (b't' | b'b')) => p,
+        _ => b'c',
+    };
+    let piece = Piece::Minipage {
+        span: Span::in_document(document, at, stop),
+        pos,
+        width: text[ws..we].trim().to_string(),
+        body: (body_start, close),
+        pieces: pieces(text, body_start, close, document),
+    };
+    Some((piece, stop))
 }
 
 /// `text` with every float environment replaced by spaces (byte length and
@@ -335,7 +486,20 @@ use crate::RenderOptions;
 /// Largest image file read (bytes).
 pub const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// `(float numbers per document in scan order, label key -> value)`.
+/// `\caption`s and `\label`s of a body in source order, minipages included.
+fn captions_and_labels<'p>(pieces: &'p [Piece], out: &mut Vec<&'p Piece>) {
+    for p in pieces {
+        match p {
+            Piece::Caption { .. } | Piece::Label { .. } => out.push(p),
+            Piece::Minipage { pieces, .. } => captions_and_labels(pieces, out),
+            _ => {}
+        }
+    }
+}
+
+/// `(float numbers per document in scan order, label key -> value)`. A
+/// float's number is its first caption's (the counter itself when it has
+/// none); every `\caption` steps the counter.
 pub fn number(envs: &[Vec<FloatEnv>]) -> (Vec<Vec<u32>>, Vec<(String, String)>) {
     let (mut figures, mut tables) = (0u32, 0u32);
     let mut numbers = Vec::new();
@@ -343,20 +507,21 @@ pub fn number(envs: &[Vec<FloatEnv>]) -> (Vec<Vec<u32>>, Vec<(String, String)>) 
     for doc in envs {
         let mut nums = Vec::new();
         for f in doc {
-            let has_caption = f.pieces.iter().any(|p| matches!(p, Piece::Caption { .. }));
             let counter = match f.kind {
                 FloatKind::Figure => &mut figures,
                 FloatKind::Table => &mut tables,
             };
-            if has_caption {
-                *counter += 1;
-            }
-            nums.push(*counter);
+            let mut seq = Vec::new();
+            captions_and_labels(&f.pieces, &mut seq);
+            nums.push(*counter + u32::from(seq.iter().any(|p| matches!(p, Piece::Caption { .. }))));
             // `\label` after `\caption` takes its number (`\@currentlabel`).
             let mut seen_caption = false;
-            for p in &f.pieces {
+            for p in seq {
                 match p {
-                    Piece::Caption { .. } => seen_caption = true,
+                    Piece::Caption { .. } => {
+                        *counter += 1;
+                        seen_caption = true;
+                    }
                     Piece::Label { key, .. } => labels.push((key.clone(), if seen_caption { counter.to_string() } else { String::new() })),
                     _ => {}
                 }
@@ -473,12 +638,17 @@ fn first_byte(items: &[AItem]) -> Option<usize> {
     })
 }
 
-/// The float body as the main flow would set it: the body bytes alone
-/// (preamble kept), with `\caption`/`\includegraphics` replaced by `\par`
-/// and `\label` by spaces (byte offsets preserved), parsed and adapted.
-/// Returns each paragraph's first source byte and part, in source order.
+/// The material of a float body, or of a minipage in it (`range`,
+/// `pieces`), as the main flow would set it: those bytes alone (preamble
+/// kept), with `\caption`/`\includegraphics`/`minipage` replaced by `\par`
+/// and `\label` and box glue by spaces (byte offsets preserved), parsed and
+/// adapted. Returns each block's first source byte and part, in source
+/// order: text paragraphs (`tabular`s included) as [`FloatPart::Text`];
+/// lists, displays, headings, pictures and rules as [`FloatPart::Flow`].
 #[allow(clippy::too_many_arguments)]
 fn body_parts(
+    range: (usize, usize),
+    pieces: &[Piece],
     f: &FloatEnv,
     number: u32,
     d: usize,
@@ -490,11 +660,11 @@ fn body_parts(
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<(usize, FloatPart)> {
     let text = documents[d].text;
-    let mut isolated = isolate(text, Span::in_document(f.span.document, f.body.0, f.body.1)).into_bytes();
-    for p in &f.pieces {
+    let mut isolated = isolate(text, Span::in_document(f.span.document, range.0, range.1)).into_bytes();
+    for p in pieces {
         let (span, par) = match p {
-            Piece::Caption { span, .. } | Piece::Graphic { span, .. } => (*span, true),
-            Piece::Label { span, .. } => (*span, false),
+            Piece::Caption { span, .. } | Piece::Graphic { span, .. } | Piece::Minipage { span, .. } => (*span, true),
+            Piece::Label { span, .. } | Piece::HSkip { span, .. } => (*span, false),
             _ => continue,
         };
         for b in &mut isolated[span.start..span.end] {
@@ -511,15 +681,19 @@ fn body_parts(
     let parsed = flashtex_compiler::parser::parse_project(&docs2, documents[d].path);
     let doc = adapter::adapt(&texts2, entry_index, &parsed, options, labels);
     let path: Rc<str> = Rc::from(documents[d].path);
-    let inside = |s: &Span| s.document == f.span.document && s.start >= f.body.0 && s.start < f.body.1;
+    let inside = |s: &Span| s.document == f.span.document && s.start >= range.0 && s.start < range.1;
+    // The compiler's reports about TikZ commands are superseded by the
+    // picture reader's (as in the main flow).
+    let pictures: Vec<(usize, usize)> = flashtex_vector_graphics::tikz::find_pictures(&isolated).into_iter().map(|p| (p.start, p.end)).collect();
+    let reported = |s: &Span| inside(s) && !pictures.iter().any(|(a, b)| s.start >= *a && s.start < *b);
     let paths: Vec<&str> = documents.iter().map(|x| x.path).collect();
     for cd in &parsed.diagnostics {
-        if cd.span.as_ref().is_some_and(inside) {
+        if cd.span.as_ref().is_some_and(reported) {
             diags.push(Diagnostic::from_compiler(cd, &paths));
         }
     }
     for (code, span, message) in &doc.limitations {
-        if inside(span) {
+        if reported(span) {
             diags.push(Diagnostic::warning(code, message.clone(), vec![SourceRange { path: path.clone(), start_byte: span.start, end_byte: span.end }]));
         }
     }
@@ -531,60 +705,80 @@ fn body_parts(
             vec![SourceRange { path: path.clone(), start_byte: f.span.start, end_byte: f.span.end }],
         ));
     };
+    let flow = |at: Option<usize>, end: Option<usize>, block: &adapter::Block, out: &mut Vec<(usize, usize, FloatPart)>| {
+        if let Some(at) = at {
+            out.push((at, end.unwrap_or(at).max(at), FloatPart::Flow(vec![block.clone()])));
+        }
+    };
     for block in &doc.blocks {
         match block {
-            adapter::Block::Paragraph { parts, style, env_open, env_close, vspace_before, addvspace_before, list, .. } => {
-                if list.is_some() {
-                    unsupported("a list", diags);
-                    continue;
-                }
+            adapter::Block::Paragraph { parts, style, env_open, env_close, vspace_before, addvspace_before, list: None, .. } if parts.iter().all(|p| matches!(p, ParaPart::Lines(_))) => {
                 let n = parts.len();
                 for (pi, part) in parts.iter().enumerate() {
-                    match part {
-                        ParaPart::Lines(items) => {
-                            let Some(at) = first_byte(items) else { continue };
-                            out.push((
-                                at,
-                                last_byte(items).unwrap_or(at),
-                                FloatPart::Text {
-                                    items: items.clone(),
-                                    style: *style,
-                                    env_open: if pi == 0 { env_open.map(|e| e.vmode) } else { None },
-                                    env_close: *env_close && pi + 1 == n,
-                                    vspace_before: if pi == 0 { *vspace_before } else { 0.0 },
-                                    addvspace_before: if pi == 0 { *addvspace_before } else { 0.0 },
-                                },
-                            ));
-                        }
-                        ParaPart::Display { .. } | ParaPart::Rows { .. } => unsupported("display math", diags),
-                    }
+                    let ParaPart::Lines(items) = part else { continue };
+                    let Some(at) = first_byte(items) else { continue };
+                    out.push((
+                        at,
+                        last_byte(items).unwrap_or(at),
+                        FloatPart::Text {
+                            items: items.clone(),
+                            style: *style,
+                            env_open: if pi == 0 { env_open.map(|e| e.vmode) } else { None },
+                            env_close: *env_close && pi + 1 == n,
+                            vspace_before: if pi == 0 { *vspace_before } else { 0.0 },
+                            addvspace_before: if pi == 0 { *addvspace_before } else { 0.0 },
+                        },
+                    ));
                 }
             }
-            adapter::Block::Heading { .. } | adapter::Block::Chapter { .. } => unsupported("a sectioning command", diags),
-            adapter::Block::Picture { .. } => unsupported("a tikzpicture", diags),
-            adapter::Block::Rule { .. } => unsupported("a vertical-mode rule", diags),
+            adapter::Block::Paragraph { parts, .. } => {
+                let bounds = |p: &ParaPart| match p {
+                    ParaPart::Lines(items) => first_byte(items).map(|a| (a, last_byte(items).unwrap_or(a))),
+                    ParaPart::Display { span, .. } | ParaPart::Rows { span, .. } => Some((span.start, span.end)),
+                };
+                flow(parts.iter().find_map(bounds).map(|b| b.0), parts.iter().rev().find_map(bounds).map(|b| b.1), block, &mut out);
+            }
+            adapter::Block::Heading { span, .. } | adapter::Block::Rule { span, .. } => flow(Some(span.start), Some(span.end), block, &mut out),
+            adapter::Block::Picture { picture, .. } => flow(Some(picture.start), Some(picture.end), block, &mut out),
+            adapter::Block::Chapter { .. } => unsupported("a chapter heading", diags),
             adapter::Block::Chrome { .. } => {}
         }
     }
     // The adapter finds an environment's `\begin`/`\end` in the bytes around
     // a paragraph, which in the isolated body reach into the preamble
-    // (`\begin{document}`); keep its skips only where the float body itself
-    // opens or closes a paragraph-shape environment there.
+    // (`\begin{document}`); keep its skips only where the body itself opens
+    // or closes a paragraph-shape environment there.
     const ENVS: [&str; 6] = ["center", "flushleft", "flushright", "quote", "quotation", "verse"];
     let has = |gap: &str, cmd: &str| ENVS.iter().any(|e| gap.contains(&format!("\\{cmd}{{{e}}}")));
     let spans: Vec<(usize, usize)> = out.iter().map(|(a, b, _)| (*a, *b)).collect();
     out.into_iter()
         .enumerate()
         .map(|(i, (at, end, mut part))| {
-            if let FloatPart::Text { env_open, env_close, .. } = &mut part {
-                let before = text.get(if i == 0 { f.body.0 } else { spans[i - 1].1.min(at) }..at).unwrap_or("");
-                if !has(before, "begin") {
-                    *env_open = None;
+            let before = text.get(if i == 0 { range.0 } else { spans[i - 1].1.min(at) }..at).unwrap_or("");
+            let after = text.get(end..spans.get(i + 1).map_or(range.1, |s| s.0.max(end))).unwrap_or("");
+            let (opens, closes) = (has(before, "begin"), has(after, "end"));
+            match &mut part {
+                FloatPart::Text { env_open, env_close, .. } => {
+                    if !opens {
+                        *env_open = None;
+                    }
+                    if !closes {
+                        *env_close = false;
+                    }
                 }
-                let after = text.get(end..spans.get(i + 1).map_or(f.body.1, |s| s.0.max(end))).unwrap_or("");
-                if !has(after, "end") {
-                    *env_close = false;
+                FloatPart::Flow(blocks) => {
+                    for b in blocks {
+                        if let adapter::Block::Paragraph { env_open, env_close, .. } = b {
+                            if !opens {
+                                *env_open = None;
+                            }
+                            if !closes {
+                                *env_close = false;
+                            }
+                        }
+                    }
                 }
+                _ => {}
             }
             (at, part)
         })
@@ -629,6 +823,149 @@ pub fn graphics_demo(text: &str) -> bool {
     false
 }
 
+/// Walks a float body, and every `minipage` in it, into layout parts.
+struct Prep<'x> {
+    f: &'x FloatEnv,
+    d: usize,
+    documents: &'x [SourceDocument<'x>],
+    entry_index: usize,
+    texts: &'x [&'x str],
+    options: &'x RenderOptions,
+    labels: &'x Labels,
+    images: &'x mut ImageCache,
+    diags: &'x mut Vec<Diagnostic>,
+    demo: bool,
+    body_size: f64,
+    text_height: f64,
+    paper: (f64, f64),
+    em: f64,
+    ex: f64,
+    /// The float's number (its first caption's) and the next caption's.
+    number: u32,
+    next_caption: u32,
+    labels_out: Vec<String>,
+}
+
+impl Prep<'_> {
+    fn env(&self, text_width: f64, line_width: f64) -> LengthEnv {
+        LengthEnv { text_width, line_width, text_height: self.text_height, paper_width: self.paper.0, paper_height: self.paper.1, em: self.em, ex: self.ex }
+    }
+
+    /// The parts of `range` (split into `pieces`) set in a box whose
+    /// `\linewidth` is `hsize`, where `\textwidth` is `textwidth`.
+    fn parts(&mut self, range: (usize, usize), pieces: &[Piece], hsize: f64, textwidth: f64) -> Vec<FloatPart> {
+        let env = self.env(textwidth, hsize);
+        let d = self.d;
+        let source = self.documents[d].text;
+        let path: Rc<str> = Rc::from(self.documents[d].path);
+        let src = |span: Span| SourceRange { path: path.clone(), start_byte: span.start, end_byte: span.end };
+        let mut parts = Vec::new();
+        // Paragraphs, lists, displays, ... of the body, merged with the
+        // pieces below in source order.
+        let body = body_parts(range, pieces, self.f, self.number, d, self.documents, self.entry_index, self.texts, self.options, self.labels, &mut *self.diags);
+        let mut text = body.into_iter().peekable();
+        let class_size = adapter::class_size_of(self.body_size);
+        for piece in pieces {
+            let at = match piece {
+                Piece::Graphic { span, .. } | Piece::Caption { span, .. } | Piece::Label { span, .. } | Piece::Other { span } | Piece::Minipage { span, .. } | Piece::HSkip { span, .. } => Some(span.start),
+                Piece::Centering | Piece::ParBreak | Piece::Space => None,
+            };
+            if let Some(at) = at {
+                while let Some((_, part)) = text.next_if(|(b, _)| *b < at) {
+                    parts.push(part);
+                }
+            }
+            match piece {
+                Piece::Centering => parts.push(FloatPart::Centering),
+                Piece::ParBreak => parts.push(FloatPart::ParBreak),
+                Piece::Space => parts.push(FloatPart::Space),
+                Piece::Label { key, .. } => self.labels_out.push(key.clone()),
+                Piece::Other { span } => {
+                    // A size declaration at the box's top level sets the
+                    // `\baselineskip` of what follows (the paragraphs' own
+                    // words carry their size from the compiler).
+                    if let Some(level) = source[span.start..span.end].strip_prefix('\\').and_then(size_command) {
+                        parts.push(FloatPart::Size(adapter::declared_size(level, class_size)));
+                    }
+                }
+                Piece::HSkip { span, glue } => {
+                    let (width, order) = match glue {
+                        HGlue::Infinite(o) => (0.0, *o),
+                        HGlue::Em(e) => (e * env.em, 0),
+                        HGlue::Dimen(raw) => match graphics::parse_dimen(raw, &env) {
+                            Some(w) => (w, 0),
+                            None => {
+                                self.diags.push(Diagnostic::warning("float_content_unsupported", format!("\\hspace{{{raw}}}: the length is not understood; no space is set"), vec![src(*span)]));
+                                (0.0, 0)
+                            }
+                        },
+                    };
+                    parts.push(FloatPart::HSkip { width, order });
+                }
+                Piece::Minipage { span, pos, width, body, pieces: inner } => {
+                    let w = match graphics::parse_dimen(width, &env) {
+                        Some(w) => w,
+                        None => {
+                            self.diags.push(Diagnostic::warning("float_content_unsupported", format!("minipage width `{width}` is not understood; \\linewidth is used"), vec![src(*span)]));
+                            hsize
+                        }
+                    };
+                    // `\@iiiminipage`: `\hsize`, `\textwidth` and `\columnwidth`
+                    // are the box width inside it.
+                    let inner_parts = self.parts(*body, inner, w, w);
+                    parts.push(FloatPart::Minipage { pos: *pos, width: w, parts: inner_parts, span: *span });
+                }
+                Piece::Graphic { span, options: opts, path: file } => {
+                    let (keys, problems) = graphics::parse_keys(opts, &env);
+                    for p in problems {
+                        self.diags.push(Diagnostic::warning("graphics_option", p, vec![src(*span)]));
+                    }
+                    for k in &keys {
+                        if let GKey::Unsupported(name) = k {
+                            self.diags.push(Diagnostic::warning("graphics_option", format!("\\includegraphics key '{name}' is not honoured yet"), vec![src(*span)]));
+                        }
+                    }
+                    if self.demo {
+                        // graphicx `demo`: `\rule{\Gin@@ewidth}{\Gin@@eheight}`,
+                        // 150pt by 100pt unless requested; no file is read.
+                        let w = keys.iter().rev().find_map(|k| if let GKey::Width(v) = k { Some(*v) } else { None }).unwrap_or(150.0);
+                        let h = keys.iter().rev().find_map(|k| if let GKey::Height(v) | GKey::TotalHeight(v) = k { Some(*v) } else { None }).unwrap_or(100.0);
+                        let gbox = graphics::GraphicBox { width: w, height: h, depth: 0.0, matrix: [w, 0.0, 0.0, h, 0.0, 0.0] };
+                        parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: *span, demo: true }));
+                        continue;
+                    }
+                    let page = keys.iter().find_map(|k| if let GKey::Page(p) = k { Some(*p) } else { None }).unwrap_or(1);
+                    match self.images.load(self.options, file, page) {
+                        Ok((resource, info)) => {
+                            let gbox = graphics::size_box(info.width_bp / graphics::BP_PER_PT, info.height_bp / graphics::BP_PER_PT, &keys);
+                            parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: Some(resource), span: *span, demo: false }));
+                        }
+                        Err(msg) => {
+                            let w = keys.iter().rev().find_map(|k| if let GKey::Width(v) = k { Some(*v) } else { None });
+                            let h = keys.iter().rev().find_map(|k| if let GKey::Height(v) | GKey::TotalHeight(v) = k { Some(*v) } else { None });
+                            match (w, h) {
+                                (Some(w), Some(h)) => {
+                                    self.diags.push(Diagnostic::error("image_unavailable", format!("{msg} (its requested size is kept empty)"), vec![src(*span)]));
+                                    let gbox = graphics::GraphicBox { width: w, height: h, depth: 0.0, matrix: [w, 0.0, 0.0, h, 0.0, 0.0] };
+                                    parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: *span, demo: false }));
+                                }
+                                _ => self.diags.push(Diagnostic::error("image_unavailable", msg, vec![src(*span)])),
+                            }
+                        }
+                    }
+                }
+                Piece::Caption { span, arg } => {
+                    let items = caption_items(self.f.kind, self.next_caption, *span, *arg, d, self.documents, self.entry_index, self.texts, self.options, self.labels);
+                    self.next_caption += 1;
+                    parts.push(FloatPart::Caption { items });
+                }
+            }
+        }
+        parts.extend(text.map(|(_, part)| part));
+        parts
+    }
+}
+
 /// Builds the layout input of every float. `texts` are the masked texts
 /// the main parse ran on.
 #[allow(clippy::too_many_arguments)]
@@ -646,96 +983,46 @@ pub fn prepare(
     let mut specs = Vec::new();
     let mut diags = Vec::new();
     let (em, ex) = em_ex(style.body_size_pt);
-    let env = LengthEnv { text_width: style.text_width_pt, text_height: style.text_height_pt, paper_width: style.page_width_pt, paper_height: style.page_height_pt, em, ex };
     let demo = documents.get(entry_index).is_some_and(|d| graphics_demo(d.text));
+    // `\textwidth`: the text block (a two-column document's `\columnwidth`
+    // is narrower).
+    let textwidth = style.class_geometry.as_deref().map_or(style.text_width_pt, |g| crate::style::frame_pt(g.frame.text_width));
     for (d, doc_envs) in envs.iter().enumerate() {
         let path: Rc<str> = Rc::from(documents[d].path);
-        let src = |span: Span| SourceRange { path: path.clone(), start_byte: span.start, end_byte: span.end };
         for (fi, f) in doc_envs.iter().enumerate() {
             let number = numbers[d][fi];
             let bits = match placement_bits(f.placement.as_deref()) {
                 Ok(b) => b,
                 Err(msg) => {
                     let fallback = if msg.starts_with("placement H") { 16 | 1 } else { 16 | 8 };
-                    diags.push(Diagnostic::warning("float_placement", msg, vec![src(f.span)]));
+                    diags.push(Diagnostic::warning("float_placement", msg, vec![SourceRange { path: path.clone(), start_byte: f.span.start, end_byte: f.span.end }]));
                     fallback
                 }
             };
-            let mut parts = Vec::new();
-            let mut spec_labels = Vec::new();
-            // Paragraphs of the body (text, `tabular`, `center`, ...), merged
-            // with the pieces below in source order.
-            let mut text = body_parts(f, number, d, documents, entry_index, texts, options, labels, &mut diags).into_iter().peekable();
-            let class_size = adapter::class_size_of(style.body_size_pt);
-            for piece in &f.pieces {
-                let at = match piece {
-                    Piece::Graphic { span, .. } | Piece::Caption { span, .. } | Piece::Label { span, .. } | Piece::Other { span } => Some(span.start),
-                    Piece::Centering | Piece::ParBreak => None,
-                };
-                if let Some(at) = at {
-                    while let Some((_, part)) = text.next_if(|(b, _)| *b < at) {
-                        parts.push(part);
-                    }
-                }
-                match piece {
-                    Piece::Centering => parts.push(FloatPart::Centering),
-                    Piece::ParBreak => parts.push(FloatPart::ParBreak),
-                    Piece::Label { key, .. } => spec_labels.push(key.clone()),
-                    Piece::Other { span } => {
-                        // A size declaration at the float's top level sets the
-                        // `\baselineskip` of what follows (the paragraphs'
-                        // own words carry their size from the compiler).
-                        let src_text = &documents[d].text[span.start..span.end];
-                        if let Some(level) = src_text.strip_prefix('\\').and_then(size_command) {
-                            parts.push(FloatPart::Size(adapter::declared_size(level, class_size)));
-                        }
-                    }
-                    Piece::Graphic { span, options: opts, path: file } => {
-                        let (keys, problems) = graphics::parse_keys(opts, &env);
-                        for p in problems {
-                            diags.push(Diagnostic::warning("graphics_option", p, vec![src(*span)]));
-                        }
-                        for k in &keys {
-                            if let GKey::Unsupported(name) = k {
-                                diags.push(Diagnostic::warning("graphics_option", format!("\\includegraphics key '{name}' is not honoured yet"), vec![src(*span)]));
-                            }
-                        }
-                        if demo {
-                            // graphicx `demo`: `\rule{\Gin@@ewidth}{\Gin@@eheight}`,
-                            // 150pt by 100pt unless requested; no file is read.
-                            let w = keys.iter().rev().find_map(|k| if let GKey::Width(v) = k { Some(*v) } else { None }).unwrap_or(150.0);
-                            let h = keys.iter().rev().find_map(|k| if let GKey::Height(v) | GKey::TotalHeight(v) = k { Some(*v) } else { None }).unwrap_or(100.0);
-                            let gbox = graphics::GraphicBox { width: w, height: h, depth: 0.0, matrix: [w, 0.0, 0.0, h, 0.0, 0.0] };
-                            parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: *span, demo: true }));
-                            continue;
-                        }
-                        let page = keys.iter().find_map(|k| if let GKey::Page(p) = k { Some(*p) } else { None }).unwrap_or(1);
-                        match images.load(options, file, page) {
-                            Ok((resource, info)) => {
-                                let gbox = graphics::size_box(info.width_bp / graphics::BP_PER_PT, info.height_bp / graphics::BP_PER_PT, &keys);
-                                parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: Some(resource), span: *span, demo: false }));
-                            }
-                            Err(msg) => {
-                                let w = keys.iter().rev().find_map(|k| if let GKey::Width(v) = k { Some(*v) } else { None });
-                                let h = keys.iter().rev().find_map(|k| if let GKey::Height(v) | GKey::TotalHeight(v) = k { Some(*v) } else { None });
-                                match (w, h) {
-                                    (Some(w), Some(h)) => {
-                                        diags.push(Diagnostic::error("image_unavailable", format!("{msg} (its requested size is kept empty)"), vec![src(*span)]));
-                                        let gbox = graphics::GraphicBox { width: w, height: h, depth: 0.0, matrix: [w, 0.0, 0.0, h, 0.0, 0.0] };
-                                        parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: *span, demo: false }));
-                                    }
-                                    _ => diags.push(Diagnostic::error("image_unavailable", msg, vec![src(*span)])),
-                                }
-                            }
-                        }
-                    }
-                    Piece::Caption { span, arg } => {
-                        let items = caption_items(f.kind, number, *span, *arg, d, documents, entry_index, texts, options, labels);
-                        parts.push(FloatPart::Caption { items });
-                    }
-                }
-            }
-            parts.extend(text.map(|(_, part)| part));
+            // `\@xdblfloat`: `\hsize\textwidth`.
+            let hsize = if f.wide { textwidth } else { style.text_width_pt };
+            let mut prep = Prep {
+                f,
+                d,
+                documents,
+                entry_index,
+                texts,
+                options,
+                labels,
+                images: &mut *images,
+                diags: &mut diags,
+                demo,
+                body_size: style.body_size_pt,
+                text_height: style.text_height_pt,
+                paper: (style.page_width_pt, style.page_height_pt),
+                em,
+                ex,
+                number,
+                next_caption: number,
+                labels_out: Vec::new(),
+            };
+            let parts = prep.parts(f.body, &f.pieces, hsize, textwidth);
+            let spec_labels = std::mem::take(&mut prep.labels_out);
             specs.push(FloatSpec { kind: f.kind, number, bits, span: f.span, hmode: f.hmode, wide: f.wide, parts, labels: spec_labels });
         }
     }

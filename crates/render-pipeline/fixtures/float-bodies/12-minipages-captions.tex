@@ -1,0 +1,25 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage[demo]{graphicx}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+Text before the float in its own paragraph.
+
+\begin{figure}[h]
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth,height=1in]{a}
+\caption{Left.}
+\end{minipage}\hfill
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth,height=1.5in]{b}
+\caption{Right, with a caption long enough to wrap.}
+\end{minipage}
+\end{figure}
+
+Text after the float, in a paragraph of its own.
+\end{document}
