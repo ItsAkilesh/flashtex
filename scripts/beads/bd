@@ -32,6 +32,17 @@ die() { echo "flashtex-bd: $*" >&2; exit 3; }
 
 # bd shells out to `dolt` via PATH for git remotes: the pinned dolt must win.
 export PATH="$PREFIX/bin:$PATH"
+
+# The machine ledger lives in ONE standalone clone (never the main checkout).
+# bd resolves any git worktree to its main clone's root, so an unrouted `bd init`
+# from a worktree writes .beads into the main checkout (VERIFIED 2026-09-13).
+# Agents in worktrees are routed to the ledger via BEADS_DIR; the default comes
+# from ~/.config/flashtex/beads-dir (one line: /abs/path/to/ledger/.beads).
+if [ -z "${BEADS_DIR:-}" ] && [ -r "$HOME/.config/flashtex/beads-dir" ]; then
+  BEADS_DIR="$(head -1 "$HOME/.config/flashtex/beads-dir")"
+  [ -d "$BEADS_DIR" ] || die "~/.config/flashtex/beads-dir points at missing $BEADS_DIR"
+  export BEADS_DIR
+fi
 export BD_SMART_GATE=0
 export BD_DISABLE_METRICS=1
 
