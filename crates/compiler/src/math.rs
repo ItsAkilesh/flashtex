@@ -49,7 +49,7 @@ pub struct MathAtom {
     /// Forces a symbol atom's advance, in ems of its size, when the glyph is
     /// shared by commands whose TeX fonts differ (`\varnothing` is msbm10's
     /// 0.777781em where `\emptyset`'s identical U+2205 is cmsy10's).
-    pub(crate) width_em: Option<f64>,
+    pub width_em: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

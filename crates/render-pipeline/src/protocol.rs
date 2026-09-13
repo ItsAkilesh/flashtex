@@ -223,6 +223,22 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: 
             text: t.as_str(),
         })
         .collect();
+    // PROPOSAL (FT-063): an optional absolute `project_root` directory the
+    // request's `\includegraphics` files are read from (rooted, no symlinks,
+    // through project-files). A relative or empty value is ignored.
+    let request_root = payload
+        .get("project_root")
+        .and_then(|v| v.as_str())
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute());
+    let with_root;
+    let options = match request_root {
+        Some(root) => {
+            with_root = RenderOptions { project_root: Some(root), ..options.clone() };
+            &with_root
+        }
+        None => options,
+    };
     let rendered = render_cached(&sources, &entry_path, revision.max(0) as u64, &project_id, fonts, options, cache);
     let limit = max_reply_bytes();
     let mut v1 = crate::v1::fallback(&rendered.v2, caps, accepted.clone());
@@ -234,7 +250,7 @@ pub fn handle_line(line: &str, fonts: &FontSet, options: &RenderOptions, cache: 
         // Size first (an upper-bound estimate, then the exact line), so an
         // oversized frame is declined without serialising 16+ MB in vain.
         let estimate = rendered.v2.estimated_json_bytes();
-        let dl = if estimate > limit { None } else { Some(json::write(&rendered.v2.to_json(&id))) };
+        let dl = if estimate > limit { None } else { Some(rendered.v2.write_json_with(&id, caps.images)) };
         let too_big = dl.as_ref().map_or(estimate, String::len);
         match dl {
             Some(dl) if dl.len() <= limit => extra_lines.push(dl),

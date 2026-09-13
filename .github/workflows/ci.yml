@@ -97,6 +97,10 @@ jobs:
       - name: Build every bundled helper (release)
         # Prints FLASHTEX_<NAME>=<path> lines; the app and its tests read them.
         run: scripts/ci/build-helpers.sh | tee -a "$GITHUB_ENV"
+      - name: Completion vocabulary is the compiler's inventory
+        # apps/mac/Sources/FlashTeXMac/Resources/supported-latex.json must be
+        # byte-identical to crates/compiler/supported/supported-latex.json.
+        run: apps/mac/scripts/sync-supported-latex.sh --check
       - name: swift build
         working-directory: apps/mac
         run: swift build

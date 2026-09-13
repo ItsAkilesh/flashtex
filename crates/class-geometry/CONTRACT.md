@@ -1,7 +1,8 @@
 # class-geometry → render-pipeline integration contract (proposal)
 
-Status: **proposal only**. `crates/render-pipeline` is owned by another
-kabir-claude agent and is not edited here. This document says what the crate
+Status: steps 1–3 adopted by `crates/render-pipeline` (branch
+`agent/kabir-claude/render-pipeline-class-geometry`, see its README "Page
+frame"); steps 4–5 open. The original proposal text follows. This document says what the crate
 guarantees, what render-pipeline would change, and in what order.
 
 ## What the crate provides

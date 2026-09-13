@@ -124,10 +124,27 @@ quotes, `\'e`-style accents composed to precomposed characters), `\textbf`,
 (`secnumdepth`), `\label`/`\ref`/`\pageref` (bounded 3-pass convergence),
 inline and display math (`$`, `\[`, `$$`, `equation` with `(n)` flush right,
 `\frac`, `\sqrt`, scripts, operators with display limits), `\newpage`/
-`\clearpage`/`\pagebreak`, page breaking with TeX's cost model, US Letter
-`article` at 10/11/12pt with `geometry` margins. Diagnostics carry source
+`\clearpage`/`\pagebreak`, page breaking with TeX's cost model, the
+`article`/`report`/`book` page frame at 10/11/12pt on every class paper
+with the complete `geometry` algorithm (see "Page frame" below). Diagnostics carry source
 ranges and codes (`font_unavailable`, `missing_glyph`, `overfull_hbox`,
 `overfull_vbox`, `unsupported_script`, `math_limitation`, `labels_unstable`).
+
+Floats and images (FT-063; `src/floats.rs`, `src/graphics.rs`,
+`src/typeset/floatpage.rs`, `tests/floats_oracle.rs`,
+`docs/evidence/floats/`): `figure`/`table` environments are found in the
+source and blanked (same byte length) before the compiler parse, then set as
+float boxes (`\includegraphics` lines, `\@makecaption` with `Figure~N:`/
+`Table~N:`, `\label`/`\ref`) and placed with LaTeX's `\@addtocurcol`/
+`\@addtonextcol`/`\@tryfcolumn` rules (`[htbp!]`, top/bottom/here, float
+pages, `\end{document}` flush). `\includegraphics` sizes PNG/JPEG/PDF from
+their headers like pdfTeX and applies graphicx's `width`/`height`/
+`totalheight`/`scale`/`angle`/`keepaspectratio`/`page`. Image files are read
+from `RenderOptions::project_root` (request `project_root`, or
+`--project-root DIR`). Image items reach the `display_list` line only when
+`display-list-v2-images` is negotiated
+(`protocol/proposals/display-list-v2-image.md`); runtime-v1 has none.
+10 fixtures match pdfLaTeX within 0.05 bp.
 
 `\text{...}` in math (`src/mathtext.rs`, `tests/math_text.rs`,
 `docs/evidence/hw1-text/`): the argument is an `\hbox` in the text face at the
@@ -177,6 +194,38 @@ paragraphs), `\angle`, `\bigl`/`\bigr`, `\mathbb`, `\mid`, `\setminus`,
 them; see `coordination/mac-math-symbols.md`), tables, footnotes,
 two-column, page numbers/headers (`\pagestyle{empty}` behaviour only),
 non-Latin scripts (`unsupported_script`), RTL.
+
+## Page frame (`flashtex-class-geometry`)
+
+`adapter::document_setup` reads the preamble with
+`DocumentSetup::from_preamble` (`\documentclass` options, every
+`\usepackage[..]{geometry}` option, `\geometry{..}` calls, `\pagestyle`) and
+`Stylesheet::from_resolved` takes the MediaBox, text block, `\textheight`,
+`\topskip`, `\maxdepth` and `\parindent` from the resolved frame (exact to
+the sp against pdflatex in that crate's 96 fixtures). Body-only input keeps
+the compiler's implicit preamble: article, `--class-options` (default
+`12pt`), `\usepackage[margin=1in]{geometry}`. A non-standard class
+(`amsart`, ...) is laid out as article with its options and geometry.
+Heading skips, display skips, `\parskip` and list glue still come from
+document-style (class-geometry CONTRACT step 6). Frame lengths enter the f64
+layout as the nearest 0.001 pt decimal when that is within 2 sp of the exact
+value (`1in` = 4736286 sp as 72.27 pt), so pre-adoption display lists stay
+byte-identical (HW1/HW2 verified) and every length stays within 2 sp.
+
+**`a4paper` without `geometry` is a US Letter page.** pdfTeX only changes
+`\pdfpagewidth`/`\pdfpageheight` when a package (geometry's pdftex driver)
+sets them; the class option alone changes `\paperwidth`/`\textwidth`/
+`\textheight`, not the MediaBox, which stays MacTeX's `pdftexconfig.tex`
+default of 8.5in x 11in. The pipeline reproduces that: the page is 612 x
+792 bp and the A4 text block (345 pt x 598 pt at 10pt) is placed from the
+top-left corner (`tests/class_geometry_frame.rs`, pdflatex `\pdfsavepos`
+readings). With geometry the page is the paper (`595.276 x 841.89` bp).
+
+Not laid out yet (the frame carries them; each changes output and needs its
+own pdflatex-gated change): two-sided left edges (`frame.text_left(page)`
+for even pages), two-column frames (`frame.columns`), page numbers and
+running heads at `frame.head_baseline`/`foot_baseline` (`head_foot(page)`),
+report/book `\chapter` layout.
 
 ## Sibling pins and requested API changes
 

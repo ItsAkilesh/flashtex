@@ -49,7 +49,7 @@ final class SnippetTests: XCTestCase {
         XCTAssertEqual(labels(s).first, "\\subsection{...}")
         XCTAssertTrue(s.allSatisfy { Completion.matchRank($0.insertText.dropFirst().description, prefix: "sbs") == 2 })
         let se = Completion.suggestions(in: "x \\se", caretUTF16: 5, result: nil)
-        XCTAssertEqual(labels(se), ["\\section{...}", "\\setlist[list]{options}", "\\sec", "\\setminus"], "prefix matches only, in table order")
+        XCTAssertEqual(labels(se), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}", "\\sec", "\\setminus"], "prefix matches only, in table order")
         // Labels: `\ref{main}` finds `eq:main` only when no key starts with `main`.
         let text = "\\label{eq:main}\\label{main}\\label{sec:domain} \\ref{main"
         XCTAssertEqual(labels(Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)), ["main"])

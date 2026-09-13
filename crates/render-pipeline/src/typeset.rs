@@ -256,11 +256,17 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
     }
 }
 
+pub mod floatpage;
+
 pub struct Laid {
     pub blocks: Vec<BuiltBlock>,
     pub pages: pl::Pages,
     pub recs: Vec<BoxRec>,
     pub maths: Vec<MathRec>,
+    /// Image items per page number (FT-063 floats).
+    pub images: Vec<(u32, display::Item)>,
+    /// The page of every float `\label`.
+    pub float_labels: Vec<(String, u32)>,
 }
 
 pub struct Context<'a> {
@@ -2654,7 +2660,7 @@ pub fn convert_math_classed(
                             // `\bot` (Ord, same glyph as `\perp`) and
                             // `\bigtriangleup` (Bin, same glyph as `\triangle`).
                             Some(forced) => vec![ml::Atom::new(forced, ml::Nucleus::Symbol(c))],
-                            None => symbol_atoms(c),
+                            None => symbol_atoms(c, a.width_em),
                         },
                         Some(None) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
                         None => {
@@ -2745,7 +2751,7 @@ pub fn convert_math_classed(
     // plain symbol it would have been without the fence.
     for (left, body) in stack {
         if let Some(c) = left {
-            atoms.extend(symbol_atoms(c));
+            atoms.extend(symbol_atoms(c, None));
         }
         atoms.extend(body);
     }
@@ -3080,13 +3086,24 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
 /// default classification, with the compiler's spellings that TeX sets as
 /// composites expanded (`fontmath.ltx`: `\neq` is `\not=`, `\notin` is
 /// `\not\in`, the zero-width relation slash before the relation).
-fn symbol_atoms(c: char) -> Vec<ml::Atom> {
+///
+/// `width_em` is the originating `MathAtom.width_em` (compiler pin
+/// `c583d6d4`: `pub` now, `Some(0.777781)` for `\varnothing`, `None`
+/// otherwise, including for plain `\emptyset`'s identical U+2205); read here
+/// instead of re-scanning the source at the atom's span for the control
+/// word, like [`class_override_of`].
+fn symbol_atoms(c: char, width_em: Option<f64>) -> Vec<ml::Atom> {
     match c {
         // The compiler spells \cdot as U+00B7; the Bin class and cmsy slot
         // are those of U+22C5.
         '\u{00B7}' => vec![ml::Atom::symbol('\u{22C5}')],
         '\u{2260}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('=')],
         '\u{2209}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('\u{2208}')],
+        // `\varnothing`: same U+2205 as `\emptyset`, but forced to msbm10's
+        // width. A sentinel keeps the two apart for the metrics providers
+        // (`TexMathMetrics`/`MathFonts`), which paint both from cmsy10's
+        // `\emptyset` slot but only force this one's advance and outline.
+        '\u{2205}' if width_em.is_some() => vec![ml::Atom::symbol(crate::mathfont::VARNOTHING_SENTINEL)],
         _ => vec![ml::Atom::symbol(c)],
     }
 }
@@ -3117,6 +3134,12 @@ fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
 /// items, flags and style match an earlier build are reused (see
 /// `incremental`); the result is identical either way.
 pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid {
+    build_with_floats(ctx, doc, cache, &[])
+}
+
+/// [`build`] with `figure`/`table` floats placed by LaTeX's algorithm
+/// ([`floatpage`]); without floats the page builder is unchanged.
+pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>, floats: &[floatpage::FloatSpec]) -> Laid {
     let mut blocks: Vec<BuiltBlock> = Vec::new();
     let mut after_heading = false;
     // Whether the open paragraph-shape environment began in vertical mode
@@ -3391,7 +3414,11 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
     };
     let vblocks: Vec<VBlock> = blocks.iter().map(|b| b.vertical.clone()).collect();
     let list = pagebuild::vlist(&params, &vblocks);
-    let built = pagebuild::break_pages(&params, &list);
+    let (built, images, float_labels) = if floats.is_empty() {
+        (pagebuild::break_pages(&params, &list), Vec::new(), Vec::new())
+    } else {
+        floatpage::paginate(ctx, &mut blocks, &params, &list, floats)
+    };
     let mut pages = pl::Pages {
         pages: Vec::with_capacity(built.len()),
         overflow: Vec::new(),
@@ -3460,6 +3487,8 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
         pages,
         recs: std::mem::take(&mut ctx.recs),
         maths: std::mem::take(&mut ctx.maths),
+        images,
+        float_labels,
     }
 }
 
@@ -3483,6 +3512,9 @@ pub fn label_pages(laid: &Laid) -> BTreeMap<String, u32> {
                 .unwrap_or(1);
             out.insert(key.clone(), page);
         }
+    }
+    for (key, page) in &laid.float_labels {
+        out.insert(key.clone(), *page);
     }
     out
 }
@@ -3544,6 +3576,7 @@ pub fn assemble(
                 items.push(incremental::place_item(it, dy, &a.path, delta));
             }
         }
+        items.extend(laid.images.iter().filter(|(n, _)| *n == page.number).map(|(_, it)| it.clone()));
         pages.push(display::Page {
             number: page.number,
             width: Tick::from_tex_pt(page.width),
@@ -4117,6 +4150,10 @@ fn math_items(
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
             Some(rg) => r.text.push_str(&rg.text),
+            // `VARNOTHING_SENTINEL` (`\varnothing`) is never real text: it
+            // stands for U+2205 everywhere outside the metrics/painting
+            // lookup that needs to tell it apart from plain `\emptyset`.
+            None if g.ch == crate::mathfont::VARNOTHING_SENTINEL => r.text.push('\u{2205}'),
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;

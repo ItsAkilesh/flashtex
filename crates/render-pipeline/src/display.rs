@@ -256,11 +256,48 @@ pub struct PathItem {
     pub provenance: Provenance,
 }
 
+/// PROPOSAL (FT-063, `protocol/proposals/display-list-v2-image.md`): one
+/// image file referenced by content hash; the consumer fetches the bytes
+/// through project-files by `path` and verifies `sha256`/`byte_length`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageResource {
+    /// SHA-256 hex of the file bytes (also the image id).
+    pub sha256: std::rc::Rc<str>,
+    pub byte_length: u64,
+    /// `png`, `jpeg` or `pdf`.
+    pub format: &'static str,
+    /// Project-relative path the bytes were read from.
+    pub path: String,
+    pub pixels: Option<(u32, u32)>,
+    /// PDF: 1-based page, the clip box in the page's own space, `/Rotate`.
+    pub pdf_page: u32,
+    pub pdf_box: Option<[f64; 4]>,
+    pub pdf_rotate: i32,
+}
+
+/// PROPOSAL (FT-063): a placed image. `x/top/width/height` is the bounding
+/// box; `transform` maps the image's unit square (u right, v up, (0,0) at
+/// the image's lower-left) to page points, y down:
+/// `page = (e + a*u + c*v, f + b*u + d*v)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub x: Tick,
+    pub top: Tick,
+    pub width: Tick,
+    pub height: Tick,
+    pub transform: [f64; 6],
+    pub resource: std::rc::Rc<ImageResource>,
+    pub provenance: Provenance,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     GlyphRun(GlyphRun),
     Rule(Rule),
     Path(PathItem),
+    /// Only serialised when the request negotiated `display-list-v2-images`
+    /// (see [`DisplayList::to_json_with`]).
+    Image(Image),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -382,6 +419,7 @@ impl DisplayList {
                     Item::GlyphRun(r) => 220 + 2 * r.text.len() + 120 * r.glyphs.len() + 280 * r.clusters.len(),
                     Item::Rule(_) => 240,
                     Item::Path(p) => 240 + 64 * (p.commands.len() + p.clips.iter().map(|c| c.commands.len()).sum::<usize>()),
+                    Item::Image(i) => 520 + 2 * i.resource.path.len(),
                 };
             }
         }
@@ -389,6 +427,11 @@ impl DisplayList {
     }
 
     pub fn required_features(&self) -> Vec<&'static str> {
+        self.required_features_with(false)
+    }
+
+    /// `images`: whether image items are serialised (adds `image`).
+    pub fn required_features_with(&self, images: bool) -> Vec<&'static str> {
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
             f.insert(1, "rule");
@@ -406,11 +449,26 @@ impl DisplayList {
         if self.fonts.iter().any(|r| r.format == "static-truetype") {
             f.push("static-truetype");
         }
+        if images && self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(_)))) {
+            f.push("image");
+        }
         f
     }
 
-    /// The `display_list` envelope of rendering-v2 as a JSON value.
+    /// Whether any page carries an image item.
+    pub fn has_images(&self) -> bool {
+        self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(_))))
+    }
+
+    /// The `display_list` envelope of rendering-v2 as a JSON value, exactly
+    /// as frozen: image items (an FT-063 proposal) are not serialised.
     pub fn to_json(&self, id: &str) -> Value {
+        self.to_json_with(id, false)
+    }
+
+    /// [`to_json`](Self::to_json); `images` also serialises image items
+    /// and lists the `image` feature (negotiated `display-list-v2-images`).
+    pub fn to_json_with(&self, id: &str, images: bool) -> Value {
         let mut payload = Value::obj();
         payload.set("render_format", json::str_("display-list-v2"));
         payload.set("coordinate_unit", json::str_("bp_2pow20"));
@@ -420,7 +478,7 @@ impl DisplayList {
         payload.set("revision", json::num(self.revision as f64));
         payload.set(
             "required_features",
-            Value::Arr(self.required_features().into_iter().map(json::str_).collect()),
+            Value::Arr(self.required_features_with(images).into_iter().map(json::str_).collect()),
         );
         payload.set(
             "documents",
@@ -458,7 +516,7 @@ impl DisplayList {
                     .collect(),
             ),
         );
-        payload.set("pages", Value::Arr(self.pages.iter().map(page_json).collect()));
+        payload.set("pages", Value::Arr(self.pages.iter().map(|p| page_json(p, images)).collect()));
         payload.set(
             "diagnostics",
             Value::Arr(self.diagnostics.iter().map(diagnostic_json).collect()),
@@ -470,6 +528,385 @@ impl DisplayList {
         v.set("payload", payload);
         v
     }
+
+    /// `json::write(&self.to_json(id))` without building the `Value` tree
+    /// (FT-065: at HW1 size the tree of per-glyph maps with owned keys cost
+    /// more than layout). Keys are written in the `BTreeMap` order the tree
+    /// serialises in and numbers/strings go through the same json writers,
+    /// so the bytes are identical (`write_json_matches_the_value_tree`).
+    pub fn write_json(&self, id: &str) -> String {
+        self.write_json_with(id, false)
+    }
+
+    /// `json::write(&self.to_json_with(id, images))` written directly:
+    /// `images` also serialises image items and lists the `image` feature.
+    pub fn write_json_with(&self, id: &str, images: bool) -> String {
+        let mut o = String::with_capacity(self.estimated_json_bytes());
+        o.push_str("{\"id\":");
+        json::write_string_into(id, &mut o);
+        o.push_str(",\"payload\":{\"color_space\":\"srgb\",\"coordinate_unit\":\"bp_2pow20\",\"diagnostics\":[");
+        for (i, d) in self.diagnostics.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"code\":");
+            json::write_string_into(&d.code, &mut o);
+            o.push_str(",\"message\":");
+            json::write_string_into(&d.message, &mut o);
+            o.push_str(",\"severity\":");
+            o.push_str(match d.severity {
+                Severity::Warning => "\"warning\"",
+                Severity::Error => "\"error\"",
+            });
+            o.push_str(",\"sources\":");
+            write_sources(&mut o, &d.sources);
+            o.push('}');
+        }
+        o.push_str("],\"documents\":[");
+        for (i, d) in self.documents.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"byte_length\":");
+            num(&mut o, d.byte_length as f64);
+            o.push_str(",\"path\":");
+            json::write_string_into(&d.path, &mut o);
+            o.push_str(",\"revision\":");
+            num(&mut o, d.revision as f64);
+            o.push_str(",\"sha256\":");
+            json::write_string_into(&d.sha256, &mut o);
+            o.push('}');
+        }
+        o.push_str("],\"fonts\":[");
+        for (i, f) in self.fonts.iter().enumerate() {
+            sep(&mut o, i);
+            o.push_str("{\"byte_length\":");
+            num(&mut o, f.byte_length as f64);
+            o.push_str(",\"face_index\":");
+            num(&mut o, f64::from(f.face_index));
+            o.push_str(",\"font_id\":");
+            json::write_string_into(&f.font_id, &mut o);
+            o.push_str(",\"format\":");
+            json::write_string_into(&f.format, &mut o);
+            o.push_str(",\"glyph_count\":");
+            num(&mut o, f64::from(f.glyph_count));
+            o.push_str(",\"postscript_name\":");
+            json::write_string_into(&f.postscript_name, &mut o);
+            o.push_str(",\"sha256\":");
+            json::write_string_into(&f.sha256, &mut o);
+            o.push_str(",\"units_per_em\":");
+            num(&mut o, f64::from(f.units_per_em));
+            o.push('}');
+        }
+        o.push_str("],\"pages\":[");
+        for (i, p) in self.pages.iter().enumerate() {
+            sep(&mut o, i);
+            write_page(&mut o, p, images);
+        }
+        o.push_str("],\"project_id\":");
+        json::write_string_into(&self.project_id, &mut o);
+        o.push_str(",\"render_format\":\"display-list-v2\",\"required_features\":[");
+        for (i, f) in self.required_features_with(images).into_iter().enumerate() {
+            sep(&mut o, i);
+            json::write_string_into(f, &mut o);
+        }
+        o.push_str("],\"revision\":");
+        num(&mut o, self.revision as f64);
+        o.push_str(",\"text_extraction\":\"cluster-actualtext\"},\"protocol_version\":");
+        num(&mut o, PROTOCOL_VERSION as f64);
+        o.push_str(",\"type\":\"display_list\"}");
+        o
+    }
+}
+
+fn sep(o: &mut String, i: usize) {
+    if i > 0 {
+        o.push(',');
+    }
+}
+
+fn num(o: &mut String, n: f64) {
+    json::write_number_into(n, o);
+}
+
+fn write_tick(o: &mut String, t: Tick) {
+    num(o, t.0 as f64);
+}
+
+fn write_sources(o: &mut String, sources: &[SourceRange]) {
+    o.push('[');
+    for (i, s) in sources.iter().enumerate() {
+        sep(o, i);
+        o.push_str("{\"end_byte\":");
+        num(o, s.end_byte as f64);
+        o.push_str(",\"path\":");
+        json::write_string_into(&s.path, o);
+        o.push_str(",\"start_byte\":");
+        num(o, s.start_byte as f64);
+        o.push('}');
+    }
+    o.push(']');
+}
+
+/// `sources` or `synthetic_reason`, preceded by a comma (both sort after
+/// every key written before them and before every key written after).
+fn write_provenance(o: &mut String, p: &Provenance) {
+    match p {
+        Provenance::Source(_) | Provenance::Sources(_) => {
+            o.push_str(",\"sources\":");
+            write_sources(o, p.sources());
+        }
+        Provenance::Synthetic(reason) => {
+            o.push_str(",\"synthetic_reason\":");
+            json::write_string_into(reason, o);
+        }
+    }
+}
+
+fn write_paint(o: &mut String, p: &Paint) {
+    o.push_str("{\"a\":");
+    num(o, p.a);
+    o.push_str(",\"b\":");
+    num(o, p.b);
+    o.push_str(",\"g\":");
+    num(o, p.g);
+    o.push_str(",\"r\":");
+    num(o, p.r);
+    o.push('}');
+}
+
+/// [`path_json`] written directly.
+fn write_path(o: &mut String, cmds: &[PathCmd]) {
+    o.push('[');
+    for (i, c) in cmds.iter().enumerate() {
+        sep(o, i);
+        let (op, ts): (&str, &[Tick]) = match c {
+            PathCmd::Move(x, y) => ("[\"m\"", &[*x, *y]),
+            PathCmd::Line(x, y) => ("[\"l\"", &[*x, *y]),
+            PathCmd::Cubic(a, b, cc, d, e, f) => ("[\"c\"", &[*a, *b, *cc, *d, *e, *f]),
+            PathCmd::Close => ("[\"z\"", &[]),
+        };
+        o.push_str(op);
+        for t in ts {
+            o.push(',');
+            write_tick(o, *t);
+        }
+        o.push(']');
+    }
+    o.push(']');
+}
+
+/// [`image_json`] written directly. BTreeMap key order: height, image
+/// (byte_length, format, image_id, path, pdf_box, pdf_page, pdf_rotate,
+/// pixel_height, pixel_width, sha256), kind, sources/synthetic_reason, top,
+/// transform, width, x.
+fn write_image(o: &mut String, i: &Image) {
+    let r = &i.resource;
+    o.push_str("{\"height\":");
+    write_tick(o, i.height);
+    o.push_str(",\"image\":{\"byte_length\":");
+    num(o, r.byte_length as f64);
+    o.push_str(",\"format\":");
+    json::write_string_into(r.format, o);
+    o.push_str(",\"image_id\":");
+    json::write_string_into(&r.sha256, o);
+    o.push_str(",\"path\":");
+    json::write_string_into(&r.path, o);
+    if let Some(b) = r.pdf_box {
+        o.push_str(",\"pdf_box\":[");
+        for (j, v) in b.iter().enumerate() {
+            sep(o, j);
+            num(o, *v);
+        }
+        o.push_str("],\"pdf_page\":");
+        num(o, f64::from(r.pdf_page));
+        o.push_str(",\"pdf_rotate\":");
+        num(o, f64::from(r.pdf_rotate));
+    }
+    if let Some((w, h)) = r.pixels {
+        o.push_str(",\"pixel_height\":");
+        num(o, f64::from(h));
+        o.push_str(",\"pixel_width\":");
+        num(o, f64::from(w));
+    }
+    o.push_str(",\"sha256\":");
+    json::write_string_into(&r.sha256, o);
+    o.push_str("},\"kind\":\"image\"");
+    write_provenance(o, &i.provenance);
+    o.push_str(",\"top\":");
+    write_tick(o, i.top);
+    o.push_str(",\"transform\":[");
+    for (j, v) in i.transform.iter().enumerate() {
+        sep(o, j);
+        num(o, (v * 1000.0).round() / 1000.0 + 0.0);
+    }
+    o.push_str("],\"width\":");
+    write_tick(o, i.width);
+    o.push_str(",\"x\":");
+    write_tick(o, i.x);
+    o.push('}');
+}
+
+fn write_page(o: &mut String, p: &Page, images: bool) {
+    o.push_str("{\"height\":");
+    write_tick(o, p.height);
+    o.push_str(",\"items\":[");
+    for (i, it) in p.items.iter().filter(|it| images || !matches!(it, Item::Image(_))).enumerate() {
+        sep(o, i);
+        match it {
+            Item::Image(img) => write_image(o, img),
+            Item::GlyphRun(r) => {
+                o.push_str("{\"clusters\":[");
+                for (j, c) in r.clusters.iter().enumerate() {
+                    sep(o, j);
+                    o.push_str("{\"carets\":[");
+                    for (k, caret) in c.carets.iter().enumerate() {
+                        sep(o, k);
+                        o.push_str("{\"height\":");
+                        write_tick(o, caret.height);
+                        o.push_str(",\"text_byte\":");
+                        num(o, caret.text_byte as f64);
+                        o.push_str(",\"top\":");
+                        write_tick(o, caret.top);
+                        o.push_str(",\"x\":");
+                        write_tick(o, caret.x);
+                        o.push('}');
+                    }
+                    o.push_str("],\"hit_rects\":[");
+                    for (k, rect) in c.hit_rects().iter().enumerate() {
+                        sep(o, k);
+                        o.push_str("{\"height\":");
+                        write_tick(o, rect.height);
+                        o.push_str(",\"top\":");
+                        write_tick(o, rect.top);
+                        o.push_str(",\"width\":");
+                        write_tick(o, rect.width);
+                        o.push_str(",\"x\":");
+                        write_tick(o, rect.x);
+                        o.push('}');
+                    }
+                    o.push(']');
+                    write_provenance(o, &c.provenance);
+                    o.push_str(",\"text_end_byte\":");
+                    num(o, c.text_end_byte as f64);
+                    o.push_str(",\"text_start_byte\":");
+                    num(o, c.text_start_byte as f64);
+                    o.push('}');
+                }
+                o.push_str("],\"font_id\":");
+                json::write_string_into(&r.font_id, o);
+                o.push_str(",\"font_size\":");
+                write_tick(o, r.font_size);
+                o.push_str(",\"glyphs\":[");
+                for (j, g) in r.glyphs.iter().enumerate() {
+                    sep(o, j);
+                    o.push_str("{\"advance_x\":");
+                    write_tick(o, g.advance_x);
+                    o.push_str(",\"advance_y\":");
+                    write_tick(o, g.advance_y);
+                    o.push_str(",\"baseline_y\":");
+                    write_tick(o, g.baseline_y);
+                    o.push_str(",\"cluster\":");
+                    num(o, f64::from(g.cluster));
+                    o.push_str(",\"gid\":");
+                    num(o, f64::from(g.gid));
+                    o.push_str(",\"origin_x\":");
+                    write_tick(o, g.origin_x);
+                    o.push('}');
+                }
+                o.push_str("],\"kind\":\"glyph_run\",\"paint\":");
+                write_paint(o, &r.paint);
+                o.push_str(",\"text\":");
+                json::write_string_into(&r.text, o);
+                o.push('}');
+            }
+            Item::Rule(r) => {
+                o.push_str("{\"height\":");
+                write_tick(o, r.height);
+                o.push_str(",\"kind\":\"rule\",\"paint\":");
+                write_paint(o, &r.paint);
+                write_provenance(o, &r.provenance);
+                o.push_str(",\"top\":");
+                write_tick(o, r.top);
+                o.push_str(",\"width\":");
+                write_tick(o, r.width);
+                o.push_str(",\"x\":");
+                write_tick(o, r.x);
+                o.push('}');
+            }
+            Item::Path(p) => {
+                // BTreeMap key order: clips, fill_rule, kind, paint, path,
+                // sources, stroke, synthetic_reason.
+                o.push('{');
+                if !p.clips.is_empty() {
+                    o.push_str("\"clips\":[");
+                    for (j, c) in p.clips.iter().enumerate() {
+                        sep(o, j);
+                        o.push_str("{\"fill_rule\":");
+                        o.push_str(if c.even_odd { "\"evenodd\"" } else { "\"nonzero\"" });
+                        o.push_str(",\"kind\":\"path\",\"path\":");
+                        write_path(o, &c.commands);
+                        o.push('}');
+                    }
+                    o.push_str("],");
+                }
+                let stroke = match &p.op {
+                    PathPaintOp::Fill { even_odd } => {
+                        o.push_str("\"fill_rule\":");
+                        o.push_str(if *even_odd { "\"evenodd\"" } else { "\"nonzero\"" });
+                        o.push_str(",\"kind\":\"path_fill\"");
+                        None
+                    }
+                    PathPaintOp::Stroke(s) => {
+                        o.push_str("\"kind\":\"path_stroke\"");
+                        Some(s)
+                    }
+                };
+                o.push_str(",\"paint\":");
+                write_paint(o, &p.paint);
+                o.push_str(",\"path\":");
+                write_path(o, &p.commands);
+                let synthetic = matches!(p.provenance, Provenance::Synthetic(_));
+                if !synthetic {
+                    write_provenance(o, &p.provenance);
+                }
+                if let Some(s) = stroke {
+                    o.push_str(",\"stroke\":{\"cap\":");
+                    o.push_str(match s.cap {
+                        LineCap::Butt => "\"butt\"",
+                        LineCap::Round => "\"round\"",
+                        LineCap::Square => "\"square\"",
+                    });
+                    if !s.dash.is_empty() {
+                        o.push_str(",\"dash\":{\"array\":[");
+                        for (j, t) in s.dash.iter().enumerate() {
+                            sep(o, j);
+                            write_tick(o, *t);
+                        }
+                        o.push_str("],\"phase\":");
+                        write_tick(o, s.dash_phase);
+                        o.push('}');
+                    }
+                    o.push_str(",\"join\":");
+                    o.push_str(match s.join {
+                        LineJoin::Miter => "\"miter\"",
+                        LineJoin::Round => "\"round\"",
+                        LineJoin::Bevel => "\"bevel\"",
+                    });
+                    o.push_str(",\"miter_limit\":");
+                    num(o, s.miter_limit);
+                    o.push_str(",\"width\":");
+                    write_tick(o, s.width);
+                    o.push('}');
+                }
+                if synthetic {
+                    write_provenance(o, &p.provenance);
+                }
+                o.push('}');
+            }
+        }
+    }
+    o.push_str("],\"number\":");
+    num(o, f64::from(p.number));
+    o.push_str(",\"width\":");
+    write_tick(o, p.width);
+    o.push('}');
 }
 
 fn tick(t: Tick) -> Value {
@@ -540,7 +977,7 @@ pub fn diagnostic_json(d: &Diagnostic) -> Value {
     o
 }
 
-fn page_json(p: &Page) -> Value {
+fn page_json(p: &Page, images: bool) -> Value {
     let mut o = Value::obj();
     o.set("number", json::num(f64::from(p.number)));
     o.set("width", tick(p.width));
@@ -550,6 +987,7 @@ fn page_json(p: &Page) -> Value {
         Value::Arr(
             p.items
                 .iter()
+                .filter(|it| images || !matches!(it, Item::Image(_)))
                 .map(|it| match it {
                     Item::GlyphRun(r) => {
                         let mut o = Value::obj();
@@ -680,10 +1118,42 @@ fn page_json(p: &Page) -> Value {
                         provenance_into(&mut o, &r.provenance);
                         o
                     }
+                    Item::Image(i) => image_json(i),
                 })
                 .collect(),
         ),
     );
+    o
+}
+
+fn image_json(i: &Image) -> Value {
+    let mut o = Value::obj();
+    o.set("kind", json::str_("image"));
+    o.set("x", tick(i.x));
+    o.set("top", tick(i.top));
+    o.set("width", tick(i.width));
+    o.set("height", tick(i.height));
+    // Points with 1/1000 pt resolution: the transform is a paint hint, the
+    // bounding box above is the exact geometry.
+    o.set("transform", Value::Arr(i.transform.iter().map(|v| json::num((v * 1000.0).round() / 1000.0 + 0.0)).collect()));
+    let r = &i.resource;
+    let mut res = Value::obj();
+    res.set("image_id", json::str_(r.sha256.to_string()));
+    res.set("sha256", json::str_(r.sha256.to_string()));
+    res.set("byte_length", json::num(r.byte_length as f64));
+    res.set("format", json::str_(r.format));
+    res.set("path", json::str_(r.path.clone()));
+    if let Some((w, h)) = r.pixels {
+        res.set("pixel_width", json::num(f64::from(w)));
+        res.set("pixel_height", json::num(f64::from(h)));
+    }
+    if let Some(b) = r.pdf_box {
+        res.set("pdf_page", json::num(f64::from(r.pdf_page)));
+        res.set("pdf_box", Value::Arr(b.iter().map(|v| json::num(*v)).collect()));
+        res.set("pdf_rotate", json::num(f64::from(r.pdf_rotate)));
+    }
+    o.set("image", res);
+    provenance_into(&mut o, &i.provenance);
     o
 }
 
@@ -697,5 +1167,207 @@ mod tests {
         assert_eq!(Tick::from_tex_pt(72.27), Tick(72 * 1_048_576));
         assert_eq!(Tick::from_bp(612.0).0, 612 * 1_048_576);
         assert_eq!(Tick::from_tex_pt(0.0), Tick(0));
+    }
+
+    #[test]
+    fn write_json_matches_the_value_tree() {
+        let src = |a, b| SourceRange {
+            path: std::rc::Rc::from("dir/ma\"in.tex"),
+            start_byte: a,
+            end_byte: b,
+        };
+        let caret = |x| Caret {
+            text_byte: 3,
+            x: Tick(x),
+            top: Tick(-7),
+            height: Tick(1 << 40),
+        };
+        let cluster = |provenance| Cluster {
+            text_start_byte: 0,
+            text_end_byte: 4,
+            hit_rect: Rect {
+                x: Tick(1),
+                top: Tick(-2),
+                width: Tick(3),
+                height: Tick(4),
+            },
+            carets: Carets {
+                first: caret(5),
+                last: Some(caret(9)),
+            },
+            provenance,
+        };
+        let run = Item::GlyphRun(GlyphRun {
+            font_id: std::rc::Rc::from("abc"),
+            font_size: Tick(12 << 20),
+            text: "ﬁ \"q\"\\\n\t\u{1}é".into(),
+            glyphs: vec![
+                Glyph {
+                    gid: 65535,
+                    origin_x: Tick(-1),
+                    baseline_y: Tick(2),
+                    advance_x: Tick(3),
+                    advance_y: Tick(0),
+                    cluster: 1,
+                };
+                2
+            ],
+            clusters: vec![
+                cluster(Provenance::Source(src(1, 2))),
+                cluster(Provenance::Sources(vec![src(3, 4), src(5, 6)])),
+                cluster(Provenance::Synthetic("heading number".into())),
+            ],
+            paint: Paint {
+                r: 0.25,
+                g: 0.1,
+                b: 1.0 / 3.0,
+                a: 1.0,
+            },
+            role: RunRole::Text,
+        });
+        let rule = |provenance| {
+            Item::Rule(Rule {
+                x: Tick(10),
+                top: Tick(20),
+                width: Tick(30),
+                height: Tick(40),
+                paint: Paint::BLACK,
+                provenance,
+            })
+        };
+        let cmds = || {
+            vec![
+                PathCmd::Move(Tick(1), Tick(-2)),
+                PathCmd::Line(Tick(3), Tick(4)),
+                PathCmd::Cubic(Tick(5), Tick(6), Tick(7), Tick(8), Tick(9), Tick(1 << 40)),
+                PathCmd::Close,
+            ]
+        };
+        let clips = || {
+            vec![
+                ClipPath { commands: cmds(), even_odd: false },
+                ClipPath { commands: Vec::new(), even_odd: true },
+            ]
+        };
+        let stroke = |dash: Vec<Tick>| Stroke {
+            width: Tick(1 << 19),
+            cap: LineCap::Round,
+            join: LineJoin::Bevel,
+            miter_limit: 10.5,
+            dash,
+            dash_phase: Tick(2),
+        };
+        let path = |op, clips, provenance| {
+            Item::Path(PathItem {
+                op,
+                commands: cmds(),
+                clips,
+                paint: Paint { r: 0.5, g: 0.0, b: 1.0, a: 0.25 },
+                provenance,
+            })
+        };
+        let png = || {
+            std::rc::Rc::new(ImageResource {
+                sha256: std::rc::Rc::from("beef"),
+                byte_length: 1 << 34,
+                format: "png",
+                path: "img/r\"ed.png".into(),
+                pixels: Some((96, 48)),
+                pdf_page: 0,
+                pdf_box: None,
+                pdf_rotate: 0,
+            })
+        };
+        let pdf = || {
+            std::rc::Rc::new(ImageResource {
+                sha256: std::rc::Rc::from("cafe"),
+                byte_length: 777,
+                format: "pdf",
+                path: "box.pdf".into(),
+                pixels: None,
+                pdf_page: 2,
+                pdf_box: Some([0.5, -1.0, 612.0, 792.25]),
+                pdf_rotate: -90,
+            })
+        };
+        let image = |resource, provenance| {
+            Item::Image(Image {
+                x: Tick(11),
+                top: Tick(-12),
+                width: Tick(1 << 30),
+                height: Tick(14),
+                transform: [1.0 / 3.0, -0.0, 0.00049, 2.5, -72.0004, 1e9],
+                resource,
+                provenance,
+            })
+        };
+        let list = DisplayList {
+            project_id: "p\\1".into(),
+            revision: 42,
+            documents: vec![DocumentResource {
+                path: "main.tex".into(),
+                revision: 42,
+                sha256: "00ff".into(),
+                byte_length: 5126,
+            }],
+            fonts: vec![FontResource {
+                font_id: std::rc::Rc::from("abc"),
+                sha256: "abc".into(),
+                byte_length: 1 << 33,
+                format: "opentype-cff".into(),
+                face_index: 0,
+                units_per_em: 1000,
+                glyph_count: 821,
+                postscript_name: "LMRoman12-Regular".into(),
+                path: Some("/x".into()),
+            }],
+            pages: vec![
+                Page {
+                    number: 1,
+                    width: Tick(612 << 20),
+                    height: Tick(792 << 20),
+                    items: vec![run, rule(Provenance::Source(src(7, 8))), rule(Provenance::Synthetic("frac".into()))],
+                },
+                Page {
+                    number: 3,
+                    width: Tick(612 << 20),
+                    height: Tick(792 << 20),
+                    items: vec![
+                        path(PathPaintOp::Fill { even_odd: true }, Vec::new(), Provenance::Source(src(1, 3))),
+                        path(PathPaintOp::Fill { even_odd: false }, clips(), Provenance::Synthetic("tikz".into())),
+                        path(PathPaintOp::Stroke(stroke(Vec::new())), Vec::new(), Provenance::Synthetic("tikz".into())),
+                        image(png(), Provenance::Source(src(4, 7))),
+                        path(PathPaintOp::Stroke(stroke(vec![Tick(3), Tick(-4)])), clips(), Provenance::Sources(vec![src(2, 5), src(6, 9)])),
+                        image(pdf(), Provenance::Synthetic("float".into())),
+                    ],
+                },
+                Page {
+                    number: 2,
+                    width: Tick(1),
+                    height: Tick(2),
+                    items: Vec::new(),
+                },
+            ],
+            diagnostics: vec![
+                Diagnostic::warning("overfull_hbox", "line \"3\" is 1.5pt too wide", vec![src(1, 9)]),
+                Diagnostic::error("compiler", "x", Vec::new()),
+            ],
+        };
+        assert_eq!(list.write_json("id\"1"), json::write(&list.to_json("id\"1")));
+        for images in [false, true] {
+            assert_eq!(list.write_json_with("id\"1", images), json::write(&list.to_json_with("id\"1", images)));
+        }
+        assert!(!list.write_json("i").contains("\"image\""));
+        assert!(list.write_json_with("i", true).contains("\"kind\":\"image\""));
+        let empty = DisplayList {
+            project_id: String::new(),
+            revision: 0,
+            documents: Vec::new(),
+            fonts: Vec::new(),
+            pages: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        assert_eq!(empty.write_json(""), json::write(&empty.to_json("")));
+        assert_eq!(empty.write_json_with("", true), json::write(&empty.to_json_with("", true)));
     }
 }

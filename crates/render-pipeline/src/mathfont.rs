@@ -101,10 +101,22 @@ pub fn is_script_capital(ch: char) -> bool {
     flashtex_compiler::newcm_math::advance(ch).is_some()
 }
 
+/// Sentinel the pipeline substitutes for `\varnothing`'s compiler symbol
+/// (U+2205, identical to `\emptyset`'s) when `MathAtom.width_em` is `Some`
+/// (compiler pin `c583d6d4`: the field is now `pub`, msbm10's 0.777781em).
+/// A private-use code point, never a compiler output, so the metrics
+/// providers can tell the two U+2205 occurrences apart without re-scanning
+/// the source: [`is_secondary_face`] paints it from [`BB_FONT`] like
+/// `\mathbb`/`\mathcal` (New Computer Modern Math's advances track msbm's,
+/// per the module doc comment), and [`math_char`] maps it straight back to
+/// U+2205 everywhere else (glyph lookup, text extraction). Only
+/// `typeset::symbol_atoms` introduces it; nothing else compares against it.
+pub const VARNOTHING_SENTINEL: char = '\u{F8FF}';
+
 /// Whether `ch` is drawn from the secondary face ([`BB_FONT`]) when it is
-/// loaded: `\mathbb` and `\mathcal` letters.
+/// loaded: `\mathbb` and `\mathcal` letters, and [`VARNOTHING_SENTINEL`].
 pub fn is_secondary_face(ch: char) -> bool {
-    is_double_struck(ch) || is_script_capital(ch)
+    is_double_struck(ch) || is_script_capital(ch) || ch == VARNOTHING_SENTINEL
 }
 
 impl MathFonts {
@@ -241,6 +253,7 @@ impl MathFonts {
             '\u{3D5}' => '\u{1D719}',  // phi variant
             '\u{3F1}' => '\u{1D71A}',  // rho variant
             '\u{3D6}' => '\u{1D71B}',  // pi variant
+            VARNOTHING_SENTINEL => '\u{2205}',
             _ => ch,
         }
     }
@@ -330,10 +343,13 @@ impl MathFontMetrics for MathFonts {
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         if is_secondary_face(ch) {
+            // `VARNOTHING_SENTINEL` has no glyph of its own in either face;
+            // it stands for U+2205, which both faces do carry.
+            let drawn = Self::math_char(ch);
             match &self.bb {
                 Some(bb) => {
-                    if let Some(gid) = bb.face().glyph_id(ch) {
-                        return Some(Self::glyph_from(bb, BB_FONT, gid.0, ch, self.sizes.at(size)));
+                    if let Some(gid) = bb.face().glyph_id(drawn) {
+                        return Some(Self::glyph_from(bb, BB_FONT, gid.0, drawn, self.sizes.at(size)));
                     }
                 }
                 None => *self.bb_fallback.borrow_mut() = true,
