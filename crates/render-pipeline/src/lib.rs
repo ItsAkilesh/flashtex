@@ -12,7 +12,9 @@
 pub mod adapter;
 pub mod cff;
 pub mod display;
+pub mod floats;
 pub mod fonts;
+pub mod graphics;
 pub mod ids;
 pub mod incremental;
 pub mod mathfont;
@@ -66,6 +68,10 @@ pub struct RenderOptions {
     /// visual-oracle preamble, which the harness strips before sending the
     /// body).
     pub default_secnumdepth: u8,
+    /// The project directory `\includegraphics` files are read from
+    /// (through project-files' rooted reads). `None`: images are reported
+    /// unavailable.
+    pub project_root: Option<std::path::PathBuf>,
 }
 
 impl Default for RenderOptions {
@@ -74,6 +80,7 @@ impl Default for RenderOptions {
             default_class_options: "12pt".into(),
             default_parindent_pt: 0.0,
             default_secnumdepth: 2,
+            project_root: None,
         }
     }
 }
@@ -105,11 +112,20 @@ pub fn render_cached(
     cache: Option<&RenderCache>,
 ) -> Rendered {
     let started = std::time::Instant::now();
-    let parsed = flashtex_compiler::parser::parse_project(documents, entry_path);
-    let texts: Vec<&str> = documents.iter().map(|d| d.text).collect();
+    // FT-063: float environments are blanked (same byte length) before the
+    // compiler parses the document and are laid out by `typeset::floatpage`.
+    let float_envs: Vec<Vec<floats::FloatEnv>> = documents.iter().enumerate().map(|(i, d)| floats::scan(d.text, flashtex_compiler::DocumentId(i))).collect();
+    let any_floats = float_envs.iter().any(|e| !e.is_empty());
+    let masked: Vec<String> = documents.iter().zip(&float_envs).map(|(d, e)| if e.is_empty() { String::new() } else { floats::mask(d.text, e) }).collect();
+    let texts: Vec<&str> = documents.iter().zip(&float_envs).zip(&masked).map(|((d, e), m)| if e.is_empty() { d.text } else { m.as_str() }).collect();
+    let parse_docs: Vec<SourceDocument<'_>> = documents.iter().zip(&texts).map(|(d, t)| SourceDocument { path: d.path, text: t }).collect();
+    let parsed = flashtex_compiler::parser::parse_project(&parse_docs, entry_path);
+    let (float_numbers, float_label_values) = floats::number(&float_envs);
+    let mut image_cache = floats::ImageCache::default();
     let paths: Vec<&str> = documents.iter().map(|d| d.path).collect();
     let entry_index = documents.iter().position(|d| d.path == entry_path).unwrap_or(0);
     let mut labels = adapter::Labels::from_parsed(&parsed);
+    labels.values.extend(float_label_values);
     let max_passes = if adapter::Labels::needs_pages(&parsed) { MAX_LABEL_PASSES } else { 1 };
     let mut passes = 0;
     loop {
@@ -132,8 +148,14 @@ pub fn render_cached(
                 }],
             )
         }));
+        let (float_specs, float_diagnostics) = if any_floats {
+            floats::prepare(&float_envs, &float_numbers, documents, entry_index, &texts, &doc.style, options, &labels, &mut image_cache)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        diagnostics.extend(float_diagnostics);
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, &texts);
-        let laid = typeset::build(&mut ctx, &doc, cache);
+        let laid = typeset::build_with_floats(&mut ctx, &doc, cache, &float_specs);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {
             let pages = typeset::label_pages(&laid);

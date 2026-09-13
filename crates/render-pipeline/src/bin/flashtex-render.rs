@@ -48,6 +48,11 @@ fn main() {
                     options.default_secnumdepth = n;
                 }
             }
+            "--project-root" => {
+                // FT-063: default directory `\includegraphics` files are read
+                // from when a request carries no `project_root`.
+                options.project_root = args.next().map(PathBuf::from);
+            }
             "--timing" => timing = true,
             "-h" | "--help" => {
                 eprintln!("usage: flashtex-render [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing]");

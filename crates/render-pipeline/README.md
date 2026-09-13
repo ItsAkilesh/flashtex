@@ -129,6 +129,22 @@ inline and display math (`$`, `\[`, `$$`, `equation` with `(n)` flush right,
 ranges and codes (`font_unavailable`, `missing_glyph`, `overfull_hbox`,
 `overfull_vbox`, `unsupported_script`, `math_limitation`, `labels_unstable`).
 
+Floats and images (FT-063; `src/floats.rs`, `src/graphics.rs`,
+`src/typeset/floatpage.rs`, `tests/floats_oracle.rs`,
+`docs/evidence/floats/`): `figure`/`table` environments are found in the
+source and blanked (same byte length) before the compiler parse, then set as
+float boxes (`\includegraphics` lines, `\@makecaption` with `Figure~N:`/
+`Table~N:`, `\label`/`\ref`) and placed with LaTeX's `\@addtocurcol`/
+`\@addtonextcol`/`\@tryfcolumn` rules (`[htbp!]`, top/bottom/here, float
+pages, `\end{document}` flush). `\includegraphics` sizes PNG/JPEG/PDF from
+their headers like pdfTeX and applies graphicx's `width`/`height`/
+`totalheight`/`scale`/`angle`/`keepaspectratio`/`page`. Image files are read
+from `RenderOptions::project_root` (request `project_root`, or
+`--project-root DIR`). Image items reach the `display_list` line only when
+`display-list-v2-images` is negotiated
+(`protocol/proposals/display-list-v2-image.md`); runtime-v1 has none.
+10 fixtures match pdfLaTeX within 0.05 bp.
+
 `\text{...}` in math (`src/mathtext.rs`, `tests/math_text.rs`,
 `docs/evidence/hw1-text/`): the argument is an `\hbox` in the text face at the
 math style's size (12/8/6 pt), shaped like a paragraph word — T1 `ec-lm*`
