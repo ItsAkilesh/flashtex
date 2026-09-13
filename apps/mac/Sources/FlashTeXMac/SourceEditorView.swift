@@ -417,9 +417,9 @@ struct SourceEditorView: NSViewRepresentable {
 
         /// Delimiters and their partners.
         static func closer(for opener: Character) -> Character? {
-            switch opener { case "{": return "}"; case "[": return "]"; case "$": return "$"; default: return nil }
+            switch opener { case "{": return "}"; case "[": return "]"; case "(": return ")"; case "$": return "$"; default: return nil }
         }
-        static func isCloser(_ c: Character) -> Bool { c == "}" || c == "]" || c == "$" }
+        static func isCloser(_ c: Character) -> Bool { c == "}" || c == "]" || c == ")" || c == "$" }
 
         static func match(in text: String, caretUTF16: Int) -> Match? {
             guard let index = SourceEditorView.scalarIndex(text: text, utf16: caretUTF16) else { return nil }
@@ -443,10 +443,20 @@ struct SourceEditorView: NSViewRepresentable {
             return copy.withUTF8 { b in
                 let opener = p - 1
                 guard opener >= 0, isCode(b, at: opener), !escaped(b, at: opener) else { return false }
-                if p >= b.count { return true }
-                let next = b[p]
-                return next == 0x20 || next == 0x09 || next == 0x0A || next == 0x0D
-                    || next == UInt8(ascii: "}") || next == UInt8(ascii: "]") || next == UInt8(ascii: ")") || next == UInt8(ascii: "$")
+                if p < b.count {
+                    let next = b[p]
+                    let allowedNext = next == 0x20 || next == 0x09 || next == 0x0A || next == 0x0D
+                        || next == UInt8(ascii: "}") || next == UInt8(ascii: "]") || next == UInt8(ascii: ")") || next == UInt8(ascii: "$")
+                    guard allowedNext else { return false }
+                }
+                // `$` only opens new inline math: an odd count of single `$`
+                // tokens earlier in the paragraph means this one closes math
+                // already open there, so it must not get a second `$` paired
+                // onto it (GH74: "$ not inside math already opened by $").
+                if b[opener] == UInt8(ascii: "$") {
+                    return dollarsBefore(b, beforeByte: opener, length: 1) % 2 == 0
+                }
+                return true
             }
         }
 
@@ -561,6 +571,26 @@ struct SourceEditorView: NSViewRepresentable {
             return count
         }
 
+        /// Single (`length` 1) `$` tokens strictly before byte offset `p` in
+        /// `p`'s paragraph (back to the last blank line), bounded like the
+        /// token-index overload above. Even means a `$` typed at `p` would
+        /// open new inline math; odd means it closes math already open
+        /// earlier in the paragraph (`autoCloseAllowed`'s `$` gate).
+        static func dollarsBefore(_ b: UnsafeBufferPointer<UInt8>, beforeByte p: Int, length: Int) -> Int {
+            let line = parse(b, containing: p)
+            var count = line.tokens.filter { $0.kind == UInt8(ascii: "$") && $0.length == length && $0.byte < p }.count
+            var current = line
+            var scanned = 0
+            while current.start > 0, scanned < budgetBytes {
+                let previous = parse(b, containing: current.start - 1)
+                if isBlank(b, previous) { break }
+                count += previous.tokens.filter { $0.kind == UInt8(ascii: "$") && $0.length == length }.count
+                scanned += current.start - previous.start
+                current = previous
+            }
+            return count
+        }
+
         /// Depth-counted search for the partner token; `math` is the `$` token
         /// length to pair (no nesting, stops at a blank line).
         static func search(_ b: UnsafeBufferPointer<UInt8>, from line: Line, tokenIndex: Int, forward: Bool,
@@ -650,6 +680,10 @@ struct SourceEditorView: NSViewRepresentable {
         /// UTF-16 offsets of auto-inserted closers not yet typed over or edited
         /// away; kept aligned with edits by `shouldChangeTextIn`.
         private(set) var pendingClosers: [Int] = []
+        /// Registers `offset` the same way `autoClose(after:)` does for a
+        /// hand-typed opener's closer (EditorKeyHandling.swift's hook from
+        /// Completion.swift's snippet insertion).
+        func registerPendingCloser(_ offset: Int) { pendingClosers.append(offset) }
         /// The user edit AppKit is applying (from `shouldChangeTextIn` to `textDidChange`).
         private var lastEdit: (range: NSRange, replacement: String)?
         /// True while the coordinator inserts a closer or deletes a pair itself.
@@ -708,6 +742,11 @@ struct SourceEditorView: NSViewRepresentable {
             if let completing = tv as? CompletingTextView {
                 completing.commandClickHandler = { [weak self] index in self?.commandClick(at: index) ?? false }
                 completing.backgroundDecorator = { [weak self] rect in self?.drawCurrentLine(in: rect) }
+                // GH74: a completion snippet's placeholder closer (`\section{}`)
+                // overtypes like a hand-typed `{` instead of doubling
+                // (EditorKeyHandling.swift computes the offset; Completion.swift
+                // calls this hook once, right after it places the caret).
+                completing.onCloserInserted = { [weak self] offset in self?.registerPendingCloser(offset) }
             }
             setLineNumbers(lineNumbers, on: scroll)
             updateCurrentLine(tv)
@@ -938,6 +977,11 @@ struct SourceEditorView: NSViewRepresentable {
         /// Return auto-indents (EditorIntelligence.swift).
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) { return insertNewline(in: textView) }
+            // Tab / Shift-Tab (EditorKeyHandling.swift). When the completion
+            // popup is open, `CompletingTextView.keyDown` intercepts Tab itself
+            // (moves the list selection) and never calls through to here.
+            if commandSelector == #selector(NSResponder.insertTab(_:)) { return handleTab(reverse: false, in: textView) }
+            if commandSelector == #selector(NSResponder.insertBacktab(_:)) { return handleTab(reverse: true, in: textView) }
             guard commandSelector == #selector(NSResponder.deleteBackward(_:)), !pairing, programmaticChanges == 0,
                   !textView.hasMarkedText() else { return false }
             let caret = textView.selectedRange()

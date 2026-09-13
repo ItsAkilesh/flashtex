@@ -1849,6 +1849,11 @@ final class CompletingTextView: NSTextView {
     var commandClickHandler: ((Int) -> Bool)?
     /// Draws under the text (current-line band) after the background.
     var backgroundDecorator: ((NSRect) -> Void)?
+    /// GH74: SourceEditorView's coordinator sets this so a snippet's
+    /// placeholder closer (`\section{}`) is tracked for overtype the same as
+    /// a hand-typed `{` (EditorKeyHandling.swift). Called with the UTF-16
+    /// offset of the closer, once, right after `insertSnippet` places the caret.
+    var onCloserInserted: ((Int) -> Void)?
 
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift), event.clickCount == 1,
@@ -2022,8 +2027,12 @@ final class CompletingTextView: NSTextView {
         textStorage?.replaceCharacters(in: range, with: snippet.text)
         didChangeText() // registers the undo step, fires textDidChange
         undoManager?.setActionName(kind == .environment ? "Insert Environment" : "Insert Snippet")
-        setSelectedRange(NSRange(location: range.location + snippet.caretUTF16, length: 0))
+        let caret = range.location + snippet.caretUTF16
+        setSelectedRange(NSRange(location: caret, length: 0))
         breakUndoCoalescing()
+        if let offset = EditorKeyHandling.programmaticCloser(in: snippet.text, insertedAt: range.location, caretUTF16: caret) {
+            onCloserInserted?(offset)
+        }
     }
 
     // MARK: events
