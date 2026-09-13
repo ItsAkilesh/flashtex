@@ -735,7 +735,17 @@ pub(super) fn outer_doc(ctx: &mut Context, doc: &Doc, floats: &[floatpage::Float
     ctx.multicol.active = true;
     ctx.multicol.bodies = bodies;
     let page_starts = doc.page_starts.iter().filter_map(|i| new_index.get(i).copied()).collect();
-    Some(Doc { style: doc.style.clone(), blocks: out, diagnostics: Vec::new(), limitations: Vec::new(), secnumdepth: doc.secnumdepth, page_starts })
+    Some(Doc {
+        style: doc.style.clone(),
+        blocks: out,
+        diagnostics: Vec::new(),
+        limitations: Vec::new(),
+        secnumdepth: doc.secnumdepth,
+        page_starts,
+        default_color: doc.default_color,
+        math_colors: doc.math_colors.clone(),
+        page_color: doc.page_color,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1798,6 +1808,7 @@ fn rec_span(ctx: &Context, r: usize) -> Option<Span> {
         BoxRec::Rule { span, .. } => Some(*span),
         BoxRec::Picture(p) => Some(p.span),
         BoxRec::Table(t) => Some(t.span),
+        BoxRec::ColorBox(b) => Some(b.span),
     }
 }
 
@@ -1941,7 +1952,17 @@ pub(super) fn paginate(ctx: &mut Context, doc: &Doc, blocks: &mut Vec<BuiltBlock
         col_style.pretolerance = -1.0;
         col_style.emergency_stretch_pt = 4.0 * n as f64;
         col_style.class_geometry = None;
-        let sub_doc = Doc { style: col_style.clone(), blocks: body, diagnostics: Vec::new(), limitations: Vec::new(), secnumdepth: doc.secnumdepth, page_starts: Vec::new() };
+        let sub_doc = Doc {
+            style: col_style.clone(),
+            blocks: body,
+            diagnostics: Vec::new(),
+            limitations: Vec::new(),
+            secnumdepth: doc.secnumdepth,
+            page_starts: Vec::new(),
+            default_color: doc.default_color,
+            math_colors: doc.math_colors.clone(),
+            page_color: doc.page_color,
+        };
         let laid = {
             let mut sub = Context::with_texts(ctx.fonts, &col_style, ctx.paths, ctx.texts);
             let laid = super::build_with_floats(&mut sub, &sub_doc, None, &[]);

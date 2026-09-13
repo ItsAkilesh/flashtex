@@ -1211,7 +1211,7 @@ impl<'a> Context<'a> {
                 glue.width += u.width;
                 // plain.tex: `\thickmuskip=5mu plus 5mu`, `\medmuskip=4mu
                 // plus 2mu minus 4mu`, `\thinmuskip=3mu`; a kern is fixed.
-                if let ml::BoxKind::Glue { mu } = u.kind {
+                if let ml::BoxKind::Glue { mu, .. } = u.kind {
                     if mu >= 5.0 {
                         glue.stretch += u.width;
                     } else if mu >= 4.0 {
@@ -4811,6 +4811,7 @@ fn layout_kerned(runs: &[ml::MathList], glue: &[Option<f64>], style: ml::Style, 
     }
     ml::Layout {
         root: ml::MathBox {
+            tag: ml::SourceTag::NONE,
             kind: ml::BoxKind::HBox(children),
             width: x,
             height,
@@ -4893,7 +4894,7 @@ fn inline_break_points(root: &mut ml::MathBox, runs: &[ml::MathList], kerned: bo
             // with the line (`4mu plus 2mu minus 4mu`, `5mu plus 5mu`): the
             // formula is cut there too, with no break allowed unless the
             // atom carries a penalty.
-            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu }) if *mu >= 4.0);
+            let stretchy_glue_next = matches!(units.get(ci).map(|u| &u.kind), Some(ml::BoxKind::Glue { mu, .. }) if *mu >= 4.0);
             if let Some(penalty) = penalty {
                 breaks.push((at, penalty));
             } else if stretchy_glue_next {

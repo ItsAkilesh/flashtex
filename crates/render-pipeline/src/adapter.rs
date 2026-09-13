@@ -611,6 +611,8 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                 out.push(CBlock::Styled {
                     style: ParagraphStyle::FlushLeft,
                     content,
+                    lists: Vec::new(),
+                    line_break_before: None,
                 });
             }
             // Set by `crate::toc` from the source command; the block stays
@@ -633,6 +635,8 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                     out.push(CBlock::Styled {
                         style: ParagraphStyle::Center,
                         content: sized(part, size),
+                        lists: Vec::new(),
+                        line_break_before: None,
                     });
                 }
             }
@@ -1494,6 +1498,8 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Kern { span, .. } => *span,
         Inline::Tabular(t) => t.span,
         Inline::ColorBox(b) => b.span,
+        Inline::Graphic(g) => g.span,
+        Inline::Transform(t) => t.span,
     }
 }
 
@@ -3817,6 +3823,14 @@ fn items_cached(
                     }
                 }
             }
+            Inline::Graphic(g) => {
+                16u8.hash(&mut h);
+                format!("{g:?}").hash(&mut h);
+            }
+            Inline::Transform(t) => {
+                17u8.hash(&mut h);
+                format!("{t:?}").hash(&mut h);
+            }
         }
     }
     let key = h.finish();
@@ -3955,6 +3969,33 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(*span);
                 factor = 1000;
                 after_control_word = false;
+            }
+            // #169's Inline::Graphic/Transform have no pipeline conversion
+            // arm yet (#170 is not in this integration: its own diff
+            // depends on a wire-protocol capability refactor -- a new
+            // Wire { transforms } field threaded through display.rs's JSON
+            // writers -- that collides with #158's already-merged
+            // Wire { device_color } and needs real reconciliation, not a
+            // mechanical merge). Degrade like the compiler's own Core 14
+            // layout does: an image leaves no space for now, and a
+            // transform box keeps its content set untransformed, so
+            // nothing is silently dropped.
+            Inline::Graphic(g) => {
+                prev_end = Some(g.span.end);
+                prev_span = Some(g.span);
+                after_control_word = false;
+            }
+            Inline::Transform(t) => {
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                items.extend(items_from_inlines_styled(texts, &t.content, styles, labels, size, false, compiler_weight));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
             }
             Inline::HFill { span } | Inline::HSpace { span, .. } | Inline::TextGlue { span, .. } => {
                 // Explicit horizontal glue: the interword space read before
