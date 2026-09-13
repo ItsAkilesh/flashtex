@@ -186,7 +186,7 @@ pub enum Frame {
 
 /// Math-mode environments implemented as grids: (name, default column
 /// alignment repeated for every column, left fence, right fence).
-const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
+pub(crate) const GRID_ENVIRONMENTS: &[(&str, char, &str, &str)] = &[
     ("array", 'c', "", ""),
     ("matrix", 'c', "", ""),
     ("smallmatrix", 'c', "", ""),
@@ -1458,7 +1458,7 @@ pub const COMMAND_GLYPHS: &[(&str, &str)] = &[
 ];
 
 /// Named operators typeset as upright roman words (`\sin x`, `\lim_{x\to 0}`).
-const OPERATOR_NAMES: &[&str] = &[
+pub(crate) const OPERATOR_NAMES: &[&str] = &[
     "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
     "coth", "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det",
     "gcd", "deg", "dim", "ker", "arg", "hom", "Pr", "sgn",
