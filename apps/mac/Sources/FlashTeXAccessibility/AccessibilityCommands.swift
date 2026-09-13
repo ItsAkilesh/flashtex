@@ -14,7 +14,7 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case undo
     case commandPalette, toggleProblems, toggleCaptures
     case zoomIn, zoomOut, actualSize, fitWidth, increaseEditorFontSize, decreaseEditorFontSize, resetEditorFontSize
-    case completion, completionList, toggleComment, signatureHelp
+    case completion, completionList, toggleComment, signatureHelp, toggleVimKeybindings
     case goToMatching, nextDiagnostic, previousDiagnostic, nextOccurrence, previousOccurrence, copyDiagnosticsAsText, revealCaretInPreview
     case goToDefinition, goToSymbol, selectEnvironment, wrapInEnvironment, renameSymbol
     case selectPreviewItemSource
@@ -188,6 +188,10 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
         case .signatureHelp:
             return Entry(command: self, title: "Signature help", shortcuts: ["⌘⇧Space"], menu: "Editor",
                          description: "Shows the signature of the command whose argument the caret is in; also opens on `{`/`[` typed after a command name. `}`, Esc, or leaving the argument closes it.")
+        case .toggleVimKeybindings:
+            return Entry(command: self, title: "Toggle Vim keybindings", shortcuts: ["⌃⌘V"], menu: "View",
+                         description: "Switches the source editor's modal Vim emulation (normal/insert/visual modes, motions, operators, text objects, registers, marks, `/` search and `:` commands) on or off; the same as the Settings switch. The status bar shows -- NORMAL -- / -- INSERT -- / -- VISUAL --.",
+                         menuItem: "Toggle Vim Keybindings")
         case .toggleComment:
             return Entry(command: self, title: "Toggle comment", shortcuts: ["⌘/"], menu: "Editor",
                          description: "Toggles a `% ` line comment on every line the selection touches: all commented lines are uncommented, otherwise the non-blank lines are commented; one undo step.")
@@ -443,6 +447,7 @@ public enum PanelFocusOrder {
                 Control(name: "Auto-close brackets & math", sourceMarker: "Toggle(\"Auto-close brackets & math\""),
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
                 Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
+                Control(name: "Vim keybindings", sourceMarker: "Toggle(\"Vim keybindings\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
               ],
               sourceFile: "EditorPreferences.swift"),

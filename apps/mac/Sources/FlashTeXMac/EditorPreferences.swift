@@ -86,6 +86,7 @@ final class EditorPreferences {
         var autoCloseBraces: Bool
         var completionPopup: Bool
         var spellCheck: Bool
+        var vimKeybindings: Bool
     }
 
     // MARK: defaults and ranges
@@ -95,7 +96,7 @@ final class EditorPreferences {
 
     static let defaultSnapshot = Snapshot(
         fontFamily: nil, fontSize: 13, lineWrapping: true, tabWidth: 4, indentStyle: .spaces,
-        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true)
+        appearance: .system, autoCloseBraces: true, completionPopup: true, spellCheck: true, vimKeybindings: false)
 
     // MARK: storage keys (versioned)
 
@@ -107,7 +108,7 @@ final class EditorPreferences {
     nonisolated static let schemaVersionKey = "FlashTeX.EditorPreferences.schemaVersion"
 
     enum Key: String, CaseIterable {
-        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck
+        case fontFamily, fontSize, lineWrapping, tabWidth, indentStyle, appearance, autoCloseBraces, completionPopup, spellCheck, vimKeybindings
         var storageKey: String { "FlashTeX.EditorPreferences.v\(EditorPreferences.schemaVersion).\(rawValue)" }
     }
 
@@ -183,11 +184,17 @@ final class EditorPreferences {
         set { update(\.spellCheck, \.spellCheck, newValue, key: .spellCheck) }
     }
 
+    /// Modal Vim keybindings in the source editor (VimMode.swift); off by default.
+    var vimKeybindings: Bool {
+        get { access(keyPath: \.vimKeybindings); return storage.vimKeybindings }
+        set { update(\.vimKeybindings, \.vimKeybindings, newValue, key: .vimKeybindings) }
+    }
+
     /// All properties at once (registers for every property's changes).
     var snapshot: Snapshot {
         Snapshot(fontFamily: fontFamily, fontSize: fontSize, lineWrapping: lineWrapping, tabWidth: tabWidth,
                  indentStyle: indentStyle, appearance: appearance, autoCloseBraces: autoCloseBraces,
-                 completionPopup: completionPopup, spellCheck: spellCheck)
+                 completionPopup: completionPopup, spellCheck: spellCheck, vimKeybindings: vimKeybindings)
     }
 
     // MARK: derived values
@@ -299,6 +306,10 @@ final class EditorPreferences {
             s.spellCheck = value
         } else { repairs.append(.spellCheck) }
 
+        if let value = defaults.object(forKey: Key.vimKeybindings.storageKey) as? Bool {
+            s.vimKeybindings = value
+        } else { repairs.append(.vimKeybindings) }
+
         withMutation(keyPath: \.generation) {
             storage = s
             generation += 1
@@ -312,7 +323,7 @@ final class EditorPreferences {
         let d = Self.defaultSnapshot
         fontFamily = d.fontFamily; fontSize = d.fontSize; lineWrapping = d.lineWrapping; tabWidth = d.tabWidth
         indentStyle = d.indentStyle; appearance = d.appearance; autoCloseBraces = d.autoCloseBraces
-        completionPopup = d.completionPopup; spellCheck = d.spellCheck
+        completionPopup = d.completionPopup; spellCheck = d.spellCheck; vimKeybindings = d.vimKeybindings
     }
 
     /// Versioned migration. Absent stamp: nothing was ever stored (or only
@@ -351,6 +362,7 @@ final class EditorPreferences {
         case .autoCloseBraces: defaults.set(storage.autoCloseBraces, forKey: k)
         case .completionPopup: defaults.set(storage.completionPopup, forKey: k)
         case .spellCheck: defaults.set(storage.spellCheck, forKey: k)
+        case .vimKeybindings: defaults.set(storage.vimKeybindings, forKey: k)
         }
     }
 
@@ -387,6 +399,8 @@ final class EditorPreferences {
         let host: NSView = textView.enclosingScrollView ?? textView
         let wanted = appearance.nsAppearance
         if host.appearance?.name != wanted?.name { host.appearance = wanted }
+
+        if let completing = textView as? CompletingTextView, completing.vimEnabledOverride == nil { completing.applyVimPreference(vimKeybindings) } // VimMode.swift
     }
 
     /// Width of `columns` spaces in `font` (the advance of a space; a
@@ -527,6 +541,8 @@ struct EditorPreferencesView: View {
                     .accessibilityHint("When off, the list never opens; Control-Space and Escape do nothing.")
                 Toggle("Check spelling", isOn: $prefs.spellCheck)
                     .accessibilityHint("Underlines misspelled words in prose; commands, math, comments and labels are skipped.")
+                Toggle("Vim keybindings", isOn: $prefs.vimKeybindings)
+                    .accessibilityHint("Modal editing in the source editor: normal, insert and visual modes with Vim motions, operators and : commands; the status bar shows the mode. Also View > Toggle Vim Keybindings (⌃⌘V).")
                 ErrorLensPreferenceRows() // inline diagnostic text at line ends (ErrorLens.swift)
             }
             if showConversion { ConversionPreferencesSection() } // provider picker, model, API key (Keychain) (ConversionPreferencesView.swift)

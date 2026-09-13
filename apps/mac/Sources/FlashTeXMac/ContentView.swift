@@ -164,6 +164,8 @@ private struct WorkspaceToolbar: ToolbarContent {
 
 private struct EditorPane: View {
     @Environment(ShellModel.self) var model
+    /// Vim `:set nu` / `:set nonu` (VimMode.swift); the gutter is on by default.
+    @State private var lineNumbers = true
 
     var body: some View {
         @Bindable var model = model
@@ -189,7 +191,7 @@ private struct EditorPane: View {
                 autoClosePairs: EditorPreferences.shared.autoCloseBraces ? model.autoClosePairs : [] // EditorPreferences.swift gates the braces lane set
                 ,
                 syntaxHighlighting: true, // SyntaxHighlighter.swift / EditorIntelligence.swift (mac-syntax-highlight)
-                showLineNumbers: true,
+                showLineNumbers: lineNumbers,
                 onDefinitionRequest: { target in
                     switch target {
                     case .label, .citation: model.goToMatching() // caret already on the token
@@ -202,6 +204,15 @@ private struct EditorPane: View {
                     model.displayListV2?.frame.map {
                         MathHoverPreview.Context(path: model.activePath, frame: $0, previewIsStale: model.previewIsStale, dark: model.darkPreview)
                     }
+                },
+                onExCommand: { command in // Vim `:` commands (VimMode.swift) mapped to the shell's own actions
+                    switch command {
+                    case .write: model.saveTexInteractive(); return nil
+                    case .writeQuit: model.saveTexInteractive(); return closeActiveDocument(discardingEdits: false)
+                    case .quit(let force): return closeActiveDocument(discardingEdits: force)
+                    case .edit(let path): Task { await model.project.openDocument(path, role: .opened) }; return nil
+                    case .setNumber(let on): lineNumbers = on; return nil
+                    }
                 }
             )
             CaptureBar()
@@ -210,6 +221,15 @@ private struct EditorPane: View {
             // "no bridge attached" strip under the editor (daniel-fable-ui-qa #5).
             if model.bridgeStatus != "no bridge attached" || !model.bridgeCaptures.isEmpty || model.bridgeDestination != nil { BridgeBar() }
         }
+    }
+
+    /// `:q` / `:wq`: a non-entry document leaves the project (its tab closes);
+    /// the entry document cannot be closed, which the command line reports.
+    private func closeActiveDocument(discardingEdits: Bool) -> String? {
+        let path = model.activePath
+        guard path != model.project.entryPath else { return "E37: cannot close the entry document \(path)" }
+        Task { await model.project.detachDocument(path, discardingEdits: discardingEdits) }
+        return nil
     }
 }
 
@@ -429,6 +449,7 @@ private struct StatusBar: View {
             Label(route(chrome), systemImage: routeIcon(chrome))
                 .help(chrome.routeHelp)
             WordCountStatusItem() // GH68: live word count + breakdown popover (WordCountStatusView.swift)
+            VimModeStatusItem() // -- NORMAL -- / -- INSERT -- / -- VISUAL -- and the `:` line while Vim keybindings are on (VimMode.swift)
             let problems = chrome.problems
             if !problems.isEmpty {
                 Button {
@@ -550,5 +571,22 @@ private struct ProposalReviewSheet: View {
         .onChange(of: model.editorRevision) { _, _ in preview.update(from: model, latex: latex) }
         .onChange(of: model.anchor) { _, _ in preview.update(from: model, latex: latex) }
         .onDisappear { preview.close() }
+    }
+}
+
+/// Status-bar mode indicator for Vim keybindings (VimMode.swift): hidden
+/// while the preference is off.
+struct VimModeStatusItem: View {
+    var body: some View {
+        let status = VimMode.Status.shared
+        if let indicator = status.indicator {
+            Text(indicator)
+                .fontWeight(.semibold)
+                .help("Vim keybindings are on (Settings, or View > Toggle Vim Keybindings ⌃⌘V)")
+                .accessibilityIdentifier("status.vimMode")
+            if let line = status.commandLine, !line.isEmpty {
+                Text(line).lineLimit(1).accessibilityIdentifier("status.vimCommandLine")
+            }
+        }
     }
 }

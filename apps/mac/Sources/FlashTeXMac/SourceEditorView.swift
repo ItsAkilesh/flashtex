@@ -72,6 +72,10 @@ struct SourceEditorView: NSViewRepresentable {
     /// The current v2 preview, for the inline math hover preview
     /// (MathHoverPreview.swift); nil when there is no v2 frame to crop from.
     var mathPreviewContext: () -> MathHoverPreview.Context? = { nil }
+    /// Vim `:` commands that need the app (`:w`, `:q`, `:e`, `:set nu`;
+    /// VimMode.swift); returns a status message or nil. Nothing is wired by
+    /// default: the command line then reports it as unavailable.
+    var onExCommand: (VimMode.ExCommand) -> String? = { _ in "E319: Command not available here" }
 
     /// A navigation selection that would move the caret backwards is deferred
     /// while the last user edit is younger than this.
@@ -109,6 +113,7 @@ struct SourceEditorView: NSViewRepresentable {
         context.coordinator.attach(scroll)
         context.coordinator.spelling.attach(tv) // LaTeX-aware spell checking (LaTeXSpellCheck.swift)
         context.coordinator.installIntelligence(on: scroll, lineNumbers: showLineNumbers)
+        (tv as? CompletingTextView)?.vim.exCommandHandler = { [weak coordinator = context.coordinator] in coordinator?.parent.onExCommand($0) } // VimMode.swift
         return scroll
     }
 

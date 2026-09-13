@@ -947,6 +947,7 @@ explain that nothing is loaded.
 | ⌘⌥- | Decrease editor font size (View): -1 pt down to 8 pt |
 | ⌘⌥0 | Reset editor font size (View): back to the default 13 pt |
 | ⌘⇧M | Toggle Problems panel (View): the grouped diagnostics list under the editor and preview with a severity filter, jump, explanations and Fix…; the sidebar's Problems rows and the status bar counts open it too |
+| ⌃⌘V | Toggle Vim keybindings (View; also the Settings switch, default off): modal editing in the source editor — the status bar shows `-- NORMAL --` / `-- INSERT --` / `-- VISUAL --`; see *Vim keybindings* below |
 | Edit > Durable History… | Durable History window (undo/redo on the helper's edit ledger: Refresh, Undo, Redo, Retry/Discard after an uncertain reply, retention gauge, both stacks) |
 | ⌘F | Find… (opens the source editor's find bar; AppKit's built-in incremental search) |
 | ⌘⌥F | Find and Replace… (opens the find bar already showing its Replace row; a replacement is one undoable edit, so ⌘Z undoes it and the preview recompiles) |
@@ -991,6 +992,54 @@ editor behavior.
 | Tab / ⇧Tab / Esc | While an inserted snippet is active (no completion list open): next / previous placeholder (`\frac{|}{}`, environment templates), Esc leaves the snippet |
 | Tab / ⇧Tab | Otherwise (no list, no active snippet): Tab indents (a multi-line selection: every touched line; a caret or single-line selection: inserts the indent unit at it); ⇧Tab always outdents the touched line(s) by up to one unit |
 | Return | Auto-indent; after `\begin{env}` indent and add `\end{env}`; at the end of a `\item …` line continue the list |
+
+## Vim keybindings
+
+`VimMode.swift` (`VimModeTests`): a modal state machine layered on the editor
+text view's `keyDown`, active only while the "Vim keybindings" preference is on
+(Settings ▸ Typing, or View ▸ Toggle Vim Keybindings ⌃⌘V; default off — with it
+off nothing is intercepted and `CompletionLatencyTests` measures the plain
+editor). The status bar shows the mode and the `:`/`/` line being typed.
+
+- **Modes**: normal, insert (`i a I A o O s S c C`), visual `v`, visual line
+  `V`, replace-one `r{char}`; Esc or ⌃[ returns to normal. A mouse selection
+  in normal mode enters visual mode.
+- **Insert mode is the plain editor**: only Esc / ⌃[ are intercepted, and never
+  while marked text (an input-method composition) exists — IME, dead keys,
+  completion, snippets and signature help behave exactly as without Vim. Esc
+  closes the completion list *and* leaves insert. ⌘-shortcuts are never
+  intercepted in any mode.
+- **Counts** on motions, operators and commands (`3dw`, `2d2w`, `5x`, `2G`).
+- **Motions**: `h j k l w b e W B E 0 ^ $ gg G { } ( ) f F t T ; , % H M L`,
+  ⌃D ⌃U ⌃F ⌃B. `%` matches `( ) [ ] { }` and, on a `\begin`/`\end`, its partner
+  (`EditorNavigation.environmentPair`).
+- **Operators** `d c y > <` with motions, doubled for lines (`dd cc yy >> <<`),
+  and **text objects** `iw aw i( a( i[ a[ i{ a{ i" a" i$ a$` (inline math) and
+  `ie ae` (the innermost `\begin{X}…\end{X}`, `EditorNavigation.enclosingEnvironment`;
+  `ie` is the body — whole lines when the delimiters sit on their own lines).
+- **Commands**: `x X s S D C Y p P J gJ u ⌃R . ~`, marks `m{a-z}` / `'{a}` /
+  `` `{a} ``, `zz`/`zt`.
+- **Registers**: unnamed (default), named `"a`–`"z`, and `"+` / `"*` for the
+  system clipboard (`"+yy`, `"*p`).
+- **Search**: `/` and `?` with incremental preview (Esc restores the caret),
+  `n N *`; smart-case; the term is put on the find pasteboard so ⌘G / Edit ▸
+  Find ▸ Find Next continue it in the find bar.
+- **`:` commands**: `:w` (save), `:q` / `:q!` (close the active non-entry
+  document; the entry document cannot be closed), `:wq` / `:x`, `:e path`
+  (open a project document), `:[%|N,M|'<,'>]s/a/b/[g]` (literal text, one undo
+  step, through the editor's edit path so the model recompiles), `:noh`,
+  `:set nu` / `:set nonu` (line-number gutter).
+- **Undo**: `u` / ⌃R are the editor's undo manager. Coalescing is broken at
+  insert-session boundaries, so one insert session is one step; every operator
+  is one step.
+
+Not yet: `.` repeats an operator + motion/text object and re-inserts the
+text of an insert session, but not visual-mode changes; `o` + typed text and
+`cw` + typed text are two undo steps (open/delete, then the insert); no `gu`
+`gU` `gq` `=`, no `iS aS ip ap it at` objects, no regular expressions in
+`/` and `:s` (literal, smart-case), no `:g`, `:'a`, `q` macros, jump list
+(⌃O/⌃I), `Ctrl-V` block mode, `R` replace mode, or `.vimrc` mappings; marks
+do not follow edits; `H`/`M`/`L` use the visible rect without `scrolloff`.
 
 ## Targets
 
