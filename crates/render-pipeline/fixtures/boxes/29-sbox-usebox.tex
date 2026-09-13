@@ -1,0 +1,10 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\newsavebox{\mybox}
+\begin{document}
+\sbox{\mybox}{\fbox{saved}}Alpha \usebox{\mybox} Beta \usebox{\mybox} Gamma
+\end{document}

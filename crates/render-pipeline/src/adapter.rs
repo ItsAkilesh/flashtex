@@ -119,6 +119,36 @@ pub enum Item {
     /// `tabular`/`tabular*` (compiler `Inline::Tabular`): one box in the
     /// paragraph, laid out by `table.rs`.
     Table(Box<crate::table::TableItem>),
+    /// A LaTeX box command (compiler `Inline::Box`): one box in the
+    /// paragraph, set with `crates/tex-boxes` (`typeset::Context::text_box`).
+    TextBox(Box<BoxItem>),
+    /// `\settowidth`/`\settoheight`/`\settodepth`, or `\setlength` of a
+    /// `\newlength` (compiler `Inline::SetLength`): no material.
+    SetLength { name: String, value: LengthItem },
+    /// `\hspace{\len}` (compiler `Inline::LengthGlue`): fixed glue whose
+    /// width is resolved when the paragraph is set.
+    LengthGlue { dimen: flashtex_compiler::boxes::BoxDimen },
+    /// `\hss` (compiler `Inline::HFill` at a `\hss` control word):
+    /// `0pt plus 1fil minus 1fil`.
+    HSs,
+}
+
+/// A box command's content as pipeline items.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoxItem {
+    pub kind: flashtex_compiler::boxes::TextBoxKind,
+    /// Horizontal content (every kind except `Par`).
+    pub content: Vec<Item>,
+    /// `\parbox`/`minipage` paragraphs with their alignment.
+    pub paragraphs: Vec<(ParaStyle, Vec<Item>)>,
+    pub span: Span,
+}
+
+/// The value of an [`Item::SetLength`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum LengthItem {
+    Measure { which: flashtex_compiler::boxes::MeasuredDimension, content: Vec<Item> },
+    Dimen(flashtex_compiler::boxes::BoxDimen),
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -1100,8 +1130,11 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::HSpace { span, .. }
         | Inline::Footnote { span, .. }
         | Inline::Verbatim { span, .. }
-        | Inline::TextGlue { span, .. } => *span,
+        | Inline::TextGlue { span, .. }
+        | Inline::LengthGlue { span, .. } => *span,
         Inline::Tabular(t) => t.span,
+        Inline::Box(b) => b.span,
+        Inline::SetLength(a) => a.span,
     }
 }
 
@@ -1135,6 +1168,22 @@ fn unsupported_inlines(inline: &Inline, out: &mut Vec<(&'static str, Span, Strin
         }
         Inline::Verbatim { text, span, .. } => {
             out.push(("unsupported_block", *span, format!("\\verb {text:?} set in the body face: the pipeline has no monospaced face")));
+        }
+        Inline::Box(b) => {
+            // Set by `typeset::Context::text_box`; only nested constructs
+            // are reported (a minipage footnote is set inline like any other).
+            for list in b.inline_lists() {
+                for i in list {
+                    unsupported_inlines(i, out);
+                }
+            }
+        }
+        Inline::SetLength(a) => {
+            if let flashtex_compiler::boxes::LengthValue::Measure { content, .. } = &a.value {
+                for i in content {
+                    unsupported_inlines(i, out);
+                }
+            }
         }
         #[cfg(feature = "amsmath-inline")]
         Inline::MathRows { rows, .. } => {
@@ -1843,6 +1892,40 @@ fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
             if let Some(r) = r.trim_start().strip_prefix('{') {
                 if let Some(end) = r.find('}') {
                     found = parse_dimen(&r[..end], size).or(found);
+                }
+            }
+        }
+        from = abs + 1;
+    }
+    found
+}
+
+/// A `\parbox`/`minipage` paragraph's alignment (compiler
+/// `BoxParagraph::style`).
+fn box_para_style(style: Option<flashtex_compiler::parser::ParagraphStyle>) -> ParaStyle {
+    use flashtex_compiler::parser::ParagraphStyle as P;
+    match style {
+        None => ParaStyle::Plain,
+        Some(P::Center) => ParaStyle::Center,
+        Some(P::FlushLeft) => ParaStyle::FlushLeft,
+        Some(P::FlushRight) => ParaStyle::FlushRight,
+        Some(P::Quote) => ParaStyle::Quote,
+    }
+}
+
+/// The last `\setlength{\<name>}{<dimen>}` of the source as exact scaled
+/// points (`\fboxsep`, `\fboxrule`; physical units only).
+pub fn setlength_sp(source: &str, name: &str) -> Option<i32> {
+    let needle = format!("{{\\{name}}}");
+    let mut from = 0;
+    let mut found = None;
+    while let Some(at) = find_command(&source[from..], "setlength") {
+        let abs = from + at;
+        let rest = source[abs + "\\setlength".len()..].trim_start();
+        if let Some(r) = rest.strip_prefix(needle.as_str()) {
+            if let Some(r) = r.trim_start().strip_prefix('{') {
+                if let Some(end) = r.find('}') {
+                    found = flashtex_tex_boxes::parse_dimen(&r[..end]).or(found);
                 }
             }
         }
@@ -3117,8 +3200,12 @@ fn items_cached(
     let Some(cache) = cache else {
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     };
-    // Table items nest item lists the relocation does not walk.
-    if inlines.iter().any(|i| matches!(i, Inline::Tabular(_))) {
+    // Table and box items nest item lists the relocation does not walk;
+    // length assignments are document state.
+    if inlines
+        .iter()
+        .any(|i| matches!(i, Inline::Tabular(_) | Inline::Box(_) | Inline::SetLength(_) | Inline::LengthGlue { .. }))
+    {
         return items_from_inlines(texts, inlines, styles, labels, size, heading);
     }
     let Some(first) = inlines.first().map(inline_span) else {
@@ -3214,6 +3301,20 @@ fn items_cached(
             Inline::TextGlue { em, .. } => {
                 8u8.hash(&mut h);
                 em.to_bits().hash(&mut h);
+            }
+            // Never cached (see the guard in `items_from_inlines_cached`);
+            // hashed for completeness.
+            Inline::Box(b) => {
+                20u8.hash(&mut h);
+                format!("{:?}", b.kind).hash(&mut h);
+            }
+            Inline::SetLength(a) => {
+                21u8.hash(&mut h);
+                a.name.hash(&mut h);
+            }
+            Inline::LengthGlue { dimen, .. } => {
+                22u8.hash(&mut h);
+                format!("{dimen:?}").hash(&mut h);
             }
             Inline::MathRows { rows, aligned, .. } => {
                 5u8.hash(&mut h);
@@ -3320,6 +3421,61 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(span);
                 factor = 1000;
             }
+            Inline::Box(b) => {
+                // `\leavevmode\hbox{...}` like a table: one box, the space
+                // before it read like a formula's. `\strut` is a control word
+                // with no argument, so TeX eats the blanks after it.
+                let span = b.span;
+                let strut = matches!(b.kind, flashtex_compiler::boxes::TextBoxKind::Strut);
+                let word = strut.then_some("\\strut");
+                let gap = space_between(prev_end, prev_span, span, word, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let content = items_from_inlines(texts, &b.content, styles, labels, size, false);
+                let paragraphs = b
+                    .paragraphs
+                    .iter()
+                    .map(|p| (box_para_style(p.style), items_from_inlines(texts, &p.content, styles, labels, size, false)))
+                    .collect();
+                items.push(Item::TextBox(Box::new(BoxItem { kind: b.kind.clone(), content, paragraphs, span })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = strut;
+            }
+            Inline::SetLength(a) => {
+                // No material: the blanks on both sides stay, as in TeX.
+                let span = a.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                let value = match &a.value {
+                    flashtex_compiler::boxes::LengthValue::Measure { which, content } => LengthItem::Measure {
+                        which: *which,
+                        content: items_from_inlines(texts, content, styles, labels, size, false),
+                    },
+                    flashtex_compiler::boxes::LengthValue::Dimen(d) => LengthItem::Dimen(d.clone()),
+                };
+                items.push(Item::SetLength { name: a.name.clone(), value });
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                after_control_word = false;
+            }
+            Inline::LengthGlue { dimen, span } => {
+                let gap = space_between(prev_end, prev_span, *span, Some("\\hspace"), after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, *span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                items.push(Item::LengthGlue { dimen: dimen.clone() });
+                prev_end = Some(span.end);
+                prev_span = Some(*span);
+                factor = 1000;
+                pending_accent = None;
+                after_control_word = true;
+            }
             Inline::LineBreak { span } => {
                 let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
                 items.push(Item::LineBreak { skip_pt });
@@ -3341,6 +3497,8 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 let (item, word) = match &**inline {
                     Inline::HSpace { pt, .. } => (Item::HSpace { pt: *pt }, "\\hspace"),
                     Inline::TextGlue { em, .. } => (Item::Quad { em: *em }, if *em >= 2.0 { "\\qquad" } else { "\\quad" }),
+                    // The compiler gives `\hss` the `HFill` inline.
+                    _ if is_control_word(text_of(span.document), span.start, "hss") => (Item::HSs, "\\hss"),
                     _ => {
                         let fill = !is_control_word(text_of(span.document), span.start, "hfil");
                         (Item::HFill { fill }, if fill { "\\hfill" } else { "\\hfil" })

@@ -1,0 +1,90 @@
+{
+ "fixture": "29-sbox-usebox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Alpha",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "saved",
+    "x": 110.176,
+    "y_top": 83.955
+   },
+   {
+    "text": "Beta",
+    "x": 145.17,
+    "y_top": 83.955
+   },
+   {
+    "text": "saved",
+    "x": 176.357,
+    "y_top": 83.955
+   },
+   {
+    "text": "Gamma",
+    "x": 211.351,
+    "y_top": 83.955
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  [
+   [
+    106.789,
+    72.333,
+    34.479,
+    0.398
+   ],
+   [
+    172.97,
+    72.333,
+    34.479,
+    0.398
+   ],
+   [
+    106.789,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    140.87,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    172.97,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    207.051,
+    72.731,
+    0.398,
+    14.213
+   ],
+   [
+    106.789,
+    86.944,
+    34.479,
+    0.398
+   ],
+   [
+    172.97,
+    86.944,
+    34.479,
+    0.398
+   ]
+  ]
+ ]
+}

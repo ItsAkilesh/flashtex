@@ -1,0 +1,76 @@
+{
+ "fixture": "22-minipage-paragraphs.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "First",
+    "x": 101.945,
+    "y_top": 80.236
+   },
+   {
+    "text": "paragraph",
+    "x": 130.4558,
+    "y_top": 80.236
+   },
+   {
+    "text": "of",
+    "x": 186.3941,
+    "y_top": 80.236
+   },
+   {
+    "text": "text",
+    "x": 199.7218,
+    "y_top": 80.236
+   },
+   {
+    "text": "in",
+    "x": 224.1056,
+    "y_top": 80.236
+   },
+   {
+    "text": "a",
+    "x": 237.7704,
+    "y_top": 80.236
+   },
+   {
+    "text": "minipage.",
+    "x": 148.068,
+    "y_top": 94.681
+   },
+   {
+    "text": "Start",
+    "x": 72.0,
+    "y_top": 109.127
+   },
+   {
+    "text": "Second",
+    "x": 112.625,
+    "y_top": 109.127
+   },
+   {
+    "text": "paragraph",
+    "x": 152.2924,
+    "y_top": 109.127
+   },
+   {
+    "text": "here.",
+    "x": 208.2307,
+    "y_top": 109.127
+   },
+   {
+    "text": "end",
+    "x": 247.5538,
+    "y_top": 109.127
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

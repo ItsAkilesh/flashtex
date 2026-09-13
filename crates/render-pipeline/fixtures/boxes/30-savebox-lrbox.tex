@@ -1,0 +1,11 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\newsavebox{\mybox}
+\newsavebox{\other}
+\begin{document}
+\savebox{\mybox}[3cm][r]{sv}\begin{lrbox}{\other}lr text\end{lrbox}A\usebox{\mybox}B\usebox{\other}C
+\end{document}

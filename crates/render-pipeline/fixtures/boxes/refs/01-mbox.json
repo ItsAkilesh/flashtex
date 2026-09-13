@@ -1,0 +1,71 @@
+{
+ "fixture": "01-mbox.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "before",
+    "x": 99.3176,
+    "y_top": 83.955
+   },
+   {
+    "text": "unbreakable",
+    "x": 134.4301,
+    "y_top": 83.955
+   },
+   {
+    "text": "words",
+    "x": 200.1143,
+    "y_top": 83.955
+   },
+   {
+    "text": "here",
+    "x": 233.6702,
+    "y_top": 83.955
+   },
+   {
+    "text": "and",
+    "x": 259.0415,
+    "y_top": 83.955
+   },
+   {
+    "text": "more",
+    "x": 281.7994,
+    "y_top": 83.955
+   },
+   {
+    "text": "text",
+    "x": 311.061,
+    "y_top": 83.955
+   },
+   {
+    "text": "after",
+    "x": 335.4567,
+    "y_top": 83.955
+   },
+   {
+    "text": "the",
+    "x": 363.0924,
+    "y_top": 83.955
+   },
+   {
+    "text": "box.",
+    "x": 383.2488,
+    "y_top": 83.955
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

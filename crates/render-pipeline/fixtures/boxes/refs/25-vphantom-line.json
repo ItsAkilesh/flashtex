@@ -1,0 +1,36 @@
+{
+ "fixture": "25-vphantom-line.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Line",
+    "x": 72.0,
+    "y_top": 94.715
+   },
+   {
+    "text": "one",
+    "x": 98.1699,
+    "y_top": 94.715
+   },
+   {
+    "text": "Line",
+    "x": 72.0,
+    "y_top": 120.684
+   },
+   {
+    "text": "two",
+    "x": 98.1699,
+    "y_top": 120.684
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

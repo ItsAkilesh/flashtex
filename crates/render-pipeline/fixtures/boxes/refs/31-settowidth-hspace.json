@@ -1,0 +1,36 @@
+{
+ "fixture": "31-settowidth-hspace.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "X",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "Y",
+    "x": 139.2958,
+    "y_top": 83.955
+   },
+   {
+    "text": "Hello",
+    "x": 72.0,
+    "y_top": 98.401
+   },
+   {
+    "text": "world",
+    "x": 102.2323,
+    "y_top": 98.401
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}

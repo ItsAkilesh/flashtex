@@ -1,0 +1,41 @@
+{
+ "fixture": "07-makebox-zero.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "over",
+    "x": 102.887,
+    "y_top": 77.147
+   },
+   {
+    "text": "AlphaBeta",
+    "x": 72.0,
+    "y_top": 91.095
+   },
+   {
+    "text": "and",
+    "x": 130.6828,
+    "y_top": 91.095
+   },
+   {
+    "text": "Gamma",
+    "x": 153.449,
+    "y_top": 91.095
+   },
+   {
+    "text": "under",
+    "x": 124.183,
+    "y_top": 105.043
+   }
+  ]
+ ],
+ "extension_columns": [
+  []
+ ],
+ "rules": [
+  []
+ ]
+}
