@@ -177,6 +177,46 @@ resolutions are recorded per merge. Nothing here is pushed to `main`.
 - Generated files: took main.
 - Checks: `cargo test --release --no-fail-fast` in crates/compiler: all pass except `supported_latex::generated_artifacts_are_current`.
 
+### #166 citations-bibliography (compiler) @ 40b4070f
+
+Merged on nixos-pc-kabir (Linux, TeX Live 2025) after the session handoff.
+
+- Textual conflicts in `src/bib.rs`: main's `resolve` read `BibItem.label`, a
+  field #166 replaces with `kernel_label`/`natbib_num`. Took #166's side (the
+  struct definition itself merged cleanly to #166's, so main's accessor no
+  longer compiled).
+- Textual conflicts in `src/parser.rs`:
+  - `Parsed` fields and initialisers: main's `hyperref`/`theorems`/`qed_marks`
+    plus #166's `citations`/`cite_style`/`cite_numbers`; both kept.
+  - Preamble dispatch: main's hyperref/box/counter/pseudocode/siunitx arms plus
+    #166's `\citestyle`/`\bibpunct`/`\setcitestyle`. Git had shared the brace
+    closing `\DeclareSIUnit` with the one closing `\setcitestyle`; the missing
+    brace was restored, or #166's arms would have nested inside `\DeclareSIUnit`.
+  - `\usepackage`: main's colour-package loop and multicol twocolumn warning
+    plus #166's natbib option block. The same shared-brace misalignment; the
+    brace closing the multicol `if` was restored.
+  - Supported-package list: main's listings/pseudocode/siunitx/multicol arms
+    plus #166's `natbib`; both kept.
+  - Generated `supported/supported-latex.json` and `docs/user/compiler.md`:
+    took main's side (regenerated once at the end of stage 1).
+- Semantic overlap, `\cite` (hunk 3, badly misaligned): git aligned main's old
+  inline `\cite` body against #166's `\bibliographystyle` arm. #166 routes every
+  citation command through `P::citation` → `bib::Citer::cite`, so main's inline
+  body is dead; took #166's `\bibliographystyle` text. That dropped #131's
+  hyperref integration, which is re-added inside `citation()`: each key that
+  `bibliography.resolve` finds records a `LinkKind::Cite` link to `cite.<key>`.
+  Verified by `hyperref_oracle` case `29-cite-links`.
+- Semantic overlap, `\bibitem` (hunk 4): main applied `bib::label_bracket` to the
+  label and set #147's `pending_item` template; #166's `Bibliography::list_label`
+  already brackets (and returns an empty string for a natbib author-year list),
+  so main's call would have double-bracketed. Kept #166's label and re-added
+  #147's `pending_item = ItemLabel::Template { text: label.clone() }`, which is
+  what paints the marker.
+- Checks: `cargo test --release --no-fail-fast` in crates/compiler: all pass
+  (`hyperref_oracle`, `list_structure`, `footnote_counters`, `amsthm` included)
+  except `supported_latex::generated_artifacts_are_current` (stale generated
+  docs; regenerated at the end of stage 1).
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

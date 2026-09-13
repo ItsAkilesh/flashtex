@@ -639,6 +639,15 @@ pub struct Parsed {
     /// Every end-of-proof symbol placed (`\end{proof}`, `\qedhere`, `\qed`),
     /// in source order (see `theorems::QedMark`).
     pub qed_marks: Vec<crate::theorems::QedMark>,
+    /// Every citation command, in document order: its keys, hyperref
+    /// `cite.<key>` targets and typeset text (see [`bib::Citation`]).
+    pub citations: Vec<bib::Citation>,
+    /// The citation style in force at the end of the parse (kernel or
+    /// natbib with its punctuation and mode).
+    pub cite_style: bib::CiteStyle,
+    /// natbib settled on numerical citations (its mode, or an author-year
+    /// document whose bibliography has entries without `(year)` data).
+    pub cite_numbers: bool,
 }
 
 impl Parsed {
@@ -855,6 +864,25 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "bibitem",
     "bibliography",
     "bibliographystyle",
+    "citet",
+    "citep",
+    "citealt",
+    "citealp",
+    "citeauthor",
+    "citeyear",
+    "citeyearpar",
+    "citenum",
+    "Citet",
+    "Citep",
+    "Citealt",
+    "Citealp",
+    "Citeauthor",
+    "citestyle",
+    "bibpunct",
+    "setcitestyle",
+    "newblock",
+    "natexlab",
+    "penalty",
     "title",
     "author",
     "date",
@@ -1067,6 +1095,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     };
     // Structure queries read the expanded stream the parser walks: one
     // tokenizer pass per revision instead of three.
+    let bbl_spliced = splice_bbl(documents, entry, &mut expanded);
+    let pending_bibstyle = bib::bibliography_style(&expanded.tokens[..]);
     let has_document = has_document_environment(&expanded.tokens);
     let mut bibliography_diags = Vec::new();
     let bibliography = bib::prescan(&expanded.tokens[..], &mut bibliography_diags);
@@ -1153,6 +1183,11 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         noted_unclickable_link: false,
         bibliography,
         bib_cursor: 0,
+        citer: bib::Citer::default(),
+        citations: Vec::new(),
+        bbl_spliced,
+        noted_superscript_cites: false,
+        pending_bibstyle,
         title: None,
         author: None,
         date: None,
@@ -1216,7 +1251,63 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         hyperref: p.hyperref,
         theorems: p.theorem_records,
         qed_marks: p.qed_marks,
+        cite_numbers: p.bibliography.numbers(&p.citer.style),
+        citations: p.citations,
+        cite_style: p.citer.style,
     }
+}
+
+/// latex.ltx `\bibliography{..}` is `\@input@{\jobname.bbl}`: when the
+/// project holds `<entry stem>.bbl` (BibTeX's output), its expanded tokens
+/// replace the first `\bibliography{..}` so the pre-scan and the parse both
+/// see its `thebibliography`. The expansion pass is only called, never
+/// changed; the new stream is a fresh vector, so the expansion cache's
+/// shared stream is untouched.
+fn splice_bbl(documents: &[SourceDocument<'_>], entry: usize, expanded: &mut expansion::Expansion) -> bool {
+    let Some(entry_document) = documents.get(entry) else {
+        return false;
+    };
+    let stem = entry_document.path.strip_suffix(".tex").unwrap_or(entry_document.path);
+    let bbl_path = format!("{stem}.bbl");
+    let Some(bbl) = documents.iter().position(|document| document.path == bbl_path) else {
+        return false;
+    };
+    let tokens = &expanded.tokens;
+    let Some(at) = tokens
+        .iter()
+        .position(|t| matches!(&t.token.kind, TokenKind::Command(name) if name == "bibliography"))
+    else {
+        return false;
+    };
+    let mut end = at + 1;
+    while matches!(tokens.get(end).map(|t| &t.token.kind), Some(TokenKind::Space | TokenKind::Comment)) {
+        end += 1;
+    }
+    if !matches!(tokens.get(end).map(|t| &t.token.kind), Some(TokenKind::LBrace)) {
+        return false;
+    }
+    let mut depth = 0usize;
+    while let Some(token) = tokens.get(end) {
+        end += 1;
+        match token.token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let bbl_expansion = expansion::expand_project(documents, bbl);
+    let mut spliced = Vec::with_capacity(tokens.len() + bbl_expansion.tokens.len());
+    spliced.extend(tokens[..at].iter().cloned());
+    spliced.extend(bbl_expansion.tokens.iter().cloned());
+    spliced.extend(tokens[end.min(tokens.len())..].iter().cloned());
+    expanded.tokens = Rc::new(spliced);
+    expanded.diagnostics.extend(bbl_expansion.diagnostics);
+    true
 }
 
 /// Whether only whitespace separates two definition spans (so they belong
@@ -1322,6 +1413,17 @@ struct P<'a> {
     /// reached so far; advanced by each real `\bibitem`, whose own displayed
     /// label is looked up at this index.
     bib_cursor: usize,
+    /// Citation style and state (kernel, or natbib once loaded).
+    citer: bib::Citer,
+    /// Records of the citation commands parsed so far.
+    citations: Vec<bib::Citation>,
+    /// The project's `<jobname>.bbl` replaced `\bibliography`.
+    bbl_spliced: bool,
+    /// natbib `super` citations were diagnosed once.
+    noted_superscript_cites: bool,
+    /// The document's `\bibliographystyle`, applied (natbib's `.aux`
+    /// `\bibstyle`) before the first citation or bibliography entry.
+    pending_bibstyle: Option<String>,
     /// Current text style; saved on `{` and environment entry, restored on
     /// the matching `}` or `\end`.
     style: TextStyle,
@@ -1733,6 +1835,26 @@ impl P<'_> {
                 let (tokens, _) = self.required_group(name, span);
                 siunitx::declare_unit(&unit, &siunitx::raw_text(tokens.iter().map(|t| &t.token)));
             }
+            // natbib's punctuation commands: preamble or body.
+            "citestyle" => {
+                let (tokens, _) = self.required_group(name, span);
+                self.citer.style.named_style(&token_text(&tokens), true);
+            }
+            "bibpunct" => {
+                let cmt = self.optional_bracket_argument().map(|(text, _)| text);
+                let mut args = Vec::new();
+                for _ in 0..6 {
+                    let (tokens, _) = self.required_group(name, span);
+                    args.push(token_text(&tokens));
+                }
+                self.citer.style.bibpunct(cmt.as_deref(), &args);
+            }
+            "setcitestyle" => {
+                let (tokens, _) = self.required_group(name, span);
+                self.citer
+                    .style
+                    .setcitestyle(&bib::braced_text(tokens.iter().map(|t| &t.token)));
+            }
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "chapter" if self.chapter_class => self.chapter(span, blocks, para),
             "num" | "qty" | "unit" | "si" | "SI" | "numlist" | "numrange" | "qtylist"
@@ -1831,66 +1953,76 @@ impl P<'_> {
                 blocks.push(Block::TableOfContents { span });
                 self.finish_block_dependencies();
             }
-            "cite" => {
-                let note = self.optional_bracket_argument().map(|(text, _)| text);
+            "cite" | "citet" | "citep" | "citealt" | "citealp" | "citeauthor" | "citeyear"
+            | "citeyearpar" | "citenum" | "Citet" | "Citep" | "Citealt" | "Citealp"
+            | "Citeauthor" => self.citation(name, span, para),
+            // Real LaTeX's `\nocite` only writes a BibTeX aux-file entry (to
+            // pull an uncited reference into the printed bibliography); its
+            // only visible effect is the undefined-citation warning.
+            "nocite" => {
                 let (tokens, argument_span) = self.required_group(name, span);
-                let full_span = span.merge(argument_span);
-                let keys: Vec<String> = token_text(&tokens)
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|key| !key.is_empty())
-                    .map(str::to_string)
-                    .collect();
-                self.document_global_state = true;
-                if keys.is_empty() {
-                    self.diags.push(Diagnostic::warning(
-                        "\\cite was given an empty key list",
-                        Some(full_span),
-                        Some("rendered nothing for the empty citation".into()),
-                    ));
-                } else {
-                    // hyperref links each defined key to `cite.<key>`.
-                    for key in &keys {
-                        if self.bibliography.resolve(key).is_some() {
-                            self.record_link(
-                                full_span,
-                                crate::hyperref::LinkKind::Cite,
-                                crate::hyperref::LinkTarget::Destination(format!("cite.{key}")),
-                            );
-                        }
+                for key in token_text(&tokens).split(',').map(str::trim_start) {
+                    if !key.is_empty() && key != "*" && self.bibliography.resolve(key).is_none() {
+                        self.diags.push(Diagnostic::warning(
+                            format!("Citation `{key}' undefined"),
+                            Some(span.merge(argument_span)),
+                            Some("nothing is typeset for \\nocite".into()),
+                        ));
                     }
-                    para.extend(bib::cite_inlines(
-                        &keys,
-                        note,
-                        &self.bibliography,
-                        full_span,
-                        &mut self.diags,
+                }
+            }
+            // latex.ltx: `\bibliography` inputs `\jobname.bbl`, which
+            // `parse_project` splices in when the project has one.
+            "bibliography" => {
+                let _ = self.required_group(name, span);
+                let stem = self.entry_path.strip_suffix(".tex").unwrap_or(self.entry_path);
+                let stem = if stem.is_empty() { "main" } else { stem };
+                self.diags.push(Diagnostic::warning(
+                    format!("\\bibliography needs the BibTeX output {stem}.bbl, which is not in the project; .bib files are not read"),
+                    Some(span),
+                    Some("write the bibliography with thebibliography and \\bibitem, or add the .bbl file".into()),
+                ));
+            }
+            // The style BibTeX writes to the `.aux` file: natbib's
+            // `\bibstyle@<name>` punctuation while `\bibstyle` is live.
+            "bibliographystyle" => {
+                let _ = self.required_group(name, span);
+                self.apply_pending_bibstyle();
+                if !self.bbl_spliced {
+                    self.diags.push(Diagnostic::warning(
+                        "\\bibliographystyle has no effect without the BibTeX output (.bbl)",
+                        Some(span),
+                        Some("ignored the style's entry formatting and continued".into()),
                     ));
                 }
             }
-            // Real LaTeX's `\nocite` only writes a BibTeX aux-file entry (to
-            // pull an uncited reference into the printed bibliography); it
-            // has no visible output of its own either way, and this compiler
-            // has no `.bib`/aux-file pipeline to feed (see `bibliography`
-            // below), so consuming the argument is the whole honest behaviour.
-            "nocite" => {
-                let _ = self.required_group(name, span);
+            // article.cls/natbib: `\hskip .11em\@plus.33em\@minus.07em`
+            // between blocks of an entry; the layouts read the glue from
+            // the source bytes around the command.
+            "newblock" => {}
+            // TeX's `\penalty<number>` (BibTeX's `.bbl` writes `\penalty0`
+            // inside page ranges): a break opportunity, never text.
+            "penalty" => {
+                self.skip_spaces();
+                let numeric = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Word(word))
+                    if !word.is_empty() && word.trim_start_matches('-').chars().all(|c| c.is_ascii_digit()));
+                if numeric {
+                    self.i += 1;
+                }
             }
-            "bibliography" => {
-                let _ = self.required_group(name, span);
-                self.diags.push(Diagnostic::warning(
-                    "\\bibliography requires BibTeX/biblatex .bib input, which this compiler does not read",
-                    Some(span),
-                    Some("write the bibliography by hand with thebibliography and \\bibitem".into()),
-                ));
-            }
-            "bibliographystyle" => {
-                let _ = self.required_group(name, span);
-                self.diags.push(Diagnostic::warning(
-                    "\\bibliographystyle has no effect without BibTeX/biblatex .bib support",
-                    Some(span),
-                    Some("ignored the style and continued".into()),
-                ));
+            // natbib: the extra year label (`1984a`), shown only in
+            // author-year mode.
+            "natexlab" => {
+                let (tokens, argument_span) = self.required_group(name, span);
+                let text = token_text(&tokens);
+                if !self.bibliography.numbers(&self.citer.style) && !text.is_empty() {
+                    para.push(Inline::Text {
+                        text,
+                        span: argument_span,
+                        style: self.style,
+                        space_before: false,
+                    });
+                }
             }
             "caption" => {
                 let (tokens, _) = self.required_group(name, span);
@@ -1990,24 +2122,26 @@ impl P<'_> {
                     let (key, _) = self.required_group(name, span);
                     self.record_anchor(format!("cite.{}", token_text(&key).trim()), span);
                     self.document_global_state = true;
+                    self.apply_pending_bibstyle();
                     let label = self
                         .bibliography
-                        .label_at(self.bib_cursor)
-                        .map(str::to_string);
+                        .list_label(self.bib_cursor, &self.citer.style);
                     let label = label.unwrap_or_else(|| {
                         // Should not happen: the pre-scan and this real parse
                         // walk the same literal `\bibitem`s in lockstep (see
                         // `bib::prescan`). Recover with a plain sequential
                         // number rather than losing the entry.
-                        (self.bib_cursor + 1).to_string()
+                        bib::label_bracket(&(self.bib_cursor + 1).to_string())
                     });
                     self.bib_cursor += 1;
                     if let Some(list) = self.list_stack.last_mut() {
                         list.count += 1;
                     }
-                    let text = bib::label_bracket(&label);
-                    self.pending_item = Some(ItemLabel::Template { text: text.clone() });
-                    self.pending_item_label = Some((text, span));
+                    // #147's list machinery paints the marker from the
+                    // template; `list_label` already bracketed it (and gives
+                    // an empty string for a natbib author-year list).
+                    self.pending_item = Some(ItemLabel::Template { text: label.clone() });
+                    self.pending_item_label = Some((label, span));
                 }
             }
             "includegraphics" => {
@@ -2624,6 +2758,171 @@ impl P<'_> {
         }
     }
 
+    /// `\cite` and natbib's `\citet`/`\citep`/... (`[*][pre][post]{keys}`):
+    /// the typeset runs go into the paragraph and a [`bib::Citation`]
+    /// record into `citations`.
+    fn citation(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let Some((kind, capital)) = bib::CiteKind::from_command(name) else {
+            return;
+        };
+        self.apply_pending_bibstyle();
+        let natbib = self.citer.style.natbib;
+        let star = natbib && self.take_optional_star();
+        let optionals = if natbib {
+            self.bracket_arguments(2)
+        } else {
+            self.optional_bracket_argument().map(|(text, _)| text).into_iter().collect()
+        };
+        let (tokens, argument_span) = self.required_group(name, span);
+        let full_span = span.merge(argument_span);
+        // `\edef\@citeb{\expandafter\@firstofone\@citeb\@empty}` drops the
+        // spaces before a key but keeps those after it: `\cite{a ,b}` asks
+        // for `a ` and is undefined in LaTeX too.
+        let text = token_text(&tokens);
+        let keys: Vec<String> = if text.trim().is_empty() {
+            Vec::new()
+        } else {
+            text.split(',').map(|key| key.trim_start().to_string()).collect()
+        };
+        self.document_global_state = true;
+        if keys.is_empty() {
+            self.diags.push(Diagnostic::warning(
+                format!("\\{name} was given an empty key list"),
+                Some(full_span),
+                Some("rendered nothing for the empty citation".into()),
+            ));
+            return;
+        }
+        if !natbib && kind != bib::CiteKind::Cite {
+            self.diags.push(Diagnostic::warning(
+                format!("\\{name} is a natbib command and natbib is not loaded"),
+                Some(span),
+                Some("formatted it with natbib's default author-year style".into()),
+            ));
+            self.citer = bib::Citer::new(bib::CiteStyle::natbib("").0);
+        }
+        if self.citer.style.superscript && !self.noted_superscript_cites {
+            self.noted_superscript_cites = true;
+            self.diags.push(Diagnostic::warning(
+                "natbib superscript citations are set on the baseline",
+                Some(span),
+                Some("kept the citation text unraised".into()),
+            ));
+        }
+        let request = bib::CiteRequest {
+            kind,
+            capital,
+            star,
+            optionals,
+            keys,
+        };
+        // hyperref links each defined key to its `cite.<key>` destination
+        // (recorded at the matching `\bibitem`). Undefined keys get no link,
+        // as in hyperref's `\hyper@@link` guard.
+        for key in &request.keys {
+            if self.bibliography.resolve(key).is_some() {
+                self.record_link(
+                    full_span,
+                    crate::hyperref::LinkKind::Cite,
+                    crate::hyperref::LinkTarget::Destination(format!("cite.{key}")),
+                );
+            }
+        }
+        let (inlines, citation) =
+            self.citer
+                .cite(&request, name, &self.bibliography, full_span, &mut self.diags);
+        para.extend(inlines);
+        self.citations.push(citation);
+    }
+
+    /// Up to `limit` consecutive `[..]` arguments (natbib's `[pre][post]`,
+    /// read with `\@ifnextchar[`, so spaces between them are skipped).
+    /// Brackets are ordinary word characters, so `[see][p.~2]` arrives as
+    /// one word; the bytes are split on the bracket structure. Braces
+    /// inside an argument are dropped, and a `]` inside braces does not
+    /// close it.
+    fn bracket_arguments(&mut self, limit: usize) -> Vec<String> {
+        let mut arguments: Vec<String> = Vec::new();
+        let mut current: Option<String> = None;
+        let mut depth = 0usize;
+        loop {
+            if current.is_none() {
+                if arguments.len() >= limit {
+                    break;
+                }
+                let save = self.i;
+                self.skip_spaces();
+                let starts = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Word(w)) if w.starts_with('['));
+                if !starts {
+                    self.i = save;
+                    break;
+                }
+            }
+            let Some(token) = self.peek().cloned() else {
+                break;
+            };
+            match &token.kind {
+                TokenKind::Word(word) => {
+                    let mut chars = word.char_indices().peekable();
+                    let mut consumed_all = true;
+                    while let Some((at, c)) = chars.next() {
+                        match current.as_mut() {
+                            None if c == '[' && arguments.len() < limit => current = Some(String::new()),
+                            None => {
+                                // Text glued after the last `]`: leave the
+                                // rest of the word for the caller.
+                                let _ = at;
+                                consumed_all = false;
+                                break;
+                            }
+                            Some(text) if c == ']' && depth == 0 => {
+                                arguments.push(std::mem::take(text));
+                                current = None;
+                            }
+                            Some(text) => text.push(c),
+                        }
+                    }
+                    if !consumed_all {
+                        break;
+                    }
+                }
+                TokenKind::Space | TokenKind::ParBreak if current.is_some() => {
+                    if let Some(text) = current.as_mut() {
+                        text.push(' ');
+                    }
+                }
+                TokenKind::Command(name) if current.is_some() => {
+                    if let Some(text) = current.as_mut() {
+                        text.push('\\');
+                        text.push_str(name);
+                    }
+                }
+                TokenKind::LBrace if current.is_some() => depth += 1,
+                TokenKind::RBrace if current.is_some() && depth > 0 => depth -= 1,
+                _ if current.is_some() => {}
+                _ => break,
+            }
+            self.i += 1;
+        }
+        if let Some(text) = current {
+            self.diags.push(Diagnostic::error(
+                "optional argument is missing its closing ']'",
+                None,
+                Some("used the text through end of input as the option".into()),
+            ));
+            arguments.push(text);
+        }
+        arguments
+    }
+
+    fn apply_pending_bibstyle(&mut self) {
+        if self.in_body {
+            if let Some(style) = self.pending_bibstyle.take() {
+                self.citer.style.named_style(&style, false);
+            }
+        }
+    }
+
     fn use_package(&mut self, span: Span) {
         // siunitx keys keep their braces (`output-decimal-marker={,}`).
         let raw_options = {
@@ -2663,6 +2962,17 @@ impl P<'_> {
                 Some(span.merge(argument_span)),
                 Some("multicols is set inside the page column".into()),
             ));
+        }
+        if packages.iter().any(|package| package == "natbib") {
+            let (style, unknown) = bib::CiteStyle::natbib(&options);
+            self.citer = bib::Citer::new(style);
+            if !unknown.is_empty() {
+                self.diags.push(Diagnostic::warning(
+                    format!("natbib options {} are not implemented", unknown.join(", ")),
+                    Some(span.merge(argument_span)),
+                    Some("used natbib's other options".into()),
+                ));
+            }
         }
         if packages.iter().any(|package| package == "fontenc") {
             if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
@@ -3164,7 +3474,10 @@ impl P<'_> {
                     number: String::new(),
                     number_span: heading_span,
                     content: vec![Inline::Text {
-                        text: "References".to_string(),
+                        text: bib::bibliography_heading(
+                            self.document_class.as_deref(),
+                            &self.citer.style,
+                        ),
                         span: heading_span,
                         style: TextStyle::BOLD,
                         space_before: false,
@@ -6012,6 +6325,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         "multicol" => options
             .iter()
             .all(|option| matches!(*option, "errorshow" | "infoshow" | "balancingshow" | "markshow" | "debugshow")),
+        // natbib's citation commands, options and bibliography list are
+        // implemented (see bib.rs); an unknown option warns on its own.
+        "natbib" => true,
         // amsmath/amssymb (math typesetting: \mathbb, \forall, gather,
         // align, ...) and microtype (character protrusion/expansion kerning)
         // are genuinely unimplemented and change real output; they must keep
@@ -8216,7 +8532,7 @@ mod tests {
         assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
         assert!(parsed.diagnostics[0]
             .message
-            .contains("'missing' is undefined"));
+            .contains("Citation `missing' undefined"));
         let mark = items.iter().find(|i| i.text == "?").expect("question mark");
         assert_eq!(mark.font, layout::Font::TimesBold);
     }
@@ -8248,6 +8564,86 @@ mod tests {
         let (parsed, _items) = items(r"\bibliography{refs}");
         assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
         assert!(parsed.diagnostics[0].message.contains("BibTeX"));
+    }
+
+    #[test]
+    fn natbib_commands_produce_citation_records_and_labels() {
+        let source = r"\documentclass{article}\usepackage[numbers,compress]{natbib}
+\begin{document}
+\citet{a} and \citep[see][p.~2]{a,b,c}.
+\begin{thebibliography}{3}
+\bibitem[Knuth(1984)]{a}A.
+\bibitem[Plass(1981)]{b}B.
+\bibitem[Hammer et~al.(2014)]{c}C.
+\end{thebibliography}
+\end{document}";
+        let parsed = parse(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = parsed.citations.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["Knuth [1]", "[see 1\u{2013}3, p.~2]"]);
+        assert_eq!(parsed.citations[1].targets[2].as_deref(), Some("cite.c"));
+        assert!(parsed.cite_numbers);
+        let labels: Vec<&str> = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::ListItem { label: Some((label, _)), .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, ["[1]", "[2]", "[3]"]);
+    }
+
+    #[test]
+    fn preamble_bibpunct_applies_and_keys_keep_trailing_spaces() {
+        let source = r"\documentclass{article}\usepackage{natbib}
+\bibpunct{[}{]}{,}{a}{}{;}
+\setcitestyle{notesep={: }}
+\begin{document}
+\citep[p.~3]{a,b} \cite{ a , b} \cite{a, b}
+\begin{thebibliography}{2}
+\bibitem[Knuth(1984)]{a}A.
+\bibitem[Knuth(1986)]{b}B.
+\end{thebibliography}
+\end{document}";
+        let parsed = parse(source);
+        let texts: Vec<&str> = parsed.citations.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(texts, ["[Knuth 1984; 1986: p.~3]", "?, Knuth [1986]", "Knuth [1984; 1986]"]);
+        assert!(!parsed
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("preamble")), "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics.iter().any(|d| d.message == "Citation `a ' undefined"));
+    }
+
+    #[test]
+    fn bibliography_reads_the_projects_bbl_file() {
+        let main = r"\documentclass{report}\usepackage{natbib}
+\begin{document}
+\citet{knuth84}
+\bibliographystyle{plainnat}
+\bibliography{refs}
+\end{document}";
+        let bbl = r"\begin{thebibliography}{1}
+\providecommand{\natexlab}[1]{#1}
+\bibitem[Knuth(1984)]{knuth84}
+Donald~E. Knuth.
+\newblock \emph{The TeXbook}.
+\end{thebibliography}";
+        let documents = [
+            SourceDocument { path: "main.tex", text: main },
+            SourceDocument { path: "main.bbl", text: bbl },
+        ];
+        let parsed = parse_project(&documents, "main.tex");
+        assert!(
+            !parsed.diagnostics.iter().any(|d| d.message.contains("bibliography")),
+            "{:?}",
+            parsed.diagnostics
+        );
+        assert_eq!(parsed.citations[0].text, "Knuth [1984]");
+        assert!(parsed.blocks.iter().any(|b| matches!(b,
+            Block::Heading { content, .. }
+                if matches!(content.first(), Some(Inline::Text { text, .. }) if text == "Bibliography"))));
     }
 
     #[test]
