@@ -1433,12 +1433,17 @@ impl P<'_> {
                     text,
                     starred,
                     terminated,
+                    listing,
                 } => {
                     let space_before = self.space_precedes(self.i);
                     self.i += 1;
                     if !terminated && render {
                         self.diags.push(Diagnostic::error(
-                            "\\verb has no closing delimiter on this line",
+                            if listing {
+                                "\\lstinline has no closing delimiter on this line"
+                            } else {
+                                "\\verb has no closing delimiter on this line"
+                            },
                             Some(tok.span),
                             Some("used the text through end of line and continued".into()),
                         ));
@@ -7341,6 +7346,65 @@ mod tests {
         let source = "\\begin{lstlisting}\nplain\n\\end{lstlisting}";
         let parsed = parse(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+    }
+
+    /// listings' `\lstinline` reads a raw delimited argument like `\verb`,
+    /// after an optional `[<keys>]`. The keys set no text (listings.sty's
+    /// `\lstinline` does `\lstset{flexiblecolumns,#1}` and typesets
+    /// nothing), and `\lstinline{...}` closes on the brace.
+    #[test]
+    fn lstinline_reads_a_raw_delimited_argument_like_verb() {
+        for (source, want) in [
+            (r"A \lstinline|x y| B", "x y"),
+            (r"A \lstinline!int z! B", "int z"),
+            (r"A \lstinline[language=C]!int z! B", "int z"),
+            (r"A \lstinline{p q} B", "p q"),
+            // Blanks after the command are skipped (`\@ifnextchar`), unlike
+            // `\verb`, whose very next character is the delimiter.
+            (r"A \lstinline  |x| B", "x"),
+            // The body is raw: %, \, $, { and } are not reinterpreted.
+            (r"A \lstinline|a%b\c${}| B", r"a%b\c${}"),
+        ] {
+            let parsed = parse(source);
+            assert!(parsed.diagnostics.is_empty(), "{source:?}: {:?}", parsed.diagnostics);
+            let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+                panic!("{source:?}: expected a paragraph, got {:?}", parsed.blocks[0]);
+            };
+            let verbatim: Vec<&str> = inlines
+                .iter()
+                .filter_map(|i| match i {
+                    Inline::Verbatim { text, .. } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(verbatim, vec![want], "{source:?}");
+        }
+    }
+
+    /// An unclosed `\lstinline` ends at the end of the line and says so
+    /// under its own name, not `\verb`'s.
+    #[test]
+    fn unterminated_lstinline_ends_at_end_of_line() {
+        let parsed = parse("A \\lstinline|x y\nB");
+        assert!(
+            parsed.diagnostics.iter().any(|d| d.message.contains("\\lstinline has no closing delimiter")),
+            "{:?}",
+            parsed.diagnostics
+        );
+    }
+
+    /// A `[` that does not close on the same line is not an option list:
+    /// it is the delimiter.
+    #[test]
+    fn lstinline_bracket_that_does_not_close_on_the_line_is_the_delimiter() {
+        let parsed = parse("A \\lstinline[x[ B");
+        let Block::Paragraph(inlines) = &parsed.blocks[0] else {
+            panic!("expected a paragraph, got {:?}", parsed.blocks[0]);
+        };
+        assert!(
+            inlines.iter().any(|i| matches!(i, Inline::Verbatim { text, .. } if text == "x")),
+            "{inlines:?}"
+        );
     }
 
     #[test]
