@@ -709,7 +709,13 @@ pub fn adapt_cached(
     if let Some(pt) = parskip(source, size) {
         style.parskip = crate::style::Skip::fixed(pt);
     }
-    let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
+    // `\c@secnumdepth`: the class default (article.cls 3, report/book.cls 2)
+    // for an explicit standard class.
+    let class_secnumdepth = match (&explicit_class, style.class_geometry.as_ref()) {
+        (Some(_), Some(d)) => u8::try_from(d.secnumdepth).unwrap_or(options.default_secnumdepth),
+        _ => options.default_secnumdepth,
+    };
+    let secnumdepth = counter(source, "secnumdepth").unwrap_or(class_secnumdepth);
     let styles: Vec<Styles> = texts.iter().map(|t| Styles::new(style_intervals(t))).collect();
     let labels_fp = {
         use std::hash::{Hash, Hasher};
@@ -761,6 +767,14 @@ pub fn adapt_cached(
     // `\appendix`: `\thesection` (article) or `\thechapter` (report/book)
     // becomes `\@Alph`; `chapter_label` is `\thechapter`.
     let mut appendix = false;
+    // `secnumdepth` where the body is: the preamble's (or the class's)
+    // value, changed by `\setcounter{secnumdepth}` in the body.
+    let preamble = source.find("\\begin{document}").map_or(source, |b| &source[..b]);
+    let mut secnumdepth_now: i32 = counter(preamble, "secnumdepth").map_or(i32::from(class_secnumdepth), i32::from);
+    // `\thesubsubsection` and the `paragraph`/`subparagraph` counters
+    // (`\theparagraph` is `\thesubsubsection.\@arabic\c@paragraph`).
+    let mut subsub_number = String::from("0.0.0");
+    let mut run_in_nos = [0u32; 2];
     let mut chapter_label = String::new();
     let mut part_no = 0u32;
     // Contents lists (`crate::toc`): every `\contentsline` record, where
@@ -916,6 +930,48 @@ pub fn adapt_cached(
                         chapter_no = 0;
                         section_nos = [0; 3];
                     }
+                    BodyKind::SecNumDepth(n) => secnumdepth_now = *n,
+                    BodyKind::RunIn { level, starred, title } => {
+                        // `\@sect`: `\refstepcounter` only up to `secnumdepth`;
+                        // `\@seccntformat` is `\the<counter>\quad`.
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let l = usize::from(*level - 4);
+                        let number = if !*starred && i32::from(*level) <= secnumdepth_now {
+                            run_in_nos[l] += 1;
+                            if l == 0 {
+                                run_in_nos[1] = 0;
+                            }
+                            if l == 0 {
+                                format!("{subsub_number}.{}", run_in_nos[0])
+                            } else {
+                                format!("{subsub_number}.{}.{}", run_in_nos[0], run_in_nos[1])
+                            }
+                        } else {
+                            String::new()
+                        };
+                        let mut items = Vec::new();
+                        if !number.is_empty() {
+                            let chars = number.chars().map(|_| CharSrc { document: entry_doc, start: cmd.start, end: cmd.end }).collect();
+                            push_segment(&mut items, number.clone(), chars, TextStyle::default());
+                            items.push(Item::Quad { em: 1.0 });
+                        }
+                        items.extend(labels.entry_items.get(entry_doc, title.0, title.1).unwrap_or_else(|| words_from_source(source, entry_doc, title.0, title.1)));
+                        if toc_active {
+                            items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
+                        }
+                        blocks.push(Block::Heading {
+                            level: *level,
+                            items,
+                            eject_before: false,
+                            vspace_before: 0.0,
+                            number,
+                            title: plain_text(&source[title.0..title.1]),
+                            span,
+                        });
+                        // `\@xsect` with a run-in heading: `\@nobreakfalse`.
+                        after_heading = false;
+                        prev_para_end = None;
+                    }
                     BodyKind::Part { starred, short, title } => {
                         // `\@part`: `\refstepcounter{part}` (`\thepart` is
                         // `\@Roman\c@part`) and `\addcontentsline{toc}{part}
@@ -986,6 +1042,14 @@ pub fn adapt_cached(
                 } else {
                     number.to_string()
                 };
+                // `\refstepcounter{<level>}` resets the deeper counters.
+                if !number.is_empty() && i32::from(level) <= secnumdepth_now {
+                    run_in_nos = [0; 2];
+                    if level == 3 {
+                        subsub_number = number.clone();
+                    }
+                }
+                let number = if i32::from(level) <= secnumdepth_now { number } else { String::new() };
                 let title = match (content.first(), content.last()) {
                     (Some(a), Some(b)) => {
                         let (a, b) = (inline_span(a), inline_span(b));
@@ -996,7 +1060,7 @@ pub fn adapt_cached(
                 // LaTeX `\@seccntformat`: the counter, then `\quad`, then the
                 // title; the number's bytes are the `\section` command's.
                 let mut items = Vec::new();
-                if !number.is_empty() && level <= secnumdepth {
+                if !number.is_empty() {
                     let chars = number
                         .chars()
                         .map(|_| CharSrc {
@@ -2965,6 +3029,12 @@ pub enum BodyKind {
     Appendix,
     /// `\part[<short>]{<title>}` / `\part*{<title>}` (inner ranges).
     Part { starred: bool, short: Option<(usize, usize)>, title: (usize, usize) },
+    /// `\paragraph` (level 4) / `\subparagraph` (level 5): run-in
+    /// `\@startsection` headings the compiler sets as body text.
+    RunIn { level: u8, starred: bool, title: (usize, usize) },
+    /// `\setcounter{secnumdepth}{<n>}` in the body (the compiler skips the
+    /// command and its first argument and sets `<n>` as text).
+    SecNumDepth(i32),
 }
 
 /// Which book.cls matter command (lines 284-298).
@@ -3090,12 +3160,29 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
                 };
                 Some((BodyKind::Event(ChromeEvent::PageNumbering(n)), after))
             }),
-            "setcounter" => group(j).and_then(|(s1, e1, a1)| {
-                if source[s1..e1].trim() != "page" {
-                    return None;
-                }
-                group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i64>().ok().map(|n| (BodyKind::Event(ChromeEvent::SetPage(n)), a2)))
+            "setcounter" => group(j).and_then(|(s1, e1, a1)| match source[s1..e1].trim() {
+                "page" => group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i64>().ok().map(|n| (BodyKind::Event(ChromeEvent::SetPage(n)), a2))),
+                "secnumdepth" => group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i32>().ok().map(|n| (BodyKind::SecNumDepth(n), a2))),
+                _ => None,
             }),
+            // article.cls lines 314-321: `\paragraph` and `\subparagraph` are
+            // `\@startsection`s with a negative after-skip (run-in).
+            "paragraph" | "subparagraph" => {
+                let mut k = j;
+                let starred = bytes.get(k) == Some(&b'*');
+                if starred {
+                    k += 1;
+                }
+                let rest = &source[k..];
+                let trimmed = rest.trim_start();
+                if trimmed.starts_with('[') {
+                    if let Some(close) = trimmed.find(']') {
+                        k += rest.len() - trimmed.len() + close + 1;
+                    }
+                }
+                let level = if name == "paragraph" { 4 } else { 5 };
+                group(k).map(|(s, e, after)| (BodyKind::RunIn { level, starred, title: (s, e) }, after))
+            }
             "maketitle" => Some((BodyKind::MakeTitle, j)),
             "frontmatter" if book => Some((BodyKind::Matter(Matter::Front), j)),
             "mainmatter" if book => Some((BodyKind::Matter(Matter::Main), j)),
@@ -3119,7 +3206,7 @@ pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyComman
 fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
     let ranges: Vec<(usize, usize)> = commands
         .iter()
-        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Part { .. } | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Part { .. } | BodyKind::RunIn { .. } | BodyKind::SecNumDepth(_) | BodyKind::AddContentsLine { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
         .map(|c| (c.start, c.end))
         .collect();
     if ranges.is_empty() {

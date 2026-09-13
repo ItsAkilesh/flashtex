@@ -1814,6 +1814,68 @@ impl<'a> Context<'a> {
         self.text_box(&seg, size)
     }
 
+    /// A run-in `\@startsection` heading (`\paragraph`, `\subparagraph`;
+    /// latex.ltx `\@sect` lines 17247-17278, `\@xsect` 17279-17302): the next
+    /// paragraph's `\everypar` removes its indent box, sets `\@svsechd`
+    /// (`\hskip #3`, the number with its `\quad`, the bold title), then
+    /// `\unskip \hskip -#5` and `\clubpenalty\@M`. Without a paragraph to
+    /// start (`para` None: another heading, a list or a display follows) the
+    /// next `\@startsection`/`\@item`'s `\if@noskipsec \leavevmode` makes
+    /// the heading a paragraph of its own. Before it, `\addpenalty\@secpenalty
+    /// \addvspace{#4}` (placed by the caller).
+    fn run_in_block(&mut self, level: u8, heading: &[AItem], para: Option<&[AItem]>) -> Option<BuiltBlock> {
+        let h = self.style.heading(level);
+        let mut items: Vec<AItem> = Vec::new();
+        if h.indent_pt != 0.0 {
+            items.push(AItem::HSpace { pt: h.indent_pt });
+        }
+        for item in heading {
+            items.push(match item {
+                AItem::Word(w) => {
+                    let mut w = w.clone();
+                    for seg in &mut w.segments {
+                        seg.style.bold = seg.style.bold || (h.bold && !seg.style.medium);
+                    }
+                    AItem::Word(w)
+                }
+                AItem::Space { style, factor, no_break } => AItem::Space {
+                    style: TextStyle {
+                        bold: style.bold || (h.bold && !style.medium),
+                        ..*style
+                    },
+                    factor: *factor,
+                    no_break: *no_break,
+                },
+                // `\@seccntformat`'s `\quad` is set in the heading's bold
+                // font (cmbx: 1.15em), not the paragraph's.
+                AItem::Quad { em } => AItem::HSpace {
+                    pt: em
+                        * self
+                            .text_params(
+                                TextStyle {
+                                    bold: h.bold,
+                                    ..TextStyle::default()
+                                },
+                                h.size_pt,
+                            )
+                            .quad,
+                },
+                other => other.clone(),
+            });
+        }
+        while matches!(items.last(), Some(AItem::Space { .. })) {
+            items.pop();
+        }
+        if let Some(para) = para {
+            items.push(AItem::HSpace { pt: h.run_in_hskip_pt });
+            items.extend(para.iter().skip_while(|i| matches!(i, AItem::Space { .. })).cloned());
+        }
+        let mut b = self.paragraph_block(&items, false, true, true, ParaStyle::Plain, None)?;
+        b.vertical.penalty_before = Some(SEC_PENALTY);
+        b.vertical.space_before = Some(skip_tuple(h.before));
+        Some(b)
+    }
+
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
         let h = self.style.heading(level);
         let (list, recs, labels, skips) = self.hlist(
@@ -1828,7 +1890,34 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0);
+        // `\@hangfrom{\hskip #3\relax\@svsec}` (latex.ltx line 17330):
+        // `\hangindent` is the width of the number box (the counter and its
+        // `\quad`), so a wrapped title's later lines start under the title.
+        // Here: every line `hang` in, the first pulled back by a kern.
+        let (mut list, mut recs, mut skips) = (list, recs, skips);
+        let numbered = items.iter().filter(|i| !matches!(i, AItem::Label { .. })).take_while(|i| !matches!(i, AItem::Space { .. })).any(|i| matches!(i, AItem::Quad { .. }));
+        let mut hang = 0.0;
+        if numbered {
+            for item in &list {
+                match item {
+                    pl::Item::Box(b) => hang += b.width,
+                    pl::Item::Kern(k) => hang += k.width,
+                    pl::Item::Glue(g) => {
+                        hang += g.width;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            if hang > 0.0 {
+                list.insert(0, pl::Item::kern(-hang));
+                recs.insert(0, None);
+                for (at, _) in &mut skips {
+                    *at += 1;
+                }
+            }
+        }
+        let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, hang);
         let lines = self.break_paragraph(&list, &params, items, Some(&recs))?;
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
@@ -4304,6 +4393,25 @@ fn add_skip_before(v: &mut pagebuild::VBlock, skip: Option<(f64, f64, f64)>) {
 
 /// Adds `pt` points of `\vspace` glue (compiler `Block::VSpace`) to the
 /// block's before-skip. Zero is a no-op so cached blocks stay identical.
+/// `\@startsection`'s `\if@nobreak \everypar{}\else \addpenalty\@secpenalty
+/// \addvspace{#4}\fi` for a heading block about to follow `blocks`: right
+/// after a display heading nothing is added; otherwise the before-skip
+/// only tops up the skip the previous block left (`\@xaddvskip`).
+fn place_heading(blocks: &mut [BuiltBlock], b: &mut BuiltBlock, nobreak: bool) {
+    if nobreak {
+        b.vertical.space_before = None;
+        b.vertical.penalty_before = None;
+    } else if let (Some(before), Some(prev)) = (b.vertical.space_before, blocks.last_mut()) {
+        if let Some(last) = prev.vertical.space_after {
+            if last.0 < before.0 {
+                prev.vertical.space_after = None;
+            } else {
+                b.vertical.space_before = None;
+            }
+        }
+    }
+}
+
 fn add_vspace(v: &mut pagebuild::VBlock, pt: f64) {
     if pt == 0.0 {
         return;
@@ -4371,9 +4479,21 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
     // text width (`\onecolumn` material), by built-block index.
     let mut page_start_blocks: Vec<usize> = Vec::new();
     let mut wide_blocks: Vec<usize> = Vec::new();
+    // A run-in heading waiting for the paragraph it starts, and whether it
+    // followed a display heading (`\@nobreak`).
+    let mut pending_run_in: Option<(u8, &[AItem], bool)> = None;
+    let merges_run_in = |block: &Block| matches!(block, Block::Paragraph { parts, list: None, style: ParaStyle::Plain, env_open: None, .. } if matches!(parts.first(), Some(ParaPart::Lines(_))));
     for (doc_index, block) in doc.blocks.iter().enumerate() {
         if doc.page_starts.binary_search(&doc_index).is_ok() {
             page_start_blocks.push(blocks.len());
+        }
+        if pending_run_in.is_some() && !matches!(block, Block::Chrome { .. }) && !merges_run_in(block) {
+            if let Some((level, items, nobreak)) = pending_run_in.take() {
+                if let Some(mut b) = ctx.run_in_block(level, items, None) {
+                    place_heading(&mut blocks, &mut b, nobreak);
+                    blocks.push(b);
+                }
+            }
         }
         match block {
             Block::Heading {
@@ -4385,6 +4505,11 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 title,
                 span,
             } => {
+                if ctx.style.heading(*level).run_in {
+                    pending_run_in = Some((*level, &items[..], after_heading));
+                    after_heading = false;
+                    continue;
+                }
                 let (key, origin) = key_for(b'H', items, &[u64::from(*level)]);
                 if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.heading_block(*level, items)) {
                     if *eject_before {
@@ -4609,7 +4734,11 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 // block already left (`\@xaddvskip`).
                 if *addvspace_before != 0.0 {
                     let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
-                    vspace += (addvspace_before - prev_after).max(0.0);
+                    // latex.ltx `\@xaddvskip` (line 9307): a negative amount
+                    // after a non-negative `\lastskip` is added to it
+                    // (`\@nbitem` right after a heading takes `\parsep` off
+                    // the heading's after-skip).
+                    vspace += if *addvspace_before < 0.0 && prev_after >= 0.0 { *addvspace_before } else { (addvspace_before - prev_after).max(0.0) };
                 }
                 // `\begin{center}`/`\begin{quote}`: `\addvspace{\topsep}` (plus
                 // `\partopsep` from vertical mode) before the first paragraph;
@@ -4648,6 +4777,19 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
+                            if let (true, Some((level, heading, nobreak))) = (first, pending_run_in.take()) {
+                                if let Some(mut b) = ctx.run_in_block(level, heading, Some(items)) {
+                                    pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
+                                    place_heading(&mut blocks, &mut b, nobreak);
+                                    if std::mem::take(&mut eject) {
+                                        b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
+                                    }
+                                    add_vspace(&mut b.vertical, std::mem::take(&mut vspace));
+                                    blocks.push(b);
+                                    first = false;
+                                    continue;
+                                }
+                            }
                             // TeX discards the space token right after a
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
@@ -4801,6 +4943,12 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 blocks[i].vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                 page_start_blocks.push(i);
             }
+        }
+    }
+    if let Some((level, items, nobreak)) = pending_run_in.take() {
+        if let Some(mut b) = ctx.run_in_block(level, items, None) {
+            place_heading(&mut blocks, &mut b, nobreak);
+            blocks.push(b);
         }
     }
     for &at in &clears {
