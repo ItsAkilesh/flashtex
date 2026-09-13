@@ -10,6 +10,7 @@ pub mod adapter;
 pub mod core14;
 pub mod hyphenate;
 pub mod items;
+pub mod liang;
 pub mod linebreak;
 pub mod metrics;
 pub mod pages;
@@ -22,6 +23,7 @@ pub use items::{
     FORCED_BREAK, Glue, GlueOrder, Glyph, GlyphRun, INFINITE_PENALTY, Item, Kern, ParagraphBuilder,
     Penalty, ShapedGlyph, shape_run,
 };
+pub use liang::LiangHyphenator;
 pub use linebreak::{
     Algorithm, BreakMode, BreakPoint, Fitness, Line, LineBreakParams, Lines, Overfull,
     PositionedGlyph, PositionedRun, Stats, layout_paragraph,

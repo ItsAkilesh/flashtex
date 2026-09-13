@@ -272,6 +272,8 @@ fn penalty(value: i32) -> Item {
         flagged: false,
         pre_break: None,
         automatic: false,
+        post_break: None,
+        replace_count: 0,
     })
 }
 
