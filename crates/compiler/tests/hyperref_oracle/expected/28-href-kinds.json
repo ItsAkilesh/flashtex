@@ -1,0 +1,230 @@
+{
+ "case": "28-href-kinds.tex",
+ "source_sha256": "0b3f7222eb5f61894f2e0f3c6aa9009e04fe7e6ff589551709baa39a3280f9ea",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "230.212",
+      "654.302",
+      "268.79",
+      "665.15"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "0",
+      "1",
+      "1"
+     ],
+     "highlight": "I",
+     "action": "URI",
+     "uri": "mailto:someone@example.com",
+     "text": "someone,"
+    },
+    {
+     "rect": [
+      "293.088",
+      "654.302",
+      "319.461",
+      "665.15"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "0",
+      "1",
+      "1"
+     ],
+     "highlight": "I",
+     "action": "URI",
+     "uri": "https://example.com/x?y=1",
+     "text": "query,"
+    },
+    {
+     "rect": [
+      "393.6",
+      "654.302",
+      "418.009",
+      "665.15"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "here",
+     "text": "jump."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "Anchor",
+     "box": [
+      148.712,
+      655.302,
+      180.286,
+      664.149
+     ]
+    },
+    {
+     "text": "text.",
+     "box": [
+      183.614,
+      655.302,
+      203.816,
+      664.149
+     ]
+    },
+    {
+     "text": "Mail",
+     "box": [
+      208.24,
+      655.302,
+      227.889,
+      664.149
+     ]
+    },
+    {
+     "text": "someone,",
+     "box": [
+      231.206,
+      655.302,
+      270.558,
+      664.149
+     ]
+    },
+    {
+     "text": "web",
+     "box": [
+      273.885,
+      655.302,
+      290.764,
+      664.149
+     ]
+    },
+    {
+     "text": "query,",
+     "box": [
+      294.081,
+      655.302,
+      321.23,
+      664.149
+     ]
+    },
+    {
+     "text": "and",
+     "box": [
+      324.558,
+      655.302,
+      340.6,
+      664.149
+     ]
+    },
+    {
+     "text": "an",
+     "box": [
+      343.927,
+      655.302,
+      354.444,
+      664.149
+     ]
+    },
+    {
+     "text": "internal",
+     "box": [
+      357.761,
+      655.302,
+      391.273,
+      664.149
+     ]
+    },
+    {
+     "text": "jump.",
+     "box": [
+      394.601,
+      655.302,
+      419.775,
+      664.149
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "here": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  }
+ },
+ "outlines": [],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

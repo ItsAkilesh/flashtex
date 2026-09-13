@@ -1,0 +1,208 @@
+{
+ "case": "11-nameref-figure.tex",
+ "source_sha256": "14ca5100b08ae310c6ca753b8731764360aaf9a35eca18abf907ae8a43ed2bc9",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "195.897",
+      "609.581",
+      "250.497",
+      "620.429"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "figure.1",
+     "text": "Throughput"
+    },
+    {
+     "rect": [
+      "261.844",
+      "609.581",
+      "300.255",
+      "620.429"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "figure.1",
+     "text": "Figure 1."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "Plot.",
+     "box": [
+      295.039,
+      658.347,
+      316.211,
+      667.194
+     ]
+    },
+    {
+     "text": "Figure",
+     "box": [
+      257.513,
+      636.429,
+      285.63,
+      645.276
+     ]
+    },
+    {
+     "text": "1:",
+     "box": [
+      288.948,
+      636.429,
+      296.697,
+      645.276
+     ]
+    },
+    {
+     "text": "Throughput",
+     "box": [
+      301.13,
+      636.429,
+      353.731,
+      645.276
+     ]
+    },
+    {
+     "text": "The",
+     "box": [
+      148.712,
+      610.581,
+      165.87,
+      619.428
+     ]
+    },
+    {
+     "text": "figure",
+     "box": [
+      169.187,
+      610.581,
+      193.569,
+      619.428
+     ]
+    },
+    {
+     "text": "Throughput",
+     "box": [
+      196.896,
+      610.581,
+      249.497,
+      619.428
+     ]
+    },
+    {
+     "text": "is",
+     "box": [
+      252.824,
+      610.581,
+      259.521,
+      619.428
+     ]
+    },
+    {
+     "text": "Figure",
+     "box": [
+      262.839,
+      610.581,
+      290.956,
+      619.428
+     ]
+    },
+    {
+     "text": "1.",
+     "box": [
+      294.274,
+      610.581,
+      302.022,
+      619.428
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "figure.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "301.127",
+    "650.317",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  }
+ },
+ "outlines": [],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

@@ -69,6 +69,10 @@ pub const REFERENCE_ITERATION_LIMIT: usize = 5;
 struct ReferenceValue {
     number: String,
     page: u32,
+    /// hyperref destination (`section.1`), the `\autoref` type source.
+    anchor: String,
+    /// nameref title.
+    title: String,
 }
 
 /// article.cls `\l@section`/`\l@subsection`/`\l@subsubsection` geometry:
@@ -2161,12 +2165,20 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 }
             }
             Inline::MathRows { rows, aligned, .. } => c.display_rows(rows, *aligned, size),
-            Inline::Label { key, value, .. } => {
+            Inline::Label {
+                key,
+                value,
+                anchor,
+                title,
+                ..
+            } => {
                 c.collected_labels.insert(
                     key.clone(),
                     ReferenceValue {
                         number: value.clone(),
                         page: c.pages.len() as u32,
+                        anchor: anchor.clone(),
+                        title: title.clone(),
                     },
                 );
             }
@@ -2176,15 +2188,58 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 equation,
                 span,
                 space_before,
-            } => match c.resolved_labels.get(key) {
+                form,
+                ..
+            } => match c.resolved_labels.get(key).cloned() {
                 Some(value) => {
-                    let text = if *page {
+                    let number = if *page {
                         value.page.to_string()
                     } else {
                         value.number.clone()
                     };
-                    let text = if *equation { format!("({text})") } else { text };
-                    c.place(text, size, *span, font, *space_before);
+                    let number = if *equation {
+                        format!("({number})")
+                    } else {
+                        number
+                    };
+                    let words: Vec<String> = match form {
+                        crate::parser::ReferenceForm::Number => vec![number],
+                        crate::parser::ReferenceForm::Auto { names } => {
+                            let lookup = |name: &str| {
+                                names
+                                    .iter()
+                                    .find(|(n, _)| n == name)
+                                    .map(|(_, text)| text.clone())
+                            };
+                            // `\autopageref` asks for `\pageautorefname`;
+                            // `\autoref` for the destination's type.
+                            let prefix = if *page {
+                                lookup("pageautorefname").or_else(|| {
+                                    crate::hyperref::default_name("pageautorefname", &lookup)
+                                })
+                            } else {
+                                crate::hyperref::autoref_prefix(&value.anchor, &lookup)
+                            };
+                            prefix
+                                .map(|prefix| {
+                                    prefix
+                                        .split_whitespace()
+                                        .map(str::to_string)
+                                        .collect::<Vec<String>>()
+                                })
+                                .unwrap_or_default()
+                                .into_iter()
+                                .chain(std::iter::once(number))
+                                .collect()
+                        }
+                        crate::parser::ReferenceForm::Name => {
+                            value.title.split_whitespace().map(str::to_string).collect()
+                        }
+                    };
+                    for (index, word) in words.into_iter().enumerate() {
+                        let space = if index == 0 { *space_before } else { true };
+                        c.place(word, size, *span, font, space);
+                    }
                 }
                 // `\@setref`: an undefined key typesets a bold `??`.
                 None if *equation => {

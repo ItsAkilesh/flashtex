@@ -1,0 +1,266 @@
+{
+ "case": "10-nameref-section.tex",
+ "source_sha256": "9d13174c3dba064b1a1f130453abb30555395e054a59d83a80b609de62fd8580",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "202.455",
+      "612.099",
+      "264.667",
+      "622.947"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "Related Work"
+    },
+    {
+     "rect": [
+      "285.367",
+      "612.099",
+      "349.626",
+      "622.947"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "subsection.1.1",
+     "text": "Early Systems."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "1",
+     "box": [
+      133.768,
+      654.452,
+      141.838,
+      667.191
+     ]
+    },
+    {
+     "text": "Related",
+     "box": [
+      157.977,
+      654.452,
+      212.315,
+      667.191
+     ]
+    },
+    {
+     "text": "Work",
+     "box": [
+      217.695,
+      654.452,
+      256.196,
+      667.191
+     ]
+    },
+    {
+     "text": "1.1",
+     "box": [
+      133.768,
+      631.103,
+      150.954,
+      641.719
+     ]
+    },
+    {
+     "text": "Early",
+     "box": [
+      164.403,
+      631.103,
+      196.096,
+      641.719
+     ]
+    },
+    {
+     "text": "Systems",
+     "box": [
+      200.58,
+      631.103,
+      248.336,
+      641.719
+     ]
+    },
+    {
+     "text": "As",
+     "box": [
+      133.768,
+      613.1,
+      145.169,
+      621.947
+     ]
+    },
+    {
+     "text": "discussed",
+     "box": [
+      148.487,
+      613.1,
+      188.512,
+      621.947
+     ]
+    },
+    {
+     "text": "in",
+     "box": [
+      191.83,
+      613.1,
+      200.133,
+      621.947
+     ]
+    },
+    {
+     "text": "Related",
+     "box": [
+      203.45,
+      613.1,
+      236.797,
+      621.947
+     ]
+    },
+    {
+     "text": "Work",
+     "box": [
+      240.115,
+      613.1,
+      263.669,
+      621.947
+     ]
+    },
+    {
+     "text": "and",
+     "box": [
+      266.987,
+      613.1,
+      283.039,
+      621.947
+     ]
+    },
+    {
+     "text": "Early",
+     "box": [
+      286.366,
+      613.1,
+      310.056,
+      621.947
+     ]
+    },
+    {
+     "text": "Systems.",
+     "box": [
+      313.374,
+      613.1,
+      351.397,
+      621.947
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "section.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "subsection.1.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "647.37",
+    null
+   ]
+  }
+ },
+ "outlines": [
+  {
+   "title": "Related Work",
+   "level": 1,
+   "destination": "section.1",
+   "count": -1
+  },
+  {
+   "title": "Early Systems",
+   "level": 2,
+   "destination": "subsection.1.1",
+   "count": null
+  }
+ ],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

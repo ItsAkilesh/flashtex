@@ -510,6 +510,8 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 key: _,
                 value: _,
                 span,
+                anchor: _,
+                title: _,
             } => map_span(span, changes, deltas)?,
             Inline::Reference {
                 key: _,
@@ -517,6 +519,8 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 equation: _,
                 span,
                 space_before: _,
+                form: _,
+                linked: _,
             } => map_span(span, changes, deltas)?,
             Inline::HFill { span } => map_span(span, changes, deltas)?,
             Inline::HSpace { pt: _, span } => map_span(span, changes, deltas)?,

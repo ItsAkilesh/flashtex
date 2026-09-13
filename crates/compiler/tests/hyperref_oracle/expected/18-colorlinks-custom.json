@@ -1,0 +1,286 @@
+{
+ "case": "18-colorlinks-custom.tex",
+ "source_sha256": "2d49a1428833efbcfef1b4a6ede75b2b45f80a21b5231d918e8eccf266d5da39",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "170.436",
+      "631.928",
+      "177.41",
+      "643.883"
+     ],
+     "border": [
+      "0",
+      "0",
+      "0"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "section.1",
+     "text": "1,"
+    },
+    {
+     "rect": [
+      "201.708",
+      "631.928",
+      "227.002",
+      "643.883"
+     ],
+     "border": [
+      "0",
+      "0",
+      "0"
+     ],
+     "color": [
+      "0",
+      "1",
+      "1"
+     ],
+     "highlight": "I",
+     "action": "URI",
+     "uri": "https://example.org",
+     "text": "a site,"
+    },
+    {
+     "rect": [
+      "252.684",
+      "634.418",
+      "259.658",
+      "642.831"
+     ],
+     "border": [
+      "0",
+      "0",
+      "0"
+     ],
+     "color": [
+      "0",
+      "1",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "cite.key",
+     "text": "[1]"
+    }
+   ],
+   "fill_colors": [
+    "0 0 1 rg",
+    "0 0.5 0.5 rg",
+    "0.5 0 0.5 rg"
+   ],
+   "words": [
+    {
+     "text": "1",
+     "box": [
+      133.768,
+      654.452,
+      141.838,
+      667.191
+     ]
+    },
+    {
+     "text": "Custom",
+     "box": [
+      157.977,
+      654.452,
+      212.762,
+      667.191
+     ]
+    },
+    {
+     "text": "Internal",
+     "box": [
+      133.768,
+      633.481,
+      168.11,
+      642.328
+     ]
+    },
+    {
+     "text": "1,",
+     "box": [
+      171.438,
+      633.481,
+      179.186,
+      642.328
+     ]
+    },
+    {
+     "text": "web",
+     "box": [
+      182.504,
+      633.481,
+      199.383,
+      642.328
+     ]
+    },
+    {
+     "text": "a",
+     "box": [
+      202.7,
+      633.481,
+      207.682,
+      642.328
+     ]
+    },
+    {
+     "text": "site,",
+     "box": [
+      211.009,
+      633.481,
+      228.775,
+      642.328
+     ]
+    },
+    {
+     "text": "cite",
+     "box": [
+      232.093,
+      633.481,
+      247.59,
+      642.328
+     ]
+    },
+    {
+     "text": "[1].",
+     "box": [
+      250.917,
+      633.481,
+      264.191,
+      642.328
+     ]
+    },
+    {
+     "text": "References",
+     "box": [
+      133.768,
+      599.686,
+      209.291,
+      612.425
+     ]
+    },
+    {
+     "text": "[1]",
+     "box": [
+      133.768,
+      578.715,
+      144.285,
+      587.562
+     ]
+    },
+    {
+     "text": "A",
+     "box": [
+      149.266,
+      578.715,
+      156.738,
+      587.562
+     ]
+    },
+    {
+     "text": "reference.",
+     "box": [
+      160.055,
+      578.715,
+      201.344,
+      587.562
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "cite.key": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "596.588",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "section*.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "620.401",
+    null
+   ]
+  },
+  "section.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  }
+ },
+ "outlines": [
+  {
+   "title": "Custom",
+   "level": 1,
+   "destination": "section.1",
+   "count": null
+  }
+ ],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}

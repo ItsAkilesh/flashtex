@@ -1,0 +1,177 @@
+{
+ "case": "03-autoref-table.tex",
+ "source_sha256": "ca0d54074f024ba24029eb090265afa01a633585af52f6131844a936dc9988a4",
+ "oracle": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "hyperref": "\\ProvidesPackage{hyperref}",
+ "warnings": [],
+ "pages": [
+  {
+   "number": 1,
+   "size": [
+    "612",
+    "792"
+   ],
+   "annotations": [
+    {
+     "rect": [
+      "218.396",
+      "656.239",
+      "252.767",
+      "665.15"
+     ],
+     "border": [
+      "0",
+      "0",
+      "1"
+     ],
+     "color": [
+      "1",
+      "0",
+      "0"
+     ],
+     "highlight": "I",
+     "action": "GoTo",
+     "destination": "table.1",
+     "text": "Table 1."
+    }
+   ],
+   "fill_colors": [],
+   "words": [
+    {
+     "text": "Numbers",
+     "box": [
+      148.712,
+      655.302,
+      187.815,
+      664.149
+     ]
+    },
+    {
+     "text": "are",
+     "box": [
+      191.133,
+      655.302,
+      204.444,
+      664.149
+     ]
+    },
+    {
+     "text": "in",
+     "box": [
+      207.771,
+      655.302,
+      216.074,
+      664.149
+     ]
+    },
+    {
+     "text": "Table",
+     "box": [
+      219.392,
+      655.302,
+      243.471,
+      664.149
+     ]
+    },
+    {
+     "text": "1.",
+     "box": [
+      246.789,
+      655.302,
+      254.538,
+      664.149
+     ]
+    },
+    {
+     "text": "Rows.",
+     "box": [
+      292.659,
+      636.539,
+      318.587,
+      645.386
+     ]
+    },
+    {
+     "text": "Table",
+     "box": [
+      275.113,
+      614.622,
+      299.193,
+      623.469
+     ]
+    },
+    {
+     "text": "1:",
+     "box": [
+      302.51,
+      614.622,
+      310.259,
+      623.469
+     ]
+    },
+    {
+     "text": "Data",
+     "box": [
+      314.682,
+      614.622,
+      336.13,
+      623.469
+     ]
+    },
+    {
+     "text": "1",
+     "box": [
+      303.133,
+      87.432,
+      308.114,
+      96.279
+     ]
+    }
+   ]
+  }
+ ],
+ "destinations": {
+  "Doc-Start": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "133.768",
+    "667.198",
+    null
+   ]
+  },
+  "page.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "132.768",
+    "705.06",
+    null
+   ]
+  },
+  "table.1": {
+   "page": 1,
+   "view": [
+    "XYZ",
+    "314.687",
+    "628.51",
+    null
+   ]
+  }
+ },
+ "outlines": [],
+ "info": {
+  "Title": "",
+  "Author": "",
+  "Subject": "",
+  "Keywords": "",
+  "Creator": "LaTeX with hyperref"
+ },
+ "catalog": {
+  "page_mode": "UseOutlines",
+  "open_action": [
+   1,
+   "Fit"
+  ]
+ }
+}
