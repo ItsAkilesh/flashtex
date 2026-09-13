@@ -333,13 +333,13 @@ enum EditorIntelligence {
         /// `CompletionTests.testCommandDocsNameOnlyKnownCommands`), and a
         /// name listed here must leave the list once the compiler renders it.
         static let beyondCompiler: Set<String> = [
-            "chapter", "part", "paragraph", "autoref", "cref", "citep", "citet", "includegraphics",
+            "chapter", "part", "paragraph", "autoref", "cref", "citep", "citet",
             "def", "newline", "hline", "toprule", "midrule",
             "bottomrule", "multicolumn", "verb", "today", "%", "$", "&", "#", "_", "{", "}",
-            "geometry", "graphicspath", "onehalfspacing", "doublespacing",
+            "geometry", "onehalfspacing", "doublespacing",
         ]
         static let environmentsBeyondCompiler: Set<String> = [
-            "description", "table", "abstract", "minted", "theorem", "tikzpicture", "subequations", "minipage", "frame", "comment",
+            "table", "abstract", "minted", "theorem", "tikzpicture", "minipage", "frame", "comment",
         ]
 
         static func environmentDocumentation(for name: String) -> String? {
