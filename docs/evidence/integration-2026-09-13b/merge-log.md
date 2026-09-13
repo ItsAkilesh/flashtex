@@ -578,6 +578,29 @@ Everything else in the stage-3 queue continues past it.
   (`Inline::Graphic`/`Transform`), #158 (`Inline::ColorBox`) and
   `Piece::Caption::short`.
 
+### #158 xcolor-pipeline (render-pipeline, pdf) @ ff5f2c9c
+
+- `src/lib.rs`: main's original-source `Context` (float bodies read their own
+  bytes, #135) plus #158's `ctx.set_math_colors(..)`; both.
+- `src/adapter.rs`: git had shared braces between the `Item` enum, `BoxItem`,
+  `LengthItem` and #158's new `ColorBoxItem`, and between the `Inline::Box`/
+  `SetLength`/`LengthGlue` arms and #158's `Inline::ColorBox` arm. All four
+  types and all four arms were written out in full rather than picked.
+- `src/incremental.rs`: `Item::ColorBox` joins `Item::Table` as never
+  cacheable (it holds absolute record indices), and its hash tag was moved
+  from 11 (which is `Item::Kern`) to 16.
+- `src/typeset.rs`, **the substantive one**: #158 paints a whole formula with
+  `Paint::of(m.color)`, while main (#150/#165) resolves a paint per glyph from
+  its math-layout `SourceTag`, so that an xcolor `\color` range *inside* a
+  formula wins. Main's per-glyph paint is kept, but
+  `MathRec::paint_of` fell back to `Paint::BLACK` for a leaf no inner range
+  covers, which would have silently dropped #158's formula colour. It now
+  falls back to `Paint::of(self.color)`, and the
+  `#[cfg(not(feature = "math-glyph-spans"))]` path paints the formula colour
+  too instead of black. Rules keep main's per-glyph `rule_src` provenance.
+- Checks: the `Inline::ColorBox` errors are gone; only #170's
+  `Graphic`/`Transform` and `Piece::Caption::short` remain.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

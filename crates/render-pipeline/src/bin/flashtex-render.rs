@@ -32,6 +32,8 @@ struct Outputs {
     v2: Option<PathBuf>,
     pdf: Option<PathBuf>,
     timing: bool,
+    /// `--device-color`: `--v2` paints carry `device_color` (proposal).
+    device_color: bool,
 }
 
 impl Outputs {
@@ -40,7 +42,8 @@ impl Outputs {
             eprintln!("flashtex-render: {id} rendered in {:.2} ms", r.elapsed_ms);
         }
         if let Some(p) = &self.v2 {
-            let text = r.v2.write_json(id);
+            let wire = flashtex_render_pipeline::display::Wire { images: false, device_color: self.device_color };
+            let text = r.v2.write_json_wire(id, wire);
             if let Err(e) = std::fs::write(p, text) {
                 eprintln!("flashtex-render: cannot write {}: {e}", p.display());
             }
@@ -68,6 +71,7 @@ fn main() {
         v2: None,
         pdf: None,
         timing: false,
+        device_color: false,
     };
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut options = RenderOptions::default();
@@ -97,8 +101,9 @@ fn main() {
                 options.project_root = args.next().map(PathBuf::from);
             }
             "--timing" => outputs.timing = true,
+            "--device-color" => outputs.device_color = true,
             "-h" | "--help" => {
-                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing]");
+                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing] [--device-color]");
                 eprintln!("  without --tex: runtime-v1 JSON Lines worker (compile requests on stdin, one compile_result per line on stdout)");
                 return;
             }

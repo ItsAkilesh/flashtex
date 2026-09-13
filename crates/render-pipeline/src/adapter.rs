@@ -20,6 +20,7 @@ use flashtex_compiler::{DocumentId, Span};
 use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput, PageStyle};
 
 use crate::display::Diagnostic;
+use flashtex_compiler::color::DeviceColor;
 use crate::style::Stylesheet;
 use crate::RenderOptions;
 
@@ -35,6 +36,8 @@ pub struct TextStyle {
     pub medium: bool,
     /// Shape `sl` (`\slshape`, running heads); `scsl` with `caps`.
     pub slanted: bool,
+    /// The compiler's text colour (`TextStyle::color`): the glyph run's paint.
+    pub color: Option<DeviceColor>,
     /// Small caps (`\scshape`): shape `sc`, or `scit`/`scsl` with
     /// `italic`/`slanted`.
     pub caps: bool,
@@ -187,6 +190,8 @@ pub enum Item {
     /// `\hss` (compiler `Inline::HFill` at a `\hss` control word):
     /// `0pt plus 1fil minus 1fil`.
     HSs,
+    /// `\colorbox`/`\fcolorbox` (compiler `Inline::ColorBox`).
+    ColorBox(Box<ColorBoxItem>),
 }
 
 /// A box command's content as pipeline items.
@@ -205,6 +210,19 @@ pub struct BoxItem {
 pub enum LengthItem {
     Measure { which: flashtex_compiler::boxes::MeasuredDimension, content: Vec<Item> },
     Dimen(flashtex_compiler::boxes::BoxDimen),
+}
+
+/// A `\colorbox`/`\fcolorbox`: `items` set as an `\hbox` on a `fill`
+/// rectangle `sep_pt` larger on every side, inside a `rule_pt` frame of
+/// colour `frame` for `\fcolorbox`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorBoxItem {
+    pub fill: DeviceColor,
+    pub frame: Option<DeviceColor>,
+    pub sep_pt: f64,
+    pub rule_pt: f64,
+    pub items: Vec<Item>,
+    pub span: Span,
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -556,6 +574,12 @@ pub struct Doc {
     pub limitations: Vec<(&'static str, Span, String)>,
     /// `secnumdepth` in force (numbers in running heads).
     pub secnumdepth: u8,
+    /// `\pagecolor` (compiler `Parsed::page_color`).
+    pub page_color: Option<DeviceColor>,
+    /// The default text colour (compiler `Parsed::default_color`).
+    pub default_color: Option<DeviceColor>,
+    /// The colour of every formula set in one, by `(document, start, end)`.
+    pub math_colors: std::collections::HashMap<(usize, usize, usize), DeviceColor>,
     /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
     /// `clear_page_blocks`).
     pub page_starts: Vec<usize>,
@@ -1586,8 +1610,52 @@ pub fn adapt_cached(
         diagnostics: Vec::new(),
         limitations,
         secnumdepth,
+        page_color: parsed.page_color,
+        default_color: parsed.default_color,
+        math_colors: math_colors(&parsed.blocks),
         page_starts,
     }
+}
+
+/// `(document, start, end)` of every formula with a colour of its own
+/// (`Inline::Math::color`); colours changed inside a formula
+/// (`color_ranges`) are not painted: placed math glyphs carry no spans.
+fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections::HashMap<(usize, usize, usize), DeviceColor> {
+    use flashtex_compiler::parser::Block as CBlock;
+    fn walk(inlines: &[Inline], out: &mut std::collections::HashMap<(usize, usize, usize), DeviceColor>) {
+        for inline in inlines {
+            match inline {
+                Inline::Math { color: Some(c), span, .. } => {
+                    out.insert((span.document.0, span.start, span.end), *c);
+                }
+                Inline::Footnote { text: Some(text), .. } => walk(text, out),
+                Inline::Tabular(t) => {
+                    for list in t.inline_lists() {
+                        walk(list, out);
+                    }
+                }
+                Inline::ColorBox(b) => walk(&b.content, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = std::collections::HashMap::new();
+    for block in blocks {
+        match block {
+            CBlock::Paragraph(content)
+            | CBlock::FigureCaption { content }
+            | CBlock::Styled { content, .. }
+            | CBlock::ListItem { content, .. }
+            | CBlock::Heading { content, .. } => walk(content, &mut out),
+            CBlock::TitleBlock { title, authors, date } => {
+                walk(title, &mut out);
+                walk(authors, &mut out);
+                walk(date.as_deref().unwrap_or(&[]), &mut out);
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Blocks whose `eject_before` comes from `\clearpage`/`\cleardoublepage`
@@ -1644,6 +1712,7 @@ fn inline_span(i: &Inline) -> Span {
         Inline::Tabular(t) => t.span,
         Inline::Box(b) => b.span,
         Inline::SetLength(a) => a.span,
+        Inline::ColorBox(b) => b.span,
     }
 }
 
@@ -4193,13 +4262,15 @@ fn items_cached(
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
         match i {
-            Inline::Text { text, .. } => {
+            Inline::Text { text, style, .. } => {
                 0u8.hash(&mut h);
                 text.hash(&mut h);
+                style.color.hash(&mut h);
             }
             Inline::LineBreak { .. } => 1u8.hash(&mut h),
-            Inline::Math { list, display, number, .. } => {
+            Inline::Math { list, display, number, color, .. } => {
                 2u8.hash(&mut h);
+                color.hash(&mut h);
                 display.hash(&mut h);
                 number.hash(&mut h);
                 crate::incremental::hash_math(list, &mut h);
@@ -4231,6 +4302,10 @@ fn items_cached(
             Inline::Verbatim { text, .. } => {
                 11u8.hash(&mut h);
                 text.hash(&mut h);
+            }
+            Inline::ColorBox(b) => {
+                15u8.hash(&mut h);
+                format!("{b:?}").hash(&mut h);
             }
             Inline::Logo { logo, style, .. } => {
                 12u8.hash(&mut h);
@@ -4425,6 +4500,27 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 factor = 1000;
                 pending_accent = None;
                 after_control_word = strut;
+            }
+            Inline::ColorBox(b) => {
+                // `\leavevmode\hbox{...}` like a tabular: one box.
+                let span = b.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let content = items_from_inlines_styled(texts, &b.content, styles, labels, size, heading, compiler_weight);
+                items.push(Item::ColorBox(Box::new(ColorBoxItem {
+                    fill: b.fill,
+                    frame: b.frame,
+                    sep_pt: b.fboxsep_pt,
+                    rule_pt: b.fboxrule_pt,
+                    items: content,
+                    span,
+                })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
             }
             Inline::SetLength(a) => {
                 // No material: the blanks on both sides stay, as in TeX.
@@ -4633,6 +4729,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 // `\tiny`..`\Huge` come from the compiler's scoping.
                 let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
                 style.size_cpt = declared_size(compiler_style.size, size);
+                style.color = compiler_style.color;
                 if heading {
                     // `\@startsection` sets `\bfseries`; the compiler's
                     // heading styles start bold and `\normalfont`/

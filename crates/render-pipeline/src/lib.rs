@@ -201,6 +201,7 @@ pub fn render_cached(
         // from its own bytes.
         let originals: Vec<&str> = documents.iter().map(|d| d.text).collect();
         let mut ctx = typeset::Context::with_texts(fonts, &doc.style, &paths, if any_floats { &originals } else { &texts });
+        ctx.set_math_colors(doc.math_colors.clone());
         let laid = typeset::build_with_floats(&mut ctx, &doc, cache, &float_specs);
         diagnostics.extend(ctx.take_diagnostics());
         if max_passes > 1 {
@@ -223,7 +224,7 @@ pub fn render_cached(
                 ));
             }
         }
-        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics, cache);
+        let v2 = typeset::assemble(project_id, revision, documents, &doc.style, fonts, laid, diagnostics, cache, doc.page_color, doc.default_color);
         return Rendered {
             v2,
             elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
