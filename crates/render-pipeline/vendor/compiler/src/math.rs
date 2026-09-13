@@ -46,6 +46,10 @@ pub struct MathAtom {
     /// `\mathpunct` family, which boxes an arbitrary math list as one atom of
     /// the stated class.
     pub(crate) class_override: Option<AtomClass>,
+    /// Forces a symbol atom's advance, in ems of its size, when the glyph is
+    /// shared by commands whose TeX fonts differ (`\varnothing` is msbm10's
+    /// 0.777781em where `\emptyset`'s identical U+2205 is cmsy10's).
+    pub(crate) width_em: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -421,6 +425,7 @@ impl MathParser<'_> {
                             superscript: None,
                             subscript: None,
                             class_override: None,
+                            width_em: None,
                         }],
                     };
                 }
@@ -604,12 +609,14 @@ impl MathParser<'_> {
             // of invented as a second glyph.
             "bot" => MathAtom {
                 class_override: Some(AtomClass::Ord),
+                width_em: None,
                 ..symbol("⊥".into(), span)
             },
             // `\bigtriangleup` renders `\triangle`'s exact glyph (U+25B3) but
             // is Bin where `\triangle` is Ord; same fix as `\bot`/`\perp`.
             "bigtriangleup" => MathAtom {
                 class_override: Some(AtomClass::Bin),
+                width_em: None,
                 ..symbol("△".into(), span)
             },
             // TeXbook Chapter 17's `\mathbin`/`\mathrel`/... family: the
@@ -633,6 +640,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: Some(class),
+                    width_em: None,
                 }
             }
             "operatorname" => {
@@ -686,6 +694,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "begin" => self.grid_environment(span),
@@ -697,6 +706,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 };
                 match index {
                     // The root index sits as a raised script ahead of the sign.
@@ -724,6 +734,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "binom" | "dbinom" | "tbinom" => {
@@ -740,6 +751,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "mathbf" | "textbf" => {
@@ -750,6 +762,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "boxed" | "overline" | "underline" => {
@@ -765,6 +778,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "tag" => {
@@ -792,6 +806,7 @@ impl MathParser<'_> {
                     superscript: None,
                     subscript: None,
                     class_override: None,
+                    width_em: None,
                 }
             }
             "quad" => space(QUAD_EM, span),
@@ -819,6 +834,34 @@ impl MathParser<'_> {
                     }
                 }
             }
+            "mathcal" => {
+                let (text, argument_span) = self.required_text_group("mathcal", span);
+                let span = span.merge(argument_span);
+                let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                match letters
+                    .chars()
+                    .map(crate::newcm_math::script)
+                    .collect::<Option<String>>()
+                {
+                    Some(glyphs) if !glyphs.is_empty() => symbol(glyphs, span),
+                    _ => {
+                        self.diagnostics.push(Diagnostic::error(
+                            format!(
+                                "\\mathcal supports only capital letters A-Z, not {:?}",
+                                letters
+                            ),
+                            Some(span),
+                            Some("typeset the argument without calligraphic letters".into()),
+                        ));
+                        symbol(letters, span)
+                    }
+                }
+            }
+            // amssymb: msbm10 char "3F, 0.777781em (cmsy10's \emptyset is 0.5em).
+            "varnothing" => MathAtom {
+                width_em: Some(VARNOTHING_MSBM_EM),
+                ..symbol("∅".into(), span)
+            },
             "hat" => self.accent_atom(Accent::Hat, span),
             "bar" => self.accent_atom(Accent::Bar, span),
             "vec" => self.accent_atom(Accent::Vec, span),
@@ -948,6 +991,7 @@ impl MathParser<'_> {
             superscript: None,
             subscript: None,
             class_override: None,
+            width_em: None,
         }
     }
 
@@ -1308,6 +1352,7 @@ impl MathParser<'_> {
                 right: right.into(),
             },
             class_override: None,
+            width_em: None,
             span,
             superscript: None,
             subscript: None,
@@ -1352,6 +1397,9 @@ impl MathParser<'_> {
     }
 }
 
+/// `\varnothing`'s advance in ems: msbm10.tfm character "3F (CHARWD R 0.777781).
+pub(crate) const VARNOTHING_MSBM_EM: f64 = 0.777781;
+
 fn symbol(text: String, span: Span) -> MathAtom {
     MathAtom {
         nucleus: Nucleus::Symbol(text),
@@ -1359,6 +1407,7 @@ fn symbol(text: String, span: Span) -> MathAtom {
         superscript: None,
         subscript: None,
         class_override: None,
+        width_em: None,
     }
 }
 
@@ -1417,6 +1466,7 @@ fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
         superscript: atom.superscript,
         subscript: atom.subscript,
         class_override: atom.class_override,
+        width_em: atom.width_em,
     }
 }
 
@@ -1427,6 +1477,7 @@ fn space(em: f64, span: Span) -> MathAtom {
         superscript: None,
         subscript: None,
         class_override: None,
+        width_em: None,
     }
 }
 
@@ -1646,6 +1697,7 @@ fn text_atom(text: String, span: Span) -> MathAtom {
         superscript: None,
         subscript: None,
         class_override: None,
+        width_em: None,
     }
 }
 
@@ -2040,6 +2092,7 @@ fn with_delimiter_scale(atom: &MathAtom, scale: f64) -> MathAtom {
         superscript: atom.superscript.clone(),
         subscript: atom.subscript.clone(),
         class_override: atom.class_override,
+        width_em: atom.width_em,
     }
 }
 
@@ -2059,6 +2112,7 @@ fn layout_nucleus(
                 superscript: None,
                 subscript: None,
                 class_override: atom.class_override,
+                width_em: atom.width_em,
             },
             size,
             root_size,
@@ -2076,7 +2130,13 @@ fn layout_nucleus(
                 span: atom.span,
                 rule: None,
             }],
-            width: match (&atom.nucleus, crate::lm_math::width_pt(text, size)) {
+            width: match (
+                &atom.nucleus,
+                atom.width_em.map(|em| em * size).or_else(|| {
+                    crate::lm_math::width_pt(text, size)
+                        .or_else(|| crate::newcm_math::width_pt(text, size))
+                }),
+            ) {
                 (Nucleus::Symbol(_), Some(width)) => width,
                 _ => {
                     crate::layout::shaped_width(
@@ -2644,6 +2704,7 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
         superscript: atom.superscript.as_ref().map(|l| shift_list(l, delta)),
         subscript: atom.subscript.as_ref().map(|l| shift_list(l, delta)),
         class_override: atom.class_override,
+        width_em: atom.width_em,
     }
 }
 

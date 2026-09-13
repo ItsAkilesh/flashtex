@@ -134,7 +134,11 @@ impl TexMathMetrics {
 
     /// The face and original glyph id that draw a placed TFM glyph: the
     /// optical-size text face for the roman family, Latin Modern Math (one
-    /// 10 pt design) for the italic, symbol and extension families.
+    /// 10 pt design) for the italic, symbol and extension families, and the
+    /// secondary face (New Computer Modern Math, the compiler's binding for
+    /// `\mathcal`, pin `dbf6ec78`) for the cmsy calligraphic capitals when it
+    /// is loaded, reported once as its own resource profile because its
+    /// script design is not cmsy10's calligraphic one.
     pub fn otf_glyph(&self, font: MathFontId, code: u8, ch: char) -> Option<(Rc<LoadedFace>, u16)> {
         let name = self.cm.font_name(font);
         if name.starts_with("cmr") {
@@ -143,6 +147,17 @@ impl TexMathMetrics {
                 if let Some(gid) = face.face().glyph_id(ch) {
                     self.resources.borrow_mut().entry(lm_name(&name)).or_insert((face.name.clone(), true));
                     return Some((face.clone(), gid.0));
+                }
+            }
+        }
+        if name.starts_with("cmsy") && crate::mathfont::is_script_capital(ch) {
+            if let Some(bb) = self.otf.bb_face() {
+                if let Some(gid) = bb.face().glyph_id(ch) {
+                    self.resources
+                        .borrow_mut()
+                        .entry(format!("{} \\mathcal capitals", lm_name(&name)))
+                        .or_insert((bb.name.clone(), false));
+                    return Some((bb.clone(), gid.0));
                 }
             }
         }
@@ -423,8 +438,18 @@ fn extra_symbol_slot(ch: char) -> Option<u8> {
     match ch {
         NOT_SLASH => Some(0x36),
         '\u{22A5}' => Some(0x3F),
-        _ => None,
+        _ => script_capital_slot(ch),
     }
+}
+
+/// The cmsy slot of a `\mathcal` capital. Compiler pin `dbf6ec78` emits the
+/// Unicode script code point (`newcm_math::script(letter)`); `fontmath.ltx`
+/// declares `\mathcal` as the `symbols` (cmsy) alphabet whose slots 0x41–0x5A
+/// are the calligraphic capitals, so the box, advance and italic correction
+/// are cmsy10's exactly as pdfLaTeX sets them. The outline is drawn by
+/// [`TexMathMetrics::otf_glyph`] from the secondary face when it is loaded.
+fn script_capital_slot(ch: char) -> Option<u8> {
+    ('A'..='Z').find(|l| flashtex_compiler::newcm_math::script(*l) == Some(ch)).map(|l| l as u8)
 }
 
 /// The Latin Modern TFM that carries the same metrics as a CM table name

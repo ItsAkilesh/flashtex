@@ -91,6 +91,22 @@ pub fn is_double_struck(ch: char) -> bool {
     )
 }
 
+/// The code points `\mathcal` produces (compiler pin `dbf6ec78`,
+/// `newcm_math::script`: the Mathematical Alphanumeric script capitals
+/// U+1D49C–U+1D4B5 and the eight capitals Unicode encodes in Letterlike
+/// Symbols), which the compiler binds to New Computer Modern Math
+/// (`newcm_math::FONT_ID`); the same secondary face draws them here. The
+/// set is the compiler's own advance table, so it cannot drift from it.
+pub fn is_script_capital(ch: char) -> bool {
+    flashtex_compiler::newcm_math::advance(ch).is_some()
+}
+
+/// Whether `ch` is drawn from the secondary face ([`BB_FONT`]) when it is
+/// loaded: `\mathbb` and `\mathcal` letters.
+pub fn is_secondary_face(ch: char) -> bool {
+    is_double_struck(ch) || is_script_capital(ch)
+}
+
 impl MathFonts {
     /// `face` must carry a `MATH` table (Latin Modern Math); `None` otherwise.
     pub fn new(face: Rc<LoadedFace>, sizes: MathSizes) -> Option<MathFonts> {
@@ -313,7 +329,7 @@ impl MathFontMetrics for MathFonts {
     }
 
     fn glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
-        if is_double_struck(ch) {
+        if is_secondary_face(ch) {
             match &self.bb {
                 Some(bb) => {
                     if let Some(gid) = bb.face().glyph_id(ch) {

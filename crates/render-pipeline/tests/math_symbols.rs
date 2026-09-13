@@ -363,3 +363,106 @@ fn mathbb_paints_from_new_computer_modern_when_bundled() {
     };
     assert_eq!(others(&with), others(&without));
 }
+
+/// `\mathcal` (compiler pin `dbf6ec78`): the compiler emits the Unicode
+/// script capitals and binds them to New Computer Modern Math. The
+/// pipeline sets each at cmsy10's slot (`fontmath.ltx`: `\mathcal` is the
+/// `symbols` alphabet), so the advance is cmsy10's width plus italic
+/// correction — `\mathcal{P}`: 0.6955595 + 0.082222 em, the distance
+/// pdfLaTeX leaves before the following `(` — and paints it from
+/// `NewCMMath-Regular.otf` when that face is in a font directory (its own
+/// `fonts` entry by raw-byte sha256, one typed profile note naming it),
+/// else from Latin Modern Math. No compiler error, no dropped glyph, and
+/// the layout is the same either way because the metrics are the TFM's.
+#[test]
+fn mathcal_sets_at_cmsy_metrics_and_paints_from_new_computer_modern_when_bundled() {
+    use flashtex_compiler::parser::SourceDocument;
+    use flashtex_render_pipeline::display::{Severity, Tick};
+    use flashtex_render_pipeline::{render, FontSet, RenderOptions};
+    use std::path::PathBuf;
+
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    const NEWCM: &str = "NewCMMath-Regular.otf";
+    const NEWCM_SHA: &str = "60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2";
+    let candidates = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts"),
+        PathBuf::from("/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern"),
+    ];
+    let text = doc("power set $\\mathcal{P}(T)$ and $\\mathcal{A}\\cup\\mathcal{B}$.");
+    let sources = [SourceDocument { path: "main.tex", text: &text }];
+    let render_with = |extra: &[PathBuf]| {
+        let fonts = FontSet::with_default_dirs(extra);
+        render(&sources, "main.tex", 1, "cal", &fonts, &RenderOptions::default())
+    };
+    let is_cal = |c: char| flashtex_compiler::newcm_math::advance(c).is_some();
+    // Every calligraphic glyph: text, face, raw-byte identity, origin x,
+    // size (runs split differently once the faces alternate).
+    let cal_runs = |r: &flashtex_render_pipeline::Rendered| -> Vec<(String, String, String, Tick, Tick)> {
+        let mut out = Vec::new();
+        for it in &r.v2.pages[0].items {
+            let Item::GlyphRun(run) = it else { continue };
+            let f = r.v2.fonts.iter().find(|f| f.font_id == run.font_id).expect("run font is a fonts entry");
+            for g in &run.glyphs {
+                let c = &run.clusters[g.cluster as usize];
+                let text = run.text[c.text_start_byte..c.text_end_byte].to_string();
+                if text.chars().any(is_cal) {
+                    out.push((text, f.postscript_name.clone(), f.sha256.clone(), g.origin_x, run.font_size));
+                }
+            }
+        }
+        out
+    };
+    // The `(` right after `\mathcal{P}`.
+    let paren_x = |r: &flashtex_render_pipeline::Rendered| -> Tick {
+        r.v2.pages[0]
+            .items
+            .iter()
+            .find_map(|it| match it {
+                Item::GlyphRun(run) if run.text == "(" => Some(run.glyphs[0].origin_x),
+                _ => None,
+            })
+            .expect("the ( after \\mathcal{P}")
+    };
+
+    let without = render_with(&[]);
+    assert!(!without.v2.diagnostics.iter().any(|d| d.severity == Severity::Error), "{:?}", without.v2.diagnostics);
+    let runs = cal_runs(&without);
+    assert_eq!(runs.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["𝒫", "𝒜", "ℬ"], "{runs:?}");
+    for (text, ps, _, _, _) in &runs {
+        assert_eq!(ps, "LatinModernMath-Regular", "{text} without NewCM");
+    }
+    // cmsy10 slot 0x50: width 0.6955595 em + italic correction 0.082222 em.
+    let (p_x, size) = (runs[0].3 .0 as f64, runs[0].4 .0 as f64);
+    let expected = (0.6955595 + 0.082222) * size;
+    let actual = paren_x(&without).0 as f64 - p_x;
+    assert!((actual - expected).abs() < 0.002 * size, "P advance {actual} ticks vs cmsy10 {expected}");
+
+    let Some(dir) = candidates.iter().find(|d| d.join(NEWCM).is_file()) else {
+        eprintln!("skipping the bundled half: {NEWCM} not found");
+        return;
+    };
+    let with = render_with(std::slice::from_ref(dir));
+    let runs_with = cal_runs(&with);
+    assert_eq!(runs_with.len(), 3, "{runs_with:?}");
+    for (text, ps, sha, _, _) in &runs_with {
+        assert_eq!(ps, "NewCMMath-Regular", "{text} with NewCM");
+        assert_eq!(sha, NEWCM_SHA, "{text} raw-byte identity");
+    }
+    for (a, b) in runs.iter().zip(&runs_with) {
+        assert_eq!(a.0, b.0);
+        assert_eq!(a.3, b.3, "{} origin moves with the painting face", a.0);
+    }
+    assert_eq!(paren_x(&with), paren_x(&without));
+    let notes: Vec<_> = with
+        .v2
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "math_resource_profile" && d.message.contains("\\mathcal"))
+        .map(|d| d.message.clone())
+        .collect();
+    assert_eq!(notes.len(), 1, "one \\mathcal profile note with NewCM: {notes:?}");
+    assert!(notes[0].contains("NewCMMath-Regular"), "{}", notes[0]);
+}

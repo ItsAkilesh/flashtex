@@ -647,6 +647,7 @@ fn shift_math_list(
                         }
                     },
                     class_override: atom.class_override,
+                    width_em: atom.width_em,
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
                     // shifted fails the whole mapping, so the caller falls back to a

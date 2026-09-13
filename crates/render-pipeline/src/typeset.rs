@@ -810,7 +810,7 @@ impl<'a> Context<'a> {
                 Diagnostic::warning(
                     "math_resource_profile",
                     format!(
-                        "msbm10: double-struck (\\mathbb) glyphs drawn from {} (open-face design); {} unavailable ({reason}), so the outlines and advances are not the reference's msbm design",
+                        "msbm10/cmsy10: double-struck (\\mathbb) and calligraphic (\\mathcal) glyphs drawn from {} (open-face and script designs); {} unavailable ({reason}), so the outlines and advances are not the reference's msbm/cmsy design",
                         fonts.otf().face().name,
                         crate::mathfont::BB_FONT_FILE
                     ),
