@@ -65,7 +65,7 @@ fn main() {
         let mut seen_m = HashSet::new();
         for t in &toks {
             if let TokenKind::ControlSequence(n) = &t.kind {
-                if matches!(n.as_str(), "relax" | "par" | "document" | "enddocument") {
+                if matches!(n.as_str(), "relax" | "par" | "document" | "enddocument" | "begingroup" | "endgroup") {
                     continue;
                 }
                 let (map, seen) = if primitives.contains(n) { (&mut prim_freq, &mut seen_p) } else { (&mut macro_freq, &mut seen_m) };

@@ -43,9 +43,9 @@ fn main() {
     let bytes: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(500_000);
     let edits: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(300);
     let doc = synthetic_document(bytes);
-    // Finite limits, as the IDE would use: a random keystroke can turn the
-    // document into an infinite macro loop.
-    let limits = Limits { max_expansion_steps: 20_000_000, max_output_tokens: 5_000_000, ..Limits::default() };
+    // The default (IDE) limits: a keystroke can create an infinite macro
+    // loop, which then costs at most the step limit.
+    let limits = Limits::default();
 
     let t = Instant::now();
     let full = expand_str(&doc);
@@ -77,15 +77,21 @@ fn main() {
             Edit { start: pos, end: pos, replacement: "x".into() }
         };
         let removed = inc.source()[edit.start..edit.end].to_string();
-        let t = Instant::now();
-        let stats = inc.edit(&edit);
-        let ms = t.elapsed().as_secs_f64() * 1e3;
-        times.push(ms);
-        if ms > 50.0 && std::env::var_os("BENCH_VERBOSE").is_some() {
-            eprintln!("slow edit #{k}: {ms:.1} ms, removed {removed:?}, inserted {:?}, {stats:?}", edit.replacement);
-        }
-        if stats.converged_at.is_some() {
-            converged += 1;
+        // Keystroke, then its undo (typing + backspace): both are timed,
+        // and the document cannot drift into a permanently broken state
+        // (a deleted `}` can turn `\def\sep{ / }` into an infinite loop).
+        let undo = Edit { start: edit.start, end: edit.start + edit.replacement.len(), replacement: removed.clone() };
+        for (label, e) in [("keystroke", &edit), ("undo", &undo)] {
+            let t = Instant::now();
+            let stats = inc.edit(e);
+            let ms = t.elapsed().as_secs_f64() * 1e3;
+            times.push(ms);
+            if ms > 50.0 && std::env::var_os("BENCH_VERBOSE").is_some() {
+                eprintln!("slow {label} #{k}: {ms:.1} ms, removed {removed:?}, inserted {:?}, {stats:?}", edit.replacement);
+            }
+            if stats.converged_at.is_some() {
+                converged += 1;
+            }
         }
     }
     // Verify the final state against a from-scratch expansion.
@@ -95,8 +101,9 @@ fn main() {
     println!("document: {} bytes, {} output tokens, {} diagnostics", doc.len(), full.tokens.len(), full.diagnostics.len());
     println!("full expansion (expand_str): {full_ms:.1} ms");
     println!("initial incremental run (with {} checkpoints): {initial_ms:.1} ms", inc.checkpoint_count());
+    let edits = times.len();
     println!(
-        "keystroke re-expansion over {edits} edits: p50 {:.3} ms, p95 {:.3} ms, max {:.3} ms; converged early {converged}/{edits}",
+        "keystroke re-expansion over {edits} edits (keystroke+undo pairs): p50 {:.3} ms, p95 {:.3} ms, max {:.3} ms; converged early {converged}/{edits}",
         percentile(&times, 0.5),
         percentile(&times, 0.95),
         times.last().unwrap()
