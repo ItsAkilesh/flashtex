@@ -129,24 +129,14 @@ fn genfrac_with_explicit_delimiters_and_style_is_modeled() {
     assert_no_limitation_or_unsupported("\\genfrac", "$\\genfrac{[}{]}{0pt}{0}{a}{b}$");
 }
 
-/// What the pipeline still cannot lay out exactly, so callers do not expect
-/// a diagnostic-free build: `\substack`'s rows are set as a `SubArray`
-/// (math-layout has no `\scriptstyle`-shrunk variant of it distinct from the
-/// enclosing style), and a nested (non-top-level) grid remains reported.
-/// This test documents the one construct in the task list that is NOT fully
-/// modeled: an `array`/`cases`/matrix grid nested inside a sub-formula
-/// (e.g. inside `\dfrac`) still reports `math_limitation`, since only a
-/// top-level grid is laid out as rows (`typeset.rs`'s `grids` check above
-/// `has_grid`).
+/// A grid nested inside a sub-formula (here `\dfrac`'s numerator) is set
+/// as a box (`mathtext::GridCells`), not flattened into one row, so it
+/// carries no `math_limitation`.
 #[test]
-fn a_grid_nested_inside_a_genfraction_still_reports_a_limitation() {
+fn a_grid_nested_inside_a_genfraction_is_laid_out_as_a_box() {
     if !lm_available() {
         eprintln!("skipping: Latin Modern not installed");
         return;
     }
-    let (diags, _) = render("$\\dfrac{\\begin{smallmatrix}1&2\\\\3&4\\end{smallmatrix}}{b}$");
-    assert!(
-        diags.iter().any(|(code, msg)| code == "math_limitation" && msg.contains("inside a sub-formula")),
-        "a matrix nested inside \\dfrac's numerator should still be a documented limitation, got {diags:?}"
-    );
+    assert_no_limitation_or_unsupported("smallmatrix in \\dfrac", "$\\dfrac{\\begin{smallmatrix}1&2\\\\3&4\\end{smallmatrix}}{b}$");
 }

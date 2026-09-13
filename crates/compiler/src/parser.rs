@@ -6,20 +6,24 @@
 //! package loading, or general environment implementation.
 
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use crate::bib;
 use crate::color::{Colors, DeviceColor};
 use crate::diagnostics::Diagnostic;
-use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
+use crate::expansion::{self, ExpansionSite};
+use crate::lexer::{apply_text_ligatures, tokenize_document, Token, TokenKind};
+#[cfg(test)]
+use crate::lexer::tokenize;
 use crate::math::{self, MathList};
+use crate::text_builtins::{self, SymbolOutcome, TextDimen, TextLogo, TextRule};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
+use flashtex_tex_text_encoding::encoding::Encoding;
 
 mod colors;
 mod tabular;
 
-/// Maximum number of nested user-macro expansions at one use site.
-pub const MACRO_RECURSION_LIMIT: usize = 64;
 /// Maximum number of active nested `\input`/`\include` calls.
 pub const INCLUDE_DEPTH_LIMIT: usize = 64;
 
@@ -133,6 +137,35 @@ pub enum Inline {
         text: Option<Vec<Inline>>,
         /// See `Inline::Text::space_before`.
         space_before: bool,
+    },
+    /// `\TeX`, `\LaTeX`, `\LaTeXe`: the kernel logo construction (kerns,
+    /// a lowered `E`, a raised script-size `A`; see
+    /// `text_builtins::layout_logo`), laid out against each layout's own
+    /// font metrics. `span` is the command.
+    Logo {
+        logo: TextLogo,
+        span: Span,
+        style: TextStyle,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
+    /// `\rule[<raise>]{<width>}{<height>}` in text: an unbreakable box
+    /// holding a filled rectangle (see `text_builtins::TextRule::resolve`).
+    /// `span` covers the command and its arguments.
+    Rule {
+        rule: TextRule,
+        span: Span,
+        style: TextStyle,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
+    /// A text-mode kern (`\,`, `\thinspace`, `\enspace`, ...; see
+    /// `text_builtins::text_kern`): fixed, not a break point unless glue
+    /// follows it, resolved against the current font's quad at layout time.
+    Kern {
+        amount: TextDimen,
+        span: Span,
+        style: TextStyle,
     },
     /// `tabular`/`tabular*`: an inline box (see `crate::tabular`).
     Tabular(Box<crate::tabular::Tabular>),
@@ -500,6 +533,10 @@ pub struct Parsed {
     pub document_global_state: bool,
     /// `\pagecolor`: the page background, document-wide (`None`: none).
     pub page_color: Option<DeviceColor>,
+    /// Every run of macro replacement text in the parser's input, in input
+    /// order: the invocation span its tokens carry, and the exact bytes of
+    /// the definition they were copied from (see `crate::expansion`).
+    pub expansions: Vec<ExpansionSite>,
 }
 
 impl Parsed {
@@ -640,6 +677,66 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "thanks",
     "and",
     "today",
+    "TeX",
+    "LaTeX",
+    "LaTeXe",
+    "rule",
+    "thinspace",
+    "negthinspace",
+    "medspace",
+    "negmedspace",
+    "thickspace",
+    "negthickspace",
+    "enspace",
+    "enskip",
+    "AA",
+    "aa",
+    "AE",
+    "ae",
+    "OE",
+    "oe",
+    "O",
+    "o",
+    "L",
+    "l",
+    "ss",
+    "SS",
+    "TH",
+    "th",
+    "DH",
+    "dh",
+    "DJ",
+    "dj",
+    "NG",
+    "ng",
+    "IJ",
+    "ij",
+    "i",
+    "j",
+    "S",
+    "P",
+    "dag",
+    "ddag",
+    "copyright",
+    "pounds",
+    "dots",
+    "ldots",
+    "textsection",
+    "textparagraph",
+    "textdagger",
+    "textdaggerdbl",
+    "textcopyright",
+    "textsterling",
+    "textellipsis",
+    "textbackslash",
+    "textasciitilde",
+    "textasciicircum",
+    "textunderscore",
+    "textbar",
+    "textless",
+    "textgreater",
+    "textbraceleft",
+    "textbraceright",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -715,12 +812,8 @@ pub(crate) fn path_is_safe(path: &str) -> bool {
     !path.split(['/', '\\']).any(|component| component == "..")
 }
 
-#[derive(Debug, Clone)]
-struct InputToken {
-    token: Token,
-    expansion_depth: usize,
-    maps_to_invocation: bool,
-}
+/// One parser input token (see `crate::expansion::ExpandedToken`).
+type InputToken = expansion::ExpandedToken;
 
 /// Whether the token at `index` in `tokens` sits directly against real
 /// source whitespace — a preceding `TokenKind::Space`/`ParBreak` — or is the
@@ -764,12 +857,6 @@ fn split_on_and(tokens: Vec<InputToken>) -> Vec<Vec<InputToken>> {
     groups
 }
 
-#[derive(Debug, Clone)]
-struct MacroDef {
-    argument_count: usize,
-    body: Vec<Token>,
-}
-
 pub fn parse(text: &str) -> Parsed {
     parse_project(&[SourceDocument { path: "", text }], "")
 }
@@ -784,25 +871,49 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         path: entry_path,
         text: "",
     });
-    let raw = tokenize_document(entry_document.text, DocumentId(entry));
-    let has_document = has_document_environment(&raw);
+    let mut expanded = if documents.is_empty() {
+        expansion::Expansion {
+            tokens: Rc::new(Vec::new()),
+            diagnostics: Vec::new(),
+            arraystretch: HashMap::new(),
+        }
+    } else {
+        expansion::expand_project_cached(documents, entry)
+    };
+    // Structure queries read the expanded stream the parser walks: one
+    // tokenizer pass per revision instead of three.
+    let has_document = has_document_environment(&expanded.tokens);
     let mut bibliography_diags = Vec::new();
-    let bibliography = bib::prescan(&raw, &mut bibliography_diags);
+    let bibliography = bib::prescan(&expanded.tokens[..], &mut bibliography_diags);
+    let mut expansions: Vec<ExpansionSite> = Vec::new();
+    for token in expanded.tokens.iter() {
+        if let (true, Some(definition)) = (token.maps_to_invocation, token.definition) {
+            match expansions.last_mut() {
+                Some(last)
+                    if last.invocation == token.token.span
+                        && last.definition.document == definition.document
+                        && last.definition.end <= definition.start
+                        && gap_is_blank(documents, last.definition, definition) =>
+                {
+                    last.definition = last.definition.merge(definition);
+                }
+                _ => expansions.push(ExpansionSite {
+                    invocation: token.token.span,
+                    definition,
+                }),
+            }
+        }
+    }
     let mut p = P {
-        t: raw
-            .into_iter()
-            .map(|token| InputToken {
-                token,
-                expansion_depth: 0,
-                maps_to_invocation: false,
-            })
-            .collect(),
+        t: std::mem::replace(&mut expanded.tokens, Rc::new(Vec::new())),
+        entry_path: entry_document.path,
+        lent_from_cache: false,
+        undo: Vec::new(),
         i: 0,
         diags: Vec::new(),
         brace_stack: Vec::new(),
         env_stack: Vec::new(),
-        macros: HashMap::new(),
-        macro_scopes: Vec::new(),
+        arraystretch: expanded.arraystretch,
         has_document,
         in_body: !has_document,
         document_ended: false,
@@ -810,6 +921,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         class_size_pt: None,
         parskip_pt: None,
         packages: Vec::new(),
+        font_encoding: Encoding::OT1,
         block_dependencies: Vec::new(),
         current_dependencies: BTreeMap::new(),
         documents,
@@ -853,17 +965,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         fboxrule_pt: 0.4,
     };
     p.diags.extend(bibliography_diags);
-    // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
-    p.macros.insert(
-        "arraystretch".into(),
-        MacroDef {
-            argument_count: 0,
-            body: vec![Token {
-                kind: TokenKind::Word("1".into()),
-                span: Span::in_document(DocumentId(entry), 0, 0),
-            }],
-        },
-    );
+    p.diags.extend(expanded.diagnostics);
     let blocks = p.document();
 
     while let Some(open) = p.brace_stack.pop() {
@@ -882,6 +984,11 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     }
 
     let incremental_safe = p.diags.is_empty();
+    let tokens = p.restore_tokens();
+    let preamble_source = preamble_source(entry_document.text, has_document, &tokens);
+    if p.lent_from_cache {
+        expansion::return_cached_tokens(entry_document.path, tokens);
+    }
     Parsed {
         blocks,
         diagnostics: p.diags,
@@ -890,21 +997,39 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         parskip_pt: p.parskip_pt,
         packages: p.packages,
         block_dependencies: p.block_dependencies,
-        preamble_source: preamble_source(entry_document.text, has_document),
+        preamble_source,
         incremental_safe,
         document_global_state: p.document_global_state,
         page_color: p.page_color,
+        expansions,
     }
 }
 
+/// Whether only whitespace separates two definition spans (so they belong
+/// to one run of replacement text).
+fn gap_is_blank(documents: &[SourceDocument<'_>], a: Span, b: Span) -> bool {
+    documents
+        .get(a.document.0)
+        .and_then(|document| document.text.get(a.end..b.start))
+        .is_some_and(|gap| gap.chars().all(char::is_whitespace))
+}
+
 struct P<'a> {
-    t: Vec<InputToken>,
+    /// The expanded stream. Edits go through [`P::token_mut`]: when the
+    /// expansion cache holds the stream, it is lent to the parser (no copy)
+    /// and every edit is undone before it goes back.
+    t: Rc<Vec<InputToken>>,
+    entry_path: &'a str,
+    /// `t` was lent by the expansion cache and must be restored and returned.
+    lent_from_cache: bool,
+    /// Original tokens of in-place edits, in edit order.
+    undo: Vec<(usize, InputToken)>,
     i: usize,
     diags: Vec<Diagnostic>,
     brace_stack: Vec<Span>,
     env_stack: Vec<(String, Span)>,
-    macros: HashMap<String, MacroDef>,
-    macro_scopes: Vec<HashMap<String, Option<MacroDef>>>,
+    /// `\arraystretch` at each `\begin{tabular}`, from the expansion pass.
+    arraystretch: HashMap<(usize, usize), String>,
     has_document: bool,
     in_body: bool,
     document_ended: bool,
@@ -921,6 +1046,9 @@ struct P<'a> {
     /// `\fboxsep`/`\fboxrule` in TeX points (latex.ltx: 3pt, 0.4pt).
     fboxsep_pt: f64,
     fboxrule_pt: f64,
+    /// The current text font encoding: OT1 unless `fontenc` selected another
+    /// (`text_builtins::fontenc_encoding`).
+    font_encoding: Encoding,
     block_dependencies: Vec<Vec<MacroDependency>>,
     current_dependencies: BTreeMap<String, (usize, Vec<TokenKind>)>,
     documents: &'a [SourceDocument<'a>],
@@ -1062,6 +1190,18 @@ impl P<'_> {
                     }
                 }
                 TokenKind::Space | TokenKind::Comment => self.i += 1,
+                TokenKind::Word(word) if control_symbol_kern(&word, tok.span).is_some() => {
+                    self.i += 1;
+                    if render {
+                        if let Some(amount) = control_symbol_kern(&word, tok.span) {
+                            para.push(Inline::Kern {
+                                amount,
+                                span: tok.span,
+                                style: self.style,
+                            });
+                        }
+                    }
+                }
                 TokenKind::Word(word) => {
                     let space_before = self.space_precedes(self.i);
                     self.i += 1;
@@ -1098,7 +1238,6 @@ impl P<'_> {
                             ));
                         }
                     } else {
-                        self.restore_scope();
                         if let Some(style) = self.style_stack.pop() {
                             self.style = style;
                         }
@@ -1132,7 +1271,7 @@ impl P<'_> {
                 | TokenKind::Subscript => self.i += 1,
                 TokenKind::Command(name) => {
                     self.i += 1;
-                    self.command(&name, tok.span, input.expansion_depth, blocks, para);
+                    self.command(&name, tok.span, blocks, para);
                 }
                 TokenKind::Verb {
                     text,
@@ -1160,24 +1299,8 @@ impl P<'_> {
         }
     }
 
-    fn command(
-        &mut self,
-        name: &str,
-        span: Span,
-        depth: usize,
-        blocks: &mut Vec<Block>,
-        para: &mut Vec<Inline>,
-    ) {
+    fn command(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>, para: &mut Vec<Inline>) {
         if self.document_ended {
-            return;
-        }
-        if let Some(definition) = self.macros.get(name).cloned() {
-            self.record_macro_read(name, &definition);
-            // The command token has already been consumed by the main loop. Keep
-            // its index while arguments are consumed, then replace the complete
-            // invocation with one splice.
-            let invocation_start = self.i - 1;
-            self.expand_macro(name, span, depth, definition, invocation_start);
             return;
         }
 
@@ -1198,8 +1321,9 @@ impl P<'_> {
             // ends table rows at `\\` inside `p`-column entries.
             "arraybackslash" => {}
             "setlist" => self.set_list(span),
-            "newcommand" | "renewcommand" => self.define_macro(name, span),
-            "DeclareMathOperator" => self.declare_math_operator(span),
+            // Definitions run in the expansion pass (`crate::expansion`); the
+            // parser only sees their expansions, never these names.
+            "newcommand" | "renewcommand" | "DeclareMathOperator" => {}
             "newtheorem" => self.new_theorem(span),
             "theoremstyle" => self.set_theorem_style(span),
             "begin" | "end" => self.environment(name, span, blocks, para),
@@ -1697,6 +1821,31 @@ impl P<'_> {
             "pagenumbering" => {
                 let _ = self.required_group(name, span);
             }
+            // Kernel text symbols (`text_builtins::TEXT_SYMBOLS`; the
+            // `text_symbol_arms_match_the_builtin_table` test keeps them equal).
+            "AA" | "aa" | "AE" | "ae" | "OE" | "oe" | "O" | "o" | "L" | "l" | "ss" | "SS"
+            | "TH" | "th" | "DH" | "dh" | "DJ" | "dj" | "NG" | "ng" | "IJ" | "ij" | "i" | "j"
+            | "S" | "P" | "dag" | "ddag" | "copyright" | "pounds" | "dots" | "ldots"
+            | "textsection" | "textparagraph" | "textdagger" | "textdaggerdbl"
+            | "textcopyright" | "textsterling" | "textellipsis" | "textbackslash"
+            | "textasciitilde" | "textasciicircum" | "textunderscore" | "textbar" | "textless"
+            | "textgreater" | "textbraceleft" | "textbraceright" => {
+                self.text_symbol(name, span, para)
+            }
+            "TeX" | "LaTeX" | "LaTeXe" => self.text_logo(name, span, para),
+            "thinspace" | "negthinspace" | "medspace" | "negmedspace" | "thickspace"
+            | "negthickspace" | "enspace" => {
+                if let Some(amount) = text_builtins::text_kern(name) {
+                    para.push(Inline::Kern {
+                        amount,
+                        span,
+                        style: self.style,
+                    });
+                }
+            }
+            // `\def\enskip{\hskip.5em\relax}` (latex.ltx 9434): glue, like `\quad`.
+            "enskip" => para.push(Inline::TextGlue { em: 0.5, span }),
+            "rule" => self.text_rule(span, para),
             "frac" | "sqrt" => self.diags.push(Diagnostic::error(
                 format!("\\{} requires math mode", name),
                 Some(span),
@@ -1787,10 +1936,10 @@ impl P<'_> {
             .into_iter()
             .map(|token| InputToken {
                 token,
-                expansion_depth: 0,
+                definition: None,
                 maps_to_invocation: false,
             })
-            .collect(),
+            .collect::<Vec<_>>().into(),
         );
         let saved_index = std::mem::replace(&mut self.i, 0);
         self.include_stack.push(document_index);
@@ -1992,6 +2141,11 @@ impl P<'_> {
         for package in &packages {
             self.load_color_package(package, &options);
         }
+        if packages.iter().any(|package| package == "fontenc") {
+            if let Some(encoding) = text_builtins::fontenc_encoding(&options) {
+                self.font_encoding = encoding;
+            }
+        }
         let packages: Vec<String> = packages
             .into_iter()
             .filter(|package| !package_matches_layout(package, &options))
@@ -2168,264 +2322,6 @@ impl P<'_> {
             i = j;
         }
         out
-    }
-
-    /// amsopn.sty lines 49-54: `\DeclareMathOperator{\cmd}{text}` defines
-    /// `\cmd` as `\qopname\newmcodes@ o{text}` (`m`, limits, when starred),
-    /// which is exactly `\operatorname{text}` (`\operatorname*{text}`), so the
-    /// command is recorded as a parameterless macro with that body.
-    fn declare_math_operator(&mut self, span: Span) {
-        let starred = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Word(w)) if w == "*");
-        if starred {
-            self.i += 1;
-        }
-        let (name_tokens, name_span) = self.long_required_group("DeclareMathOperator", span);
-        let names: Vec<&InputToken> = name_tokens
-            .iter()
-            .filter(|t| !matches!(t.token.kind, TokenKind::Space | TokenKind::Comment))
-            .collect();
-        let name = match names.as_slice() {
-            [InputToken {
-                token:
-                    Token {
-                        kind: TokenKind::Command(name),
-                        ..
-                    },
-                ..
-            }] if !name.is_empty() => name.clone(),
-            _ => {
-                self.diags.push(Diagnostic::error(
-                    "\\DeclareMathOperator requires a single command name as its first argument",
-                    Some(name_span),
-                    Some("ignored the invalid operator declaration".into()),
-                ));
-                let _ = self.long_required_group("DeclareMathOperator", span);
-                return;
-            }
-        };
-        let (text, text_span) = self.long_required_group("DeclareMathOperator", span);
-        if self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str()) {
-            self.diags.push(Diagnostic::error(
-                format!("\\DeclareMathOperator cannot redefine existing command \\{name}"),
-                Some(span.merge(name_span)),
-                Some("kept the existing command definition".into()),
-            ));
-            return;
-        }
-        let at = |kind: TokenKind, span: Span| Token { kind, span };
-        let mut body = vec![at(TokenKind::Command("operatorname".into()), span)];
-        if starred {
-            body.push(at(TokenKind::Word("*".into()), span));
-        }
-        body.push(at(TokenKind::LBrace, text_span));
-        body.extend(text.into_iter().map(|t| t.token));
-        body.push(at(TokenKind::RBrace, text_span));
-        self.set_macro(
-            name,
-            MacroDef {
-                argument_count: 0,
-                body,
-            },
-        );
-    }
-
-    fn define_macro(&mut self, kind: &str, span: Span) {
-        let (name_tokens, name_span) = self.long_required_group(kind, span);
-        let macro_name = name_tokens
-            .iter()
-            .filter(|t| !matches!(t.token.kind, TokenKind::Space | TokenKind::Comment))
-            .collect::<Vec<_>>();
-        let name = match macro_name.as_slice() {
-            [InputToken {
-                token:
-                    Token {
-                        kind: TokenKind::Command(name),
-                        ..
-                    },
-                ..
-            }] if !name.is_empty() => name.clone(),
-            _ => {
-                self.diags.push(Diagnostic::error(
-                    format!(
-                        "\\{} requires a single command name as its first argument",
-                        kind
-                    ),
-                    Some(name_span),
-                    Some("ignored the invalid macro definition".into()),
-                ));
-                let _ = self.optional_bracket_argument();
-                let _ = self.required_group(kind, span);
-                return;
-            }
-        };
-
-        let argument_count = match self.optional_bracket_argument() {
-            Some((raw, option_span)) => match raw.trim().parse::<usize>() {
-                Ok(count) if count <= 9 => count,
-                _ => {
-                    self.diags.push(Diagnostic::error(
-                        format!("\\{} argument count must be an integer from 0 to 9", kind),
-                        Some(option_span),
-                        Some("ignored the invalid macro definition".into()),
-                    ));
-                    let _ = self.required_group(kind, span);
-                    return;
-                }
-            },
-            None => 0,
-        };
-        let (body, _) = self.long_required_group(kind, span);
-        let definition = MacroDef {
-            argument_count,
-            body: body.into_iter().map(|t| t.token).collect(),
-        };
-
-        let already_defined = self.macros.contains_key(&name) || BUILT_INS.contains(&name.as_str());
-        let valid = if kind == "newcommand" {
-            if already_defined {
-                self.diags.push(Diagnostic::error(
-                    format!("\\newcommand cannot redefine existing command \\{}", name),
-                    Some(span.merge(name_span)),
-                    Some("kept the existing command definition".into()),
-                ));
-                false
-            } else {
-                true
-            }
-        } else if already_defined {
-            true
-        } else {
-            self.diags.push(Diagnostic::error(
-                format!(
-                    "\\renewcommand cannot redefine undefined command \\{}",
-                    name
-                ),
-                Some(span.merge(name_span)),
-                Some("ignored the invalid redefinition".into()),
-            ));
-            false
-        };
-        if valid {
-            self.set_macro(name, definition);
-        }
-    }
-
-    fn expand_macro(
-        &mut self,
-        name: &str,
-        span: Span,
-        depth: usize,
-        definition: MacroDef,
-        invocation_start: usize,
-    ) {
-        let mut arguments = Vec::new();
-        for _ in 0..definition.argument_count {
-            let (argument, argument_span) = self.long_required_group(name, span);
-            if argument_span != span
-                && argument.iter().all(|token| {
-                    matches!(
-                        token.token.kind,
-                        TokenKind::Space | TokenKind::ParBreak | TokenKind::Comment
-                    )
-                })
-            {
-                self.diags.push(Diagnostic::error(
-                    format!("macro \\{} received an empty required argument", name),
-                    Some(argument_span),
-                    Some("substituted an empty argument and continued".into()),
-                ));
-            }
-            arguments.push(argument);
-        }
-        if depth >= MACRO_RECURSION_LIMIT {
-            self.diags.push(Diagnostic::error(
-                format!(
-                    "macro \\{} exceeded the expansion recursion limit of {}",
-                    name, MACRO_RECURSION_LIMIT
-                ),
-                Some(span),
-                Some("stopped expanding this macro invocation".into()),
-            ));
-            self.t.drain(invocation_start..self.i);
-            self.i = invocation_start;
-            return;
-        }
-
-        let next_depth = depth + 1;
-        let mut expanded = Vec::new();
-        for token in definition.body {
-            match token.kind {
-                TokenKind::Word(word) => {
-                    self.expand_macro_word(&word, span, next_depth, &arguments, &mut expanded)
-                }
-                kind => expanded.push(InputToken {
-                    token: Token { kind, span },
-                    expansion_depth: next_depth,
-                    maps_to_invocation: true,
-                }),
-            }
-        }
-        // One shift, not two. Callers used to `remove` the invocation token and
-        // then `splice` the expansion into the gap, so every macro invocation
-        // moved the tail of the token vector twice. Callers now leave the
-        // invocation in place and this replaces it in a single splice.
-        //
-        // This halves the work but the operation is still linear in the tokens
-        // after the cursor, so parsing remains superlinear in macro-dense
-        // documents. Measured: parse is 402 ms of a 420 ms edit at 500 KB.
-        // The real fix is incremental parsing, which is a larger change than
-        // this revision's scope; the README records the measurement.
-        let invocation_end = self.i;
-        self.t.splice(invocation_start..invocation_end, expanded);
-        self.i = invocation_start;
-    }
-
-    fn expand_macro_word(
-        &mut self,
-        word: &str,
-        invocation_span: Span,
-        depth: usize,
-        arguments: &[Vec<InputToken>],
-        out: &mut Vec<InputToken>,
-    ) {
-        let bytes = word.as_bytes();
-        let mut literal_start = 0;
-        let mut index = 0;
-        while index + 1 < bytes.len() {
-            let digit = bytes[index + 1];
-            if bytes[index] == b'#' && (b'1'..=b'9').contains(&digit) {
-                if literal_start < index {
-                    out.push(mapped_word(
-                        &word[literal_start..index],
-                        invocation_span,
-                        depth,
-                    ));
-                }
-                let argument_index = usize::from(digit - b'1');
-                if let Some(argument) = arguments.get(argument_index) {
-                    out.extend(argument.iter().cloned().map(|mut token| {
-                        token.expansion_depth = depth;
-                        token
-                    }));
-                } else {
-                    self.diags.push(Diagnostic::error(
-                        format!(
-                            "macro replacement references #{} but that argument is not declared",
-                            argument_index + 1
-                        ),
-                        Some(invocation_span),
-                        Some("omitted the unavailable argument".into()),
-                    ));
-                }
-                index += 2;
-                literal_start = index;
-            } else {
-                index += 1;
-            }
-        }
-        if literal_start < word.len() {
-            out.push(mapped_word(&word[literal_start..], invocation_span, depth));
-        }
     }
 
     fn environment(
@@ -2925,9 +2821,6 @@ impl P<'_> {
         let mut found_end = false;
 
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                 self.i = after;
                 end = end_span.end;
@@ -3021,9 +2914,6 @@ impl P<'_> {
         let mut found_end = false;
 
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if depth == 0 {
                 if let Some((after, end_span)) = environment_end_at(&self.t, self.i, name) {
                     self.i = after;
@@ -3232,9 +3122,6 @@ impl P<'_> {
         let mut close_end = open.end;
         let mut found = false;
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             // Unterminated math ends with its paragraph (TeX: "Missing $
             // inserted"), never at a `$` pages later.
             if paragraph_boundary_at(&self.t, self.i) {
@@ -3275,9 +3162,6 @@ impl P<'_> {
         self.i += 1;
         let content_start = self.i;
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             if self.t[self.i].token.kind == TokenKind::DisplayMathClose
                 || paragraph_boundary_at(&self.t, self.i)
             {
@@ -3307,29 +3191,6 @@ impl P<'_> {
             space_before,
             para,
         );
-    }
-
-    fn expand_current_macro(&mut self) -> bool {
-        let Some(input) = self.t.get(self.i).cloned() else {
-            return false;
-        };
-        let TokenKind::Command(name) = &input.token.kind else {
-            return false;
-        };
-        let Some(definition) = self.macros.get(name).cloned() else {
-            return false;
-        };
-        self.record_macro_read(name, &definition);
-        let invocation_start = self.i;
-        self.i += 1;
-        self.expand_macro(
-            name,
-            input.token.span,
-            input.expansion_depth,
-            definition,
-            invocation_start,
-        );
-        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3425,18 +3286,6 @@ impl P<'_> {
         self.required_group_bounded(command, command_span, false)
     }
 
-    /// A `\long` argument (macro bodies and arguments of `\newcommand`
-    /// macros) may legitimately span paragraphs; only when it is never
-    /// closed at all is it closed at the end of its first paragraph rather
-    /// than swallowing the rest of the document.
-    fn long_required_group(
-        &mut self,
-        command: &str,
-        command_span: Span,
-    ) -> (Vec<InputToken>, Span) {
-        self.required_group_bounded(command, command_span, true)
-    }
-
     fn required_group_bounded(
         &mut self,
         command: &str,
@@ -3514,10 +3363,9 @@ impl P<'_> {
     /// `lexer.rs`), with no notion of a mid-document catcode change, so the
     /// same effect is reached by re-reading the exact source bytes between
     /// the braces directly instead of trusting the tokens already produced
-    /// for that range — and then re-tokenizing everything after the closing
-    /// brace, because the ordinary tokenizer may have already misread part
-    /// of it (a literal `%` inside the URL otherwise starts a real comment
-    /// that swallows the rest of the physical line, closing brace included).
+    /// for that range. The expansion pass (`crate::expansion`) blanks those
+    /// bytes before any tokenizing, so a literal `%` inside the URL can no
+    /// longer start a comment that swallows the closing brace.
     ///
     /// Only `\{` and `\}` are recognised as escapes, for a literal brace
     /// inside the URL; an unescaped `{`/`}` still opens/closes a nested
@@ -3526,6 +3374,16 @@ impl P<'_> {
     /// happens to contain.
     fn url_argument(&mut self, command: &str, command_span: Span) -> (String, Span) {
         self.skip_spaces();
+        // A URL group produced by macro expansion has no source bytes of its
+        // own to re-read; take its (already expanded) tokens.
+        if self
+            .t
+            .get(self.i)
+            .is_some_and(|input| input.maps_to_invocation && input.token.kind == TokenKind::LBrace)
+        {
+            let (tokens, span) = self.required_group(command, command_span);
+            return (token_text(&tokens), span);
+        }
         let open = match self.peek() {
             Some(token) if token.kind == TokenKind::LBrace => token.span,
             _ => {
@@ -3582,29 +3440,22 @@ impl P<'_> {
         (content, span)
     }
 
-    /// Discards every already-tokenized token from a raw-scanned group (see
-    /// `url_argument`) and re-tokenizes everything from `close_end` onward,
-    /// so a `%`/etc. the ordinary tokenizer misread inside the group cannot
-    /// corrupt what follows it. `self.i` is left pointing at the group's
-    /// opening `{` token, which this replaces along with everything after.
+    /// Moves past every token a raw-scanned group (see `url_argument`)
+    /// covered. The expansion pass blanked that group's bytes before
+    /// expansion, so nothing inside it was interpreted and the tokens after
+    /// its closing brace are already correct; only the group's own tokens are
+    /// skipped (re-tokenizing the source here would discard every later macro
+    /// expansion).
     fn resync_after_raw_group(&mut self, document: DocumentId, close_end: usize) {
-        self.t.truncate(self.i);
-        let source = self.documents[document.0].text;
-        let suffix = tokenize_document(&source[close_end..], document)
-            .into_iter()
-            .map(|token| InputToken {
-                token: Token {
-                    kind: token.kind,
-                    span: Span::in_document(
-                        document,
-                        token.span.start + close_end,
-                        token.span.end + close_end,
-                    ),
-                },
-                expansion_depth: 0,
-                maps_to_invocation: false,
-            });
-        self.t.extend(suffix);
+        while let Some(input) = self.t.get(self.i) {
+            if input.maps_to_invocation
+                || input.token.span.document != document
+                || input.token.span.start >= close_end
+            {
+                break;
+            }
+            self.i += 1;
+        }
     }
 
     /// Pushes literal `\url`/`\nolinkurl` text as one or more `Inline::Text`
@@ -3749,19 +3600,15 @@ impl P<'_> {
 
     fn open_group(&mut self, span: Span) {
         self.brace_stack.push(span);
-        self.macro_scopes.push(HashMap::new());
         self.style_stack.push(self.style);
         self.alignment_stack.push(self.declared_alignment);
     }
 
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
-        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
         let mut expanded = Vec::new();
         while self.i < self.t.len() {
-            if self.expand_current_macro() {
-                continue;
-            }
             expanded.push(self.t[self.i].clone());
             self.i += 1;
         }
@@ -3805,6 +3652,24 @@ impl P<'_> {
                         style = previous;
                     }
                 }
+                TokenKind::Word(text) if control_symbol_kern(text, input.token.span).is_some() => {
+                    if let Some(amount) = control_symbol_kern(text, input.token.span) {
+                        content.push(Inline::Kern {
+                            amount,
+                            span: input.token.span,
+                            style,
+                        });
+                    }
+                }
+                TokenKind::Command(name) if text_builtins::text_kern(name).is_some() => {
+                    if let Some(amount) = text_builtins::text_kern(name) {
+                        content.push(Inline::Kern {
+                            amount,
+                            span: input.token.span,
+                            style,
+                        });
+                    }
+                }
                 TokenKind::Word(text) => content.push(Inline::Text {
                     text: apply_text_ligatures(text),
                     span: input.token.span,
@@ -3835,6 +3700,25 @@ impl P<'_> {
                     span: input.token.span,
                     space_before,
                 }),
+                TokenKind::Command(name)
+                    if text_builtins::TEXT_SYMBOLS.iter().any(|(n, _)| n == name) =>
+                {
+                    if let Some(inline) =
+                        self.symbol_inline(name, input.token.span, style, space_before)
+                    {
+                        content.push(inline);
+                    }
+                }
+                TokenKind::Command(name) if TextLogo::from_command(name).is_some() => {
+                    if let Some(logo) = TextLogo::from_command(name) {
+                        content.push(Inline::Logo {
+                            logo,
+                            span: input.token.span,
+                            style,
+                            space_before,
+                        });
+                    }
+                }
                 // See `TODAY_TEXT`: a fixed, compile-deterministic date
                 // rather than the real wall-clock `\today`.
                 TokenKind::Command(name) if name == "today" => content.push(Inline::Text {
@@ -3847,6 +3731,98 @@ impl P<'_> {
             }
         }
         content
+    }
+
+    /// A kernel text symbol (`\AA`, `\ss`, `\S`, ...) under the current font
+    /// encoding; see `text_builtins::text_symbol`.
+    fn symbol_inline(
+        &mut self,
+        name: &str,
+        span: Span,
+        style: TextStyle,
+        space_before: bool,
+    ) -> Option<Inline> {
+        let text = match text_builtins::text_symbol(name, self.font_encoding)? {
+            SymbolOutcome::Char(ch) => ch.to_string(),
+            SymbolOutcome::Text(text) => text,
+            SymbolOutcome::Unavailable(message) => {
+                self.diags.push(Diagnostic::error(
+                    message,
+                    Some(span),
+                    Some(
+                        "typeset nothing for the command, as pdfLaTeX does after this error".into(),
+                    ),
+                ));
+                return None;
+            }
+        };
+        Some(Inline::Text {
+            text,
+            span,
+            style,
+            space_before,
+        })
+    }
+
+    fn text_symbol(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let style = self.style;
+        if let Some(inline) = self.symbol_inline(name, span, style, space_before) {
+            para.push(inline);
+        }
+    }
+
+    fn text_logo(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        if let Some(logo) = TextLogo::from_command(name) {
+            para.push(Inline::Logo {
+                logo,
+                span,
+                style: self.style,
+                space_before,
+            });
+        }
+    }
+
+    /// `\rule[<raise>]{<width>}{<height>}` (latex.ltx 16359-16367).
+    fn text_rule(&mut self, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        let raise = self.optional_bracket_argument();
+        let (width_tokens, width_span) = self.required_group("rule", span);
+        let (height_tokens, height_span) = self.required_group("rule", span.merge(width_span));
+        let full = span.merge(height_span);
+        let parse = |text: String, what: &str, diags: &mut Vec<Diagnostic>| {
+            let parsed = TextDimen::parse(&text);
+            if parsed.is_none() {
+                diags.push(Diagnostic::error(
+                    format!(
+                        "\\rule requires a recognised {what} dimension, got '{}'",
+                        text.trim()
+                    ),
+                    Some(full),
+                    Some("omitted the rule and continued".into()),
+                ));
+            }
+            parsed
+        };
+        let raise = match raise {
+            Some((text, _)) => parse(text, "raise", &mut self.diags),
+            None => Some(TextDimen::zero()),
+        };
+        let width = parse(dimen_source(&width_tokens), "width", &mut self.diags);
+        let height = parse(dimen_source(&height_tokens), "height", &mut self.diags);
+        if let (Some(raise), Some(width), Some(height)) = (raise, width, height) {
+            para.push(Inline::Rule {
+                rule: TextRule {
+                    raise,
+                    width,
+                    height,
+                },
+                span: full,
+                style: self.style,
+                space_before,
+            });
+        }
     }
 
     /// `\footnote`, `\footnotemark` and `\footnotetext`, following latex.ltx:
@@ -3903,18 +3879,15 @@ impl P<'_> {
     /// inside the argument become line breaks: the footnote is one inline
     /// sequence, not separate blocks; each break is attributed to `span`.
     fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
-        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
         let outer_style = std::mem::take(&mut self.style);
         let outer_label = self.pending_item_label.take();
         let outer_dependency_blocks = self.block_dependencies.len();
-        // The argument is a TeX group: definitions inside it stay local.
-        self.macro_scopes.push(HashMap::new());
         let mut blocks = Vec::new();
         let mut para = Vec::new();
         self.parse_stream(&mut blocks, &mut para);
         self.flush_paragraph(&mut blocks, &mut para);
-        self.restore_scope();
         self.block_dependencies.truncate(outer_dependency_blocks);
         self.t = outer_tokens;
         self.i = outer_index;
@@ -3941,44 +3914,6 @@ impl P<'_> {
         content
     }
 
-    fn set_macro(&mut self, name: String, definition: MacroDef) {
-        if let Some(scope) = self.macro_scopes.last_mut() {
-            scope
-                .entry(name.clone())
-                .or_insert_with(|| self.macros.get(&name).cloned());
-        }
-        self.macros.insert(name, definition);
-    }
-
-    fn restore_scope(&mut self) {
-        if let Some(scope) = self.macro_scopes.pop() {
-            for (name, previous) in scope {
-                match previous {
-                    Some(definition) => {
-                        self.macros.insert(name, definition);
-                    }
-                    None => {
-                        self.macros.remove(&name);
-                    }
-                }
-            }
-        }
-    }
-
-    fn record_macro_read(&mut self, name: &str, definition: &MacroDef) {
-        self.current_dependencies.insert(
-            name.to_string(),
-            (
-                definition.argument_count,
-                definition
-                    .body
-                    .iter()
-                    .map(|token| token.kind.clone())
-                    .collect(),
-            ),
-        );
-    }
-
     fn finish_block_dependencies(&mut self) {
         self.block_dependencies.push(
             std::mem::take(&mut self.current_dependencies)
@@ -3988,7 +3923,7 @@ impl P<'_> {
                     argument_count,
                     replacement,
                 })
-                .collect(),
+                .collect::<Vec<_>>().into(),
         );
     }
 
@@ -4054,11 +3989,14 @@ impl P<'_> {
         // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
         // use it for their own unrelated `enumitem` template instead, so it
         // only carries a `widest_label` for a `thebibliography` list.
-        let widest_label = self.list_stack.last().and_then(|(kind, _, template, _, _)| {
-            (kind == "thebibliography")
-                .then(|| template.clone())
-                .flatten()
-        });
+        let widest_label = self
+            .list_stack
+            .last()
+            .and_then(|(kind, _, template, _, _)| {
+                (kind == "thebibliography")
+                    .then(|| template.clone())
+                    .flatten()
+            });
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -4082,10 +4020,39 @@ impl P<'_> {
         self.finish_block_dependencies();
     }
 
+    /// Mutable access to token `index` of the stream, without copying the
+    /// stream: a stream still held by the expansion cache is borrowed from it
+    /// (see [`expansion::lend_cached_tokens`]) and the edit is logged so
+    /// [`P::restore_tokens`] can undo it.
+    pub(crate) fn token_mut(&mut self, index: usize) -> Option<&mut InputToken> {
+        if index >= self.t.len() {
+            return None;
+        }
+        if !self.lent_from_cache && Rc::get_mut(&mut self.t).is_none() {
+            self.lent_from_cache = expansion::lend_cached_tokens(self.entry_path, &self.t);
+        }
+        if self.lent_from_cache {
+            self.undo.push((index, self.t[index].clone()));
+        }
+        Rc::make_mut(&mut self.t).get_mut(index)
+    }
+
+    /// The stream with every logged edit undone (the stream as expanded).
+    fn restore_tokens(&mut self) -> Rc<Vec<InputToken>> {
+        let mut tokens = std::mem::replace(&mut self.t, Rc::new(Vec::new()));
+        if !self.undo.is_empty() {
+            let stream = Rc::make_mut(&mut tokens);
+            for (index, original) in self.undo.drain(..).rev() {
+                stream[index] = original;
+            }
+        }
+        tokens
+    }
+
     /// Drops a `[<length>]` that directly follows `\\`, keeping any text glued
     /// to it (`\\[3pt]Next`) as the remainder of the word.
     fn skip_line_break_length(&mut self) {
-        let Some(input) = self.t.get_mut(self.i) else {
+        let Some(input) = self.token_mut(self.i) else {
             return;
         };
         let TokenKind::Word(word) = &input.token.kind else {
@@ -4414,46 +4381,12 @@ fn roman(mut count: u32) -> String {
     text
 }
 
-fn mapped_word(word: &str, span: Span, depth: usize) -> InputToken {
-    InputToken {
-        token: Token {
-            kind: TokenKind::Word(word.to_string()),
-            span,
-        },
-        expansion_depth: depth,
-        maps_to_invocation: true,
-    }
-}
-
-fn preamble_source(text: &str, has_document: bool) -> String {
-    let tokens = tokenize(text);
+fn preamble_source(text: &str, has_document: bool, tokens: &[InputToken]) -> String {
     let end = if has_document {
-        tokens.iter().enumerate().find_map(|(index, token)| {
-            if token.kind != TokenKind::Command("begin".into()) {
-                return None;
-            }
-            let significant: Vec<&Token> = tokens[index + 1..]
-                .iter()
-                .filter(|token| !matches!(token.kind, TokenKind::Space | TokenKind::Comment))
-                .take(3)
-                .collect();
-            match significant.as_slice() {
-                [Token {
-                    kind: TokenKind::LBrace,
-                    ..
-                }, Token {
-                    kind: TokenKind::Word(name),
-                    ..
-                }, Token {
-                    kind: TokenKind::RBrace,
-                    span,
-                }] if name == "document" => Some(span.end),
-                _ => None,
-            }
-        })
-    } else if tokens.iter().any(|token| {
+        document_begin_end(tokens)
+    } else if tokens.iter().any(|input| {
         matches!(
-            &token.kind,
+            &input.token.kind,
             TokenKind::Command(name) if name == "documentclass" || name == "usepackage"
         )
     }) {
@@ -4461,7 +4394,41 @@ fn preamble_source(text: &str, has_document: bool) -> String {
     } else {
         None
     };
-    end.map_or("", |end| &text[..end]).to_string()
+    end.filter(|end| *end <= text.len() && text.is_char_boundary(*end))
+        .map_or("", |end| &text[..end])
+        .to_string()
+}
+
+/// The kern a control-symbol token (`\,` lexed as the word `,` with a
+/// two-byte span, the same test `math.rs` uses) stands for in text mode.
+fn control_symbol_kern(word: &str, span: Span) -> Option<TextDimen> {
+    let mut chars = word.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None)
+            if span.end - span.start == 2 && text_builtins::KERN_CONTROL_SYMBOLS.contains(&c) =>
+        {
+            text_builtins::text_kern(word)
+        }
+        _ => None,
+    }
+}
+
+/// A dimension argument's source text with control words kept
+/// (`\textwidth`), unlike `token_text`.
+fn dimen_source(tokens: &[InputToken]) -> String {
+    let mut result = String::new();
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::Word(text) => result.push_str(text),
+            TokenKind::Command(name) => {
+                result.push('\\');
+                result.push_str(name);
+            }
+            TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            _ => {}
+        }
+    }
+    result
 }
 
 fn token_text(tokens: &[InputToken]) -> String {
@@ -4629,24 +4596,35 @@ fn paragraph_boundary_at(tokens: &[InputToken], index: usize) -> bool {
     }
 }
 
-fn has_document_environment(tokens: &[Token]) -> bool {
-    tokens.iter().enumerate().any(|(index, token)| {
-        if token.kind != TokenKind::Command("begin".into()) {
-            return false;
+fn has_document_environment(tokens: &[InputToken]) -> bool {
+    document_begin_end(tokens).is_some()
+}
+
+/// The end offset of the first `\begin{document}` (past its closing brace).
+fn document_begin_end(tokens: &[InputToken]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(index, input)| {
+        if !matches!(&input.token.kind, TokenKind::Command(name) if name == "begin") {
+            return None;
         }
         let significant: Vec<&Token> = tokens[index + 1..]
             .iter()
+            .map(|input| &input.token)
             .filter(|token| !matches!(token.kind, TokenKind::Space | TokenKind::Comment))
             .take(3)
             .collect();
-        matches!(
-            significant.as_slice(),
-            [
-                Token { kind: TokenKind::LBrace, .. },
-                Token { kind: TokenKind::Word(name), .. },
-                Token { kind: TokenKind::RBrace, .. }
-            ] if name == "document"
-        )
+        match significant.as_slice() {
+            [Token {
+                kind: TokenKind::LBrace,
+                ..
+            }, Token {
+                kind: TokenKind::Word(name),
+                ..
+            }, Token {
+                kind: TokenKind::RBrace,
+                span,
+            }] if name == "document" => Some(span.end),
+            _ => None,
+        }
     })
 }
 
@@ -5132,7 +5110,8 @@ mod tests {
 
     #[test]
     fn nested_macros_expand_and_renewcommand_replaces_an_existing_macro() {
-        let source = r"\newcommand{\inner}{first} \newcommand{\outer}{\inner} \outer \renewcommand{\inner}{second} \outer";
+        // (`\outer` would be a TeX primitive, which `\newcommand` refuses.)
+        let source = r"\newcommand{\inner}{first} \newcommand{\wrapper}{\inner} \wrapper \renewcommand{\inner}{second} \wrapper";
         let (parsed, items) = items(source);
         assert!(parsed.diagnostics.is_empty());
         assert_eq!(
@@ -5158,10 +5137,10 @@ mod tests {
         );
         assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
             .message
-            .contains(r"\newcommand cannot redefine existing command \same")));
+            .contains(r"LaTeX Error: Command \same already defined.")));
         assert!(parsed.diagnostics.iter().any(|diagnostic| diagnostic
             .message
-            .contains(r"\renewcommand cannot redefine undefined command \missing")));
+            .contains(r"LaTeX Error: Command \missing undefined.")));
     }
 
     #[test]
@@ -5209,11 +5188,9 @@ mod tests {
     fn self_referential_macro_hits_explicit_recursion_limit() {
         let source = "\\newcommand{\\loop}{\\loop} \\loop";
         let (parsed, _) = items(source);
+        // The expansion pass bounds runaway expansion by its step limit.
         assert!(parsed.diagnostics.iter().any(|diagnostic| {
-            diagnostic.message.contains("\\loop")
-                && diagnostic
-                    .message
-                    .contains(&MACRO_RECURSION_LIMIT.to_string())
+            diagnostic.message.contains("expansion step limit exceeded")
         }));
     }
 

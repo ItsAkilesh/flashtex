@@ -441,6 +441,11 @@ fn expected_rules(list: &MathList) -> usize {
                 Nucleus::Accent { base, .. } => expected_rules(base),
                 Nucleus::Delimited { body, .. } => expected_rules(body),
                 Nucleus::Overline(l) | Nucleus::Underline(l) => 1 + expected_rules(l),
+                // Two `\leaders\vrule` fills unless the body is narrower
+                // than the four pieces.
+                Nucleus::Brace { body, .. } => 2 + expected_rules(body),
+                Nucleus::OverArrow { body, .. } => expected_rules(body),
+                Nucleus::MeasuredAccent { base, .. } => expected_rules(base),
             };
             own + scripts
         })

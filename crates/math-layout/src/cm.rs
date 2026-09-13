@@ -477,6 +477,10 @@ impl MathFontMetrics for CmMathMetrics {
     }
 
     /// `\operator@font` is the roman family (cmr) at the current size.
+    fn extension_glyph(&self, code: u8, ch: char) -> Option<Glyph> {
+        self.make_glyph(Family::Extension, code, ch, SizeClass::Text)
+    }
+
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         let code = if ch.is_ascii() { ch as u8 } else { return None };
         self.make_glyph(Family::Roman, code, ch, size)

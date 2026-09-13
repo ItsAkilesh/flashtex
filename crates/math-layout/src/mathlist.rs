@@ -124,6 +124,41 @@ pub enum Nucleus {
         above: MathList,
         below: MathList,
     },
+    /// `\overbrace{body}` (`under` false) / `\underbrace{body}` (`fontmath.ltx`
+    /// 430-437, 447-456): `body` in `\displaystyle`, centred in an `\ialign`
+    /// column with a `\downbracefill` (`\upbracefill`) row as wide as the
+    /// column, `\kern3pt` above and below that row, packed as a `\vbox`
+    /// (`\vtop`). The brace row is the four cmex pieces `\braceld`
+    /// `\braceru` `\bracelu` `\bracerd` (`\bracelu` `\bracerd` `\braceld`
+    /// `\braceru`) with `\leaders\vrule` of `\braceld`'s height and no depth
+    /// filling two `\hfill`s. The atom carrying it is `\mathop..\limits`.
+    Brace { body: MathList, under: bool },
+    /// amsmath `\overrightarrow`/`\overleftarrow`/`\overleftrightarrow`
+    /// (`amsmath.sty` 983-990, `\overarrow@`) and `\underrightarrow`..
+    /// (1000-1006, `\underarrow@`): an `\arrowfill@` row of `left`, `fill`
+    /// leaders and `right` in the current style, as wide as `body` set in
+    /// that (uncramped) style, stacked directly above `body` in a `\vbox`
+    /// (`\nointerlineskip`), or below it after a `gap` pt kern
+    /// (`\kern1.3\ex@`) in a `\vtop`.
+    OverArrow {
+        left: char,
+        fill: char,
+        right: char,
+        body: MathList,
+        under: bool,
+        gap: f64,
+    },
+    /// amsfonts `\widehat`/`\widetilde` (`amsfonts.sty` 78-86): `\mathaccent`
+    /// `narrow` (the cmex successor chain) unless `body` measured in an
+    /// `\hbox{$\textstyle ..$}` is wider than `threshold` pt (`2em` of the
+    /// text font), then `wide` (msbm `"5B`/`"5D`). Laid out as that
+    /// [`Nucleus::Accent`].
+    MeasuredAccent {
+        narrow: char,
+        wide: char,
+        threshold: f64,
+        base: MathList,
+    },
     /// `{}`: an empty ordinary atom.
     Empty,
 }
@@ -294,6 +329,39 @@ impl Atom {
     /// `Limits::NoLimits` (as LaTeX does for `\sin`) with [`Atom::with_limits`].
     pub fn text_op(text: &str) -> Atom {
         Atom::new(AtomClass::Op, Nucleus::Text(text.to_string()))
+    }
+
+    /// `\overbrace{body}` / `\underbrace{body}`: a `\mathop` with `\limits`.
+    pub fn brace(body: MathList, under: bool) -> Atom {
+        Atom::new(AtomClass::Op, Nucleus::Brace { body, under }).with_limits(Limits::Limits)
+    }
+
+    /// amsmath `\overrightarrow`-family arrow over (or under) `body`.
+    pub fn over_arrow(pieces: [char; 3], body: MathList, under: bool, gap: f64) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::OverArrow {
+                left: pieces[0],
+                fill: pieces[1],
+                right: pieces[2],
+                body,
+                under,
+                gap,
+            },
+        )
+    }
+
+    /// amsfonts' measured `\widehat`/`\widetilde`.
+    pub fn measured_accent(narrow: char, wide: char, threshold: f64, base: MathList) -> Atom {
+        Atom::new(
+            AtomClass::Ord,
+            Nucleus::MeasuredAccent {
+                narrow,
+                wide,
+                threshold,
+                base,
+            },
+        )
     }
 
     pub fn overline(body: MathList) -> Atom {

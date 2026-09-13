@@ -13,7 +13,6 @@ use crate::color::{ColorError, Colors, DeviceColor};
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::Span;
-use std::collections::HashMap;
 
 impl P<'_> {
     /// `\usepackage[options]{xcolor}` / `{color}`. Unreplayed options are
@@ -228,17 +227,15 @@ impl P<'_> {
     /// A box argument parsed with the ordinary dispatch as one group in the
     /// current style (`\hbox`: restricted horizontal mode ignores `\par`).
     fn box_inlines(&mut self, tokens: Vec<InputToken>) -> Vec<Inline> {
-        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
         let outer_style = self.style;
         let outer_label = self.pending_item_label.take();
         let outer_dependency_blocks = self.block_dependencies.len();
-        self.macro_scopes.push(HashMap::new());
         let mut blocks = Vec::new();
         let mut para = Vec::new();
         self.parse_stream(&mut blocks, &mut para);
         self.flush_paragraph(&mut blocks, &mut para);
-        self.restore_scope();
         self.block_dependencies.truncate(outer_dependency_blocks);
         self.t = outer_tokens;
         self.i = outer_index;

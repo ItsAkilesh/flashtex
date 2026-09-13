@@ -64,8 +64,12 @@ Implemented and tested:
   and `ex` relative to that body size. `\setlength{\parindent}{0pt}` is exact
   because paragraphs are never indented; any other `\parindent`, any other
   length, or `\setlength` in the body is reported as not implemented.
-- Scoped `\newcommand` and `\renewcommand` expansion, with zero through nine
-  required arguments, nested expansion, and an explicit recursion limit.
+- TeX macro expansion through `crates/tex-expansion` (round 2), run as a
+  compiler-owned pass in front of the parser (`src/expansion.rs`, see
+  "Macro expansion and source mapping" below): category codes, `\def`/`\let`,
+  `\newcommand`/`\newenvironment` with optional arguments, TeX and e-TeX
+  conditionals, registers and LaTeX counters, with the step limit bounding
+  runaway expansion.
 - Project-relative `\input` expansion across supplied documents, with included
   text and diagnostics retaining the included document's path and byte ranges.
 - Dependency-aware incremental layout reuse behind unchanged runtime-v1 messages.
@@ -127,7 +131,9 @@ Implemented and tested:
 
 Required, outstanding — this is a foundation, not a LaTeX implementation:
 
-- No `\def`, `\let`, mutable category codes, registers, or conditionals.
+- Macro expansion is not interleaved with layout: `\ifvmode`/`\ifhmode`/
+  `\ifmmode`/`\ifinner` see no real typesetting mode, and `em`/`ex` inside
+  expansion-time dimensions use 10pt Computer Modern placeholders.
 - Math remains a declared subset: matrices, alignment environments,
   `\left`/`\right` delimiter sizing and real math-font parameters are not
   implemented.
@@ -234,19 +240,44 @@ approximated.
 
 ## Macro expansion and source mapping
 
-User macros expand at their use site and may call other user macros. Expansion
-is limited to 64 nested macro calls. Exceeding that limit emits an error naming
-the macro and stops that invocation, so recursive definitions cannot hang.
-`\newcommand` rejects an existing name; `\renewcommand` rejects an
-undefined name. A definition made inside `{ ... }` is restored or removed when
-that group closes.
+`src/expansion.rs` runs `flashtex-tex-expansion` over the entry document and
+the files it `\input`s before the parser sees any token, so the parser never
+sees a macro call. Everything the engine does not define (every typesetting
+command, grouping braces, math shifts) passes through with its exact span;
+the parser's own command names are declared to the engine as host commands, so
+`\newcommand` refuses them and `\renewcommand` accepts them. Diagnostics use
+TeX's and LaTeX's own messages (`LaTeX Error: Command \x already defined.`,
+`Illegal parameter number in definition of \x.`); a runaway definition hits
+the engine's step limit, which names the looping invocation, and the rest of
+the document is typeset without expansion. `\verb` arguments, the bodies of
+`verbatim`/`verbatim*`/`lstlisting`, and `\url`/`\href` URLs are hidden from
+the engine (their bytes are blanked in a private copy, offsets unchanged), and
+`\arraystretch` is read where LaTeX reads it, at `\begin{tabular}`.
 
 Tokens substituted for `#1` through `#9` retain the real byte spans of the
-argument text the author supplied. Literal replacement tokens have no independent
-bytes in the input and therefore map to the macro control-sequence span at the
-invocation site.
-This is intentionally invocation-level provenance: per-glyph ranges inside
-synthesised replacement text are not fabricated.
+argument text the author supplied. Replacement-text tokens carry the span of the
+outermost invocation's control word (as before) and, additionally, their
+definition span: the exact bytes of the definition they were copied from.
+`Parsed::expansions` lists every run of replacement text as
+`(invocation, definition)`, so a consumer can read the definition's own
+spacing and glue instead of re-parsing `\newcommand` bodies.
+
+Large entry documents (4 KB and up, no `\input`) keep a per-thread incremental
+expansion cache behind `parser::parse_project`: a keystroke re-expands from the
+nearest engine checkpoint before the edit and re-converts only until the old
+output can be spliced back. `tests/expansion_incremental.rs` checks that the
+cached result equals a from-scratch expansion after random structural edits.
+Engine checkpoints are taken every 512 bytes of source: the engine's state is
+copy-on-write, so a checkpoint is a few reference-count bumps and a
+convergence check compares only what changed. The parser's in-place splits of
+glued words (`\\[3pt]Next`, a row's `\\*`, `\cmidrule(lr)`) borrow the cached
+stream instead of copying it and are undone before it goes back
+(`tests/expansion_lend.rs`).
+
+`\DeclareMathOperator{\cmd}{text}` (and `*`) is a host-prelude definition in
+the expansion pass: `\cmd` becomes `\operatorname{text}` (`\operatorname*`),
+defined with `\newcommand` semantics, so a second declaration of the same name
+reports LaTeX's "Command \cmd already defined." at that declaration.
 
 ## Supported math
 
@@ -446,10 +477,11 @@ until geometry matches again.
 
 A first compile, any preamble-byte change through `\begin{document}` (including
 `\documentclass` or `\usepackage`), font-size or measure changes, malformed input,
-or any diagnostic/unsupported construct forces a full layout rebuild. Mutable
-category codes, registers, assignments, conditionals, auxiliary files, output
-routines, external effects, and future constructs are not modeled and therefore
-must also force a full rebuild if introduced. An exactly unchanged snapshot may
+or any diagnostic/unsupported construct forces a full layout rebuild. Category
+codes, registers, assignments and conditionals are executed by the expansion
+pass on every revision, so their effects are already in the blocks that layout
+reuse compares; auxiliary files, output routines, external effects, and future
+constructs are not modeled and must force a full rebuild if introduced. An exactly unchanged snapshot may
 return its already-produced output, including diagnostics, because no execution
 or layout result can differ.
 

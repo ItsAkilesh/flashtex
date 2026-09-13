@@ -9,11 +9,13 @@
 //! end-exclusive UTF-8 byte range into the exact input text of the stated
 //! revision, per `docs/contracts/runtime-v1.md`.
 
+pub mod amssymb;
 pub mod bib;
 pub mod color;
 mod color_names;
 pub mod diagnostics;
 pub mod export;
+pub mod expansion;
 pub mod incremental;
 pub mod json;
 pub mod layout;
@@ -25,6 +27,7 @@ pub mod parser;
 pub mod protocol;
 pub mod supported;
 pub mod tabular;
+pub mod text_builtins;
 pub mod theorems;
 pub mod vocabulary;
 pub mod xref;

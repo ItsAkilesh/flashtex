@@ -53,6 +53,10 @@ pub enum Origin {
     MathSymbol,
     /// `math::OPERATOR_NAMES`.
     MathOperator,
+    /// Executed by the expansion pass (`crate::expansion`): a TeX/LaTeX
+    /// primitive or kernel macro of `flashtex-tex-expansion`, never seen by
+    /// the parser.
+    Expansion,
 }
 
 impl Origin {
@@ -65,6 +69,7 @@ impl Origin {
             Origin::MathStructure => "math_structure",
             Origin::MathSymbol => "math_symbol",
             Origin::MathOperator => "math_operator",
+            Origin::Expansion => "expansion",
         }
     }
 }
@@ -114,6 +119,37 @@ pub const TEXT_CONTEXT_ONLY: &[&str] = &["thanks", "and", "today"];
 
 /// Dispatch arms that are not `parser::BUILT_INS` entries.
 const TEXT_EXTRA_ARMS: &[&str] = &["newtheorem", "theoremstyle"];
+
+/// Canonical commands the expansion pass executes itself (engine primitives
+/// and kernel-prelude macros of `flashtex-tex-expansion`); their effect
+/// reaches the parser only as expanded tokens. `\newcommand`/`\renewcommand`
+/// and `\DeclareMathOperator` keep their parser-inventory entries.
+const EXPANSION_COMMANDS: &[(&str, &str, &str)] = &[
+    ("long", "", "prefix: the following definition accepts \\par in arguments"),
+    ("protected", "", "e-TeX prefix: the following macro is not expanded inside \\edef-like contexts"),
+    ("providecommand", "{\\name}[n][default]{body}", "defines the macro only when \\name is undefined"),
+    ("DeclareRobustCommand", "{\\name}[n][default]{body}", "defines or redefines a macro (robustness is not modelled separately)"),
+    ("newenvironment", "{env}[n][default]{begin}{end}", "defines an environment run by \\begin{env}/\\end{env}"),
+    ("renewenvironment", "{env}[n][default]{begin}{end}", "redefines an environment"),
+    ("newcounter", "{counter}[within]", "allocates a counter (\\c@counter, \\thecounter) reset by within"),
+    ("setcounter", "{counter}{number}", "sets a counter globally"),
+    ("addtocounter", "{counter}{number}", "adds to a counter globally"),
+    ("stepcounter", "{counter}", "increments a counter and resets its dependants"),
+    ("refstepcounter", "{counter}", "increments a counter and makes it the current \\label value"),
+    ("value", "{counter}", "a counter's value in a number context"),
+    ("Alph", "{counter}", "a counter as an upper-case letter"),
+    ("fnsymbol", "{counter}", "a counter as a footnote symbol"),
+    ("newlength", "{\\name}", "allocates a skip register"),
+    ("settowidth", "{\\name}{text}", "sets a length from text measured by the expansion pass's box measurer (an approximation)"),
+    ("settoheight", "{\\name}{text}", "sets a length from text height (an approximation, as \\settowidth)"),
+    ("settodepth", "{\\name}{text}", "sets a length from text depth (an approximation, as \\settowidth)"),
+    ("AtBeginDocument", "{code}", "stores code that runs at \\begin{document}"),
+    ("AtEndDocument", "{code}", "stores code that runs at \\end{document}"),
+    ("makeatother", "", "makes @ an other character again"),
+    ("space", "", "expands to one space"),
+    ("ignorespaces", "", "skips the spaces that follow"),
+    ("jobname", "", "expands to texput"),
+];
 
 /// (name, arguments, description) for every `parser::BUILT_INS` entry that
 /// renders, plus the lexer's `\\`.
@@ -214,6 +250,18 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("footnotetext", "[n]{...}", "footnote text without a mark"),
     ("clearpage", "", "forces a page break"),
     ("cleardoublepage", "", "forces a page break (one-sided article)"),
+    ("TeX", "", "latex.ltx logo: T, kern -.1667em, E lowered .5ex, kern -.125em, X"),
+    ("LaTeX", "", "latex.ltx logo: L, kern -.36em, script-size A raised to the T height, kern -.15em, \\TeX"),
+    ("LaTeXe", "", "\\LaTeX, kern .15em, 2 and a text-style subscript varepsilon"),
+    ("rule", "[raise]{dimension}{dimension}", "filled rule box; pt/in/cm/mm/bp/dd/cc/pc/sp, em, ex, \\textwidth, \\linewidth, \\columnwidth"),
+    ("thinspace", "", "text kern .16667em (math: thin muskip)"),
+    ("negthinspace", "", "text kern -.16667em"),
+    ("medspace", "", "text kern .2222em"),
+    ("negmedspace", "", "text kern -.2222em"),
+    ("thickspace", "", "text kern .2777em"),
+    ("negthickspace", "", "text kern -.2777em"),
+    ("enspace", "", "text kern .5em"),
+    ("enskip", "", "horizontal glue of .5em"),
     ("pagebreak", "[n]", "forces a page break"),
     ("nopagebreak", "[n]", "accepted no-op; the layout never breaks there on its own"),
     ("linebreak", "[n]", "line break"),
@@ -259,6 +307,12 @@ const SIZE_DECLARATIONS: &[&str] = &[
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (&["color"], "[model]{expression}", "colours the rest of the math group", true),
     (&["textcolor"], "[model]{expression}{body}", "math body in a colour", true),
+    (
+        &["rule"],
+        "[raise]{dimension}{dimension}",
+        "latex.ltx \\rule box in a formula, em/ex of the text font",
+        true,
+    ),
     (
         &["frac", "cfrac"],
         "{num}{den}",
@@ -404,6 +458,33 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["overbrace", "underbrace"],
+        "{body}",
+        "cmex brace pieces with rule fills over or under a display-style body; scripts are limits",
+        true,
+    ),
+    (
+        &[
+            "overrightarrow",
+            "overleftarrow",
+            "overleftrightarrow",
+            "underrightarrow",
+            "underleftarrow",
+            "underleftrightarrow",
+        ],
+        "{body}",
+        "amsmath \\arrowfill@ as wide as the body, over or under it",
+        true,
+    ),
+    (
+        &["dashrightarrow", "dasharrow", "dashleftarrow"],
+        "",
+        "amsfonts dashed arrow: two msam \\dabar@ pieces and a head in one relation",
+        true,
+    ),
+    (&["Bbb"], "{A-Z}", "obsolete amsfonts alias of \\mathbb", true),
+    (&["bold"], "{text}", "obsolete amsfonts alias of \\mathbf", true),
+    (
         &[
             "hat", "bar", "vec", "tilde", "dot", "ddot", "acute", "grave",
         ],
@@ -414,7 +495,7 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
     (
         &["widehat", "widetilde"],
         "{body}",
-        "unstretched accent; warns over more than one symbol",
+        "cmex successor-chain accent grown to the body (msbm extra-wide form past 2em with amsfonts)",
         true,
     ),
     (
@@ -487,6 +568,11 @@ const CONTROL_SYMBOLS: &[(&str, Mode, &str)] = &[
         Mode::Text,
         "line break; an optional [length] is consumed",
     ),
+    (",", Mode::Text, "text kern .16667em (\\thinspace)"),
+    ("!", Mode::Text, "text kern -.16667em (\\negthinspace)"),
+    (":", Mode::Text, "text kern .2222em (\\medspace)"),
+    (">", Mode::Text, "text kern .2222em (\\medspace)"),
+    (";", Mode::Text, "text kern .2777em (\\thickspace)"),
     (",", Mode::Math, "thin space (3mu)"),
     (":", Mode::Math, "medium space (4mu)"),
     (">", Mode::Math, "medium space (4mu)"),
@@ -541,7 +627,10 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
     ("verbatim*", "literal monospaced lines with visible spaces"),
     ("lstlisting", "literal monospaced lines (basic listings)"),
     ("proof", "amsthm proof with a closing square"),
-    ("thebibliography", "References section with numbered \\bibitem entries"),
+    (
+        "thebibliography",
+        "References section with numbered \\bibitem entries",
+    ),
 ];
 
 /// Packages `parser::package_matches_layout` accepts without a warning.
@@ -588,7 +677,27 @@ pub const CANONICAL_SETS: &[&str] = &[
     "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz", "xcolor",
 ];
 
-fn text_description(name: &str) -> &'static str {
+fn text_description(name: &str) -> String {
+    if let Some((_, command)) = crate::text_builtins::TEXT_SYMBOLS
+        .iter()
+        .find(|(n, _)| *n == name)
+    {
+        let glyph = |enc| match crate::text_builtins::text_symbol(name, enc) {
+            Some(crate::text_builtins::SymbolOutcome::Char(c)) => c.to_string(),
+            Some(crate::text_builtins::SymbolOutcome::Text(t)) => t,
+            _ => "unavailable".to_string(),
+        };
+        use flashtex_tex_text_encoding::encoding::Encoding;
+        return format!(
+            "text symbol {command}: OT1 {}, T1 {} (tex-text-encoding; unavailable is a LaTeX error)",
+            glyph(Encoding::OT1),
+            glyph(Encoding::T1)
+        );
+    }
+    text_description_static(name).to_string()
+}
+
+fn text_description_static(name: &str) -> &'static str {
     TEXT_COMMANDS
         .iter()
         .find(|(n, ..)| *n == name)
@@ -622,7 +731,18 @@ pub fn inventory() -> Inventory {
             mode: Mode::Text,
             origin,
             arguments: text_arguments(name),
-            description: text_description(name).to_string(),
+            description: text_description(name),
+            glyph: None,
+            renders: true,
+        });
+    }
+    for &(name, arguments, description) in EXPANSION_COMMANDS {
+        commands.push(Command {
+            name,
+            mode: Mode::Text,
+            origin: Origin::Expansion,
+            arguments,
+            description: description.to_string(),
             glyph: None,
             renders: true,
         });
@@ -655,7 +775,11 @@ pub fn inventory() -> Inventory {
         // A `command_atom` arm runs before the glyph table (`\varnothing`
         // keeps `∅` but forces msbm10's advance), so the structure entry
         // above already describes it.
-        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+        if MATH_STRUCTURES
+            .iter()
+            .any(|(names, ..)| names.contains(&name))
+            || crate::amssymb::by_name(name).is_some()
+        {
             continue;
         }
         commands.push(Command {
@@ -665,6 +789,28 @@ pub fn inventory() -> Inventory {
             arguments: "",
             description: format!("symbol {glyph}"),
             glyph: Some(glyph),
+            renders: true,
+        });
+    }
+    // amssymb/amsfonts symbols (`crate::amssymb`), which take precedence over
+    // the glyph rows above for the names both list.
+    for name in crate::amssymb::command_names() {
+        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+            continue;
+        }
+        let ams = crate::amssymb::by_name(name).expect("a listed amssymb command");
+        let font = match ams.font {
+            crate::amssymb::SymbolFont::Msam => "msam",
+            crate::amssymb::SymbolFont::Msbm => "msbm",
+        };
+        let class = format!("{:?}", ams.class).to_lowercase();
+        commands.push(Command {
+            name,
+            mode: Mode::Math,
+            origin: Origin::MathSymbol,
+            arguments: "",
+            description: format!("symbol {} (\\math{class}, {font} \"{:02X})", ams.text, ams.slot),
+            glyph: Some(ams.text),
             renders: true,
         });
     }
@@ -1022,7 +1168,12 @@ pub fn render_markdown(inventory: &Inventory) -> String {
             ));
         }
     };
-    table(&mut out, "Text commands", &|c| c.mode == Mode::Text);
+    table(&mut out, "Text commands", &|c| {
+        c.mode == Mode::Text && c.origin != Origin::Expansion
+    });
+    table(&mut out, "Commands run by the expansion pass", &|c| {
+        c.origin == Origin::Expansion
+    });
     table(&mut out, "Math structures", &|c| {
         c.mode == Mode::Math && matches!(c.origin, Origin::MathStructure | Origin::ControlSymbol)
     });
