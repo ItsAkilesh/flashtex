@@ -342,6 +342,10 @@ pub enum ChromeEvent {
     ThisPageStyle(PageStyle),
     MarkBoth(String, String),
     MarkRight(String),
+    /// `\pagenumbering{style}`: `\thepage` style and `\c@page` reset to 1.
+    PageNumbering(flashtex_class_geometry::Numbering),
+    /// `\setcounter{page}{n}`.
+    SetPage(i64),
 }
 
 /// How a paragraph-shape environment began (see [`Block::Paragraph`]).
@@ -626,7 +630,9 @@ pub fn adapt_cached(
     // (dropped here) and ignores `\noindent`.
     let entry_doc = DocumentId(entry);
     let has_chapters = style.class_geometry.as_ref().is_some_and(|d| d.chapter.is_some());
-    let commands = body_commands(source, has_chapters);
+    // article's `\maketitle` (no `titlepage`) issues `\thispagestyle{plain}`.
+    let maketitle_plain = style.class_geometry.as_ref().is_some_and(|d| !d.options.titlepage);
+    let commands = body_commands(source, has_chapters, maketitle_plain);
     strip_command_text(&mut lowered, entry_doc, &commands);
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
@@ -2488,7 +2494,7 @@ pub enum BodyKind {
 /// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`
 /// and (when the class has chapters) `\chapter` after `\begin{document}`,
 /// in source order, skipping comments.
-pub fn body_commands(source: &str, chapters: bool) -> Vec<BodyCommand> {
+pub fn body_commands(source: &str, chapters: bool, maketitle_plain: bool) -> Vec<BodyCommand> {
     let bytes = source.as_bytes();
     let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
     let group = |from: usize| -> Option<(usize, usize, usize)> {
@@ -2549,6 +2555,25 @@ pub fn body_commands(source: &str, chapters: bool) -> Vec<BodyCommand> {
                 group(k).map(|(s, e, after)| (BodyKind::Chapter { starred, title: (s, e) }, after))
             }
             "noindent" => Some((BodyKind::NoIndent, j)),
+            "pagenumbering" => group(j).and_then(|(s, e, after)| {
+                use flashtex_class_geometry::Numbering;
+                let n = match source[s..e].trim() {
+                    "arabic" => Numbering::Arabic,
+                    "roman" => Numbering::Roman,
+                    "Roman" => Numbering::UpperRoman,
+                    "alph" => Numbering::Alph,
+                    "Alph" => Numbering::UpperAlph,
+                    _ => return None,
+                };
+                Some((BodyKind::Event(ChromeEvent::PageNumbering(n)), after))
+            }),
+            "setcounter" => group(j).and_then(|(s1, e1, a1)| {
+                if source[s1..e1].trim() != "page" {
+                    return None;
+                }
+                group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i64>().ok().map(|n| (BodyKind::Event(ChromeEvent::SetPage(n)), a2)))
+            }),
+            "maketitle" if maketitle_plain => Some((BodyKind::Event(ChromeEvent::ThisPageStyle(PageStyle::Plain)), j)),
             _ => None,
         };
         match found {
@@ -2568,7 +2593,7 @@ pub fn body_commands(source: &str, chapters: bool) -> Vec<BodyCommand> {
 fn strip_command_text(blocks: &mut Vec<CBlock>, document: DocumentId, commands: &[BodyCommand]) {
     let ranges: Vec<(usize, usize)> = commands
         .iter()
-        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_))))
+        .filter(|c| matches!(c.kind, BodyKind::Chapter { .. } | BodyKind::Event(ChromeEvent::MarkBoth(..) | ChromeEvent::MarkRight(_) | ChromeEvent::SetPage(_) | ChromeEvent::PageNumbering(_))))
         .map(|c| (c.start, c.end))
         .collect();
     if ranges.is_empty() {
