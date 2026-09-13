@@ -8,6 +8,7 @@
 //! One item is emitted per word rather than per line. That keeps each item's
 //! source span exact, which is what click-to-source navigation (FT-003) needs.
 
+use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
@@ -1082,10 +1083,22 @@ impl LayoutCursor {
                 content,
                 extra_gap_after_pt,
                 leftmargin,
+                widest_label,
                 ..
             } => {
-                let override_pt = list_leftmargin_override_pt(leftmargin, body_size);
-                self.list_margin_pt = list_margin_pt(*level, body_size, override_pt);
+                self.list_margin_pt = match widest_label {
+                    // `thebibliography`'s `\labelwidth` + `\labelsep`: the
+                    // width of its widest label's own bracket text, not the
+                    // fixed `itemize`/`enumerate` leftmargin table.
+                    Some(text) => {
+                        glyph_width(&bib::label_bracket(text), body_size, Font::TimesRoman)
+                            + LIST_LABELSEP_EM * body_size
+                    }
+                    None => {
+                        let override_pt = list_leftmargin_override_pt(leftmargin, body_size);
+                        list_margin_pt(*level, body_size, override_pt)
+                    }
+                };
                 self.justify = true;
                 if let Some((text, span)) = label {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
@@ -2065,6 +2078,53 @@ mod tests {
         assert!(
             inner.x_pt > outer.x_pt,
             "a nested item indents further than its enclosing item"
+        );
+    }
+
+    #[test]
+    fn bibliography_label_width_comes_from_the_widest_label_argument() {
+        let source = "\\begin{thebibliography}{9}\\bibitem{a}Text\\end{thebibliography}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let label = items
+            .iter()
+            .find(|item| item.text == "[1]")
+            .expect("bibitem label");
+        let text = items
+            .iter()
+            .find(|item| item.text == "Text")
+            .expect("item text");
+        let label_sep = LIST_LABELSEP_EM * BODY_SIZE_PT;
+        let widest_width = glyph_width("[9]", BODY_SIZE_PT, Font::TimesRoman);
+        let text_x = MARGIN_PT + widest_width + label_sep;
+        assert_eq!(text.x_pt, round2(text_x));
+        assert_eq!(
+            label.x_pt,
+            round2(text_x - label_sep - glyph_width("[1]", BODY_SIZE_PT, Font::TimesRoman))
+        );
+        // Not the `itemize`/`enumerate` leftmargin table's fixed 2.5em: a
+        // `thebibliography`'s indent tracks its own widest-label argument.
+        assert_ne!(
+            round2(text_x),
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
+        );
+    }
+
+    #[test]
+    fn thebibliography_emits_an_unnumbered_bold_references_heading() {
+        let source = "\\begin{thebibliography}{9}\\bibitem{a}Text\\end{thebibliography}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let heading = items
+            .iter()
+            .find(|item| item.text == "References")
+            .expect("References heading");
+        assert_eq!(heading.font, Font::TimesBold);
+        assert!(
+            matches!(&parsed.blocks[0], parser::Block::Heading { number, .. } if number.is_empty()),
+            "the References heading must be unnumbered, like \\section*"
         );
     }
 

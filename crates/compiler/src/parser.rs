@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{apply_text_ligatures, tokenize, tokenize_document, Token, TokenKind};
 use crate::math::{self, MathList};
@@ -178,6 +179,12 @@ pub enum Block {
         /// `\setlist`, or when the level's default `LIST_LEFTMARGIN_EM`
         /// share applies unchanged).
         leftmargin: ListLeftMargin,
+        /// `thebibliography`'s widest-label argument (`\begin{thebibliography}{99}`'s
+        /// `"99"`), overriding `level`'s hanging indent with `\labelwidth` +
+        /// `\labelsep` measured from `[<text>]`, exactly like real LaTeX's
+        /// `\settowidth\labelwidth{\@biblabel{#1}}`. `None` for an ordinary
+        /// `itemize`/`enumerate` item, which keeps using `level`'s indent.
+        widest_label: Option<String>,
     },
     /// `\vspace{<dimen>}`: additional vertical glue, in points.
     VSpace {
@@ -516,6 +523,11 @@ const BUILT_INS: &[&str] = &[
     "LARGE",
     "huge",
     "Huge",
+    "cite",
+    "nocite",
+    "bibitem",
+    "bibliography",
+    "bibliographystyle",
 ];
 
 /// Parses a LaTeX dimension (`12pt`, `1.5em`, `0.5in`, `2cm`, `10mm`, `2ex`,
@@ -635,6 +647,8 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
     });
     let raw = tokenize_document(entry_document.text, DocumentId(entry));
     let has_document = has_document_environment(&raw);
+    let mut bibliography_diags = Vec::new();
+    let bibliography = bib::prescan(&raw, &mut bibliography_diags);
     let mut p = P {
         t: raw
             .into_iter()
@@ -687,7 +701,10 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         theorem_style: TheoremStyle::default(),
         theorem_counters: HashMap::new(),
         noted_unclickable_link: false,
+        bibliography,
+        bib_cursor: 0,
     };
+    p.diags.extend(bibliography_diags);
     // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
     p.macros.insert(
         "arraystretch".into(),
@@ -773,6 +790,14 @@ struct P<'a> {
     pending_item_label: Option<(String, Span)>,
     paragraph_styles: Vec<ParagraphStyle>,
     document_global_state: bool,
+    /// Every `\bibitem`'s resolved citation label, built once by
+    /// `bib::prescan` before this parse starts — see that module's doc
+    /// comment for why `\cite` does not need a page-aware two-pass pass.
+    bibliography: bib::Bibliography,
+    /// How many of `bibliography`'s document-order `\bibitem`s this parse has
+    /// reached so far; advanced by each real `\bibitem`, whose own displayed
+    /// label is looked up at this index.
+    bib_cursor: usize,
     /// Current text style; saved on `{` and environment entry, restored on
     /// the matching `}` or `\end`.
     style: TextStyle,
@@ -1086,6 +1111,57 @@ impl P<'_> {
                 blocks.push(Block::TableOfContents { span });
                 self.finish_block_dependencies();
             }
+            "cite" => {
+                let note = self.optional_bracket_argument().map(|(text, _)| text);
+                let (tokens, argument_span) = self.required_group(name, span);
+                let full_span = span.merge(argument_span);
+                let keys: Vec<String> = token_text(&tokens)
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|key| !key.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                self.document_global_state = true;
+                if keys.is_empty() {
+                    self.diags.push(Diagnostic::warning(
+                        "\\cite was given an empty key list",
+                        Some(full_span),
+                        Some("rendered nothing for the empty citation".into()),
+                    ));
+                } else {
+                    para.extend(bib::cite_inlines(
+                        &keys,
+                        note,
+                        &self.bibliography,
+                        full_span,
+                        &mut self.diags,
+                    ));
+                }
+            }
+            // Real LaTeX's `\nocite` only writes a BibTeX aux-file entry (to
+            // pull an uncited reference into the printed bibliography); it
+            // has no visible output of its own either way, and this compiler
+            // has no `.bib`/aux-file pipeline to feed (see `bibliography`
+            // below), so consuming the argument is the whole honest behaviour.
+            "nocite" => {
+                let _ = self.required_group(name, span);
+            }
+            "bibliography" => {
+                let _ = self.required_group(name, span);
+                self.diags.push(Diagnostic::warning(
+                    "\\bibliography requires BibTeX/biblatex .bib input, which this compiler does not read",
+                    Some(span),
+                    Some("write the bibliography by hand with thebibliography and \\bibitem".into()),
+                ));
+            }
+            "bibliographystyle" => {
+                let _ = self.required_group(name, span);
+                self.diags.push(Diagnostic::warning(
+                    "\\bibliographystyle has no effect without BibTeX/biblatex .bib support",
+                    Some(span),
+                    Some("ignored the style and continued".into()),
+                ));
+            }
             "caption" => {
                 let (tokens, _) = self.required_group(name, span);
                 if self.env_stack.last().map(|(name, _)| name.as_str()) != Some("figure") {
@@ -1142,6 +1218,56 @@ impl P<'_> {
                         Some(span),
                         Some("ignored the item marker and continued".into()),
                     )),
+                }
+            }
+            "bibitem" => {
+                let in_bibliography =
+                    matches!(self.list_stack.last(), Some((kind, ..)) if kind == "thebibliography");
+                if !in_bibliography {
+                    self.diags.push(Diagnostic::error(
+                        "\\bibitem is only supported inside thebibliography",
+                        Some(span),
+                        Some("ignored the entry and continued".into()),
+                    ));
+                    let _ = self.optional_bracket_argument();
+                    let _ = self.required_group(name, span);
+                } else {
+                    let gap_before = self
+                        .list_stack
+                        .last()
+                        .map(|(_, count, _, spacing, _)| {
+                            if *count <= 1 {
+                                spacing.topsep_pt
+                            } else {
+                                spacing.itemsep_pt
+                            }
+                        })
+                        .unwrap_or(0.0);
+                    self.flush_list_item(blocks, para, gap_before, 0.0);
+                    // The optional `[label]`/required `{key}` were already
+                    // read by `bib::prescan`, which resolved this occurrence
+                    // (by document order, via `bib_cursor`) to its label
+                    // before this parse began; only the token positions need
+                    // consuming here.
+                    let _ = self.optional_bracket_argument();
+                    let _ = self.required_group(name, span);
+                    self.document_global_state = true;
+                    let label = self
+                        .bibliography
+                        .label_at(self.bib_cursor)
+                        .map(str::to_string);
+                    let label = label.unwrap_or_else(|| {
+                        // Should not happen: the pre-scan and this real parse
+                        // walk the same literal `\bibitem`s in lockstep (see
+                        // `bib::prescan`). Recover with a plain sequential
+                        // number rather than losing the entry.
+                        (self.bib_cursor + 1).to_string()
+                    });
+                    self.bib_cursor += 1;
+                    if let Some((_, count, _, _, _)) = self.list_stack.last_mut() {
+                        *count += 1;
+                    }
+                    self.pending_item_label = Some((bib::label_bracket(&label), span));
                 }
             }
             "includegraphics" => {
@@ -1848,6 +1974,40 @@ impl P<'_> {
                 && (self.theorems.contains_key(&environment) || environment == "proof")
             {
                 self.flush_paragraph(blocks, para);
+            } else if environment == "thebibliography" && self.in_body {
+                self.flush_paragraph(blocks, para);
+                // article.cls: `\begin{thebibliography}{#1}` is
+                // `\section*{\refname}` followed by a `\list` whose
+                // `\labelwidth` is set from `#1` (the widest label the
+                // author expects, e.g. `{99}` for up to 99 entries).
+                let (widest_tokens, widest_span) = self.required_group(&environment, span);
+                let widest_label = token_text(&widest_tokens).trim().to_string();
+                self.document_global_state = true;
+                let heading_span = span.merge(argument_span).merge(widest_span);
+                blocks.push(Block::Heading {
+                    level: 1,
+                    number: String::new(),
+                    number_span: heading_span,
+                    content: vec![Inline::Text {
+                        text: "References".to_string(),
+                        span: heading_span,
+                        style: TextStyle::BOLD,
+                        space_before: false,
+                    }],
+                });
+                self.finish_block_dependencies();
+                let spacing = self
+                    .list_spacing
+                    .get(&environment)
+                    .copied()
+                    .unwrap_or_default();
+                self.list_stack.push((
+                    environment.clone(),
+                    0,
+                    Some(widest_label),
+                    spacing,
+                    blocks.len(),
+                ));
             } else if self.in_body {
                 self.diags.push(Diagnostic::warning(
                     format!(
@@ -1897,7 +2057,10 @@ impl P<'_> {
         if paragraph_style(&environment).is_some() && self.in_body {
             self.flush_paragraph(blocks, para);
             self.paragraph_styles.pop();
-        } else if matches!(environment.as_str(), "itemize" | "enumerate") {
+        } else if matches!(
+            environment.as_str(),
+            "itemize" | "enumerate" | "thebibliography"
+        ) {
             let (gap_before, gap_after) = match self.list_stack.last() {
                 Some((_, count, _, spacing, _)) => (
                     if *count <= 1 {
@@ -3178,6 +3341,15 @@ impl P<'_> {
             },
             None => ListLeftMargin::Default,
         };
+        // `template` doubles as `thebibliography`'s widest-label argument
+        // (see the `\begin` handling in `environment`); `itemize`/`enumerate`
+        // use it for their own unrelated `enumitem` template instead, so it
+        // only carries a `widest_label` for a `thebibliography` list.
+        let widest_label = self.list_stack.last().and_then(|(kind, _, template, _, _)| {
+            (kind == "thebibliography")
+                .then(|| template.clone())
+                .flatten()
+        });
         blocks.push(match list_level {
             Some(level) => Block::ListItem {
                 level,
@@ -3186,6 +3358,7 @@ impl P<'_> {
                 extra_gap_before_pt,
                 extra_gap_after_pt,
                 leftmargin,
+                widest_label,
             },
             None => match (self.paragraph_styles.last(), self.declared_alignment) {
                 // A declaration inside `quote` would otherwise drop its indent.
@@ -4954,5 +5127,82 @@ mod tests {
             .contains("\\verb has no closing delimiter")));
         assert!(items.iter().any(|item| item.text == "open"));
         assert!(items.iter().any(|item| item.text == "more"));
+    }
+
+    #[test]
+    fn cite_resolves_a_forward_reference_before_the_bibliography_appears() {
+        let source =
+            r"See \cite{a}.\begin{thebibliography}{9}\bibitem{a}First.\end{thebibliography}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert!(texts.windows(3).any(|w| w == ["[", "1", "]"]));
+    }
+
+    #[test]
+    fn cite_with_multiple_keys_joins_labels_with_a_comma() {
+        let source =
+            r"\cite{a,b}\begin{thebibliography}{9}\bibitem{a}A.\bibitem{b}B.\end{thebibliography}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert!(texts.windows(4).any(|w| w == ["[", "1", ", ", "2"]));
+    }
+
+    #[test]
+    fn cite_note_is_appended_after_the_labels_and_a_tie_becomes_a_space() {
+        let source = r"\cite[p.~2]{a}\begin{thebibliography}{9}\bibitem{a}A.\end{thebibliography}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert!(items.iter().any(|i| i.text == ", p. 2"));
+    }
+
+    #[test]
+    fn undefined_citation_renders_a_bold_question_mark_and_warns() {
+        let (parsed, items) = items(r"\cite{missing}");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics[0]
+            .message
+            .contains("'missing' is undefined"));
+        let mark = items.iter().find(|i| i.text == "?").expect("question mark");
+        assert_eq!(mark.font, layout::Font::TimesBold);
+    }
+
+    #[test]
+    fn bibitem_optional_label_overrides_the_number_and_does_not_consume_one() {
+        let source = r"\begin{thebibliography}{9}\bibitem[Knuth 1984]{tex}A.\bibitem{b}B.\end{thebibliography}\cite{tex,b}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let texts: Vec<&str> = items.iter().map(|i| i.text.as_str()).collect();
+        assert!(texts.contains(&"[Knuth 1984]"));
+        assert!(texts
+            .windows(4)
+            .any(|w| w == ["[", "Knuth 1984", ", ", "1"]));
+    }
+
+    #[test]
+    fn nocite_produces_no_visible_output() {
+        let with_nocite =
+            items(r"\nocite{a}\begin{thebibliography}{9}\bibitem{a}A.\end{thebibliography}").1;
+        let without = items(r"\begin{thebibliography}{9}\bibitem{a}A.\end{thebibliography}").1;
+        let texts =
+            |items: &[layout::TextItem]| items.iter().map(|i| i.text.clone()).collect::<Vec<_>>();
+        assert_eq!(texts(&with_nocite), texts(&without));
+    }
+
+    #[test]
+    fn bibliography_command_reports_bibtex_is_out_of_scope() {
+        let (parsed, _items) = items(r"\bibliography{refs}");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics[0].message.contains("BibTeX"));
+    }
+
+    #[test]
+    fn bibitem_outside_thebibliography_is_an_error() {
+        let (parsed, _items) = items(r"\bibitem{a}Stray.");
+        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
+        assert!(parsed.diagnostics[0]
+            .message
+            .contains("\\bibitem is only supported"));
     }
 }

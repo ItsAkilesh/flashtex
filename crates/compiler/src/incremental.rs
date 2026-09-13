@@ -405,6 +405,7 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             extra_gap_before_pt,
             extra_gap_after_pt,
             leftmargin,
+            widest_label,
         } => Block::ListItem {
             level: *level,
             label: match label {
@@ -415,6 +416,7 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             extra_gap_before_pt: *extra_gap_before_pt,
             extra_gap_after_pt: *extra_gap_after_pt,
             leftmargin: leftmargin.clone(),
+            widest_label: widest_label.clone(),
         },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
