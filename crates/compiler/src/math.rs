@@ -40,6 +40,13 @@ pub struct MathAtom {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Nucleus {
     Symbol(String),
+    /// `\big(`, `\Bigr]`, ...: a delimiter scaled to `scale` times the current
+    /// size (cmex10's 1.2, 1.8, 2.4, 3.0) and centred on the math axis.
+    SizedDelimiter {
+        glyph: String,
+        scale: f64,
+        role: DelimiterRole,
+    },
     /// Literal text with explicit Roman intent, distinct from math symbols.
     Text(String),
     /// Explicit TeX math glue, measured in ems of the current math style.
@@ -79,6 +86,16 @@ pub enum Nucleus {
         accent: Accent,
         body: MathList,
     },
+}
+
+/// The atom class plain TeX gives a `\big` delimiter: `\bigl` opens, `\bigr`
+/// closes, `\bigm` is a relation and bare `\big` is ordinary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DelimiterRole {
+    Ord,
+    Open,
+    Close,
+    Rel,
 }
 
 /// `\hat`..`\grave`, plus `\widehat`/`\widetilde`.
@@ -488,9 +505,11 @@ impl MathParser<'_> {
             }
             "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
             | "notag" | "middle" => space(0.0, span),
-            "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "bigm" | "Bigm" | "biggm"
-            | "Biggm" | "Bigl" | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
-                self.take_delimiter(&name, span)
+            // `\left`/`\right` do not stretch to their content yet: ordinary size.
+            "left" | "right" => self.take_delimiter(&name, span),
+            "big" | "Big" | "bigg" | "Bigg" | "bigl" | "Bigl" | "biggl" | "Biggl" | "bigr"
+            | "Bigr" | "biggr" | "Biggr" | "bigm" | "Bigm" | "biggm" | "Biggm" => {
+                sized_delimiter(self.take_delimiter(&name, span), &name)
             }
             "dots" | "ldots" | "dotsc" | "dotso" => text_atom("...".into(), span),
             "cdots" | "dotsb" | "dotsm" | "dotsi" => symbol("⋅⋅⋅".into(), span),
@@ -614,10 +633,6 @@ impl MathParser<'_> {
                     subscript: None,
                 }
             }
-            // Delimiter stretching is not implemented yet. Consume and retain
-            // the requested delimiter at ordinary size instead of fabricating a
-            // hard-coded parenthesis (which would duplicate the source token).
-            "bigl" | "bigr" => self.take_delimiter(&name, span),
             "quad" => space(QUAD_EM, span),
             "qquad" => space(2.0 * QUAD_EM, span),
             "mathbb" => {
@@ -1135,6 +1150,36 @@ fn symbol(text: String, span: Span) -> MathAtom {
     }
 }
 
+/// Scales a delimiter taken by `\big`..`\Biggm`. The null delimiter (a zero
+/// space) and an empty recovery glyph are left as they are.
+fn sized_delimiter(mut atom: MathAtom, command: &str) -> MathAtom {
+    let Nucleus::Symbol(glyph) = &atom.nucleus else {
+        return atom;
+    };
+    if glyph.is_empty() {
+        return atom;
+    }
+    let stem = command.trim_end_matches(['l', 'r', 'm']);
+    let scale = match stem {
+        "big" => 1.2,
+        "Big" => 1.8,
+        "bigg" => 2.4,
+        _ => 3.0,
+    };
+    let role = match &command[stem.len()..] {
+        "l" => DelimiterRole::Open,
+        "r" => DelimiterRole::Close,
+        "m" => DelimiterRole::Rel,
+        _ => DelimiterRole::Ord,
+    };
+    atom.nucleus = Nucleus::SizedDelimiter {
+        glyph: glyph.clone(),
+        scale,
+        role,
+    };
+    atom
+}
+
 fn space(em: f64, span: Span) -> MathAtom {
     MathAtom {
         nucleus: Nucleus::Space { em },
@@ -1367,6 +1412,12 @@ fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
             return None
         }
         Nucleus::Symbol(glyph) => symbol_class(glyph),
+        Nucleus::SizedDelimiter { role, .. } => match role {
+            DelimiterRole::Ord => Ord,
+            DelimiterRole::Open => Open,
+            DelimiterRole::Close => Close,
+            DelimiterRole::Rel => Rel,
+        },
         Nucleus::Text(text) if OPERATOR_NAMES.contains(&text.as_str()) => Op,
         Nucleus::Text(text) if text == "mod" => Bin,
         Nucleus::Text(text) if text == "..." => Inner,
@@ -1611,6 +1662,41 @@ fn layout_nucleus(
             ascent: size,
             descent: 0.2 * size,
         },
+        Nucleus::SizedDelimiter { glyph, scale, .. } => {
+            let glyph_size = size * scale;
+            let width = match crate::lm_math::width_pt(glyph, glyph_size) {
+                Some(width) => width,
+                None => {
+                    crate::layout::shaped_width(
+                        glyph,
+                        glyph_size,
+                        crate::layout::math_font(glyph),
+                        atom.span,
+                        diagnostics,
+                    )
+                    .0
+                }
+            };
+            // An ordinary delimiter's centre already sits on the axis, so the
+            // scaled glyph is lowered by the growth of that centre height.
+            // The box spans `scale` ems centred on the axis, as cmex10's do:
+            // `\big` at 10pt is 8.5pt high and 3.5pt deep.
+            let half = 0.5 * glyph_size;
+            MathBox {
+                items: vec![MathItem {
+                    font: None,
+                    text: glyph.clone(),
+                    x: 0.0,
+                    baseline: MATH_AXIS_EM * (glyph_size - size),
+                    size: glyph_size,
+                    span: atom.span,
+                    rule: None,
+                }],
+                width,
+                ascent: (MATH_AXIS_EM * size + half).max(size),
+                descent: (half - MATH_AXIS_EM * size).max(0.2 * size),
+            }
+        }
         Nucleus::Bold(text) => MathBox {
             items: vec![MathItem {
                 font: Some(crate::layout::Font::TimesBold),
@@ -2063,6 +2149,7 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
     MathAtom {
         nucleus: match &atom.nucleus {
             Nucleus::Symbol(s) => Nucleus::Symbol(s.clone()),
+            Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
             Nucleus::Text(s) => Nucleus::Text(s.clone()),
             Nucleus::Space { em } => Nucleus::Space { em: *em },
             Nucleus::Fraction {
@@ -2122,6 +2209,50 @@ fn shift(span: Span, delta: isize) -> Span {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+
+    #[test]
+    fn big_delimiters_scale_like_cmex_and_keep_tex_classes() {
+        let mut diagnostics = Vec::new();
+        let tokens = crate::lexer::tokenize(r"\bigl(x\bigr) \Bigm| \bigg[ \Biggr] \big.");
+        let list = parse_tokens(&tokens, &mut diagnostics);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let sized: Vec<(&str, f64, DelimiterRole)> = list
+            .atoms
+            .iter()
+            .filter_map(|atom| match &atom.nucleus {
+                Nucleus::SizedDelimiter { glyph, scale, role } => {
+                    Some((glyph.as_str(), *scale, *role))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sized,
+            [
+                ("(", 1.2, DelimiterRole::Open),
+                (")", 1.2, DelimiterRole::Close),
+                ("|", 1.8, DelimiterRole::Rel),
+                ("[", 2.4, DelimiterRole::Ord),
+                ("]", 3.0, DelimiterRole::Close),
+            ]
+        );
+        // `\big.` stays the invisible null delimiter.
+        assert!(matches!(
+            list.atoms.last().map(|a| &a.nucleus),
+            Some(Nucleus::Space { em }) if *em == 0.0
+        ));
+
+        let boxed = layout(
+            &parse_tokens(&crate::lexer::tokenize(r"\bigl("), &mut diagnostics),
+            10.0,
+            &mut diagnostics,
+        );
+        let paren = &boxed.items[0];
+        assert_eq!(paren.size, 12.0);
+        // Lowered so its centre stays on the axis; 8.5pt high, 3.5pt deep.
+        assert!((paren.baseline - 0.5).abs() < 1e-9, "{}", paren.baseline);
+        assert!((boxed.descent - 3.5).abs() < 1e-9, "{}", boxed.descent);
+    }
 
     #[test]
     fn logical_commands_are_real_exportable_symbol_atoms() {
@@ -2317,7 +2448,9 @@ mod parse_tests {
             .atoms
             .iter()
             .map(|atom| match &atom.nucleus {
-                Nucleus::Symbol(text) => text.as_str(),
+                Nucleus::Symbol(text) | Nucleus::SizedDelimiter { glyph: text, .. } => {
+                    text.as_str()
+                }
                 other => panic!("expected symbol, got {other:?}"),
             })
             .collect();
@@ -2628,7 +2761,7 @@ mod shift_tests {
                 .iter()
                 .map(|a| {
                     let nested = match &a.nucleus {
-                        Nucleus::Symbol(_) => usize::MAX,
+                        Nucleus::Symbol(_) | Nucleus::SizedDelimiter { .. } => usize::MAX,
                         Nucleus::Text(_) => usize::MAX,
                         Nucleus::Space { .. } => usize::MAX,
                         Nucleus::Fraction {
