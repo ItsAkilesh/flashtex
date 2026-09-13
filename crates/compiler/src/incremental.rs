@@ -505,6 +505,22 @@ fn shift_inlines(
                 pt: *pt,
                 span: mapped_span(*span, changes, deltas)?,
             }),
+            Inline::Footnote {
+                number,
+                span,
+                mark,
+                text,
+                space_before,
+            } => Some(Inline::Footnote {
+                number: number.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+                mark: *mark,
+                text: match text {
+                    Some(text) => Some(shift_inlines(text, changes, deltas)?),
+                    None => None,
+                },
+                space_before: *space_before,
+            }),
         })
         .collect()
 }
@@ -662,6 +678,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -702,6 +719,7 @@ fn shifted_signature(
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);

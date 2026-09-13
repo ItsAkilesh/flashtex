@@ -95,6 +95,19 @@ pub enum Inline {
         pt: f64,
         span: Span,
     },
+    /// `\footnote[<n>]{..}`, `\footnotemark[<n>]` or `\footnotetext[<n>]{..}`.
+    /// `number` is the resolved `\thefootnote` (arabic). `span` is the
+    /// command token, attributed to both superscript marks. `mark` is false
+    /// only for `\footnotetext`; `text` is `None` only for `\footnotemark`.
+    /// Page-bottom placement lives in `layout::footnotes`.
+    Footnote {
+        number: String,
+        span: Span,
+        mark: bool,
+        text: Option<Vec<Inline>>,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -384,6 +397,9 @@ const BUILT_INS: &[&str] = &[
     "hfill",
     "hfil",
     "hspace",
+    "footnote",
+    "footnotemark",
+    "footnotetext",
     "normalfont",
     "bfseries",
     "mdseries",
@@ -575,6 +591,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         subsection_counter: 0,
         equation_counter: 0,
         figure_counter: 0,
+        footnote_counter: 0,
         current_counter: None,
         seen_labels: HashMap::new(),
         list_stack: Vec::new(),
@@ -642,6 +659,8 @@ struct P<'a> {
     subsection_counter: u32,
     equation_counter: u32,
     figure_counter: u32,
+    /// LaTeX's `footnote` counter; article never resets it.
+    footnote_counter: u32,
     current_counter: Option<String>,
     seen_labels: HashMap<String, Span>,
     /// Environment name, item count, an enumitem label template if given,
@@ -969,6 +988,7 @@ impl P<'_> {
             }
             _ if style_declaration(name) => self.style = apply_style(self.style, name),
             "hfill" | "hfil" => para.push(Inline::HFill { span }),
+            "footnote" | "footnotemark" | "footnotetext" => self.footnote(name, span, para),
             "hspace" => {
                 // The star only affects whether the glue survives being
                 // discarded at a line break in real TeX, which this layout
@@ -2276,6 +2296,98 @@ impl P<'_> {
                 }
                 _ => {}
             }
+        }
+        content
+    }
+
+    /// `\footnote`, `\footnotemark` and `\footnotetext`, following latex.ltx:
+    /// without `[<n>]`, `\footnote`/`\footnotemark` step the counter and
+    /// `\footnotetext` reuses its current value; with `[<n>]` none of them
+    /// step it. The footnote counter and page-bottom placement are
+    /// document-global, so incremental block reuse is disabled (the same
+    /// conservative rule `\label`/`\ref` use).
+    fn footnote(&mut self, name: &str, span: Span, para: &mut Vec<Inline>) {
+        let space_before = self.space_precedes(self.i - 1);
+        self.document_global_state = true;
+        let explicit = self
+            .optional_bracket_argument()
+            .and_then(|(raw, raw_span)| {
+                let parsed = raw.trim().parse::<u32>().ok();
+                if parsed.is_none() {
+                    self.diags.push(Diagnostic::warning(
+                        format!(
+                            "\\{name} optional argument '{}' is not a number",
+                            raw.trim()
+                        ),
+                        Some(raw_span),
+                        Some("numbered the footnote from the footnote counter instead".into()),
+                    ));
+                }
+                parsed
+            });
+        let number = match explicit {
+            Some(number) => number,
+            None if name == "footnotetext" => self.footnote_counter,
+            None => {
+                self.footnote_counter += 1;
+                self.footnote_counter
+            }
+        };
+        let text = if name == "footnotemark" {
+            None
+        } else {
+            let (tokens, _) = self.required_group(name, span);
+            Some(self.footnote_inlines(tokens, span))
+        };
+        para.push(Inline::Footnote {
+            number: number.to_string(),
+            span,
+            mark: name != "footnotetext",
+            text,
+            space_before,
+        });
+    }
+
+    /// Parses a footnote argument with the ordinary dispatch, so math, style
+    /// commands and macros work inside it. The text starts from
+    /// `\normalfont` (`\@footnotetext` resets the font). Paragraph breaks
+    /// inside the argument become line breaks: the footnote is one inline
+    /// sequence, not separate blocks; each break is attributed to `span`.
+    fn footnote_inlines(&mut self, tokens: Vec<InputToken>, span: Span) -> Vec<Inline> {
+        let outer_tokens = std::mem::replace(&mut self.t, tokens);
+        let outer_index = std::mem::replace(&mut self.i, 0);
+        let outer_style = std::mem::take(&mut self.style);
+        let outer_label = self.pending_item_label.take();
+        let outer_dependency_blocks = self.block_dependencies.len();
+        // The argument is a TeX group: definitions inside it stay local.
+        self.macro_scopes.push(HashMap::new());
+        let mut blocks = Vec::new();
+        let mut para = Vec::new();
+        self.parse_stream(&mut blocks, &mut para);
+        self.flush_paragraph(&mut blocks, &mut para);
+        self.restore_scope();
+        self.block_dependencies.truncate(outer_dependency_blocks);
+        self.t = outer_tokens;
+        self.i = outer_index;
+        self.style = outer_style;
+        self.pending_item_label = outer_label;
+
+        let mut content: Vec<Inline> = Vec::new();
+        for block in blocks {
+            let inlines = match block {
+                Block::Paragraph(inlines)
+                | Block::Styled {
+                    content: inlines, ..
+                }
+                | Block::ListItem {
+                    content: inlines, ..
+                } => inlines,
+                _ => continue,
+            };
+            if !content.is_empty() && !inlines.is_empty() {
+                content.push(Inline::LineBreak { span });
+            }
+            content.extend(inlines);
         }
         content
     }
