@@ -604,6 +604,9 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
             has_box = true;
         }
         let mut cur_li = list_index(&nodes[start], 0);
+        // §987 `freeze_page_specs` with longtable.sty 230: `\maxdepth` is
+        // zero for a page a longtable opens (see `pagebuild::page_max_depth`).
+        let maxdepth = if head.is_none() && regions.starts_at(cur_li) { 0.0 } else { p.maxdepth };
         let mut lines_seen = 0usize;
         let mut best: Option<(usize, i64)> = None;
         let mut fired = None;
@@ -684,9 +687,9 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
                 total += if has_box { depth + h } else { (p.topskip - h).max(0.0) + h };
                 has_box = true;
                 depth = d;
-                if depth > p.maxdepth {
-                    total += depth - p.maxdepth;
-                    depth = p.maxdepth;
+                if depth > maxdepth {
+                    total += depth - maxdepth;
+                    depth = maxdepth;
                 }
                 lines_seen += 1;
                 prev_box = true;
@@ -815,7 +818,7 @@ pub fn paginate(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, p: &PageParams,
         let _ = (total, depth);
         let mut overfull_by = 0.0;
         if let Some(last) = last_text {
-            let bottom = last.baseline - text_off + (last.depth - p.maxdepth).max(0.0);
+            let bottom = last.baseline - text_off + (last.depth - maxdepth).max(0.0);
             if bottom > vsize + 1e-6 {
                 overfull_by = bottom - vsize;
             }

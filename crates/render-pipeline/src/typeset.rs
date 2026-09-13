@@ -1911,8 +1911,15 @@ impl<'a> Context<'a> {
                 if !inside(p.baseline) {
                     continue;
                 }
-                if let Some(block) = blocks.remove(&(p.row, p.cell, p.slot)) {
-                    pieces.push(TablePiece { x: p.x, baseline: p.baseline - base, block });
+                // Cloned, not removed: without `\endfirsthead` the opening
+                // head *is* `\LT@head` (longtable.sty 239), and without
+                // `\endlastfoot` the closing foot *is* `\LT@foot` (506), so
+                // the same cells are set once in the contributed list and
+                // again in the box the output routine repeats — `\copy`,
+                // not `\box`. Removing left the repeated head and foot with
+                // their rules but no text.
+                if let Some(block) = blocks.get(&(p.row, p.cell, p.slot)) {
+                    pieces.push(TablePiece { x: p.x, baseline: p.baseline - base, block: block.clone() });
                 }
             }
             let cut = |rs: &[crate::table::PlacedRule]| -> Vec<crate::table::PlacedRule> {
@@ -2045,12 +2052,25 @@ impl<'a> Context<'a> {
             pre_space_after: None,
             contributed: Some(contributed),
             line_penalty,
-            // The chunks are `\unvbox`ed, which leaves `\prevdepth` alone;
-            // only the head and foot boxes the package `\box`es set it
-            // (longtable.sty 239, 506).
-            depth_after: match (closing_depth, opening_depth) {
-                (Some(d), _) | (None, Some(d)) => pagebuild::DepthAfter::Fixed(d),
-                (None, None) => pagebuild::DepthAfter::Unchanged,
+            // The chunks are `\unvbox`ed, which leaves `\prevdepth` alone,
+            // so only a `\box` sets it. `\LT@start` runs `\box\LT@firsthead`
+            // (or `\copy\LT@head`) on the outer vertical list, so the
+            // opening head's depth is what the table leaves behind.
+            //
+            // The closing foot does *not*: `\box\ifvoid\LT@lastfoot\LT@foot
+            // \else\LT@lastfoot\fi` is inside `\LT@output` (longtable.sty
+            // 506), and the output routine builds its own vertical list
+            // (§1025 `push_nest`), whose `prev_depth` is discarded when
+            // §1026 hands the material back to the contribution list.
+            // Measured: a table whose `\endfoot` ends in a text row and
+            // whose opening head ends in `\hline` leaves `\prevdepth` 0,
+            // not 4.35pt — and the paragraph after it is the same distance
+            // below whether the paragraph *before* the table had a
+            // descender or not, so the value is fixed, not inherited
+            // (106-longtable-head-foot-only).
+            depth_after: match opening_depth {
+                Some(d) => pagebuild::DepthAfter::Fixed(d),
+                None => pagebuild::DepthAfter::Unchanged,
             },
         };
         let region = pagebuild::Region {
