@@ -179,6 +179,11 @@ pub enum Block {
         /// one (compiler `Block::VSpace`), summed in points; `\addvspace`
         /// glue added before the block.
         vspace_before: f64,
+        /// LaTeX `\addvspace` glue before the block (`\@item`'s `\topsep`/
+        /// `\itemsep`, `\@endparenv`'s `\@topsepadd`), in points: only
+        /// its excess over the previous block's trailing skip (a display's
+        /// `\belowdisplayskip`) is added.
+        addvspace_before: f64,
         /// The paragraph is (part of) an `itemize`/`enumerate` `\item`
         /// (compiler `Block::ListItem`): LaTeX's `\list` geometry applies.
         list: Option<ListGeom>,
@@ -358,7 +363,7 @@ pub fn adapt_cached(
     let mut blocks = Vec::new();
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
     let mut after_heading = false;
-    for unit in split_at_page_breaks(texts, entry, parsed, size) {
+    for unit in split_at_page_breaks(texts, parsed, size, &style) {
         let eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -468,6 +473,7 @@ pub fn adapt_cached(
                     env_close: false,
                     eject_before,
                     vspace_before,
+                    addvspace_before: unit.addvspace_before,
                     list,
                 });
                 after_heading = false;
@@ -521,6 +527,8 @@ struct Unit<'p> {
     eject_before: bool,
     /// Summed `\vspace` points from compiler `VSpace` blocks before this unit.
     vspace_before: f64,
+    /// `\addvspace` glue before this unit (list skips; paragraphs only).
+    addvspace_before: f64,
     /// Constructs before this unit the pipeline set approximately.
     limitations: Vec<(&'static str, Span, String)>,
 }
@@ -563,10 +571,8 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, size: u32) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], parsed: &'p Parsed, size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
-    // `\setlist` lives in the root document's preamble.
-    let setlist = setlist_gaps(texts.get(entry).copied().unwrap_or(""), size);
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
     // to the next unit that holds material.
@@ -576,6 +582,11 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
     // The previous unit left TeX in vertical mode (a heading or a rule).
     let mut prev_vmode = false;
     let mut prev_styled = false;
+    // The previous unit was an `\item` paragraph, and whether its list's
+    // `\begin` was read in vertical mode (`\@topsepadd` keeps `\partopsep`
+    // for the closing skip too).
+    let mut prev_list = false;
+    let mut list_vmode = false;
     for block in &parsed.blocks {
         match block {
             CBlock::PageBreak => {
@@ -592,6 +603,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
                     kind: UnitKind::Rule { span: *span },
                     eject_before: eject,
                     vspace_before: std::mem::take(&mut pending_vspace),
+                    addvspace_before: 0.0,
                     limitations: std::mem::take(&mut pending_limitations),
                 });
                 prev_end = Some(*span);
@@ -623,36 +635,74 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
         }
         // The compiler's list model (pin `42557b09`): every `\item`
         // paragraph is a `ListItem` with its nesting level and, for the
-        // item's first paragraph, the marker text; under a
-        // `\setlist{itemsep=..,topsep=..}` override it also carries the
-        // extra gap due before it (`topsep` for the first item, `itemsep`
-        // for the rest) and, on the last item, after it. The compiler's
-        // gaps are the only list spacing applied: before as `\addvspace`
-        // glue on the item, after as pending space for the next unit. The
-        // compiler evaluates `em`/`ex` in `\setlist` at its fixed 12pt
-        // body; LaTeX uses the class's `\normalsize`, so a gap that equals
-        // one of the source's `\setlist` values at 12pt is re-read at the
-        // class size (like `\vspace` above). The hanging indent and the
-        // label box are the pipeline's (`list_geometry`): the compiler
-        // reports `leftmargin` as unimplemented.
-        let mut list = None;
-        if let CBlock::ListItem {
-            level,
-            label,
-            extra_gap_before_pt,
-            extra_gap_after_pt,
-            ..
-        } = block
-        {
-            vspace_before += setlist.at_class_size(*extra_gap_before_pt);
-            pending_vspace += setlist.at_class_size(*extra_gap_after_pt);
-            let anchor = label.as_ref().map(|(_, span)| *span).or(first);
-            list = anchor.map(|at| ListGeom {
-                level: *level,
-                margins: list_margins(texts.get(at.document.0).copied().unwrap_or(""), at.start, size),
-                label: label.clone(),
-            });
+        // item's first paragraph, the marker text. Its `\setlist`
+        // itemsep/topsep gaps are attached to whichever paragraph the
+        // *next* `\item`/`\end` flushes, so an item holding a display
+        // (which ends the paragraph early) carries them on the wrong
+        // block, and `em` in them is the compiler's fixed 12pt body; the
+        // pipeline sets the list's vertical glue from the source instead:
+        //
+        // `\@item` of the first item: `\addvspace\@topsep` (`\topsep` +
+        // the outer `\parskip`, + `\partopsep` when `\begin` was read in
+        // vertical mode) then `\addvspace{-\parskip}` with `\parskip` now
+        // `\parsep`; the item paragraph then adds `\parsep`
+        // (`paragraph_block`). Right after a heading (`\@nobreak`)
+        // `\@nbitem`'s skip is absorbed by the heading's after-skip, so
+        // only `\parsep` remains. Later items: `\addvspace\itemsep`. A
+        // later paragraph of one item (no label) adds nothing but
+        // `\parsep`. `\end{...}`: `\@endparenv` adds `\@topsepadd`, absorbed
+        // by a following heading's larger before-skip (`\addvspace`).
+        // The hanging indent and the label box are the pipeline's too
+        // (`list_margins`): the compiler reports `leftmargin` as
+        // unimplemented.
+        let gap_before = |f: Span| -> Option<&str> {
+            match prev_end {
+                Some(p) if p.document == f.document && p.end <= f.start => texts.get(f.document.0).and_then(|t| t.get(p.end..f.start)),
+                Some(_) => None,
+                None => texts.get(f.document.0).and_then(|t| t.get(..f.start)),
+            }
+        };
+        let is_heading = matches!(block, CBlock::Heading { .. });
+        let mut addvspace_before = 0.0;
+        if prev_list && !is_heading {
+            if let Some(gap) = first.and_then(gap_before) {
+                if let Some(env) = gap_has_list_end(gap) {
+                    let src = texts.get(prev_end.map_or(0, |p| p.document.0)).copied().unwrap_or("");
+                    let seps = list_seps(src, env, 1, size, style);
+                    addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                }
+            }
         }
+        let mut list = None;
+        if let CBlock::ListItem { level, label, .. } = block {
+            let anchor = label.as_ref().map(|(_, span)| *span).or(first);
+            if let Some(at) = anchor {
+                let src = texts.get(at.document.0).copied().unwrap_or("");
+                let stack = list_stack_at(src, at.start);
+                let env = stack.last().map_or("enumerate", |(env, _)| env);
+                let seps = list_seps(src, env, stack.len().max(1), size, style);
+                if label.is_some() {
+                    let opens = gap_before(at).and_then(|g| rfind_command(g, "begin").map(|b| (g, b)));
+                    match opens {
+                        Some((g, b)) if list_env_after_begin(&g[b..]) => {
+                            let before = &g[..b];
+                            list_vmode = prev_vmode || prev_end.is_none() || has_blank_line(before) || find_command(before, "par").is_some();
+                            addvspace_before += style.parskip.natural - seps.parsep;
+                            if !prev_vmode {
+                                addvspace_before += seps.topsep + if list_vmode { seps.partopsep } else { 0.0 };
+                            }
+                        }
+                        _ => addvspace_before += seps.itemsep,
+                    }
+                }
+                list = Some(ListGeom {
+                    level: *level,
+                    margins: list_margins(src, at.start, size),
+                    label: label.clone(),
+                });
+            }
+        }
+        prev_list = list.is_some();
         let limitations = std::mem::take(&mut pending_limitations);
         let styled = match block {
             CBlock::Styled { style, .. } => Some(ParaStyle::of(*style)),
@@ -706,6 +756,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
                     },
                     eject_before: eject,
                     vspace_before,
+                    addvspace_before,
                     limitations,
                 });
             }
@@ -728,6 +779,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
                             },
                             eject_before: eject,
                             vspace_before: std::mem::take(&mut vspace_before),
+                            addvspace_before: std::mem::take(&mut addvspace_before),
                             limitations: std::mem::take(&mut limitations),
                         });
                         eject = true;
@@ -745,6 +797,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], entry: usize, parsed: &'p Parsed, si
                     },
                     eject_before: eject,
                     vspace_before,
+                    addvspace_before,
                     limitations,
                 });
             }
@@ -934,36 +987,67 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
     })
 }
 
-/// `\setlist` `itemsep`/`topsep` values of the source: each as the
-/// compiler evaluates it (`em`/`ex` at its fixed 12pt body) paired with
-/// the same value at the class's `\normalsize`.
-#[derive(Debug, Default)]
-struct SetlistGaps {
-    pairs: Vec<(f64, f64)>,
+/// The vertical glue of one list level, in points at the class size:
+/// article's `\@list<i>` values (`document-style`), with the source's
+/// `\setlist[<env>]{topsep=..,itemsep=..,parsep=..,partopsep=..}`
+/// overrides for `env` (enumitem evaluates `em`/`ex` in `\normalsize`).
+#[derive(Debug, Clone, Copy)]
+struct ListSeps {
+    topsep: f64,
+    partopsep: f64,
+    itemsep: f64,
+    parsep: f64,
 }
 
-impl SetlistGaps {
-    /// `pt` as the compiler reported it, re-read at the class size when it
-    /// is one of the source's `\setlist` values; unchanged otherwise.
-    fn at_class_size(&self, pt: f64) -> f64 {
-        self.pairs.iter().find(|(compiler, _)| (compiler - pt).abs() < 1e-6).map_or(pt, |(_, class)| *class)
+fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Stylesheet) -> ListSeps {
+    let base = match size {
+        12 => flashtex_document_style::BaseSize::Pt12,
+        11 => flashtex_document_style::BaseSize::Pt11,
+        _ => flashtex_document_style::BaseSize::Pt10,
+    };
+    let class = flashtex_document_style::list_level(base, depth as u8);
+    let mut seps = ListSeps {
+        topsep: class.topsep.pt,
+        partopsep: class.partopsep.pt,
+        itemsep: class.itemsep.pt,
+        parsep: class.parsep.pt,
+    };
+    if depth == 1 {
+        // The stylesheet's level-1 values are the ones `paragraph_block`
+        // adds as the item's `\parskip`; keep both readings identical.
+        seps.topsep = style.topsep.natural;
+        seps.partopsep = style.partopsep.natural;
+        seps.parsep = style.parsep.natural;
     }
-}
-
-/// Every `\setlist[...]{...}` of `source`: the `(compiler 12pt, class
-/// size)` evaluation of each `itemsep`/`topsep` key.
-fn setlist_gaps(source: &str, size: u32) -> SetlistGaps {
-    let mut gaps = SetlistGaps::default();
-    for (_, keys) in setlist_calls(source) {
+    for (envs, keys) in setlist_calls(source) {
+        if !setlist_names(envs, env) {
+            continue;
+        }
         for (key, value) in list_keys(keys) {
-            if matches!(key, "itemsep" | "topsep") {
-                if let (Some(c), Some(k)) = (parse_dimen(value, 12), parse_dimen(value, size)) {
-                    gaps.pairs.push((c, k));
-                }
+            let Some(pt) = parse_dimen(value, size) else { continue };
+            match key {
+                "topsep" => seps.topsep = pt,
+                "partopsep" => seps.partopsep = pt,
+                "itemsep" => seps.itemsep = pt,
+                "parsep" => seps.parsep = pt,
+                _ => {}
             }
         }
     }
-    gaps
+    seps
+}
+
+/// Whether `rest` (starting at a `\begin`) opens `itemize`/`enumerate`.
+fn list_env_after_begin(rest: &str) -> bool {
+    let after = rest.strip_prefix("\\begin").unwrap_or(rest).trim_start();
+    after.starts_with("{itemize}") || after.starts_with("{enumerate}")
+}
+
+/// The environment of the last `\end{itemize}`/`\end{enumerate}` in `gap`.
+fn gap_has_list_end(gap: &str) -> Option<&'static str> {
+    let end = rfind_command(gap, "end")?;
+    let rest = gap[end + "\\end".len()..].trim_start();
+    ["itemize", "enumerate"].into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(&format!("{env}}}"))))
 }
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
