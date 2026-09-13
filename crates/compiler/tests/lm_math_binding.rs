@@ -247,6 +247,67 @@ fn amssymb_symbols_are_emitted_with_the_latin_modern_math_hint() {
     );
 }
 
+/// Issue #62 HW2 follow-up: long arrows, `\triangle`/`\bigtriangleup`/
+/// `\bigtriangledown`, `\bot`, and the `\mathbin`-family class overrides all
+/// draw from the pinned Latin Modern Math resource with no diagnostic loss.
+#[test]
+fn hw2_math_follow_up_commands_render_with_no_diagnostics() {
+    let reply = compile(
+        r"$A \Longleftrightarrow B$ $A \longrightarrow B$ $A \longleftarrow B$
+          $A \Longleftarrow B$ $A \longleftrightarrow B$
+          $A \iff B$ $A \implies B$ $A \impliedby B$
+          $\triangle$ $A \bigtriangleup B$ $A \bigtriangledown B$
+          $a \bot b$ $A \mathbin{\triangle} B$ $a \mathrel{+} b$
+",
+    );
+    let items = items(&reply);
+    for glyph in ["⟺", "⟶", "⟵", "⟸", "⟷", "△", "▽"] {
+        let (_, family) = items
+            .iter()
+            .find(|(text, _)| text == glyph)
+            .unwrap_or_else(|| panic!("{glyph} not emitted: {items:?}"));
+        assert_eq!(family, lm_math::FAMILY, "{glyph}");
+    }
+    // `\bot` renders base-14 Symbol's `⊥`, same as `\perp`, not Latin Modern
+    // Math, so it is checked separately for presence rather than family.
+    assert!(items.iter().any(|(text, _)| text == "⊥"), "{items:?}");
+
+    let messages = messages(&reply);
+    for command in [
+        "Longleftrightarrow",
+        "longrightarrow",
+        "longleftarrow",
+        "Longleftarrow",
+        "longleftrightarrow",
+        "iff",
+        "implies",
+        "impliedby",
+        "triangle",
+        "bigtriangleup",
+        "bigtriangledown",
+        "bot",
+        "mathbin",
+        "mathrel",
+    ] {
+        assert!(
+            !messages
+                .iter()
+                .any(|m| m.contains(&format!("\\{command} is not supported"))),
+            "{messages:#?}"
+        );
+    }
+    assert!(
+        !messages.iter().any(|m| m.contains("has no glyph")),
+        "{messages:#?}"
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.contains("will not survive PDF export")),
+        "{messages:#?}"
+    );
+}
+
 #[test]
 fn mathbb_rejects_what_amsfonts_does_not_provide() {
     let reply = compile("$\\mathbb{1}$ $\\mathbb{x}$\n");
