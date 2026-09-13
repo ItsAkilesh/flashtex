@@ -242,6 +242,44 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["mathcal"],
+        "{A-Z}",
+        "calligraphic capitals from New Computer Modern Math; other arguments are diagnosed",
+        true,
+    ),
+    (
+        &["iff", "implies", "impliedby"],
+        "",
+        "long double arrow between thick (5mu) spaces",
+        true,
+    ),
+    (
+        &["bot", "bigtriangleup"],
+        "",
+        "shared symbol glyph with its own atom class (Ord / Bin)",
+        true,
+    ),
+    (
+        &["varnothing"],
+        "",
+        "empty set at amssymb msbm width",
+        true,
+    ),
+    (
+        &[
+            "mathbin",
+            "mathrel",
+            "mathord",
+            "mathop",
+            "mathopen",
+            "mathclose",
+            "mathpunct",
+        ],
+        "{math}",
+        "argument boxed as one atom of the forced class",
+        true,
+    ),
+    (
         &["mathbf", "textbf"],
         "{text}",
         "literal text in Times-Bold",
@@ -499,6 +537,11 @@ pub fn inventory() -> Inventory {
         }
     }
     for &(name, glyph) in math::COMMAND_GLYPHS {
+        // A `command_atom` arm that shadows the glyph row (`\varnothing`'s
+        // msbm width) is already listed as a structure.
+        if MATH_STRUCTURES.iter().any(|(names, ..)| names.contains(&name)) {
+            continue;
+        }
         commands.push(Command {
             name,
             mode: Mode::Math,
