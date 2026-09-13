@@ -309,6 +309,36 @@ pub fn hash_items(items: &[Item], base: usize, h: &mut DefaultHasher) {
                 16u8.hash(h);
                 format!("{b:?}").hash(h);
             }
+            Item::Glue { pt, plus, minus, spaces, style } => {
+                19u8.hash(h);
+                for v in [pt, plus, minus, spaces] {
+                    v.to_bits().hash(h);
+                }
+                style.bold.hash(h);
+                style.italic.hash(h);
+            }
+            Item::Rigid { pt, quads, spaces, xheights, style } => {
+                20u8.hash(h);
+                for v in [pt, quads, spaces, xheights] {
+                    v.to_bits().hash(h);
+                }
+                style.bold.hash(h);
+                style.italic.hash(h);
+            }
+            Item::Penalty { value } => {
+                21u8.hash(h);
+                value.hash(h);
+            }
+            Item::EmptyBox { span } => {
+                22u8.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+            }
+            Item::Qed { style, span } => {
+                23u8.hash(h);
+                style.bold.hash(h);
+                style.italic.hash(h);
+                (span.start.wrapping_sub(base)).hash(h);
+            }
         }
     }
 }

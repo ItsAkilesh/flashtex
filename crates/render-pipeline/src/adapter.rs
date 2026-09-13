@@ -206,6 +206,20 @@ pub enum Item {
     HSs,
     /// `\colorbox`/`\fcolorbox` (compiler `Inline::ColorBox`).
     ColorBox(Box<ColorBoxItem>),
+    /// Explicit `\hskip`: `pt plus plus minus minus` plus `spaces`
+    /// interword spaces (`\fontdimen2`) of `style` (amsthm's
+    /// `\thm@headsep`). A legal break point.
+    Glue { pt: f64, plus: f64, minus: f64, spaces: f64, style: TextStyle },
+    /// Rigid width: `pt` plus `quads` quads, `spaces` spaces and `xheights`
+    /// x-heights of `style` (a kern, or glue inside a box set at its natural
+    /// width: the kernel theorem label, `\quad` after `\hfill`).
+    Rigid { pt: f64, quads: f64, spaces: f64, xheights: f64, style: TextStyle },
+    /// `\penalty<value>`.
+    Penalty { value: i32 },
+    /// `\hbox{}`.
+    EmptyBox { span: Span },
+    /// amsthm's `\openbox` end-of-proof symbol in `style`'s quad.
+    Qed { style: TextStyle, span: Span },
 }
 
 /// A box command's content as pipeline items.
@@ -317,6 +331,10 @@ pub enum ParaPart {
         span: Span,
         number: Option<(String, Span)>,
         bracket: bool,
+        /// amsthm `\qedhere` inside the display (compiler `QedMark` with
+        /// `QedPlacement::Display`): the `\qedhere` command's span. amsmath's
+        /// `\displaymath@qed` sets the end-of-proof box as `\eqno`.
+        qed: Option<Span>,
     },
 }
 
@@ -377,6 +395,10 @@ pub enum Block {
         /// its excess over the previous block's trailing skip (a display's
         /// `\belowdisplayskip`) is added.
         addvspace_before: f64,
+        /// Stretch and shrink of the `\addvspace` glue above when it wins
+        /// (a theorem-like environment's `\thm@preskip`/`\@topsepadd`),
+        /// net of the `\addvspace{-\parskip}` that follows it.
+        addvspace_flex: (f64, f64),
         /// `\endtrivlist` of the list(s) closed between the previous block
         /// and this one: when the previous block left a positive trailing
         /// skip (a display's `\belowdisplayskip`), each closing list
@@ -1059,7 +1081,7 @@ pub fn adapt_cached(
     // Last source span of the previous paragraph block (None after a
     // heading or rule), for rejoining a display with its paragraph.
     let mut prev_para_end: Option<Span> = None;
-    for unit in split_at_page_breaks(texts, &lowered, size, &style) {
+    for unit in split_at_page_breaks(texts, &lowered, size, &style, &parsed.theorems) {
         let mut eject_before = unit.eject_before;
         let vspace_before = unit.vspace_before;
         limitations.extend(unit.limitations);
@@ -1427,11 +1449,12 @@ pub fn adapt_cached(
                 after_env,
                 list,
                 shape,
+                theorem_head,
             } => {
                 for inline in inlines {
                     unsupported_inlines(inline, &mut limitations);
                 }
-                let mut items = items_for(inlines, false);
+                let mut items = theorem_items(items_for(inlines, false), inlines.iter().map(inline_span).next(), theorem_head, &parsed.theorems, &parsed.qed_marks, &style);
                 items.splice(0..0, toc_pending.drain(..).map(|key| Item::Label { key }));
                 let mut parts = Vec::new();
                 let mut current = Vec::new();
@@ -1491,11 +1514,17 @@ pub fn adapt_cached(
                                     .map(|(n, s)| (format!("({n})"), s)),
                             };
                             let bracket = !amsmath && (rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}"));
+                            let qed = parsed
+                                .qed_marks
+                                .iter()
+                                .find(|m| m.placement == flashtex_compiler::theorems::QedPlacement::Display && m.span.document == span.document && span.start <= m.span.start && m.span.end <= span.end)
+                                .map(|m| m.span);
                             parts.push(ParaPart::Display {
                                 list,
                                 span,
                                 number,
                                 bracket,
+                                qed,
                             });
                         }
                         other => current.push(other),
@@ -1537,7 +1566,8 @@ pub fn adapt_cached(
                         && styled.unwrap_or_default() == *prev_style
                         && same_list
                         && !caption
-                        && env_open.is_none();
+                        && env_open.is_none()
+                        && !theorem_head;
                     if same_flow && (starts_display || prev_ends_display) && gap_continues(texts, p, f) {
                         if only_labels {
                             // A `\label` outside the display, still in the
@@ -1576,7 +1606,7 @@ pub fn adapt_cached(
                 prev_para_end = inlines.iter().map(inline_span).last();
                 // `\noindent` right before the paragraph's first material.
                 let noindent = noindent_at.take().is_some_and(|end| {
-                    first_span.is_some_and(|f| f.document == entry_doc && source.get(end..f.start).is_some_and(|gap| gap.trim().is_empty()))
+                    first_span.is_some_and(|f| f.document == entry_doc && source.get(end..f.start).is_some_and(noindent_gap))
                 });
                 // `\centering` sets `\parindent 0pt`; a list item's first
                 // paragraph carries no indent and `\list` sets
@@ -1584,13 +1614,14 @@ pub fn adapt_cached(
                 // ones after it, `quote` likewise.
                 blocks.push(Block::Paragraph {
                     parts,
-                    indent: styled == Some(ParaStyle::Quotation) || shape.as_ref().is_some_and(|s| s.parindent_pt != 0.0) || (!after_heading && !caption && styled.is_none() && !after_env && list.is_none() && !noindent),
+                    indent: styled == Some(ParaStyle::Quotation) || shape.as_ref().is_some_and(|s| s.parindent_pt != 0.0) || (!after_heading && !caption && styled.is_none() && !after_env && list.is_none() && !noindent && !theorem_head),
                     style: styled.unwrap_or_default(),
                     env_open,
                     env_close: false,
                     eject_before,
                     vspace_before,
                     addvspace_before: unit.addvspace_before,
+                    addvspace_flex: unit.addvspace_flex,
                     endlist_adjust: unit.endlist_adjust,
                     list,
                     shape,
@@ -1864,6 +1895,8 @@ struct Unit<'p> {
     vspace_before: f64,
     /// `\addvspace` glue before this unit (list skips; paragraphs only).
     addvspace_before: f64,
+    /// See [`Block::Paragraph::addvspace_flex`].
+    addvspace_flex: (f64, f64),
     /// See [`Block::Paragraph::endlist_adjust`].
     endlist_adjust: f64,
     /// Constructs before this unit the pipeline set approximately.
@@ -1892,6 +1925,9 @@ enum UnitKind<'p> {
         list: Option<ListGeom>,
         /// See [`EnvShape`].
         shape: Option<EnvShape>,
+        /// The paragraph opens a theorem-like environment: its head is
+        /// built from the compiler's record and it is not indented.
+        theorem_head: bool,
     },
     Rule {
         span: Span,
@@ -1915,8 +1951,11 @@ fn gap_has_page_break(texts: &[&str], prev: Span, next: Span) -> bool {
     PAGE_BREAKS.iter().any(|c| find_command(gap, c).is_some())
 }
 
-fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, style: &Stylesheet) -> Vec<Unit<'p>> {
+fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, style: &Stylesheet, theorems: &[flashtex_compiler::theorems::TheoremRecord]) -> Vec<Unit<'p>> {
     let mut units = Vec::new();
+    // Whether each theorem-like environment's `\begin` was read in vertical
+    // mode (a kernel `\trivlist` then adds `\partopsep` before and after).
+    let mut theorem_vmode = vec![false; theorems.len()];
     let mut prev_end: Option<Span> = None;
     // Carried from the compiler's own `PageBreak`/`VSpace`/`Rule` blocks
     // to the next unit that holds material.
@@ -1955,6 +1994,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     eject_before: eject,
                     vspace_before: std::mem::take(&mut pending_vspace),
                     addvspace_before: 0.0,
+                    addvspace_flex: (0.0, 0.0),
                     endlist_adjust: 0.0,
                     limitations: std::mem::take(&mut pending_limitations),
                 });
@@ -2019,6 +2059,10 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
         };
         let is_heading = matches!(block, CBlock::Heading { .. });
         let mut addvspace_before = 0.0;
+        // Stretch and shrink of `addvspace_before` when a theorem-like
+        // environment's skip decided it (zero for the list skips, which are
+        // natural-only).
+        let mut addvspace_flex = (0.0f64, 0.0f64);
         let mut endlist_adjust = 0.0;
         // `\@endparenv` of every list closed in the gap: `\addvspace` of its
         // own level's `\@topsepadd` (successive `\addvspace`s keep the
@@ -2110,6 +2154,68 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                 });
             }
         }
+        // Theorem-like environments (compiler `Parsed::theorems`): the head
+        // paragraph's `\addvspace\@topsep \addvspace{-\parskip}` (right
+        // after a heading, `\@nbitem` adds nothing), and `\@endparenv`'s
+        // `\addvspace\@topsepadd` before the material after `\end`, which a
+        // following heading's larger skip absorbs. A kernel theorem leaves
+        // `\@endpetrue` (latex.ltx `\endtrivlist`); amsthm clears it.
+        let mut theorem_head = false;
+        let mut theorem_endpe = false;
+        if !is_heading {
+            if let Some(f) = first {
+                let mut post = (0.0f64, 0.0f64, 0.0f64);
+                // An environment closed in the gap left TeX in vertical mode.
+                let mut closed = false;
+                if let Some(p) = prev_end {
+                    for (k, r) in theorems.iter().enumerate() {
+                        let Some(e) = r.end else { continue };
+                        if e.document == f.document && p.document == f.document && p.start <= e.start && e.end <= f.start {
+                            closed = true;
+                            let skip = theorem_skip(r, false, theorem_vmode[k], style);
+                            if skip.0 > post.0 {
+                                post = skip;
+                            }
+                            if r.kind == flashtex_compiler::theorems::TheoremKind::Kernel {
+                                let rest = texts.get(f.document.0).and_then(|t| t.get(e.end..f.start)).unwrap_or("");
+                                let rest = rest.split_once('}').map_or("", |(_, rest)| rest);
+                                theorem_endpe = !has_blank_line(rest) && find_command(rest, "par").is_none();
+                            }
+                        }
+                    }
+                }
+                if let Some(k) = theorem_head_of(theorems, f) {
+                    let r = &theorems[k];
+                    theorem_head = true;
+                    theorem_endpe = false;
+                    let gap = match prev_end {
+                        Some(p) if p.document == r.begin.document && p.end <= r.begin.start => texts.get(r.begin.document.0).and_then(|t| t.get(p.end..r.begin.start)).unwrap_or(""),
+                        _ => "",
+                    };
+                    let vmode = prev_vmode || closed || prev_end.is_none() || has_blank_line(gap) || find_command(gap, "par").is_some() || gap_has_list_end(gap).is_some();
+                    theorem_vmode[k] = vmode;
+                    if !prev_vmode {
+                        // `\@xaddvskip` replaces the skip already there only
+                        // when the new one is strictly larger: after a
+                        // `\end{theorem}` a proof's equal `\@topsep` keeps
+                        // the theorem's `\topsep` (and its shrink).
+                        let pre = theorem_skip(r, true, vmode, style);
+                        let skip = if pre.0 > post.0 { pre } else { post };
+                        if skip.0 > addvspace_before {
+                            addvspace_before = skip.0;
+                            addvspace_flex = (skip.1, skip.2);
+                        }
+                        // `\addvspace{-\parskip}` takes the paragraph's own
+                        // `\parskip` back out, stretch and shrink included.
+                        vspace_before -= style.parskip.natural;
+                        addvspace_flex = (addvspace_flex.0 - style.parskip.stretch, addvspace_flex.1 - style.parskip.shrink);
+                    }
+                } else if post.0 > addvspace_before {
+                    addvspace_before = post.0;
+                    addvspace_flex = (post.1, post.2);
+                }
+            }
+        }
         let was_list = prev_list;
         prev_list = list.is_some();
         let limitations = std::mem::take(&mut pending_limitations);
@@ -2157,6 +2263,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                         })
                     })
             });
+        let after_env = after_env || theorem_endpe;
         prev_styled = styled.is_some();
         prev_vmode = matches!(block, CBlock::Heading { .. });
         match block {
@@ -2176,6 +2283,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                     eject_before: eject,
                     vspace_before,
                     addvspace_before,
+                    addvspace_flex: (0.0, 0.0),
                     endlist_adjust: 0.0,
                     limitations,
                 });
@@ -2215,6 +2323,7 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                                 eject_before: eject,
                                 vspace_before: std::mem::take(&mut vspace_before),
                                 addvspace_before: std::mem::take(&mut addvspace_before),
+                        addvspace_flex: std::mem::take(&mut addvspace_flex),
                                 endlist_adjust: std::mem::take(&mut endlist_adjust),
                                 limitations: std::mem::take(&mut limitations),
                             });
@@ -2235,10 +2344,12 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                                     after_env,
                                     list: list.clone(),
                                     shape: shape.clone(),
+                                    theorem_head: std::mem::take(&mut theorem_head),
                                 },
                                 eject_before: eject,
                                 vspace_before: std::mem::take(&mut vspace_before),
                                 addvspace_before: std::mem::take(&mut addvspace_before),
+                        addvspace_flex: std::mem::take(&mut addvspace_flex),
                                 endlist_adjust: std::mem::take(&mut endlist_adjust),
                                 limitations: std::mem::take(&mut limitations),
                             });
@@ -2255,10 +2366,12 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
                             after_env,
                             list: list.clone(),
                             shape: shape.clone(),
+                            theorem_head: std::mem::take(&mut theorem_head),
                         },
                         eject_before: eject,
                         vspace_before: std::mem::take(&mut vspace_before),
                         addvspace_before: std::mem::take(&mut addvspace_before),
+                        addvspace_flex: std::mem::take(&mut addvspace_flex),
                         endlist_adjust: std::mem::take(&mut endlist_adjust),
                         limitations: std::mem::take(&mut limitations),
                     });
@@ -2273,6 +2386,258 @@ fn split_at_page_breaks<'p>(texts: &[&str], blocks: &'p [CBlock], size: u32, sty
         }
     }
     units
+}
+
+/// The innermost theorem-like environment (compiler `Parsed::theorems`)
+/// whose `\begin{env}[note]` holds `at`: the compiler's head inlines carry
+/// spans inside it.
+fn theorem_head_of(theorems: &[flashtex_compiler::theorems::TheoremRecord], at: Span) -> Option<usize> {
+    theorems.iter().rposition(|r| r.begin.document == at.document && r.begin.start <= at.start && at.end <= r.begin.end)
+}
+
+/// The innermost theorem-like environment whose body (after `\begin`,
+/// before `\end`) holds byte `at`.
+fn theorem_body_of(theorems: &[flashtex_compiler::theorems::TheoremRecord], document: DocumentId, at: usize) -> Option<&flashtex_compiler::theorems::TheoremRecord> {
+    theorems.iter().rev().find(|r| r.begin.document == document && r.begin.end <= at && r.end.is_none_or(|e| at < e.start))
+}
+
+/// The vertical glue a theorem-like environment adds, in points. Before
+/// (`\@item`'s `\addvspace\@topsep` net of `\addvspace{-\parskip}` and the
+/// paragraph's own `\parskip`): amsthm's `\thm@preskip` (amsthm.sty 140);
+/// the kernel's `\@topsep`, which `\@trivlist` makes `\topsep` + `\parskip`,
+/// plus `\partopsep` from vertical mode; `proof` sets `\topsep 6pt plus
+/// 6pt` after its `\par` (amsthm.sty 431-434). After (`\@endparenv`'s
+/// `\addvspace\@topsepadd`): `\thm@postskip`, or `\topsep` plus
+/// `\partopsep` from vertical mode.
+fn theorem_skip(r: &flashtex_compiler::theorems::TheoremRecord, before: bool, vmode: bool, style: &Stylesheet) -> (f64, f64, f64) {
+    use flashtex_compiler::theorems::{TheoremKind, ThmSkip};
+    let t = style.topsep;
+    let mut skip = match if before { r.preskip } else { r.postskip } {
+        ThmSkip::Topsep { scale } => (t.natural * scale, t.stretch * scale, t.shrink * scale),
+        ThmSkip::Glue { pt, plus, minus } => (pt, plus, minus),
+    };
+    let mut add = |s: crate::style::Skip| skip = (skip.0 + s.natural, skip.1 + s.stretch, skip.2 + s.shrink);
+    match r.kind {
+        TheoremKind::Amsthm => {}
+        TheoremKind::Kernel | TheoremKind::Proof => {
+            if before {
+                add(style.parskip);
+            }
+            if vmode || r.kind == TheoremKind::Proof {
+                add(style.partopsep);
+            }
+        }
+    }
+    skip
+}
+
+fn theorem_text_style(s: flashtex_compiler::parser::TextStyle) -> TextStyle {
+    TextStyle { bold: s.bold, italic: s.italic, ..TextStyle::default() }
+}
+
+/// A theorem-like environment's head as items. Kernel and `proof`
+/// (latex.ltx `\@item` with `\labelwidth` 0): the label box `{\bfseries
+/// Name Number (Note)}` at its natural width, `\hskip\labelsep` inside it,
+/// then `\penalty\z@`. amsthm (`\deferred@thm@head`, unboxed into the
+/// paragraph by `\dth@everypar`): `\thm@indent`, `Name Number` (`Number~Name`
+/// swapped), ` (Note)` in `\thm@notefont`, `\thm@headpunct`, then
+/// `\hskip\thm@headsep` (or `\newline`).
+fn theorem_head_items(r: &flashtex_compiler::theorems::TheoremRecord, style: &Stylesheet) -> Vec<Item> {
+    use flashtex_compiler::theorems::{Dimen, HeadSpace};
+    let head = theorem_text_style(r.head_font);
+    let note = theorem_text_style(r.note_font);
+    let rigid = r.head_space == HeadSpace::LabelSep;
+    let begin = r.begin;
+    let mut items: Vec<Item> = Vec::new();
+    let space = |items: &mut Vec<Item>, style: TextStyle, no_break: bool| {
+        items.push(if rigid {
+            Item::Rigid { pt: 0.0, quads: 0.0, spaces: 1.0, xheights: 0.0, style }
+        } else {
+            Item::Space { style, factor: 1000, no_break }
+        });
+    };
+    let words = |items: &mut Vec<Item>, text: &str, style: TextStyle| {
+        for (i, word) in text.split(' ').filter(|w| !w.is_empty()).enumerate() {
+            if i > 0 {
+                space(items, style, false);
+            }
+            let chars = word.chars().map(|_| CharSrc { document: begin.document, start: begin.start, end: begin.end }).collect();
+            push_segment(items, word.to_string(), chars, style);
+        }
+    };
+    if let Some(indent) = r.indent {
+        let (pt, quads, xheights) = match indent {
+            Dimen::Pt(pt) => (pt, 0.0, 0.0),
+            Dimen::Em(em) => (0.0, em, 0.0),
+            Dimen::Ex(ex) => (0.0, 0.0, ex),
+        };
+        items.push(Item::Rigid { pt, quads, spaces: 0.0, xheights, style: head });
+    }
+    let name = r.name.as_str();
+    match (&r.number, r.swap) {
+        (Some(number), true) => {
+            words(&mut items, number, head);
+            if !name.is_empty() {
+                space(&mut items, head, true);
+                words(&mut items, name, head);
+            }
+        }
+        (Some(number), false) if rigid => {
+            if !name.is_empty() {
+                words(&mut items, name, head);
+                space(&mut items, head, false);
+            }
+            words(&mut items, number, head);
+        }
+        // amsthm `\thmhead@plain`: `\thmname{#1}\thmnumber{ \@upn{#2}}`. The
+        // number is `\textup`, whose `\check@icl` (`\maybe@ic` after
+        // `\upshape`, latex.ltx `\sw@slant`) takes the space off, adds the
+        // name's italic correction and puts the space back.
+        (Some(number), false) => {
+            if !name.is_empty() {
+                words(&mut items, name, head);
+                items.push(Item::ItalicCorrection);
+                space(&mut items, head, false);
+            }
+            words(&mut items, number, TextStyle { italic: false, slanted: false, ..head });
+        }
+        (None, _) => words(&mut items, name, head),
+    }
+    if let Some(text) = &r.note {
+        space(&mut items, head, false);
+        words(&mut items, &format!("({text})"), note);
+    }
+    if !r.head_punct.is_empty() {
+        let chars = r.head_punct.chars().map(|_| CharSrc { document: begin.document, start: begin.start, end: begin.end }).collect();
+        push_segment(&mut items, r.head_punct.clone(), chars, head);
+    }
+    match r.head_space {
+        HeadSpace::LabelSep => {
+            items.push(Item::Rigid { pt: style.labelsep_pt, quads: 0.0, spaces: 0.0, xheights: 0.0, style: head });
+            items.push(Item::Penalty { value: 0 });
+        }
+        HeadSpace::Glue { pt, plus, minus } => items.push(Item::Glue { pt, plus, minus, spaces: 0.0, style: head }),
+        HeadSpace::Space => items.push(Item::Glue { pt: 0.0, plus: 0.0, minus: 0.0, spaces: 1.0, style: head }),
+        HeadSpace::Newline => items.push(Item::LineBreak { skip_pt: 0.0 }),
+    }
+    items
+}
+
+/// Theorem-like environments in one paragraph's items: the body font
+/// (`\normalfont` then the style's body font) on every word inside a body
+/// and on the spaces after it; the head built from the compiler's record in
+/// place of its head inlines when the paragraph opens the environment
+/// (`head`); and amsthm's `\qed` (`\unskip\penalty9999 \hbox{}\nobreak
+/// \hfill\quad\hbox{\qedsymbol}`, amsthm.sty 273-279) in place of the
+/// compiler's `\hfill ∎` at each end-of-proof mark.
+fn theorem_items(
+    mut items: Vec<Item>,
+    first: Option<Span>,
+    head: bool,
+    theorems: &[flashtex_compiler::theorems::TheoremRecord],
+    qeds: &[flashtex_compiler::theorems::QedMark],
+    style: &Stylesheet,
+) -> Vec<Item> {
+    use flashtex_compiler::theorems::{QedPlacement, QedSymbol};
+    if theorems.is_empty() && qeds.is_empty() {
+        return items;
+    }
+    let mut font: Option<flashtex_compiler::parser::TextStyle> = None;
+    for item in &mut items {
+        match item {
+            Item::Word(w) => {
+                font = w.segments.first().and_then(|s| s.chars.first()).and_then(|c| theorem_body_of(theorems, c.document, c.start)).map(|r| r.body_font);
+                if let Some(f) = font {
+                    for seg in &mut w.segments {
+                        seg.style.bold |= f.bold;
+                        seg.style.italic |= f.italic;
+                    }
+                }
+            }
+            Item::Space { style: s, .. } => {
+                if let Some(f) = font {
+                    s.bold |= f.bold;
+                    s.italic |= f.italic;
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(r) = first.filter(|_| head).and_then(|f| theorem_head_of(theorems, f)).map(|k| &theorems[k]) {
+        let inside = |c: &CharSrc| c.document == r.begin.document && r.begin.start <= c.start && c.end <= r.begin.end;
+        let mut cut = 0;
+        let mut labels = Vec::new();
+        while cut < items.len() {
+            match &items[cut] {
+                Item::Word(w) if w.segments.iter().all(|s| s.chars.iter().all(inside)) => {}
+                Item::Space { .. } => {}
+                // A `\label` right after `\begin{env}` is no material.
+                Item::Label { .. } => labels.push(items[cut].clone()),
+                _ => break,
+            }
+            cut += 1;
+        }
+        let mut built = theorem_head_items(r, style);
+        built.extend(labels);
+        built.extend(items.drain(cut..));
+        items = built;
+    }
+    for mark in qeds.iter().filter(|m| m.placement != QedPlacement::Display) {
+        let at_mark = |c: &CharSrc| c.document == mark.span.document && c.start == mark.span.start;
+        let Some(at) = items.iter().position(|i| matches!(i, Item::Word(w) if w.text() == "∎" && w.segments.first().and_then(|s| s.chars.first()).is_some_and(at_mark))) else {
+            continue;
+        };
+        if at == 0 || !matches!(items[at - 1], Item::HFill { .. }) {
+            continue;
+        }
+        let mut from = at - 1;
+        while from > 0 && matches!(items[from - 1], Item::Space { .. }) {
+            from -= 1;
+        }
+        let font = theorem_body_of(theorems, mark.span.document, mark.span.start).map_or_else(TextStyle::default, |r| theorem_text_style(r.body_font));
+        let mut construction = vec![
+            Item::Penalty { value: 9999 },
+            Item::EmptyBox { span: mark.span },
+            Item::Penalty { value: 10000 },
+            Item::HFill { fill: true },
+            Item::Rigid { pt: 0.0, quads: 1.0, spaces: 0.0, xheights: 0.0, style: font },
+        ];
+        construction.push(match mark.symbol {
+            QedSymbol::OpenBox => Item::Qed { style: font, span: mark.span },
+            QedSymbol::Custom => items[at].clone(),
+        });
+        items.splice(from..=at, construction);
+    }
+    items
+}
+
+/// Whether only whitespace and the openings of font commands (`\textit{`,
+/// `{\bfseries`, ...) stand between `\noindent` and a paragraph's first
+/// text: TeX is still in vertical mode there, so `\noindent` starts that
+/// paragraph.
+fn noindent_gap(gap: &str) -> bool {
+    const FONT: &[&str] = &[
+        "textit", "textbf", "textsl", "textsc", "textsf", "texttt", "textrm", "textup", "textmd", "textnormal", "emph", "itshape", "bfseries",
+        "slshape", "scshape", "sffamily", "ttfamily", "rmfamily", "upshape", "mdseries", "normalfont", "em", "bf", "it", "sl", "sc", "sf", "tt", "rm",
+    ];
+    let mut rest = gap.trim_start();
+    loop {
+        if rest.is_empty() {
+            return true;
+        }
+        if let Some(r) = rest.strip_prefix('{') {
+            rest = r.trim_start();
+            continue;
+        }
+        if let Some(r) = rest.strip_prefix('\\') {
+            let n = r.bytes().take_while(u8::is_ascii_alphabetic).count();
+            if n > 0 && FONT.contains(&&r[..n]) {
+                rest = r[n..].trim_start();
+                continue;
+            }
+        }
+        return false;
+    }
 }
 
 fn is_display(inlines: &[Inline], span: Span) -> bool {
@@ -2944,6 +3309,13 @@ fn list_end_adjust(source: &str, gap_start: usize, gap: &str, size: u32, style: 
     adjust
 }
 
+
+/// The environment of the last `\end{<list env>}` in `gap`.
+fn gap_has_list_end(gap: &str) -> Option<&'static str> {
+    let end = rfind_command(gap, "end")?;
+    let rest = gap[end + "\\end".len()..].trim_start();
+    LIST_ENVS.into_iter().find(|env| rest.strip_prefix('{').is_some_and(|r| r.starts_with(env) && r[env.len()..].starts_with('}')))
+}
 
 /// The `\setlist[<envs>]{<keys>}` calls of `source`, in order:
 /// `(environment list or "" for all, keys)`.

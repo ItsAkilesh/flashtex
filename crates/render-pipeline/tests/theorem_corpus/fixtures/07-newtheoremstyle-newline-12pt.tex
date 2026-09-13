@@ -1,0 +1,12 @@
+\documentclass[12pt]{article}
+\usepackage{amsthm}
+\newtheoremstyle{break}{\topsep}{\topsep}{\itshape}{}{\bfseries}{.}{\newline}{}
+\theoremstyle{break}
+\newtheorem{prop}{Proposition}
+\begin{document}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{prop}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{prop}
+Text after the environment, which starts a new paragraph of its own.
+\end{document}

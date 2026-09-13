@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{amsthm}
+\swapnumbers
+\newtheorem{theorem}{Theorem}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\begin{document}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{theorem}[Euclid]
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{theorem}
+\begin{definition}
+Let $n$ be a positive integer and consider the product of all primes up to $n$ plus one; none of the listed primes divides it, which is the classical argument.
+\end{definition}
+\end{document}

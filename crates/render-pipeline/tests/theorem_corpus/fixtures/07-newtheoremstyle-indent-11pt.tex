@@ -1,0 +1,12 @@
+\documentclass[11pt]{article}
+\usepackage{amsthm}
+\newtheoremstyle{indented}{6pt}{6pt}{}{2em}{\itshape}{.}{ }{}
+\theoremstyle{indented}
+\newtheorem{fact}{Fact}
+\begin{document}
+Some text before the environment, long enough to fill a whole line of the page and then continue a little.
+\begin{fact}
+There are infinitely many prime numbers, and this sentence is long enough that it has to wrap onto a second line of the paragraph.
+\end{fact}
+Text after the environment, which starts a new paragraph of its own.
+\end{document}
