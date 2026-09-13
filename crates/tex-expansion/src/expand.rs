@@ -4992,8 +4992,15 @@ fn base_state(tex_only: bool) -> State {
 /// Build the state every document starts from: primitives bound, then the
 /// LaTeX-kernel prelude (`prelude.rs`) executed once.
 fn build_initial_state() -> State {
-    let st = base_state(false);
+    let mut st = base_state(false);
+    // The kernel prelude gets a source id of its own, like a host prelude:
+    // with id 0 its macros' spans would alias bytes of the user's document,
+    // so an incremental edit before byte ~4 KB "shifted" them and a re-run
+    // could never converge with the previous run.
+    let id = st.next_source_id;
+    st.next_source_id += 1;
     let mut engine = Engine::from_parts(Rc::from(PRELUDE), 0, LexState::NewLine, st, Limits::default());
+    engine.sources[0] = Input::Text(Lexer::new(Rc::from(PRELUDE), id));
     let out = engine.run();
     // End-of-line spaces after `}` are the only legitimate output (TeX's
     // vertical mode drops them; we have no modes).
