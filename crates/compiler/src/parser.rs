@@ -549,6 +549,9 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "ref",
     "pageref",
     "eqref",
+    "numberwithin",
+    "counterwithin",
+    "counterwithout",
     "caption",
     "item",
     "includegraphics",
@@ -881,8 +884,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
             .collect(),
         include_stack: vec![entry],
         counters: crate::xref::Counters::article(),
-        equation_counter: 0,
-        figure_counter: 0,
+        subequations: Vec::new(),
         footnote_counter: 0,
         current_counter: None,
         seen_labels: HashMap::new(),
@@ -991,10 +993,12 @@ struct P<'a> {
     documents: &'a [SourceDocument<'a>],
     document_by_path: HashMap<&'a str, usize>,
     include_stack: Vec<usize>,
-    /// Sectioning counters (see `crate::xref`).
+    /// Sectioning, `equation`, `figure` and `table` counters (see
+    /// `crate::xref`).
     counters: crate::xref::Counters,
-    equation_counter: u32,
-    figure_counter: u32,
+    /// The `\theequation` in force outside each open `subequations`
+    /// environment, restored at its `\end` (amsmath's group).
+    subequations: Vec<Vec<crate::xref::Piece>>,
     /// LaTeX's `footnote` counter; article never resets it.
     footnote_counter: u32,
     current_counter: Option<String>,
@@ -1290,6 +1294,11 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // Preamble or body: amsmath's `\numberwithin` and the kernel's
+            // `\counterwithin`/`\counterwithout` (handed to the parser by
+            // `expansion::HOST_PRELUDE`).
+            "numberwithin" => self.counter_numbering(name, span),
+            "counterwithin" | "counterwithout" => self.counter_numbering(name, span),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1434,10 +1443,10 @@ impl P<'_> {
                     para.extend(self.inlines_from_tokens(tokens, style));
                 } else {
                     self.flush_paragraph(blocks, para);
-                    self.figure_counter += 1;
-                    self.current_counter = Some(self.figure_counter.to_string());
+                    let number = self.counters.step("figure").unwrap_or_default();
+                    self.current_counter = Some(number.clone());
                     let mut content = vec![Inline::Text {
-                        text: format!("Figure {}:", self.figure_counter),
+                        text: format!("Figure {number}:"),
                         span,
                         style: TextStyle::default(),
                         space_before: true,
@@ -2354,6 +2363,8 @@ impl P<'_> {
                     spacing,
                     blocks.len(),
                 ));
+            } else if environment == "subequations" && self.in_body {
+                self.begin_subequations();
             } else if self.in_body {
                 self.diags.push(Diagnostic::environment_warning(
                     &environment,
@@ -2400,6 +2411,9 @@ impl P<'_> {
                 Some(span),
                 Some("ignored the stray \\end".into()),
             )),
+        }
+        if environment == "subequations" && self.in_body {
+            self.end_subequations();
         }
         if paragraph_style(&environment).is_some() && self.in_body {
             self.flush_paragraph(blocks, para);
@@ -2733,11 +2747,13 @@ impl P<'_> {
     ) {
         self.flush_paragraph(blocks, para);
         let numbered = name == "equation";
-        if numbered {
-            self.equation_counter += 1;
-            self.current_counter = Some(self.equation_counter.to_string());
-        }
-        let number = self.equation_counter.to_string();
+        let number = if numbered {
+            let number = self.counters.step("equation").unwrap_or_default();
+            self.current_counter = Some(number.clone());
+            number
+        } else {
+            self.counters.the("equation").unwrap_or_default()
+        };
         let mut raw = Vec::new();
         let mut labels = Vec::new();
         let mut end = open.end;
@@ -2988,8 +3004,7 @@ impl P<'_> {
                 .reduce(Span::merge)
                 .unwrap_or(open);
             let number = (numbered && !unnumbered).then(|| {
-                self.equation_counter += 1;
-                let number = self.equation_counter.to_string();
+                let number = self.counters.step("equation").unwrap_or_default();
                 self.current_counter = Some(number.clone());
                 number
             });
@@ -3006,7 +3021,7 @@ impl P<'_> {
                     key,
                     value: number
                         .clone()
-                        .unwrap_or_else(|| self.equation_counter.to_string()),
+                        .unwrap_or_else(|| self.counters.the("equation").unwrap_or_default()),
                     span: label_span,
                 });
             }
@@ -3986,6 +4001,103 @@ impl P<'_> {
             Some(TokenKind::Space | TokenKind::Comment)
         ) {
             self.i += 1;
+        }
+    }
+
+    /// amsmath `\numberwithin[\style]{counter}{parent}` and the LaTeX
+    /// kernel's `\counterwithin(*)`/`\counterwithout(*){counter}{parent}`:
+    /// the counter is reset (or no longer reset) by `parent` and printed as
+    /// `\the<parent>.\<style>{counter}` (see `xref::Counters`). A
+    /// `\newtheorem` counter only follows `section` (the theorem numbering in
+    /// `theorems`); an unknown counter is LaTeX's "No counter defined" error.
+    fn counter_numbering(&mut self, name: &str, span: Span) {
+        use crate::xref::{CounterError, NumberStyle};
+        let starred = name != "numberwithin" && self.take_optional_star();
+        let mut style = NumberStyle::Arabic;
+        if name == "numberwithin" {
+            if let Some((text, style_span)) = self.optional_bracket_argument() {
+                match NumberStyle::from_command(&text) {
+                    Some(parsed) => style = parsed,
+                    None => self.diags.push(Diagnostic::warning(
+                        format!(
+                            "\\numberwithin format '{}' is not \\arabic, \\alph, \\Alph, \\roman or \\Roman",
+                            text.trim()
+                        ),
+                        Some(style_span),
+                        Some("numbered the counter in arabic".into()),
+                    )),
+                }
+            }
+        }
+        let (child_tokens, child_span) = self.required_group(name, span);
+        let (parent_tokens, parent_span) = self.required_group(name, span);
+        let child = token_text(&child_tokens).trim().to_string();
+        let parent = token_text(&parent_tokens).trim().to_string();
+        let whole = span.merge(child_span).merge(parent_span);
+        self.document_global_state = true;
+        if !self.counters.exists(&child) && self.theorems.values().any(|def| def.counter == child) {
+            if parent == "section" {
+                let within = name != "counterwithout";
+                for def in self.theorems.values_mut() {
+                    if def.counter == child {
+                        def.within_section = within;
+                    }
+                }
+            } else {
+                self.diags.push(Diagnostic::warning(
+                    format!("\\{name} for theorem counter '{child}' within '{parent}' is recognised but not implemented"),
+                    Some(whole),
+                    Some(format!("'{child}' keeps its numbering")),
+                ));
+            }
+            return;
+        }
+        let result = match name {
+            "numberwithin" => self.counters.numberwithin(&child, &parent, style),
+            "counterwithin" => self.counters.counter_within(&child, &parent, starred),
+            _ => self.counters.counter_without(&child, &parent, starred),
+        };
+        if let Err(CounterError::NoCounter(missing)) = result {
+            self.diags.push(Diagnostic::error(
+                format!("No counter '{missing}' defined"),
+                Some(whole),
+                Some(format!("ignored the \\{name}")),
+            ));
+        }
+    }
+
+    /// amsmath.sty `\subequations`: `\refstepcounter{equation}` (a `\label`
+    /// right after `\begin{subequations}` gets the parent number),
+    /// `\protected@edef\theparentequation{\theequation}`,
+    /// `\setcounter{parentequation}{\value{equation}}`,
+    /// `\setcounter{equation}{0}` and
+    /// `\def\theequation{\theparentequation\alph{equation}}`.
+    fn begin_subequations(&mut self) {
+        use crate::xref::{NumberStyle, Piece};
+        let parent = self.counters.step("equation").unwrap_or_default();
+        self.current_counter = Some(parent.clone());
+        let value = self.counters.value("equation").unwrap_or(0);
+        self.counters.set_value("parentequation", value);
+        self.counters.set_value("equation", 0);
+        let saved = self.counters.representation("equation").unwrap_or_default();
+        self.counters.set_representation(
+            "equation",
+            vec![
+                Piece::Text(parent),
+                Piece::Value("equation".into(), NumberStyle::AlphLower),
+            ],
+        );
+        self.subequations.push(saved);
+        self.document_global_state = true;
+    }
+
+    /// `\endsubequations`: `\setcounter{equation}{\value{parentequation}}`;
+    /// the group end restores `\theequation`.
+    fn end_subequations(&mut self) {
+        if let Some(saved) = self.subequations.pop() {
+            let parent = self.counters.value("parentequation").unwrap_or(0);
+            self.counters.set_value("equation", parent);
+            self.counters.set_representation("equation", saved);
         }
     }
 
@@ -5321,6 +5433,51 @@ mod tests {
         );
         assert_eq!(at("After.").x_pt, crate::layout::MARGIN_PT);
         assert_eq!(at("Plain.").x_pt, crate::layout::MARGIN_PT);
+    }
+
+    #[test]
+    fn numberwithin_and_subequations_number_like_amsmath() {
+        // pdflatex (display-placement fixtures 17 and 18): (1.1), (2.1), a
+        // subequations block (2.2a)-(2.2c) whose leading \label is 2.2, then
+        // (2.3).
+        let source = r"\numberwithin{equation}{section}\section{A}\begin{equation}a\label{a}\end{equation}\section{B}\begin{equation}b\end{equation}\begin{subequations}\label{sub}\begin{align}c\label{c}\\d\end{align}\begin{equation}e\label{e}\end{equation}\end{subequations}\begin{equation}f\label{f}\end{equation}";
+        let (parsed, items) = items(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let numbers: Vec<_> = items
+            .iter()
+            .filter(|i| i.text.starts_with('('))
+            .map(|i| i.text.as_str())
+            .collect();
+        assert_eq!(numbers, ["(1.1)", "(2.1)", "(2.2a)", "(2.2b)", "(2.2c)", "(2.3)"]);
+        let labels: Vec<_> = parsed
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph(inlines) => inlines.as_slice(),
+                _ => &[],
+            })
+            .filter_map(|inline| match inline {
+                Inline::Label { key, value, .. } => Some((key.as_str(), value.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            [("a", "1.1"), ("sub", "2.2"), ("c", "2.2a"), ("e", "2.2c"), ("f", "2.3")]
+        );
+    }
+
+    #[test]
+    fn numberwithin_reports_unknown_counters_and_formats() {
+        // `[\roman]` reaches the parser as a format name (the expansion pass
+        // renames it so the engine's `\roman` does not read `]`).
+        let (parsed, items) = items(r"\numberwithin{equation}{chapter}\numberwithin[\textbf]{figure}{section}\numberwithin[\roman]{equation}{section}\section{S}\begin{equation}x\end{equation}");
+        let messages: Vec<_> = parsed.diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert!(messages.iter().any(|m| m.contains("No counter 'chapter' defined")), "{messages:?}");
+        assert!(messages.iter().any(|m| m.contains("'\\textbf' is not \\arabic")), "{messages:?}");
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        let texts: Vec<_> = items.iter().map(|i| i.text.as_str()).collect();
+        assert!(texts.contains(&"(1.i)"), "{texts:?}");
     }
 
     #[test]

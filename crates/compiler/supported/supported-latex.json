@@ -36,6 +36,9 @@
     {"name": "ref", "mode": "text", "origin": "text_dispatch", "arguments": "{key}", "description": "number of the labelled item", "renders": true},
     {"name": "pageref", "mode": "text", "origin": "text_dispatch", "arguments": "{key}", "description": "page number of the labelled item", "renders": true},
     {"name": "eqref", "mode": "text", "origin": "text_dispatch", "arguments": "{key}", "description": "parenthesised equation number of the labelled item", "renders": true},
+    {"name": "numberwithin", "mode": "text", "origin": "text_dispatch", "arguments": "[\\style]{counter}{parent}", "description": "amsmath: counter reset by parent and printed \\theparent.\\style{counter} (equation, figure, table; theorem counters within section)", "renders": true},
+    {"name": "counterwithin", "mode": "text", "origin": "text_dispatch", "arguments": "{counter}{parent}", "description": "counter reset by parent and printed \\theparent.\\arabic{counter}; starred form keeps the printed form", "renders": true},
+    {"name": "counterwithout", "mode": "text", "origin": "text_dispatch", "arguments": "{counter}{parent}", "description": "undoes \\counterwithin; starred form keeps the printed form", "renders": true},
     {"name": "caption", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "numbered \"Figure N:\" caption inside figure", "renders": true},
     {"name": "item", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "entry of an itemize or enumerate list", "renders": true},
     {"name": "url", "mode": "text", "origin": "text_dispatch", "arguments": "{url}", "description": "monospaced URL text; links are not clickable", "renders": true},
@@ -738,6 +741,7 @@
     {"name": "flalign*", "mode": "text", "description": "rows aligned at &"},
     {"name": "multline", "mode": "text", "description": "multi-line display; only the last line is numbered"},
     {"name": "multline*", "mode": "text", "description": "multi-line display"},
+    {"name": "subequations", "mode": "text", "description": "amsmath: displays inside number as the parent number plus a, b, ...; a \\label right after \\begin gets the parent number"},
     {"name": "figure", "mode": "text", "description": "numbered captions; no floating"},
     {"name": "center", "mode": "text", "description": "centred paragraphs"},
     {"name": "flushleft", "mode": "text", "description": "left-aligned paragraphs"},
@@ -791,7 +795,7 @@
     "rows": [
       {"set": "kernel", "kind": "command", "canonical": 410, "supported": 160, "percent": 39},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
-      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 39, "percent": 38.2},
+      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 40, "percent": 39.2},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
       {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 224, "percent": 97.8},
       {"set": "enumitem", "kind": "command", "canonical": 17, "supported": 1, "percent": 5.9},
@@ -802,6 +806,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 458, "percent": 45.7}
+    "total": {"canonical": 1003, "supported": 459, "percent": 45.8}
   }
 }
