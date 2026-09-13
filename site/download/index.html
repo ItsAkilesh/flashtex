@@ -89,19 +89,19 @@
     </div>
   </div>
 
-  <div class="tabs" role="tablist" aria-label="How to install">
-    <button class="tab" role="tab" id="tab-stable" aria-controls="panel-stable" aria-selected="true">Stable</button>
-    <button class="tab" role="tab" id="tab-source" aria-controls="panel-source" aria-selected="false" tabindex="-1">From source<span class="hint">main</span></button>
+  <div class="tabs" role="tablist" aria-label="How to install" hidden>
+    <button class="tab" type="button" role="tab" id="tab-stable" aria-controls="panel-stable" aria-selected="true">Stable</button>
+    <button class="tab" type="button" role="tab" id="tab-source" aria-controls="panel-source" aria-selected="false" tabindex="-1">From source<span class="hint">main</span></button>
   </div>
 
   <section id="panel-stable" role="tabpanel" aria-labelledby="tab-stable">
     <ul class="rows">
       <li class="row">
         <div>
-          <div class="row-name">
+          <h2 class="row-name">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.62c-.02-2.33 1.9-3.45 1.99-3.5-1.08-1.59-2.77-1.8-3.370-1.83-1.43-.15-2.8.85-3.53.85-.74 0-1.86-.83-3.06-.81-1.57.02-3.02.92-3.830 2.33-1.64 2.84-.42 7.04 1.17 9.35.78 1.13 1.7 2.39 2.92 2.35 1.18-.05 1.62-.76 3.04-.76 1.42 0 1.82.76 3.06.73 1.27-.02 2.07-1.14 2.84-2.28.9-1.31 1.26-2.59 1.28-2.66-.03-.01-2.46-.94-2.51-3.77zM14.04 5.78c.64-.79 1.08-1.87.96-2.96-.93.04-2.060.62-2.72 1.4-.6.69-1.12 1.8-.98 2.86 1.04.08 2.1-.53 2.74-1.3z"/></svg>
             macOS
-          </div>
+          </h2>
           <div class="row-sub">macOS 14 Sonoma or later</div>
         </div>
         <div class="row-body">
@@ -110,7 +110,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M12 3v13m0 0l-5.5-5.5M12 16l5.5-5.5M4 21h16"/></svg>
               Apple Silicon <span class="btn-meta">{{SIZE}}</span>
             </a>
-            <span class="btn" aria-disabled="true">Intel <span class="btn-meta">not yet available</span></span>
+            <span class="btn is-disabled">Intel <span class="btn-meta">not yet available</span></span>
           </div>
           <p>A disk image containing <code>FlashTeX.app</code>, with the Rust compiler, PDF writer and capture bridge bundled inside. No TeX distribution required.</p>
         </div>
@@ -118,10 +118,10 @@
 
       <li class="row">
         <div>
-          <div class="row-name">
+          <h2 class="row-name">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg>
             Command line
-          </div>
+          </h2>
           <div class="row-sub">macOS · Apple Silicon</div>
         </div>
         <div class="row-body">
@@ -135,10 +135,10 @@
 
       <li class="row">
         <div>
-          <div class="row-name">
+          <h2 class="row-name">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
             Checksum
-          </div>
+          </h2>
           <div class="row-sub">FlashTeX.dmg · SHA-256</div>
         </div>
         <div class="row-body">
@@ -152,7 +152,7 @@
 
       <li class="row">
         <div>
-          <div class="row-name">Windows &amp; Linux</div>
+          <h2 class="row-name">Windows &amp; Linux</h2>
           <div class="row-sub">Not available</div>
         </div>
         <div class="row-body">
@@ -172,11 +172,11 @@
     </div>
   </section>
 
-  <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" hidden>
+  <section id="panel-source" role="tabpanel" aria-labelledby="tab-source">
     <ul class="rows">
       <li class="row">
         <div>
-          <div class="row-name">Build it yourself</div>
+          <h2 class="row-name">Build it yourself</h2>
           <div class="row-sub">Latest <code>main</code>, same bundle as the release</div>
         </div>
         <div class="row-body">
@@ -212,7 +212,7 @@
 
       <li class="row">
         <div>
-          <div class="row-name">Requirements</div>
+          <h2 class="row-name">Requirements</h2>
           <div class="row-sub">To build from source</div>
         </div>
         <div class="row-body">
@@ -235,7 +235,7 @@
       <p class="colophon">Set in <em>Latin Modern Roman</em>, the typeface FlashTeX renders with, alongside Archivo and Fragment Mono.</p>
     </div>
     <div>
-      <h4>Product</h4>
+      <h2>Product</h2>
       <ul>
         <li><a href="./">Download</a></li>
         <li><a href="../#how">How it works</a></li>
@@ -243,7 +243,7 @@
       </ul>
     </div>
     <div>
-      <h4>Source</h4>
+      <h2>Source</h2>
       <ul>
         <li><a href="https://github.com/flash-tex/flashtex">GitHub</a></li>
         <li><a href="https://github.com/flash-tex/flashtex/issues">Issues</a></li>
@@ -251,7 +251,7 @@
       </ul>
     </div>
     <div>
-      <h4>Install</h4>
+      <h2>Install</h2>
       <ul>
         <li><a href="https://github.com/flash-tex/flashtex/releases/download/{{TAG}}/FlashTeX.dmg">FlashTeX.dmg</a></li>
         <li><a href="../install.sh">install.sh</a></li>
@@ -275,13 +275,15 @@
     tabs.forEach(function (tab, i) {
       tab.addEventListener("click", function () { select(tab, false); });
       tab.addEventListener("keydown", function (e) {
-        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-          e.preventDefault();
-          select(tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length], true);
-        }
+        var next = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[e.key];
+        if (next !== undefined) { e.preventDefault(); select(tabs[next], true); }
       });
     });
-    if (location.hash === "#source") select(document.getElementById("tab-source"), false);
+    document.querySelector('[role="tablist"]').hidden = false;
+    select(document.getElementById(location.hash === "#source" ? "tab-source" : "tab-stable"), false);
+    window.addEventListener("hashchange", function () {
+      if (location.hash === "#source") select(document.getElementById("tab-source"), false);
+    });
   })();
 </script>
 <script src="../copy.js" defer></script>

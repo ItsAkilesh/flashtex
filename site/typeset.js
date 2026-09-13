@@ -163,7 +163,8 @@
     this.p = p;
     if (!this.states) return;
     var i = Math.min(Math.floor(p), LAST - 1);
-    var t = ease(clamp(p - i, 0, 1));
+    // Hold each state for a while so it reads, then move quickly to the next.
+    var t = ease(clamp((p - i - 0.22) / 0.56, 0, 1));
     var A = this.states[i], B = this.states[i + 1];
     var h = lerp(A.h, B.h, t);
     var cur = [];
@@ -277,7 +278,13 @@
     var btn = s.querySelector(".step-btn");
     if (!btn) return;
     btn.addEventListener("click", function () {
-      if (still) { stillP = k; request(); return; }
+      if (still) {
+        stillP = k;
+        request();
+        var r0 = stageRoot.getBoundingClientRect();
+        if (r0.bottom > window.innerHeight || r0.top < 0) stageRoot.scrollIntoView({ block: "nearest" });
+        return;
+      }
       var r = scrolly.getBoundingClientRect();
       var total = r.height - window.innerHeight;
       var raw = (k / LAST + 0.04) / 1.12;

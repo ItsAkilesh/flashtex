@@ -1,6 +1,7 @@
 (function () {
   "use strict";
   document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.setAttribute("aria-live", "polite");
     btn.addEventListener("click", function () {
       var text = btn.getAttribute("data-copy");
       var done = function (label) {
