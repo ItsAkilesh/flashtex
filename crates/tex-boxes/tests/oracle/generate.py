@@ -28,11 +28,16 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPEAT = re.compile(r'<<(\d+)\*(.*?)>>')
+REPEAT = re.compile(r'<<(\d+)\*((?:(?!<<).)*?)>>')
 
 
 def expand(s):
-    return REPEAT.sub(lambda m: m.group(2) * int(m.group(1)), s)
+    # innermost repeats first, so `<<8*...<<5*x>>...>>` nests correctly
+    while True:
+        t = REPEAT.sub(lambda m: m.group(2) * int(m.group(1)), s)
+        if t == s:
+            return t
+        s = t
 
 
 def load_fixtures():
@@ -61,7 +66,7 @@ PREAMBLE = r"""\documentclass{article}
 \immediate\write\posout{PARAM baselineskip \number\baselineskip}
 \immediate\write\posout{PARAM strutht \number\ht\strutbox}
 \immediate\write\posout{PARAM strutdp \number\dp\strutbox}
-\setbox1\hbox{$x$}\setbox1\box\voidb@x
+\setbox1\hbox{$x$}\setbox1\hbox{}
 \immediate\write\posout{PARAM axisheight \number\fontdimen22\textfont2}
 \immediate\write\posout{PARAM parindent \number\parindent}
 \immediate\write\posout{PARAM hsize \number\hsize}
@@ -83,7 +88,7 @@ def build_tex(fixtures):
         lines.append(r'\immediate\write-1{@@SHOW %s}%%' % name)
         lines.append(r'\showbox0')
         lines.append(r'\immediate\write-1{@@END %s}%%' % name)
-        lines.append(r'\immediate\write\posout{DIM %s \number\wd0\space\number\ht0\space\number\dp0\space\the\badness}%%' % name)
+        lines.append(r'\immediate\write\posout{DIM %s \number\wd0 \space\number\ht0 \space\number\dp0 \space\the\badness}%%' % name)
         if r'\POS' in body or r'\POS' in setup:
             lines.append(r'\def\POS{\pdfsavepos\write\posout{POS %s \the\pdflastxpos\space\the\pdflastypos}}%%' % name)
             lines.append(r'\immediate\write-1{@@SKIP}%')
@@ -141,7 +146,7 @@ def main():
         out.append('LINE %d' % fixture_line[name])
         out.append('DIM %s' % ' '.join(dims[name]))
         out.append('DIAG')
-        for l in diag.split('\n')[:-1] if diag.endswith('\n') else diag.split('\n'):
+        for l in (diag[:-1].split('\n') if diag.endswith('\n') else diag.split('\n')) if diag else []:
             out.append('|' + l)
         out.append('BOX')
         for l in box.strip('\n').split('\n'):

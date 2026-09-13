@@ -86,6 +86,9 @@ fn new_engine(line: i32) -> BoxEngine {
     e.set_int("showboxbreadth", 10000, true);
     e.max_print_line = 100000;
     e.line = line;
+    // In the oracle run every fixture follows `\showbox0`'s error context
+    // (or the `(./oracle.aux)` banner), so pdfTeX's terminal line is non-empty.
+    e.term_offset = 1;
     e
 }
 

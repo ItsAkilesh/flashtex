@@ -212,6 +212,16 @@ pub struct BoxEngine {
     pub max_print_line: usize,
     /// Warnings emitted by the LaTeX layer.
     pub warnings: Vec<String>,
+    /// TeX's `term_offset`: characters on the current terminal line. `print_nl`
+    /// in `write_out` (§1370) breaks the line when either the terminal or the
+    /// log is mid-line, so messages written to terminal+log (LaTeX warnings)
+    /// gain a leading newline in the log when the terminal is dirty.
+    pub term_offset: usize,
+    /// Run LaTeX's (≥ 2021-06) standard `\everypar` from `new_graf`; see
+    /// [`BoxEngine::latex_standard_everypar`]. Off for plain TeX.
+    pub latex_para_hooks: bool,
+    /// `\g_para_indent_box`.
+    para_indent_box: Option<BoxNode>,
 }
 
 impl Default for BoxEngine {
@@ -258,6 +268,9 @@ impl BoxEngine {
             pack_begin_line: 0,
             output_active: false,
             pending_leaders: None,
+            term_offset: 0,
+            latex_para_hooks: false,
+            para_indent_box: None,
             shipped: Vec::new(),
             axis_height: 0,
             max_print_line: 79,
@@ -304,6 +317,10 @@ impl BoxEngine {
     /// Appends raw text to the transcript (used by the LaTeX layer).
     pub fn log_text(&mut self, s: &str) {
         self.log.push_str(s);
+    }
+    /// Whether the transcript is mid-line (TeX's `file_offset > 0`).
+    pub fn log_mid_line(&self) -> bool {
+        !self.log.is_empty() && !self.log.ends_with('\n')
     }
     pub fn shipped(&self) -> &[BoxNode] {
         &self.shipped
@@ -515,8 +532,70 @@ impl BoxEngine {
 
     // ----- paragraphs ------------------------------------------------------------
 
-    /// `new_graf` (§1091).
+    /// `new_graf` (§1091), including `\everypar` (the LaTeX para hooks when
+    /// [`BoxEngine::latex_para_hooks`] is set).
     pub fn new_graf(&mut self, indented: bool) {
+        self.new_graf_primitive(indented);
+        if self.latex_para_hooks {
+            self.latex_standard_everypar();
+        }
+    }
+
+    /// LaTeX's `\g__para_standard_everypar_tl` (ltpara, LaTeX 2021-06+), as
+    /// traced from pdfLaTeX:
+    ///
+    /// ```text
+    /// \box_gset_to_last:N \g_para_indent_box
+    /// \group_begin: \tex_par:D \group_end:
+    /// \@kernel@before@para@before \hook_use:n {para/before}
+    /// \group_begin: \tex_everypar:D {}
+    ///   \skip_set:Nn \tex_parskip:D {\if@minipage -\tex_parskip:D \else: \c_zero_skip \fi:}
+    ///   \tex_noindent:D
+    /// \group_end:
+    /// \@kernel@before@para@begin \hook_use:n {para/begin}
+    /// \__para_handle_indent:   % \box_use_drop:N \g_para_indent_box
+    /// \the\toks12              % the user-level \everypar
+    /// ```
+    ///
+    /// The re-started paragraph appends a second `\parskip` glue (0pt, or
+    /// `-\parskip` under `\if@minipage`) whenever the vertical list is
+    /// non-empty, exactly as pdfTeX's `\showbox` shows. Hooks are empty here.
+    fn latex_standard_everypar(&mut self) {
+        self.para_indent_box = match self.cur().list.last() {
+            Some(Node::Box(_)) if !self.tail_inside_disc() => match self.cur_mut().list.pop() {
+                Some(Node::Box(mut b)) => {
+                    b.shift = 0;
+                    Some(b)
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        self.begin_group();
+        let _ = self.par();
+        let _ = self.end_group();
+        self.begin_group();
+        let (ps, _) = self.skip("parskip");
+        let v = if self.int("@minipage") != 0 {
+            GlueSpec { width: -ps.width, stretch: -ps.stretch, shrink: -ps.shrink, ..ps }
+        } else {
+            GlueSpec::ZERO
+        };
+        self.set_skip("parskip", v, false);
+        self.new_graf_primitive(false);
+        let _ = self.end_group();
+        if let Some(b) = self.para_indent_box.take() {
+            self.tail_append(Node::Box(b));
+        }
+        // User \everypar: \@setminipage's {\@minipagefalse\everypar{}}.
+        if self.int("everypar-minipagefalse") != 0 {
+            self.set_int("@minipage", 0, true);
+            self.set_int("everypar-minipagefalse", 0, false);
+        }
+    }
+
+    /// The primitive part of `new_graf` (§1091) without `\everypar`.
+    fn new_graf_primitive(&mut self, indented: bool) {
         let cur = self.cur();
         if cur.mode == Mode::Vertical || !cur.list.is_empty() {
             let (spec, zero) = self.skip("parskip");

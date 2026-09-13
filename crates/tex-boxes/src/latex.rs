@@ -71,6 +71,7 @@ pub fn setup_article_10pt(e: &mut BoxEngine) {
     e.set_skip("parskip", GlueSpec { stretch: UNITY, ..GlueSpec::ZERO }, true);
     e.set_skip("parfillskip", FLUSHGLUE, true);
     e.axis_height = 163840; // cmsy10 \fontdimen22 at 10pt
+    e.latex_para_hooks = true;
     size_update_strut(e, true);
 }
 
@@ -113,8 +114,12 @@ fn end_tempboxa(e: &mut BoxEngine) -> BoxResult {
 }
 
 fn warn(e: &mut BoxEngine, msg: &str) {
-    let text = format!("\nLaTeX Warning: {msg} on input line {}.\n\n", e.line);
+    // \GenericWarning: \immediate\write\@unused{^^J...\on@line.^^J}. write_out
+    // starts with print_nl(""), a newline when the terminal or log is mid-line.
+    let nl = if e.term_offset > 0 || e.log_mid_line() { "\n" } else { "" };
+    let text = format!("{nl}\nLaTeX Warning: {msg} on input line {}.\n\n", e.line);
     e.log_text(&text);
+    e.term_offset = 0;
     e.warnings.push(msg.to_string());
 }
 
@@ -269,7 +274,7 @@ pub fn raisebox(e: &mut BoxEngine, lift: LenArg, ht: Option<LenArg>, dp: Option<
 pub fn parboxrestore(e: &mut BoxEngine) {
     e.set_dimen("parindent", 0, false);
     e.set_skip("parskip", GlueSpec::ZERO, false);
-    e.set_int("everypar-empty", 1, false);
+    e.set_int("everypar-minipagefalse", 0, false); // \everypar{}
     let hs = e.dimen("hsize");
     e.set_dimen("linewidth", hs, false);
     e.set_dimen("@totalleftmargin", 0, false);
@@ -388,7 +393,9 @@ pub fn minipage(
     e.set_dimen("textwidth", wd, false);
     e.set_dimen("columnwidth", wd, false);
     parboxrestore(e);
-    e.set_int("@minipage", 1, true); // \@setminipage
+    // \@setminipage (lines 17497–17500): \@minipagetrue\everypar{\@minipagefalse\everypar{}}
+    e.set_int("@minipage", 1, true);
+    e.set_int("everypar-minipagefalse", 1, false);
     content(e)?;
     // \endminipage
     e.par()?;

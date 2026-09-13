@@ -289,6 +289,6 @@ mod tests {
     fn factor_times_internal() {
         // .7\baselineskip with \baselineskip=12pt (LaTeX \strutbox height)
         assert_eq!(scale_internal(false, 0, &[7], 12 * UNITY), Ok(550500));
-        assert_eq!(scale_internal(false, 0, &[3], 12 * UNITY), Ok(235929));
+        assert_eq!(scale_internal(false, 0, &[3], 12 * UNITY), Ok(235932)); // .3 -> 19661 (round_decimals), confirmed by pdfTeX
     }
 }

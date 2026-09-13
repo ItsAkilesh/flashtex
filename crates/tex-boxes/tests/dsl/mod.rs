@@ -11,19 +11,17 @@ use flashtex_tex_boxes::scaled::{Scaled, UNITY, Unit, dimen_from_parts, scale_in
 
 /// Expands `<<N*text>>` repetitions (same rule as generate.py).
 pub fn expand_repeats(s: &str) -> String {
-    let mut out = String::new();
-    let mut rest = s;
-    while let Some(start) = rest.find("<<") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 2..];
-        let star = after.find('*').expect("repeat count");
-        let n: usize = after[..star].parse().expect("repeat number");
-        let end = after.find(">>").expect("repeat end");
-        out.push_str(&after[star + 1..end].repeat(n));
-        rest = &after[end + 2..];
+    // Innermost `<<N*text>>` first so nested repeats expand like generate.py.
+    let mut s = s.to_string();
+    loop {
+        let Some(end) = s.find(">>") else { return s };
+        let start = s[..end].rfind("<<").expect("repeat start");
+        let inner = &s[start + 2..end];
+        let star = inner.find('*').expect("repeat count");
+        let n: usize = inner[..star].parse().expect("repeat number");
+        let expanded = inner[star + 1..].repeat(n);
+        s = format!("{}{}{}", &s[..start], expanded, &s[end + 2..]);
     }
-    out.push_str(rest);
-    out
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -514,9 +512,20 @@ impl Interp {
 
     /// Runs until the matching `}` of a box group has been consumed.
     fn run_until_close(&mut self, e: &mut BoxEngine) -> R {
+        // Simple `{...}` groups opened inside the box are closed by their own
+        // `}` (end_group); only the brace at depth 0 ends the box.
+        let mut depth = 0usize;
         loop {
             match self.peek() {
                 None => return err("missing }"),
+                Some(Tok::Ch('{')) => {
+                    depth += 1;
+                    self.step(e)?;
+                }
+                Some(Tok::Ch('}')) if depth > 0 => {
+                    depth -= 1;
+                    self.step(e)?;
+                }
                 Some(Tok::Ch('}')) => {
                     self.pos += 1;
                     return Ok(());
