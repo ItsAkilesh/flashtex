@@ -243,9 +243,18 @@ impl PageState {
 /// Breaks `list` into pages. Returns the pages with lines at their natural
 /// (`\raggedbottom`) positions.
 pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
+    break_pages_cols(p, list, &|_| p.vsize)
+}
+
+/// [`break_pages`] with `\vsize` chosen per page (column) index: the
+/// first page's columns below a `\twocolumn[...]` box have a smaller
+/// `\@colht`.
+pub fn break_pages_cols(base: &PageParams, list: &[VItem], vsize: &dyn Fn(usize) -> f64) -> Vec<BuiltPage> {
     let mut pages: Vec<BuiltPage> = Vec::new();
     let mut start = 0usize;
     while start < list.len() {
+        let page_params = PageParams { vsize: vsize(pages.len()), ..*base };
+        let p = &page_params;
         // Discard glue/penalties at the top of the page.
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
@@ -450,6 +459,17 @@ fn glue_set(p: &PageParams, items: &[VItem]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn break_pages_cols_uses_a_shorter_first_column() {
+        let list = vlist(&params(), &[para(80)]);
+        let full = break_pages(&params(), &list);
+        let short = break_pages_cols(&params(), &list, &|ci| if ci == 0 { 300.0 } else { params().vsize });
+        assert!(short[0].lines.len() < full[0].lines.len());
+        assert!(short[0].lines.last().unwrap().baseline <= 300.0 + 1e-6);
+        assert_eq!(short.iter().map(|p| p.lines.len()).sum::<usize>(), 80);
+        assert_eq!(full.iter().map(|p| p.lines.len()).collect::<Vec<_>>(), break_pages_cols(&params(), &list, &|_| params().vsize).iter().map(|p| p.lines.len()).collect::<Vec<_>>());
+    }
 
     fn params() -> PageParams {
         PageParams {
