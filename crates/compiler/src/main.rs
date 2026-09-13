@@ -2,9 +2,49 @@
 
 use flashtex_compiler::json;
 use flashtex_compiler::protocol::{self, RequestLine};
+use flashtex_compiler::supported;
 use std::io::{self, Write};
 
+const SUPPORTED_USAGE: &str = "usage: flashtex-compiler --supported [json|markdown|coverage]";
+
+/// `--supported [json|markdown|coverage]`: print the implemented-LaTeX
+/// inventory (`flashtex_compiler::supported`) and exit instead of serving.
+fn supported_mode(args: &[String]) -> Option<i32> {
+    let first = args.first()?;
+    let format = if first == "--supported" {
+        match args.len() {
+            1 => "json",
+            2 => args[1].as_str(),
+            _ => "",
+        }
+    } else if let Some(format) = first.strip_prefix("--supported=") {
+        if args.len() != 1 {
+            ""
+        } else {
+            format
+        }
+    } else {
+        return None;
+    };
+    let inventory = supported::inventory();
+    let text = match format {
+        "json" => supported::render_json(&inventory),
+        "markdown" => supported::render_markdown(&inventory),
+        "coverage" => supported::render_coverage_markdown(&inventory),
+        _ => {
+            eprintln!("{SUPPORTED_USAGE}");
+            return Some(2);
+        }
+    };
+    print!("{text}");
+    Some(0)
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = supported_mode(&args) {
+        std::process::exit(code);
+    }
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut out = stdout.lock();
