@@ -19,6 +19,7 @@ pub mod lm_math;
 pub mod math;
 pub mod parser;
 pub mod protocol;
+pub mod tabular;
 
 /// Stable identity of one document in a compile request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

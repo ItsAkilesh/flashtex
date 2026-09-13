@@ -51,21 +51,21 @@ Status: `recovered`
 Diagnostics:
 
 - `\includegraphics is unsupported; image loading is not implemented` — recovery: omitted the image and continued
-## tabular — tables
+## longtable — multi-page tables
 
-Tables are typeset as plain text without column alignment or rules.
+tabular is laid out, but longtable's page-breaking tables are typeset as plain text.
 
 Input:
 
 ```text
-\begin{tabular}{ll}a & b \\ c & d\end{tabular}
+\begin{longtable}{ll}a & b \\ c & d\end{longtable}
 ```
 
 Status: `recovered`
 
 Diagnostics:
 
-- `environment 'tabular' is not implemented; its body is typeset as plain text` — recovery: typeset the body without the environment's formatting
+- `environment 'longtable' is not implemented; its body is typeset as plain text` — recovery: typeset the body without the environment's formatting
 ## \cite and bibliographies
 
 Citations do not resolve; .bib files are not read.

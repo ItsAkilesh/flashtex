@@ -125,9 +125,11 @@ Required, outstanding — this is a foundation, not a LaTeX implementation:
   implemented.
 - Package declarations are recognised but packages are not loaded: package
   commands, TikZ, bibliographies, and `\cite` remain missing.
-- Image loading (`\includegraphics`), tables, and float placement remain
-  missing. `\includegraphics` emits an explicit unsupported diagnostic; a
-  `figure` is laid out in source order and is not a real LaTeX float.
+- `tabular`/`tabular*` follow the LaTeX kernel's alignment geometry (see
+  `src/tabular.rs`); `longtable`, the `array` package's column types, image
+  loading (`\includegraphics`), and float placement remain missing.
+  `\includegraphics` emits an explicit unsupported diagnostic; a `figure` is
+  laid out in source order and is not a real LaTeX float.
 - Environments other than `document`, `equation`, `figure`, `itemize`, and
   `enumerate` warn and typeset as plain text.
 - No PDF output. `pdf_path` is always `null`, as the contract permits for now.

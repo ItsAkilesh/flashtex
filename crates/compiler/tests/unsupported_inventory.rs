@@ -35,9 +35,10 @@ const CASES: &[Case] = &[
         consequence: "Figures lay out and number, but no image is loaded or drawn.",
     },
     Case {
-        feature: "tabular — tables",
-        input: "\\begin{tabular}{ll}a & b \\\\ c & d\\end{tabular}\n",
-        consequence: "Tables are typeset as plain text without column alignment or rules.",
+        feature: "longtable — multi-page tables",
+        input: "\\begin{longtable}{ll}a & b \\\\ c & d\\end{longtable}\n",
+        consequence:
+            "tabular is laid out, but longtable's page-breaking tables are typeset as plain text.",
     },
     Case {
         feature: r"\cite and bibliographies",
