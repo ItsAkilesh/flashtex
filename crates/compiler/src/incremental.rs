@@ -523,6 +523,10 @@ fn shift_inlines(
                 },
                 space_before: *space_before,
             }),
+            Inline::Tabular(table) => Some(Inline::Tabular(Box::new(table.try_map_spans(
+                &mut |span| mapped_span(span, changes, deltas),
+                &mut |inlines| shift_inlines(inlines, changes, deltas),
+            )?))),
         })
         .collect()
 }
@@ -686,6 +690,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
         Inline::Footnote { span, .. } => *span,
+        Inline::Tabular(table) => table.span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -727,6 +732,7 @@ fn shifted_signature(
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
         Inline::Footnote { span, .. } => *span,
+        Inline::Tabular(table) => table.span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -940,5 +946,15 @@ mod tests {
             .expect("right-hand text");
         let width = layout::text_width("right", 12.0, layout::Font::TimesRoman);
         assert!((right.x_pt + width - 540.0).abs() < 0.02);
+    }
+
+    #[test]
+    fn reused_tabular_block_shifts_every_nested_span() {
+        let table = "\\begin{tabular}{|l|c|}\\hline A & $x$ \\\\ \\multicolumn{2}{@{:}c|}{B}\\\\\\hline\\end{tabular}";
+        let result = compile_edit(
+            &format!("First words.\n\n{table}\n\nTail."),
+            &format!("First changed words.\n\n{table}\n\nTail."),
+        );
+        assert!(result.stats.blocks_reused >= 2);
     }
 }

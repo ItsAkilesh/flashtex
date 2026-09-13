@@ -1022,6 +1022,116 @@ impl LayoutCursor {
         placed
     }
 
+    pub(crate) fn measure_pt(&self) -> f64 {
+        self.constraints.measure_pt
+    }
+
+    pub(crate) fn body_size_pt(&self) -> f64 {
+        self.constraints.font_size_pt
+    }
+
+    /// Lays `inlines` out in a detached cursor as one box whose origin is its
+    /// first baseline (a `tabular` entry or `@{}` text): a single unbroken
+    /// line when `measure` is `None`, else a paragraph of that width. Returns
+    /// the box and the offset of its last baseline. Diagnostics and labels
+    /// flow back into this cursor.
+    pub(crate) fn inline_box(
+        &mut self,
+        inlines: &[Inline],
+        size: f64,
+        measure: Option<f64>,
+    ) -> (MathBox, f64) {
+        let constraints = LayoutConstraints {
+            measure_pt: measure.unwrap_or(crate::tabular::MAX_DIMEN_PT),
+            ..self.constraints
+        };
+        let mut inner = LayoutCursor::with_labels(
+            constraints,
+            std::mem::take(&mut self.resolved_labels),
+            self.emit_heading_numbers,
+        );
+        let left = inner.left_edge();
+        let mut first_y = inner.y;
+        let mut natural: f64 = 0.0;
+        for inline in inlines {
+            emit(
+                &mut inner,
+                std::slice::from_ref(inline),
+                size,
+                Font::TimesRoman,
+            );
+            if inner.pages.len() == 1 && inner.line_start == 0 {
+                first_y = inner.y;
+            }
+            natural = natural.max(inner.content_end - left);
+        }
+        if measure.is_some() {
+            inner.resolve_hfill();
+        } else {
+            // An unbreakable entry has no measure to fill.
+            inner.line_fills.clear();
+        }
+        self.resolved_labels = std::mem::take(&mut inner.resolved_labels);
+        self.diagnostics.append(&mut inner.diagnostics);
+        let page = self.pages.len() as u32;
+        for (key, mut value) in std::mem::take(&mut inner.collected_labels) {
+            value.page = page;
+            self.collected_labels.insert(key, value);
+        }
+        let mut items = Vec::new();
+        let (mut ascent, mut descent) = (0.0f64, 0.0f64);
+        let mut offset = 0.0;
+        let page_count = inner.pages.len();
+        for (index, page) in inner.pages.into_iter().enumerate() {
+            let mut last_baseline = first_y;
+            for item in page.items {
+                let baseline = item.baseline_y_pt + offset - first_y;
+                last_baseline = last_baseline.max(item.baseline_y_pt);
+                let (top, bottom) = match item.rule {
+                    Some(rule) => (
+                        rule.y_pt + offset - first_y,
+                        rule.y_pt + rule.height_pt + offset - first_y,
+                    ),
+                    None => {
+                        let (up, down) = font_extents(item.font, item.font_size_pt);
+                        (baseline - up, baseline + down)
+                    }
+                };
+                ascent = ascent.max(-top);
+                descent = descent.max(bottom);
+                items.push(math::MathItem {
+                    font: Some(item.font),
+                    text: item.text,
+                    x: item.x_pt - left,
+                    baseline,
+                    size: item.font_size_pt,
+                    span: item.span,
+                    rule: item.rule.map(|rule| math::MathRule {
+                        y: rule.y_pt + offset - first_y,
+                        width: rule.width_pt,
+                        height: rule.height_pt,
+                    }),
+                });
+            }
+            // A detached paragraph never really breaks pages; continue the
+            // next page's lines below this page's last line.
+            if index + 1 < page_count {
+                offset += last_baseline + LINE_SPACING * size - (MARGIN_PT + size);
+            }
+        }
+        let width = measure.unwrap_or(natural);
+        let last = inner.y + offset - first_y;
+        (
+            MathBox {
+                items,
+                width,
+                ascent,
+                descent,
+            },
+            last,
+        )
+    }
+
     pub fn state(&self) -> FlowState {
         let page_index = self.pages.len() - 1;
         FlowState {
@@ -1147,6 +1257,23 @@ fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f64 {
     table[index]
 }
 
+/// Height above and depth below the baseline of `font` at `size`, from the
+/// face's declared ascender/descender. Symbol declares none (its AFM bounding
+/// box is far taller than its glyphs), so it uses Times-Roman's.
+fn font_extents(font: Font, size: f64) -> (f64, f64) {
+    use flashtex_font_engine::Face as _;
+    let font = if font == Font::Symbol {
+        Font::TimesRoman
+    } else {
+        font
+    };
+    let metrics = face(font).vertical_metrics();
+    (
+        f64::from(metrics.ascender) * size / 1000.0,
+        -f64::from(metrics.descender) * size / 1000.0,
+    )
+}
+
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
@@ -1269,6 +1396,11 @@ fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Sp
             Inline::Footnote {
                 text: Some(text), ..
             } => visit_inline_references(text, visitor),
+            Inline::Tabular(table) => {
+                for list in table.inline_lists() {
+                    visit_inline_references(list, visitor);
+                }
+            }
             _ => {}
         }
     }
@@ -1371,6 +1503,13 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 text,
                 space_before,
             } => c.footnote(number, *span, *mark, text.as_deref(), *space_before),
+            Inline::Tabular(table) => {
+                let table_size = table.style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                let b = crate::tabular::layout(c, table, table_size);
+                c.place_math(b, size, table.space_before);
+            }
         }
     }
 }

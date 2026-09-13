@@ -13,6 +13,8 @@ use crate::math::{self, MathList};
 use crate::theorems::{self, TheoremDef, TheoremStyle};
 use crate::{DocumentId, Span};
 
+mod tabular;
+
 /// Maximum number of nested user-macro expansions at one use site.
 pub const MACRO_RECURSION_LIMIT: usize = 64;
 /// Maximum number of active nested `\input`/`\include` calls.
@@ -109,6 +111,8 @@ pub enum Inline {
         /// See `Inline::Text::space_before`.
         space_before: bool,
     },
+    /// `tabular`/`tabular*`: an inline box (see `crate::tabular`).
+    Tabular(Box<crate::tabular::Tabular>),
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -638,6 +642,17 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         theorem_style: TheoremStyle::default(),
         theorem_counters: HashMap::new(),
     };
+    // The kernel's `\def\arraystretch{1}`, so `\renewcommand` can change it.
+    p.macros.insert(
+        "arraystretch".into(),
+        MacroDef {
+            argument_count: 0,
+            body: vec![Token {
+                kind: TokenKind::Word("1".into()),
+                span: Span::in_document(DocumentId(entry), 0, 0),
+            }],
+        },
+    );
     let blocks = p.document();
 
     while let Some(open) = p.brace_stack.pop() {
@@ -1686,6 +1701,10 @@ impl P<'_> {
             ) && self.in_body
             {
                 self.multirow_environment(span, &environment, blocks, para);
+                return;
+            }
+            if matches!(environment.as_str(), "tabular" | "tabular*") && self.in_body {
+                self.tabular_environment(span, &environment, para);
                 return;
             }
             self.env_alignments.push(self.declared_alignment);
