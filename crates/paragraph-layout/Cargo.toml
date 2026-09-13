@@ -10,6 +10,7 @@ name = "flashtex_paragraph_layout"
 path = "src/lib.rs"
 
 [dependencies]
+flashtex-document-style = { path = "../document-style" }
 
 # Dev-only: used exclusively by tests (FT-030 rev 3) to consume the real,
 # already-published metrics/encoding callback (flashtex_font_engine's

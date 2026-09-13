@@ -643,3 +643,364 @@ fn layout_is_deterministic() {
     let pb = layout_pages(&[ParagraphBlock::body(b)], &small_page());
     assert_eq!(pa, pb);
 }
+
+/// `\emergencystretch`: width 55, words 20pt, Times-like glue. "aaaa bbbb" is
+/// 12.5pt short over 1.5pt stretch (infinite badness) and "aaaa bbbb cccc" is
+/// 10pt over with 1.2pt shrink, so passes 1 and 2 fail. With
+/// `emergency_stretch = 10`, pass 3 sees 11.5pt of stretch: ratio 1.087,
+/// badness round(100 x 1.284) = 128 <= 200, and the paragraph is 2 + 2 words.
+/// The set line still only has its real 1.5pt of stretch, so like TeX's hpack
+/// it is reported "Underfull \hbox (badness 10000)" citing both boxes.
+#[test]
+fn emergency_stretch_enables_a_third_pass_and_reports_underfull() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "aaaa bbbb cccc dddd");
+    let without = layout_paragraph(&it, &params(55.0)).unwrap();
+    assert_eq!(without.stats.pass, 2);
+    assert!(!without.stats.overfull.is_empty() || !without.stats.underfull.is_empty());
+    let p = LineBreakParams {
+        emergency_stretch: 10.0,
+        ..params(55.0)
+    };
+    let with = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(with.stats.pass, 3);
+    assert!(with.stats.emergency_pass_used);
+    assert_eq!(with.lines.len(), 2);
+    assert_eq!(with.lines[0].runs.len(), 2);
+    assert!(close(with.breaks[0].ratio, 12.5 / 11.5));
+    assert_eq!(with.breaks[0].badness, 128.0);
+    // Real glue: 2.5 + (12.5/11.5) x 1.5 = 4.13pt space; set width 44.13 < 55.
+    assert!(close(
+        with.lines[0].runs[1].x,
+        20.0 + 2.5 + 12.5 / 11.5 * 1.5
+    ));
+    assert!(with.stats.overfull.is_empty());
+    assert_eq!(with.diagnostics.len(), 1);
+    let d = &with.diagnostics[0];
+    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.kind, DiagnosticKind::Underfull { badness: 10000.0 });
+    assert_eq!(d.line, 0);
+    assert_eq!(d.boxes, vec![0..4, 5..9]);
+    assert_eq!(d.source, Some(0..9));
+    assert!(
+        d.message
+            .starts_with("Underfull \\hbox (badness 10000) in paragraph, line 1")
+    );
+    assert!(d.recovery.is_some());
+}
+
+/// Overfull diagnostics obey `\hfuzz` and cite the exact box: the 40pt word
+/// "yyyyzzzz" (source bytes 5..13) on a 35pt measure is 5pt too wide.
+#[test]
+fn overfull_diagnostic_cites_the_offending_box_and_respects_hfuzz() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "xxxx yyyyzzzz");
+    let out = layout_paragraph(&it, &params(35.0).ragged()).unwrap();
+    assert_eq!(out.diagnostics.len(), 1);
+    let d = &out.diagnostics[0];
+    assert_eq!(d.kind, DiagnosticKind::Overfull { excess: 5.0 });
+    assert_eq!(d.line, 1);
+    assert_eq!(d.boxes, vec![5..13]);
+    assert_eq!(d.source, Some(5..13));
+    assert!(
+        d.message
+            .starts_with("Overfull \\hbox (5.000pt too wide) in paragraph, line 2")
+    );
+    // A generous \hfuzz silences it; the overfull stat remains.
+    let p = LineBreakParams {
+        hfuzz: 6.0,
+        ..params(35.0).ragged()
+    };
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert!(out.diagnostics.is_empty());
+    assert_eq!(out.stats.overfull.len(), 1);
+}
+
+/// `\hbadness`: with `\tolerance 10000` (sloppy) a 12.5pt-short line over
+/// 1.5pt of stretch is accepted (badness 10000) and reported underfull; raising
+/// `\hbadness` to 10000 silences the report.
+#[test]
+fn underfull_diagnostic_respects_hbadness() {
+    let it = items(&TestFont::TIMES_LIKE, &NoHyphenation, "aaaa bbbb cccc dddd");
+    let p = LineBreakParams {
+        pretolerance: -1.0,
+        tolerance: 10000.0,
+        ..params(55.0)
+    };
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(out.lines.len(), 2);
+    assert_eq!(out.diagnostics.len(), 1);
+    assert_eq!(
+        out.diagnostics[0].kind,
+        DiagnosticKind::Underfull { badness: 10000.0 }
+    );
+    assert_eq!(out.diagnostics[0].boxes, vec![0..4, 5..9]);
+    let p = LineBreakParams {
+        hbadness: 10000.0,
+        ..p
+    };
+    assert!(layout_paragraph(&it, &p).unwrap().diagnostics.is_empty());
+}
+
+/// Automatic hyphenation with penalties: only a word after glue gets
+/// automatic points (TeX never hyphenates a paragraph's first word). Justified
+/// on an 85pt measure, "documentation" (59.44pt at 10pt Times) alone on a line
+/// has no glue to stretch, so pass 1 fails and pass 2 breaks at "docu-":
+/// 59.44 + 2.5 + 19.44 + 3.33 = 84.71pt, 0.29pt short (badness 1). With
+/// `\hyphenpenalty 10000` no discretionary is legal; a lone "documentation"
+/// line has infinite badness (no glue) and is never feasible below
+/// `\tolerance 10000`, so — exactly as TeX does — the final pass sets both
+/// words on one overfull line (121.38pt natural, set at full 0.6pt shrink:
+/// 35.78pt too wide) and reports it.
+#[test]
+fn hyphen_penalty_and_first_word_rule() {
+    let hyph = LiangHyphenator::en_us_subset();
+    let text = "documentation documentation";
+    let mut b = ParagraphBuilder::new(&hyph);
+    b.text(&Core14Times::ROMAN, 10.0, text, 0).unwrap();
+    let it = b.finish(Glue::fil());
+    let hyphen_points = it
+        .iter()
+        .filter(|i| matches!(i, Item::Penalty(p) if p.flagged))
+        .count();
+    assert_eq!(
+        hyphen_points, 4,
+        "only the second word gets doc-u-men-ta-tion"
+    );
+    let out = layout_paragraph(&it, &params(85.0)).unwrap();
+    assert_eq!(out.stats.pass, 2);
+    assert_eq!(out.lines.len(), 2);
+    assert!(out.lines[0].hyphenated);
+    assert!(out.lines[0].runs.last().unwrap().is_hyphen);
+    assert!(close(out.lines[0].natural_width, 84.71));
+    assert_eq!(out.breaks[0].badness, 1.0);
+    // The hyphen's cluster is empty (automatic point) at the break offset.
+    assert_eq!(out.lines[0].runs.last().unwrap().glyphs[0].cluster, 18..18);
+    let mut b = ParagraphBuilder::new(&hyph);
+    b.hyphen_penalty = 10000;
+    b.text(&Core14Times::ROMAN, 10.0, text, 0).unwrap();
+    let it = b.finish(Glue::fil());
+    let out = layout_paragraph(&it, &params(85.0)).unwrap();
+    assert_eq!(out.stats.hyphenated_lines, 0);
+    assert_eq!(out.lines.len(), 1);
+    assert_eq!(out.diagnostics.len(), 1);
+    match out.diagnostics[0].kind {
+        DiagnosticKind::Overfull { excess } => assert!(close(excess, 121.38 - 0.6 - 85.0)),
+        ref k => panic!("expected overfull, got {k:?}"),
+    }
+    // Boxes are the shaped fragments: the second word is split at its four
+    // (forbidden) discretionaries, so its provenance is five ranges.
+    assert_eq!(
+        out.diagnostics[0].boxes,
+        vec![0..13, 14..17, 17..18, 18..21, 21..23, 23..27]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FT-019 rev 4 (b): the demerit parameters, one minimal case each. In every
+// case the alternative layouts are enumerated by hand in the comment; the
+// parameter under test is the only thing that changes between the two runs.
+// `TestFont` glyphs are 5pt, spaces 2.5pt; a `-` hyphen is 5pt.
+// ---------------------------------------------------------------------------
+
+/// Words on each line as text, a discretionary hyphen shown as `-`.
+fn line_words(text: &str, line: &Line) -> String {
+    let mut s = String::new();
+    let mut last_end = None;
+    for r in &line.runs {
+        if r.is_hyphen {
+            s.push('-');
+        } else {
+            // A gap in the source is a space unless it is only a `\-` marker.
+            if let Some(e) = last_end
+                && text[e..r.source.start].contains(char::is_whitespace)
+            {
+                s.push(' ');
+            }
+            s.push_str(&text[r.source.clone()]);
+        }
+        last_end = Some(r.source.end);
+    }
+    s
+}
+
+fn line_texts(text: &str, out: &Lines) -> Vec<String> {
+    out.lines.iter().map(|l| line_words(text, l)).collect()
+}
+
+/// `\linepenalty`. Words A=20 B=20 C=10 D=20 E=20 F=5 pt, measure 52.5pt,
+/// interword stretch 150pt (so any line up to 25pt short has badness 0) and
+/// shrink 2.7pt.
+///
+/// Feasible lines: "A B" (42.5, b 0), "A B C" (55: 2.5pt over 5.4pt shrink,
+/// ratio -0.46296, 100·r³ = 9.92 -> b 10, Decent), "C D" (32.5, b 0),
+/// "C D E" (55, b 10), "D E" (42.5, b 0), last lines "E F" 27.5 / "D E F" 50 /
+/// "F" (fil, b 0). A single non-last word has no glue (infinite badness);
+/// "A B C D" (77.5) and "C D E F" (62.5) exceed the shrink.
+///
+/// Layouts and demerits, l = \linepenalty:
+///   X  "A B" / "C D" / "E F"        3·l²
+///   Y  "A B C" / "D E F"            (l+10)² + l²
+///   Z  "A B" / "C D E" / "F"        l² + (l+10)² + l²   (and "A B C"/"D E"/"F", same)
+/// l = 10:  X 300 < Y 500 < Z 600  -> three lines.
+/// l = 100: Y 22100 < X 30000 < Z 32100 -> two lines: the higher line penalty
+/// buys the shrunk line to save a line. All lines Decent, so \adjdemerits is
+/// never charged; pass 1 both times (badness <= 100).
+#[test]
+fn linepenalty_trades_a_line_for_badness() {
+    let font = TestFont {
+        stretch: 15_000.0,
+        shrink: 270.0,
+    };
+    let text = "aaaa bbbb cc dddd eeee f";
+    let it = items(&font, &NoHyphenation, text);
+    let out = layout_paragraph(&it, &params(52.5)).unwrap();
+    assert_eq!(out.stats.pass, 1);
+    assert_eq!(line_texts(text, &out), ["aaaa bbbb", "cc dddd", "eeee f"]);
+    assert!(close(out.stats.total_demerits, 300.0));
+    assert_eq!(out.lines[0].badness, 0.0);
+    assert_eq!(out.lines[1].badness, 0.0);
+
+    let mut p = params(52.5);
+    p.line_penalty = 100.0;
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(out.stats.pass, 1);
+    assert_eq!(line_texts(text, &out), ["aaaa bbbb cc", "dddd eeee f"]);
+    assert!(close(out.lines[0].ratio, -2.5 / 5.4));
+    assert_eq!(out.lines[0].badness, 10.0);
+    assert_eq!(out.breaks[0].fitness, Fitness::Decent);
+    assert!(close(out.breaks[0].demerits, 110.0 * 110.0));
+    assert!(close(out.stats.total_demerits, 22_100.0));
+    // The shrunk spaces: 2.5 - 0.46296 x 2.7 = 1.25pt each.
+    assert_xs(&out.lines[0], &[0.0, 21.25, 42.5]);
+}
+
+/// `\adjdemerits`. Words A=15 B=15 C=20 D=10 E=25 F=20 pt, measure 51.55pt,
+/// stretch 24pt, shrink 2.95pt per space.
+///
+/// Feasible lines: "A B" 32.5 (19.05 short / 24: r 0.79375, b 50, Loose),
+/// "A B C" 55 (3.45 over 5.9: r -0.58475, b 20, Tight), "C D" 32.5 (b 50,
+/// Loose), "D E" 37.5 (14.05 / 24: r 0.58542, b 20, Loose), last lines
+/// "E F" 47.5 and "F" (b 0, Decent). Infeasible: "A B C D" 67.5, "C D E" 60
+/// and "D E F" 60 (even as a last line: 8.45 over 5.9pt shrink), any lone
+/// non-last word.
+///
+/// Layouts, a = \adjdemerits:
+///   P  "A B" / "C D" / "E F"     60² + 60² + 10²          = 7300  (Loose, Loose, Decent)
+///   Q  "A B C" / "D E" / "F"     30² + 30² + 10² + a      = 1900 + a  (Tight -> Loose: classes differ by 2)
+/// a = 10000: P 7300 < Q 11900. a = 0: Q 1900 < P 7300.
+#[test]
+fn adjdemerits_avoids_a_tight_loose_pair() {
+    let font = TestFont {
+        stretch: 2_400.0,
+        shrink: 295.0,
+    };
+    let text = "aaa bbb cccc dd eeeee ffff";
+    let it = items(&font, &NoHyphenation, text);
+    let out = layout_paragraph(&it, &params(51.55)).unwrap();
+    assert_eq!(out.stats.pass, 1);
+    assert_eq!(line_texts(text, &out), ["aaa bbb", "cccc dd", "eeeee ffff"]);
+    assert_eq!(out.lines[0].badness, 50.0);
+    assert_eq!(out.breaks[0].fitness, Fitness::Loose);
+    assert_eq!(out.breaks[1].fitness, Fitness::Loose);
+    assert!(close(out.stats.total_demerits, 7300.0));
+
+    let mut p = params(51.55);
+    p.adj_demerits = 0.0;
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(line_texts(text, &out), ["aaa bbb cccc", "dd eeeee", "ffff"]);
+    assert_eq!(out.lines[0].badness, 20.0);
+    assert_eq!(out.breaks[0].fitness, Fitness::Tight);
+    assert_eq!(out.lines[1].badness, 20.0);
+    assert_eq!(out.breaks[1].fitness, Fitness::Loose);
+    assert!(close(out.stats.total_demerits, 1900.0));
+    // With the default \adjdemerits the same layout would cost 11900: the
+    // cumulative demerits through the second break say so.
+    assert!(close(out.breaks[1].demerits, 1800.0));
+}
+
+/// `\doublehyphendemerits`. Text "aa bb\-bb cc\-cc dd ee ff", measure 30pt,
+/// stretch 100pt (short lines have badness 0), shrink 2.96pt, default
+/// `\hyphenpenalty` 50.
+///
+/// Feasible lines: "aa bb-" 27.5 (b 0), "bb cc-" 27.5 (b 0), "bb cccc" 32.5
+/// (2.5 over 2.96: r -0.84459, 100·r³ = 60.2 -> b 60, Tight), "cc dd" 22.5,
+/// "cc dd ee" 35 (5 over 5.92, b 60), "dd ee" 22.5, "aa bbbb" 32.5 (b 60),
+/// "cccc dd" 32.5 (b 60); last lines "ee ff" 22.5 / "ff" (b 0) and
+/// "dd ee ff" 35 (shrunk, b 60). "cccc dd ee" 45 and any lone non-last word
+/// are infeasible.
+///
+/// Layouts, h = 50² per hyphenated line, d = \doublehyphendemerits:
+///   H  "aa bb-" / "bb cc-" / "cc dd" / "ee ff"   (10²+h) + (10²+h+d) + 10² + 10² = 5400 + d
+///   N  "aa bb-" / "bb cccc" / "dd ee" / "ff"     (10²+h) + 70² + 10² + 10²      = 7700
+///   N' "aa bb-" / "bb cccc" / "dd ee ff"         (10²+h) + 70² + 70²            = 12400
+///   O  "aa bbbb" / "cccc dd" / "ee ff"           70² + 70² + 10²                = 9900
+///   H' "aa bb-" / "bb cc-" / "cc dd ee" / "ff"   2600 + 2600 + d + 4900 + 100   = 10200 + d
+/// d = 10000: N 7700 wins. d = 0: H 5400 wins. No layout has a hyphen on its
+/// penultimate line, so \finalhyphendemerits never applies.
+#[test]
+fn doublehyphendemerits_avoids_consecutive_hyphens() {
+    let font = TestFont {
+        stretch: 10_000.0,
+        shrink: 296.0,
+    };
+    let text = "aa bb\\-bb cc\\-cc dd ee ff";
+    let it = items(&font, &ExplicitDiscretionary, text);
+    let out = layout_paragraph(&it, &params(30.0)).unwrap();
+    assert_eq!(out.stats.pass, 1);
+    assert_eq!(line_texts(text, &out), ["aa bb-", "bb cccc", "dd ee", "ff"]);
+    assert_eq!(out.stats.hyphenated_lines, 1);
+    assert_eq!(out.lines[1].badness, 60.0);
+    assert!(close(out.stats.total_demerits, 7700.0));
+
+    let mut p = params(30.0);
+    p.double_hyphen_demerits = 0.0;
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(
+        line_texts(text, &out),
+        ["aa bb-", "bb cc-", "cc dd", "ee ff"]
+    );
+    assert_eq!(out.stats.hyphenated_lines, 2);
+    assert!(out.lines[0].hyphenated && out.lines[1].hyphenated);
+    assert!(close(out.stats.total_demerits, 5400.0));
+}
+
+/// `\finalhyphendemerits`. Text "aa bb cc\-cc dd", measure 40pt, stretch
+/// 22pt, shrink 1pt per space, default `\hyphenpenalty` 50.
+///
+/// Feasible lines: "aa bb cc-" 40 (exact, b 0), "aa bb" 22.5 (17.5 / 22:
+/// r 0.79545, 100·r³ = 50.3 -> b 50, Loose); last lines "cc dd" 22.5 and
+/// "cccc dd" 32.5 (b 0). "aa bb cccc" 45 exceeds the 2pt shrink; a lone
+/// "cc-" line has no glue.
+///
+/// Layouts, f = \finalhyphendemerits:
+///   F  "aa bb cc-" / "cc dd"     (10² + 50² + f) + 10²  = 2700 + f
+///   G  "aa bb" / "cccc dd"       60² + 10²              = 3700
+/// f = 5000: G 3700 < F 7700. f = 0: F 2700 < G 3700.
+#[test]
+fn finalhyphendemerits_avoids_a_hyphen_before_the_last_line() {
+    let font = TestFont {
+        stretch: 2_200.0,
+        shrink: 100.0,
+    };
+    let text = "aa bb cc\\-cc dd";
+    let it = items(&font, &ExplicitDiscretionary, text);
+    let out = layout_paragraph(&it, &params(40.0)).unwrap();
+    assert_eq!(out.stats.pass, 1);
+    assert_eq!(line_texts(text, &out), ["aa bb", "cccc dd"]);
+    assert_eq!(out.lines[0].badness, 50.0);
+    assert!(close(out.lines[0].ratio, 17.5 / 22.0));
+    assert!(close(out.stats.total_demerits, 3700.0));
+
+    let mut p = params(40.0);
+    p.final_hyphen_demerits = 0.0;
+    let out = layout_paragraph(&it, &p).unwrap();
+    assert_eq!(line_texts(text, &out), ["aa bb cc-", "cc dd"]);
+    assert!(out.lines[0].hyphenated);
+    assert_eq!(out.lines[0].badness, 0.0);
+    assert!(close(out.lines[0].natural_width, 40.0));
+    assert!(
+        close(out.stats.total_demerits, 2700.0),
+        "total {} breaks {:?}",
+        out.stats.total_demerits,
+        out.breaks
+    );
+}

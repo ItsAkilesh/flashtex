@@ -17,12 +17,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use flashtex_compiler::parser::SourceDocument;
 use flashtex_compiler::{DocumentId, Span};
 use flashtex_font_engine::sha256;
 use flashtex_math_layout as ml;
 use flashtex_paragraph_layout as pl;
+use flashtex_paragraph_layout::Hyphenator as _;
 
 use crate::adapter::{self, Block, Doc, Item as AItem, ListGeom, ListMargin, ParaPart, ParaStyle, TextStyle};
 use crate::display::{
@@ -41,6 +43,18 @@ use crate::style::Stylesheet;
 /// paragraph-layout identity of a math box (never a real font hash: real
 /// ids are SHA-256 digests, this is a labelled sentinel).
 const MATH_SENTINEL: pl::FontId = pl::FontId::from_label("flashtex:math-box");
+
+/// `\hyphenpenalty` and `\exhyphenpenalty` (plain TeX and article: 50).
+const HYPHEN_PENALTY: i32 = 50;
+const EX_HYPHEN_PENALTY: i32 = 50;
+
+/// pdflatex's default `english` hyphenation (Knuth's `hyphen.tex`,
+/// `\lefthyphenmin 2`, `\righthyphenmin 3`, `\uchyph 1`), compiled once
+/// per process.
+fn english_hyphenator() -> &'static pl::LiangHyphenator {
+    static ENGLISH: OnceLock<pl::LiangHyphenator> = OnceLock::new();
+    ENGLISH.get_or_init(pl::LiangHyphenator::english)
+}
 
 #[derive(Debug, Clone)]
 pub struct GlyphRec {
@@ -75,6 +89,10 @@ pub enum BoxRec {
         /// Box height/depth in points (max glyph extents).
         height: f64,
         depth: f64,
+        /// A hyphenation fragment (or the discretionary hyphen) that
+        /// continues the word box before it on the same line: painted into
+        /// that run, so an unbroken word is one glyph run as before.
+        continues: bool,
     },
     Math(usize),
     /// `\hrule`: a filled rectangle `width` x `height` sitting on the line's
@@ -658,8 +676,16 @@ impl<'a> Context<'a> {
             glyphs: recs,
             height,
             depth,
+            continues: false,
         });
         Some((run, self.recs.len() - 1))
+    }
+
+    /// Marks a text box as the continuation of the word box before it.
+    fn mark_continues(&mut self, rec: usize) {
+        if let BoxRec::Text { continues, .. } = &mut self.recs[rec] {
+            *continues = true;
+        }
     }
 
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
@@ -962,6 +988,161 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// The items of one word segment: its box, or — when TeX would
+    /// hyphenate it — the fragments between its legal breaks with a flagged
+    /// discretionary at each: `\hyphenpenalty` with the face's hyphen
+    /// (`\hyphenchar`, `-`) as pre-break text at a Liang point, or TeX's
+    /// empty discretionary at `\exhyphenpenalty` after an explicit hyphen
+    /// (§1039; a run of hyphens gets one after the run). A word with an
+    /// explicit hyphen gets no automatic points (§896, `hyphen.tex`
+    /// semantics in the crate's `LiangHyphenator`); capitalised words are
+    /// hyphenated (`\uchyph=1`). Fragments are shaped separately: the font
+    /// kern the whole-word shaping had across a point is kept as a kern
+    /// after the penalty, so an unbroken word keeps exactly its width and
+    /// the kern is discarded when the line breaks there, as TeX's
+    /// reconstitution does (§903–918); the hyphen's advance is measured
+    /// after the fragment it ends so a letter–hyphen kern is included. A
+    /// point inside a ligature (`of-fice`) needs the pre/post/no-break
+    /// reconstitution and is skipped.
+    fn word_items(&mut self, seg: &adapter::Segment, size: f64, hyphenate: bool) -> Vec<(pl::Item, Option<usize>)> {
+        if !hyphenate {
+            return self.whole_word(seg, size);
+        }
+        let text = &seg.text;
+        let mut points: Vec<(usize, bool)> = Vec::new();
+        // The adapter has already turned `--`/`---` into U+2013/U+2014: those
+        // T1 ligatures end in the hyphen char, so TeX appends the empty
+        // discretionary after them too (a break after an em dash).
+        let is_dash = |c: char| matches!(c, '-' | '\u{2013}' | '\u{2014}');
+        if text.chars().any(is_dash) {
+            let mut prev_dash = false;
+            for (i, c) in text.char_indices() {
+                if prev_dash && !is_dash(c) {
+                    points.push((i, false));
+                }
+                prev_dash = is_dash(c);
+            }
+        } else {
+            points.extend(english_hyphenator().hyphenate(text).into_iter().map(|p| (p.offset, true)));
+        }
+        if points.is_empty() {
+            return self.whole_word(seg, size);
+        }
+        let Some(span) = seg_span(seg) else { return Vec::new() };
+        let face = self.face(seg.style, size, span);
+        let shaper = self.shaper;
+        let shaped = shaper.shape(&face, text);
+        if shaped.refused.is_some() {
+            return self.whole_word(seg, size);
+        }
+        let boundaries: BTreeSet<usize> = shaped.clusters.iter().map(|c| c.text_range.start).collect();
+        points.retain(|(o, _)| *o > 0 && *o < text.len() && boundaries.contains(o));
+        if points.is_empty() {
+            return self.whole_word(seg, size);
+        }
+        let upem = shaped.units_per_em as f64;
+        let pt = |units: i64| size * units as f64 / upem;
+        let width = |t: &str| shaper.shape(&face, t).width_units;
+        // Byte offset -> char index, for the fragments' `chars`.
+        let mut char_index = vec![0usize; text.len() + 1];
+        for (ci, (bi, _)) in text.char_indices().enumerate() {
+            char_index[bi] = ci;
+        }
+        char_index[text.len()] = seg.chars.len();
+        let mut cuts: Vec<usize> = Vec::with_capacity(points.len() + 2);
+        cuts.push(0);
+        cuts.extend(points.iter().map(|p| p.0));
+        cuts.push(text.len());
+        let mut out = Vec::new();
+        for k in 1..cuts.len() {
+            let (a, b) = (cuts[k - 1], cuts[k]);
+            if k > 1 {
+                let (at, automatic) = points[k - 2];
+                let prev = cuts[k - 2];
+                let pre_break = if automatic {
+                    // The hyphen glyph of the run's face, provenance the
+                    // letter it follows, cluster the empty range at the
+                    // break (like the crate's own automatic points).
+                    let hyphen = adapter::Segment {
+                        text: "-".to_string(),
+                        chars: vec![seg.chars[char_index[at] - 1]],
+                        style: seg.style,
+                    };
+                    self.text_box(&hyphen, size).map(|(mut run, rec)| {
+                        self.mark_continues(rec);
+                        let adv = pt(width(&format!("{}-", &text[prev..at])) - width(&text[prev..at]));
+                        let doc_at = seg.chars[char_index[at]].start;
+                        for g in &mut run.glyphs {
+                            g.cluster = doc_at..doc_at;
+                        }
+                        if let Some(last) = run.glyphs.last_mut() {
+                            last.advance += adv - run.width;
+                        }
+                        run.width = adv;
+                        run.source = doc_at..doc_at;
+                        (run, rec)
+                    })
+                } else {
+                    None
+                };
+                let (pre_break, rec) = match pre_break {
+                    Some((run, rec)) => (Some(run), Some(rec)),
+                    None => (None, None),
+                };
+                out.push((
+                    pl::Item::Penalty(pl::Penalty {
+                        value: if automatic { HYPHEN_PENALTY } else { EX_HYPHEN_PENALTY },
+                        flagged: true,
+                        pre_break,
+                        automatic,
+                        post_break: None,
+                        replace_count: 0,
+                    }),
+                    rec,
+                ));
+                let kern = pt(width(&text[prev..b]) - width(&text[prev..at]) - width(&text[at..b]));
+                if kern != 0.0 {
+                    out.push((pl::Item::kern(kern), None));
+                }
+            }
+            let frag = adapter::Segment {
+                text: text[a..b].to_string(),
+                chars: seg.chars[char_index[a]..char_index[b]].to_vec(),
+                style: seg.style,
+            };
+            if let Some((run, rec)) = self.text_box(&frag, size) {
+                if k > 1 {
+                    self.mark_continues(rec);
+                }
+                out.push((pl::Item::Box(run), Some(rec)));
+            }
+        }
+        out
+    }
+
+    fn whole_word(&mut self, seg: &adapter::Segment, size: f64) -> Vec<(pl::Item, Option<usize>)> {
+        self.text_box(seg, size).map(|(run, rec)| vec![(pl::Item::Box(run), Some(rec))]).unwrap_or_default()
+    }
+
+    /// Runs the breaker. A list it rejects (non-finite or overlong, which
+    /// the adapter never produces) is reported as a typed error and the
+    /// block skipped rather than panicking the worker.
+    fn break_paragraph(&mut self, list: &[pl::Item], params: &pl::LineBreakParams, items: &[AItem]) -> Option<pl::Lines> {
+        match pl::layout_paragraph(list, params) {
+            Ok(lines) => Some(lines),
+            Err(e) => {
+                let span = items.iter().find_map(|i| match i {
+                    AItem::Word(w) => w.segments.iter().find_map(seg_span),
+                    AItem::Math { span, .. } => Some(*span),
+                    _ => None,
+                });
+                let sources = span.map(|s| vec![self.source(s)]).unwrap_or_default();
+                self.emit(None, Diagnostic::error("paragraph_layout_error", format!("paragraph not set: {e}"), sources));
+                None
+            }
+        }
+    }
+
     /// Builds a horizontal list. Returns paragraph-layout items, the
     /// per-item box record and the `\label` keys with the item they precede.
     /// `\\[<dimen>]` skips are returned as `(forced-break item, points)`;
@@ -981,9 +1162,20 @@ impl<'a> Context<'a> {
             out.push(item);
             recs.push(rec);
         };
-        for item in items {
+        for (idx, item) in items.iter().enumerate() {
             match item {
                 AItem::Word(w) => {
+                    // TeX hyphenates a word only when it directly follows
+                    // glue (§894: never the first word of a paragraph, which
+                    // follows the `\parindent` box, nor an `\item`'s, which
+                    // follows the label box and `\penalty0`), when its
+                    // letters are in one font (§896), and when nothing but
+                    // non-letters follows them up to the next glue, penalty
+                    // or kern (§899: a math or word box glued straight on
+                    // ends the search with no hyphens).
+                    let after_glue = matches!(out.last(), Some(pl::Item::Glue(_)));
+                    let joined = matches!(items.get(idx + 1), Some(AItem::Word(_) | AItem::Math { .. }));
+                    let hyphenate = after_glue && !joined && w.segments.len() == 1;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
@@ -998,8 +1190,8 @@ impl<'a> Context<'a> {
                         // A size declaration in force (`{\Large ...}`) sets
                         // this segment at its own size.
                         let seg_size = seg.style.size_or(size);
-                        if let Some((run, rec)) = self.text_box(&seg, seg_size) {
-                            push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                        for (item, rec) in self.word_items(&seg, seg_size, hyphenate) {
+                            push(&mut out, &mut recs, item, rec);
                         }
                     }
                 }
@@ -1128,7 +1320,7 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let trailing_skip = self.drop_trailing_break(items, &mut list, &mut recs, &mut skips, style);
+        let trailing_skip = drop_trailing_break(&mut list, &mut recs, &mut skips, style);
         // `\item`: the label box `\hskip-\labelwidth \hskip-\labelsep
         // \hbox to\labelwidth{\hfil <label>} \hskip\labelsep` opens the
         // first line (`\@item`'s `\everypar`); a label wider than
@@ -1155,7 +1347,8 @@ impl<'a> Context<'a> {
                 }
             }
         }
-        let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style, hang_pt));
+        let params = self.line_params(indent, self.style.baselineskip_pt, style, hang_pt);
+        let lines = self.break_paragraph(&list, &params, items)?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
         let parskip = list_geom.map_or(self.style.parskip, |g| g.parsep);
@@ -1238,74 +1431,6 @@ impl<'a> Context<'a> {
         self.text_box(&seg, size)
     }
 
-    /// A paragraph whose last item is `\\` (TeX: an empty final line,
-    /// LaTeX's "Underfull \hbox" warning): the pinned paragraph-layout
-    /// (`linebreak.rs:988`) panics on a forced break followed by the
-    /// paragraph-end sequence, which would kill the worker mid-keystroke.
-    /// Until the owner's fix lands (`docs/handoffs/paragraph-layout-forced-break/`
-    /// on the mac-shell branch) the trailing break and the discardable glue
-    /// before it are dropped before line breaking and reported as a typed
-    /// warning: the paragraph then sets as TeX would minus the empty last
-    /// line (one baseline pitch short). `list` and `recs` are the parallel
-    /// outputs of [`Self::hlist`].
-    ///
-    /// Under `\centering`/`\raggedleft` (`\@centercr`) a final `\\` is
-    /// exactly `\par`: no empty line, nothing to report; its `[<dimen>]`
-    /// is `\vskip`ped after the paragraph and returned (`Some(0.0)` for a
-    /// bare `\\`, so the caller still cancels the `\parskip`).
-    fn drop_trailing_break(&mut self, items: &[AItem], list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, skips: &mut Vec<(usize, f64)>, style: ParaStyle) -> Option<f64> {
-        // `hlist` appends `\penalty10000 \parfillskip \penalty-10000`; the
-        // item before that triple is the last one of the paragraph proper.
-        let trailing_break = |list: &[pl::Item]| {
-            let n = list.len();
-            n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK)
-        };
-        if !trailing_break(list) {
-            return None;
-        }
-        let centred = matches!(style, ParaStyle::Center | ParaStyle::FlushRight);
-        let mut trailing_skip = 0.0;
-        while trailing_break(list) {
-            let at = list.len() - 4;
-            if let Some(i) = skips.iter().position(|(item, _)| *item == at) {
-                trailing_skip += skips.remove(i).1;
-            }
-            list.remove(at);
-            recs.remove(at);
-            // The `\hfil` glue `\\` carries plus any glue read before it
-            // (discardable after a break, TeX §879); stop at the next `\\`
-            // so the outer loop drops it the same way.
-            loop {
-                let last = list.len() - 3; // the paragraph-end triple starts here
-                if last == 0 || !matches!(list[last - 1], pl::Item::Glue(_)) || trailing_break(list) {
-                    break;
-                }
-                list.remove(last - 1);
-                recs.remove(last - 1);
-            }
-        }
-        if centred {
-            return Some(trailing_skip);
-        }
-        // Source: the last word/formula before the break (`\\` carries no
-        // span of its own in the adapter's items).
-        let span = items.iter().rev().find_map(|i| match i {
-            AItem::Word(w) => w.segments.iter().rev().find_map(seg_span),
-            AItem::Math { span, .. } => Some(*span),
-            _ => None,
-        });
-        let sources = span.map(|s| vec![self.source(s)]).unwrap_or_default();
-        self.emit(
-            None,
-            Diagnostic::warning(
-                "paragraph_final_linebreak",
-                "final \\\\ ignored: paragraph-layout forced-break fix pending (LaTeX sets an empty last line here, Underfull \\hbox; this paragraph is one line pitch shorter)",
-                sources,
-            ),
-        );
-        Some(trailing_skip)
-    }
-
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
         let h = self.style.heading(level);
         let (list, recs, labels, skips) = self.hlist(
@@ -1322,7 +1447,8 @@ impl<'a> Context<'a> {
         if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
             return None;
         }
-        let lines = pl::layout_paragraph(&list, &self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0));
+        let params = self.line_params(false, h.baselineskip_pt, ParaStyle::Plain, 0.0);
+        let lines = self.break_paragraph(&list, &params, items)?;
         self.report_overfull(&lines, &list, &recs);
         // The heading's lines are appended under its own \baselineskip
         // (`\Large` is in force inside \@sect's group); the before/after
@@ -2206,7 +2332,7 @@ impl<'a> Context<'a> {
             let src = span.map(|s| vec![self.source(s)]).unwrap_or_default();
             self.emit(None, Diagnostic::warning(
                 "overfull_hbox",
-                format!("overfull line: {:.2}pt too wide (no hyphenation available)", o.excess),
+                format!("overfull line: {:.2}pt too wide", o.excess),
                 src,
             ));
         }
@@ -2232,6 +2358,51 @@ fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
 
 fn line_extents(lines: &pl::Lines) -> Vec<(f64, f64)> {
     lines.lines.iter().map(|l| (l.height, l.depth)).collect()
+}
+
+/// A trailing `\\` under `\centering`/`\raggedleft` (`\@centercr`) is
+/// exactly `\par`: the forced break and the glue before it are dropped from
+/// the list, its `[<dimen>]` is `\vskip`ped after the paragraph and returned
+/// (`Some(0.0)` for a bare `\\`, so the caller still cancels the `\parskip`).
+/// Elsewhere `\\` is `\hfil\break` and the list is left alone: the breaker
+/// sets the empty last line TeX sets there (the familiar "Underfull \hbox
+/// (badness 10000)"), one line pitch tall, and the skip lands after the line
+/// the break ends (`vskips_of`). `list`/`recs`/`skips` are the outputs of
+/// [`Context::hlist`].
+fn drop_trailing_break(list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, skips: &mut Vec<(usize, f64)>, style: ParaStyle) -> Option<f64> {
+    if !matches!(style, ParaStyle::Center | ParaStyle::FlushRight) {
+        return None;
+    }
+    // `hlist` appends `\penalty10000 \parfillskip \penalty-10000`; the
+    // item before that triple is the last one of the paragraph proper.
+    let trailing_break = |list: &[pl::Item]| {
+        let n = list.len();
+        n >= 4 && matches!(&list[n - 4], pl::Item::Penalty(p) if p.value <= pl::FORCED_BREAK)
+    };
+    if !trailing_break(list) {
+        return None;
+    }
+    let mut trailing_skip = 0.0;
+    while trailing_break(list) {
+        let at = list.len() - 4;
+        if let Some(i) = skips.iter().position(|(item, _)| *item == at) {
+            trailing_skip += skips.remove(i).1;
+        }
+        list.remove(at);
+        recs.remove(at);
+        // The `\hfil` glue `\\` carries plus any glue read before it
+        // (discardable after a break, TeX §879); stop at the next `\\`
+        // so the outer loop drops it the same way.
+        loop {
+            let last = list.len() - 3; // the paragraph-end triple starts here
+            if last == 0 || !matches!(list[last - 1], pl::Item::Glue(_)) || trailing_break(list) {
+                break;
+            }
+            list.remove(last - 1);
+            recs.remove(last - 1);
+        }
+    }
+    Some(trailing_skip)
 }
 
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
@@ -3402,11 +3573,21 @@ fn assemble_block(
             .collect();
         let mut bi = 0usize;
         for run in &line.runs {
-            if run.is_hyphen {
-                continue;
-            }
-            let Some(&rec) = boxes.get(bi) else { break };
-            bi += 1;
+            // A discretionary hyphen is the pre-break text of the penalty
+            // the line breaks at; its box record sits at that item.
+            let rec = if run.is_hyphen {
+                block.block.lines.breaks.get(line.index).and_then(|b| block.recs.get(b.item).copied().flatten())
+            } else {
+                let r = boxes.get(bi).copied();
+                bi += 1;
+                r
+            };
+            let Some(rec) = rec else {
+                if run.is_hyphen {
+                    continue;
+                }
+                break;
+            };
             let mut local = run.clone();
             local.x += text_x;
             local.baseline_y = 0.0;
@@ -3419,11 +3600,17 @@ fn assemble_block(
                     glyphs,
                     height,
                     depth,
+                    continues,
                     ..
                 } => {
                     used.entry(face.font_id.clone()).or_insert_with(|| face.clone());
                     if let Some(item) = text_item(&local, face, *size, text, clusters, glyphs, *height, *depth, source_of) {
-                        items.push(item);
+                        match (items.last_mut(), item) {
+                            (Some(display::Item::GlyphRun(prev)), display::Item::GlyphRun(next)) if *continues && prev.font_id == next.font_id && prev.font_size == next.font_size => {
+                                join_runs(prev, next);
+                            }
+                            (_, item) => items.push(item),
+                        }
                     }
                 }
                 BoxRec::Math(mi) => {
@@ -3666,6 +3853,27 @@ fn picture_items(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Appends a word fragment's run to the run it continues: one text, the
+/// clusters re-based onto it, the caret at the join dropped (only the last
+/// cluster of a run carries the trailing caret).
+fn join_runs(prev: &mut GlyphRun, next: GlyphRun) {
+    let offset = prev.text.len();
+    let base = prev.clusters.len() as u32;
+    if let Some(last) = prev.clusters.last_mut() {
+        last.carets.last = None;
+    }
+    prev.text.push_str(&next.text);
+    prev.glyphs.extend(next.glyphs.into_iter().map(|mut g| {
+        g.cluster += base;
+        g
+    }));
+    prev.clusters.extend(next.clusters.into_iter().map(|mut c| {
+        c.text_start_byte += offset;
+        c.text_end_byte += offset;
+        c
+    }));
+}
+
 fn text_item(
     run: &pl::PositionedRun,
     face: &Rc<LoadedFace>,
