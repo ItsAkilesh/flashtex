@@ -89,6 +89,11 @@ enum CommandPaletteModel {
         case .jumpToSelection: EditorFindAction.centerSelection()
         case .completion, .completionList, .toggleComment, .signatureHelp, .selectPreviewItemSource, .nextSearchMatch: return false
         case .goToMatching: model.goToMatching()
+        case .goToDefinition: model.goToDefinition() // ShellModel+EditorNavigation.swift
+        case .goToSymbol: model.editorNavigation.symbolPickerShown = true
+        case .selectEnvironment: model.selectEnvironment()
+        case .wrapInEnvironment: model.editorNavigation.wrapShown = true
+        case .renameSymbol: model.presentRenameSymbol()
         case .nextDiagnostic: model.goToDiagnostic(forward: true)
         case .previousDiagnostic: model.goToDiagnostic(forward: false)
         case .nextOccurrence: model.stepOccurrence(forward: true, panel: model.problemsPanel)
