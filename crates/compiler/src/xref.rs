@@ -71,6 +71,26 @@ impl Counters {
         self.insert(name, Some(parent), true)
     }
 
+    /// amsmath `\numberwithin{name}{parent}` for an existing counter: from
+    /// now on `name` resets with `parent` and prints as
+    /// `\the<parent>.<value>`. Returns false (changing nothing) when either
+    /// counter is undefined or `parent` is already numbered within `name`.
+    pub fn set_within(&mut self, name: &str, parent: &str) -> bool {
+        let (Some(index), Some(parent_index)) = (self.index(name), self.index(parent)) else {
+            return false;
+        };
+        let mut ancestor = Some(parent_index);
+        while let Some(at) = ancestor {
+            if at == index {
+                return false;
+            }
+            ancestor = self.counters[at].reset_by;
+        }
+        self.counters[index].reset_by = Some(parent_index);
+        self.counters[index].prefixed = true;
+        true
+    }
+
     fn insert(&mut self, name: &str, within: Option<&str>, prefixed: bool) -> bool {
         if self.index(name).is_some() {
             return false;

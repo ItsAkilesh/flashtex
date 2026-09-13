@@ -118,7 +118,15 @@ pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["includegraphics", "frac", "sqrt"];
 pub const TEXT_CONTEXT_ONLY: &[&str] = &["thanks", "and", "today"];
 
 /// Dispatch arms that are not `parser::BUILT_INS` entries.
-const TEXT_EXTRA_ARMS: &[&str] = &["newtheorem", "theoremstyle"];
+const TEXT_EXTRA_ARMS: &[&str] = &[
+    "newtheorem",
+    "theoremstyle",
+    "newtheoremstyle",
+    "swapnumbers",
+    "numberwithin",
+    "qed",
+    "qedhere",
+];
 
 /// Canonical commands the expansion pass executes itself (engine primitives
 /// and kernel-prelude macros of `flashtex-tex-expansion`); their effect
@@ -325,12 +333,17 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("author", "{...}", "author block for \\maketitle; \\and and \\thanks inside it"),
     ("date", "{...}", "date for \\maketitle; \\today inside it"),
     ("maketitle", "", "article.cls title block"),
-    ("newtheorem", "{env}[counter]{name}", "defines a numbered theorem-like environment (amsthm)"),
+    ("newtheorem", "{env}[counter]{name}[within]", "defines a theorem-like environment: the kernel head, or with amsthm the current style; starred form unnumbered"),
     ("theoremstyle", "{style}", "selects the amsthm style for following \\newtheorem"),
     ("lstset", "{keys}", "listings keys for the listings that follow; keys the render pipeline does not lay out warn"),
     ("lstdefinestyle", "{name}{keys}", "named listings key set for style=; keys the render pipeline does not lay out warn"),
     ("lstloadlanguages", "{languages}", "accepted no-op; the C, C++, Java and Python keyword lists are built in"),
     ("lstinputlisting", "[keys]{file}", "listing of a project document's lines"),
+    ("newtheoremstyle", "{name}{above}{below}{body font}{indent}{head font}{punct}{space}{spec}", "defines an amsthm style; a custom head specification is diagnosed"),
+    ("swapnumbers", "", "amsthm: numbers before names in the heads of later \\newtheorem environments"),
+    ("numberwithin", "[format]{counter}{parent}", "amsmath: a theorem or sectioning counter resets with its parent and prints the parent's number first"),
+    ("qed", "", "amsthm end-of-proof box, flush right"),
+    ("qedhere", "", "amsthm: puts the proof's end-of-proof box here instead of at \\end{proof}"),
 ];
 
 const SIZE_DECLARATIONS: &[&str] = &[
@@ -603,6 +616,12 @@ const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
         true,
     ),
     (
+        &["qedhere"],
+        "",
+        "amsthm: the display holds the proof's end-of-proof box",
+        true,
+    ),
+    (
         &["tag"],
         "{label}",
         "(label) two quads after the display; starred form without parentheses",
@@ -684,7 +703,7 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
     ("verbatim", "literal typewriter lines; a tab is one space (latex.ltx \\@verbatim)"),
     ("verbatim*", "literal typewriter lines with visible spaces and tabs"),
     ("lstlisting", "listings code; columns, numbers, frames and keywords laid out by the render pipeline"),
-    ("proof", "amsthm proof with a closing square"),
+    ("proof", "amsthm proof: italic head and an end-of-proof box (\\qedhere moves it)"),
     (
         "thebibliography",
         "References section with numbered \\bibitem entries",
@@ -704,7 +723,7 @@ const PACKAGES: &[(&str, &str, &str)] = &[
     (
         "amsthm",
         "",
-        "\\newtheorem, \\theoremstyle and the proof environment",
+        "\\newtheorem, \\theoremstyle, \\newtheoremstyle, \\swapnumbers, the proof environment, \\qed and \\qedhere",
     ),
     (
         "array",

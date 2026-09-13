@@ -184,6 +184,16 @@ impl P<'_> {
     /// `\def\...name{..}`, the last definition of each name winning
     /// (integration 2026-09-13b; the original read `self.macros`).
     fn defined_names(&self) -> Vec<(String, String)> {
+        let mut names = self.user_definitions();
+        names.retain(|(name, _)| name.ends_with("name"));
+        names
+    }
+
+    /// Every argument-free `\renewcommand`/`\newcommand`/`\providecommand`
+    /// and `\def` in the sources as `(name, body text)`, the last definition
+    /// of each name winning, sorted by name. Also read for amsthm's
+    /// `\proofname` and `\qedsymbol` (#149).
+    pub(super) fn user_definitions(&self) -> Vec<(String, String)> {
         let mut names: Vec<(String, String)> = Vec::new();
         for document in self.documents {
             let tokens = crate::lexer::tokenize(document.text);
@@ -216,10 +226,6 @@ impl P<'_> {
                     k += 1;
                     continue;
                 };
-                if !name.ends_with("name") {
-                    k += 1;
-                    continue;
-                }
                 j = skip_blanks(j + 1);
                 if braced {
                     if !matches!(kind(j), Some(TokenKind::RBrace)) {

@@ -938,6 +938,10 @@ impl MathParser<'_> {
             }
             "displaystyle" | "textstyle" | "scriptstyle" | "scriptscriptstyle" | "nonumber"
             | "notag" | "middle" => space(0.0, span),
+            // amsthm `\qedhere` inside a display: the text parser records the
+            // proof's end-of-proof mark (`theorems::QedPlacement::Display`) at
+            // `\end{proof}`; nothing is set in the formula itself.
+            "qedhere" => space(0.0, span),
             // `\left`/`\right` stretch to their enclosed content at layout
             // time (`left_right_stretch_scales`); here they just record which
             // role they play so that pairing pass can find them.
