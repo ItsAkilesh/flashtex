@@ -1,0 +1,26 @@
+{
+  "acceptance": [
+    "FlashTeXPad builds and its full simulator test suite passes with fresh derived data on the iPad Air 11-inch (M3) simulator from the tested SHA (FinishTests 8/8 and CaptureQueueTests 5/5 remain green; count all suites)",
+    "End-to-end on simulator + Mac app: pair by QR, Pencil capture and camera capture delivered, capture_status/capture_status_ack outcome shown on the iPad, Mac restart re-delivery, retry keeps original destination/revision, and storage-failure-before-send case (GH2#5648823007) each have a test or recorded evidence",
+    "Remaining device-only gaps (Developer Mode / DDI, signing, notarization) are listed explicitly in apps/ios/README.md with the exact blocker text; no claim of device acceptance without a device run",
+    "The companion never sees an AI provider; the generic-AI change (FT-050) requires no iPad change and this is stated in the report"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-ipad-finish",
+  "branch": "agent/mac-ios-app-2/finish",
+  "deadline_utc": null,
+  "dependencies": [
+    "main ad71b648 already contains 237de3ff (FakeMac restart on port 0)"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal (d): the iPad/iOS companion app is fully finished. Close the remaining protocol/durability cases raised by the Codex reviewer, run the complete simulator suite, exercise the whole pair/capture/outcome flow against the Mac app, and publish the explicit list of device-only blockers.",
+  "owned_paths": [
+    "apps/ios"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-053",
+  "timebox_minutes": 60,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}

@@ -1,0 +1,30 @@
+{
+  "acceptance": [
+    "fixtures/real-world/hw1/HW1.tex through the Mac producer (fresh build from the tested SHA) renders 3 pages with 0 errors and 0 notices; page-top heading offset on pages 2/3 (currently -11.95 bp), heading before/after skips (currently +/-1 bp), the two overfull lines and the \\setlist leftmargin notice are each closed with a measured before/after against HW1-reference.pdf at the pinned raster settings",
+    "Per-page word-position comparison against the reference (mean |dx|, |dy| in bp) recorded in docs/evidence/hw1-exact-<date>/ with the exact compiler and render-pipeline SHAs and binary hashes",
+    "Compiler-side HW1 asks are fixed with regression tests: (1) blank-line-separated items flush as plain paragraphs so only the last item carries ListItem gaps and the first item's topsep is lost; (2) \\setlist em values evaluated at a fixed 12pt instead of the class size (5.4 vs 4.93pt at 11pt); (3) \\normalfont/\\bf reset TextStyle::size and a resolved \\ref inside {\\Large ...} loses its size; cargo test --release green in crates/compiler and crates/render-pipeline",
+    "fixtures/real-world/hw1/HW1.tex and HW1-reference.pdf are never edited (hashes f725e238... / 2bca6a80... unchanged)",
+    "No second parser or renderer fork; render-pipeline consumes compiler output once per construct (no double glue/sizes)"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-hw1-exact",
+  "branch": "agent/mac-render-pipeline/hw1-math-10",
+  "deadline_utc": null,
+  "dependencies": [
+    "main ad71b648 (contains hw1-math-9 and compiler 42557b09)",
+    "Compiler-scoped HW1 fixes go on a separate branch agent/mac-compiler-hw1/compiler based on main; FT-002 owner claude (mac-m5pro-kabir) is not reporting live, so this is a user-directed temporary allocation to mac-m1max-a limited to the three listed asks plus regression tests; if Kabir posts a fresh live report on GH2 the compiler branch is handed to FT-002 for review before merge"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal (a): HW1.tex must render EXACTLY like HW1-reference.pdf. Close the remaining measured gaps (page-top heading offset -11.95 bp on pages 2/3, +/-1 bp heading skips, two overfull lines without hyphenation, \\setlist leftmargin notice) in render-pipeline, and the three compiler-side asks from GH2#5649309171 on a separate compiler branch. Report measured page geometry against the reference, not diagnostic counts alone.",
+  "owned_paths": [
+    "crates/render-pipeline",
+    "crates/compiler",
+    "docs/evidence/hw1-exact-20260913"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-051",
+  "timebox_minutes": 90,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}

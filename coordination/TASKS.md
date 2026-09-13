@@ -1,7 +1,31 @@
 # Commander task board
 
-Owner: Commander. Updated: 2026-09-12T03:43:54Z.
+Owner: Commander `orchestrator-jaysen-claude` (mac-m1max-a). Updated: 2026-09-13T03:30:00Z.
 Full process: [orchestration master plan](../ORCHESTRATION.md).
+
+> **Staffing rule (user, 2026-09-13):** allocate tasks ONLY to mac-m1max-a
+> (parent `mac-claude-a` staffs lanes there) until another machine posts a fresh
+> live report on GH issue #2. Nothing is dispatched to Daniel (mac-m5pro-dq222),
+> Kabir (mac-m5pro-kabir), Aarush or linux-primary before that. Rows below for
+> those machines are historical; their `assigned` states are not live evidence.
+
+## Current queue (main ad71b648, all owned by mac-claude-a on mac-m1max-a)
+
+| ID / revision | Task | Branch | State | Notes |
+|---|---|---|---|---|
+| FT-050 / 1 | Generic AI provider abstraction in crates/assistant-context + crates/bridge (GH2#5649521523 contract) | agent/mac-ai-generic/crates | assigned | Mac side is the parent's mac-ai-generic lane; no apps/mac edits from this lane |
+| FT-051 / 1 | HW1.tex exact render: heading offset/skips, overfull lines, \setlist notice + three compiler asks | agent/mac-render-pipeline/hw1-math-10, agent/mac-compiler-hw1/compiler | assigned | compiler edits are a user-directed temporary allocation while FT-002 (Kabir) is not live |
+| FT-052 / 1 | Corpus coverage gate from PR #42/#53 and first math/package coverage increment | agent/mac-coverage/corpus-gate | assigned | PR #42/#53 integration: only two add/add coordination conflicts |
+| FT-053 / 1 | iPad companion finished: remaining durability cases, full simulator suite, device blockers listed | agent/mac-ios-app-2/finish | assigned | |
+| FT-054 / 1 | Modern editor: highlighting, intellisense, navigation, scrollable problems panel | agent/mac-editor-intellisense/editor | assigned | extends mac-syntax-highlight / mac-completion-sync |
+| FT-055 / 1 | CI/CD auto-deploy of compiler + GUI to the website; user docs | agent/mac-claude-a/cicd | assigned | parent already started; tracked to avoid duplication |
+
+Integration facts at this update: `origin/agent/mac-pdf/searchable-text` b4b1513
+is already on main (94a67130/9689384e/4893f3e7), nothing to merge. PR #42 and PR #53
+are the only pending deliveries from this machine. Daniel's branches
+`daniel-parent-b/lm-math-symbols` (11 ahead, touches apps/mac Fonts.swift) and
+`daniel-math-accents/compiler` (6 ahead) are unintegrated and unowned until Daniel
+reports live; do not merge without a fresh owner report and a Mac build/test.
 
 | ID / revision | Task | Owner | State | Dependencies |
 |---|---|---|---|---|

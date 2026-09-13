@@ -1,0 +1,30 @@
+{
+  "acceptance": [
+    "One provider trait in crates/assistant-context (request(context, model, timeout) -> ProviderReply) with modules xai (existing Responses wire), openai_compat (chat/completions with configurable FLASHTEX_AI_BASE_URL; covers OpenAI, Groq, Mistral, Ollama/LM Studio/vLLM), anthropic (Messages), gemini (generateContent); the same abstraction for capture conversion in crates/bridge",
+    "CLI/env contract: --provider-session <id> <provider>:<model>; credential from FLASHTEX_AI_API_KEY with FLASHTEX_GROK_API_KEY/XAI_API_KEY kept as aliases for one release; bridge --enable-grok replaced by --enable-ai <provider>:<model> (old flag accepted with a deprecation diagnostic); provider_intent carries the provider id; supported_features advertises ai:<provider>",
+    "Source-bound validation, review/approve gates, journals and relocate-edits behaviour (main contains d1795267) unchanged and covered by provider-independent tests; existing xAI live path still passes its hermetic tests",
+    "No live paid provider calls in tests; wire-format tests use recorded fixtures per provider; docs in crates/assistant-context/README.md and crates/bridge/README.md describe the contract",
+    "cargo build --release && cargo test --release green in both crates plus strict clippy; report main SHA merged, tests run and hashes of any fixture files"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-ai-generic-crates",
+  "branch": "agent/mac-ai-generic/crates",
+  "deadline_utc": null,
+  "dependencies": [
+    "Contract proposal GH2#5649521523 (confirmed by Commander at this revision; amend only with a published reason)",
+    "Mac-side lane mac-ai-generic (parent-owned, apps/mac) consumes this contract via feature detection until it lands"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal change: make AI integration generic, do not focus on Grok. Implement the provider abstraction and the provider-neutral CLI/env contract in crates/assistant-context and crates/bridge exactly as proposed in GH2#5649521523, keeping every safety gate provider-independent. Ownership note: these crates were Linux-Commander-owned (FT-029 integrated, FT-007); Linux is not staffed and the user directs all allocation to mac-m1max-a, so mac-claude-a staffs one crate-side lane here. Do not touch apps/mac from this lane.",
+  "owned_paths": [
+    "crates/assistant-context",
+    "crates/bridge",
+    "docs/contracts/ai-providers-v1.md"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-050",
+  "timebox_minutes": 90,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}

@@ -1,0 +1,32 @@
+{
+  "acceptance": [
+    "PR #42 (agent/mac-reference-corpus/extended-suite) and stacked PR #53 (agent/mac-reference-corpus/hw1-probes, tip 13848720) merged into main by the Commander route; the only conflicts are add/add in coordination/agents/mac-reference-corpus.json and coordination/mac-reference-corpus.md (keep the newer PR53 versions); the 15 corpus checks pass after the merge",
+    "A repeatable coverage gate script (tests/extended-tex-corpus or tools/extended-tex-corpus) runs every corpus project (58 projects, 51 positive PDFs, 7 expected errors, 14 exact edits) through the fresh compiler and render-pipeline binaries built from the tested SHA and writes a per-project table: status, diagnostics count, unsupported commands/packages, and raster diff vs the MacTeX oracle at the pinned 96-DPI settings",
+    "Coverage table committed under docs/evidence/corpus-coverage-<date>/ with binary hashes and SHAs; unsupported commands/packages ranked by frequency become the ordered work list for math/package coverage",
+    "First coverage increment lands on the compiler (math constructs and package no-ops/semantics from the ranked list) with regression tests; corpus diagnostics total strictly decreases and no project regresses (page count or status)",
+    "HW1 fixture and all corpus sources/PDFs unchanged"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-coverage",
+  "branch": "agent/mac-coverage/corpus-gate",
+  "deadline_utc": null,
+  "dependencies": [
+    "PR #42 and PR #53 (drafts owned by jay3332; un-draft and merge through the Commander integration route)",
+    "FT-051 compiler branch: coordinate compiler edits by file/construct to avoid overlapping writes; HW1-scoped asks stay in FT-051"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal (b): essentially 100% math and package coverage. Turn the MacTeX reference corpus (PR #42 + PR #53) into a measured coverage gate, publish the ranked gap list, and start closing it on the compiler with tests. Measured raster parity against the oracle is the fidelity signal; diagnostic counts are secondary.",
+  "owned_paths": [
+    "tests/extended-tex-corpus",
+    "tools/extended-tex-corpus",
+    "docs/evidence/corpus-coverage-20260913",
+    "crates/compiler/src/math.rs",
+    "crates/compiler/src/parser.rs"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-052",
+  "timebox_minutes": 90,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}

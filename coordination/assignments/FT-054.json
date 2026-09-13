@@ -1,0 +1,28 @@
+{
+  "acceptance": [
+    "Editor: LaTeX syntax highlighting (commands, math, comments, environments, braces) on the real editor view with a theme that follows light/dark; measured no typing-latency regression against the existing latency fixture",
+    "Intellisense: completion for commands/environments/labels/citations/file paths driven by the compiler symbol table and project index (crates/project-index), with signature/argument hints and the existing vocabulary drift test kept green; auto-close of braces and environments; goto-definition for \\label/\\ref and \\cite; hover diagnostics",
+    "Problems panel scrolls when it overflows (user complaint GH2#5648027452) and each row navigates to its source range; diagnostics update as-you-type through the existing bounded producer route",
+    "AI assistant entry points are provider-neutral (Ask AI, Fix with AI) per the mac-ai-generic lane; no new Grok-specific surface is added",
+    "swift build && swift test for the touched suites pass at the tested SHA with the helper env (FLASHTEX_REVIEW_HISTORY_DIR=off FLASHTEX_NO_ACTIVATE=1 FLASHTEX_KEYCHAIN_OFF=1); screenshots of the editor with highlighting, completion popup and hover are attached under docs/evidence/editor-<date>/"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-editor",
+  "branch": "agent/mac-editor-intellisense/editor",
+  "deadline_utc": null,
+  "dependencies": [
+    "Existing lanes mac-syntax-highlight (report 22:40Z) and mac-completion-sync are the starting point; do not duplicate a running lane, extend it",
+    "crates/project-index and the compiler symbol output stay read-only from this lane; request additions via a handoff"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal (e): a full intellisense / modern editor experience in the Mac app (the user called the current editor 'pretty bad': no highlighting, no intellisense, overflowing error list). Deliver highlighting, completion, navigation, hover and a usable problems panel with tests and screenshots.",
+  "owned_paths": [
+    "apps/mac"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-054",
+  "timebox_minutes": 90,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}

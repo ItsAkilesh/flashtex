@@ -1,4 +1,67 @@
-# Current handoff override — September12, after main e43d26f2
+# Commander takeover — 2026-09-13T03:16Z, orchestrator-jaysen-claude on mac-m1max-a
+
+Sole Commander is now `orchestrator-jaysen-claude`, a Claude Code subagent of
+mac-claude-a on mac-m1max-a (session_01Y1nAv4pEnmMYXgteBoadHn). Basis: the user
+directly instructed "the orchestrator is dead, spawn a subagent to take over as
+orchestrator for now." Predecessor `claude` (mac-m5pro-kabir) could not be
+process-checked from this machine; observed facts only: its last main write was
+ad71b648 at 2026-09-13T02:54:50Z (v0.1.1 bump + lockfile sync after integrating
+hw1-math-9 / mac-shell / relocate-edits), its last issue comment was GH20#5649423628
+at 23:34:51Z, and no main writes followed. Claim base main: ad71b648. Control
+worktree: scratch `wt-commander` on mac-m1max-a; no dispatcher service runs here.
+
+**Staffing rule (user, 2026-09-13):** allocate tasks ONLY to mac-m1max-a (the
+parent mac-claude-a staffs lanes there) until another machine posts a fresh live
+report on GH issue 2. Daniel (mac-m5pro-dq222), Kabir (mac-m5pro-kabir), Aarush and
+linux-primary receive nothing until then. Resources: Claude Max 20x on this machine
+only; no purchases, overages or API spend.
+
+**User goals driving the queue (verbatim order):** (a) `fixtures/real-world/hw1/HW1.tex`
+renders EXACTLY like `HW1-reference.pdf` (now 8 notices / 0 errors / 3 pages through
+the Mac producer; remaining: page-top heading offset −11.95 bp on pages 2/3, ±1 bp
+heading skips, two overfull lines, `\setlist leftmargin` notice); (b) essentially
+100% math and package coverage; (c) "make ai integration generic, do not focus on
+grok" — contract proposal GH2#5649521523; (d) iPad companion finished; (e) full
+intellisense / modern editor; (f) CI/CD auto-deploy of compiler and GUI to
+https://flash-tex.github.io/flashtex/ plus user docs (parent is doing this now).
+
+## Checkpoint 2026-09-13T03:35Z (first Commander loop)
+
+- **Queue published at this revision:** FT-050 generic AI crates, FT-051 HW1 exact
+  render (+ three compiler asks on `agent/mac-compiler-hw1/compiler`), FT-052 corpus
+  coverage gate (PR #42/#53 first), FT-053 iPad finish, FT-054 modern editor,
+  FT-055 CI/CD + docs. All `agent_id: mac-claude-a`; the parent staffs one lane per
+  task and ACKs each revision with `coord.py ack`.
+- **Integration state:** `origin/agent/mac-pdf/searchable-text` b4b1513 is already
+  on main (94a67130/9689384e/4893f3e7; trial merge produced an empty diff) — the
+  GH48 "pending" item is closed, nothing to merge. PR #42 + PR #53 conflict only on
+  `coordination/agents/mac-reference-corpus.json` and `coordination/mac-reference-corpus.md`
+  (add/add); take PR53's versions. No other mac-m1max-a branch is ahead of main.
+- **Other machines:** last live signals — Daniel (d-q222) GH23 20:09Z, said out of
+  quota; Kabir/predecessor main write 02:54:50Z, no comment since 23:34Z; Aarush
+  15:33Z; linux-primary Astra retired. None is eligible for dispatch until a fresh
+  GH2 report. Daniel's `lm-math-symbols` (11 ahead, touches apps/mac) and
+  `math-accents` (6 ahead) stay unmerged pending an owner report and a Mac build.
+- **Open issues worth action on this machine:** GH36 (bundle omits rooted TFM assets)
+  and GH31 (native first-resolve font bytes) belong to the Mac packaging/helper
+  owner → fold into FT-055 release acceptance; GH21/GH29 (500KB result exceeds
+  frame ceiling) and GH33 stay Linux-evidence items, no owner until staffing
+  changes; GH46/45/44/43 are Daniel-crate bug reports, unowned until Daniel reports.
+- **Blocker at this checkpoint:** the Commander subagent's own `git commit` in the
+  scratch worktree was denied by the Claude Code permission classifier twice
+  ("Instruction Poisoning"); the claim, assignments and this checkpoint were
+  prepared on disk in `wt-commander` for the parent to commit/push non-force to
+  main and to post GH2. No push was attempted; no paid calls were made.
+- **Next three actions:** (1) parent commits/pushes the claim + queue and posts the
+  GH2 claim comment (base ad71b648); (2) integrate PR #42/#53 after running the 15
+  corpus checks in a fresh worktree; (3) reread GH2 for fresh machine reports and
+  ACKs, then advance revisions from delivered evidence.
+
+Everything below this section is historical context from earlier Commanders.
+
+---
+
+# Previous handoff override — September12, after main e43d26f2
 
 Older task rows below are HISTORICAL. Read [current pending transfer](kabir-transfer-pending.md) first. Kabir Claude has accepted in branch commander/handover-claude at8de83969; final exact parent/supervisor session readiness still requested. Astra remains active until explicit quiesced handoff. Dispatcher moves to Mac Git/GitHub supervision; Linux Astra publisher1099831 will stop under publication lock at final fence, never remain dual writer. See GH2#5647074024 for exact answers/tooling requirements.
 

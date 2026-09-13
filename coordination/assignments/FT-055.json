@@ -1,0 +1,29 @@
+{
+  "acceptance": [
+    "GitHub Actions workflows under .github/workflows: (1) CI on push/PR building and testing the Rust crates and the Mac app (macos runner) with cached toolchains; (2) release on tag v*: builds flashtex-compiler/flashtex-render release binaries (arm64 + x86_64 macOS) and the packaged FlashTeX.app (zip/dmg), uploads them as release assets, and updates the gh-pages download page/installer to the new version",
+    "The website https://flash-tex.github.io/flashtex/ (gh-pages a8b6a3e2 baseline) links the latest release assets automatically; the curl installer targets the latest tag; no hand-edited version strings remain",
+    "User docs published on the site: compiler CLI (runtime-v1 stdin/stdout contract, flags, exit codes), GUI (install, open project, preview, export, AI assistant with provider setup, iPad pairing), and a troubleshooting page; sourced from docs/ so they are versioned with the code",
+    "Signing/notarization status stated truthfully in the release notes (unsigned builds must say so); no secrets in the repo; a dry-run of the release workflow on a test tag is recorded in docs/evidence/release-ci-<date>/"
+  ],
+  "agent_id": "mac-claude-a",
+  "allocation_id": "claude-mac20x-cicd-docs",
+  "branch": "agent/mac-claude-a/cicd",
+  "deadline_utc": null,
+  "dependencies": [
+    "Releases v0.1.0/v0.1.1 and gh-pages a8b6a3e2 exist (created manually by the predecessor Commander on 2026-09-13); no .github/workflows exists on main ad71b648"
+  ],
+  "input_main_sha": "ad71b64807c742352f8c4317854bf14b0968fcf2",
+  "objective": "User goal (f): automation/CI/CD that auto-deploys the compiler and GUI as downloads on the website, plus user documentation for the compiler and GUI. The parent mac-claude-a already started this; this record tracks it so no other lane duplicates it.",
+  "owned_paths": [
+    ".github",
+    "docs/user",
+    "apps/mac/scripts/make-app.sh",
+    "site"
+  ],
+  "revision": 1,
+  "schema_version": 1,
+  "state": "assigned",
+  "task_id": "FT-055",
+  "timebox_minutes": 90,
+  "updated_utc": "2026-09-13T03:30:00Z"
+}
