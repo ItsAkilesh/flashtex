@@ -244,16 +244,19 @@ struct DiagnosticsListView: View {
 
     var body: some View {
         let diags = diagnostics
-        let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.documents.map(\.path))
+        // Change-only / throttled reads (ShellModel mirrors, ShellChrome): `documents`,
+        // `result` and `editorMarkReport` change on every keystroke or reply and
+        // re-evaluated this List (an AppKit table) with each of them.
+        let groups = EditorDiagnostics.groups(of: diags, documentOrder: model.chrome.listing.map(\.path))
             .filter { severityFilter == nil || $0.severity == severityFilter }
-        let status = model.result?.status ?? .ok
+        let status = model.resultStatus ?? .ok
         VStack(alignment: .leading, spacing: 0) {
             if showsHeader {
                 Text("Diagnostics (\(diags.count)\(groups.count < diags.count ? " in \(groups.count) groups" : "")) — the preview above is still shown; errors are not hidden")
                     .font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 4)
             }
-            if let carried = model.editorMarkReport.carried {
-                Text("Underlines \(carried.line); the list below is the failed result's.")
+            if let carriedLine = model.chrome.carriedLine {
+                Text("Underlines \(carriedLine); the list below is the failed result's.")
                     .font(.caption).foregroundStyle(.orange).padding(.horizontal, 8).padding(.bottom, 4)
             }
             List(groups, selection: $panel.selection) { g in

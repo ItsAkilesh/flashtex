@@ -41,6 +41,8 @@ final class ShellChrome {
     private(set) var note: String?
     private(set) var captureNote: String?
     private(set) var durableRevision: Int?
+    /// `editorMarkReport.carried?.line` (the diagnostics list's retention note).
+    private(set) var carriedLine: String?
 
     // Preview header
     private(set) var previewSource: ShellModel.PreviewSource = .none
@@ -61,6 +63,7 @@ final class ShellChrome {
     private(set) var activeTextBytes = 0
     private(set) var activeTextUTF16 = 0
     private(set) var listing: [ProjectDocument] = []
+    private(set) var entryPath = "main.tex"
     private(set) var closure = ProjectDocuments.Closure(nodes: [], paths: [])
 
     /// Refresh delay after the first change; `FLASHTEX_CHROME_MS` overrides (0 = next run-loop turn).
@@ -95,6 +98,7 @@ final class ShellChrome {
         set(\.note, model.navigationNote ?? model.editorMarkReport.staleNote ?? model.explanationStatus)
         set(\.captureNote, model.captureNote)
         set(\.durableRevision, model.controllerState.durable[model.activePath]?.revision)
+        set(\.carriedLine, model.editorMarkReport.carried?.line)
 
         set(\.previewSource, model.previewSource)
         set(\.hasResult, model.result != nil)
@@ -128,6 +132,7 @@ final class ShellChrome {
         set(\.activeTextBytes, text.utf8.count)
         set(\.activeTextUTF16, text.utf16.count)
         set(\.listing, model.project.listing)
+        set(\.entryPath, model.project.entryPath)
         set(\.closure, model.project.discoverClosure())
         return again
     }

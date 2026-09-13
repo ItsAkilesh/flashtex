@@ -135,9 +135,9 @@ struct ProjectMenu: View {
             // The transitive closure (chapter → section → …), depth-first in
             // source order, indented by depth; cycles and missing files are
             // listed with their reason. Bounded: 8 levels, 256 documents.
-            let closure = model.project.discoverClosure()
+            let closure = model.chrome.closure // throttled copy (ShellChrome): `discoverClosure()` reads the entry text per keystroke
             if closure.nodes.isEmpty {
-                Text("No \\input or \\include in \(model.project.entryPath)")
+                Text("No \\input or \\include in \(model.chrome.entryPath)")
             }
             ForEach(Array(closure.nodes.enumerated()), id: \.offset) { _, n in
                 let indent = String(repeating: "    ", count: max(0, n.depth))
@@ -161,7 +161,7 @@ struct ProjectMenu: View {
                 Text("Open All: \(report.unresolvable.count) unresolvable")
                 ForEach(Array(report.unresolvable.enumerated()), id: \.offset) { _, line in Text(line) }
             }
-            if model.activePath != model.project.entryPath {
+            if model.activePath != model.chrome.entryPath {
                 Divider()
                 Button("Save \(model.activePath)") { Task { await model.project.saveDocument(model.activePath) } }
                     .disabled(model.documentURL == nil)

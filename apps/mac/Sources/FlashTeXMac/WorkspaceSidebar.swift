@@ -246,7 +246,7 @@ private struct ProblemsSection: View {
     @Environment(ShellModel.self) var model
 
     var body: some View {
-        let diags = model.displayedDiagnostics
+        let diags = model.problemsList // change-only (ShellModel): `displayedDiagnostics` reads `result`, replaced per reply
         let (errors, warnings, gaps) = EditorDiagnostics.counts(diags)
         Section {
             if diags.isEmpty {
