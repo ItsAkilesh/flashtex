@@ -151,6 +151,15 @@ pub trait MathFontMetrics {
     fn text_glyph(&self, ch: char, size: SizeClass) -> Option<Glyph> {
         self.glyph(ch, size)
     }
+
+    /// Slot `code` of the math extension font (family 3, `largesymbols`)
+    /// for constructions that place its characters directly rather than
+    /// through a symbol or delimiter (`fontmath.ltx`'s `\braceld`..`\braceru`
+    /// in `\downbracefill`/`\upbracefill`), tagged `ch` for the renderer.
+    /// `None` when the provider has no TFM-slotted extension font.
+    fn extension_glyph(&self, _code: u8, _ch: char) -> Option<Glyph> {
+        None
+    }
 }
 
 /// The subset of OpenType `MathConstants` (font units) needed to derive TeX's

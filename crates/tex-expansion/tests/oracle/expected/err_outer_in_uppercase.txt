@@ -1,0 +1,2 @@
+Forbidden control sequence found while scanning text of \uppercase.
+Too many }'s.
