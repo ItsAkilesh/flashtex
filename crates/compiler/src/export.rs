@@ -188,6 +188,12 @@ pub fn map_char(c: char) -> Glyph {
     if crate::lm_math::advance(c).is_some() {
         return Glyph::LatinModernMath;
     }
+    if crate::newcm_math::advance(c).is_some() {
+        return Glyph::Unrepresentable {
+            reason: "\\mathcal letters are drawn from New Computer Modern Math (newcm.math), \
+                     which the Mac producer bundles but the base-14 PDF writer does not embed",
+        };
+    }
     if let Some((_, code)) = SYMBOL_ENCODING.iter().find(|(ch, _)| *ch == c) {
         return Glyph::Encodable {
             font: ExportFont::Symbol,
