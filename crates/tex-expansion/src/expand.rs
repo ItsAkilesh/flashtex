@@ -138,6 +138,11 @@ pub(crate) struct State {
     pub counter_children: Rc<HashMap<String, Vec<String>>>,
     pub next_free_register: u16,
     pub next_source_id: u32,
+    /// Source ids `1..prelude_source_end` belong to the kernel prelude and
+    /// host preludes, which run before any document input is read. A
+    /// diagnostic raised at a token of such a macro body is reported at the
+    /// document invocation being expanded instead (see `Engine::err`).
+    pub prelude_source_end: u32,
     pub scanner_status: ScannerStatus,
     /// `\long` state of the macro whose arguments are being scanned.
     pub matching_long: bool,
@@ -180,6 +185,7 @@ impl State {
             counter_children,
             next_free_register,
             next_source_id,
+            prelude_source_end,
             scanner_status,
             matching_long,
             runaway_par,
@@ -196,6 +202,7 @@ impl State {
             && *mode == new.mode
             && *next_free_register == new.next_free_register
             && *next_source_id == new.next_source_id
+            && *prelude_source_end == new.prelude_source_end
             && scanner_status == &new.scanner_status
             && *matching_long == new.matching_long
             && *runaway_par == new.runaway_par
@@ -388,6 +395,9 @@ pub struct Engine {
     /// Invocation origin of the most recently read raw token (host
     /// integration; see `next_content_token_with_origin`).
     last_origin: Option<Span>,
+    /// Span of the last token read from source text (the document or an
+    /// `\input` file; preludes run in engines of their own).
+    last_text_span: Option<Span>,
 }
 
 impl Engine {
@@ -427,6 +437,7 @@ impl Engine {
             file_reader: None,
             opened_files: Vec::new(),
             last_origin: None,
+            last_text_span: None,
         }
     }
 
@@ -480,6 +491,7 @@ impl Engine {
         let mut st = std::mem::replace(&mut self.st, Self::initial_state());
         let id = st.next_source_id;
         st.next_source_id += 1;
+        st.prelude_source_end = st.next_source_id;
         let mut prelude = Engine::from_parts(Rc::from(text), 0, LexState::NewLine, st, self.limits);
         prelude.sources[0] = Input::Text(Lexer::new(Rc::from(text), id));
         let _ = prelude.run();
@@ -552,11 +564,32 @@ impl Engine {
     }
 
     fn err(&mut self, msg: impl Into<String>, span: Span) {
+        let span = self.reported_span(span);
         self.diagnostics.push(Diagnostic::error(msg, span));
     }
 
     fn warn(&mut self, msg: impl Into<String>, span: Span) {
+        let span = self.reported_span(span);
         self.diagnostics.push(Diagnostic::warning(msg, span));
+    }
+
+    /// Where a diagnostic at `span` is reported: a token of a prelude macro
+    /// body (kernel or host) has no bytes in any document, so the document
+    /// invocation being expanded stands in for it, or else the last token
+    /// read from source text (look-ahead such as `\@ifnextchar`'s
+    /// `\futurelet` reads the document and drops the invocation origin).
+    fn reported_span(&self, span: Span) -> Span {
+        if !self.is_prelude_span(span) {
+            return span;
+        }
+        match self.last_origin {
+            Some(origin) if !origin.is_synthetic() && !self.is_prelude_span(origin) => origin,
+            _ => self.last_text_span.unwrap_or(span),
+        }
+    }
+
+    fn is_prelude_span(&self, span: Span) -> bool {
+        !span.is_synthetic() && span.source_id != 0 && span.source_id < self.st.prelude_source_end
     }
 
     /// The escape character as TeX would print it (`\escapechar`), or
@@ -669,6 +702,7 @@ impl Engine {
                 Input::Text(lexer) => {
                     if let Some(tok) = lexer.next_token(self.st.scopes.cat_table(), self.st.scopes.int_param(IntParam::Endlinechar)) {
                         self.last_origin = None;
+                        self.last_text_span = Some(tok.span);
                         return Some(Pending { tok, frozen: false, origin: None });
                     } else if self.sources.len() == 1 {
                         return None;
@@ -5032,6 +5066,7 @@ fn base_state(tex_only: bool) -> State {
         counter_children: Rc::new(HashMap::new()),
         next_free_register: 256,
         next_source_id: 1,
+        prelude_source_end: 1,
         scanner_status: ScannerStatus::Normal,
         matching_long: false,
         runaway_par: false,
@@ -5052,6 +5087,7 @@ fn build_initial_state() -> State {
     // could never converge with the previous run.
     let id = st.next_source_id;
     st.next_source_id += 1;
+    st.prelude_source_end = st.next_source_id;
     let mut engine = Engine::from_parts(Rc::from(PRELUDE), 0, LexState::NewLine, st, Limits::default());
     engine.sources[0] = Input::Text(Lexer::new(Rc::from(PRELUDE), id));
     let out = engine.run();
