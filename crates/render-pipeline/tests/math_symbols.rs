@@ -466,3 +466,112 @@ fn mathcal_sets_at_cmsy_metrics_and_paints_from_new_computer_modern_when_bundled
     assert_eq!(notes.len(), 1, "one \\mathcal profile note with NewCM: {notes:?}");
     assert!(notes[0].contains("NewCMMath-Regular"), "{}", notes[0]);
 }
+
+/// `\varnothing` (compiler pin `c583d6d4`: `MathAtom.width_em` is now
+/// `pub`, `Some(0.777781)` — msbm10's advance — while `\emptyset`'s
+/// identical U+2205 glyph carries `None` and keeps cmsy10's narrower
+/// 0.5em). The pipeline reads the field directly at the atom
+/// (`typeset::symbol_atoms`) rather than re-scanning the source for the
+/// control word: both commands still set cmsy10's `\emptyset` slot 0x3B,
+/// but `\varnothing`'s advance is forced to msbm10's width regardless of
+/// which face paints it, and the outline itself comes from
+/// `NewCMMath-Regular.otf` when that face is in a font directory (its
+/// design and advances track msbm's, like `\mathbb`/`\mathcal`), else from
+/// Latin Modern Math with the forced width unchanged.
+#[test]
+fn varnothing_sets_at_msbm_width_and_paints_from_new_computer_modern_when_bundled() {
+    use flashtex_compiler::parser::SourceDocument;
+    use flashtex_render_pipeline::display::{Severity, Tick};
+    use flashtex_render_pipeline::{render, FontSet, RenderOptions};
+    use std::path::PathBuf;
+
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    const NEWCM: &str = "NewCMMath-Regular.otf";
+    const NEWCM_SHA: &str = "60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2";
+    const VARNOTHING_EM: f64 = 0.777781;
+    const EMPTYSET_EM: f64 = 0.5;
+    let candidates = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts"),
+        PathBuf::from("/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern"),
+    ];
+    let text = doc("$\\varnothing X$ and $\\emptyset X$.");
+    let sources = [SourceDocument { path: "main.tex", text: &text }];
+    let render_with = |extra: &[PathBuf]| {
+        let fonts = FontSet::with_default_dirs(extra);
+        render(&sources, "main.tex", 1, "varnothing", &fonts, &RenderOptions::default())
+    };
+    // Every glyph of page 1 as `(text, painting face, sha256, origin x, size)`.
+    let glyphs = |r: &flashtex_render_pipeline::Rendered| -> Vec<(String, String, String, Tick, Tick)> {
+        let mut out = Vec::new();
+        for it in &r.v2.pages[0].items {
+            let Item::GlyphRun(run) = it else { continue };
+            let f = r.v2.fonts.iter().find(|f| f.font_id == run.font_id).expect("run font is a fonts entry");
+            for g in &run.glyphs {
+                let c = &run.clusters[g.cluster as usize];
+                let t = run.text[c.text_start_byte..c.text_end_byte].to_string();
+                out.push((t, f.postscript_name.clone(), f.sha256.clone(), g.origin_x, run.font_size));
+            }
+        }
+        out
+    };
+    // `∅` occurs twice (`\varnothing` then `\emptyset`); each is immediately
+    // followed by `X`, so `x(X) - x(∅)` is the advance regardless of face
+    // or run-splitting differences between the two renders.
+    let advances = |gs: &[(String, String, String, Tick, Tick)]| -> Vec<(String, f64, f64)> {
+        let empties: Vec<usize> = gs.iter().enumerate().filter(|(_, g)| g.0 == "∅").map(|(i, _)| i).collect();
+        assert_eq!(empties.len(), 2, "\\varnothing then \\emptyset: {gs:?}");
+        empties
+            .into_iter()
+            .map(|i| {
+                let x = gs[i].3 .0 as f64;
+                let size = gs[i].4 .0 as f64;
+                let next_x = gs[i + 1..].iter().find(|g| g.0 == "X").unwrap_or_else(|| panic!("no X after ∅ at {i}: {gs:?}")).3 .0 as f64;
+                (gs[i].1.clone(), next_x - x, size)
+            })
+            .collect()
+    };
+
+    let without = render_with(&[]);
+    assert!(!without.v2.diagnostics.iter().any(|d| d.severity == Severity::Error), "{:?}", without.v2.diagnostics);
+    let gs_without = glyphs(&without);
+    let adv_without = advances(&gs_without);
+    let (varnothing_face, varnothing_advance, size) = &adv_without[0];
+    let (emptyset_face, emptyset_advance, _) = &adv_without[1];
+    assert_eq!(varnothing_face, "LatinModernMath-Regular", "\\varnothing without NewCM");
+    assert_eq!(emptyset_face, "LatinModernMath-Regular", "\\emptyset without NewCM");
+    assert!((varnothing_advance - VARNOTHING_EM * size).abs() < 0.002 * size, "\\varnothing advance {varnothing_advance} vs msbm10 {}", VARNOTHING_EM * size);
+    assert!((emptyset_advance - EMPTYSET_EM * size).abs() < 0.002 * size, "\\emptyset advance {emptyset_advance} vs cmsy10 {}", EMPTYSET_EM * size);
+    assert!((varnothing_advance - emptyset_advance).abs() > 0.1 * size, "the two must differ: {varnothing_advance} vs {emptyset_advance}");
+
+    let Some(dir) = candidates.iter().find(|d| d.join(NEWCM).is_file()) else {
+        eprintln!("skipping the bundled half: {NEWCM} not found");
+        return;
+    };
+    let with = render_with(std::slice::from_ref(dir));
+    let gs_with = glyphs(&with);
+    let adv_with = advances(&gs_with);
+    let (varnothing_face_with, varnothing_advance_with, _) = &adv_with[0];
+    let (emptyset_face_with, emptyset_advance_with, _) = &adv_with[1];
+    assert_eq!(varnothing_face_with, "NewCMMath-Regular", "\\varnothing with NewCM");
+    let varnothing_sha = gs_with.iter().find(|g| g.0 == "∅" && g.1 == "NewCMMath-Regular").map(|g| g.2.clone()).expect("a NewCM ∅ run");
+    assert_eq!(varnothing_sha, NEWCM_SHA, "\\varnothing raw-byte identity");
+    // \emptyset is untouched: still Latin Modern Math, same advance.
+    assert_eq!(emptyset_face_with, "LatinModernMath-Regular", "\\emptyset stays put with NewCM");
+    assert_eq!(emptyset_advance_with, emptyset_advance, "\\emptyset advance unchanged");
+    // \varnothing's advance is the compiler's forced width either way: only
+    // the painting face moves, exactly like \mathbb/\mathcal.
+    assert_eq!(varnothing_advance_with, varnothing_advance, "\\varnothing advance unchanged by the painting face");
+
+    let notes: Vec<_> = with
+        .v2
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "math_resource_profile" && d.message.contains("\\varnothing"))
+        .map(|d| d.message.clone())
+        .collect();
+    assert_eq!(notes.len(), 1, "one \\varnothing profile note with NewCM: {notes:?}");
+    assert!(notes[0].contains("NewCMMath-Regular"), "{}", notes[0]);
+}

@@ -2608,7 +2608,7 @@ pub fn convert_math_classed(
                             // `\bot` (Ord, same glyph as `\perp`) and
                             // `\bigtriangleup` (Bin, same glyph as `\triangle`).
                             Some(forced) => vec![ml::Atom::new(forced, ml::Nucleus::Symbol(c))],
-                            None => symbol_atoms(c),
+                            None => symbol_atoms(c, a.width_em),
                         },
                         Some(None) => vec![ml::Atom::new(ml::AtomClass::Ord, ml::Nucleus::Empty)],
                         None => {
@@ -2699,7 +2699,7 @@ pub fn convert_math_classed(
     // plain symbol it would have been without the fence.
     for (left, body) in stack {
         if let Some(c) = left {
-            atoms.extend(symbol_atoms(c));
+            atoms.extend(symbol_atoms(c, None));
         }
         atoms.extend(body);
     }
@@ -2998,13 +2998,24 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
 /// default classification, with the compiler's spellings that TeX sets as
 /// composites expanded (`fontmath.ltx`: `\neq` is `\not=`, `\notin` is
 /// `\not\in`, the zero-width relation slash before the relation).
-fn symbol_atoms(c: char) -> Vec<ml::Atom> {
+///
+/// `width_em` is the originating `MathAtom.width_em` (compiler pin
+/// `c583d6d4`: `pub` now, `Some(0.777781)` for `\varnothing`, `None`
+/// otherwise, including for plain `\emptyset`'s identical U+2205); read here
+/// instead of re-scanning the source at the atom's span for the control
+/// word, like [`class_override_of`].
+fn symbol_atoms(c: char, width_em: Option<f64>) -> Vec<ml::Atom> {
     match c {
         // The compiler spells \cdot as U+00B7; the Bin class and cmsy slot
         // are those of U+22C5.
         '\u{00B7}' => vec![ml::Atom::symbol('\u{22C5}')],
         '\u{2260}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('=')],
         '\u{2209}' => vec![ml::Atom::rel(crate::mathtex::NOT_SLASH), ml::Atom::symbol('\u{2208}')],
+        // `\varnothing`: same U+2205 as `\emptyset`, but forced to msbm10's
+        // width. A sentinel keeps the two apart for the metrics providers
+        // (`TexMathMetrics`/`MathFonts`), which paint both from cmsy10's
+        // `\emptyset` slot but only force this one's advance and outline.
+        '\u{2205}' if width_em.is_some() => vec![ml::Atom::symbol(crate::mathfont::VARNOTHING_SENTINEL)],
         _ => vec![ml::Atom::symbol(c)],
     }
 }
@@ -4030,6 +4041,10 @@ fn math_items(
         match m.run_glyph(g) {
             // A `\text` cluster keeps its whole source text (`ffi`).
             Some(rg) => r.text.push_str(&rg.text),
+            // `VARNOTHING_SENTINEL` (`\varnothing`) is never real text: it
+            // stands for U+2205 everywhere outside the metrics/painting
+            // lookup that needs to tell it apart from plain `\emptyset`.
+            None if g.ch == crate::mathfont::VARNOTHING_SENTINEL => r.text.push('\u{2205}'),
             None => r.text.push(g.ch),
         }
         let ci = r.clusters.len() as u32;
