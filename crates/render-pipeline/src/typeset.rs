@@ -475,7 +475,19 @@ impl<'a> Context<'a> {
     }
 
     fn face(&mut self, style: TextStyle, size: f64, span: Span) -> Rc<LoadedFace> {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let (role, notes) = self.text_role(style, size);
+        let r = self.fonts.resolve(self.style.family, role, size);
+        for (key, message) in notes {
+            let src = self.source(span);
+            self.report_once(key, Diagnostic::warning("font_shape_substituted", message, vec![src]));
+        }
+        if let Some(note) = &r.note {
+            let src = self.source(span);
+            self.report_once(
+                format!("outline:{note}"),
+                Diagnostic::warning("font_outline_substituted", note.clone(), vec![src]),
+            );
+        }
         if let Some(reason) = r.substituted {
             let src = self.source(span);
             self.report_once(
@@ -524,6 +536,29 @@ impl<'a> Context<'a> {
         r.face
     }
 
+    /// The font role of a text style: its NFSS shape selected in the
+    /// document's scheme (`\wrong@fontshape` substitutions) and followed
+    /// through `sub*`/`ssub*` to the font LaTeX loads, with LaTeX's font
+    /// warnings keyed for [`Self::report_once`].
+    fn text_role(&self, style: TextStyle, size: f64) -> (Role, Vec<(String, String)>) {
+        let scheme = self.style.nfss;
+        let selected = crate::nfss::select(scheme, style.key());
+        let (terminal, sub) = crate::nfss::terminal(scheme, selected.key);
+        let mut notes = Vec::new();
+        for undefined in [style.undefined, selected.undefined].into_iter().flatten() {
+            let (from, to) = (scheme.describe(undefined), scheme.describe(selected.key));
+            notes.push((format!("nfss:{from}"), format!("Font shape `{from}' undefined, using `{to}' instead")));
+        }
+        if let Some((from, to)) = sub {
+            let (from, to) = (scheme.describe(from), scheme.describe(to));
+            notes.push((
+                format!("nfss:{from}:{size}"),
+                format!("Font shape `{from}' in size <{size}> not available, Font shape `{to}' tried instead"),
+            ));
+        }
+        (Role::Font(terminal), notes)
+    }
+
     fn math_fonts(&mut self, span: Span) -> Option<MathProvider> {
         if let Some(m) = &self.math_fonts {
             return Some(m.clone());
@@ -552,7 +587,13 @@ impl<'a> Context<'a> {
                     flashtex_document_style::BaseSize::Pt11 => 11,
                     flashtex_document_style::BaseSize::Pt12 => 12,
                 };
-                let tex = TexMathMetrics::new(base, m.clone(), self.fonts);
+                // The math alphabets the sources name get their text fonts.
+                let used: Vec<crate::mathalpha::MathAlphabet> = crate::mathalpha::TEXT_ALPHABETS
+                    .iter()
+                    .copied()
+                    .filter(|a| self.texts.iter().any(|t| t.contains(a.command())))
+                    .collect();
+                let tex = TexMathMetrics::new(base, m.clone(), self.fonts).with_alphabets(self.fonts, &used);
                 let provider = if tex.roman_available() {
                     MathProvider::Tex(Rc::new(tex))
                 } else {
@@ -598,7 +639,7 @@ impl<'a> Context<'a> {
     /// `\fontdimen`s of the face for `style` at `size`: the face's TFM
     /// when it has one (exact fixwords), else the transcribed table.
     fn text_params(&self, style: TextStyle, size: f64) -> params::TextParamsPt {
-        let r = self.fonts.resolve(self.style.family, role_of(style), size);
+        let r = self.fonts.resolve(self.style.family, self.text_role(style, size).0, size);
         if let (None, Some(tfm)) = (&r.substituted, &r.face.tfm) {
             let dim = |n: usize| tfm.param(n).map_or(0.0, |v| crate::tfm::Tfm::pt(v, size));
             return params::TextParamsPt {
@@ -939,7 +980,7 @@ impl<'a> Context<'a> {
                 grid: g.clone(),
             })
             .collect();
-        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts).with_grids(&nested);
+        let text_metrics = crate::mathtext::TextRunMetrics::new(fonts.metrics(), self.fonts, self.shaper, self.style.family, &sink.texts, &sink.keys).with_grids(&nested);
         let mut laid = if has_grid {
             self.grid_formula(&grid_pieces, style, &text_metrics, span)
         } else {
@@ -1419,7 +1460,7 @@ impl<'a> Context<'a> {
         // Across requests (a fresh `Context` per render): resolving parses
         // nothing but still walks the config per font, so the result and any
         // warning are kept per thread for the face, size and options.
-        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}", setup.options, self.style.family));
+        let global_key = (face.shape_key.to_string(), size.to_bits(), format!("{:?}|{:?}|{:?}", setup.options, self.style.family, self.style.nfss));
         if let Some((hit, warning)) = MICROTYPE_FONTS.with(|c| c.borrow().get(&global_key).cloned()) {
             if let Some((k, message)) = warning {
                 self.emit(Some(k), Diagnostic::warning("microtype_unsupported", message, Vec::new()));
@@ -1428,9 +1469,21 @@ impl<'a> Context<'a> {
             return hit;
         }
         let mut warning: Option<(String, String)> = None;
+        // The NFSS font LaTeX loads for this style (family slot, series and
+        // shape after substitutions), named in the document's scheme: `cmr`/
+        // `cmss`/`cmtt` or `lmr`/`lmss`/`lmtt`, OT1 or T1 (mt-cmr.cfg and
+        // mt-lmr.cfg list both encodings).
+        let scheme = self.style.nfss;
+        let loaded = match self.text_role(style, size).0 {
+            Role::Font(key) => key,
+            _ => style.key(),
+        };
         let families = match self.style.family {
-            Family::ComputerModern => Some(("cmr", "cmss", "cmtt")),
-            Family::LatinModern => Some(("lmr", "lmss", "lmtt")),
+            Family::ComputerModern | Family::LatinModern => Some((
+                scheme.family_name(crate::nfss::FamilyKind::Rm),
+                scheme.family_name(crate::nfss::FamilyKind::Sf),
+                scheme.family_name(crate::nfss::FamilyKind::Tt),
+            )),
             Family::Times => None,
         };
         let resolved = match (families, face.tfm.clone()) {
@@ -1448,15 +1501,24 @@ impl<'a> Context<'a> {
                     }
                 }
                 static CONFIG: OnceLock<flashtex_microtype::MicrotypeConfig> = OnceLock::new();
+                // `ENC/family/series/shape` as `nfss::Scheme::describe` spells it.
+                let described = scheme.describe(loaded);
+                let mut parts = described.split('/').skip(2);
+                let (series, shape) = (parts.next().unwrap_or("m"), parts.next().unwrap_or("n"));
                 let font = flashtex_microtype::NfssFont {
-                    encoding: "T1".to_string(),
-                    family: rm.to_string(),
-                    series: if style.bold && !style.medium { "bx" } else { "m" }.to_string(),
-                    shape: if style.italic { "it" } else if style.slanted { "sl" } else { "n" }.to_string(),
+                    encoding: scheme.encoding().to_string(),
+                    family: match loaded.family {
+                        crate::nfss::FamilyKind::Rm => rm,
+                        crate::nfss::FamilyKind::Sf => sf,
+                        crate::nfss::FamilyKind::Tt => tt,
+                    }
+                    .to_string(),
+                    series: if style.medium && !loaded.bold() { "m" } else { series }.to_string(),
+                    shape: shape.to_string(),
                     size: format!("{size}"),
                 };
                 let metrics = Metrics { tfm: &tfm, z: (size * 65536.0).round() as i32 };
-                let defaults = flashtex_microtype::NfssDefaults::latex("T1", rm, sf, tt);
+                let defaults = flashtex_microtype::NfssDefaults::latex(scheme.encoding(), rm, sf, tt);
                 match CONFIG.get_or_init(flashtex_microtype::MicrotypeConfig::bundled).resolve(&setup.options, &defaults, &font, &metrics) {
                     Ok(r) => Some(Rc::new(r.params)),
                     Err(e) => {
@@ -1517,18 +1579,17 @@ impl<'a> Context<'a> {
                     // ends the search with no hyphens).
                     let after_glue = matches!(out.last(), Some(pl::Item::Glue(_)));
                     let joined = matches!(items.get(idx + 1), Some(AItem::Word(_) | AItem::Math { .. }));
-                    let hyphenate = after_glue && !joined && w.segments.len() == 1;
+                    // The typewriter families declare `\hyphenchar\font=-1`
+                    // (`ot1cmtt.fd`, `t1cmtt.fd`, `t1lmtt.fd`): no hyphens.
+                    let hyphenate = after_glue
+                        && !joined
+                        && w.segments.len() == 1
+                        && merge_style(base, w.segments[0].style).family != crate::nfss::FamilyKind::Tt;
                     for seg in &w.segments {
                         let seg = adapter::Segment {
                             text: seg.text.clone(),
                             chars: seg.chars.clone(),
-                            style: TextStyle {
-                                bold: seg.style.bold || (base.bold && !seg.style.medium),
-                                italic: seg.style.italic || base.italic,
-                                size_cpt: seg.style.size_cpt,
-                                medium: seg.style.medium,
-                                slanted: seg.style.slanted || base.slanted,
-                            },
+                            style: merge_style(base, seg.style),
                         };
                         // A size declaration in force (`{\Large ...}`) sets
                         // this segment at its own size.
@@ -1539,13 +1600,7 @@ impl<'a> Context<'a> {
                     }
                 }
                 AItem::Space { style, factor, no_break } => {
-                    let style = TextStyle {
-                        bold: style.bold || (base.bold && !style.medium),
-                        italic: style.italic || base.italic,
-                        size_cpt: style.size_cpt,
-                        medium: style.medium,
-                        slanted: style.slanted || base.slanted,
-                    };
+                    let style = merge_style(base, *style);
                     if *no_break {
                         push(&mut out, &mut recs, pl::Item::penalty(pl::INFINITE_PENALTY), None);
                     }
@@ -3525,16 +3580,20 @@ fn drop_trailing_break(list: &mut Vec<pl::Item>, recs: &mut Vec<Option<usize>>, 
     Some(trailing_skip)
 }
 
-/// The font role of a text style: `\slshape` applies to upright medium text
-/// only (Latin Modern has no bold or italic slanted T1 shape in use here).
-fn role_of(style: TextStyle) -> Role {
-    if style.slanted && !style.bold && !style.italic {
-        Role::Slanted
-    } else {
-        Role::Text {
-            bold: style.bold,
-            italic: style.italic,
-        }
+/// A segment's style inside a block whose own style is `base` (a heading's
+/// `\bfseries`, a running head's `\slshape`): the block's weight unless the
+/// segment is `\normalfont`/`\mdseries`, its shape added, and the segment's
+/// family when it selects one.
+fn merge_style(base: TextStyle, s: TextStyle) -> TextStyle {
+    TextStyle {
+        bold: s.bold || (base.bold && !s.medium),
+        italic: s.italic || base.italic,
+        size_cpt: s.size_cpt,
+        medium: s.medium,
+        slanted: s.slanted || base.slanted,
+        caps: s.caps || base.caps,
+        family: if s.family != crate::nfss::FamilyKind::Rm { s.family } else { base.family },
+        undefined: s.undefined.or(base.undefined),
     }
 }
 
@@ -3881,6 +3940,44 @@ pub fn convert_math_classed(
                 let width = flashtex_compiler::text_builtins::sp_to_pt(rule.width.resolve(&cx));
                 vec![ml::Atom::glue(0.0, width)]
             }
+            // `\mathsf{AB}`, `\mathtt`, `\mathit` (compiler: Unicode
+            // mathematical alphanumerics): runs of one text-font alphabet go
+            // to the text sink in that font (kerns, ligatures, last italic
+            // correction); fraktur and any other character stay symbols.
+            // A single character stays a math character (TeX §1186 unpacks
+            // the one-Ord group): `TexMathMetrics` boxes it from the TFM.
+            N::Symbol(s) if s.chars().count() > 1 && s.chars().any(|c| crate::mathalpha::classify(c).is_some_and(|(al, _)| al.text_key().is_some())) => {
+                let mut parts: Vec<ml::Atom> = Vec::new();
+                let mut run = String::new();
+                let mut run_key = None;
+                let flush = |run: &mut String, run_key: &mut Option<crate::nfss::FontKey>, parts: &mut Vec<ml::Atom>, sink: &mut crate::mathtext::TextSink| {
+                    if let Some(key) = run_key.take() {
+                        parts.push(sink.atom_in(run, key));
+                    }
+                    run.clear();
+                };
+                for c in s.chars() {
+                    match crate::mathalpha::classify(c).and_then(|(al, letter)| al.text_key().map(|k| (k, letter))) {
+                        Some((key, letter)) => {
+                            if run_key != Some(key) {
+                                flush(&mut run, &mut run_key, &mut parts, sink);
+                                run_key = Some(key);
+                            }
+                            run.push(letter);
+                        }
+                        None => {
+                            flush(&mut run, &mut run_key, &mut parts, sink);
+                            parts.extend(symbol_atoms(c, None));
+                        }
+                    }
+                }
+                flush(&mut run, &mut run_key, &mut parts, sink);
+                if parts.len() == 1 {
+                    parts
+                } else {
+                    vec![ml::Atom::group(ml::MathList::new(parts))]
+                }
+            }
             N::Symbol(s) => {
                 let mut chars = s.chars();
                 let single = match (chars.next(), chars.next()) {
@@ -3915,9 +4012,20 @@ pub fn convert_math_classed(
             }
             N::Fraction { numerator, denominator } => vec![ml::Atom::frac(sub(numerator, sink), sub(denominator, sink))],
             N::Radical(r) => vec![ml::Atom::sqrt(sub(r, sink))],
-            // `\mathbf{...}`: set like `\text` in the roman face (the text
-            // sink has no bold role); `math_box` reports it once per formula.
-            N::Bold(text) => vec![sink.atom(text)],
+            // `\mathbf{...}` (fontmath.ltx OT1/cmr/bx/n): a run in the bold
+            // roman text font; spaces in math take no part.
+            N::Bold(text) => {
+                use crate::mathalpha::{alphanumeric, MathAlphabet};
+                let letters: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+                let mut chars = letters.chars();
+                match (chars.next(), chars.next()) {
+                    // One letter or digit: a math character (TeX §1186).
+                    (Some(c), None) if alphanumeric(MathAlphabet::Bold, c).is_some() => {
+                        symbol_atoms(alphanumeric(MathAlphabet::Bold, c).expect("checked"), None)
+                    }
+                    _ => vec![sink.atom_in(&letters, MathAlphabet::Bold.text_key().expect("a text alphabet"))],
+                }
+            }
             // `\overline`/`\underline` are Appendix G Rules 9/10 atoms;
             // `\boxed` has no frame atom, so the body is set as a group and
             // reported by `math_box`.
@@ -4381,7 +4489,10 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
     use flashtex_compiler::math::{Frame, Nucleus as N};
     for a in &list.atoms {
         match &a.nucleus {
-            N::Bold(text) => out.push(format!("\\mathbf{{{text}}} set in the regular roman face: the math text sink has no bold role")),
+            // `\mathbf` is now set through the text sink's bold alphabet role
+            // (or a Unicode bold math alphanumeric for one letter/digit), not
+            // the regular roman face, so it is no longer a math_limitation.
+            N::Bold(_) => {}
             N::Rule(_) => out.push("math-mode \\rule set as horizontal space of its width: math-layout has no rule atom, nothing painted".to_string()),
             N::Framed { body, frame } => {
                 if *frame == Frame::Box {
