@@ -258,3 +258,105 @@ fn cm_less_symbols_are_painted_from_latin_modern_math() {
     let minus = runs.iter().find(|(t, _)| t.starts_with('-')).expect("the minus run");
     assert_eq!(minus.1, 2615, "math minus should paint U+2212: {runs:?}");
 }
+
+/// pdfLaTeX's `\mathbb` is AMS `msbm10`'s serifed double-struck design;
+/// Latin Modern Math's is the sans-like open face. With
+/// `NewCMMath-Regular.otf` (New Computer Modern Math reproduces the msbm
+/// design) in a font directory, every double-struck run paints from that
+/// secondary face — its own `fonts` entry by raw-byte sha256 — and no
+/// profile note is emitted; without it, Latin Modern Math paints as before
+/// and exactly one typed `math_resource_profile` note names msbm10.
+#[test]
+fn mathbb_paints_from_new_computer_modern_when_bundled() {
+    use flashtex_compiler::parser::SourceDocument;
+    use flashtex_render_pipeline::{render, FontSet, RenderOptions};
+    use std::path::PathBuf;
+
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    const NEWCM: &str = "NewCMMath-Regular.otf";
+    const NEWCM_SHA: &str = "60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2";
+    let candidates = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/mac/Fonts"),
+        PathBuf::from("/usr/local/texlive/2026/texmf-dist/fonts/opentype/public/newcomputermodern"),
+    ];
+    let text = doc("A $\\mathbb{Z}_{>0}$ and $\\mathbb{R}\\setminus\\mathbb{Q}$ and $x \\in \\mathbb{N}$.");
+    let sources = [SourceDocument { path: "main.tex", text: &text }];
+    let render_with = |extra: &[PathBuf]| {
+        let fonts = FontSet::with_default_dirs(extra);
+        render(&sources, "main.tex", 1, "bb", &fonts, &RenderOptions::default())
+    };
+    // The face each double-struck run paints from, by its `fonts` entry.
+    let bb_faces = |r: &flashtex_render_pipeline::Rendered| -> Vec<(String, String, String)> {
+        r.v2.pages[0]
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                Item::GlyphRun(run) if run.text.chars().any(|c| matches!(c, 'ℤ' | 'ℝ' | 'ℚ' | 'ℕ')) => {
+                    let f = r.v2.fonts.iter().find(|f| f.font_id == run.font_id).expect("run font is a fonts entry");
+                    Some((run.text.clone(), f.postscript_name.clone(), f.sha256.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    let bb_notes = |r: &flashtex_render_pipeline::Rendered| -> Vec<String> {
+        r.v2.diagnostics
+            .iter()
+            .filter(|d| d.code == "math_resource_profile" && d.message.starts_with("msbm10"))
+            .map(|d| d.message.clone())
+            .collect()
+    };
+
+    // Without the secondary face: Latin Modern Math, one profile note.
+    let without = render_with(&[]);
+    let faces = bb_faces(&without);
+    assert!(faces.len() >= 3, "double-struck runs: {faces:?}");
+    for (text, ps, _) in &faces {
+        assert_eq!(ps, "LatinModernMath-Regular", "{text} without NewCM");
+    }
+    let notes = bb_notes(&without);
+    assert_eq!(notes.len(), 1, "one msbm10 profile note without NewCM: {notes:?}");
+    assert!(notes[0].contains(NEWCM), "{}", notes[0]);
+    assert!(!without.v2.fonts.iter().any(|f| f.postscript_name == "NewCMMath-Regular"));
+
+    let Some(dir) = candidates.iter().find(|d| d.join(NEWCM).is_file()) else {
+        eprintln!("skipping the bundled half: {NEWCM} not found");
+        return;
+    };
+    let with = render_with(std::slice::from_ref(dir));
+    let faces = bb_faces(&with);
+    assert!(faces.len() >= 3, "double-struck runs: {faces:?}");
+    for (text, ps, sha) in &faces {
+        assert_eq!(ps, "NewCMMath-Regular", "{text} with NewCM");
+        assert_eq!(sha, NEWCM_SHA, "{text} raw-byte identity");
+    }
+    let newcm = with.v2.fonts.iter().find(|f| f.postscript_name == "NewCMMath-Regular").expect("NewCM fonts entry");
+    assert_eq!(newcm.sha256, NEWCM_SHA);
+    assert_eq!(newcm.byte_length, 1_187_476);
+    assert!(with.v2.fonts.iter().any(|f| f.postscript_name == "LatinModernMath-Regular"), "LM Math still draws the rest");
+    assert!(bb_notes(&with).is_empty(), "no msbm10 note with NewCM: {:?}", bb_notes(&with));
+    // The rest of the formula is unchanged: every non-double-struck glyph
+    // keeps its face and glyph id (runs split differently because `ℝ∖ℚ`
+    // now alternates faces, and x positions move with NewCM's msbm-like
+    // advances, which is the point).
+    let others = |r: &flashtex_render_pipeline::Rendered| -> Vec<(String, String, u16)> {
+        let mut out = Vec::new();
+        for it in &r.v2.pages[0].items {
+            let Item::GlyphRun(run) = it else { continue };
+            let ps = r.v2.fonts.iter().find(|f| f.font_id == run.font_id).map(|f| f.postscript_name.clone()).unwrap_or_default();
+            for g in &run.glyphs {
+                let c = &run.clusters[g.cluster as usize];
+                let text = run.text[c.text_start_byte..c.text_end_byte].to_string();
+                if text.chars().any(|c| matches!(c, 'ℤ' | 'ℝ' | 'ℚ' | 'ℕ')) {
+                    continue;
+                }
+                out.push((text, ps.clone(), g.gid));
+            }
+        }
+        out
+    };
+    assert_eq!(others(&with), others(&without));
+}
