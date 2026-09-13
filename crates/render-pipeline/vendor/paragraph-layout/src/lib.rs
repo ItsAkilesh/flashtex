@@ -14,6 +14,7 @@ pub mod items;
 pub mod liang;
 pub mod linebreak;
 pub mod metrics;
+pub mod microtype;
 pub mod pages;
 pub mod runtime_v1;
 pub mod style;
@@ -33,7 +34,9 @@ pub use liang::LiangHyphenator;
 pub use linebreak::{
     Algorithm, BreakMode, BreakPoint, Diagnostic, DiagnosticKind, Fitness, Line, LineBreakParams,
     Lines, Overfull, PositionedGlyph, PositionedRun, Severity, Stats, layout_paragraph,
+    layout_paragraph_microtype,
 };
+pub use microtype::{MicroGlyph, MicroItem, MicroLine, MicroRun, Microtype};
 pub use metrics::{FontId, FontMetricsSource, Ligature};
 pub use pages::{Page, PageOverflow, PageParams, Pages, ParagraphBlock, PlacedLine, layout_pages};
 

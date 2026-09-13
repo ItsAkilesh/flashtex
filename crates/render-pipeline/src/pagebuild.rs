@@ -144,6 +144,10 @@ pub struct VBlock {
     /// LaTeX's `\vadjust{\vskip <dimen>}`, §888 adjust material, before
     /// the interline penalty); entries past the end are 0.
     pub vskip_after: Vec<f64>,
+    /// Glue appended after `penalty_after` and before `space_after`, so
+    /// `space_after` stays the list's `\lastskip` (`\@maketitle`'s
+    /// `\@endparenv` `\topsep` before its closing `\vskip 1.5em`).
+    pub pre_space_after: Option<(f64, f64, f64)>,
 }
 
 /// Builds the vertical list with interline glue and penalties.
@@ -205,6 +209,9 @@ pub fn vlist(p: &PageParams, blocks: &[VBlock]) -> Vec<VItem> {
         if let Some(pen) = b.penalty_after {
             out.push(VItem::Penalty(pen));
         }
+        if let Some(s) = b.pre_space_after {
+            out.push(glue(s));
+        }
         if let Some(s) = b.space_after {
             out.push(glue(s));
         }
@@ -240,12 +247,64 @@ impl PageState {
     }
 }
 
+/// Positions of the boxes of `list` at natural size, measured down from the
+/// top of the box they are set in: with `topskip` the first box sits below
+/// `\topskip` glue (a page), otherwise at its own height (an internal
+/// `\vbox`, whose leading glue also counts). Returns the placed boxes and
+/// the natural height through the last item (glue after the last box
+/// included, the last box's depth not).
+pub fn natural_layout(p: &PageParams, list: &[VItem], topskip: bool) -> (Vec<Placed>, f64) {
+    let mut placed = Vec::new();
+    let (mut total, mut depth, mut has_box) = (0.0, 0.0, false);
+    for item in list {
+        match item {
+            VItem::Box { height, depth: d, payload } => {
+                let baseline = match (has_box, topskip) {
+                    (true, _) => total + depth + height,
+                    (false, true) => (p.topskip - height).max(0.0) + height,
+                    (false, false) => total + height,
+                };
+                total = baseline;
+                depth = *d;
+                has_box = true;
+                placed.push(Placed {
+                    payload: *payload,
+                    baseline,
+                    height: *height,
+                    depth: *d,
+                });
+            }
+            VItem::Glue { width, .. } => {
+                if has_box || !topskip {
+                    total += depth + width;
+                    depth = 0.0;
+                }
+            }
+            VItem::Penalty(_) => {}
+        }
+    }
+    (placed, total)
+}
+
 /// Breaks `list` into pages. Returns the pages with lines at their natural
 /// (`\raggedbottom`) positions.
 pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
+    break_pages_shortened(p, list, 0, 0.0)
+}
+
+/// [`break_pages`] with the first `short_pages` pages (page-builder
+/// columns) `short` points shorter: `\@topnewpage` (latex.ltx) lowers
+/// `\@colht` by the height of `\twocolumn[<material>]`'s box plus
+/// `\dbltextfloatsep` for both columns of that page.
+pub fn break_pages_shortened(base: &PageParams, list: &[VItem], short_pages: usize, short: f64) -> Vec<BuiltPage> {
     let mut pages: Vec<BuiltPage> = Vec::new();
     let mut start = 0usize;
     while start < list.len() {
+        let page_params = PageParams {
+            vsize: if pages.len() < short_pages { base.vsize - short } else { base.vsize },
+            ..*base
+        };
+        let p = &page_params;
         // Discard glue/penalties at the top of the page.
         while start < list.len() && !matches!(list[start], VItem::Box { .. }) {
             start += 1;
@@ -322,9 +381,12 @@ pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
                         height: *height,
                         depth: *depth,
                     });
-                    // A box that overfills the page with no legal break
-                    // before it: TeX fires at the best break so far.
-                    if st.total > p.vsize + 1e-9 && st.lines.len() > 1 {
+                    // A box that overfills the page beyond what its glue
+                    // can shrink (§1005: `page_total - page_goal >
+                    // page_shrink` is `awful_bad` at the next breakpoint):
+                    // TeX fires at the best break so far. Material that the
+                    // shrink absorbs stays a candidate.
+                    if st.total > p.vsize + st.shrink + 1e-9 && st.lines.len() > 1 {
                         if let Some((bi, _)) = best {
                             fired = Some(bi);
                             break;
@@ -349,7 +411,15 @@ pub fn break_pages(p: &PageParams, list: &[VItem]) -> Vec<BuiltPage> {
             None => list.len(),
         };
         let ejected = matches!(list.get(end), Some(VItem::Penalty(pen)) if *pen <= EJECT_PENALTY);
-        let set = if p.flushbottom && fired.is_some() && !ejected { glue_set(p, &list[start..end]) } else { 0.0 };
+        // `\@makecol` sets every column `\vbox to\@colht`: material taller
+        // than the column shrinks whatever the page style (`\raggedbottom`'s
+        // `\@textbottom` and `\newpage`'s `\vfil` only stretch); a short
+        // page stretches only under `\flushbottom` at an ordinary break.
+        let set = match glue_set(p, &list[start..end]) {
+            g if g < 0.0 => g,
+            g if p.flushbottom && fired.is_some() && !ejected => g,
+            _ => 0.0,
+        };
         // Materialise the page: lines whose box index is before `end`.
         let mut page = BuiltPage::default();
         let mut cursor = start;
@@ -478,6 +548,7 @@ mod tests {
             no_interline_after: false,
             baselineskip: None,
             vskip_after: Vec::new(),
+            pre_space_after: None,
         }
     }
 
@@ -536,6 +607,7 @@ mod tests {
             no_interline_first: false,
             no_interline_after: false,
             vskip_after: Vec::new(),
+            pre_space_after: None,
             baselineskip: Some(22.0),
         };
         let mut after = para(3);

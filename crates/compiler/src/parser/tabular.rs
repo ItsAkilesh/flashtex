@@ -15,8 +15,8 @@ use super::{
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::tabular::{
-    Align, BookRule, Cell, ColumnTemplate, Entry, Length, Material, Row, Tabular, VerticalPosition,
-    ARRAYRULEWIDTH_PT, DOUBLERULESEP_PT, TABCOLSEP_PT,
+    Align, BookRule, BoxAlign, Cell, ColumnTemplate, Entry, Length, Material, Row, Tabular,
+    VerticalPosition, ARRAYRULEWIDTH_PT, DOUBLERULESEP_PT, TABCOLSEP_PT,
 };
 use crate::Span;
 use std::collections::HashMap;
@@ -126,13 +126,37 @@ fn block_inlines(block: Block) -> Vec<Inline> {
     }
 }
 
+/// Packages that load array.sty (and so replace the kernel's `\@mkpream`).
+const ARRAY_PACKAGES: &[&str] = &[
+    "array", "tabularx", "tabulary", "dcolumn", "delarray", "colortbl", "arydshln",
+];
+
+/// One column's array-package declarations: the tokens `>{}` inserts before
+/// every entry and `<{}` after it (array.sty `\insert@column`).
+#[derive(Debug, Clone, Default)]
+struct Decls {
+    before: Vec<InputToken>,
+    after: Vec<InputToken>,
+}
+
 /// The alignment preamble being built, mirroring `\@mkpream`'s state.
 struct Preamble {
     columns: Vec<ColumnTemplate>,
     current: ColumnTemplate,
+    decls: Vec<Decls>,
+    current_decls: Decls,
+    /// `>{}` tokens waiting for the next column (array.sty `\toks\count@`).
+    pending_before: Vec<InputToken>,
     placed: bool,
     first_amp: bool,
     fill: bool,
+}
+
+/// Prepends a declaration as array.sty's `\save@decl` does
+/// (`\toks\count@ = {\@nextchar\the\toks\count@}`).
+fn prepend(target: &mut Vec<InputToken>, tokens: Vec<InputToken>) {
+    let old = std::mem::replace(target, tokens);
+    target.extend(old);
 }
 
 impl Preamble {
@@ -140,10 +164,61 @@ impl Preamble {
         Preamble {
             columns: Vec::new(),
             current: empty_template(Align::Left),
+            decls: Vec::new(),
+            current_decls: Decls::default(),
+            pending_before: Vec::new(),
             placed: false,
             first_amp: true,
             fill: false,
         }
+    }
+
+    fn finish(mut self) -> (Vec<ColumnTemplate>, Vec<Decls>) {
+        if !self.first_amp {
+            // `\tabskip\z@skip` precedes the preamble's `\cr`.
+            self.current.fill_after = false;
+            self.columns.push(self.current);
+            self.decls.push(self.current_decls);
+        }
+        (self.columns, self.decls)
+    }
+
+    /// array.sty `\@classvi`: what precedes a `|` or `!{}`.
+    fn array_classvi(&mut self, last: u8) {
+        match last {
+            0 | 2 => self.acol(),
+            1 => self.add(Material::Space(DOUBLERULESEP_PT)),
+            _ => {}
+        }
+    }
+
+    /// array.sty `\@classx`: what precedes a new column (or its `>{}`).
+    fn array_classx(&mut self, last: u8) {
+        match last {
+            0 | 2 => {
+                self.acol();
+                self.amp();
+                self.acol();
+            }
+            1 => {
+                self.amp();
+                self.acol();
+            }
+            4 => {
+                self.amp();
+                self.acol();
+            }
+            5 => self.amp(),
+            _ => {}
+        }
+    }
+
+    /// array.sty `\@classz`: the column entry itself.
+    fn array_classz(&mut self, last: u8, align: Align) {
+        self.array_classx(last);
+        self.current.align = align;
+        self.placed = true;
+        self.current_decls.before = std::mem::take(&mut self.pending_before);
     }
 
     fn add(&mut self, material: Material) {
@@ -167,6 +242,7 @@ impl Preamble {
             self.current.fill_after = self.fill;
             let done = std::mem::replace(&mut self.current, empty_template(Align::Left));
             self.columns.push(done);
+            self.decls.push(std::mem::take(&mut self.current_decls));
             self.placed = false;
         }
     }
@@ -229,7 +305,8 @@ impl P<'_> {
         };
         let (spec_tokens, spec_span) = self.required_group(name, open);
         let arraystretch = self.array_stretch(open);
-        let mut columns = self.column_templates(&spec_tokens, false);
+        let array_package = self.array_package();
+        let (mut columns, mut decls) = self.column_templates(&spec_tokens, false);
         if columns.is_empty() {
             self.diags.push(Diagnostic::error(
                 "tabular column specification has no columns",
@@ -240,6 +317,7 @@ impl P<'_> {
             template.before.push(Material::Space(TABCOLSEP_PT));
             template.after.push(Material::Space(TABCOLSEP_PT));
             columns.push(template);
+            decls = vec![Decls::default()];
         }
         let n = columns.len();
         let booktabs = self.packages.iter().any(|package| package == "booktabs");
@@ -420,9 +498,9 @@ impl P<'_> {
                     }));
                     column = 0;
                 }
-                let (mut columns_spanned, template) = match raw.multicolumn {
+                let (mut columns_spanned, template, cell_decls) = match raw.multicolumn {
                     Some((count, spec, multicolumn_span)) => {
-                        let mut templates = self.column_templates(&spec, true);
+                        let (mut templates, mut own_decls) = self.column_templates(&spec, true);
                         if templates.len() != 1 {
                             self.diags.push(Diagnostic::error(
                                 "\\multicolumn specification must describe exactly one column",
@@ -434,13 +512,13 @@ impl P<'_> {
                                 }),
                             ));
                         }
-                        let template = if templates.is_empty() {
+                        let (template, own) = if templates.is_empty() {
                             let mut template = empty_template(Align::Center);
                             template.before.push(Material::Space(TABCOLSEP_PT));
                             template.after.push(Material::Space(TABCOLSEP_PT));
-                            template
+                            (template, Decls::default())
                         } else {
-                            templates.swap_remove(0)
+                            (templates.swap_remove(0), own_decls.swap_remove(0))
                         };
                         if column + count > n {
                             self.diags.push(Diagnostic::error(
@@ -449,16 +527,28 @@ impl P<'_> {
                                 Some("spanned to the last column".into()),
                             ));
                         }
-                        (count, Some(template))
+                        (count, Some(template), own)
                     }
-                    None => (1, None),
+                    None => (1, None, decls.get(column).cloned().unwrap_or_default()),
                 };
                 columns_spanned = columns_spanned.min(n - column);
-                let content = self.tabular_cell_inlines(raw.tokens);
+                let align = template.as_ref().unwrap_or(&columns[column]).align;
+                // array.sty `\insert@column`: the `>{}` tokens, the entry,
+                // then the `<{}` tokens, all in the entry's one group.
+                let declarations = !cell_decls.before.is_empty() || !cell_decls.after.is_empty();
+                let mut tokens = cell_decls.before;
+                tokens.extend(raw.tokens);
+                tokens.extend(cell_decls.after);
+                let outer_alignment = self.declared_alignment.take();
+                let content = self.tabular_cell_inlines(tokens);
+                let alignment =
+                    std::mem::replace(&mut self.declared_alignment, outer_alignment);
                 row_cells.push(Cell {
                     content,
                     columns: columns_spanned,
                     template,
+                    alignment: align.paragraph_width().and(alignment),
+                    declarations,
                 });
                 column += columns_spanned;
             }
@@ -478,6 +568,7 @@ impl P<'_> {
             width,
             arraystretch,
             style,
+            array_package,
             span: Span::in_document(open.document, open.start, end),
             space_before,
         })));
@@ -767,12 +858,22 @@ impl P<'_> {
         content
     }
 
-    /// Builds the alignment preamble exactly as `\@mkpream` does.
+    fn array_package(&self) -> bool {
+        self.packages
+            .iter()
+            .any(|package| ARRAY_PACKAGES.contains(&package.as_str()))
+    }
+
+    /// Builds the alignment preamble exactly as `\@mkpream` does (the
+    /// kernel's, or array.sty's when that package is loaded).
     fn column_templates(
         &mut self,
         tokens: &[InputToken],
         multicolumn: bool,
-    ) -> Vec<ColumnTemplate> {
+    ) -> (Vec<ColumnTemplate>, Vec<Decls>) {
+        if self.array_package() {
+            return self.array_column_templates(tokens, multicolumn);
+        }
         let body = self.body_pt();
         let mut items = Vec::new();
         self.spec_items(tokens, &mut items, 0);
@@ -915,17 +1016,328 @@ impl P<'_> {
             )),
             _ => {}
         }
-        if !pre.first_amp {
-            // `\tabskip\z@skip` precedes the preamble's `\cr`.
-            pre.current.fill_after = false;
-            pre.columns.push(pre.current);
+        pre.finish()
+    }
+
+    /// array.sty v2.6n's `\@mkpream` (array.sty 385-416, classes from
+    /// `\@testpach` 56-81): `\@lastchclass` is 0 after a column, 1 after `|`
+    /// or a `!{}` argument, 2 after a `<{}` argument, 3 after a `>{}`
+    /// argument, 4 at the start, 5 after an `@{}` argument, 6/7/8/9 after a
+    /// bare `!`/`@`/`<`/`>`, 10 after `m`/`p`/`b` (and here `w`/`W`).
+    fn array_column_templates(
+        &mut self,
+        tokens: &[InputToken],
+        multicolumn: bool,
+    ) -> (Vec<ColumnTemplate>, Vec<Decls>) {
+        #[derive(Clone, Copy)]
+        enum Pending {
+            Par(char),
+            FixedAlign,
+            FixedWidth(BoxAlign),
         }
-        pre.columns
+        let body = self.body_pt();
+        let mut items = Vec::new();
+        self.spec_items(tokens, &mut items, 0);
+        let mut pre = Preamble::new();
+        let mut last = 4u8;
+        let mut pending = Pending::Par('p');
+        for item in items {
+            if matches!(last, 6..=10) {
+                let SpecItem::Group(group, span) = item else {
+                    let span = match item {
+                        SpecItem::Char(_, span)
+                        | SpecItem::Group(_, span)
+                        | SpecItem::Command(_, span) => span,
+                    };
+                    self.diags.push(Diagnostic::error(
+                        "array column specification: missing braced argument",
+                        Some(span),
+                        Some("ignored the token's argument".into()),
+                    ));
+                    last = match last {
+                        6 => 1,
+                        7 => 5,
+                        8 => 2,
+                        9 => 3,
+                        _ => {
+                            pre.array_classz(last, Align::Left);
+                            0
+                        }
+                    };
+                    continue;
+                };
+                last = match (last, pending) {
+                    // `!{}`: `\@classi` with `\@chnum` 1, i.e. `\@classv`.
+                    (6, _) => {
+                        self.at_expression(group, &mut pre, multicolumn);
+                        1
+                    }
+                    (7, _) => {
+                        self.at_expression(group, &mut pre, multicolumn);
+                        5
+                    }
+                    // `\@classii`: prepended to this column's `<` tokens.
+                    (8, _) => {
+                        prepend(&mut pre.current_decls.after, group);
+                        2
+                    }
+                    (9, _) => {
+                        prepend(&mut pre.pending_before, group);
+                        3
+                    }
+                    (_, Pending::Par(ch)) => {
+                        let width = self.column_width(&group, span, body);
+                        let align = match ch {
+                            'm' => Align::Middle(width),
+                            'b' => Align::Bottom(width),
+                            _ => Align::Paragraph(width),
+                        };
+                        pre.array_classz(10, align);
+                        0
+                    }
+                    (_, Pending::FixedAlign) => {
+                        let align = match token_text(&group).trim() {
+                            "c" => BoxAlign::Center,
+                            "r" => BoxAlign::Right,
+                            "l" | "s" => BoxAlign::Left,
+                            other => {
+                                self.diags.push(Diagnostic::error(
+                                    format!("w/W column alignment must be l, c, r or s, got '{other}'"),
+                                    Some(span),
+                                    Some("aligned the entry left".into()),
+                                ));
+                                BoxAlign::Left
+                            }
+                        };
+                        pending = Pending::FixedWidth(align);
+                        10
+                    }
+                    (_, Pending::FixedWidth(align)) => {
+                        let width = self.column_width(&group, span, body);
+                        pre.array_classz(10, Align::Fixed(width, align));
+                        0
+                    }
+                };
+                continue;
+            }
+            match item {
+                SpecItem::Char(ch @ ('l' | 'c' | 'r'), _) => {
+                    let align = match ch {
+                        'l' => Align::Left,
+                        'c' => Align::Center,
+                        _ => Align::Right,
+                    };
+                    pre.array_classz(last, align);
+                    last = 0;
+                }
+                SpecItem::Char('|', span) => {
+                    pre.array_classvi(last);
+                    // `\@arrayrule`: `\vline`, `\vrule\@width\arrayrulewidth`.
+                    pre.add(Material::VLine {
+                        span,
+                        width_pt: None,
+                    });
+                    last = 1;
+                }
+                SpecItem::Char('!', _) => {
+                    pre.array_classvi(last);
+                    last = 6;
+                }
+                SpecItem::Char('@', span) => {
+                    if last == 3 {
+                        self.diags.push(Diagnostic::error(
+                            ">{..} at wrong position: token ignored",
+                            Some(span),
+                            None,
+                        ));
+                    }
+                    last = 7;
+                }
+                SpecItem::Char('<', span) => {
+                    // `\@classviii`: a `<` not after a column is a `!`.
+                    if last > 0 && last != 2 {
+                        self.diags.push(Diagnostic::error(
+                            "<{..} at wrong position: changed to !{..}",
+                            Some(span),
+                            None,
+                        ));
+                        pre.array_classvi(last);
+                        last = 6;
+                    } else {
+                        last = 8;
+                    }
+                }
+                SpecItem::Char('>', _) => {
+                    pre.array_classx(last);
+                    last = 9;
+                }
+                SpecItem::Char(ch @ ('m' | 'p' | 'b' | 'w' | 'W'), _) => {
+                    pre.array_classx(last);
+                    pending = if matches!(ch, 'w' | 'W') {
+                        Pending::FixedAlign
+                    } else {
+                        Pending::Par(ch)
+                    };
+                    last = 10;
+                }
+                SpecItem::Char(ch, span) => {
+                    self.diags.push(Diagnostic::error(
+                        format!("illegal character '{ch}' in the column specification"),
+                        Some(span),
+                        Some("laid the column out as c".into()),
+                    ));
+                    pre.array_classz(last, Align::Center);
+                    last = 0;
+                }
+                SpecItem::Group(_, span) => {
+                    self.diags.push(Diagnostic::error(
+                        "unexpected braced group in the column specification",
+                        Some(span),
+                        Some("ignored the group".into()),
+                    ));
+                }
+                SpecItem::Command(name, span) => {
+                    self.diags.push(Diagnostic::error(
+                        format!("\\{name} is not supported in a column specification"),
+                        Some(span),
+                        Some("ignored the command".into()),
+                    ));
+                }
+            }
+        }
+        match last {
+            0 | 2 => pre.acol(),
+            1 | 4 | 5 => {}
+            _ => self.diags.push(Diagnostic::error(
+                "column specification ends before the argument of its last token",
+                tokens.last().map(|input| input.token.span),
+                Some("ignored the incomplete column".into()),
+            )),
+        }
+        pre.finish()
+    }
+
+    fn column_width(&mut self, group: &[InputToken], span: Span, body: f64) -> Length {
+        table_length(group, body).unwrap_or_else(|| {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "column width must be a dimension or a multiple of \\textwidth, got '{}'",
+                    token_text(group).trim()
+                ),
+                Some(span),
+                Some("used a zero width".into()),
+            ));
+            Length::Pt(0.0)
+        })
+    }
+
+    /// `\vline` (`\vrule\@width\arrayrulewidth`, latex.ltx 16736) or
+    /// `\vrule` with at most a `width`, as the whole of an `@{}`/`!{}`
+    /// expression: a rule running the row that takes its width.
+    fn rule_material(&self, tokens: &[InputToken]) -> Option<Material> {
+        let significant: Vec<&InputToken> = tokens
+            .iter()
+            .filter(|input| !matches!(input.token.kind, TokenKind::Space | TokenKind::Comment))
+            .collect();
+        let (first, rest) = significant.split_first()?;
+        let TokenKind::Command(name) = &first.token.kind else {
+            return None;
+        };
+        let span = first.token.span;
+        match (name.as_str(), rest) {
+            ("vline", []) => Some(Material::VLine {
+                span,
+                width_pt: None,
+            }),
+            // TeX's default rule width is 0.4pt (§463).
+            ("vrule", []) => Some(Material::VLine {
+                span,
+                width_pt: Some(0.4),
+            }),
+            ("vrule", [keyword, dimen @ ..]) => {
+                let TokenKind::Word(word) = &keyword.token.kind else {
+                    return None;
+                };
+                let text: String = if word == "width" {
+                    dimen
+                        .iter()
+                        .map(|input| match &input.token.kind {
+                            TokenKind::Word(w) => Some(w.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Option<String>>()?
+                } else {
+                    word.strip_prefix("width")?.to_string()
+                        + &dimen
+                            .iter()
+                            .map(|input| match &input.token.kind {
+                                TokenKind::Word(w) => Some(w.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Option<String>>()?
+                };
+                let pt = parse_dimen_pt_at(&text, self.body_pt())?;
+                Some(Material::VLine {
+                    span,
+                    width_pt: Some(pt),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// array.sty 336-347: `\newcolumntype{X}[n]{spec}`. The definition is
+    /// expanded wherever `X` appears in a later column specification.
+    pub(super) fn new_column_type(&mut self, span: Span) {
+        let (name_tokens, name_span) = self.required_group("newcolumntype", span);
+        let name = token_text(&name_tokens);
+        let mut chars = name.trim().chars();
+        let (Some(ch), None) = (chars.next(), chars.next()) else {
+            self.diags.push(Diagnostic::error(
+                format!(
+                    "\\newcolumntype needs a single character, got '{}'",
+                    name.trim()
+                ),
+                Some(name_span),
+                Some("ignored the definition".into()),
+            ));
+            let _ = self.optional_bracket_argument();
+            let _ = self.required_group("newcolumntype", span);
+            return;
+        };
+        let count = match self.optional_bracket_argument() {
+            Some((raw, option_span)) => match raw.trim().parse::<usize>() {
+                Ok(count) if count <= 9 => count,
+                _ => {
+                    self.diags.push(Diagnostic::error(
+                        "\\newcolumntype argument count must be an integer from 0 to 9",
+                        Some(option_span),
+                        Some("ignored the definition".into()),
+                    ));
+                    let _ = self.required_group("newcolumntype", span);
+                    return;
+                }
+            },
+            None => 0,
+        };
+        let (body, _) = self.required_group("newcolumntype", span);
+        if !self.array_package() {
+            self.diags.push(Diagnostic::error(
+                "\\newcolumntype needs the array package",
+                Some(span),
+                Some("recorded the column type anyway".into()),
+            ));
+        }
+        self.column_types.insert(ch, (count, body));
     }
 
     /// `@{...}`: `\extracolsep` sets the `\tabskip` glue; anything else is
     /// text material in the template.
     fn at_expression(&mut self, tokens: Vec<InputToken>, pre: &mut Preamble, multicolumn: bool) {
+        if let Some(rule) = self.rule_material(&tokens) {
+            pre.add(rule);
+            return;
+        }
         let mut rest = Vec::new();
         let mut index = 0;
         while index < tokens.len() {
@@ -1049,6 +1461,29 @@ impl P<'_> {
             if out.len() >= MAX_SPEC_ITEMS {
                 return;
             }
+            if let SpecItem::Char(ch, span) = item {
+                if let Some((count, definition)) = self.column_types.get(&ch).cloned() {
+                    let mut arguments = Vec::with_capacity(count);
+                    for _ in 0..count {
+                        match items.next() {
+                            Some(SpecItem::Group(argument, _)) => arguments.push(argument),
+                            _ => {
+                                self.diags.push(Diagnostic::error(
+                                    format!("column type '{ch}' needs {count} braced arguments"),
+                                    Some(span),
+                                    Some("used empty arguments".into()),
+                                ));
+                                arguments.push(Vec::new());
+                            }
+                        }
+                    }
+                    if depth < MAX_SPEC_DEPTH {
+                        let expanded = substitute_parameters(&definition, &arguments);
+                        self.spec_items(&expanded, out, depth + 1);
+                    }
+                    continue;
+                }
+            }
             let SpecItem::Char('*', star_span) = item else {
                 out.push(item);
                 continue;
@@ -1094,4 +1529,45 @@ fn start_column(pre: &mut Preamble, last: Last) {
             pre.acol();
         }
     }
+}
+
+/// A `\newcolumntype` body with `#1`..`#9` replaced by the arguments.
+fn substitute_parameters(body: &[InputToken], arguments: &[Vec<InputToken>]) -> Vec<InputToken> {
+    let mut out = Vec::with_capacity(body.len());
+    for input in body {
+        let TokenKind::Word(word) = &input.token.kind else {
+            out.push(input.clone());
+            continue;
+        };
+        let bytes = word.as_bytes();
+        let mut literal = String::new();
+        let mut index = 0;
+        let flush = |literal: &mut String, out: &mut Vec<InputToken>| {
+            if !literal.is_empty() {
+                out.push(InputToken {
+                    token: Token {
+                        kind: TokenKind::Word(std::mem::take(literal)),
+                        span: input.token.span,
+                    },
+                    expansion_depth: input.expansion_depth,
+                    maps_to_invocation: input.maps_to_invocation,
+                });
+            }
+        };
+        while index < bytes.len() {
+            if bytes[index] == b'#' && index + 1 < bytes.len() && (b'1'..=b'9').contains(&bytes[index + 1]) {
+                flush(&mut literal, &mut out);
+                if let Some(argument) = arguments.get(usize::from(bytes[index + 1] - b'1')) {
+                    out.extend(argument.iter().cloned());
+                }
+                index += 2;
+            } else {
+                let ch = word[index..].chars().next().expect("in bounds");
+                literal.push(ch);
+                index += ch.len_utf8();
+            }
+        }
+        flush(&mut literal, &mut out);
+    }
+    out
 }

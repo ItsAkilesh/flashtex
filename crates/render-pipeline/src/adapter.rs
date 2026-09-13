@@ -286,7 +286,26 @@ pub enum Block {
         items: Vec<Item>,
         title: String,
         span: Span,
+        /// `\chaptermark` is issued (unstarred `\chapter`, numbered or, in
+        /// book's `\frontmatter`/`\backmatter`, not: `\if@mainmatter` only
+        /// drops the `Chapter <n>.` prefix).
+        mark: bool,
     },
+    /// `\maketitle` (article.cls lines 169-251, report.cls 175-257,
+    /// book.cls 181-263): the compiler's title, the `\and`-separated
+    /// authors (each a `tabular` whose rows are split at `\\`) and the date
+    /// (`None` for `\date{}`). The class decides between `\@maketitle` and
+    /// the `titlepage` form.
+    Title {
+        title: Vec<Item>,
+        authors: Vec<Vec<Vec<Item>>>,
+        date: Option<Vec<Item>>,
+        span: Span,
+    },
+    /// A class command's `\clearpage` (`double`: `\cleardoublepage`), from
+    /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter` (lines 284-298):
+    /// the next material starts a new page (an odd one when two-sided).
+    ClearPage { double: bool, span: Span },
     /// A page-style or mark command in the body, attached to the material
     /// that follows it.
     Chrome { event: ChromeEvent, span: Span },
@@ -422,10 +441,11 @@ fn inlines_of(block: &CBlock) -> &[Inline] {
 ///   exact `\vskip`s and `\thanks` are not.
 /// - `\vfill`: dropped (the page builder has no stretchable vertical
 ///   glue), reported on the next block.
-fn lower_blocks(texts: &[&str], blocks: &[CBlock]) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>) {
+fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<CBlock>, Vec<(&'static str, Span, String)>, Vec<StashedTitle>) {
     use flashtex_compiler::parser::{FontSizeLevel, ParagraphStyle, TextFamily, TextStyle as CStyle};
     let mut out: Vec<CBlock> = Vec::with_capacity(blocks.len());
     let mut limitations: Vec<(&'static str, Span, String)> = Vec::new();
+    let mut titles: Vec<StashedTitle> = Vec::new();
     let mut pending_vfill = 0usize;
     let sized = |inlines: &[Inline], size: FontSizeLevel| -> Vec<Inline> {
         inlines
@@ -514,6 +534,7 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock]) -> (Vec<CBlock>, Vec<(&'stati
                     }],
                 });
             }
+            CBlock::TitleBlock { title, authors, date } if stash_titles => titles.push((title.clone(), authors.clone(), date.clone())),
             CBlock::TitleBlock { title, authors, date } => {
                 if let Some(at) = first {
                     limitations.push((
@@ -550,7 +571,57 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock]) -> (Vec<CBlock>, Vec<(&'stati
             format!("\\vfill ({pending_vfill} at the end of the document) dropped: the page builder has no stretchable vertical glue"),
         ));
     }
-    (out, limitations)
+    (out, limitations, titles)
+}
+
+/// A compiler `TitleBlock`'s title, authors and date, set aside for the
+/// `\maketitle` command it came from (see [`Block::Title`]).
+type StashedTitle = (Vec<Inline>, Vec<Inline>, Option<Vec<Inline>>);
+
+/// Splits the compiler's author inlines into `\and` groups and each group
+/// into `tabular` rows at `\\`. The compiler joins `\and` groups with a
+/// `LineBreak` spanning the whole `\author{...}` command (a `\\` carries
+/// its own two bytes), so the two are told apart by the span's source.
+fn author_groups(texts: &[&str], authors: &[Inline]) -> Vec<Vec<Inline>> {
+    let mut groups: Vec<Vec<Inline>> = vec![Vec::new()];
+    for inline in authors {
+        if let Inline::LineBreak { span } = inline {
+            let at = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
+            if at.starts_with("\\author") {
+                groups.push(Vec::new());
+                continue;
+            }
+        }
+        groups.last_mut().expect("at least one group").push(inline.clone());
+    }
+    groups.retain(|g| !g.is_empty());
+    groups
+}
+
+/// A tabular cell's rows: `items` split at `\\`.
+fn tabular_rows(items: Vec<Item>) -> Vec<Vec<Item>> {
+    let mut rows = vec![Vec::new()];
+    for item in items {
+        match item {
+            Item::LineBreak { .. } => rows.push(Vec::new()),
+            other => rows.last_mut().expect("at least one row").push(other),
+        }
+    }
+    // A cell starts with `\ignorespaces` and ends with `\unskip`.
+    for row in &mut rows {
+        while matches!(row.first(), Some(Item::Space { .. })) {
+            row.remove(0);
+        }
+        while matches!(row.last(), Some(Item::Space { .. })) {
+            row.pop();
+        }
+    }
+    // `\\` at the end of the last row adds no row (`\@tabularcr` then
+    // `\end{tabular}`: an empty last row of zero height is not set).
+    if rows.len() > 1 && rows.last().is_some_and(|r| r.is_empty()) {
+        rows.pop();
+    }
+    rows
 }
 
 impl Labels {
@@ -616,6 +687,13 @@ pub fn adapt_cached(
     if let Some(pt) = setlength(source, "columnseprule", size) {
         style.columnseprule_pt = pt;
     }
+    style.microtype = microtype_setup(source);
+    if document_sloppy(source) {
+        // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt
+        // \vfuzz\hfuzz` (latex.ltx), as the class does for two columns.
+        style.tolerance = 9999.0;
+        style.emergency_stretch_pt = 3.0 * style.body_size_pt;
+    }
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
     #[cfg(feature = "amsmath-inline")]
@@ -642,16 +720,33 @@ pub fn adapt_cached(
     };
     let items_for = |inlines: &[Inline], heading: bool| -> Vec<Item> { items_cached(texts, inlines, &styles, labels, labels_fp, size, heading, cache) };
     let mut blocks = Vec::new();
-    let (mut lowered, mut limitations) = lower_blocks(texts, &parsed.blocks);
     // Page-style, mark, `\chapter` and `\noindent` commands in the entry
     // document's body, read from the source: the compiler accepts the first
     // two as no-ops, sets the arguments of marks and `\chapter` as body text
     // (dropped here) and ignores `\noindent`.
     let entry_doc = DocumentId(entry);
     let has_chapters = style.class_geometry.as_ref().is_some_and(|d| d.chapter.is_some());
+    let book = style.class_geometry.as_ref().is_some_and(|d| d.options.kind == flashtex_class_geometry::ClassKind::Book);
     // article's `\maketitle` (no `titlepage`) issues `\thispagestyle{plain}`.
     let maketitle_plain = style.class_geometry.as_ref().is_some_and(|d| !d.options.titlepage);
-    let commands = body_commands(source, has_chapters, maketitle_plain);
+    let commands = body_commands(source, has_chapters, book);
+    // Every compiler `TitleBlock` is laid out at its `\maketitle` command
+    // (the entry document's, in order) when the two correspond one to one;
+    // otherwise (a `\maketitle` the compiler rejected, or one in an
+    // `\input` file) they stay centred paragraphs.
+    let maketitles = commands.iter().filter(|c| matches!(c.kind, BodyKind::MakeTitle)).count();
+    let title_blocks = parsed.blocks.iter().filter(|b| matches!(b, CBlock::TitleBlock { .. })).count();
+    let stash_titles = style.class_geometry.is_some() && maketitles == title_blocks && maketitles > 0;
+    let (mut lowered, mut limitations, stashed) = lower_blocks(texts, &parsed.blocks, stash_titles);
+    let mut stashed = stashed.into_iter();
+    let title_of = |(title, authors, date): StashedTitle, span: Span| Block::Title {
+        title: items_for(&title, false),
+        authors: author_groups(texts, &authors).iter().map(|g| tabular_rows(items_for(g, false))).collect(),
+        date: date.map(|d| items_for(&d, false)),
+        span,
+    };
+    // book.cls `\if@mainmatter` (true until `\frontmatter`).
+    let mut mainmatter = true;
     strip_command_text(&mut lowered, entry_doc, &commands);
     let mut next_command = 0usize;
     let mut noindent_at: Option<usize> = None;
@@ -681,7 +776,9 @@ pub fn adapt_cached(
                     }),
                     BodyKind::NoIndent => noindent_at = Some(cmd.end),
                     BodyKind::Chapter { starred, title } => {
-                        let number = (!*starred).then(|| {
+                        // `\@chapter`: `\refstepcounter{chapter}` only
+                        // `\if@mainmatter` (book.cls line 356).
+                        let number = (!*starred && mainmatter).then(|| {
                             chapter_no += 1;
                             section_nos = [0; 3];
                             chapter_no.to_string()
@@ -691,8 +788,48 @@ pub fn adapt_cached(
                             items: words_from_source(source, entry_doc, title.0, title.1),
                             title: plain_text(&source[title.0..title.1]),
                             span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                            mark: !*starred,
                         });
                         after_heading = true;
+                        prev_para_end = None;
+                    }
+                    BodyKind::MakeTitle => {
+                        if let Some(t) = stashed.next() {
+                            let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                            // `\@maketitle` is followed by `\thispagestyle{plain}`;
+                            // the `titlepage` form sets `empty` on its own page.
+                            if maketitle_plain {
+                                blocks.push(Block::Chrome {
+                                    event: ChromeEvent::ThisPageStyle(PageStyle::Plain),
+                                    span,
+                                });
+                            }
+                            blocks.push(title_of(t, span));
+                            after_heading = false;
+                            prev_para_end = None;
+                        } else if maketitle_plain {
+                            blocks.push(Block::Chrome {
+                                event: ChromeEvent::ThisPageStyle(PageStyle::Plain),
+                                span: Span::in_document(entry_doc, cmd.start, cmd.end),
+                            });
+                        }
+                    }
+                    BodyKind::Matter(matter) => {
+                        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+                        let openright = style.class_geometry.as_ref().is_some_and(|d| d.options.openright);
+                        let (double, numbering, main) = match matter {
+                            Matter::Front => (true, Some(flashtex_class_geometry::Numbering::Roman), false),
+                            Matter::Main => (true, Some(flashtex_class_geometry::Numbering::Arabic), true),
+                            Matter::Back => (openright, None, false),
+                        };
+                        mainmatter = main;
+                        blocks.push(Block::ClearPage { double, span });
+                        if let Some(n) = numbering {
+                            blocks.push(Block::Chrome {
+                                event: ChromeEvent::PageNumbering(n),
+                                span,
+                            });
+                        }
                         prev_para_end = None;
                     }
                 }
@@ -922,13 +1059,24 @@ pub fn adapt_cached(
             }
         }
     }
-    // Page-style and mark commands after the last material.
+    // Page-style and mark commands (and a `\maketitle`) after the last
+    // material.
     for cmd in &commands[next_command..] {
-        if let BodyKind::Event(event) = &cmd.kind {
-            blocks.push(Block::Chrome {
-                event: event.clone(),
-                span: Span::in_document(entry_doc, cmd.start, cmd.end),
-            });
+        let span = Span::in_document(entry_doc, cmd.start, cmd.end);
+        match &cmd.kind {
+            BodyKind::Event(event) => blocks.push(Block::Chrome { event: event.clone(), span }),
+            BodyKind::MakeTitle => {
+                if maketitle_plain {
+                    blocks.push(Block::Chrome {
+                        event: ChromeEvent::ThisPageStyle(PageStyle::Plain),
+                        span,
+                    });
+                }
+                if let Some(t) = stashed.next() {
+                    blocks.push(title_of(t, span));
+                }
+            }
+            _ => {}
         }
     }
     Doc {
@@ -1504,6 +1652,74 @@ pub fn t1_encoding(source: &str) -> bool {
         .is_some_and(|opts| opts.split(',').map(str::trim).filter(|o| !o.is_empty()).last() == Some("T1"))
 }
 
+/// `\usepackage[<options>]{microtype}` under pdfTeX in PDF mode: protrusion
+/// and expansion both on by default (`\pdfprotrudechars=2`,
+/// `\pdfadjustspacing=2`, stretch/shrink 20, step 1, autoexpand);
+/// `protrusion=`/`expansion=` take `true`, `false`, `compatibility` (level 1),
+/// `nocompatibility` or a font set name; `disable` (or `disable=true`) switches
+/// both off, `disable=ifdraft` only under `draft` (a package or class option;
+/// `draft` alone changes nothing, `final` is a no-op in microtype.sty v3.2);
+/// `factor`, `stretch`, `shrink`, `step`, `selected` and `auto` map
+/// to [`flashtex_microtype::Options`]. Other options (`tracking`, `kerning`,
+/// `spacing`, `letterspace`, ...) do not affect pdfTeX's protrusion or
+/// expansion and are ignored, as is `\microtypesetup` (not read).
+pub fn microtype_setup(source: &str) -> Option<crate::style::MicrotypeSetup> {
+    let opts = package_options(source, "microtype")?;
+    let mut o = flashtex_microtype::Options::default();
+    let (mut protrude, mut adjust) = (2, 2);
+    let mut draft = class_options(source).is_some_and(|c| c.split(',').any(|o| o.trim() == "draft"));
+    let (mut disable, mut disable_ifdraft) = (false, false);
+    let level = |v: Option<&str>| match v {
+        Some("false") => 0,
+        Some("compatibility") => 1,
+        _ => 2,
+    };
+    let int = |v: Option<&str>, d: i32| v.and_then(|v| v.parse::<i32>().ok()).unwrap_or(d);
+    let named = |v: Option<&str>| {
+        v.filter(|v| !matches!(*v, "true" | "false" | "compatibility" | "nocompatibility"))
+            .map(str::to_string)
+    };
+    for kv in opts.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let (k, v) = match kv.split_once('=') {
+            Some((k, v)) => (k.trim(), Some(v.trim().trim_matches(|c| c == '{' || c == '}').trim())),
+            None => (kv, None),
+        };
+        match k {
+            "draft" => draft = v != Some("false"),
+            "disable" => match v {
+                None | Some("true") => disable = true,
+                Some("ifdraft") => disable_ifdraft = true,
+                _ => {}
+            },
+            "protrusion" => {
+                protrude = level(v);
+                if let Some(set) = named(v) {
+                    o.protrusion_set = Some(set);
+                }
+            }
+            "expansion" => {
+                adjust = level(v);
+                if let Some(set) = named(v) {
+                    o.expansion_set = Some(set);
+                }
+            }
+            "factor" => o.protrusion_factor = int(v, o.protrusion_factor),
+            "stretch" => o.stretch = int(v, o.stretch),
+            "shrink" => o.shrink = int(v, o.shrink),
+            "step" => o.step = int(v, o.step),
+            "selected" => o.selected = v != Some("false"),
+            "auto" => o.auto_expand = v != Some("false"),
+            _ => {}
+        }
+    }
+    if disable || (disable_ifdraft && draft) {
+        (protrude, adjust) = (0, 0);
+    }
+    o.protrusion = protrude > 0;
+    o.expansion = adjust > 0;
+    Some(crate::style::MicrotypeSetup { options: o, protrude_chars: protrude, adjust_spacing: adjust })
+}
+
 /// Options of `\usepackage[opts]{name}`, if the package is loaded.
 pub fn package_options(source: &str, name: &str) -> Option<String> {
     let mut from = 0;
@@ -1966,6 +2182,40 @@ fn find_command(source: &str, name: &str) -> Option<usize> {
         i += 1;
     }
     None
+}
+
+/// Whether `\sloppy` is in force for the whole document: a `\sloppy` outside
+/// every brace group of the entry source (preamble or body). One inside a
+/// group (`{\sloppy ...}`) is local and not applied; `sloppypar` is not read.
+pub fn document_sloppy(source: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = find_command(&source[from..], "sloppy") {
+        let abs = from + at;
+        if brace_depth(&source[..abs]) == 0 {
+            return true;
+        }
+        from = abs + 1;
+    }
+    false
+}
+
+/// Unclosed `{` groups in `prefix` (escaped braces and comments skipped).
+fn brace_depth(prefix: &str) -> i64 {
+    let bytes = prefix.as_bytes();
+    let (mut depth, mut i, mut comment) = (0i64, 0usize, false);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\n' => comment = false,
+            _ if comment => {}
+            b'%' => comment = true,
+            b'\\' => i += 1,
+            b'{' => depth += 1,
+            b'}' => depth = (depth - 1).max(0),
+            _ => {}
+        }
+        i += 1;
+    }
+    depth
 }
 
 /// Byte offset of the last `\<name>` in `source` outside comments.
@@ -2504,12 +2754,28 @@ pub enum BodyKind {
     /// `\chapter[*][short]{title}`: `title` is the argument's inner range.
     Chapter { starred: bool, title: (usize, usize) },
     NoIndent,
+    /// `\maketitle` (laid out from the compiler's `TitleBlock`).
+    MakeTitle,
+    /// book.cls `\frontmatter`/`\mainmatter`/`\backmatter`.
+    Matter(Matter),
 }
 
-/// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`
-/// and (when the class has chapters) `\chapter` after `\begin{document}`,
+/// Which book.cls matter command (lines 284-298).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Matter {
+    /// `\cleardoublepage \@mainmatterfalse \pagenumbering{roman}`.
+    Front,
+    /// `\cleardoublepage \@mainmattertrue \pagenumbering{arabic}`.
+    Main,
+    /// `\if@openright\cleardoublepage\else\clearpage\fi \@mainmatterfalse`.
+    Back,
+}
+
+/// `\pagestyle`, `\thispagestyle`, `\markboth`, `\markright`, `\noindent`,
+/// `\maketitle`, (when the class has chapters) `\chapter` and (book)
+/// `\frontmatter`/`\mainmatter`/`\backmatter` after `\begin{document}`,
 /// in source order, skipping comments.
-pub fn body_commands(source: &str, chapters: bool, maketitle_plain: bool) -> Vec<BodyCommand> {
+pub fn body_commands(source: &str, chapters: bool, book: bool) -> Vec<BodyCommand> {
     let bytes = source.as_bytes();
     let begin = source.find("\\begin{document}").map_or(0, |b| b + "\\begin{document}".len());
     let group = |from: usize| -> Option<(usize, usize, usize)> {
@@ -2588,7 +2854,10 @@ pub fn body_commands(source: &str, chapters: bool, maketitle_plain: bool) -> Vec
                 }
                 group(a1).and_then(|(s2, e2, a2)| source[s2..e2].trim().parse::<i64>().ok().map(|n| (BodyKind::Event(ChromeEvent::SetPage(n)), a2)))
             }),
-            "maketitle" if maketitle_plain => Some((BodyKind::Event(ChromeEvent::ThisPageStyle(PageStyle::Plain)), j)),
+            "maketitle" => Some((BodyKind::MakeTitle, j)),
+            "frontmatter" if book => Some((BodyKind::Matter(Matter::Front), j)),
+            "mainmatter" if book => Some((BodyKind::Matter(Matter::Main), j)),
+            "backmatter" if book => Some((BodyKind::Matter(Matter::Back), j)),
             _ => None,
         };
         match found {
@@ -2977,6 +3246,13 @@ fn items_cached(
 /// from the compiler's own style, since the macro-expanded bytes are not in
 /// the source at the invocation).
 fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels, size: u32, heading: bool) -> Vec<Item> {
+    items_from_inlines_styled(texts, inlines, styles, labels, size, heading, false)
+}
+
+/// `compiler_weight`: bold and italic come from the compiler's own scoping
+/// rather than the source's brace groups (a table entry whose array `>{}`
+/// declarations were inserted from the column specification).
+fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Styles], labels: &Labels, size: u32, heading: bool, compiler_weight: bool) -> Vec<Item> {
     // `\ref`/`\pageref` become ordinary text attributed to the command's
     // bytes; `\label` becomes a zero-width marker.
     let mut resolved: Vec<std::borrow::Cow<Inline>> = Vec::with_capacity(inlines.len());
@@ -3037,7 +3313,7 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                 after_control_word = false;
                 let src = text_of(span.document);
                 let lengths = crate::table::TableLengths::read(|name| setlength(src, name, size));
-                let mut items_of = |inlines: &[Inline]| items_from_inlines(texts, inlines, styles, labels, size, false);
+                let mut items_of = |inlines: &[Inline], declared: bool| items_from_inlines_styled(texts, inlines, styles, labels, size, false, declared);
                 let table = crate::table::from_compiler(t, lengths, declared_size(t.style.size, size), &mut items_of);
                 items.push(Item::Table(Box::new(table)));
                 prev_end = Some(span.end);
@@ -3146,6 +3422,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     style.medium = !cs.bold;
                     style.italic |= cs.italic;
                 }
+                if compiler_weight {
+                    style.bold = compiler_style.bold;
+                    style.italic = compiler_style.italic;
+                }
                 let has_space = space_between(prev_end, prev_span, *span, Some(text), after_control_word);
                 after_control_word = false;
                 if has_space {
@@ -3154,6 +3434,10 @@ fn items_from_inlines(texts: &[&str], inlines: &[Inline], styles: &[Styles], lab
                     // gets a regular space, "\textbf{bold words}" a bold one,
                     // "\textbf{\emph{x}} y" a regular one).
                     let mut gap_style = space_style(texts, styles, prev_end, *span, style);
+                    if compiler_weight {
+                        gap_style.bold = style.bold;
+                        gap_style.italic = style.italic;
+                    }
                     gap_style.size_cpt = space_size(texts, prev_end, *span, prev_size_cpt, style.size_cpt);
                     push_gap(&mut items, has_space, gap_style, factor);
                     pending_accent = None;
@@ -3492,6 +3776,8 @@ mod tests {
                 Block::Picture { .. } => "P".to_string(),
                 Block::Chapter { .. } => "C".to_string(),
                 Block::Chrome { .. } => "M".to_string(),
+                Block::Title { .. } => "T".to_string(),
+                Block::ClearPage { .. } => "N".to_string(),
             })
             .collect();
         // `Problem 1 \hfill \normalfont[4 points]`: one fill, no space after it.

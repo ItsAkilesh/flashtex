@@ -51,6 +51,24 @@ pub struct HeadingStyle {
     pub after: Skip,
 }
 
+/// `\usepackage[...]{microtype}` as pdfTeX sees it: the package options
+/// `crates/microtype` resolves each font's codes with, and the
+/// `\pdfprotrudechars` / `\pdfadjustspacing` levels it sets (2 for
+/// `true`/`nocompatibility`, 1 for `compatibility`, 0 when off or `draft`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MicrotypeSetup {
+    pub options: flashtex_microtype::Options,
+    pub protrude_chars: i32,
+    pub adjust_spacing: i32,
+}
+
+impl MicrotypeSetup {
+    /// Whether either feature is on.
+    pub fn active(&self) -> bool {
+        self.protrude_chars > 0 || self.adjust_spacing > 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stylesheet {
     pub family: Family,
@@ -105,6 +123,10 @@ pub struct Stylesheet {
     /// The resolved class + geometry frame this stylesheet was built from
     /// ([`Stylesheet::from_resolved`]); `None` for [`Stylesheet::article`].
     pub class_geometry: Option<Box<ResolvedDocument>>,
+    /// Character protrusion and font expansion when the preamble loads
+    /// `microtype` (`None` otherwise; lines are then broken exactly as
+    /// before).
+    pub microtype: Option<MicrotypeSetup>,
 }
 
 impl Stylesheet {
@@ -197,6 +219,7 @@ impl Stylesheet {
             labelsep_pt: list.labelsep.0,
             headings: [heading(1), heading(2), heading(3)],
             class_geometry: None,
+            microtype: None,
         }
     }
 

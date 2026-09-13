@@ -27,12 +27,17 @@ name = "flashtex-math-layout"
 version = "0.1.0"
 
 [[package]]
+name = "flashtex-microtype"
+version = "0.1.0"
+
+[[package]]
 name = "flashtex-paragraph-layout"
 version = "0.1.0"
 dependencies = [
  "flashtex-compiler",
  "flashtex-document-style",
  "flashtex-font-engine",
+ "flashtex-microtype",
 ]
 
 [[package]]

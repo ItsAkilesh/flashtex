@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 128 text-mode and 308 math-mode command entries, 45 environments and 5 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 130 text-mode and 308 math-mode command entries, 45 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -239,6 +239,8 @@ Canonical sources:
 | `\documentclass` | `[options]{class}` | records the class and its 10pt/11pt/12pt size option; only the document body is typeset |
 | `\setlength` | `{\length}{dimension}` | preamble \parskip, and \parindent of 0pt; other lengths warn |
 | `\usepackage` | `[options]{a,b,c}` | records packages; layout-neutral ones are silent, every other package warns that it is not implemented |
+| `\newcolumntype` | `{X}[n]{spec}` | array column type expanded in later tabular specifications |
+| `\arraybackslash` |  | array no-op: \\ already ends the row inside p, m and b entries |
 | `\setlist` | `[list]{options}` | enumitem itemsep and topsep; other keys warn |
 | `\newcommand` | `{\name}[n]{body}` | defines a macro with 0-9 arguments; rejects an existing name |
 | `\renewcommand` | `{\name}[n]{body}` | redefines an existing macro |
@@ -508,7 +510,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `quotation` | text | indented paragraphs |
 | `itemize` | text | bulleted list |
 | `enumerate` | text | numbered list; enumitem [label] templates a, A, i, I, 1 |
-| `tabular` | text | table with l/c/r/p columns, rules and multicolumn |
+| `tabular` | text | table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \extrarowheight |
 | `tabular*` | text | table of a given width |
 | `verbatim` | text | literal monospaced lines |
 | `verbatim*` | text | literal monospaced lines with visible spaces |
@@ -539,6 +541,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `inputenc` | `utf8` | source text is already decoded as UTF-8 |
 | `fontenc` | `T1` | text glyphs are mapped from Unicode |
 | `amsthm` | `` | \newtheorem, \theoremstyle and the proof environment |
+| `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
 | `geometry` | `letterpaper, margin=1in` | matches the fixed US Letter page with 1in margins |
 
