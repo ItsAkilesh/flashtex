@@ -534,7 +534,7 @@ extension ShellModel {
                 preserveDirtyText(discarding.text, at: from, reason: from == url ? "discarded by a reload from disk" : "discarded when \(url.lastPathComponent) was opened")
             }
         }
-        replaceProject(entryText: text)
+        replaceProject(entryText: text, path: ProjectIncludes.entryPath(for: url))
         documentURL = url
         savedText = text
         files.conflict = nil
@@ -552,7 +552,7 @@ extension ShellModel {
             captureNote = "Current buffer has unsaved edits; save it before restoring the discarded buffer."
             return false
         }
-        replaceProject(entryText: kept.text)
+        replaceProject(entryText: kept.text, path: ProjectIncludes.entryPath(for: kept.url))
         documentURL = kept.url
         // "Saved" is whatever is on disk now, so the restored text stays dirty
         // (it differs from disk) and cannot be lost again silently. No file on

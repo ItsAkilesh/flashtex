@@ -32,7 +32,7 @@ import FlashTeXProtocol
 // MARK: - lexical include discovery
 
 enum ProjectIncludes {
-    enum Kind: String, Equatable { case input, include }
+    enum Kind: String, Equatable { case input, include, subfile }
 
     /// One `\input`/`\include` found in a source text. Spans are zero-based,
     /// end-exclusive UTF-8 byte ranges (runtime-v1 `source` convention).
@@ -130,6 +130,7 @@ enum ProjectIncludes {
             case "begin": maybeSkipVerbatimEnvironment()
             case "input": reference(.input, start: start)
             case "include": reference(.include, start: start)
+            case "subfile": reference(.subfile, start: start)
             default: break
             }
         }
@@ -386,10 +387,10 @@ final class ProjectDocuments {
         self.model = model
         armActivePathTracking()
         armControllerTracking()
-        // Demo/automation hook (like FLASHTEX_SEED_FILE): open the entry
-        // document's includes at launch and optionally start in one of them.
+        // Demo/automation hook (like FLASHTEX_SEED_FILE): includes load
+        // automatically (projectFileBound); optionally start in one of them.
         let env = ProcessInfo.processInfo.environment
-        if env["FLASHTEX_OPEN_INCLUDES"] == "1" {
+        if env["FLASHTEX_OPEN_INCLUDES"] == "1" || env["FLASHTEX_ACTIVE_PATH"] != nil {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 _ = await self.openDiscoveredIncludes()
@@ -768,6 +769,7 @@ final class ProjectDocuments {
         diskBaselines[path] = diskSHA256
         detachedBuffers.removeValue(forKey: path)
         model.log("project: opened \(path) (\(text.utf8.count) bytes, \(origin)) — \(model.documents.count) documents")
+        if !batchingIncludes { membershipChanged() } // the entry recompiles with the new member (issue #75)
         // Unsaved text kept for this member by an earlier session or detach is
         // offered (DirtySnapshots.swift), never applied over the opened text.
         if let root = projectRoot, let offered = model.offerDirtySnapshot(for: root.appendingPathComponent(path), currentText: text) {
@@ -817,6 +819,7 @@ final class ProjectDocuments {
         carets.removeValue(forKey: path); diskBaselines.removeValue(forKey: path)
         if model.anchor?.path == path { model.anchor = nil }
         model.log("project: detached \(path) — \(model.documents.count) documents")
+        membershipChanged()
         return note(.detached(path: path), extra: " (" + Self.detachScopeNote + ")")
     }
 
@@ -1117,6 +1120,10 @@ final class ProjectDocuments {
                     guard let self else { return }
                     self.controllerArmed = false
                     self.armControllerTracking()
+                    if self.helperAutoLoadPending, self.model.controllerAttached, self.model.controllerState.ready {
+                        self.helperAutoLoadPending = false
+                        Task { await self.openDiscoveredIncludes() }
+                    }
                     guard self.model.controllerAttached, self.model.controllerState.ready, self.needsHelperSync else { return }
                     Task { await self.syncWithHelper() }
                 }
@@ -1273,6 +1280,188 @@ final class ProjectDocuments {
         private var settled = false
         /// True for the first caller only.
         func settle() -> Bool { if settled { return false }; settled = true; return true }
+    }
+
+    // MARK: automatic include loading (issue #75)
+
+    /// Every `\input`/`\include`/`\subfile` target that exists under the
+    /// project root is opened when a project file is bound (open, reload,
+    /// save, launch seed), when an opened member changes on disk, and shortly
+    /// after edits settle (a newly typed `\input`). Tests of the manual open
+    /// flow turn it off.
+    var autoLoadIncludes = true
+    /// Total UTF-8 bytes of project text at which automatic loading stops
+    /// (each document is bounded by `ProjectIncludes.maxDocumentBytes`, the
+    /// closure by `maxClosureDocuments`).
+    nonisolated static let maxAutoLoadBytes = 32 * 1024 * 1024
+    /// Quiet period after the last edit before includes are rediscovered.
+    var rediscoverDelay: TimeInterval = 0.5
+    @ObservationIgnored private var batchingIncludes = false
+    @ObservationIgnored private var helperAutoLoadPending = false
+    @ObservationIgnored private(set) var includeWatchers: [String: DocumentWatcher] = [:]
+    /// Paths automatic loading could not open (too large, not UTF-8): not retried until a rebind or disk change.
+    @ObservationIgnored private var autoLoadRefused: Set<String> = []
+    @ObservationIgnored private var editTrackingArmed = false
+    @ObservationIgnored private var rediscoverWork: DispatchWorkItem?
+
+    /// A project file was bound (`ShellModel.watchOpenDocument`): load its
+    /// includes — synchronously from disk on the direct route, through the
+    /// helper once it is ready otherwise.
+    func projectFileBound() {
+        model.adoptEntryFileName()
+        autoLoadRefused = []
+        guard autoLoadIncludes, projectRoot != nil else { rewatchIncludes(); return }
+        armEditTracking()
+        if model.controllerAttached {
+            if model.controllerState.ready { Task { await openDiscoveredIncludes() } } else { helperAutoLoadPending = true }
+            return
+        }
+        loadIncludesFromDisk()
+    }
+
+    /// Direct route: opens the entry's include closure from disk (rooted,
+    /// bounded, no symlinks — `openDirectly`), watches the opened files, and
+    /// recompiles once if anything was opened. Returns the opened paths.
+    @discardableResult
+    func loadIncludesFromDisk() -> [String] {
+        guard autoLoadIncludes, !model.controllerAttached, projectRoot != nil else { return [] }
+        var opened: [String] = []
+        var attempted: Set<String> = []
+        var overBudget = false
+        batchingIncludes = true
+        var progress = true
+        while progress, !overBudget {
+            progress = false
+            for node in discoverClosure().nodes where node.state == .available && !node.duplicate {
+                guard let path = node.resolvedPath, !autoLoadRefused.contains(path), attempted.insert(path).inserted else { continue }
+                if model.documents.reduce(0, { $0 + $1.text.utf8.count }) >= Self.maxAutoLoadBytes { overBudget = true; break }
+                if case .opened = openDirectly(path, role: .included(from: node.from)) { opened.append(path); progress = true }
+                else { autoLoadRefused.insert(path) }
+            }
+        }
+        batchingIncludes = false
+        rewatchIncludes()
+        if !opened.isEmpty {
+            status = "loaded \(opened.count) included file\(opened.count == 1 ? "" : "s"): " + opened.joined(separator: ", ")
+                + (overBudget ? "; stopped at the \(Self.maxAutoLoadBytes)-byte project limit" : "")
+            FlashTeXLog.write("project: " + status)
+            membershipChanged()
+        } else if overBudget {
+            status = "includes not loaded: the project already holds \(Self.maxAutoLoadBytes) bytes"
+        }
+        return opened
+    }
+
+    /// Direct route: the documents the compiler sees changed without an
+    /// editor revision; send them (the helper route previews its own opens).
+    private func membershipChanged() {
+        rewatchIncludes()
+        if !model.controllerAttached { model.scheduleAutoCompile() }
+    }
+
+    /// Keeps one `DocumentWatcher` per member read from disk (not the entry,
+    /// which `ShellModel.documentWatcher` watches). `FLASHTEX_NO_FILE_WATCH=1` opts out.
+    private func rewatchIncludes() {
+        let root = projectRoot
+        var wanted: [String: URL] = [:]
+        if let root, ProcessInfo.processInfo.environment["FLASHTEX_NO_FILE_WATCH"] != "1" {
+            for doc in listing.dropFirst() where doc.origin == .disk {
+                if case .file(let url) = Self.rootedFile(doc.path, under: root) { wanted[doc.path] = url }
+            }
+        }
+        for (path, watcher) in includeWatchers where wanted[path] != watcher.url {
+            watcher.stop()
+            includeWatchers.removeValue(forKey: path)
+        }
+        for (path, url) in wanted where includeWatchers[path] == nil {
+            let watcher = DocumentWatcher()
+            watcher.onChange = { [weak self] in self?.includeChangedOnDisk(path) }
+            watcher.watch(url)
+            includeWatchers[path] = watcher
+        }
+    }
+
+    /// A watched member changed on disk: reload it if it has no unsaved
+    /// edits, then pick up any include it now names.
+    func includeChangedOnDisk(_ path: String) {
+        guard isOpen(path), !model.controllerAttached else { return }
+        let outcome = reloadFromDisk(path)
+        FlashTeXLog.write("project: \(path) changed on disk: \(outcome)")
+        autoLoadRefused = []
+        loadIncludesFromDisk()
+    }
+
+    enum ReloadDecision: Equatable {
+        /// The buffer already holds the disk text.
+        case unchanged
+        /// No unsaved edits: adopt the disk text.
+        case reload
+        /// Unsaved edits: keep the buffer; a save reports the conflict.
+        case keepEdits
+    }
+
+    /// Pure reload rule for an external change of a non-entry member.
+    static func reloadDecision(buffer: String, baseline: String?, disk: String) -> ReloadDecision {
+        if disk.sameBytes(as: buffer) { return .unchanged }
+        guard let baseline, baseline.sameBytes(as: buffer) else { return .keepEdits }
+        return .reload
+    }
+
+    enum DiskReload: Equatable { case unchanged, reloaded, keptEdits, unreadable(String) }
+
+    /// Re-reads a member from disk (rooted, bounded) and applies `reloadDecision`.
+    /// The active document takes the text as an edit (revision, bridge,
+    /// recompile); another member is replaced in place and recompiled.
+    @discardableResult
+    func reloadFromDisk(_ path: String) -> DiskReload {
+        guard path != entryPath, let buffer = model.documents.first(where: { $0.path == path })?.text else { return .unreadable("\(path) is not an open member") }
+        guard let root = projectRoot, case .file(let url) = Self.rootedFile(path, under: root) else { return .unreadable("\(path) is not a rooted file") }
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else { return .unreadable("\(path) is missing") }
+        if let size = attrs[.size] as? Int, size > ProjectIncludes.maxDocumentBytes { return .unreadable("\(path) exceeds \(ProjectIncludes.maxDocumentBytes) bytes") }
+        guard let data = try? Data(contentsOf: url), let disk = String(data: data, encoding: .utf8) else { return .unreadable("\(path) is not readable as UTF-8") }
+        switch Self.reloadDecision(buffer: buffer, baseline: baselines[path], disk: disk) {
+        case .unchanged:
+            baselines[path] = disk
+            diskBaselines[path] = SourceDigest.sha256Hex(disk)
+            return .unchanged
+        case .keepEdits:
+            status = "\(path) changed on disk while it has unsaved edits; the buffer is kept (saving reports the conflict)"
+            return .keptEdits
+        case .reload:
+            baselines[path] = disk
+            diskBaselines[path] = SourceDigest.sha256Hex(disk)
+            if model.activePath == path {
+                model.updateActiveText(disk)
+            } else if let i = model.documents.firstIndex(where: { $0.path == path }) {
+                model.documents[i].text = disk
+                if !model.controllerAttached { model.scheduleAutoCompile() }
+            }
+            status = "reloaded \(path) from disk"
+            return .reloaded
+        }
+    }
+
+    /// Rediscovers includes `rediscoverDelay` after edits settle (direct route).
+    private func armEditTracking() {
+        guard !editTrackingArmed else { return }
+        editTrackingArmed = true
+        withObservationTracking { [weak self] in
+            guard let self else { return }
+            _ = self.model.editorRevision
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.editTrackingArmed = false
+                    guard self.autoLoadIncludes else { return } // re-armed by the next projectFileBound
+                    self.armEditTracking()
+                    self.rediscoverWork?.cancel()
+                    let item = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { _ = self?.loadIncludesFromDisk() } }
+                    self.rediscoverWork = item
+                    DispatchQueue.main.asyncAfter(deadline: .now() + self.rediscoverDelay, execute: item)
+                }
+            }
+        }
     }
 
     // MARK: rooted files (direct mode)

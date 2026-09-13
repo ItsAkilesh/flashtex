@@ -137,6 +137,7 @@ extension ShellModel {
     /// save. Without a URL the watcher stops. Opt out with
     /// `FLASHTEX_NO_FILE_WATCH=1` (benches, automation that hammers the file).
     func watchOpenDocument() {
+        project.projectFileBound() // ProjectDocuments.swift: load and watch included files (issue #75)
         if ProcessInfo.processInfo.environment["FLASHTEX_NO_FILE_WATCH"] == "1" { return }
         guard let documentURL else { documentWatcher.stop(); return }
         if documentWatcher.url != documentURL || !documentWatcher.isWatching { documentWatcher.watch(documentURL) }

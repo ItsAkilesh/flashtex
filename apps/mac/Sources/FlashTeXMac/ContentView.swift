@@ -45,6 +45,7 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .navigationTitle(model.windowTitle) // ProjectIncludeSync.swift: the real file name, not "main.tex"
         .toolbar { WorkspaceToolbar(openWindow: openWindow) }
         .sheet(isPresented: $model.commandPaletteShown) { CommandPalette().environment(model) }
         .grokAssistantSheet() // Ask Grok (GrokAssistantView.swift)

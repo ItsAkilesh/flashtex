@@ -373,9 +373,10 @@ final class ShellModel {
             // built compiler at launch when FLASHTEX_AUTOATTACH=1 (opt-in so tests
             // that construct ShellModel stay fixture-backed).
             if let seed = env["FLASHTEX_SEED_FILE"], let text = try? String(contentsOfFile: seed, encoding: .utf8) {
-                replaceProject(entryText: text)
+                replaceProject(entryText: text, path: ProjectIncludes.entryPath(for: URL(fileURLWithPath: seed)))
                 documentURL = URL(fileURLWithPath: seed)
                 savedText = text
+                watchOpenDocument() // like File > Open: watch the file and load its includes (ProjectIncludeSync)
             }
             // A producer shipped inside the .app bundle attaches by default: the
             // render pipeline (Latin Modern, display-list-v2) when bundled, else
@@ -484,9 +485,10 @@ final class ShellModel {
     // MARK: editing
 
     /// Replaces the whole project with one entry document (File > Open).
-    func replaceProject(entryText text: String) {
-        documents = [.init(path: "main.tex", text: text)]
-        activePath = "main.tex"
+    /// `path` is the entry's real file name (`ProjectIncludes.entryPath(for:)`).
+    func replaceProject(entryText text: String, path: String = "main.tex") {
+        documents = [.init(path: path, text: text)]
+        activePath = path
         compiledDocuments = [:]
         result = nil
         resultID = nil
@@ -513,7 +515,7 @@ final class ShellModel {
         bridgeTextChanged(path: activePath, old: old, new: text, base: base, revision: editorRevision)
     }
 
-    private func scheduleAutoCompile() {
+    func scheduleAutoCompile() {
         guard autoCompile, workerAttached else { return }
         if controllerAttached { controllerSubmitEdit(); return }
         debounce?.cancel()
@@ -677,7 +679,7 @@ final class ShellModel {
             }
             log("layout capability switch while \(latestID) is in flight: re-requesting revision \(editorRevision) under \(LayoutNegotiation.describe(capabilities))")
         } else if let current = result, previewSource != .fixture, current.revision == editorRevision,
-                  negotiation.requested == capabilities {
+                  negotiation.requested == capabilities, !projectMembershipChangedSinceResult {
             return // buffers and capability set unchanged since the applied result
         }
         let id = "mac-\(nextRequestID)"
