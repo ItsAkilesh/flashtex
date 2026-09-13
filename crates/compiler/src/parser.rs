@@ -3588,9 +3588,77 @@ impl P<'_> {
         let mut style = base;
         let mut saved = Vec::new();
         let mut pending = None;
+        // Tokens already read as a siunitx command's arguments.
+        let mut skip_until = 0usize;
         for (index, input) in expanded.iter().enumerate() {
+            if index < skip_until {
+                continue;
+            }
             let space_before = preceded_by_space(&expanded, index);
             match &input.token.kind {
+                // siunitx in a heading, caption or style argument: the same
+                // formula as in running text (`P::siunitx`).
+                TokenKind::Command(name) if siunitx::arity(name).is_some() => {
+                    let (required, pre_unit_bracket) = siunitx::arity(name).unwrap_or((0, false));
+                    let mut next = index + 1;
+                    let mut span = input.token.span;
+                    let widen = |span: &mut Span, other: Span| {
+                        if other.document == span.document {
+                            *span = span.merge(other);
+                        }
+                    };
+                    let options = siunitx_bracket_at(&expanded, next).map(|(raw, s, after)| {
+                        next = after;
+                        widen(&mut span, s);
+                        raw
+                    });
+                    let mut pre_unit = None;
+                    let mut args = Vec::with_capacity(required);
+                    for argument in 0..required {
+                        if pre_unit_bracket && argument == 1 {
+                            if let Some((raw, s, after)) = siunitx_bracket_at(&expanded, next) {
+                                next = after;
+                                widen(&mut span, s);
+                                pre_unit = Some(raw);
+                            }
+                        }
+                        match siunitx_group_at(&expanded, next) {
+                            Some((raw, s, after)) => {
+                                next = after;
+                                widen(&mut span, s);
+                                args.push(raw);
+                            }
+                            None => {
+                                self.diags.push(Diagnostic::error(
+                                    format!("\\{name} requires an argument"),
+                                    Some(input.token.span),
+                                    Some("used an empty argument and continued".into()),
+                                ));
+                                args.push(String::new());
+                            }
+                        }
+                    }
+                    skip_until = next;
+                    let atoms = siunitx::typeset(
+                        name,
+                        options.as_deref(),
+                        pre_unit.as_deref(),
+                        &args,
+                        false,
+                        span,
+                        &mut self.diags,
+                    );
+                    if !atoms.is_empty() {
+                        content.push(Inline::Math {
+                            list: MathList { atoms },
+                            display: false,
+                            number: None,
+                            number_span: None,
+                            span,
+                            space_before,
+                        });
+                    }
+                }
                 TokenKind::Command(name) if style_command(name) => {
                     pending = Some(apply_style(style, name));
                 }
@@ -3780,50 +3848,9 @@ impl P<'_> {
     /// `output-decimal-marker={,}` at the comma). Nothing is consumed when
     /// no bracket follows.
     fn siunitx_bracket(&mut self) -> Option<(String, Span)> {
-        let mut index = self.i;
-        while matches!(
-            self.t.get(index).map(|t| &t.token.kind),
-            Some(TokenKind::Space)
-        ) {
-            index += 1;
-        }
-        let first = self.t.get(index)?;
-        if !matches!(&first.token.kind, TokenKind::Word(w) if w.starts_with('[')) {
-            return None;
-        }
-        let start = first.token.span;
-        let mut raw = String::new();
-        let mut depth = 0usize;
-        let mut cursor = index;
-        while let Some(input) = self.t.get(cursor) {
-            cursor += 1;
-            match &input.token.kind {
-                TokenKind::LBrace => {
-                    depth += 1;
-                    raw.push('{');
-                }
-                TokenKind::RBrace => {
-                    depth = depth.saturating_sub(1);
-                    raw.push('}');
-                }
-                TokenKind::ParBreak => return None,
-                _ => {
-                    let mut piece = siunitx::raw_text(std::iter::once(&input.token));
-                    if cursor == index + 1 {
-                        piece.remove(0);
-                    }
-                    if depth == 0 {
-                        if let Some(close) = piece.find(']') {
-                            raw.push_str(&piece[..close]);
-                            self.i = cursor;
-                            return Some((raw, start.merge(input.token.span)));
-                        }
-                    }
-                    raw.push_str(&piece);
-                }
-            }
-        }
-        None
+        let (raw, span, next) = siunitx_bracket_at(&self.t, self.i)?;
+        self.i = next;
+        Some((raw, span))
     }
 
     /// `\DeclareSIUnit\name` or `\DeclareSIUnit{\name}`: the unit's name.
@@ -4497,6 +4524,84 @@ fn dimen_source(tokens: &[InputToken]) -> String {
     result
 }
 
+/// A siunitx `[key=value, ...]` argument at `index` (after spaces), read as
+/// raw source with its braces kept: (options, span, index after `]`).
+fn siunitx_bracket_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let first = tokens.get(index)?;
+    if !matches!(&first.token.kind, TokenKind::Word(w) if w.starts_with('[')) {
+        return None;
+    }
+    let start = first.token.span;
+    let mut raw = String::new();
+    let mut depth = 0usize;
+    let mut cursor = index;
+    while let Some(input) = tokens.get(cursor) {
+        cursor += 1;
+        match &input.token.kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                raw.push('{');
+            }
+            TokenKind::RBrace => {
+                depth = depth.saturating_sub(1);
+                raw.push('}');
+            }
+            TokenKind::ParBreak => return None,
+            _ => {
+                let mut piece = siunitx::raw_text(std::iter::once(&input.token));
+                if cursor == index + 1 {
+                    piece.remove(0);
+                }
+                if depth == 0 {
+                    if let Some(close) = piece.find(']') {
+                        raw.push_str(&piece[..close]);
+                        return Some((raw, start.merge(input.token.span), cursor));
+                    }
+                }
+                raw.push_str(&piece);
+            }
+        }
+    }
+    None
+}
+
+/// A braced siunitx argument at `index` (after spaces) as raw source without
+/// its outer braces: (argument, span, index after `}`).
+fn siunitx_group_at(tokens: &[InputToken], index: usize) -> Option<(String, Span, usize)> {
+    let mut index = index;
+    while matches!(tokens.get(index).map(|t| &t.token.kind), Some(TokenKind::Space)) {
+        index += 1;
+    }
+    let open = tokens.get(index)?;
+    if open.token.kind != TokenKind::LBrace {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (offset, input) in tokens[index..].iter().enumerate() {
+        match input.token.kind {
+            TokenKind::LBrace => depth += 1,
+            TokenKind::RBrace => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = tokens[index + 1..index + offset].iter().map(|t| &t.token);
+                    let span = if input.token.span.document == open.token.span.document {
+                        open.token.span.merge(input.token.span)
+                    } else {
+                        open.token.span
+                    };
+                    return Some((siunitx::raw_text(inner), span, index + offset + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn token_text(tokens: &[InputToken]) -> String {
     let mut result = String::new();
     for input in tokens {
@@ -4712,6 +4817,37 @@ mod tests {
         let parsed = parse(source);
         let pages = layout::layout(&parsed.blocks);
         (parsed, pages)
+    }
+
+    #[test]
+    fn siunitx_commands_are_inline_formulas_in_text_and_headings() {
+        let parsed = parse(
+            "\\usepackage[output-decimal-marker={,}]{siunitx}\n\\begin{document}\n\\section{Speed \\qty{3.5}{\\metre\\per\\second}}\nA \\num[group-digits=none]{12345} b.\n\\end{document}\n",
+        );
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let math_in = |inlines: &[Inline]| {
+            inlines
+                .iter()
+                .filter_map(|i| match i {
+                    Inline::Math { list, display: false, .. } => Some(list.atoms.len()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut heading = None;
+        let mut paragraph = None;
+        for block in &parsed.blocks {
+            match block {
+                Block::Heading { content, .. } => heading = Some(math_in(content)),
+                Block::Paragraph(content) => paragraph = Some(math_in(content)),
+                _ => {}
+            }
+        }
+        // 3 , 5 (the braced comma is one Ord group), thin space, m, s^-1
+        // with its inter-unit thin space.
+        assert_eq!(heading, Some(vec![7]));
+        // 1 2 3 4 5: ungrouped digits.
+        assert_eq!(paragraph, Some(vec![5]));
     }
 
     #[test]

@@ -586,6 +586,12 @@ fn parse_number(input: &str) -> Option<Number> {
 }
 
 fn group(digits: &str, from_left: bool, separator: &str) -> String {
+    let separator = ord_source(separator);
+    let separator = if separator.starts_with('\\') && separator.chars().nth(1).is_some_and(|c| c.is_ascii_alphabetic()) {
+        separator + " "
+    } else {
+        separator
+    };
     let chars: Vec<char> = digits.chars().collect();
     let mut out = String::new();
     for (index, ch) in chars.iter().enumerate() {
@@ -595,7 +601,7 @@ fn group(digits: &str, from_left: bool, separator: &str) -> String {
             index > 0 && (chars.len() - index) % 3 == 0
         };
         if boundary {
-            out.push_str(separator);
+            out.push_str(&separator);
         }
         out.push(*ch);
     }
