@@ -135,8 +135,13 @@ pub const ADVANCES: &[(char, u16)] = &[
     ('\u{266F}', 388),  // \sharp
     ('\u{2322}', 1000), // \frown
     ('\u{2323}', 1000), // \smile
-    ('\u{0131}', 278),  // \imath
-    ('\u{0237}', 306),  // \jmath
+    // `\imath`/`\jmath` are the Mathematical Alphanumeric dotless letters, not
+    // the text dotless i/j U+0131/U+0237: cmmi10 sets them 0.322456 em and
+    // 0.384030 em wide, which is U+1D6A4 (322) and U+1D6A5 (384) here, where
+    // the text pair is 278 and 306. Binding the text pair would also have taken
+    // a literal `\i`/`ı` in prose away from the text face.
+    ('\u{1D6A4}', 322), // \imath
+    ('\u{1D6A5}', 384), // \jmath
     ('\u{21BC}', 1000), // \leftharpoonup
     ('\u{21BD}', 1012), // \leftharpoondown
     ('\u{21C0}', 1000), // \rightharpoonup
