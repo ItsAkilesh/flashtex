@@ -321,7 +321,7 @@ impl TextStyle {
 }
 
 /// Argument-taking style commands (`\textbf{...}`).
-fn style_command(name: &str) -> bool {
+pub(crate) fn style_command(name: &str) -> bool {
     matches!(
         name,
         "textbf"
@@ -342,7 +342,7 @@ fn style_command(name: &str) -> bool {
 /// (a common `\textbf{...}`-style misuse) is deliberately handled the same
 /// way as `{\Large ...}` — its size stays active past the immediate group,
 /// matching real LaTeX (the group only undoes assignments made *inside* it).
-fn style_declaration(name: &str) -> bool {
+pub(crate) fn style_declaration(name: &str) -> bool {
     matches!(
         name,
         "bfseries"
