@@ -50,7 +50,7 @@ impl CatCode {
 /// only assign catcodes to ASCII/Latin-1 code points in practice) with a
 /// save stack of `(char, old_value)` pairs pushed on group entry, mirroring
 /// how the compiler will eventually restore all other local assignments.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatCodeTable {
     table: [CatCode; 256],
 }

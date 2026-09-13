@@ -22,13 +22,13 @@ pub enum IfShape {
     Case,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConditionalFrame {
     pub shape: IfShape,
     pub branch: IfBranch,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConditionalStack {
     frames: Vec<ConditionalFrame>,
 }

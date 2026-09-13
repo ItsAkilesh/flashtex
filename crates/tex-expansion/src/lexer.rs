@@ -3,12 +3,14 @@
 //! table, the three lexer states (N = new line, M = mid line, S =
 //! skipping blanks), `^^` notation, and comments.
 
+use std::rc::Rc;
+
 use crate::catcode::{CatCode, CatCodeTable};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
+pub enum State {
     /// Start of line: an end-of-line character here produces `\par`.
     NewLine,
     /// Middle of a line: an end-of-line character here produces a space
@@ -21,22 +23,50 @@ enum State {
     SkipBlanks,
 }
 
-pub struct Lexer<'a> {
-    src: &'a str,
-    bytes: &'a [u8],
+/// The lexer owns its buffer (shared via `Rc` so that cloning a lexer for
+/// an incremental checkpoint is O(1)); `\scantokens` pseudo-files get
+/// their own buffer and `source_id`.
+#[derive(Debug, Clone)]
+pub struct Lexer {
+    src: Rc<str>,
     pos: usize,
     source_id: u32,
     state: State,
-    pending_par_run: usize,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(src: &'a str, source_id: u32) -> Self {
-        Lexer { src, bytes: src.as_bytes(), pos: 0, source_id, state: State::NewLine, pending_par_run: 0 }
+impl Lexer {
+    pub fn new(src: Rc<str>, source_id: u32) -> Self {
+        Lexer { src, pos: 0, source_id, state: State::NewLine }
+    }
+
+    /// Continue lexing `src` from byte `pos` in lexer state `state` (used
+    /// when re-expanding from an incremental checkpoint over an edited
+    /// buffer: everything before `pos` is unchanged by construction).
+    pub fn resume(src: Rc<str>, source_id: u32, pos: usize, state: State) -> Self {
+        Lexer { src, pos, source_id, state }
+    }
+
+    pub fn state(&self) -> State {
+        self.state
+    }
+
+    pub fn src(&self) -> &str {
+        &self.src
+    }
+
+    pub fn at_end(&self) -> bool {
+        self.pos >= self.src.len()
+    }
+
+    /// 1-based line number of byte offset `pos` (for TeX-style "after
+    /// line N" diagnostics; only computed on the error path).
+    pub fn line_of(&self, pos: usize) -> usize {
+        let end = pos.min(self.src.len());
+        1 + self.src.as_bytes()[..end].iter().filter(|&&b| b == b'\n').count()
     }
 
     fn peek_char(&self) -> Option<(char, usize)> {
-        if self.pos >= self.bytes.len() {
+        if self.pos >= self.src.len() {
             return None;
         }
         let rest = &self.src[self.pos..];
@@ -181,12 +211,15 @@ impl<'a> Lexer<'a> {
                 CatCode::Comment => {
                     self.pos += raw_len;
                     self.skip_comment_to_eol();
-                    // A comment absorbs the following end-of-line too (it
-                    // is treated as if the line ended right there); we
-                    // leave the actual `\n` byte for the EndLine handling
-                    // above to decide (matches TeX's "M" behavior after a
-                    // comment: comment eats to EOL, then EOL is processed
-                    // per current state, entering SkipBlanks-like NewLine).
+                    // A comment discards the rest of the line *including*
+                    // its end-of-line character (TeXbook p. 47: "the rest
+                    // of the line is thrown away"), so no space or `\par`
+                    // is produced for it; the next line starts in state N.
+                    if let Some((c, len)) = self.peek_char() {
+                        if c == '\n' {
+                            self.pos += len;
+                        }
+                    }
                     self.state = State::NewLine;
                     continue;
                 }
@@ -223,6 +256,66 @@ impl<'a> Lexer<'a> {
 
     pub fn byte_pos(&self) -> usize {
         self.pos
+    }
+
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    /// `\endinput`: stop reading this buffer.
+    pub fn finish(&mut self) {
+        self.pos = self.src.len();
+    }
+
+    /// Read raw characters (ignoring catcodes) up to and excluding the
+    /// first occurrence of `delim`, consuming the delimiter. Used for
+    /// `\verb`. Returns `None` (consuming nothing further) if the line
+    /// ends first, matching LaTeX's "\verb ended by end of line" error.
+    pub fn read_verb_until(&mut self, delim: char) -> Option<String> {
+        let rest = &self.src[self.pos..];
+        let mut out = String::new();
+        for (i, c) in rest.char_indices() {
+            if c == delim {
+                self.pos += i + c.len_utf8();
+                self.state = State::MidLine;
+                return Some(out);
+            }
+            if c == '\n' {
+                self.pos += i;
+                return None;
+            }
+            out.push(c);
+        }
+        self.pos = self.src.len();
+        None
+    }
+
+    /// Read raw text up to (excluding) the first occurrence of `end`,
+    /// consuming it. Used for verbatim environments. Returns `None` if
+    /// `end` never occurs (everything to EOF is consumed).
+    pub fn read_raw_until_str(&mut self, end: &str) -> Option<String> {
+        let rest = &self.src[self.pos..];
+        match rest.find(end) {
+            Some(i) => {
+                let text = rest[..i].to_string();
+                self.pos += i + end.len();
+                self.state = State::MidLine;
+                Some(text)
+            }
+            None => {
+                self.pos = self.src.len();
+                None
+            }
+        }
+    }
+
+    /// The first raw character at the current position (for `\verb`'s
+    /// delimiter), consumed.
+    pub fn read_raw_char(&mut self) -> Option<char> {
+        let (c, len) = self.peek_char()?;
+        self.pos += len;
+        self.state = State::MidLine;
+        Some(c)
     }
 }
 

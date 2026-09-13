@@ -25,8 +25,10 @@ mod catcode;
 mod conditionals;
 mod error;
 mod expand;
+mod incremental;
 mod lexer;
 mod macro_def;
+mod prelude;
 mod registers;
 mod scopes;
 mod span;
@@ -34,7 +36,8 @@ mod token;
 
 pub use catcode::{CatCode, CatCodeTable};
 pub use error::{Diagnostic, Limits, Severity};
-pub use expand::{Engine, Mode};
+pub use expand::{to_fnsymbol, BoxMeasurer, Checkpoint, DefaultBoxMeasurer, Engine, LabelRecord, Mode};
+pub use incremental::{Edit, EditStats, IncrementalExpander};
 pub use registers::{DefaultFontMetrics, FontMetrics, Glue};
 pub use span::Span;
 pub use token::{Token, TokenKind};
@@ -45,13 +48,15 @@ pub use token::{Token, TokenKind};
 pub struct ExpandResult {
     pub tokens: Vec<Token>,
     pub diagnostics: Vec<Diagnostic>,
+    pub labels: Vec<LabelRecord>,
 }
 
 pub fn expand_str(source: &str) -> ExpandResult {
     let mut engine = Engine::new(source);
     let tokens = engine.run();
-    let diagnostics = engine.diagnostics().to_vec();
-    ExpandResult { tokens, diagnostics }
+    let diagnostics = engine.take_diagnostics();
+    let labels = engine.take_labels();
+    ExpandResult { tokens, diagnostics, labels }
 }
 
 /// Render a token stream back to a plain string (concatenating character
