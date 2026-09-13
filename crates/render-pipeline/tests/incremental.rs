@@ -73,6 +73,7 @@ fn lines(text: &str, fonts: &FontSet, cache: Option<&RenderCache>) -> (String, S
     let r = render_cached(&docs, "main.tex", 1, "inc", fonts, &RenderOptions::default(), cache);
     let caps = Capabilities {
         images: false,
+        transforms: false,
         rules: true,
         font_hints: true,
         display_list: true,

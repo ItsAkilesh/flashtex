@@ -82,12 +82,15 @@ impl Paint {
     }
 }
 
-/// Negotiated display-list proposals: image items (FT-063) and device
-/// colours (`display-list-v2-device-color`).
+/// Negotiated display-list proposals: image items (FT-063), device
+/// colours (`display-list-v2-device-color`) and box transforms
+/// (`display-list-v2-transforms`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Wire {
     pub images: bool,
     pub device_color: bool,
+    /// `display-list-v2-transforms`: `glyph_transform` and image `clip`.
+    pub transforms: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,6 +199,12 @@ pub struct GlyphRun {
     pub clusters: Vec<Cluster>,
     pub paint: Paint,
     pub role: RunRole,
+    /// PROPOSAL (`display-list-v2-transforms`): the linear map `[a, b, c,
+    /// d]` (page space, y down) applied to every glyph's shape about its
+    /// origin, at `font_size`, for text inside a rotated, reflected or
+    /// unevenly scaled box. Origins and advances are already page
+    /// positions; `None` is upright text.
+    pub glyph_transform: Option<[f64; 4]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -321,6 +330,10 @@ pub struct Image {
     pub transform: [f64; 6],
     pub resource: std::rc::Rc<ImageResource>,
     pub provenance: Provenance,
+    /// PROPOSAL (`display-list-v2-transforms`): the visible part `[u0, v0,
+    /// u1, v1]` of the unit square (graphicx `clip` with a viewport or
+    /// trim); the box above then encloses that part only.
+    pub clip: Option<[f64; 4]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -501,12 +514,15 @@ impl DisplayList {
 
     /// `images`: whether image items are serialised (adds `image`).
     pub fn required_features_with(&self, images: bool) -> Vec<&'static str> {
-        self.required_features_wire(Wire { images, device_color: false })
+        self.required_features_wire(Wire { images, device_color: false, transforms: false })
     }
 
     /// `device-color` is listed when negotiated and some paint carries one.
+    /// `transforms` (negotiated `display-list-v2-transforms`) adds
+    /// `glyph_transform` and, with `images`, `image_clip` when an item
+    /// carries one.
     pub fn required_features_wire(&self, wire: Wire) -> Vec<&'static str> {
-        let images = wire.images;
+        let (images, transforms) = (wire.images, wire.transforms);
         let mut f = vec!["glyph_run", "rgba-srgb", "cluster-actualtext"];
         if self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Rule(_)))) {
             f.insert(1, "rule");
@@ -536,6 +552,12 @@ impl DisplayList {
         if wire.device_color && self.pages.iter().any(|p| p.items.iter().any(device)) {
             f.push("device-color");
         }
+        if transforms && self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::GlyphRun(r) if r.glyph_transform.is_some()))) {
+            f.push("glyph_transform");
+        }
+        if images && transforms && self.pages.iter().any(|p| p.items.iter().any(|i| matches!(i, Item::Image(im) if im.clip.is_some()))) {
+            f.push("image_clip");
+        }
         f
     }
 
@@ -553,7 +575,7 @@ impl DisplayList {
     /// [`to_json`](Self::to_json); `images` also serialises image items
     /// and lists the `image` feature (negotiated `display-list-v2-images`).
     pub fn to_json_with(&self, id: &str, images: bool) -> Value {
-        self.to_json_wire(id, Wire { images, device_color: false })
+        self.to_json_wire(id, Wire { images, device_color: false, transforms: false })
     }
 
     /// [`to_json_with`](Self::to_json_with) with every negotiated proposal.
@@ -630,7 +652,7 @@ impl DisplayList {
     /// `json::write(&self.to_json_with(id, images))` written directly:
     /// `images` also serialises image items and lists the `image` feature.
     pub fn write_json_with(&self, id: &str, images: bool) -> String {
-        self.write_json_wire(id, Wire { images, device_color: false })
+        self.write_json_wire(id, Wire { images, device_color: false, transforms: false })
     }
 
     /// [`write_json_with`](Self::write_json_with) with every negotiated proposal.
@@ -800,9 +822,18 @@ fn write_path(o: &mut String, cmds: &[PathCmd]) {
 /// (byte_length, format, image_id, path, pdf_box, pdf_page, pdf_rotate,
 /// pixel_height, pixel_width, sha256), kind, sources/synthetic_reason, top,
 /// transform, width, x.
-fn write_image(o: &mut String, i: &Image) {
+fn write_image(o: &mut String, i: &Image, transforms: bool) {
     let r = &i.resource;
-    o.push_str("{\"height\":");
+    o.push('{');
+    if let (true, Some(c)) = (transforms, i.clip) {
+        o.push_str("\"clip\":[");
+        for (j, v) in c.iter().enumerate() {
+            sep(o, j);
+            num(o, micro(*v));
+        }
+        o.push_str("],");
+    }
+    o.push_str("\"height\":");
     write_tick(o, i.height);
     o.push_str(",\"image\":{\"byte_length\":");
     num(o, r.byte_length as f64);
@@ -855,15 +886,20 @@ fn device_space(d: &flashtex_compiler::color::DeviceColor) -> &'static str {
     }
 }
 
+/// A unitless matrix entry or unit-square coordinate at 1e-6.
+fn micro(v: f64) -> f64 {
+    (v * 1e6).round() / 1e6 + 0.0
+}
+
 fn write_page(o: &mut String, p: &Page, wire: Wire) {
-    let images = wire.images;
+    let (images, transforms) = (wire.images, wire.transforms);
     o.push_str("{\"height\":");
     write_tick(o, p.height);
     o.push_str(",\"items\":[");
     for (i, it) in p.items.iter().filter(|it| images || !matches!(it, Item::Image(_))).enumerate() {
         sep(o, i);
         match it {
-            Item::Image(img) => write_image(o, img),
+            Item::Image(img) => write_image(o, img, transforms),
             Item::GlyphRun(r) => {
                 o.push_str("{\"clusters\":[");
                 for (j, c) in r.clusters.iter().enumerate() {
@@ -906,6 +942,14 @@ fn write_page(o: &mut String, p: &Page, wire: Wire) {
                 json::write_string_into(&r.font_id, o);
                 o.push_str(",\"font_size\":");
                 write_tick(o, r.font_size);
+                if let (true, Some(m)) = (transforms, r.glyph_transform) {
+                    o.push_str(",\"glyph_transform\":[");
+                    for (j, v) in m.iter().enumerate() {
+                        sep(o, j);
+                        num(o, micro(*v));
+                    }
+                    o.push(']');
+                }
                 o.push_str(",\"glyphs\":[");
                 for (j, g) in r.glyphs.iter().enumerate() {
                     sep(o, j);
@@ -1097,7 +1141,7 @@ pub fn diagnostic_json(d: &Diagnostic) -> Value {
 }
 
 fn page_json(p: &Page, wire: Wire) -> Value {
-    let images = wire.images;
+    let (images, transforms) = (wire.images, wire.transforms);
     let mut o = Value::obj();
     o.set("number", json::num(f64::from(p.number)));
     o.set("width", tick(p.width));
@@ -1114,6 +1158,9 @@ fn page_json(p: &Page, wire: Wire) -> Value {
                         o.set("kind", json::str_("glyph_run"));
                         o.set("font_id", json::str_(r.font_id.to_string()));
                         o.set("font_size", tick(r.font_size));
+                        if let (true, Some(m)) = (transforms, r.glyph_transform) {
+                            o.set("glyph_transform", Value::Arr(m.iter().map(|v| json::num(micro(*v))).collect()));
+                        }
                         o.set("text", json::str_(r.text.clone()));
                         o.set(
                             "glyphs",
@@ -1238,7 +1285,7 @@ fn page_json(p: &Page, wire: Wire) -> Value {
                         provenance_into(&mut o, &r.provenance);
                         o
                     }
-                    Item::Image(i) => image_json(i),
+                    Item::Image(i) => image_json(i, transforms),
                 })
                 .collect(),
         ),
@@ -1246,9 +1293,12 @@ fn page_json(p: &Page, wire: Wire) -> Value {
     o
 }
 
-fn image_json(i: &Image) -> Value {
+fn image_json(i: &Image, transforms: bool) -> Value {
     let mut o = Value::obj();
     o.set("kind", json::str_("image"));
+    if let (true, Some(c)) = (transforms, i.clip) {
+        o.set("clip", Value::Arr(c.iter().map(|v| json::num(micro(*v))).collect()));
+    }
     o.set("x", tick(i.x));
     o.set("top", tick(i.top));
     o.set("width", tick(i.width));
@@ -1345,6 +1395,7 @@ mod tests {
                 device: None,
             },
             role: RunRole::Text,
+            glyph_transform: None,
         });
         let rule = |provenance| {
             Item::Rule(Rule {
@@ -1420,6 +1471,7 @@ mod tests {
                 transform: [1.0 / 3.0, -0.0, 0.00049, 2.5, -72.0004, 1e9],
                 resource,
                 provenance,
+                clip: None,
             })
         };
         let list = DisplayList {

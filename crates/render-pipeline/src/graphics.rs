@@ -362,9 +362,37 @@ pub enum GKey {
     Angle(f64),
     KeepAspectRatio(bool),
     Page(u32),
-    /// Recognised but not honoured (`trim`, `clip`, `viewport`, ...):
+    /// `trim=<left> <bottom> <right> <top>`, TeX points (`\Gin@trim`).
+    Trim([f64; 4]),
+    /// `viewport=<llx> <lly> <urx> <ury>`, TeX points (`\Gin@viewport`;
+    /// pdftex.def makes `bb` the same key).
+    Viewport([f64; 4]),
+    /// `clip` (only meaningful with a viewport; pdftex.def clips the box).
+    Clip(bool),
+    /// `draft`: a framed placeholder with the file name.
+    Draft(bool),
+    /// `origin=<letters>` for every `angle` (`\Gin@erotate` is expanded
+    /// after all keys are set).
+    Origin(String),
+    /// Recognised but not honoured (`pagebox`, `decodearray`, ...):
     /// reported as a limitation.
     Unsupported(String),
+}
+
+/// A `\Gin@defaultbp` value in TeX points: a bare number is big points; a
+/// dimension is taken as is.
+fn default_bp(raw: &str, env: &LengthEnv) -> Option<f64> {
+    let raw = raw.trim();
+    match raw.parse::<f64>() {
+        Ok(bp) => Some(bp / BP_PER_PT),
+        Err(_) => parse_dimen(raw, env),
+    }
+}
+
+/// The four `\Gread@parse@vp` values of `trim`/`viewport`.
+fn four_bp(raw: &str, env: &LengthEnv) -> Option<[f64; 4]> {
+    let v: Vec<f64> = raw.split_whitespace().map(|p| default_bp(p, env)).collect::<Option<_>>()?;
+    (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]])
 }
 
 /// Parses the optional argument. Errors name the offending entry.
@@ -390,7 +418,12 @@ pub fn parse_keys(options: &str, env: &LengthEnv) -> (Vec<GKey>, Vec<String>) {
             "angle" => number(v).map(GKey::Angle),
             "keepaspectratio" => Some(GKey::KeepAspectRatio(v.is_none_or(|v| v != "false"))),
             "page" => v.and_then(|v| v.parse().ok()).map(GKey::Page),
-            "trim" | "viewport" | "clip" | "bb" | "natwidth" | "natheight" | "origin" | "draft" | "pagebox" | "decodearray" | "interpolate" => Some(GKey::Unsupported(k.to_string())),
+            "trim" => v.and_then(|v| four_bp(v, env)).map(GKey::Trim),
+            "viewport" | "bb" => v.and_then(|v| four_bp(v, env)).map(GKey::Viewport),
+            "clip" => Some(GKey::Clip(v.is_none_or(|v| v != "false"))),
+            "draft" => Some(GKey::Draft(v.is_none_or(|v| v != "false"))),
+            "origin" => Some(GKey::Origin(v.unwrap_or("c").to_string())),
+            "natwidth" | "natheight" | "bbllx" | "bblly" | "bburx" | "bbury" | "hiresbb" | "pagebox" | "decodearray" | "interpolate" | "type" | "ext" | "read" | "command" => Some(GKey::Unsupported(k.to_string())),
             "alt" | "actualtext" | "artifact" | "quiet" => None,
             _ => {
                 problems.push(format!("unknown \\includegraphics key '{k}'"));
@@ -439,102 +472,328 @@ pub struct GraphicBox {
 }
 
 /// graphicx sizing of an image whose natural size is `nat_w` x `nat_h`
-/// TeX points.
+/// TeX points (no viewport, clip or draft; see [`place_image`]).
 pub fn size_box(nat_w: f64, nat_h: f64, keys: &[GKey]) -> GraphicBox {
-    // Box so far: [a b c d e f] of the unit square, and its extents.
-    let mut m = [nat_w, 0.0, 0.0, nat_h, 0.0, 0.0];
-    let mut rotated = false;
-    let (mut w, mut h, mut th, mut scale, mut iso) = (None, None, None, None, false);
-    // `\Gin@esetsize` before the first angle: request the unrotated size.
-    let apply_request = |m: &mut [f64; 6], w: Option<f64>, h: Option<f64>, th: Option<f64>, scale: Option<f64>, iso: bool, rotated: bool| {
-        let h = h.or(th);
-        if !rotated {
-            let (sx, sy) = match (w, h) {
-                (None, None) => {
-                    let s = scale.unwrap_or(1.0);
-                    (s, s)
-                }
-                (Some(w), None) => (w / nat_w, w / nat_w),
-                (None, Some(h)) => (h / nat_h, h / nat_h),
-                (Some(w), Some(h)) => {
-                    let (sx, sy) = (w / nat_w, h / nat_h);
-                    if iso {
-                        let s = sx.min(sy);
-                        (s, s)
-                    } else {
-                        (sx, sy)
-                    }
-                }
-            };
-            *m = [nat_w * sx, 0.0, 0.0, nat_h * sy, 0.0, 0.0];
-        } else {
-            let (bw, bh, bd) = extents(m);
-            let (sx, sy) = match (w, h) {
-                (None, None) => match scale {
-                    Some(s) => (s, s),
-                    None => return,
-                },
-                (Some(w), None) => (w / bw, w / bw),
-                (None, Some(hh)) => {
-                    let total = if th.is_some() { bh + bd } else { bh };
-                    (hh / total, hh / total)
-                }
-                (Some(w), Some(hh)) => {
-                    let total = if th.is_some() { bh + bd } else { bh };
-                    let (sx, sy) = (w / bw, hh / total);
-                    if iso {
-                        let s = sx.min(sy);
-                        (s, s)
-                    } else {
-                        (sx, sy)
-                    }
-                }
-            };
-            for i in [0, 2, 4] {
-                m[i] *= sx;
+    const NO_LENGTHS: LengthEnv = LengthEnv { text_width: 0.0, line_width: 0.0, text_height: 0.0, paper_width: 0.0, paper_height: 0.0, em: 0.0, ex: 0.0 };
+    place_image(nat_w, nat_h, keys, false, false, &NO_LENGTHS).gbox
+}
+
+/// A TeX box in points (y up from the baseline, x right from the left
+/// edge) and the affine map `[a b c d e f]` of what it holds (a content
+/// box's own coordinates, or an image's unit square) into it:
+/// `(x, y) = (e + a*u + c*v, f + b*u + d*v)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TBox {
+    pub width: f64,
+    pub height: f64,
+    pub depth: f64,
+    pub matrix: [f64; 6],
+}
+
+/// graphics.sty `\Gscale@div`: `a / b`, and 1 for a zero divisor (it
+/// reports "Division by 0" and divides `a` by itself).
+fn scale_div(a: f64, b: f64) -> f64 {
+    if b == 0.0 {
+        1.0
+    } else {
+        a / b
+    }
+}
+
+impl TBox {
+    /// An `\hbox` of material in its own coordinates.
+    pub fn content(width: f64, height: f64, depth: f64) -> TBox {
+        TBox { width, height, depth, matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0] }
+    }
+
+    /// `\Gscale@box{sx}[sy]` (graphics.sty): the content drawn scaled from
+    /// the reference point; height and depth swap for a negative `sy`; a
+    /// negative `sx` sets the box `\hb@xt@-sx\wd{\kern-sx\wd ...\hss}`.
+    pub fn scale(self, sx: f64, sy: f64) -> TBox {
+        let (height, depth) = if sy < 0.0 { (-sy * self.depth, -sy * self.height) } else { (sy * self.height, sy * self.depth) };
+        let dx = if sx < 0.0 { -sx * self.width } else { 0.0 };
+        let m = self.matrix;
+        TBox {
+            width: sx.abs() * self.width,
+            height,
+            depth,
+            matrix: [sx * m[0], sy * m[1], sx * m[2], sy * m[3], sx * m[4] + dx, sy * m[5]],
+        }
+    }
+
+    /// `\Gscale@@box` (`\resizebox`, graphicx `width`/`height` after an
+    /// angle): `None` is `!`. `total` measures `\totalheight` instead of
+    /// `\height`; `iso` (`keepaspectratio`) takes the smaller factor.
+    pub fn resize(self, width: Option<f64>, height: Option<f64>, total: bool, iso: bool) -> TBox {
+        let measured = if total { self.height + self.depth } else { self.height };
+        match (width, height) {
+            (None, None) => self,
+            (None, Some(h)) => {
+                let f = scale_div(h, measured);
+                self.scale(f, f)
             }
-            for i in [1, 3, 5] {
-                m[i] *= sy;
+            (Some(w), None) => {
+                let f = scale_div(w, self.width);
+                self.scale(f, f)
+            }
+            (Some(w), Some(h)) => {
+                let (mut a, mut b) = (scale_div(w, self.width), scale_div(h, measured));
+                if iso {
+                    if a > b {
+                        a = b;
+                    } else {
+                        b = a;
+                    }
+                }
+                self.scale(a, b)
             }
         }
+    }
+
+    /// `\Grot@box` (graphics.sty) about the point `(ox, oy)` of the box:
+    /// the result is the rotated box's bounding box, the origin point keeps
+    /// its height and the new left edge is the leftmost corner.
+    pub fn rotate(self, degrees: f64, ox: f64, oy: f64) -> TBox {
+        let (s, c) = degrees.to_radians().sin_cos();
+        // trig.sty tabulates the quarter turns exactly.
+        let (s, c) = if (degrees / 90.0).fract() == 0.0 { (s.round() + 0.0, c.round() + 0.0) } else { (s, c) };
+        let px = |a: f64, b: f64| c * a - s * b;
+        let py = |a: f64, b: f64| s * a + c * b;
+        let (l, r, h, d) = (-ox, self.width - ox, self.height - oy, -self.depth - oy);
+        let corners = [(l, h), (l, d), (r, h), (r, d)];
+        let right = corners.iter().map(|&(a, b)| px(a, b)).fold(f64::NEG_INFINITY, f64::max);
+        let left = corners.iter().map(|&(a, b)| px(a, b)).fold(f64::INFINITY, f64::min);
+        let height = corners.iter().map(|&(a, b)| py(a, b)).fold(f64::NEG_INFINITY, f64::max) + oy;
+        let bottom = corners.iter().map(|&(a, b)| py(a, b)).fold(f64::INFINITY, f64::min) + oy;
+        let tx = -px(ox, oy) - left;
+        let ty = -py(ox, oy) + oy;
+        let m = self.matrix;
+        TBox {
+            width: right - left,
+            height,
+            depth: -bottom,
+            matrix: [c * m[0] - s * m[1], s * m[0] + c * m[1], c * m[2] - s * m[3], s * m[2] + c * m[3], c * m[4] - s * m[5] + tx, s * m[4] + c * m[5] + ty],
+        }
+    }
+
+    pub fn graphic_box(&self) -> GraphicBox {
+        GraphicBox { width: self.width, height: self.height, depth: self.depth, matrix: self.matrix }
+    }
+}
+
+/// `\Grot@box@kv`'s rotation point for the `Grot` keys (`origin`, `x`,
+/// `y`) of a box: the centre `(\width/2, (\height-\depth)/2)` unless the
+/// letters `l`/`r`/`t`/`b`/`B` or explicit lengths move it.
+pub fn rotation_origin(keys: &str, width: f64, height: f64, depth: f64, env: &LengthEnv) -> (f64, f64) {
+    let (mut x, mut y) = (width / 2.0, (height - depth) / 2.0);
+    for entry in split_top_level(keys) {
+        let (k, v) = match entry.split_once('=') {
+            Some((k, v)) => (k.trim(), Some(v.trim().trim_matches(|c| c == '{' || c == '}'))),
+            None => (entry.trim(), None),
+        };
+        match k {
+            "origin" => {
+                for ch in v.unwrap_or("c").chars() {
+                    match ch {
+                        'l' => x = 0.0,
+                        'r' => x = width,
+                        't' => y = height,
+                        'b' => y = -depth,
+                        'B' => y = 0.0,
+                        _ => {}
+                    }
+                }
+            }
+            "x" => x = v.and_then(|v| parse_dimen(v, env)).unwrap_or(x),
+            "y" => y = v.and_then(|v| parse_dimen(v, env)).unwrap_or(y),
+            _ => {}
+        }
+    }
+    (x, y)
+}
+
+/// One graphic after all keys.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlacedGraphic {
+    pub gbox: GraphicBox,
+    /// The visible part of the image's unit square `[u0, v0, u1, v1]` when
+    /// pdftex.def clips it (`clip` with a viewport or trim).
+    pub clip: Option<[f64; 4]>,
+    pub draft: bool,
+    /// The requested box before any `angle` (`\Gin@req@width` x
+    /// `\Gin@req@height`, the draft frame) and its unit square's map into
+    /// the final box.
+    pub frame_size: (f64, f64),
+    pub frame: [f64; 6],
+}
+
+/// `\includegraphics` of an image whose file size is `img_w` x `img_h` TeX
+/// points, following graphicx.sty `\Gin@ii`/`\Gin@esetsize` and pdftex.def
+/// `\Ginclude@@pdftex`:
+///
+/// * `viewport`/`trim` change the natural size to the viewport's; the image
+///   is placed `\hskip-\Gin@vllx bp` and `\lower\Gin@vlly bp` in it, and
+///   `clip` (or `\includegraphics*`) cuts it to the natural box;
+/// * size keys before the first `angle` (or `scale`) set the requested size
+///   of that natural box (`\Gin@req@sizes`: `width`/`height` win over
+///   `scale`, both with `keepaspectratio` take the smaller factor);
+/// * `angle` rotates the result (`\Gin@erotate`, about `origin` if given);
+///   `scale` after it wraps `\Gscale@box`, and `width`/`height` left at the
+///   end wrap `\Gscale@@box` of the box so far.
+pub fn place_image(img_w: f64, img_h: f64, keys: &[GKey], starred: bool, draft: bool, env: &LengthEnv) -> PlacedGraphic {
+    enum Op {
+        Scale(f64),
+        Resize(Option<f64>, Option<f64>),
+        Rotate(f64),
+    }
+    enum Req {
+        Natural,
+        Scale(f64),
+        Width(f64),
+        Height(f64),
+        Both(f64, f64),
+    }
+    let (mut llx, mut lly, mut urx, mut ury) = (0.0, 0.0, img_w, img_h);
+    let (mut offx, mut offy) = (0.0, 0.0);
+    let mut clip = starred;
+    let mut draft = draft;
+    let mut origin: Option<&str> = None;
+    let (mut tempswa, mut iso, mut total) = (false, false, false);
+    let (mut ew, mut eh): (Option<f64>, Option<f64>) = (None, None);
+    let mut req = Req::Natural;
+    let mut ops: Vec<Op> = Vec::new();
+    let esetsize = |tempswa: bool, ew: &mut Option<f64>, eh: &mut Option<f64>, req: &mut Req, ops: &mut Vec<Op>| {
+        if tempswa {
+            if ew.is_some() || eh.is_some() {
+                ops.push(Op::Resize(*ew, *eh));
+            }
+        } else {
+            match (*ew, *eh) {
+                (None, None) => {}
+                (Some(w), None) => *req = Req::Width(w),
+                (None, Some(h)) => *req = Req::Height(h),
+                (Some(w), Some(h)) => *req = Req::Both(w, h),
+            }
+        }
+        (*ew, *eh) = (None, None);
     };
     for k in keys {
-        match *k {
-            GKey::Width(v) => w = Some(v),
-            GKey::Height(v) => h = Some(v),
-            GKey::TotalHeight(v) => th = Some(v),
-            GKey::Scale(v) => scale = Some(v),
-            GKey::KeepAspectRatio(v) => iso = v,
-            GKey::Angle(deg) => {
-                apply_request(&mut m, w, h, th, scale, iso, rotated);
-                (w, h, th, scale) = (None, None, None, None);
-                rotated = true;
-                let (s, c) = deg.to_radians().sin_cos();
-                // Exact quarter turns.
-                let (s, c) = if (deg / 90.0).fract() == 0.0 { (s.round(), c.round()) } else { (s, c) };
-                m = [c * m[0] - s * m[1], s * m[0] + c * m[1], c * m[2] - s * m[3], s * m[2] + c * m[3], c * m[4] - s * m[5], s * m[4] + c * m[5]];
-                // \Grot@box: the new box's left edge is the bounding box's.
-                let min_x = [0.0, m[0], m[2], m[0] + m[2]].into_iter().fold(f64::INFINITY, f64::min) + m[4];
-                m[4] -= min_x;
+        match k {
+            GKey::Width(v) => ew = Some(*v),
+            GKey::Height(v) => eh = Some(*v),
+            GKey::TotalHeight(v) => {
+                total = true;
+                eh = Some(*v);
             }
+            GKey::KeepAspectRatio(v) => iso = *v,
+            GKey::Scale(f) => {
+                if tempswa {
+                    ops.push(Op::Scale(*f));
+                } else {
+                    req = Req::Scale(*f);
+                }
+                tempswa = true;
+            }
+            GKey::Angle(a) => {
+                esetsize(tempswa, &mut ew, &mut eh, &mut req, &mut ops);
+                tempswa = true;
+                ops.push(Op::Rotate(*a));
+            }
+            GKey::Trim(t) => {
+                (llx, lly, urx, ury) = (t[0], t[1], img_w - t[2], img_h - t[3]);
+                (offx, offy) = (t[0], t[1]);
+            }
+            GKey::Viewport(v) => {
+                (llx, lly, urx, ury) = (v[0], v[1], v[2], v[3]);
+                (offx, offy) = (v[0], v[1]);
+            }
+            GKey::Clip(c) => clip = *c,
+            GKey::Draft(d) => draft = *d,
+            GKey::Origin(o) => origin = Some(o),
             GKey::Page(_) | GKey::Unsupported(_) => {}
         }
     }
-    apply_request(&mut m, w, h, th, scale, iso, rotated);
-    let (width, height, depth) = extents(&m);
-    GraphicBox { width, height, depth, matrix: m }
+    esetsize(tempswa, &mut ew, &mut eh, &mut req, &mut ops);
+    let (nat_w, nat_h) = (urx - llx, ury - lly);
+    let (sx, sy, req_w, req_h) = match req {
+        Req::Natural => (1.0, 1.0, nat_w, nat_h),
+        Req::Scale(f) => (f, f, f * nat_w, f * nat_h),
+        Req::Width(w) => {
+            let f = scale_div(w, nat_w);
+            (f, f, w, f * nat_h)
+        }
+        Req::Height(h) => {
+            let f = scale_div(h, nat_h);
+            (f, f, f * nat_w, h)
+        }
+        Req::Both(w, h) => {
+            let (mut a, mut b) = (scale_div(w, nat_w), scale_div(h, nat_h));
+            if iso {
+                if b > a {
+                    b = a;
+                } else {
+                    a = b;
+                }
+            }
+            (a, b, a * nat_w, b * nat_h)
+        }
+    };
+    // `\Gin@setfile`: `\dp\z@\z@ \ht\z@\Gin@req@height \wd\z@\Gin@req@width`.
+    let mut b = TBox { width: req_w, height: req_h, depth: 0.0, matrix: [sx * img_w, 0.0, 0.0, sy * img_h, -sx * offx, -sy * offy] };
+    let mut frame = TBox { matrix: [req_w, 0.0, 0.0, req_h, 0.0, 0.0], ..b };
+    let step = |b: TBox, op: &Op| match *op {
+        Op::Scale(f) => b.scale(f, f),
+        Op::Resize(w, h) => b.resize(w, h, total, iso),
+        Op::Rotate(a) => {
+            let (ox, oy) = match origin {
+                Some(o) => rotation_origin(&format!("origin={o}"), b.width, b.height, b.depth, env),
+                None => (0.0, 0.0),
+            };
+            b.rotate(a, ox, oy)
+        }
+    };
+    for op in &ops {
+        b = step(b, op);
+        frame = step(frame, op);
+    }
+    let clip = (clip && img_w > 0.0 && img_h > 0.0).then(|| [offx / img_w, offy / img_h, (offx + nat_w) / img_w, (offy + nat_h) / img_h]);
+    // A clip that keeps the whole image is no clip.
+    let clip = clip.filter(|c| c[0] > 1e-9 || c[1] > 1e-9 || c[2] < 1.0 - 1e-9 || c[3] < 1.0 - 1e-9);
+    PlacedGraphic { gbox: b.graphic_box(), clip, draft, frame_size: (req_w, req_h), frame: frame.matrix }
 }
 
-/// (width, height above the baseline, depth below it) of the unit square's
-/// image under `m`.
-fn extents(m: &[f64; 6]) -> (f64, f64, f64) {
-    let xs = [m[4], m[4] + m[0], m[4] + m[2], m[4] + m[0] + m[2]];
-    let ys = [m[5], m[5] + m[1], m[5] + m[3], m[5] + m[1] + m[3]];
-    let min_x = xs.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
-    let max_x = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let max_y = ys.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(0.0);
-    let min_y = ys.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
-    (max_x - min_x, max_y, -min_y)
+/// Every `\graphicspath{..}` directory list of a source (the last call
+/// wins, as `\def\Ginput@path`), outside comments.
+pub fn graphics_path(source: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut from = 0;
+    while let Some(at) = source[from..].find("\\graphicspath") {
+        let abs = from + at;
+        from = abs + "\\graphicspath".len();
+        let line_start = source[..abs].rfind('\n').map_or(0, |n| n + 1);
+        if source[line_start..abs].contains('%') {
+            continue;
+        }
+        let rest = source[from..].trim_start();
+        if !rest.starts_with('{') {
+            continue;
+        }
+        let mut depth = 0usize;
+        for (i, c) in rest.char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        found = flashtex_compiler::graphics::graphics_path_entries(&rest[1..i]);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    found
 }
 
 /// graphicx's extension search for a file named without one (pdfTeX
@@ -588,5 +847,57 @@ mod tests {
         assert!((b.height - 72.27).abs() < 1e-6 && (b.width - 36.135).abs() < 1e-6 && b.depth.abs() < 1e-9, "{b:?}");
         let (k, _) = parse_keys("width=0.5\\textwidth", &e);
         assert!((size_box(100.0, 50.0, &k).width - 234.877495).abs() < 1e-6);
+    }
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn grot_box_quarter_turn_keeps_the_reference_height() {
+        // \rotatebox{90}{Up}: 20pt wide, 7pt high, 2pt deep.
+        let b = TBox::content(20.0, 7.0, 2.0).rotate(90.0, 0.0, 0.0);
+        assert!(close(b.width, 9.0) && close(b.height, 20.0) && close(b.depth, 0.0), "{b:?}");
+        // The reference point moves right by the old height.
+        assert!(close(b.matrix[4], 7.0) && close(b.matrix[5], 0.0), "{b:?}");
+        // origin=c rotates about (10, 2.5): the centre stays at that height.
+        let c = TBox::content(20.0, 7.0, 2.0).rotate(180.0, 10.0, 2.5);
+        assert!(close(c.width, 20.0) && close(c.height, 7.0) && close(c.depth, 2.0), "{c:?}");
+    }
+
+    #[test]
+    fn gscale_box_negative_factors() {
+        let b = TBox::content(30.0, 7.0, 2.0).scale(-1.0, 1.0);
+        assert!(close(b.width, 30.0) && close(b.matrix[0], -1.0) && close(b.matrix[4], 30.0), "{b:?}");
+        let f = TBox::content(30.0, 7.0, 2.0).scale(1.0, -1.0);
+        assert!(close(f.height, 2.0) && close(f.depth, 7.0), "{f:?}");
+        let r = TBox::content(30.0, 7.0, 2.0).resize(None, Some(18.0), true, false);
+        assert!(close(r.height + r.depth, 18.0) && close(r.width, 60.0), "{r:?}");
+    }
+
+    #[test]
+    fn trim_and_clip_follow_pdftex_def() {
+        let e = env();
+        let (k, p) = parse_keys("trim=10 5 20 10, clip", &e);
+        assert!(p.is_empty(), "{p:?}");
+        let (w, h) = (80.0 / BP_PER_PT, 40.0 / BP_PER_PT);
+        let g = place_image(w, h, &k, false, false, &e);
+        // The box is the trimmed natural size; the image sits \hskip-10bp,
+        // \lower5bp in it; the clip is that box in the unit square.
+        assert!((g.gbox.width * BP_PER_PT - 50.0).abs() < 1e-9 && (g.gbox.height * BP_PER_PT - 25.0).abs() < 1e-9, "{g:?}");
+        assert!((g.gbox.matrix[4] * BP_PER_PT + 10.0).abs() < 1e-9 && (g.gbox.matrix[5] * BP_PER_PT + 5.0).abs() < 1e-9, "{g:?}");
+        let c = g.clip.unwrap();
+        assert!(close(c[0], 0.125) && close(c[1], 0.125) && close(c[2], 0.75) && close(c[3], 0.75), "{c:?}");
+        // Without clip there is nothing to cut; a full viewport is no clip.
+        let (k, _) = parse_keys("trim=10 5 20 10", &e);
+        assert!(place_image(w, h, &k, false, false, &e).clip.is_none());
+        let (k, _) = parse_keys("viewport=0 0 80 40", &e);
+        assert!(place_image(w, h, &k, true, false, &e).clip.is_none());
+    }
+
+    #[test]
+    fn graphicspath_last_call_wins() {
+        let src = "% \\graphicspath{{no/}}\n\\graphicspath{{a/}}\n\\graphicspath{ {b/}{c/} }\n";
+        assert_eq!(graphics_path(src), vec!["b/".to_string(), "c/".to_string()]);
     }
 }

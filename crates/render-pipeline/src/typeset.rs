@@ -116,6 +116,10 @@ pub enum BoxRec {
     Table(Rc<TableRec>),
     /// `\colorbox`/`\fcolorbox` (`Context::color_box`).
     ColorBox(Rc<ColorBoxRec>),
+    /// `\includegraphics` in running text (`graphics_boxes`).
+    Graphic(Rc<graphics_boxes::GraphicRec>),
+    /// `\scalebox`/`\resizebox`/`\rotatebox`/`\reflectbox` (`graphics_boxes`).
+    Transform(Rc<graphics_boxes::TransformRec>),
 }
 
 /// A laid-out `\colorbox`/`\fcolorbox`: the content as one line whose
@@ -336,6 +340,7 @@ fn position_run(run: &pl::GlyphRun, x: f64, baseline_y: f64) -> pl::PositionedRu
 
 pub mod floatpage;
 pub mod footnotes;
+pub mod graphics_boxes;
 mod toc;
 
 pub struct Laid {
@@ -409,6 +414,8 @@ pub struct Context<'a> {
     /// The [`adapter::EnvShape`] of the paragraph being set, with its
     /// enclosing lists' margins resolved to points.
     env_shape: Option<(adapter::EnvShape, f64)>,
+    /// Image files, `\graphicspath` and `draft` for inline graphics.
+    graphics: graphics_boxes::GraphicsEnv,
 }
 
 impl<'a> Context<'a> {
@@ -451,6 +458,7 @@ impl<'a> Context<'a> {
             note_anchors: Vec::new(),
             rlap_marks: false,
             env_shape: None,
+            graphics: Default::default(),
         }
     }
 
@@ -1847,6 +1855,16 @@ impl<'a> Context<'a> {
                 AItem::ColorBox(cb) => {
                     let (run, rec) = self.color_box(cb, size);
                     push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                }
+                AItem::Graphic(g) => {
+                    if let Some((run, rec)) = self.graphic_box(g, size) {
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
+                }
+                AItem::Transform(t) => {
+                    if let Some((run, rec)) = self.transform_box(t, size) {
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
                 }
                 AItem::Kern { amount, style } => {
                     let style = merge_base(*style, base);
@@ -4590,6 +4608,8 @@ impl<'a> Context<'a> {
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
                     BoxRec::ColorBox(c) => Some(c.span),
+                    BoxRec::Graphic(g) => Some(g.span),
+                    BoxRec::Transform(t) => Some(t.span),
                 })
                 .next();
             let _ = list;
@@ -7021,6 +7041,8 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
                     BoxRec::ColorBox(c) => Some(c.span),
+                    BoxRec::Graphic(g) => Some(g.span),
+                    BoxRec::Transform(t) => Some(t.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -7509,6 +7531,8 @@ pub fn assemble(
                     BoxRec::Picture(p) => Some(p.span),
                     BoxRec::Table(t) => Some(t.span),
                     BoxRec::ColorBox(c) => Some(c.span),
+                    BoxRec::Graphic(g) => Some(g.span),
+                    BoxRec::Transform(t) => Some(t.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -7704,6 +7728,27 @@ fn assemble_block(
                         items.push(block_rule(x0 + cb.width - r, r / 2.0 - cb.height, r, total - r, frame));
                         items.push(block_rule(x0, cb.depth - r, cb.width, r, frame));
                     }
+                }
+                BoxRec::Graphic(g) => graphics_boxes::graphic_items(&local, g, recs, source_of, &mut items, &mut used),
+                BoxRec::Transform(t) => {
+                    // The content line assembled at the origin, then moved
+                    // through the box's matrix (pdftex.def `\pdfsetmatrix`
+                    // from the reference point).
+                    let a = assemble_block(&t.block, recs, maths, 0.0, source_of, paths, empty);
+                    let block_lines = &t.block.block.lines.lines;
+                    let first = block_lines.first().map_or(0.0, |l| l.baseline_y);
+                    let map = graphics_boxes::line_map(&t.matrix, local.x);
+                    for (li, line_items) in a.lines.iter().enumerate() {
+                        let dy = Tick::from_tex_pt(block_lines.get(li).map_or(0.0, |l| l.baseline_y - first));
+                        for it in line_items {
+                            items.push(graphics_boxes::transform_item(&incremental::place_item(it, dy, "", 0), &map));
+                        }
+                    }
+                    for f in a.faces {
+                        used.entry(f.font_id.clone()).or_insert(f);
+                    }
+                    resources.extend(a.resources);
+                    unmapped.extend(a.unmapped);
                 }
                 BoxRec::Rule { width, height, bottom, span } => {
                     // Line-local like text: the rule's bottom is `bottom`
@@ -7924,6 +7969,7 @@ fn picture_items(
             clusters,
             paint: paint(&t.paint),
             role: display::RunRole::Text,
+            glyph_transform: None,
         }));
     };
     let mut ti = 0;
@@ -8063,6 +8109,7 @@ fn text_item(
         clusters: out_clusters,
         paint,
         role: display::RunRole::Text,
+        glyph_transform: None,
     }))
 }
 
@@ -8120,6 +8167,7 @@ fn math_items(
             clusters: Vec::new(),
             paint,
             role: display::RunRole::Math,
+            glyph_transform: None,
         });
         let b = face.bounds(crate::ids::GlyphId(gid), Some(g.ch));
         // The advance TeX used: the laid-out glyph box's width (the TFM

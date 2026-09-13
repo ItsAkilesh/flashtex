@@ -104,6 +104,8 @@ pub struct PreparedGraphic {
     /// `None` when the file could not be read but its size was known from
     /// `width` and `height` (space is kept, nothing is painted).
     pub resource: Option<Rc<ImageResource>>,
+    /// graphicx `clip` with a viewport/trim: the unit square's visible part.
+    pub clip: Option<[f64; 4]>,
     pub span: Span,
     /// graphicx `demo`: no file; painted as a black rule of the box's size.
     pub demo: bool,
@@ -143,7 +145,7 @@ impl FloatParams {
 enum Elem {
     /// A text line: block/line in `blocks`, baseline from the box top.
     Line { block: usize, line: usize, baseline: f64, height: f64, depth: f64 },
-    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, provenance: Provenance, demo: bool },
+    Image { x: f64, baseline: f64, gbox: GraphicBox, resource: Option<Rc<ImageResource>>, clip: Option<[f64; 4]>, provenance: Provenance, demo: bool },
 }
 
 struct FloatBox {
@@ -522,7 +524,7 @@ fn flush_line(ctx: &Context, blocks: &mut [BuiltBlock], bx: &mut VBox, line: &mu
                         }
                 }
                 HItem::Graphic(g) => {
-                    bx.elems.push(Elem::Image { x, baseline, gbox: g.gbox, resource: g.resource.clone(), provenance: Provenance::Source(ctx.source(g.span)), demo: g.demo });
+                    bx.elems.push(Elem::Image { x, baseline, gbox: g.gbox, resource: g.resource.clone(), clip: g.clip, provenance: Provenance::Source(ctx.source(g.span)), demo: g.demo });
                     x += g.gbox.width;
                 }
                 HItem::Mini { vbox, width, pos } => {
@@ -535,7 +537,7 @@ fn flush_line(ctx: &Context, blocks: &mut [BuiltBlock], bx: &mut VBox, line: &mu
                                 }
                                 Elem::Line { block, line, baseline: top + lb, height, depth }
                             }
-                            Elem::Image { x: ix, baseline: ib, gbox, resource, provenance, demo } => Elem::Image { x: x + ix, baseline: top + ib, gbox, resource, provenance, demo },
+                            Elem::Image { x: ix, baseline: ib, gbox, resource, clip, provenance, demo } => Elem::Image { x: x + ix, baseline: top + ib, gbox, resource, clip, provenance, demo },
                         });
                     }
                     x += width;
@@ -878,7 +880,7 @@ impl Placer<'_> {
         for e in &b.elems {
             match e {
                 Elem::Line { block, line, baseline, height, depth } => lines.push(Placed { payload: (*block, *line), baseline: top + baseline, height: *height, depth: *depth }),
-                Elem::Image { x, baseline, gbox, resource, provenance, demo } => {
+                Elem::Image { x, baseline, gbox, resource, clip, provenance, demo } => {
                     let left = self.text_x + x;
                     let base = self.text_y + top + baseline;
                     if *demo {
@@ -909,6 +911,7 @@ impl Placer<'_> {
                             transform: [m[0] * k, -m[1] * k, m[2] * k, -m[3] * k, (left + m[4]) * k, (base - m[5]) * k],
                             resource: resource.clone(),
                             provenance: provenance.clone(),
+                            clip: *clip,
                         }),
                     ));
                 }
@@ -1084,6 +1087,8 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
             BoxRec::Picture(p) => Some(p.span),
             BoxRec::Table(t) => Some(t.span),
             BoxRec::ColorBox(c) => Some(c.span),
+            BoxRec::Graphic(g) => Some(g.span),
+            BoxRec::Transform(t) => Some(t.span),
         })
         .collect()
 }

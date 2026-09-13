@@ -34,6 +34,10 @@ struct Outputs {
     timing: bool,
     /// `--device-color`: `--v2` paints carry `device_color` (proposal).
     device_color: bool,
+    /// `--transforms`: `--v2` carries `glyph_transform` and image `clip`
+    /// (proposal `display-list-v2-transforms`). Off by default, so the wire
+    /// is unchanged unless it is asked for.
+    transforms: bool,
 }
 
 impl Outputs {
@@ -42,7 +46,7 @@ impl Outputs {
             eprintln!("flashtex-render: {id} rendered in {:.2} ms", r.elapsed_ms);
         }
         if let Some(p) = &self.v2 {
-            let wire = flashtex_render_pipeline::display::Wire { images: false, device_color: self.device_color };
+            let wire = flashtex_render_pipeline::display::Wire { images: false, device_color: self.device_color, transforms: self.transforms };
             let text = r.v2.write_json_wire(id, wire);
             if let Err(e) = std::fs::write(p, text) {
                 eprintln!("flashtex-render: cannot write {}: {e}", p.display());
@@ -72,6 +76,7 @@ fn main() {
         pdf: None,
         timing: false,
         device_color: false,
+        transforms: false,
     };
     let mut dirs: Vec<PathBuf> = Vec::new();
     let mut options = RenderOptions::default();
@@ -102,8 +107,9 @@ fn main() {
             }
             "--timing" => outputs.timing = true,
             "--device-color" => outputs.device_color = true,
+            "--transforms" => outputs.transforms = true,
             "-h" | "--help" => {
-                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing] [--device-color]");
+                eprintln!("usage: flashtex-render [--tex main.tex] [--v2 out.json] [--pdf out.pdf] [--font-dir DIR]... [--class-options OPTS] [--secnumdepth N] [--timing] [--device-color] [--transforms]");
                 eprintln!("  without --tex: runtime-v1 JSON Lines worker (compile requests on stdin, one compile_result per line on stdout)");
                 return;
             }
