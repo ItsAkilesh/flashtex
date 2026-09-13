@@ -247,19 +247,20 @@ final class CompletionTests: XCTestCase {
 
     func testVocabularySnippetsFollowArgumentShapes() {
         let v = Completion.Vocabulary.byName
-        XCTAssertEqual(v["section"]?.snippet, .init(text: "\\section{}", caretUTF16: 9))
-        XCTAssertEqual(v["textbf"]?.snippet, .init(text: "\\textbf{}", caretUTF16: 8))
-        XCTAssertEqual(v["emph"]?.snippet, .init(text: "\\emph{}", caretUTF16: 6))
-        XCTAssertEqual(v["frac"]?.snippet, .init(text: "\\frac{}{}", caretUTF16: 6))
-        XCTAssertEqual(v["newcommand"]?.snippet, .init(text: "\\newcommand{}{}", caretUTF16: 12), "optional [n] dropped")
-        XCTAssertEqual(v["documentclass"]?.snippet, .init(text: "\\documentclass{}", caretUTF16: 15), "leading [options] dropped")
-        XCTAssertEqual(v["begin"]?.snippet, .init(text: "\\begin{}", caretUTF16: 7))
-        XCTAssertEqual(v["label"]?.snippet, .init(text: "\\label{}", caretUTF16: 7))
+        // `stops`: the later braces then the end, visited with Tab (SnippetTests).
+        XCTAssertEqual(v["section"]?.snippet, .init(text: "\\section{}", caretUTF16: 9, stops: [10]))
+        XCTAssertEqual(v["textbf"]?.snippet, .init(text: "\\textbf{}", caretUTF16: 8, stops: [9]))
+        XCTAssertEqual(v["emph"]?.snippet, .init(text: "\\emph{}", caretUTF16: 6, stops: [7]))
+        XCTAssertEqual(v["frac"]?.snippet, .init(text: "\\frac{}{}", caretUTF16: 6, stops: [8, 9]))
+        XCTAssertEqual(v["newcommand"]?.snippet, .init(text: "\\newcommand{}{}", caretUTF16: 12, stops: [14, 15]), "optional [n] dropped")
+        XCTAssertEqual(v["documentclass"]?.snippet, .init(text: "\\documentclass{}", caretUTF16: 15, stops: [16]), "leading [options] dropped")
+        XCTAssertEqual(v["begin"]?.snippet, .init(text: "\\begin{}", caretUTF16: 7, stops: [8]))
+        XCTAssertEqual(v["label"]?.snippet, .init(text: "\\label{}", caretUTF16: 7, stops: [8]))
         for plain in ["item", "par", "\\", "alpha", "int"] { XCTAssertNil(v[plain]?.snippet, plain) }
         // Suggestions carry the shape; a project override of a builtin does not
         // (the macro's arguments are unknown).
         let s = Completion.suggestions(in: "x \\sect", caretUTF16: 7, metadata: nil)
-        XCTAssertEqual(s.first?.snippet, .init(text: "\\section{}", caretUTF16: 9))
+        XCTAssertEqual(s.first?.snippet, .init(text: "\\section{}", caretUTF16: 9, stops: [10]))
         XCTAssertEqual(s.first?.insertText, "\\section")
         XCTAssertNil(Completion.suggestions(in: "x \\sec", caretUTF16: 6, metadata: nil).first?.snippet, "\\sec (exact) takes no argument")
         let versions = ["main.tex": 1]
@@ -273,13 +274,14 @@ final class CompletionTests: XCTestCase {
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, metadata: nil)
         XCTAssertEqual(s.map(\.label), ["itemize"])
         XCTAssertEqual(s[0].insertText, "itemize}")
-        XCTAssertEqual(s[0].snippet, .init(text: "itemize}\n  \n  \\end{itemize}", caretUTF16: 11))
+        // Templates and tab stops: SnippetTests. A list starts with its first `\item`.
+        XCTAssertEqual(s[0].snippet, .init(text: "itemize}\n  \\item \n  \\end{itemize}", caretUTF16: 17, stops: [33]))
         let tabbed = "\t\\begin{eq"
         XCTAssertEqual(Completion.suggestions(in: tabbed, caretUTF16: (tabbed as NSString).length, metadata: nil).first?.snippet,
-                       .init(text: "equation}\n\t\n\t\\end{equation}", caretUTF16: 11))
-        let flat = "\\begin{fig"
+                       .init(text: "equation}\n\t\n\t\\end{equation}", caretUTF16: 11, stops: [27]))
+        let flat = "\\begin{cen"
         XCTAssertEqual(Completion.suggestions(in: flat, caretUTF16: 10, metadata: nil).first?.snippet,
-                       .init(text: "figure}\n\n\\end{figure}", caretUTF16: 8))
+                       .init(text: "center}\n\n\\end{center}", caretUTF16: 8, stops: [21]))
         XCTAssertEqual(Completion.lineIndent(in: "a\n  \tb", beforeByte: 6), "  \t")
         XCTAssertEqual(Completion.lineIndent(in: "abc", beforeByte: 3), "")
         // `\end{` completes the innermost open environment exactly, no skeleton.
@@ -1313,8 +1315,8 @@ final class CompletionTests: XCTestCase {
         // (1) Environment skeleton with the current line's indentation, caret on
         // the middle line; ⌘Z removes all three lines at once.
         try await accept(after: "\\begin{it", from: "\\begin{document}\n  ")
-        XCTAssertEqual(tv.string, "\\begin{document}\n  \\begin{itemize}\n  \n  \\end{itemize}")
-        XCTAssertEqual(tv.selectedRange(), NSRange(location: ("\\begin{document}\n  \\begin{itemize}\n  " as NSString).length, length: 0))
+        XCTAssertEqual(tv.string, "\\begin{document}\n  \\begin{itemize}\n  \\item \n  \\end{itemize}") // list template (SnippetTests)
+        XCTAssertEqual(tv.selectedRange(), NSRange(location: ("\\begin{document}\n  \\begin{itemize}\n  \\item " as NSString).length, length: 0))
         XCTAssertEqual(undo.undoActionName, "Insert Environment")
         undo.undo()
         XCTAssertEqual(tv.string, "\\begin{document}\n  \\begin{it")

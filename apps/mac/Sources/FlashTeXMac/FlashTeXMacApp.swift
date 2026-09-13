@@ -196,8 +196,6 @@ struct FlashTeXMacApp: App {
                 Divider()
                 Button("Nearby Companion…") { openWindow(id: "nearby") }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
-                Button("Ask Grok…") { model.askGrok() } // ShellModel+GrokAssistant.swift
-                    .keyboardShortcut("g", modifiers: [.command, .option])
                 Button("Durable History…") { openWindow(id: EditHistoryPanel.windowID) } // EditHistoryPanel.swift
             }
             CommandGroup(replacing: .newItem) {
@@ -216,8 +214,9 @@ struct FlashTeXMacApp: App {
                 Divider()
                 Button("Open Compile Result Fixture…") { model.openFixturePanel() }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                // Developer-only: no shortcut, and confirms/detaches the real
+                // document before replacing it with fixture content (#72).
                 Button("Reload Fixture") { model.reloadFixture() }
-                    .keyboardShortcut("r")
                 Button("Open Display List (v2)…") { model.openDisplayListV2Panel() } // experimental, PreviewV2View.swift
                 Button("Export PDF…") { model.exportPDF() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])

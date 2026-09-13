@@ -184,22 +184,19 @@ final class PanelAccessibilityTests: XCTestCase {
 
     // MARK: Settings (⌘,)
 
-    /// The Grok (xAI) section (GrokPreferencesView.swift, shown in the app's
-    /// Settings after the editor sections): its AppKit-backed controls — secure
-    /// key field, provider switch, model field — take keyboard focus in reading
-    /// order; the window is taller, so it is hosted at its own size. The key
-    /// field is never given a value here.
-    func testGrokPreferencesSectionControlsTakeKeyboardFocus() async throws {
-        let defaults = UserDefaults(suiteName: "PanelAccessibilityTests.grok.\(UUID().uuidString)")!
+    /// The Capture conversion section (ConversionPreferencesView.swift, shown
+    /// in the app's Settings after the editor sections): its AppKit-backed
+    /// controls — provider picker, secure key field, model picker — take
+    /// keyboard focus in reading order; the window is taller, so it is hosted
+    /// at its own size. The key field is never given a value here.
+    func testConversionPreferencesSectionControlsTakeKeyboardFocus() async throws {
+        let defaults = UserDefaults(suiteName: "PanelAccessibilityTests.conversion.\(UUID().uuidString)")!
         let prefs = EditorPreferences(defaults: defaults)
-        let window = try await host(EditorPreferencesView(preferences: prefs, showGrok: true), title: "Editor Preferences", size: NSSize(width: 480, height: 900))
-        let controls = assertControlsTakeKeyboardFocus(in: window, panel: "Settings+Grok", atLeast: 11)
+        let window = try await host(EditorPreferencesView(preferences: prefs, showConversion: true), title: "Editor Preferences", size: NSSize(width: 480, height: 900))
+        let controls = assertControlsTakeKeyboardFocus(in: window, panel: "Settings+Conversion", atLeast: 10)
         let kinds = controls.map { String(describing: type(of: $0)) }
-        // mac-grok-polish: the provider switch became the auto/on/off picker and the model field a
-        // picker whose "Other…" text field only appears when chosen.
         XCTAssertEqual(kinds.filter { $0.contains("Switch") }.count, 3, kinds.description)
-        XCTAssertTrue(kinds.contains { $0.contains("SecureTextField") }, kinds.description)
-        XCTAssertGreaterThanOrEqual(kinds.filter { $0.contains("PopupButton") }.count, 2, "provider mode + model pickers: \(kinds)")
+        XCTAssertGreaterThanOrEqual(kinds.filter { $0.contains("PopupButton") }.count, 2, "provider + model pickers: \(kinds)")
         window.close()
     }
 

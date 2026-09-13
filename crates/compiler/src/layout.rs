@@ -8,10 +8,13 @@
 //! One item is emitted per word rather than per line. That keeps each item's
 //! source span exact, which is what click-to-source navigation (FT-003) needs.
 
+use crate::bib;
 use crate::diagnostics::Diagnostic;
 use crate::export::{self, ExportFont};
 use crate::math::{self, MathBox};
-use crate::parser::{Block, FontSizeLevel, Inline, MathRow, ParagraphStyle, TextFamily, TextStyle};
+use crate::parser::{
+    Block, FontSizeLevel, Inline, ListLeftMargin, MathRow, ParagraphStyle, TextFamily, TextStyle,
+};
 use crate::Span;
 use flashtex_font_engine::core14::Core14;
 use flashtex_font_engine::shape::{shape, ShapeOptions, Shaped};
@@ -21,12 +24,25 @@ use std::sync::OnceLock;
 
 pub use flashtex_font_engine::core14::Core14 as Font;
 
+mod footnotes;
+
 pub const PAGE_WIDTH_PT: f64 = 612.0;
 pub const PAGE_HEIGHT_PT: f64 = 792.0;
 pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// Justification leaves a wrapped line ragged rather than stretch its
+/// inter-word spaces by more than this multiple of their natural width
+/// (so no gap exceeds 3x its natural size), standing in for TeX's
+/// tolerance/badness limit on an underfull line.
+const JUSTIFY_MAX_STRETCH: f64 = 2.0;
+/// `\topsep`'s flat point value, as `\@verbatim`'s underlying `\trivlist`
+/// would apply it around a `verbatim`/`lstlisting` block (article's 10pt
+/// class default is close to this; this layout has no per-class variation or
+/// rubber lengths, so — like `SMALL_SKIP_PT` et al. — one representative flat
+/// amount stands in for the real `plus`/`minus` stretch).
+pub const VERBATIM_TOPSEP_PT: f64 = 8.0;
 /// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
 pub const QUOTE_INDENT_PT: f64 = 25.0;
 /// `\leftmargini`..`\leftmarginiv` (standard classes' 10pt-class defaults):
@@ -52,6 +68,30 @@ pub const REFERENCE_ITERATION_LIMIT: usize = 5;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ReferenceValue {
     number: String,
+    page: u32,
+}
+
+/// article.cls `\l@section`/`\l@subsection`/`\l@subsubsection` geometry:
+/// (entry indent, `\numberline` box width) in em. Sections use `1.5em`
+/// numbers at the margin; `\@dottedtocline{2}{1.5em}{2.3em}` and
+/// `\@dottedtocline{3}{3.8em}{3.2em}` for the deeper levels.
+const TOC_INDENT_NUMWIDTH_EM: [(f64, f64); 3] = [(0.0, 1.5), (1.5, 2.3), (3.8, 3.2)];
+/// `\@pnumwidth`: the right-aligned page-number box.
+const TOC_PNUMWIDTH_EM: f64 = 1.55;
+/// `\@tocrmarg`: right margin that dotted-line titles wrap before.
+const TOC_RMARG_EM: f64 = 2.55;
+/// `\@dotsep`: each leader box is `\mkern4.5mu . \mkern4.5mu`.
+const TOC_DOTSEP_MU: f64 = 4.5;
+/// `\l@section`'s `\addvspace{1.0em \@plus\p@}` before each section entry.
+const TOC_SECTION_SKIP_EM: f64 = 1.0;
+
+/// One `\addcontentsline` record: a numbered heading and its page.
+#[derive(Debug, Clone, PartialEq)]
+struct TocEntry {
+    level: u8,
+    number: String,
+    number_span: Span,
+    content: Vec<Inline>,
     page: u32,
 }
 
@@ -148,6 +188,31 @@ pub(crate) fn x_height_pt(font: Font, size: f64) -> f64 {
         0.45
     };
     ratio * size
+}
+
+/// Horizontal displacement, in points, that `font`'s italic slant introduces
+/// at `height_pt` above the baseline (see `math::layout_accent`).
+///
+/// TeX's real accent-skew rule (TeXbook Appendix G, rule 12) shifts an accent
+/// right by the base character's TFM skewchar kern, a per-glyph value that
+/// Adobe Core 14 AFM metrics do not carry (there is no skewchar concept in an
+/// AFM at all). What the AFM does carry is `ItalicAngle`, the whole-font
+/// slant Times-Italic's outlines lean by (-15.5 degrees). Shearing a vertical
+/// stroke by that angle is exactly what produces a skewchar-shaped effect: a
+/// point `height_pt` above the baseline sits `height_pt * tan(|angle|)` to
+/// the right of where the same point would fall in an upright face. Using
+/// one whole-font angle rather than a per-glyph kern cannot reproduce TeX's
+/// letter-by-letter skewchar table exactly, but it is the real metric this
+/// font actually declares, rather than a borrowed constant from a different
+/// font (e.g. cmmi10) applied to Times-Italic's differently-shaped glyphs.
+/// Upright faces declare `ItalicAngle == 0`, so this is a no-op for them.
+pub(crate) fn italic_skew_pt(font: Font, height_pt: f64) -> f64 {
+    use flashtex_font_engine::Face as _;
+    let angle_deg = face(font).italic_angle();
+    if angle_deg == 0.0 {
+        return 0.0;
+    }
+    height_pt * angle_deg.to_radians().tan().abs()
 }
 
 fn source_span(text: &str, span: Span, shaped: &Shaped) -> Span {
@@ -314,10 +379,25 @@ pub struct LayoutCursor {
     /// Page-item-index boundaries recorded by `mark_hfill` for the current
     /// line, resolved (and cleared) by `resolve_hfill` when the line closes.
     line_fills: Vec<usize>,
+    /// Inter-word spaces on the current line as (page-item index of the item
+    /// after the space, natural width), consumed by `justify_line` when the
+    /// line wraps and cleared whenever a line or block ends.
+    line_spaces: Vec<(usize, f64)>,
+    /// Whether the block being rendered is set justified (body paragraphs,
+    /// list items, `quote`); off for headings, captions, `center`/`flush*`
+    /// and displays.
+    justify: bool,
     first_block: bool,
     constraints: LayoutConstraints,
     resolved_labels: BTreeMap<String, ReferenceValue>,
     collected_labels: BTreeMap<String, ReferenceValue>,
+    /// Contents entries from the previous pass, typeset by
+    /// `Block::TableOfContents`.
+    resolved_toc: Vec<TocEntry>,
+    /// Numbered headings of this pass; collected only when the document has
+    /// a `\tableofcontents`, so other documents keep converging in one pass.
+    collected_toc: Vec<TocEntry>,
+    collect_toc: bool,
     emit_heading_numbers: bool,
     diagnostics: Vec<Diagnostic>,
     /// Active only while rendering a `Block::Styled` paragraph.
@@ -326,6 +406,8 @@ pub struct LayoutCursor {
     /// outside one. Unlike `style`, this only ever affects `left_edge` —
     /// lists don't pull in the right margin the way `quote` does.
     list_margin_pt: f64,
+    /// Page-bottom footnote state; see `layout::footnotes`.
+    footnotes: footnotes::FootnoteState,
 }
 
 impl LayoutCursor {
@@ -352,14 +434,20 @@ impl LayoutCursor {
             line_start: 0,
             content_end: MARGIN_PT,
             line_fills: Vec::new(),
+            line_spaces: Vec::new(),
+            justify: false,
             first_block: true,
             constraints,
             resolved_labels,
             collected_labels: BTreeMap::new(),
+            resolved_toc: Vec::new(),
+            collected_toc: Vec::new(),
+            collect_toc: false,
             emit_heading_numbers,
             diagnostics: Vec::new(),
             style: None,
             list_margin_pt: 0.0,
+            footnotes: footnotes::FootnoteState::default(),
         }
     }
 
@@ -407,22 +495,65 @@ impl LayoutCursor {
         }
     }
 
+    /// Ends a line because the next item does not fit: unlike an explicit
+    /// `\\` or a paragraph's last line, such a line is justified.
+    fn wrap_line(&mut self, size: f64) {
+        self.justify_line();
+        self.newline(size);
+    }
+
+    /// Stretches the current line's inter-word spaces, in proportion to their
+    /// natural widths, so its last item ends at the right edge. Lines with
+    /// infinite glue (`\hfill`), no spaces, overfull content, or needing more
+    /// than `JUSTIFY_MAX_STRETCH` stay as they are.
+    fn justify_line(&mut self) {
+        let spaces = std::mem::take(&mut self.line_spaces);
+        let natural: f64 = spaces.iter().map(|&(_, width)| width).sum();
+        let slack = self.right_edge() - self.content_end;
+        if !self.justify
+            || !self.line_fills.is_empty()
+            || natural <= 0.0
+            || slack <= 0.0
+            || slack > JUSTIFY_MAX_STRETCH * natural
+        {
+            return;
+        }
+        let Some(page) = self.pages.last_mut() else {
+            return;
+        };
+        let mut shift = 0.0;
+        let mut spaces = spaces.into_iter().peekable();
+        for (index, item) in page.items.iter_mut().enumerate().skip(self.line_start) {
+            while let Some((_, width)) = spaces.next_if(|&(boundary, _)| boundary <= index) {
+                shift += slack * width / natural;
+            }
+            item.x_pt = round2(item.x_pt + shift);
+        }
+    }
+
+    /// Records the reserved gap before an item about to be pushed as a
+    /// stretchable inter-word space, unless the item starts its line.
+    fn note_space(&mut self) {
+        let gap = self.x - self.content_end;
+        let len = self.pages.last().expect("at least one page").items.len();
+        if gap > 0.0 && len > self.line_start {
+            self.line_spaces.push((len, gap));
+        }
+    }
+
     fn newline(&mut self, size: f64) {
+        self.line_spaces.clear();
         self.resolve_hfill();
         self.align_current_line();
+        self.footnotes
+            .record_closed_line(self.pages.len() - 1, self.line_start, self.y);
         self.x = self.left_edge();
         self.content_end = self.x;
         self.y += self.line_descent + size;
         self.line_ascent = size;
         self.line_descent = size * (LINE_SPACING - 1.0);
-        if self.y > PAGE_HEIGHT_PT - MARGIN_PT {
-            let n = self.pages.len() as u32 + 1;
-            self.pages.push(Page {
-                number: n,
-                width_pt: PAGE_WIDTH_PT,
-                height_pt: PAGE_HEIGHT_PT,
-                items: Vec::new(),
-            });
+        if self.y > self.body_bottom() {
+            self.open_next_page(size);
             self.y = MARGIN_PT + size;
         }
         self.line_start = self.pages.last().expect("at least one page").items.len();
@@ -486,15 +617,10 @@ impl LayoutCursor {
     /// one still has room. Unlike `newline`'s overflow break, this always
     /// creates a new page rather than only doing so past the bottom margin.
     fn force_page_break(&mut self) {
+        self.line_spaces.clear();
         self.x = MARGIN_PT;
         self.content_end = self.x;
-        let n = self.pages.len() as u32 + 1;
-        self.pages.push(Page {
-            number: n,
-            width_pt: PAGE_WIDTH_PT,
-            height_pt: PAGE_HEIGHT_PT,
-            items: Vec::new(),
-        });
+        self.open_next_page(self.constraints.font_size_pt);
         self.y = MARGIN_PT + self.constraints.font_size_pt;
         self.line_start = 0;
     }
@@ -511,8 +637,9 @@ impl LayoutCursor {
         }
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
         if self.x > self.left_edge() && self.x + w > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
         }
+        self.note_space();
         self.ensure_extents(size, size * (LINE_SPACING - 1.0));
         let item = TextItem {
             text,
@@ -540,7 +667,7 @@ impl LayoutCursor {
     fn text_glue(&mut self, em: f64, size: f64) {
         let width = em * size;
         if self.x > self.left_edge() && self.x + width > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
             return;
         }
         self.x += width;
@@ -567,8 +694,9 @@ impl LayoutCursor {
             self.x = self.content_end;
         }
         if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
         }
+        self.note_space();
         self.ensure_extents(b.ascent, b.descent);
         let base_x = self.x;
         let base_y = self.y;
@@ -597,6 +725,7 @@ impl LayoutCursor {
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
+        let justify = std::mem::replace(&mut self.justify, false);
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -614,6 +743,7 @@ impl LayoutCursor {
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.style = style;
+        self.justify = justify;
     }
 
     /// Draws an `\item` label (bullet/number) right-aligned so it ends
@@ -642,6 +772,115 @@ impl LayoutCursor {
             .push(item);
     }
 
+    /// One article.cls contents line: the number in its `\numberline` box,
+    /// the title wrapping at `\@pnumwidth` (sections) or `\@tocrmarg`,
+    /// aligned `\leaders` dots for levels below section, and the page number
+    /// flush right. Section entries are bold, with `1em` before each but the
+    /// first. Dots and the page number carry the `\tableofcontents` span;
+    /// number and title keep the heading's own spans.
+    fn toc_entry(&mut self, entry: &TocEntry, toc_span: Span, first: bool) {
+        let size = self.constraints.font_size_pt;
+        let section = entry.level <= 1;
+        let (indent_em, numwidth_em) =
+            TOC_INDENT_NUMWIDTH_EM[usize::from(entry.level.clamp(1, 3)) - 1];
+        let font = if section {
+            Font::TimesBold
+        } else {
+            Font::TimesRoman
+        };
+        self.newline(size);
+        if section && !first {
+            self.vertical_gap(TOC_SECTION_SKIP_EM * size);
+        }
+        self.push_item(
+            entry.number.clone(),
+            MARGIN_PT + indent_em * size,
+            size,
+            entry.number_span,
+            font,
+        );
+
+        // Headings are parsed bold; a contents line below section level is
+        // upright medium, so only the heading's base weight is dropped.
+        let content: Vec<Inline> = entry
+            .content
+            .iter()
+            .filter(|inline| !matches!(inline, Inline::Label { .. }))
+            .cloned()
+            .map(|inline| match inline {
+                Inline::Text {
+                    text,
+                    span,
+                    style,
+                    space_before,
+                } if !section => Inline::Text {
+                    text,
+                    span,
+                    style: TextStyle {
+                        bold: false,
+                        ..style
+                    },
+                    space_before,
+                },
+                other => other,
+            })
+            .collect();
+        let saved = self.constraints;
+        self.constraints.measure_pt -= if section {
+            TOC_PNUMWIDTH_EM
+        } else {
+            TOC_RMARG_EM
+        } * size;
+        self.list_margin_pt = (indent_em + numwidth_em) * size;
+        self.x = self.left_edge();
+        self.content_end = self.x;
+        emit(self, &content, size, font);
+        self.resolve_hfill();
+        self.constraints = saved;
+        self.list_margin_pt = 0.0;
+
+        let right = MARGIN_PT + self.constraints.measure_pt;
+        let page_box = right - TOC_PNUMWIDTH_EM * size;
+        if !section {
+            // `\leaders` align their boxes to multiples of the box width from
+            // the line's left edge, so dots line up across entries.
+            let mu = size / 18.0;
+            let box_width = 2.0 * TOC_DOTSEP_MU * mu + glyph_width(".", size, Font::TimesRoman);
+            let mut slot = ((self.content_end - MARGIN_PT) / box_width).ceil();
+            while MARGIN_PT + (slot + 1.0) * box_width <= page_box {
+                let x = MARGIN_PT + slot * box_width + TOC_DOTSEP_MU * mu;
+                self.push_item(".".to_string(), x, size, toc_span, Font::TimesRoman);
+                slot += 1.0;
+            }
+        }
+        let page = entry.page.to_string();
+        let x = right - glyph_width(&page, size, font);
+        self.push_item(page, x, size, toc_span, font);
+        self.x = right;
+        self.content_end = right;
+    }
+
+    /// Place `text` at an absolute `x` on the current baseline.
+    fn push_item(&mut self, text: String, x: f64, size: f64, span: Span, font: Font) {
+        if text.is_empty() {
+            return;
+        }
+        let y = self.y;
+        self.pages
+            .last_mut()
+            .expect("at least one page")
+            .items
+            .push(TextItem {
+                text,
+                x_pt: round2(x),
+                baseline_y_pt: round2(y),
+                font_size_pt: size,
+                span,
+                font,
+                rule: None,
+            });
+    }
+
     fn place_equation_number(&mut self, number: &str, span: Span, size: f64) {
         let text = format!("({number})");
         let width = glyph_width(&text, size, Font::TimesRoman);
@@ -664,6 +903,7 @@ impl LayoutCursor {
     fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
+        let justify = std::mem::replace(&mut self.justify, false);
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -726,6 +966,7 @@ impl LayoutCursor {
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.style = style;
+        self.justify = justify;
     }
 
     /// Apply the inter-block spacing and return the state used as a cache key.
@@ -764,6 +1005,13 @@ impl LayoutCursor {
                     self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
                 }
             }
+            // Opens with `\section*{\contentsname}`.
+            Block::TableOfContents { .. } => {
+                if !self.first_block {
+                    self.newline(heading_size(1, body_size));
+                    self.vertical_gap(PARAGRAPH_GAP_PT * 2.0);
+                }
+            }
             Block::FigureCaption { .. } | Block::Styled { .. } => {
                 if !self.first_block {
                     self.newline(body_size);
@@ -790,6 +1038,42 @@ impl LayoutCursor {
                     self.force_page_break();
                 }
             }
+            Block::Verbatim { .. } => {
+                if !self.first_block {
+                    self.newline(body_size);
+                    self.vertical_gap(
+                        self.constraints.parskip_pt.unwrap_or(PARAGRAPH_GAP_PT)
+                            + VERBATIM_TOPSEP_PT,
+                    );
+                }
+            }
+            Block::TitleBlock { .. } => {
+                // `\@maketitle` opens with `\newpage \null \vskip 2em`. Like
+                // `Block::PageBreak`, the page break is unconditional once
+                // something precedes it, but is skipped when `\maketitle` is
+                // the very first thing in the document — matching real TeX,
+                // whose page builder never ships an empty first page for a
+                // `\newpage` that has nothing queued yet.
+                if !self.first_block {
+                    self.force_page_break();
+                }
+                self.vertical_gap(2.0 * body_size);
+            }
+            // `\vfill`: stretch to fill whatever room is left below the
+            // current line on this page. Real TeX distributes stretch across
+            // every `\vfill` sharing a page equally; this layout instead
+            // gives the first one all the remaining room, which matches the
+            // common single-`\vfill`-per-page idiom (pushing a signature or
+            // footer to the bottom) exactly, and degrades to a hard bottom
+            // clamp — rather than an overlap or a fabricated split — for the
+            // rarer multi-`\vfill` case.
+            Block::VFill => {
+                if !self.first_block && self.state().trailing_line_items > 0 {
+                    self.newline(body_size);
+                }
+                let remaining = (PAGE_HEIGHT_PT - MARGIN_PT - self.y).max(0.0);
+                self.vertical_gap(remaining);
+            }
         }
         self.first_block = false;
         self.state()
@@ -800,9 +1084,13 @@ impl LayoutCursor {
         let starts: Vec<usize> = self.pages.iter().map(|page| page.items.len()).collect();
         let body_size = self.constraints.font_size_pt;
         match block {
-            Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::Paragraph(inlines) => {
+                self.justify = true;
+                emit(self, inlines, body_size, Font::TimesRoman);
+            }
             Block::Styled { style, content } => {
                 self.style = Some(*style);
+                self.justify = *style == ParagraphStyle::Quote;
                 // `left_edge()` depends on `self.style` (the `quote` indent),
                 // which just changed, so `content_end` — synced to the old
                 // margin by `prepare_block`'s `newline` — must move with it.
@@ -821,9 +1109,24 @@ impl LayoutCursor {
                 label,
                 content,
                 extra_gap_after_pt,
+                leftmargin,
+                widest_label,
                 ..
             } => {
-                self.list_margin_pt = list_margin_pt(*level, body_size);
+                self.list_margin_pt = match widest_label {
+                    // `thebibliography`'s `\labelwidth` + `\labelsep`: the
+                    // width of its widest label's own bracket text, not the
+                    // fixed `itemize`/`enumerate` leftmargin table.
+                    Some(text) => {
+                        glyph_width(&bib::label_bracket(text), body_size, Font::TimesRoman)
+                            + LIST_LABELSEP_EM * body_size
+                    }
+                    None => {
+                        let override_pt = list_leftmargin_override_pt(leftmargin, body_size);
+                        list_margin_pt(*level, body_size, override_pt)
+                    }
+                };
+                self.justify = true;
                 if let Some((text, span)) = label {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
                 }
@@ -845,14 +1148,20 @@ impl LayoutCursor {
                 number_span,
                 content,
             } => {
+                if self.collect_toc && !number.is_empty() {
+                    self.collected_toc.push(TocEntry {
+                        level: *level,
+                        number: number.clone(),
+                        number_span: *number_span,
+                        content: content.clone(),
+                        page: self.pages.len() as u32,
+                    });
+                }
                 if self.emit_heading_numbers && !number.is_empty() {
-                    self.place(
-                        number.clone(),
-                        heading_size(*level, body_size),
-                        *number_span,
-                        Font::TimesBold,
-                        true,
-                    );
+                    let size = heading_size(*level, body_size);
+                    self.place(number.clone(), size, *number_span, Font::TimesBold, true);
+                    // `\@seccntformat`: `\csname the#1\endcsname\quad`.
+                    self.x = self.content_end + size;
                 }
                 emit(
                     self,
@@ -879,7 +1188,78 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.newline(body_size);
             }
-            Block::VSpace { .. } | Block::PageBreak => {}
+            Block::VSpace { .. } | Block::PageBreak | Block::VFill => {}
+            Block::TableOfContents { span } => {
+                self.render_prepared_block(&Block::Heading {
+                    level: 1,
+                    number: String::new(),
+                    number_span: *span,
+                    content: vec![Inline::Text {
+                        text: "Contents".to_string(),
+                        span: *span,
+                        style: TextStyle::BOLD,
+                        space_before: true,
+                    }],
+                });
+                let entries = std::mem::take(&mut self.resolved_toc);
+                for (index, entry) in entries.iter().enumerate() {
+                    self.toc_entry(entry, *span, index == 0);
+                }
+                self.resolved_toc = entries;
+            }
+            Block::TitleBlock {
+                title,
+                authors,
+                date,
+            } => {
+                // `\@maketitle`, transcribed from `article.cls` (see
+                // `crates/title-layout/src/title.rs`, this compiler's own
+                // measured-layout oracle for these same numbers): `\LARGE`
+                // title, `\vskip 1.5em`, `\large` author block, `\vskip
+                // 1em`, `\large` date, trailing `\vskip 1.5em`. All four
+                // `\vskip` amounts are plain, unconditionally additive glue
+                // in the body (`\normalsize`) font, per that crate's own
+                // documented boundary — never `\parskip`, which is why this
+                // uses `vertical_gap`/`newline` directly rather than
+                // `Block::Styled`'s ordinary per-paragraph gap.
+                let title_size = size_declaration_pt(FontSizeLevel::Large3, body_size);
+                let author_size = size_declaration_pt(FontSizeLevel::Large1, body_size);
+                self.style = Some(ParagraphStyle::Center);
+
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                // `prepare_block` positioned `y` with `vertical_gap`, not
+                // `newline`, so the line metrics still reflect whatever
+                // preceded this block (or the cursor's own initial body-size
+                // line, when `\maketitle` is the very first thing in the
+                // document). `place`'s own `ensure_extents` then grows `y` by
+                // the difference to the title's actual (larger) size, the
+                // same self-correction an ordinary first-block `\section`
+                // already relies on to sit below the margin correctly.
+                emit(self, title, title_size, Font::TimesRoman);
+                self.newline(author_size);
+                self.vertical_gap(1.5 * body_size);
+
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                emit(self, authors, author_size, Font::TimesRoman);
+                self.newline(if date.is_some() {
+                    author_size
+                } else {
+                    body_size
+                });
+                self.vertical_gap(body_size);
+
+                if let Some(date) = date {
+                    self.x = self.left_edge();
+                    self.content_end = self.x;
+                    emit(self, date, author_size, Font::TimesRoman);
+                    self.newline(body_size);
+                }
+                self.vertical_gap(1.5 * body_size);
+
+                self.style = None;
+            }
             Block::Rule { span } => {
                 let width = self.constraints.measure_pt;
                 let item = TextItem {
@@ -903,12 +1283,29 @@ impl LayoutCursor {
                 // A rule has no depth: end its line without adding a text line.
                 self.newline(0.0);
             }
+            Block::Verbatim { lines, .. } => {
+                self.x = self.left_edge();
+                self.content_end = self.x;
+                for (index, line) in lines.iter().enumerate() {
+                    // One `TextItem` per source line, never split across a
+                    // `place` call, so the measure-overflow check in `place`
+                    // (only triggered once something already sits on the
+                    // line) never wraps it — long lines simply overflow the
+                    // margin, exactly like real LaTeX's own verbatim.
+                    self.place(line.text.clone(), body_size, line.span, Font::Courier, true);
+                    if index + 1 < lines.len() {
+                        self.newline(body_size);
+                    }
+                }
+            }
         }
         // A block is the incremental cache unit. Resolve its final line before
         // collecting the placed fragment so a reused block never depends on
         // ephemeral `line_fills` state that is intentionally absent from
         // `FlowState`. Explicit line breaks already resolve earlier lines.
         self.resolve_hfill();
+        self.line_spaces.clear();
+        self.justify = false;
         let mut placed = Vec::new();
         for (page_index, page) in self.pages.iter().enumerate() {
             let start = starts.get(page_index).copied().unwrap_or(0);
@@ -920,6 +1317,116 @@ impl LayoutCursor {
             );
         }
         placed
+    }
+
+    pub(crate) fn measure_pt(&self) -> f64 {
+        self.constraints.measure_pt
+    }
+
+    pub(crate) fn body_size_pt(&self) -> f64 {
+        self.constraints.font_size_pt
+    }
+
+    /// Lays `inlines` out in a detached cursor as one box whose origin is its
+    /// first baseline (a `tabular` entry or `@{}` text): a single unbroken
+    /// line when `measure` is `None`, else a paragraph of that width. Returns
+    /// the box and the offset of its last baseline. Diagnostics and labels
+    /// flow back into this cursor.
+    pub(crate) fn inline_box(
+        &mut self,
+        inlines: &[Inline],
+        size: f64,
+        measure: Option<f64>,
+    ) -> (MathBox, f64) {
+        let constraints = LayoutConstraints {
+            measure_pt: measure.unwrap_or(crate::tabular::MAX_DIMEN_PT),
+            ..self.constraints
+        };
+        let mut inner = LayoutCursor::with_labels(
+            constraints,
+            std::mem::take(&mut self.resolved_labels),
+            self.emit_heading_numbers,
+        );
+        let left = inner.left_edge();
+        let mut first_y = inner.y;
+        let mut natural: f64 = 0.0;
+        for inline in inlines {
+            emit(
+                &mut inner,
+                std::slice::from_ref(inline),
+                size,
+                Font::TimesRoman,
+            );
+            if inner.pages.len() == 1 && inner.line_start == 0 {
+                first_y = inner.y;
+            }
+            natural = natural.max(inner.content_end - left);
+        }
+        if measure.is_some() {
+            inner.resolve_hfill();
+        } else {
+            // An unbreakable entry has no measure to fill.
+            inner.line_fills.clear();
+        }
+        self.resolved_labels = std::mem::take(&mut inner.resolved_labels);
+        self.diagnostics.append(&mut inner.diagnostics);
+        let page = self.pages.len() as u32;
+        for (key, mut value) in std::mem::take(&mut inner.collected_labels) {
+            value.page = page;
+            self.collected_labels.insert(key, value);
+        }
+        let mut items = Vec::new();
+        let (mut ascent, mut descent) = (0.0f64, 0.0f64);
+        let mut offset = 0.0;
+        let page_count = inner.pages.len();
+        for (index, page) in inner.pages.into_iter().enumerate() {
+            let mut last_baseline = first_y;
+            for item in page.items {
+                let baseline = item.baseline_y_pt + offset - first_y;
+                last_baseline = last_baseline.max(item.baseline_y_pt);
+                let (top, bottom) = match item.rule {
+                    Some(rule) => (
+                        rule.y_pt + offset - first_y,
+                        rule.y_pt + rule.height_pt + offset - first_y,
+                    ),
+                    None => {
+                        let (up, down) = font_extents(item.font, item.font_size_pt);
+                        (baseline - up, baseline + down)
+                    }
+                };
+                ascent = ascent.max(-top);
+                descent = descent.max(bottom);
+                items.push(math::MathItem {
+                    font: Some(item.font),
+                    text: item.text,
+                    x: item.x_pt - left,
+                    baseline,
+                    size: item.font_size_pt,
+                    span: item.span,
+                    rule: item.rule.map(|rule| math::MathRule {
+                        y: rule.y_pt + offset - first_y,
+                        width: rule.width_pt,
+                        height: rule.height_pt,
+                    }),
+                });
+            }
+            // A detached paragraph never really breaks pages; continue the
+            // next page's lines below this page's last line.
+            if index + 1 < page_count {
+                offset += last_baseline + LINE_SPACING * size - (MARGIN_PT + size);
+            }
+        }
+        let width = measure.unwrap_or(natural);
+        let last = inner.y + offset - first_y;
+        (
+            MathBox {
+                items,
+                width,
+                ascent,
+                descent,
+            },
+            last,
+        )
     }
 
     pub fn state(&self) -> FlowState {
@@ -981,26 +1488,34 @@ impl LayoutCursor {
         // following block to trigger `newline`'s resolution, so give it one
         // last chance here. Idempotent when nothing is pending.
         self.resolve_hfill();
+        self.finish_footnotes();
         self.pages
     }
 
     pub fn into_pages_and_diagnostics(mut self) -> (Vec<Page>, Vec<Diagnostic>) {
         self.resolve_hfill();
+        self.finish_footnotes();
         (self.pages, self.diagnostics)
     }
 
-    fn into_result(mut self) -> (Vec<Page>, BTreeMap<String, ReferenceValue>, Vec<Diagnostic>) {
+    fn into_result(mut self) -> (Vec<Page>, CrossReferences, Vec<Diagnostic>) {
         self.resolve_hfill();
-        (self.pages, self.collected_labels, self.diagnostics)
+        self.finish_footnotes();
+        (
+            self.pages,
+            (self.collected_labels, self.collected_toc),
+            self.diagnostics,
+        )
     }
 }
 
 fn heading_size(level: u8, body_size: f64) -> f64 {
     body_size
-        * if level == 1 {
-            17.0 / BODY_SIZE_PT
-        } else {
-            14.0 / BODY_SIZE_PT
+        * match level {
+            1 => 17.0 / BODY_SIZE_PT,
+            2 => 14.0 / BODY_SIZE_PT,
+            // article.cls `\subsubsection`: `\normalsize\bfseries`.
+            _ => 1.0,
         }
 }
 
@@ -1044,18 +1559,57 @@ fn size_declaration_pt(level: FontSizeLevel, body_size_pt: f64) -> f64 {
     table[index]
 }
 
+/// Height above and depth below the baseline of `font` at `size`, from the
+/// face's declared ascender/descender. Symbol declares none (its AFM bounding
+/// box is far taller than its glyphs), so it uses Times-Roman's.
+fn font_extents(font: Font, size: f64) -> (f64, f64) {
+    use flashtex_font_engine::Face as _;
+    let font = if font == Font::Symbol {
+        Font::TimesRoman
+    } else {
+        font
+    };
+    let metrics = face(font).vertical_metrics();
+    (
+        f64::from(metrics.ascender) * size / 1000.0,
+        -f64::from(metrics.descender) * size / 1000.0,
+    )
+}
+
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
 
 /// Cumulative left margin, in points, for an `itemize`/`enumerate` item at
-/// `level` (1 = outermost), scaled by the document body size.
-fn list_margin_pt(level: u8, body_size_pt: f64) -> f64 {
+/// `level` (1 = outermost), scaled by the document body size. Enclosing
+/// levels always use their `LIST_LEFTMARGIN_EM` default; `own_override_pt`,
+/// when given, replaces only `level`'s own share (a `\setlist{leftmargin=...}`
+/// override on the item's own list — see `list_leftmargin_override_pt`).
+fn list_margin_pt(level: u8, body_size_pt: f64, own_override_pt: Option<f64>) -> f64 {
     let depth = level.max(1) as usize;
-    let em: f64 = (1..=depth)
+    let outer_em: f64 = (1..depth)
         .map(|l| LIST_LEFTMARGIN_EM[(l - 1).min(LIST_LEFTMARGIN_EM.len() - 1)])
         .sum();
-    em * body_size_pt
+    let own_pt = own_override_pt.unwrap_or_else(|| {
+        LIST_LEFTMARGIN_EM[(depth - 1).min(LIST_LEFTMARGIN_EM.len() - 1)] * body_size_pt
+    });
+    outer_em * body_size_pt + own_pt
+}
+
+/// Resolves a `Block::ListItem`'s `leftmargin` into the absolute point value
+/// `list_margin_pt` should use for that item's own level, or `None` to keep
+/// the level's `LIST_LEFTMARGIN_EM` default (no `\setlist{leftmargin=...}`
+/// override, or a `leftmargin=*` list with no items to measure).
+fn list_leftmargin_override_pt(leftmargin: &ListLeftMargin, body_size_pt: f64) -> Option<f64> {
+    match leftmargin {
+        ListLeftMargin::Default => None,
+        ListLeftMargin::Explicit(pt) => Some(*pt),
+        ListLeftMargin::Widest(labels) => labels
+            .iter()
+            .map(|label| glyph_width(label, body_size_pt, Font::TimesRoman))
+            .reduce(f64::max)
+            .map(|widest_pt| widest_pt + LIST_LABELSEP_EM * body_size_pt),
+    }
 }
 
 pub fn layout(blocks: &[Block]) -> Vec<Page> {
@@ -1076,42 +1630,73 @@ pub fn layout_with_constraints(blocks: &[Block], constraints: LayoutConstraints)
     c.into_pages()
 }
 
-/// Lay out repeatedly until both label values and their page numbers stabilize.
+/// Everything one layout pass feeds the next: label values with their pages,
+/// and the contents entries.
+type CrossReferences = (BTreeMap<String, ReferenceValue>, Vec<TocEntry>);
+
+/// Lay out repeatedly until label values, their page numbers and the contents
+/// entries stabilize — LaTeX's rerun cycle, bounded by
+/// `REFERENCE_ITERATION_LIMIT`. Layout is a pure function of its input, so the
+/// result is deterministic; a pass that reproduces an earlier non-adjacent
+/// state is a page-number oscillation and stops early with a warning.
 pub fn layout_converged(
     blocks: &[Block],
     constraints: LayoutConstraints,
 ) -> (Vec<Page>, Vec<Diagnostic>) {
-    let mut labels = BTreeMap::new();
+    let collect_toc = blocks
+        .iter()
+        .any(|block| matches!(block, Block::TableOfContents { .. }));
+    let mut state: CrossReferences = (BTreeMap::new(), Vec::new());
+    let mut history: Vec<CrossReferences> = Vec::new();
     let mut last_pages = Vec::new();
     let mut diagnostics = Vec::new();
     let mut converged = false;
+    let mut oscillating = false;
     for _ in 0..REFERENCE_ITERATION_LIMIT {
-        let mut cursor = LayoutCursor::with_labels(constraints, labels.clone(), true);
+        let mut cursor = LayoutCursor::with_labels(constraints, state.0.clone(), true);
+        cursor.resolved_toc = state.1.clone();
+        cursor.collect_toc = collect_toc;
         for block in blocks {
             cursor.prepare_block(block);
             cursor.render_prepared_block(block);
         }
-        let (pages, next_labels, shape_diagnostics) = cursor.into_result();
+        let (pages, next, shape_diagnostics) = cursor.into_result();
         last_pages = pages;
         diagnostics = shape_diagnostics;
-        if next_labels == labels {
+        if next == state {
             converged = true;
-            labels = next_labels;
             break;
         }
-        labels = next_labels;
+        if history.contains(&next) {
+            oscillating = true;
+            break;
+        }
+        history.push(std::mem::replace(&mut state, next));
     }
 
     visit_references(blocks, &mut |key, span| {
-        if !labels.contains_key(key) {
+        if !state.0.contains_key(key) {
+            let page = last_pages
+                .iter()
+                .find(|page| page.items.iter().any(|item| item.span == span))
+                .map_or_else(String::new, |page| format!(" on page {}", page.number));
             diagnostics.push(Diagnostic::warning(
-                format!("undefined reference '{key}'"),
+                format!("Reference `{key}'{page} undefined"),
                 Some(span),
                 Some("rendered ?? for the unresolved reference".into()),
             ));
         }
     });
-    if !converged {
+    if oscillating {
+        diagnostics.push(Diagnostic::warning(
+            "cross-reference page numbers oscillate between layout passes",
+            None,
+            Some(
+                "returned the last layout pass; its page references may be off by the oscillation"
+                    .into(),
+            ),
+        ));
+    } else if !converged {
         diagnostics.push(Diagnostic::warning(
             format!(
                 "cross-reference values did not converge after {REFERENCE_ITERATION_LIMIT} layout passes"
@@ -1125,18 +1710,46 @@ pub fn layout_converged(
 
 fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
     for block in blocks {
-        let inlines: &[Inline] = match block {
-            Block::Paragraph(inlines) => inlines,
+        match block {
+            Block::Paragraph(inlines) => visit_inline_references(inlines, visitor),
             Block::ListItem { content, .. }
             | Block::Heading { content, .. }
             | Block::FigureCaption { content }
-            | Block::Styled { content, .. } => content,
-            Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
-        };
-        for inline in inlines {
-            if let Inline::Reference { key, span, .. } = inline {
-                visitor(key, *span);
+            | Block::Styled { content, .. } => visit_inline_references(content, visitor),
+            Block::TitleBlock {
+                title,
+                authors,
+                date,
+            } => {
+                visit_inline_references(title, visitor);
+                visit_inline_references(authors, visitor);
+                if let Some(date) = date {
+                    visit_inline_references(date, visitor);
+                }
             }
+            Block::VSpace { .. }
+            | Block::Rule { .. }
+            | Block::PageBreak
+            | Block::Verbatim { .. }
+            | Block::TableOfContents { .. }
+            | Block::VFill => {}
+        }
+    }
+}
+
+fn visit_inline_references(inlines: &[Inline], visitor: &mut impl FnMut(&str, Span)) {
+    for inline in inlines {
+        match inline {
+            Inline::Reference { key, span, .. } => visitor(key, *span),
+            Inline::Footnote {
+                text: Some(text), ..
+            } => visit_inline_references(text, visitor),
+            Inline::Tabular(table) => {
+                for list in table.inline_lists() {
+                    visit_inline_references(list, visitor);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -1216,21 +1829,57 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                     },
                 );
             }
-            Inline::Reference { key, page, span } => {
-                let text = c.resolved_labels.get(key).map_or_else(
-                    || "??".to_string(),
-                    |value| {
-                        if *page {
-                            value.page.to_string()
-                        } else {
-                            value.number.clone()
-                        }
-                    },
-                );
-                c.place(text, size, *span, font, true);
-            }
+            Inline::Reference {
+                key,
+                page,
+                equation,
+                span,
+                space_before,
+            } => match c.resolved_labels.get(key) {
+                Some(value) => {
+                    let text = if *page {
+                        value.page.to_string()
+                    } else {
+                        value.number.clone()
+                    };
+                    let text = if *equation { format!("({text})") } else { text };
+                    c.place(text, size, *span, font, *space_before);
+                }
+                // `\@setref`: an undefined key typesets a bold `??`.
+                None if *equation => {
+                    c.place("(".to_string(), size, *span, font, *space_before);
+                    c.place("??".to_string(), size, *span, Font::TimesBold, false);
+                    c.place(")".to_string(), size, *span, font, false);
+                }
+                None => c.place(
+                    "??".to_string(),
+                    size,
+                    *span,
+                    Font::TimesBold,
+                    *space_before,
+                ),
+            },
             Inline::HFill { .. } => c.mark_hfill(),
             Inline::HSpace { pt, .. } => c.hspace(*pt),
+            Inline::Footnote {
+                number,
+                span,
+                mark,
+                text,
+                space_before,
+            } => c.footnote(number, *span, *mark, text.as_deref(), *space_before),
+            Inline::Tabular(table) => {
+                let table_size = table.style.size.map_or(size, |level| {
+                    size_declaration_pt(level, c.constraints.font_size_pt)
+                });
+                let b = crate::tabular::layout(c, table, table_size);
+                c.place_math(b, size, table.space_before);
+            }
+            Inline::Verbatim {
+                text,
+                span,
+                space_before,
+            } => c.place(text.clone(), size, *span, Font::Courier, *space_before),
         }
     }
 }
@@ -1463,7 +2112,7 @@ mod tests {
             .iter()
             .find(|item| item.text == "Text")
             .expect("item text");
-        let text_x = MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT);
+        let text_x = MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None);
         let label_sep = LIST_LABELSEP_EM * BODY_SIZE_PT;
         let label_width = glyph_width("•", BODY_SIZE_PT, Font::TimesRoman);
         assert_eq!(text.x_pt, round2(text_x));
@@ -1496,7 +2145,7 @@ mod tests {
             .expect("an item on the wrapped line");
         assert_eq!(
             first_on_wrapped_line.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
     }
 
@@ -1511,15 +2160,62 @@ mod tests {
         let inner = items.iter().find(|item| item.text == "Inner").unwrap();
         assert_eq!(
             outer.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
         assert_eq!(
             inner.x_pt,
-            round2(MARGIN_PT + list_margin_pt(2, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(2, BODY_SIZE_PT, None))
         );
         assert!(
             inner.x_pt > outer.x_pt,
             "a nested item indents further than its enclosing item"
+        );
+    }
+
+    #[test]
+    fn bibliography_label_width_comes_from_the_widest_label_argument() {
+        let source = "\\begin{thebibliography}{9}\\bibitem{a}Text\\end{thebibliography}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let label = items
+            .iter()
+            .find(|item| item.text == "[1]")
+            .expect("bibitem label");
+        let text = items
+            .iter()
+            .find(|item| item.text == "Text")
+            .expect("item text");
+        let label_sep = LIST_LABELSEP_EM * BODY_SIZE_PT;
+        let widest_width = glyph_width("[9]", BODY_SIZE_PT, Font::TimesRoman);
+        let text_x = MARGIN_PT + widest_width + label_sep;
+        assert_eq!(text.x_pt, round2(text_x));
+        assert_eq!(
+            label.x_pt,
+            round2(text_x - label_sep - glyph_width("[1]", BODY_SIZE_PT, Font::TimesRoman))
+        );
+        // Not the `itemize`/`enumerate` leftmargin table's fixed 2.5em: a
+        // `thebibliography`'s indent tracks its own widest-label argument.
+        assert_ne!(
+            round2(text_x),
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
+        );
+    }
+
+    #[test]
+    fn thebibliography_emits_an_unnumbered_bold_references_heading() {
+        let source = "\\begin{thebibliography}{9}\\bibitem{a}Text\\end{thebibliography}";
+        let (parsed, pages) = laid_out(source);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let items: Vec<&TextItem> = pages.iter().flat_map(|p| &p.items).collect();
+        let heading = items
+            .iter()
+            .find(|item| item.text == "References")
+            .expect("References heading");
+        assert_eq!(heading.font, Font::TimesBold);
+        assert!(
+            matches!(&parsed.blocks[0], parser::Block::Heading { number, .. } if number.is_empty()),
+            "the References heading must be unnumbered, like \\section*"
         );
     }
 
@@ -1548,7 +2244,7 @@ mod tests {
             .expect("continuation paragraph text");
         assert_eq!(
             second.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT))
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None))
         );
     }
 
@@ -1566,7 +2262,7 @@ mod tests {
         let text = items.iter().find(|item| item.text == "Text").unwrap();
         assert_eq!(
             text.x_pt,
-            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT)),
+            round2(MARGIN_PT + list_margin_pt(1, BODY_SIZE_PT, None)),
             "the item text must stay at the normal hanging-indent margin"
         );
         assert!(
@@ -1574,5 +2270,46 @@ mod tests {
             "an overlong label should overflow past the page margin, like LaTeX's overfull label box (got {})",
             label.x_pt
         );
+    }
+
+    /// Right edge of each line (by baseline) on the first page, in order.
+    fn line_ends(pages: &[Page]) -> Vec<f64> {
+        let mut ends: Vec<(f64, f64)> = Vec::new();
+        for item in &pages[0].items {
+            let end = item.x_pt + glyph_width(&item.text, item.font_size_pt, item.font);
+            match ends.last_mut() {
+                Some((y, e)) if *y == item.baseline_y_pt => *e = e.max(end),
+                _ => ends.push((item.baseline_y_pt, end)),
+            }
+        }
+        ends.into_iter().map(|(_, end)| end).collect()
+    }
+
+    #[test]
+    fn wrapped_lines_are_justified_but_last_forced_and_centered_lines_are_not() {
+        let words = "Justified text stretches its spaces evenly. ".repeat(8);
+        let right = PAGE_WIDTH_PT - MARGIN_PT;
+        let ends = line_ends(&laid_out(&format!("{words}\\\\ {words}")).1);
+        assert!(ends.len() >= 5, "{ends:?}");
+        // Each paragraph piece: wrapped lines justified, the line closed by
+        // `\\` and the paragraph's final line left ragged.
+        let ragged: Vec<bool> = ends.iter().map(|end| (end - right).abs() > 0.05).collect();
+        assert_eq!(ragged.iter().filter(|r| **r).count(), 2, "{ends:?}");
+        assert!(ragged[ragged.len() - 1]);
+
+        let centered = line_ends(&laid_out(&format!("\\begin{{center}}{words}\\end{{center}}")).1);
+        assert!(centered.len() >= 3);
+        assert!(
+            centered.iter().all(|end| (end - right).abs() > 0.05),
+            "{centered:?}"
+        );
+
+        // A line with infinite glue keeps the `\hfill` distribution only.
+        let filled = laid_out(&format!("a\\hfill b {words}")).1;
+        let items = &filled[0].items;
+        let space = word_space(BODY_SIZE_PT, Font::TimesRoman);
+        let natural_after_b = items[1].x_pt + glyph_width("b", BODY_SIZE_PT, Font::TimesRoman);
+        assert!((items[2].x_pt - natural_after_b - space).abs() < 0.05);
+        assert!((line_ends(&filled)[0] - right).abs() < 0.05);
     }
 }

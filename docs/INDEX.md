@@ -5,7 +5,9 @@ your task; do not load the entire repository history into every prompt.
 
 | Need | Authoritative location | Writer |
 |---|---|---|
+| End-user guides (install, Mac app, iPad companion, CLI tools, supported LaTeX) | [docs/user/README.md](user/README.md) | mac-user-docs (parent mac-claude-a) |
 | Required collaboration behavior | [AGENTS.md](../AGENTS.md) | Integration owner with user direction |
+| Agent onboarding: start prompt, coordination CLI, where handoffs live (formerly the root README's "Working with agents") | [docs/agents/README.md](agents/README.md) | Integration owner |
 | Command, dispatch, reporting, integration | [ORCHESTRATION.md](../ORCHESTRATION.md) | Commander |
 | Actual coordination commands and patch submissions | [Coordination CLI](coordination-cli.md) | Commander |
 | Mac/Rust/capture message contract | [Runtime v1](contracts/runtime-v1.md) | Commander (FT-001) |
@@ -24,6 +26,7 @@ your task; do not load the entire repository history into every prompt.
 | Shared interfaces | `docs/contracts/<interface>.md` when created | Assigned interface owner |
 | Durable decisions | `docs/decisions/<id>-<topic>.md` when created | Decision owner |
 | Reproduction evidence / large outputs | Paths linked from the relevant handoff | Producing agent |
+| CI, releases, website publication | [CI/CD](ci-cd.md) | Release lane (mac-ci-release) |
 
 Some interface and decision directories will be created as implementation starts;
 their listing here does not imply those designs already exist.

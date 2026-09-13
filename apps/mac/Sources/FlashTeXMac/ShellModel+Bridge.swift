@@ -20,32 +20,36 @@ extension ShellModel {
     // MARK: attach / detach
 
     /// Attaches `$FLASHTEX_BRIDGE`, a bundled `flashtex-bridge`, or
-    /// `crates/bridge/target/{release,debug}/flashtex-bridge`. With an xAI key
-    /// present (GrokCredential.swift: Keychain, then `XAI_API_KEY`) the bridge
-    /// runs `--enable-grok` with the key in its environment, so `Edit > Convert
-    /// Capture` is a live Grok conversion; without one it runs exactly as
-    /// before and conversion reports `provider_disabled`.
+    /// `crates/bridge/target/{release,debug}/flashtex-bridge`. With a
+    /// conversion provider selected and its key present
+    /// (ConversionCredential.swift: Keychain, then the environment) the bridge
+    /// runs with that provider's flag and the key in its environment, so
+    /// `Edit > Convert Capture` is a live conversion; without one it runs
+    /// without any provider and conversion reports `provider_disabled`.
     @discardableResult
     func attachDiscoveredBridge() -> Bool {
         guard let url = BridgeClient.locateBridge() else {
             bridgeStatus = "no built flashtex-bridge found (build crates/bridge or set FLASHTEX_BRIDGE)"
             return false
         }
-        let launch = Self.bridgeGrokLaunch()
+        let launch = Self.bridgeConversionLaunch()
         attachBridge(executable: url, storeDirectory: BridgeClient.defaultStoreDirectory(),
-                     enableGrok: launch.enableGrok, environment: launch.environment)
+                     provider: launch.provider, environment: launch.environment)
         return true
     }
 
-    /// `--enable-grok` plus the bridge environment for the resolved credential
-    /// (nil credential: secrets stripped, no key, Grok off). Pure given its
-    /// inputs so tests can assert the key lands only on this child.
-    static func bridgeGrokLaunch(environment: [String: String] = ProcessInfo.processInfo.environment,
-                                 keychain: any GrokKeychainStore = SecItemKeychain.shared,
-                                 preferences: GrokPreferences = .shared) -> (enableGrok: Bool, environment: [String: String], credential: GrokCredential.Resolution?) {
-        let credential = GrokCredential.resolve(environment: environment, keychain: keychain)
-        let model = GrokCredential.captureModel(environment: environment, preferences: preferences)
-        return (credential != nil, GrokCredential.bridgeEnvironment(credential: credential, model: model, from: environment), credential)
+    /// The provider the bridge is launched with plus its environment for the
+    /// resolved credential (no credential or provider "None": `.none`, secrets
+    /// stripped, no key). Pure given its inputs so tests can assert the key
+    /// lands only on this child.
+    static func bridgeConversionLaunch(environment: [String: String] = ProcessInfo.processInfo.environment,
+                                       keychain: any ConversionKeychainStore = SecItemKeychain.shared,
+                                       preferences: ConversionPreferences = .shared) -> (provider: ConversionProvider, environment: [String: String], credential: ConversionCredential.Resolution?) {
+        let selected = ConversionCredential.provider(environment: environment, preferences: preferences)
+        let credential = ConversionCredential.resolve(for: selected, environment: environment, keychain: keychain)
+        let provider: ConversionProvider = credential == nil ? .none : selected
+        let model = ConversionCredential.model(for: selected, environment: environment, preferences: preferences)
+        return (provider, ConversionCredential.bridgeEnvironment(provider: provider, credential: credential, model: model, from: environment), credential)
     }
 
     /// Where the edit-ledger helper comes from: `$FLASHTEX_EDIT_LEDGER`, a bundled
@@ -57,25 +61,25 @@ extension ShellModel {
     /// edit-ledger helper for the active document, adopts/aligns the durable
     /// document, runs the contract's restart reconciliation, then opens the
     /// active document on the bridge.
-    func attachBridge(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+    func attachBridge(executable: URL, arguments: [String] = [], storeDirectory: URL, provider: ConversionProvider = .none,
                       environment: [String: String]? = nil) {
         Task { await attachBridgeAndWait(executable: executable, arguments: arguments, storeDirectory: storeDirectory,
-                                         enableGrok: enableGrok, environment: environment) }
+                                         provider: provider, environment: environment) }
     }
 
     @discardableResult
     /// `ledger` nil with `discoverLedger` true uses the discovered helper; pass
     /// `discoverLedger: false` to attach without any edit ledger (insertion disabled).
     /// `environment` nil inherits the app's environment (as before); the
-    /// discovered-bridge path passes `GrokCredential.bridgeEnvironment`.
-    func attachBridgeAndWait(executable: URL, arguments: [String] = [], storeDirectory: URL, enableGrok: Bool = false,
+    /// discovered-bridge path passes `ConversionCredential.bridgeEnvironment`.
+    func attachBridgeAndWait(executable: URL, arguments: [String] = [], storeDirectory: URL, provider: ConversionProvider = .none,
                              environment: [String: String]? = nil,
                              ledger: LedgerLaunch? = nil, discoverLedger: Bool = true, ledgerStore: URL? = nil) async -> Bool {
         let ledger = ledger ?? (discoverLedger ? EditLedgerClient.locate().map { LedgerLaunch(executable: $0) } : nil)
         let session: BridgeSession
         do {
             session = try BridgeSession(executable: executable, arguments: arguments, storeDirectory: storeDirectory,
-                                        enableGrok: enableGrok, environment: environment, projectId: projectId)
+                                        provider: provider, environment: environment, projectId: projectId)
         } catch {
             bridgeStatus = "bridge launch failed: \(error.localizedDescription)"
             return false
@@ -313,7 +317,7 @@ extension ShellModel {
             enqueue(proposal)
             return proposal
         } catch {
-            captureNote = Self.conversionFailureNote(error, grokEnabled: bridge.grokEnabled)
+            captureNote = Self.conversionFailureNote(error, provider: bridge.conversionProvider)
             return nil
         }
     }
@@ -321,23 +325,24 @@ extension ShellModel {
     /// Plain-text note for a failed `capture_convert`. Bridge provider codes
     /// (crates/bridge grok.rs) are translated into what the user can do; the
     /// bridge's message never contains the key or a provider body.
-    static func conversionFailureNote(_ error: Error, grokEnabled: Bool) -> String {
+    static func conversionFailureNote(_ error: Error, provider: ConversionProvider) -> String {
         let failure = error as? BridgeClient.Failure
+        let name = provider == .none ? "the conversion provider" : provider.displayName
         switch failure?.code {
         case "provider_disabled":
-            return "Conversion unavailable: the bridge was attached without a Grok key (provider_disabled). Add an xAI API key in Preferences (⌘,) or set XAI_API_KEY, then Edit > Attach Capture Bridge again."
+            return "Conversion unavailable: the bridge was attached without a conversion provider (provider_disabled). Choose a provider and add its API key in Preferences (⌘,) → Capture conversion, or set FLASHTEX_AI_API_KEY, then Edit > Attach Capture Bridge again."
         case "provider_auth_missing":
-            return "Conversion unavailable: the bridge found no XAI_API_KEY in its environment (provider_auth_missing); re-attach the bridge after adding the key."
+            return "Conversion unavailable: the bridge found no API key in its environment (provider_auth_missing); re-attach the bridge after adding the key."
         case "provider_auth_error":
-            return "Grok rejected the xAI API key (HTTP 401/403); check it with Test Connection in Preferences (⌘,)."
+            return "\(name) rejected the API key (HTTP 401/403); check the key in Preferences (⌘,) → Capture conversion."
         case "provider_rate_limited":
-            return "Grok is rate limiting this key (HTTP 429); no retry was made — try again later."
+            return "\(name) is rate limiting this key (HTTP 429); no retry was made — try again later."
         case "provider_timeout":
-            return "Grok did not answer within the bridge's 90 s timeout; no retry was made."
+            return "\(name) did not answer within the bridge's 90 s timeout; no retry was made."
         case "provider_transport_error":
-            return "Could not reach api.x.ai (transport error); no retry was made."
+            return "Could not reach \(name) (transport error); no retry was made."
         default:
-            return "Conversion unavailable\(grokEnabled ? " (Grok enabled)" : ""): \(failure?.text ?? "\(error)")"
+            return "Conversion unavailable\(provider == .none ? "" : " (\(provider.displayName) enabled)"): \(failure?.text ?? "\(error)")"
         }
     }
 

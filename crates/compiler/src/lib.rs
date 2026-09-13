@@ -9,6 +9,7 @@
 //! end-exclusive UTF-8 byte range into the exact input text of the stated
 //! revision, per `docs/contracts/runtime-v1.md`.
 
+pub mod bib;
 pub mod diagnostics;
 pub mod export;
 pub mod incremental;
@@ -19,6 +20,10 @@ pub mod lm_math;
 pub mod math;
 pub mod parser;
 pub mod protocol;
+pub mod tabular;
+pub mod theorems;
+pub mod vocabulary;
+pub mod xref;
 
 /// Stable identity of one document in a compile request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

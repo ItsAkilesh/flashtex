@@ -19,7 +19,6 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
     case selectPreviewItemSource
     case accessibilityHelp
     case durableHistory, findInProject, nextSearchMatch, renameCitation
-    case askGrok
 
     public struct Entry: Equatable {
         public var command: AccessibilityCommand
@@ -121,10 +120,6 @@ public enum AccessibilityCommand: String, CaseIterable, Equatable {
                          description: "Sends capture_convert for the latest received capture; the proposal opens for review.",
                          requires: "a received capture",
                          menuItem: "Convert Capture")
-        case .askGrok:
-            return Entry(command: self, title: "Ask Grok", shortcuts: ["⌘⌥G"], menu: "Edit",
-                         description: "Opens the Ask Grok sheet over the editor selection (or the whole document): type an instruction, Ask sends the last compile's bound context to Grok (xAI) through the assistant helper, the reply shows the explanation and the proposed edit as a before/after diff; Apply inserts it as one undoable edit, Copy copies it, Esc closes. Also in the toolbar and as Fix with Grok on a Problems row.",
-                         menuItem: "Ask Grok…")
         case .nearbyCompanion:
             return Entry(command: self, title: "Nearby Companion", shortcuts: ["⌘⇧N"], menu: "Edit",
                          description: "Opens the window that advertises this Mac to a paired iPad/iPhone companion: pairing code (also as a QR image; Copy code or ⌘C on the code copies the digits), paired devices with a per-companion permission pop-up (Captures allowed / View only), received captures (nearby-v1 proposal). Return shows or resumes a pairing code, Esc cancels it or dismisses a banner; the status row, step indicator and every announcement are VoiceOver text.",
@@ -382,6 +377,7 @@ public enum PanelFocusOrder {
                 Control(name: "Editor appearance (segments)", sourceMarker: "Picker(\"Editor appearance\""),
                 Control(name: "Auto-close braces", sourceMarker: "Toggle(\"Auto-close braces\""),
                 Control(name: "Show completion list", sourceMarker: "Toggle(\"Show completion list\""),
+                Control(name: "Check spelling", sourceMarker: "Toggle(\"Check spelling\""),
                 Control(name: "Restore Defaults", sourceMarker: "Button(\"Restore Defaults\""),
               ],
               sourceFile: "EditorPreferences.swift"),

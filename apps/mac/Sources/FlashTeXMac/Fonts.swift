@@ -46,7 +46,9 @@ enum PreviewFonts {
 
     /// Every Latin Modern file the layout producer can request
     /// (`flashtex-render` `FontSet::latin_modern_file`, t1lmr.fd boundaries):
-    /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, and LM Math. The
+    /// regular 5–17, bold 5–12, italic 7–12, bold-italic 10, LM Math, and the
+    /// secondary double-struck math face `NewCMMath-Regular.otf` (New Computer
+    /// Modern Math, msbm's `\mathbb` design; `mathfont::BB_FONT_FILE`). The
     /// vendored `apps/mac/Fonts` (pinned by `SUPPLEMENTARY-FACES.json` plus the
     /// Commander manifest) holds all of them; when the registered directory
     /// lacks any, the gap is recorded in `latinModernMissingFaces` so a
@@ -55,7 +57,16 @@ enum PreviewFonts {
         [5, 6, 7, 8, 9, 10, 12, 17].map { "lmroman\($0)-regular.otf" }
         + [5, 6, 7, 8, 9, 10, 12].map { "lmroman\($0)-bold.otf" }
         + [7, 8, 9, 10, 12].map { "lmroman\($0)-italic.otf" }
-        + ["lmroman10-bolditalic.otf", "latinmodern-math.otf"]
+        + ["lmroman10-bolditalic.otf", "latinmodern-math.otf", newComputerModernMathFile]
+
+    /// The secondary math face the producer draws `\mathbb` from when it is
+    /// bundled: New Computer Modern Math, whose double-struck letters follow
+    /// AMS msbm10 (pdfLaTeX's `\mathbb`) rather than Latin Modern Math's
+    /// open-face design. Resolved by raw bytes through `V2FontStore` like
+    /// every other face; nothing is registered with CoreText by name.
+    static let newComputerModernMathFile = "NewCMMath-Regular.otf"
+    static let newComputerModernMathPostScriptName = "NewCMMath-Regular"
+    static let newComputerModernMathSHA256 = "60394d357348f68cd301764fe61cc502a5858e1c4ff21b948a1d14d82586a7a2"
 
     /// Files of `latinModernFaceFiles` absent from `directory`.
     static func latinModernMissingFaces(in directory: String) -> [String] {

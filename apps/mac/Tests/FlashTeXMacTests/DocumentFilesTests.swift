@@ -237,6 +237,37 @@ final class DocumentFilesTests: XCTestCase {
         XCTAssertTrue(model.captureNote?.contains("recreated") == true, model.captureNote ?? "")
     }
 
+    // MARK: fixtures never inherit a real document's identity (#72)
+
+    /// Reload Fixture / Open Compile Result Fixture… must never let Save write
+    /// fixture content over a real file: `loadFixtures` detaches `documentURL`
+    /// (and `savedText`) the moment a fixture replaces the project, so a later
+    /// `saveTex()` falls back to Save As instead of overwriting the old file.
+    func testLoadFixturesDetachesRealDocumentIdentity() throws {
+        let dir = try tempDir("fixture-detach")
+        let url = dir.appendingPathComponent("main.tex")
+        let original = "\\begin{document}\nReal content, not a fixture.\n\\end{document}\n"
+        try original.write(to: url, atomically: true, encoding: .utf8)
+
+        let model = ShellModel()
+        model.files.policy = .disabled(reason: "test: no helper binary")
+        XCTAssertEqual(model.openTex(at: url), .opened)
+        XCTAssertEqual(model.documentURL, url)
+        XCTAssertFalse(model.isDirty)
+
+        let samples = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Samples")
+        model.loadFixtures(request: samples.appendingPathComponent("multipage-request.json"),
+                            result: samples.appendingPathComponent("multipage-result.json"))
+        XCTAssertNil(model.loadError, model.loadError ?? "")
+
+        XCTAssertNil(model.documentURL, "loading a fixture must detach the real document's URL")
+        XCTAssertNil(model.savedText, "loading a fixture must clear the real document's saved baseline")
+        XCTAssertNil(model.files.conflict)
+        XCTAssertEqual(try disk(url), original, "loading a fixture never touches the real file on disk")
+    }
+
     // MARK: lost and late replies (fake helper)
 
     func testHangingHelperKeepsTheDirtyBufferAndIsRestartedNextTime() throws {

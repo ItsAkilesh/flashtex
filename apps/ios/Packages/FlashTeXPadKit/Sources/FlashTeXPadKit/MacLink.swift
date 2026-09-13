@@ -68,7 +68,7 @@ public final class MacLink: @unchecked Sendable {
                                                           code: code, companionName: companionName, onLine: { [weak self] in self?.onLine($0, $1) })
         session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
         lock.withLock { _session = session; _pair = pair }
-        try? store?.upsert(pair)
+        storePairing(pair)
         log(.note, "paired: \(pair.macName) pair_id=\(pair.pairId) destination=\(session.destination.map { $0.destinationId } ?? "null")")
         return pair
     }
@@ -96,9 +96,16 @@ public final class MacLink: @unchecked Sendable {
                                                           onLine: { [weak self] in self?.onLine($0, $1) })
         session.connection.onClose = { [weak self] why in self?.log(.note, "closed: \(why)") }
         lock.withLock { _session = session; _pair = pair }
-        try? store?.upsert(pair)
+        storePairing(pair)
         log(.note, "paired: \(pair.macName) pair_id=\(pair.pairId)")
         return pair
+    }
+
+    /// The pairing is usable for this session even when the store refuses it
+    /// (a Keychain OSStatus); the refusal is logged rather than swallowed so a
+    /// pairing that does not survive relaunch has a named cause in the transcript.
+    private func storePairing(_ pair: PairedMac) {
+        do { try store?.upsert(pair) } catch { log(.note, "pairing not stored: \(error)") }
     }
 
     /// Every later connection (proposal §7 step 3) with the stored `pair_psk`.

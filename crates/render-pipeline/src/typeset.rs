@@ -105,9 +105,10 @@ impl MathRec {
     /// run's own shaped glyph (the text face's cmap id, 0 for its interword
     /// space) or the math provider's mapping.
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
-        // `OTF_FALLBACK_FONT` is `u32::MAX`, above the `\text` run ids: it
-        // must be answered by the provider, not looked up as a run.
-        if g.font_id != crate::mathtex::OTF_FALLBACK_FONT && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
+        // The OTF fallback ids (`u32::MAX`, `u32::MAX - 1`) lie above the
+        // `\text` run ids: they must be answered by the provider, not
+        // looked up as a run.
+        if !crate::mathtex::is_otf_fallback(g.font_id) && g.font_id.0 >= crate::mathtext::RUN_FONT_BASE {
             let run = crate::mathtext::run_of(&self.text_runs, g.font_id)?;
             let glyph = run.glyph_at(g.font_id, g.gid)?;
             return Some((run.face.clone(), glyph.gid.0));
@@ -154,7 +155,9 @@ impl MathProvider {
     pub fn otf_glyph(&self, g: &ml::PositionedGlyph) -> Option<(Rc<LoadedFace>, u16)> {
         match self {
             MathProvider::Tex(_) if g.font_id == crate::mathtex::OTF_FALLBACK_FONT => Some((self.otf().face().clone(), g.gid)),
+            MathProvider::Tex(_) if g.font_id == crate::mathtex::OTF_FALLBACK_BB_FONT => self.otf().bb_face().map(|f| (f.clone(), g.gid)),
             MathProvider::Tex(t) => t.otf_glyph(g.font_id, g.gid as u8, g.ch),
+            MathProvider::Otf(o) if g.font_id == crate::mathfont::BB_FONT => o.bb_face().map(|f| (f.clone(), g.gid)),
             MathProvider::Otf(o) => Some((o.face().clone(), g.gid)),
         }
     }
@@ -442,7 +445,10 @@ impl<'a> Context<'a> {
         };
         match (r.substituted, MathFonts::new(r.face, sizes)) {
             (None, Some(m)) => {
-                let m = Rc::new(m);
+                // The double-struck secondary face (msbm's design) is
+                // optional: absent, Latin Modern Math draws `\mathbb` and
+                // the profile note below says so once.
+                let m = Rc::new(m.with_double_struck(self.fonts.otf(crate::mathfont::BB_FONT_FILE)));
                 // pdfLaTeX's geometry needs the lm math TFMs' parameters
                 // (metric-identical to CM, embedded in math-layout) and
                 // `rm-lmr` for the roman family; without the TFM directory
@@ -772,6 +778,22 @@ impl<'a> Context<'a> {
             self.report_once(
                 format!("mathmissing:{ch}"),
                 Diagnostic::warning("missing_glyph", format!("U+{:04X} '{}' has no glyph in {}", ch as u32, ch, fonts.otf().face().name), vec![src]),
+            );
+        }
+        if fonts.otf().take_bb_fallback() {
+            let src = self.source(span);
+            let reason = fonts.otf().bb_status().unwrap_or("not loaded");
+            self.report_once(
+                "math:bb-fallback".into(),
+                Diagnostic::warning(
+                    "math_resource_profile",
+                    format!(
+                        "msbm10: double-struck (\\mathbb) glyphs drawn from {} (open-face design); {} unavailable ({reason}), so the outlines and advances are not the reference's msbm design",
+                        fonts.otf().face().name,
+                        crate::mathfont::BB_FONT_FILE
+                    ),
+                    vec![src],
+                ),
             );
         }
         for l in laid.limitations {
@@ -1114,7 +1136,7 @@ impl<'a> Context<'a> {
         let lines = pl::layout_paragraph(&list, &self.line_params(indent, self.style.baselineskip_pt, style, hang_pt));
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.
-        let parskip = if list_geom.is_some() { self.style.parsep } else { self.style.parskip };
+        let parskip = list_geom.map_or(self.style.parskip, |g| g.parsep);
         let vertical = VBlock {
             lines: line_extents(&lines),
             penalty_before: None,
@@ -1316,25 +1338,53 @@ impl<'a> Context<'a> {
         })
     }
 
-    /// The empty line TeX sets when a display opens a paragraph: the
+    /// The line TeX sets when a display opens a paragraph: the
     /// `\parindent` box alone (`$$`, `equation`), or LaTeX's
     /// `\nointerlineskip\makebox[.6\linewidth]{}` for `\[`. It carries
-    /// `\parskip`, has no height or depth, and decides the display's
-    /// `pre_display_size` (its width plus 2em).
-    fn display_opener_block(&mut self, bracket: bool) -> (BuiltBlock, f64) {
+    /// `\parskip` and decides the display's `pre_display_size` (its
+    /// width plus 2em, `\parshape` indent included).
+    ///
+    /// Inside a list (`list_geom`) the line starts `\@totalleftmargin` in
+    /// and `\parskip` is `\parsep`. When it opens an `\item` (`\item \[`),
+    /// `\@item`'s `\everypar` removes the indent box (`\lastbox`) and sets
+    /// the label instead, so the display follows a line holding only the
+    /// label — the label on a line of its own, with the label's height and
+    /// depth.
+    fn display_opener_block(&mut self, bracket: bool, list_geom: Option<&ListGeom>) -> (BuiltBlock, f64) {
         let s = self.style;
-        let width = s.parindent_pt + if bracket { 0.6 * s.text_width_pt } else { 0.0 };
+        let size = s.body_size_pt;
+        let (hang, labelwidth) = list_geom.map_or((0.0, 0.0), |g| self.list_geometry(g, size));
+        let linewidth = s.text_width_pt - hang;
+        let label = list_geom.and_then(|g| g.label.as_ref()).and_then(|(text, span)| self.label_box(text, *span, size));
+        let mut width = hang + if bracket { 0.6 * linewidth } else { 0.0 };
+        let (mut runs, mut items, mut recs) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut height, mut depth) = (0.0, 0.0);
+        match label {
+            Some((run, rec)) => {
+                // `\hskip-\labelwidth \hskip-\labelsep \hbox to\labelwidth
+                // {\hss <label>} \hskip\labelsep`: the label's right edge
+                // ends `\labelsep` before the text edge.
+                let x = hang - s.labelsep_pt - run.width.min(labelwidth);
+                height = run.height;
+                depth = run.depth;
+                runs.push(position_run(&run, x, run.height));
+                items.push(pl::Item::Box(run));
+                recs.push(Some(rec));
+            }
+            None => width += s.parindent_pt,
+        }
+        let n = items.len();
         let line = pl::Line {
             index: 0,
-            runs: Vec::new(),
-            baseline_y: 0.0,
-            height: 0.0,
-            depth: 0.0,
+            runs,
+            baseline_y: height,
+            height,
+            depth,
             natural_width: width,
             set_width: s.text_width_pt,
             ratio: 0.0,
             badness: 0.0,
-            items: 0..0,
+            items: 0..n,
             hyphenated: false,
         };
         let lines = pl::Lines {
@@ -1351,14 +1401,16 @@ impl<'a> Context<'a> {
                 emergency_pass_used: false,
             },
             diagnostics: Vec::new(),
-            height: 0.0,
+            height: height + depth,
         };
-        let quad = self.text_params(TextStyle::default(), s.body_size_pt).quad;
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        // `\list` sets `\parskip\parsep`.
+        let parskip = list_geom.map_or(s.parskip, |g| g.parsep);
         let vertical = VBlock {
-            lines: vec![(0.0, 0.0)],
+            lines: vec![(height, depth)],
             penalty_before: None,
             space_before: None,
-            parskip: Some(skip_tuple(s.parskip)),
+            parskip: Some(skip_tuple(parskip)),
             interline_penalty: 0,
             club_penalty: 0,
             widow_penalty: 0,
@@ -1372,8 +1424,8 @@ impl<'a> Context<'a> {
         (
             BuiltBlock {
                 block: pl::ParagraphBlock::body(lines),
-                items: Vec::new(),
-                recs: Vec::new(),
+                items,
+                recs,
                 vertical,
                 labels: Vec::new(),
                 cache_key: None,
@@ -1458,16 +1510,32 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// `(\displayindent, \displaywidth)` of a display in a paragraph set
+    /// under `style` inside the lists `list_geom` (TeX §1149: taken from
+    /// the `\parshape`; `quote` indents both sides by `\leftmargini`, a
+    /// list its `\@totalleftmargin`).
+    fn display_shape(&mut self, style: ParaStyle, list_geom: Option<&ListGeom>) -> (f64, f64) {
+        let size = self.style.body_size_pt;
+        let quote = if matches!(style, ParaStyle::Quote) { self.style.leftmargini_pt } else { 0.0 };
+        let hang = list_geom.map_or(0.0, |g| self.list_geometry(g, size).0);
+        let s = quote + hang;
+        (s, (self.style.text_width_pt - s - quote).max(0.0))
+    }
+
     /// A display equation. `pre_display_size` is TeX's measure of the line
     /// before it (its material width plus 2em, or `None` when the display
     /// starts the paragraph); `number` is the `equation` counter set flush
-    /// right (`\eqno`).
+    /// right (`\eqno`). `style` and `list_geom` give the paragraph's
+    /// `\parshape` (§1149): the display is centred in `\displaywidth`
+    /// (`\linewidth`) starting `\displayindent` (`\@totalleftmargin`) in.
     fn display_block(
         &mut self,
         list: &flashtex_compiler::math::MathList,
         span: Span,
         pre_display_size: Option<f64>,
         number: Option<&(String, Span)>,
+        style: ParaStyle,
+        list_geom: Option<&ListGeom>,
     ) -> Option<BuiltBlock> {
         let rec = self.math_box(list, span, true)?;
         let BoxRec::Math(mi) = &self.recs[rec] else { unreachable!() };
@@ -1476,7 +1544,7 @@ impl<'a> Context<'a> {
         let run = math_run(root, size, span);
         let width = run.width;
         let (mut height, mut depth) = (run.height, run.depth);
-        let z = self.style.text_width_pt;
+        let (s, z) = self.display_shape(style, list_geom);
         // \eqno: the number's box (§1202) reduces the room for the formula.
         let mut eqno: Option<(pl::GlyphRun, usize)> = None;
         let mut e = 0.0;
@@ -1517,7 +1585,9 @@ impl<'a> Context<'a> {
                 d = 0.0;
             }
         }
-        let x = d.max(0.0);
+        // §1199: "not enough clearance" when the display starts left of
+        // where the line before it ended (`d + s <= pre_display_size`).
+        let x = s + d.max(0.0);
         let long = pre_display_size.is_some_and(|p| x <= p) || l;
         let (above, below) = if long {
             (self.style.abovedisplayskip, self.style.belowdisplayskip)
@@ -1537,7 +1607,7 @@ impl<'a> Context<'a> {
         let mut items = vec![pl::Item::Box(run)];
         let mut recs = vec![Some(rec)];
         if let Some((nrun, nrec)) = eqno {
-            runs.push(position_run(&nrun, z - e, height));
+            runs.push(position_run(&nrun, s + z - e, height));
             items.push(pl::Item::Box(nrun));
             recs.push(Some(nrec));
         }
@@ -1548,8 +1618,8 @@ impl<'a> Context<'a> {
             baseline_y: height,
             height,
             depth,
-            natural_width: width,
-            set_width: z,
+            natural_width: s + width,
+            set_width: s + z,
             ratio: 0.0,
             badness: 0.0,
             items: 0..n,
@@ -1575,7 +1645,7 @@ impl<'a> Context<'a> {
             let src = self.source(span);
             self.emit(None, Diagnostic::warning(
                 "overfull_display",
-                format!("display is {:.2}pt wider than the text width", width - z),
+                format!("display is {:.2}pt wider than the {}", width - z, if s > 0.0 { "line width" } else { "text width" }),
                 vec![src],
             ));
         }
@@ -2201,6 +2271,22 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                     if *eject_before {
                         b.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                     }
+                    // `\@startsection`: `\addvspace{<before>}` — right after
+                    // another heading (`\@nobreak`) no skip at all; otherwise
+                    // only the excess over the skip the previous block left
+                    // (`\lastskip`: a display's `\belowdisplayskip`, an
+                    // environment's closing `\topsep`), that skip removed.
+                    if after_heading {
+                        b.vertical.space_before = None;
+                    } else if let (Some(before), Some(prev)) = (b.vertical.space_before, blocks.last_mut()) {
+                        if let Some(last) = prev.vertical.space_after {
+                            if last.0 < before.0 {
+                                prev.vertical.space_after = None;
+                            } else {
+                                b.vertical.space_before = None;
+                            }
+                        }
+                    }
                     add_vspace(&mut b.vertical, *vspace_before);
                     blocks.push(b);
                     after_heading = true;
@@ -2215,11 +2301,22 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 eject_before,
                 vspace_before,
                 addvspace_before,
+                endlist_adjust,
                 list,
             } => {
                 let mut first = true;
                 let mut eject = *eject_before;
                 let mut vspace = *vspace_before;
+                // `\endtrivlist`: a positive trailing skip of the previous
+                // block is changed in place before `\@endparenv`'s
+                // `\addvspace` compares against it.
+                if *endlist_adjust != 0.0 {
+                    if let Some(prev) = blocks.last_mut() {
+                        if let Some(s) = prev.vertical.space_after.filter(|s| s.0 > 0.0) {
+                            prev.vertical.space_after = Some((s.0 + endlist_adjust, s.1, s.2));
+                        }
+                    }
+                }
                 // `\addvspace`: only the excess over the skip the previous
                 // block already left (`\@xaddvskip`).
                 if *addvspace_before != 0.0 {
@@ -2243,6 +2340,23 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                 // TeX's pre_display_size: the width of the line before a
                 // display plus 2em; -infinity when nothing precedes it.
                 let mut pre_display: Option<f64> = None;
+                let geom = list.as_ref();
+                let list_fp = geom.map_or(0, |g| {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    g.level.hash(&mut h);
+                    for m in &g.margins {
+                        match m {
+                            ListMargin::Fixed(pt) => pt.to_bits().hash(&mut h),
+                            ListMargin::Widest(text) => text.hash(&mut h),
+                        }
+                    }
+                    if let Some((text, span)) = &g.label {
+                        text.hash(&mut h);
+                        (span.end - span.start).hash(&mut h);
+                    }
+                    g.parsep.natural.to_bits().hash(&mut h);
+                    h.finish()
+                });
                 for part in parts {
                     match part {
                         ParaPart::Lines(items) => {
@@ -2250,24 +2364,8 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                             // display's closing `$$` (§1200 resume_after_display).
                             let items = if !first && matches!(items.first(), Some(AItem::Space { .. })) { &items[1..] } else { &items[..] };
                             let (ind, starts, ah) = (*indent && first, first, after_heading && first);
-                            let list_fp = list.as_ref().map_or(0, |g| {
-                                let mut h = std::collections::hash_map::DefaultHasher::new();
-                                g.level.hash(&mut h);
-                                for m in &g.margins {
-                                    match m {
-                                        ListMargin::Fixed(pt) => pt.to_bits().hash(&mut h),
-                                        ListMargin::Widest(text) => text.hash(&mut h),
-                                    }
-                                }
-                                if let Some((text, span)) = &g.label {
-                                    text.hash(&mut h);
-                                    (span.end - span.start).hash(&mut h);
-                                }
-                                h.finish()
-                            });
                             let (key, origin) = key_for(b'P', items, &[u64::from(ind), u64::from(starts), u64::from(ah), *style as u64, list_fp]);
                             let st = *style;
-                            let geom = list.as_ref();
                             if let Some(mut b) = ctx.cached(cache, key, origin, |c| c.paragraph_block(items, ind, starts, ah, st, geom)) {
                                 pre_display = b.block.lines.lines.last().map(|l| l.natural_width + 2.0 * quad);
                                 if std::mem::take(&mut eject) {
@@ -2285,7 +2383,7 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                             bracket,
                         } => {
                             if first {
-                                let (mut opener, size) = ctx.display_opener_block(*bracket);
+                                let (mut opener, size) = ctx.display_opener_block(*bracket, geom);
                                 if std::mem::take(&mut eject) {
                                     opener.vertical.penalty_before = Some(pagebuild::EJECT_PENALTY);
                                 }
@@ -2307,12 +2405,15 @@ pub fn build(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCache>) -> Laid 
                                     (ns.start.wrapping_sub(span.start), ns.end.wrapping_sub(span.start)).hash(&mut h);
                                 }
                                 bracket.hash(&mut h);
+                                (*style as u64).hash(&mut h);
+                                list_fp.hash(&mut h);
                                 (Some(h.finish()), Some((span.document, span.start)))
                             } else {
                                 (None, None)
                             };
                             let pd = pre_display;
-                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref())) {
+                            let st = *style;
+                            if let Some(b) = ctx.cached(cache, key, origin, |c| c.display_block(list, *span, pd, number.as_ref(), st, geom)) {
                                 blocks.push(b);
                             }
                             pre_display = None;

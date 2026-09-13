@@ -1,0 +1,305 @@
+# FlashTeX release: on a v* tag (or a manual run with a version) build the
+# helpers, package FlashTeX.app into a DMG (Developer ID-signed and
+# notarized when the secrets exist, ad-hoc otherwise), tar the CLI tools
+# for macOS arm64 and Linux x86_64, publish a GitHub release with
+# SHA256SUMS, then point the website (gh-pages) at it. See docs/ci-cd.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.2.0 (the tag is created on the run's commit if it does not exist)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  version:
+    name: resolve version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then tag="$INPUT_VERSION"; else tag="$GITHUB_REF_NAME"; fi
+          tag="v${tag#v}"
+          echo "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+){0,2}([-.][0-9A-Za-z.]+)?$' || { echo "not a release version: $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag"
+
+  macos:
+    name: macOS arm64 (app DMG + CLI)
+    needs: version
+    # Xcode 26 / Swift 6.x, Apple Silicon. If the macos-26 label is
+    # unavailable, use macos-15 with maxim-lobanov/setup-xcode.
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+    outputs:
+      signing: ${{ steps.sign.outputs.signing }}
+      notarized: ${{ steps.sign.outputs.notarize != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift --version && xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/compiler
+            crates/pdf
+            crates/bridge
+            crates/edit-ledger
+            crates/render-pipeline
+            crates/preview-controller
+            crates/project-files
+          key: helpers
+      - name: Build every bundled helper (release)
+        run: scripts/ci/build-helpers.sh | tee -a "$GITHUB_ENV"
+
+      - name: Import the Developer ID certificate into a temporary keychain (optional)
+        id: sign
+        # Secrets (all optional; see docs/ci-cd.md):
+        #   MAC_CERT_P12       base64 of a .p12 holding "Developer ID Application: ..." + private key
+        #   MAC_CERT_PASSWORD  the .p12 password
+        #   NOTARY_APPLE_ID, NOTARY_TEAM_ID, NOTARY_PASSWORD  (app-specific password) for notarytool
+        # Nothing here prints a secret; identities are matched by name only.
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MAC_CERT_P12:-}" ] || [ -z "${MAC_CERT_PASSWORD:-}" ]; then
+            echo "MAC_CERT_P12/MAC_CERT_PASSWORD not set: the app will be ad-hoc signed (not notarized)."
+            echo "signing=adhoc" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/flashtex-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productsign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          security default-keychain -d user -s "$KEYCHAIN"
+          identity="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep 'Developer ID Application' | head -1 | sed -E 's/.*"(.+)".*/\1/')"
+          [ -n "$identity" ] || { echo "the .p12 holds no valid 'Developer ID Application' identity"; exit 1; }
+          echo "Signing identity: $identity"
+          { echo "identity=$identity"; echo "keychain=$KEYCHAIN"; echo "signing=developer-id"; } >> "$GITHUB_OUTPUT"
+          if [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ] && [ -n "${NOTARY_PASSWORD:-}" ]; then
+            # Stored in the temporary keychain; make-app.sh looks the profile
+            # up by name there (FLASHTEX_NOTARY_KEYCHAIN) and never reads it.
+            xcrun notarytool store-credentials flashtex-ci --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" --keychain "$KEYCHAIN" >/dev/null
+            echo "FLASHTEX_NOTARY_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+            echo "notarize=flashtex-ci" >> "$GITHUB_OUTPUT"
+            echo "Notarization: enabled (profile flashtex-ci)"
+          else
+            echo "NOTARY_* secrets not all set: signed but not notarized."
+          fi
+
+      - name: Package FlashTeX.app and the DMG
+        env:
+          SIGN_IDENTITY: ${{ steps.sign.outputs.identity }}
+          NOTARY_PROFILE: ${{ steps.sign.outputs.notarize }}
+        run: |
+          set -euo pipefail
+          args=(--version "$VERSION" --dmg)
+          if [ -n "${SIGN_IDENTITY:-}" ]; then args+=(--sign "$SIGN_IDENTITY"); fi
+          if [ -n "${NOTARY_PROFILE:-}" ]; then args+=(--notarize "$NOTARY_PROFILE"); fi
+          echo "make-app.sh ${args[*]}"
+          apps/mac/scripts/make-app.sh "${args[@]}"
+          test -f apps/mac/build/FlashTeX.dmg
+          cat apps/mac/build/FlashTeX.app/Contents/Resources/components.json
+
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp apps/mac/build/FlashTeX.dmg dist/FlashTeX.dmg
+          cp apps/mac/build/FlashTeX.dmg "dist/FlashTeX-$VERSION-macos-arm64.dmg"
+          scripts/ci/package-cli.sh "$VERSION" macos-arm64 dist \
+            --fonts-dir apps/mac/build/FlashTeX.app/Contents/Resources/Fonts \
+            --texmf-root apps/mac/build/FlashTeX.app/Contents/Resources/texmf
+          (cd dist && shasum -a 256 -- * | tee SHA256SUMS.macos)
+      - name: Smoke-test the packaged CLI
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cli" && tar -C "$RUNNER_TEMP/cli" -xzf "dist/flashtex-cli-$VERSION-macos-arm64.tar.gz"
+          printf '\\begin{document}\nHello $\\frac{1}{2}$ world.\n\\end{document}\n' > "$RUNNER_TEMP/smoke.tex"
+          env -u FLASHTEX_FONT_DIRS -u FLASHTEX_TFM_DIRS -u FLASHTEX_LM_DIR \
+            "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-macos-arm64/bin/flashtex-render" --tex "$RUNNER_TEMP/smoke.tex" --pdf "$RUNNER_TEMP/smoke.pdf"
+          head -c 8 "$RUNNER_TEMP/smoke.pdf" | grep -q '%PDF-1.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Delete the temporary keychain
+        if: always() && steps.sign.outputs.keychain != ''
+        run: security delete-keychain "${{ steps.sign.outputs.keychain }}" || true
+
+  linux:
+    name: Linux x86_64 (CLI)
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    outputs:
+      built: ${{ steps.build.outputs.built }}
+      skipped: ${{ steps.build.outputs.skipped }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/render-pipeline
+            crates/compiler
+            crates/pdf
+          key: cli
+      - name: Build the CLI crates (each may fail independently)
+        id: build
+        run: |
+          set -uo pipefail
+          built=(); skipped=()
+          for c in render-pipeline compiler pdf; do
+            if (cd "crates/$c" && cargo build --release --locked); then built+=("$c"); else skipped+=("$c"); fi
+          done
+          echo "built=${built[*]:-}" >> "$GITHUB_OUTPUT"
+          echo "skipped=${skipped[*]:-}" >> "$GITHUB_OUTPUT"
+          echo "built: ${built[*]:-none}; did not build on Linux: ${skipped[*]:-none}"
+          [ ${#built[@]} -gt 0 ]
+      - name: Package the CLI
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          scripts/ci/package-cli.sh "$VERSION" linux-x86_64 dist
+          (cd dist && sha256sum -- * | tee SHA256SUMS.linux)
+      - name: Smoke-test the packaged CLI
+        if: contains(steps.build.outputs.built, 'render-pipeline')
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cli" && tar -C "$RUNNER_TEMP/cli" -xzf "dist/flashtex-cli-$VERSION-linux-x86_64.tar.gz"
+          printf '\\begin{document}\nHello $\\frac{1}{2}$ world.\n\\end{document}\n' > "$RUNNER_TEMP/smoke.tex"
+          "$RUNNER_TEMP/cli/flashtex-cli-$VERSION-linux-x86_64/bin/flashtex-render" --tex "$RUNNER_TEMP/smoke.tex" --pdf "$RUNNER_TEMP/smoke.pdf"
+          head -c 8 "$RUNNER_TEMP/smoke.pdf" | grep -q '%PDF-1.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: GitHub release + website
+    needs: [version, macos, linux]
+    if: always() && needs.macos.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: incoming
+          merge-multiple: true
+      - name: Assemble assets and SHA256SUMS
+        id: assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find incoming -type f ! -name 'SHA256SUMS.*' -exec cp {} dist/ \;
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          dmg_sha="$(sha256sum dist/FlashTeX.dmg | cut -d' ' -f1)"
+          echo "dmg_sha=$dmg_sha" >> "$GITHUB_OUTPUT"
+      - name: Write release notes header
+        env:
+          SIGNING: ${{ needs.macos.outputs.signing }}
+          NOTARIZED: ${{ needs.macos.outputs.notarized }}
+          LINUX_RESULT: ${{ needs.linux.result }}
+          LINUX_BUILT: ${{ needs.linux.outputs.built }}
+          LINUX_SKIPPED: ${{ needs.linux.outputs.skipped }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Downloads"
+            echo
+            echo "| Asset | What |"
+            echo "|---|---|"
+            echo "| \`FlashTeX.dmg\` / \`FlashTeX-$VERSION-macos-arm64.dmg\` | The Mac app (macOS 14+, Apple Silicon). Same file under both names; \`install.sh\` on the website fetches \`FlashTeX.dmg\`. |"
+            echo "| \`flashtex-cli-$VERSION-macos-arm64.tar.gz\` | Command-line tools (\`flashtex-render --tex main.tex --pdf main.pdf\`, compiler, pdf) with the bundled fonts/metrics. |"
+            if [ "$LINUX_RESULT" = "success" ]; then
+              echo "| \`flashtex-cli-$VERSION-linux-x86_64.tar.gz\` | Command-line tools for Linux x86_64 (built: ${LINUX_BUILT:-none}${LINUX_SKIPPED:+; not built on Linux: $LINUX_SKIPPED}). |"
+            else
+              echo "| _(no Linux CLI)_ | The Linux build job did not succeed for this release (result: $LINUX_RESULT). |"
+            fi
+            echo "| \`SHA256SUMS\` | \`sha256sum -c SHA256SUMS\` after downloading. |"
+            echo
+            echo "## Signing"
+            echo
+            if [ "$SIGNING" = "developer-id" ] && [ "$NOTARIZED" = "true" ]; then
+              echo "The app and DMG are signed with a Developer ID certificate and notarized by Apple; Gatekeeper opens them directly."
+            elif [ "$SIGNING" = "developer-id" ]; then
+              echo "The app and DMG are signed with a Developer ID certificate but **not notarized** (notarization secrets were not configured); macOS may ask you to confirm the first launch."
+            else
+              echo "This build is **ad-hoc signed** (no Developer ID certificate configured in CI). macOS Gatekeeper will refuse the first launch from a browser download: right-click FlashTeX.app > Open, or install with the website's \`install.sh\` which strips the quarantine attribute after verifying the checksum."
+            fi
+            echo
+            echo "FlashTeX.dmg sha256: \`${{ steps.assets.outputs.dmg_sha }}\`"
+            echo
+          } > notes.md
+          cat notes.md
+      - name: Create or update the GitHub release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists; replacing assets"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "FlashTeX $TAG" --notes-file notes.md --generate-notes --target "$GITHUB_SHA"
+          fi
+          gh release view "$TAG" --json url --jq .url
+      - name: Point the website (gh-pages) at this release
+        run: |
+          set -euo pipefail
+          # A fresh clone in a temp dir does not inherit actions/checkout's
+          # credential; route github.com pushes through the job token.
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          scripts/ci/update-site.sh "$TAG" "${{ steps.assets.outputs.dmg_sha }}" --remote "https://github.com/${GITHUB_REPOSITORY}.git"

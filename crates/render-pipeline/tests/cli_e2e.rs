@@ -198,3 +198,65 @@ fn display_list_v2_is_a_sibling_line_only_when_negotiated() {
     );
     assert_eq!(p.get("status").and_then(|v| v.as_str()), Some("recovered"));
 }
+
+/// `--tex FILE` convenience mode: no JSON on either side. The file's basename
+/// is the project path, `--pdf`/`--v2` are written, diagnostics reach stderr
+/// as `severity[code] message (line:col)`, and the exit code follows the
+/// status (0 ok/recovered, 1 failed, 2 unreadable input).
+#[test]
+fn tex_file_mode_renders_without_json_and_reports_readably() {
+    if !lm_available() {
+        eprintln!("skipping: Latin Modern not installed");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("flashtex-render-tex-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let tex = dir.join("hello.tex");
+    let pdf = dir.join("hello.pdf");
+    let v2 = dir.join("hello.v2.json");
+    std::fs::write(&tex, "\\begin{document}\nHello $\\frac{1}{2}$ wörld.\n\\end{document}\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_flashtex-render"))
+        .args(["--tex", tex.to_str().unwrap(), "--pdf", pdf.to_str().unwrap(), "--v2", v2.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .expect("spawn flashtex-render --tex");
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(out.status.success(), "exit 0 for an ok document: {stderr}");
+    assert!(out.stdout.is_empty(), "--tex writes no JSON to stdout: {}", String::from_utf8_lossy(&out.stdout));
+    assert!(stderr.contains("hello.tex: ok, 1 page"), "{stderr}");
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-1."));
+    let v2 = json::parse(&std::fs::read_to_string(&v2).unwrap()).unwrap();
+    assert_eq!(v2.get("id").and_then(|v| v.as_str()), Some("hello.tex"), "the request id is the basename");
+    let doc = &v2.get("payload").unwrap().get("documents").and_then(|v| v.as_arr()).unwrap()[0];
+    assert_eq!(doc.get("path").and_then(|v| v.as_str()), Some("hello.tex"));
+
+    // A document with a diagnostic on line 2 reports it at (line:col) and
+    // keeps exit 0 when the pipeline recovered.
+    let bad = dir.join("bad.tex");
+    std::fs::write(&bad, "\\begin{document}\nHello } world.\n\\end{document}\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_flashtex-render"))
+        .args(["--tex", bad.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    let diag = stderr.lines().find(|l| l.starts_with("error[") || l.starts_with("warning[")).unwrap_or_else(|| panic!("a readable diagnostic line: {stderr}"));
+    assert!(diag.contains("] ") && diag.ends_with(')'), "severity[code] message (line:col): {diag}");
+    assert!(diag.contains("(2:"), "the diagnostic is on line 2: {diag}");
+    let status = stderr.lines().find(|l| l.starts_with("flashtex-render: bad.tex: ")).unwrap_or_else(|| panic!("summary line: {stderr}"));
+    if status.contains(": failed") {
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+    } else {
+        assert!(out.status.success(), "{stderr}");
+    }
+
+    // Unreadable input: exit 2, nothing written.
+    let out = Command::new(env!("CARGO_BIN_EXE_flashtex-render"))
+        .args(["--tex", dir.join("missing.tex").to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cannot read"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

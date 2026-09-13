@@ -1,7 +1,8 @@
 @AGENTS.md
 
 Read docs/INDEX.md, coordination/PROJECT.md, coordination/RESOURCES.md,
-ORCHESTRATION.md, and coordination/COMMANDER.md before work.
+ORCHESTRATION.md, and coordination/COMMANDER.md before work. Agent onboarding
+notes (formerly in the root README) are in docs/agents/README.md.
 
 Current explicit user authorization: the 20x Claude Max plan on mac-m1max-a may
 run project work and subagents. Parent mac-claude-a owns allocation/reports for

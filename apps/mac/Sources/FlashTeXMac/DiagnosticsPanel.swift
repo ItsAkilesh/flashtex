@@ -330,12 +330,8 @@ struct DiagnosticsListView: View {
                 Button("Fix…") { model.previewQuickFix(diagnosticIndex: i) }
                     .help(x.suggestions.first { !$0.edits.isEmpty }?.text ?? "Preview a suggested fix")
             }
-            Button("Fix with Grok") { model.fixWithGrok(diagnosticIndex: i) } // ShellModel+GrokAssistant.swift
-                .help("Selects this diagnostic's span and opens Ask Grok pre-filled with “Fix this: …” (⌘⌥G)")
-                .accessibilityIdentifier("diagnostics.fix-with-grok")
         }
         .contextMenu {
-            Button("Fix with Grok") { model.fixWithGrok(diagnosticIndex: i) }
             if d.source != nil { Button("Go to source") { model.goToOccurrence(k, of: g, panel: panel) } }
         }
         .controlSize(.small) // 30 TeX diagnostics must fit a 260 pt panel: small trailing controls, tight rows

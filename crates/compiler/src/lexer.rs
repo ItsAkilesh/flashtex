@@ -33,6 +33,21 @@ pub enum TokenKind {
     DisplayMathClose,
     Superscript,
     Subscript,
+    /// `\verb` (or `\verb*`) through its matching delimiter: any character
+    /// immediately following `\verb`/`\verb*` — no whitespace is skipped
+    /// first, unlike an ordinary control word — opens the argument, and the
+    /// same character closes it. `text` is the raw source between the
+    /// delimiters, untouched by `%`, `\`, `$`, `{`, or `}` interpretation:
+    /// this variant is produced by a dedicated character scan, not by
+    /// re-entering the normal tokenizer loop. `terminated` is false when the
+    /// end of the line (or of the input) was reached before a matching
+    /// closing delimiter; the parser turns that into a diagnostic and
+    /// recovers at end of line, matching real LaTeX's own `\verb` error.
+    Verb {
+        text: String,
+        starred: bool,
+        terminated: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,11 +73,16 @@ fn is_special(c: char) -> bool {
 /// example four hyphens give an em dash followed by a literal hyphen, not two
 /// en dashes).
 ///
-/// Callers must only apply this to genuine text-mode words. This crate has no
-/// verbatim, `\texttt`, or `\ttfamily` state yet (see the README's honest
-/// boundary), and math is parsed through an entirely separate path that never
-/// calls this function, so every [`TokenKind::Word`] reachable from ordinary
-/// paragraph text or a supported command's text argument is fair game.
+/// Callers must only apply this to genuine text-mode words. `\verb` and the
+/// `verbatim`/`lstlisting` environments never reach this function — their raw
+/// text is captured separately (see [`TokenKind::Verb`] and
+/// `parser::verbatim_display`) precisely so it is never ligature-substituted.
+/// `\texttt`/`\ttfamily` text still goes through here (an accepted
+/// simplification; real TeX's typewriter fonts have no ligature program
+/// either, which this crate does not yet reproduce), and math is parsed
+/// through an entirely separate path that never calls this function, so every
+/// other [`TokenKind::Word`] reachable from ordinary paragraph text or a
+/// supported command's text argument is fair game.
 pub fn apply_text_ligatures(word: &str) -> String {
     if !word
         .bytes()
@@ -176,6 +196,56 @@ pub fn tokenize_document(text: &str, document: DocumentId) -> Vec<Token> {
                             name.push(ch);
                             end = j + ch.len_utf8();
                             it.next();
+                        }
+                        if name == "verb" {
+                            // `\verb`/`\verb*` reads its own raw argument
+                            // directly off the character stream: no blank-
+                            // skipping (the very next character, even a
+                            // space, is the delimiter) and no reinterpreting
+                            // `%`, `\`, `$`, `{`, `}` while scanning for the
+                            // matching close.
+                            let starred = matches!(it.peek(), Some(&(_, '*')));
+                            if starred {
+                                it.next();
+                            }
+                            let (verb_text, verb_end, terminated) = match it.peek().copied() {
+                                Some((delim_pos, delim)) if delim != '\n' => {
+                                    it.next();
+                                    let content_start = delim_pos + delim.len_utf8();
+                                    let mut content_end = content_start;
+                                    let mut closed = false;
+                                    while let Some(&(j, ch)) = it.peek() {
+                                        if ch == delim {
+                                            it.next();
+                                            closed = true;
+                                            content_end = j;
+                                            break;
+                                        }
+                                        if ch == '\n' {
+                                            break;
+                                        }
+                                        content_end = j + ch.len_utf8();
+                                        it.next();
+                                    }
+                                    let verb_text = text[content_start..content_end].to_string();
+                                    let verb_end = if closed {
+                                        content_end + delim.len_utf8()
+                                    } else {
+                                        content_end
+                                    };
+                                    (verb_text, verb_end, closed)
+                                }
+                                _ => (String::new(), end, false),
+                            };
+                            tokens.push(Token {
+                                kind: TokenKind::Verb {
+                                    text: verb_text,
+                                    starred,
+                                    terminated,
+                                },
+                                span: Span::in_document(document, start, verb_end),
+                            });
+                            continue;
                         }
                         tokens.push(Token {
                             kind: TokenKind::Command(name),
@@ -361,5 +431,60 @@ mod tests {
         assert_eq!(apply_text_ligatures("hello"), "hello");
         assert_eq!(apply_text_ligatures("well-known"), "well-known");
         assert_eq!(apply_text_ligatures(""), "");
+    }
+
+    #[test]
+    fn verb_reads_any_delimiter_and_ignores_specials_inside() {
+        let toks = tokenize(r"\verb|100% \foo${}|done");
+        assert_eq!(
+            toks[0].kind,
+            TokenKind::Verb {
+                text: r"100% \foo${}".into(),
+                starred: false,
+                terminated: true,
+            }
+        );
+        // The delimiter itself is excluded from the span but the rest of the
+        // token stream resumes right after it, as ordinary text.
+        assert_eq!(toks[1].kind, TokenKind::Word("done".into()));
+    }
+
+    #[test]
+    fn verb_star_shows_and_uses_any_delimiter_with_no_space_skipped() {
+        let toks = tokenize(r"\verb* a b*");
+        // The character right after `\verb*` — a space — is the delimiter,
+        // with no whitespace-skipping the way an ordinary control word gets.
+        assert_eq!(
+            toks[0].kind,
+            TokenKind::Verb {
+                text: "a".into(),
+                starred: true,
+                terminated: true,
+            }
+        );
+    }
+
+    #[test]
+    fn unterminated_verb_recovers_at_end_of_line() {
+        let toks = tokenize("\\verb|no closing delimiter\nnext line");
+        assert_eq!(
+            toks[0].kind,
+            TokenKind::Verb {
+                text: "no closing delimiter".into(),
+                starred: false,
+                terminated: false,
+            }
+        );
+        // The newline is untouched and still tokenizes normally afterward.
+        assert!(toks[1..]
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Word(w) if w == "next")));
+    }
+
+    #[test]
+    fn verb_span_covers_backslash_through_closing_delimiter() {
+        let text = r"\verb|xy|";
+        let toks = tokenize(text);
+        assert_eq!(toks[0].span, Span::new(0, text.len()));
     }
 }

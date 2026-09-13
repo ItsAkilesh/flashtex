@@ -3,9 +3,11 @@ import XCTest
 @testable import FlashTeXMac
 
 /// The shell hooks of ShellModel+DiagnosticRetention.swift (applied branch):
-/// after a real HW1 result, a real failed result with no output keeps the
-/// 119 underlines flagged, keyboard navigation still walks them and says so,
-/// an edit rebases them, and the next result with output replaces them.
+/// after a real partial-output result (the generated fixture of
+/// EditorDiagnosticsPartialOutputTests, ~115 diagnostics), a real failed
+/// result with no output keeps the underlines flagged, keyboard navigation
+/// still walks them and says so, an edit rebases them, and the next result
+/// with output replaces them.
 final class EditorDiagnosticsRetentionShellTests: XCTestCase {
     @MainActor
     func testFailedResultKeepsMarksInTheShellAndNavigationAnnouncesIt() throws {
@@ -14,8 +16,7 @@ final class EditorDiagnosticsRetentionShellTests: XCTestCase {
             throw XCTSkip("set FLASHTEX_COMPILER to run the shell retention test against the live compiler")
         }
         let compiler = URL(fileURLWithPath: path)
-        let text = EditorDiagnosticsPartialOutputTests.prefix
-            + (try String(contentsOf: EditorDiagnosticsPartialOutputTests.hw1URL, encoding: .utf8))
+        let text = EditorDiagnosticsPartialOutputTests.fixtureText
         let good = try EditorDiagnosticsPartialOutputTests.compile([.init(path: "main.tex", text: text)], revision: 1, id: "g-1", with: compiler)
         let failed = try EditorDiagnosticsPartialOutputTests.compile([], entry: "", revision: 2, id: "f-2", with: compiler)
         XCTAssertEqual(good.payload.status, .recovered)
@@ -27,6 +28,7 @@ final class EditorDiagnosticsRetentionShellTests: XCTestCase {
         model.setCompiledDocuments(["main.tex": text])
         model.retainMarksAfterResultBound()
         let n = good.payload.diagnostics.count
+        XCTAssertEqual(n, EditorDiagnosticsPartialOutputTests.PartialOutputFixture.diagnostics)
         XCTAssertEqual(model.editorMarks.count, n)
         XCTAssertNil(model.editorMarkReport.carried)
         XCTAssertEqual(model.retainedMarks?.result.revision, 1)
@@ -46,7 +48,7 @@ final class EditorDiagnosticsRetentionShellTests: XCTestCase {
         model.caretUTF16 = 0
         model.currentDiagnosticID = nil
         model.goToDiagnostic(forward: true)
-        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), "\\usepackage[T1]{fontenc}")
+        XCTAssertEqual((model.activeText as NSString).substring(with: model.selection!.nsRange), EditorDiagnosticsPartialOutputTests.PartialOutputFixture.firstMark)
         XCTAssertTrue(model.navigationNote?.hasPrefix("Warning 1 of \(n), line 4: ") == true, model.navigationNote ?? "nil")
         XCTAssertTrue(model.navigationNote?.hasSuffix("; \(n) underlines kept from revision 1: revision 2 failed with no output") == true, model.navigationNote ?? "nil")
 

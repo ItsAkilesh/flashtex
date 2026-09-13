@@ -15,7 +15,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::layout::{self, FlowState, LayoutCursor, Page, PlacedItem, TextItem};
 use crate::math::{MathAtom, MathList, Nucleus};
-use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument};
+use crate::parser::{self, Block, Inline, MacroDependency, MathRow, SourceDocument, VerbatimLine};
 use crate::Span;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -404,6 +404,8 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             content,
             extra_gap_before_pt,
             extra_gap_after_pt,
+            leftmargin,
+            widest_label,
         } => Block::ListItem {
             level: *level,
             label: match label {
@@ -413,12 +415,42 @@ fn shift_block(block: &Block, changes: &[ChangedBytes], deltas: &[isize]) -> Opt
             content: shift_inlines(content, changes, deltas)?,
             extra_gap_before_pt: *extra_gap_before_pt,
             extra_gap_after_pt: *extra_gap_after_pt,
+            leftmargin: leftmargin.clone(),
+            widest_label: widest_label.clone(),
         },
         Block::VSpace { pt } => Block::VSpace { pt: *pt },
         Block::Rule { span } => Block::Rule {
             span: mapped_span(*span, changes, deltas)?,
         },
         Block::PageBreak => Block::PageBreak,
+        Block::Verbatim { lines, span } => Block::Verbatim {
+            lines: lines
+                .iter()
+                .map(|line| {
+                    Some(VerbatimLine {
+                        text: line.text.clone(),
+                        span: mapped_span(line.span, changes, deltas)?,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?,
+            span: mapped_span(*span, changes, deltas)?,
+        },
+        Block::TableOfContents { span } => Block::TableOfContents {
+            span: mapped_span(*span, changes, deltas)?,
+        },
+        Block::TitleBlock {
+            title,
+            authors,
+            date,
+        } => Block::TitleBlock {
+            title: shift_inlines(title, changes, deltas)?,
+            authors: shift_inlines(authors, changes, deltas)?,
+            date: match date {
+                Some(date) => Some(shift_inlines(date, changes, deltas)?),
+                None => None,
+            },
+        },
+        Block::VFill => Block::VFill,
     })
 }
 
@@ -493,10 +525,18 @@ fn shift_inlines(
                 value: value.clone(),
                 span: mapped_span(*span, changes, deltas)?,
             }),
-            Inline::Reference { key, page, span } => Some(Inline::Reference {
+            Inline::Reference {
+                key,
+                page,
+                equation,
+                span,
+                space_before,
+            } => Some(Inline::Reference {
                 key: key.clone(),
                 page: *page,
+                equation: *equation,
                 span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
             Inline::HFill { span } => Some(Inline::HFill {
                 span: mapped_span(*span, changes, deltas)?,
@@ -504,6 +544,35 @@ fn shift_inlines(
             Inline::HSpace { pt, span } => Some(Inline::HSpace {
                 pt: *pt,
                 span: mapped_span(*span, changes, deltas)?,
+            }),
+            Inline::Footnote {
+                number,
+                span,
+                mark,
+                text,
+                space_before,
+            } => Some(Inline::Footnote {
+                number: number.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+                mark: *mark,
+                text: match text {
+                    Some(text) => Some(shift_inlines(text, changes, deltas)?),
+                    None => None,
+                },
+                space_before: *space_before,
+            }),
+            Inline::Tabular(table) => Some(Inline::Tabular(Box::new(table.try_map_spans(
+                &mut |span| mapped_span(span, changes, deltas),
+                &mut |inlines| shift_inlines(inlines, changes, deltas),
+            )?))),
+            Inline::Verbatim {
+                text,
+                span,
+                space_before,
+            } => Some(Inline::Verbatim {
+                text: text.clone(),
+                span: mapped_span(*span, changes, deltas)?,
+                space_before: *space_before,
             }),
         })
         .collect()
@@ -522,6 +591,7 @@ fn shift_math_list(
                 Some(MathAtom {
                     nucleus: match &atom.nucleus {
                         Nucleus::Symbol(text) => Nucleus::Symbol(text.clone()),
+                        Nucleus::SizedDelimiter { .. } => atom.nucleus.clone(),
                         Nucleus::Text(text) => Nucleus::Text(text.clone()),
                         Nucleus::Space { em } => Nucleus::Space { em: *em },
                         Nucleus::Fraction {
@@ -572,7 +642,11 @@ fn shift_math_list(
                             accent: *accent,
                             body: shift_math_list(body, changes, deltas)?,
                         },
+                        Nucleus::Group(inner) => {
+                            Nucleus::Group(shift_math_list(inner, changes, deltas)?)
+                        }
                     },
+                    class_override: atom.class_override,
                     span: mapped_span(atom.span, changes, deltas)?,
                     // An absent script stays absent; a present one that cannot be
                     // shifted fails the whole mapping, so the caller falls back to a
@@ -631,6 +705,8 @@ fn shift_diagnostics(
                     None => None,
                 },
                 recovery: diagnostic.recovery.clone(),
+                code: diagnostic.code,
+                suggestion: diagnostic.suggestion.clone(),
             })
         })
         .collect()
@@ -650,7 +726,17 @@ fn block_signature(block: &Block) -> BlockSignature {
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. }
+        | Block::Rule { .. }
+        | Block::PageBreak
+        | Block::Verbatim { .. }
+        | Block::TableOfContents { .. }
+        | Block::VFill => &[],
+        // Signature only, not identity (see the doc comment above): using
+        // just `title` here (never `authors`/`date`) can only widen the
+        // candidate set on an author/date-only edit, never produce a wrong
+        // reuse, since `shift_block`'s full equality check still gates that.
+        Block::TitleBlock { title, .. } => title,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -662,6 +748,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
+        Inline::Tabular(table) => table.span,
+        Inline::Verbatim { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -690,7 +779,17 @@ fn shifted_signature(
         Block::Heading { content, .. } => content,
         Block::FigureCaption { content } => content,
         Block::Styled { content, .. } => content,
-        Block::VSpace { .. } | Block::Rule { .. } | Block::PageBreak => &[],
+        Block::VSpace { .. }
+        | Block::Rule { .. }
+        | Block::PageBreak
+        | Block::Verbatim { .. }
+        | Block::TableOfContents { .. }
+        | Block::VFill => &[],
+        // Signature only, not identity (see the doc comment above): using
+        // just `title` here (never `authors`/`date`) can only widen the
+        // candidate set on an author/date-only edit, never produce a wrong
+        // reuse, since `shift_block`'s full equality check still gates that.
+        Block::TitleBlock { title, .. } => title,
     };
     let span_of = |inline: &Inline| match inline {
         Inline::Text { span, .. } => *span,
@@ -702,6 +801,9 @@ fn shifted_signature(
         Inline::Reference { span, .. } => *span,
         Inline::HFill { span } => *span,
         Inline::HSpace { span, .. } => *span,
+        Inline::Footnote { span, .. } => *span,
+        Inline::Tabular(table) => table.span,
+        Inline::Verbatim { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);
@@ -759,6 +861,24 @@ mod tests {
     }
 
     #[test]
+    fn edit_inside_verbatim_matches_clean_build() {
+        let result = compile_edit(
+            "Intro.\n\n\\begin{verbatim}\nold line\n\\end{verbatim}\n\nTail.",
+            "Intro.\n\n\\begin{verbatim}\nnew line\n\\end{verbatim}\n\nTail.",
+        );
+        assert_eq!(result.stats.blocks_total, 3);
+    }
+
+    #[test]
+    fn edit_before_verbatim_still_reuses_it() {
+        let result = compile_edit(
+            "Intro.\n\n\\begin{verbatim}\nkept line\n\\end{verbatim}\n\nTail.",
+            "Intro changed.\n\n\\begin{verbatim}\nkept line\n\\end{verbatim}\n\nTail.",
+        );
+        assert!(result.stats.blocks_reused >= 1);
+    }
+
+    #[test]
     fn heading_and_math_use_the_same_cursor_as_clean_layout() {
         let result = compile_edit(
             "\\section{Measured $x^2$ heading}\n\nBody with $\\frac{1}{2}$.\n\nTail.",
@@ -790,6 +910,15 @@ mod tests {
             "One paragraph joined to Two paragraph.\n\nThree paragraph.",
         );
         assert_eq!(result.stats.blocks_total, 2);
+    }
+
+    #[test]
+    fn justified_multi_line_paragraphs_reuse_identically() {
+        let body = "Several words wrap across lines and get justified. ".repeat(6);
+        let old = format!("{body}\n\n{body}\n\n{body}");
+        let new = format!("{body}\n\nEdited {body}\n\n{body}");
+        let result = compile_edit(&old, &new);
+        assert!(result.stats.blocks_reused >= 1);
     }
 
     #[test]
@@ -906,5 +1035,15 @@ mod tests {
             .expect("right-hand text");
         let width = layout::text_width("right", 12.0, layout::Font::TimesRoman);
         assert!((right.x_pt + width - 540.0).abs() < 0.02);
+    }
+
+    #[test]
+    fn reused_tabular_block_shifts_every_nested_span() {
+        let table = "\\begin{tabular}{|l|c|}\\hline A & $x$ \\\\ \\multicolumn{2}{@{:}c|}{B}\\\\\\hline\\end{tabular}";
+        let result = compile_edit(
+            &format!("First words.\n\n{table}\n\nTail."),
+            &format!("First changed words.\n\n{table}\n\nTail."),
+        );
+        assert!(result.stats.blocks_reused >= 2);
     }
 }

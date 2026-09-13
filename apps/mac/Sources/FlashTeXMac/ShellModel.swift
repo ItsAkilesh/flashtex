@@ -27,8 +27,8 @@ final class ShellModel {
     var selection: Selection?
     var navigationNote: String?
     var darkPreview = EditorPreferences.shared.darkPreviewDefault // EditorPreferences.swift: appearance preference
-    /// Openers the editor auto-closes (`{`, `[`, `$`); braces only by default (SourceEditorView).
-    var autoClosePairs: Set<Character> = ["{"]
+    /// Openers the editor auto-closes (`{`, `[`, `$`, and `(` for `\(`/`\[`); SourceEditorView.
+    var autoClosePairs: Set<Character> = ["{", "[", "$", "("]
     // Workspace chrome (ContentView.swift, mac-ui-redesign): the bottom
     // Problems panel, its severity filter, and the command palette sheet.
     // The panel state is shared with the palette so Next/Previous
@@ -37,8 +37,6 @@ final class ShellModel {
     var problemsSeverityFilter: RuntimeV1.Severity?
     var commandPaletteShown = false
     let problemsPanel = DiagnosticsPanelState()
-    /// Ask Grok on the live document (ShellModel+GrokAssistant.swift, GrokAssistantView.swift).
-    @ObservationIgnored let grokAssistant = GrokAssistant()
     /// The display-list-v2 pane (PreviewV2View.swift) is the default; `FLASHTEX_PREVIEW_V2=0` selects the v1 pane.
     var previewV2 = ProcessInfo.processInfo.environment["FLASHTEX_PREVIEW_V2"] != "0"
     /// Preview debug status (compile status word, "provisional rendering", v2 frame/font identity line,
@@ -433,6 +431,13 @@ final class ShellModel {
                 loadError = "Rejected \(result.lastPathComponent): \(violation)"
                 return
             }
+            // Fixtures replace the whole project: detach any real file identity
+            // first so Save can never write fixture content over the user's
+            // document, and stop watching the file that's no longer open (#72).
+            documentURL = nil
+            savedText = nil
+            files.conflict = nil
+            watchOpenDocument()
             self.result = res.payload
             self.resultID = res.id
             self.fixtureURL = result
@@ -468,16 +473,47 @@ final class ShellModel {
     func reloadFixture() {
         guard let url = fixtureURL else { return }
         let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-        loadFixtures(request: request, result: url)
+        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
     }
 
     func openFixturePanel() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.message = "Choose a runtime v1 compile_result JSON file"
-        if panel.runModal() == .OK, let url = panel.url {
-            let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
-            loadFixtures(request: request, result: url)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let request = url.deletingLastPathComponent().appendingPathComponent("compile-request.json")
+        confirmLoadFixtures { self.loadFixtures(request: request, result: url) }
+    }
+
+    /// Loading a fixture replaces the whole project, so when a real document is
+    /// open or has unsaved edits, confirm first — same Save/Discard/Cancel flow
+    /// `openTexPanel` uses before opening another file (#72).
+    private func confirmLoadFixtures(_ load: () -> Void) {
+        guard documentURL != nil || isDirty else { load(); return }
+        let alert = NSAlert()
+        alert.messageText = "Save changes to \(documentURL?.lastPathComponent ?? "the unsaved buffer") before loading the fixture?"
+        alert.informativeText = "Loading a fixture replaces the whole project. Discarded text stays recoverable this session via Edit > Restore Discarded Buffer."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            if documentURL == nil {
+                guard saveTexAs() else { return }
+            } else if !saveTex() {
+                captureNote = "Could not save the current buffer (\(files.status)); fixture was not loaded."
+                if files.conflict != nil { resolveConflictPanel() }
+                return
+            }
+            load()
+        case .alertSecondButtonReturn:
+            let discarding = RecoverableBuffer(url: documentURL, text: activeText)
+            recoverableBuffer = discarding
+            if let from = discarding.url {
+                preserveDirtyText(discarding.text, at: from, reason: "discarded when a fixture was loaded")
+            }
+            load()
+        default: break
         }
     }
 

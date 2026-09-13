@@ -181,6 +181,12 @@ enum EditorIntelligence {
         let prefix = text.substring(with: NSRange(location: lineStart, length: caret - lineStart))
         let suffix = text.substring(with: NSRange(location: caret, length: lineEnd - caret))
         let indent = String(prefix.prefix { $0 == " " || $0 == "\t" })
+        // `\item …` Return inside a list continues it with a new `\item `; a
+        // bare `\item` line (nothing typed) just breaks the line.
+        if suffix.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }), let item = itemContinuation(inLinePrefix: prefix) {
+            let insertion = "\n" + indent + item
+            return NewlineInsertion(text: insertion, caretOffset: insertion.utf16.count, closedEnvironment: nil)
+        }
         guard let env = openingEnvironment(inLinePrefix: prefix) else {
             return NewlineInsertion(text: "\n" + indent, caretOffset: 1 + indent.utf16.count, closedEnvironment: nil)
         }
@@ -227,6 +233,66 @@ enum EditorIntelligence {
         guard rest.allSatisfy({ $0 == " " || $0 == "\t" || $0 == "\r" }) else { return nil }
         if prefix.contains("\\end{\(name)}") { return nil }
         return name
+    }
+
+    /// `\item ` (or `\item[…] ` for a description entry) when the line prefix
+    /// is a list entry with content after the `\item`; nil for a bare `\item`
+    /// (the user is leaving the list) or any other line.
+    static func itemContinuation(inLinePrefix prefix: String) -> String? {
+        let body = prefix.drop { $0 == " " || $0 == "\t" }
+        guard body.hasPrefix("\\item") else { return nil }
+        var rest = body.dropFirst(5)
+        if rest.first == "[" {
+            guard let close = rest.firstIndex(of: "]") else { return nil }
+            rest = rest[rest.index(after: close)...]
+        } else if let c = rest.first, c.isLetter { return nil } // `\itemize`, `\items`: not an item
+        guard rest.contains(where: { $0 != " " && $0 != "\t" }) else { return nil }
+        return body.dropFirst(5).first == "[" ? "\\item[] " : "\\item "
+    }
+
+    // MARK: ⌘/ line comment
+
+    struct CommentToggle: Equatable {
+        var range: NSRange
+        var replacement: String
+        var selection: NSRange
+    }
+
+    /// Toggles `% ` at the indentation of every line the selection touches:
+    /// when every non-blank touched line is already commented the markers are
+    /// removed (`% ` or `%`), otherwise each non-blank line gets `% ` after
+    /// its leading whitespace. Blank lines are left alone; the selection is
+    /// moved to cover the same lines. Nil when nothing would change.
+    static func toggleComment(in text: NSString, selection: NSRange) -> CommentToggle? {
+        let sel = NSRange(location: max(0, min(selection.location, text.length)),
+                          length: max(0, min(selection.length, text.length - min(selection.location, text.length))))
+        var start = sel.location
+        while start > 0, text.character(at: start - 1) != 0x0A { start -= 1 }
+        var end = NSMaxRange(sel)
+        if sel.length > 0, end > start, text.character(at: end - 1) == 0x0A { end -= 1 } // a selection ending at a line start excludes that line
+        while end < text.length, text.character(at: end) != 0x0A { end += 1 }
+        let block = text.substring(with: NSRange(location: start, length: end - start))
+        let lines = block.components(separatedBy: "\n")
+        let nonBlank = lines.filter { $0.contains { $0 != " " && $0 != "\t" } }
+        guard !nonBlank.isEmpty else { return nil }
+        let allCommented = nonBlank.allSatisfy { $0.drop { $0 == " " || $0 == "\t" }.hasPrefix("%") }
+        let out = lines.map { line -> String in
+            let indent = line.prefix { $0 == " " || $0 == "\t" }
+            let body = line.dropFirst(indent.count)
+            if !body.contains(where: { $0 != " " && $0 != "\t" }) { return line }
+            if allCommented {
+                let stripped = body.hasPrefix("% ") ? body.dropFirst(2) : body.dropFirst(1)
+                return String(indent) + String(stripped)
+            }
+            return String(indent) + "% " + String(body)
+        }.joined(separator: "\n")
+        let range = NSRange(location: start, length: end - start)
+        let newLength = (out as NSString).length
+        // A caret stays on its line (shifted by that line's change); a selection covers the toggled lines.
+        let selection = sel.length == 0
+            ? NSRange(location: min(max(start, sel.location + newLength - range.length), start + newLength), length: 0)
+            : NSRange(location: start, length: newLength)
+        return CommentToggle(range: range, replacement: out, selection: selection)
     }
 
     static func occurrences(of needle: String, in text: NSString) -> Int {
