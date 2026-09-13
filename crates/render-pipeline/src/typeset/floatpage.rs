@@ -459,6 +459,7 @@ fn block_source(ctx: &Context, b: &BuiltBlock, items: impl Iterator<Item = usize
             BoxRec::Rule { span, .. } => Some(*span),
             BoxRec::Picture(p) => Some(p.span),
             BoxRec::Table(t) => Some(t.span),
+            BoxRec::ColorBox(c) => Some(c.span),
         })
         .collect()
 }
