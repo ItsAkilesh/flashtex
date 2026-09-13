@@ -310,6 +310,53 @@ Ran on nixos-pc-kabir (Linux, TeX Live 2025), `CARGO_BUILD_JOBS=8`.
 Stage 1 is complete. Next: stage 2, the vendor re-pins.
 
 
+## Stage 2 — vendor re-pins (deliberately uncommitted)
+
+`crates/render-pipeline/vendor/{compiler,math-layout,paragraph-layout,microtype,
+tex-expansion,tex-text-encoding,tex-boxes}` were re-exported from the stage 1
+tip `456d63a0` (`git archive <sha>:crates/<name>`, plus the `PIN` file), as
+`vendor/VENDORING.md` prescribes.
+
+**These re-pins are NOT committed on this lane**, by instruction: the vendor
+tree is owned elsewhere. They exist in the working tree so render-pipeline can
+be built and gated against the stage 1 crates. Re-create them with
+`docs/evidence/integration-2026-09-13b/tools/repin.sh` after any checkout.
+
+Against the fresh pins, `crates/render-pipeline` does not build yet. Every
+error is a stage 3 PR's job, which is the expected order:
+
+| Error | Owed by |
+|---|---|
+| `Block::Styled` missing `lists`/`line_break_before` | #152 |
+| `Inline::Graphic`/`Transform`/`Box`/`SetLength`/`LengthGlue`/`ColorBox` arms | #170, #138, #158 |
+| `MathBox` missing `tag` | #165 |
+| `Piece::Caption` missing `short` | #151/#154 |
+
+## Stage 3 — render-pipeline
+
+### #135 float-bodies-r (render-pipeline) @ f125c4af
+
+- `src/floats.rs`: main's inline `for piece in &f.pieces` loop against #135's
+  `Prep` body builder, which supersedes it (full float bodies, not just
+  graphic/caption/label/centering pieces). Took #135's; `FloatSpec` gains `wide`.
+- `src/typeset.rs`: the substantive one. #135 splits `build` into a reusable
+  `layout_blocks(doc_blocks) -> Flow` so a float or minipage body is set by the
+  same code, while main added two-column bookkeeping (`page_start_blocks`,
+  `wide_blocks`, `clears`) that is *computed* in what is now `layout_blocks`
+  but *consumed* in what is now `build_with_floats`, and read `doc.page_starts`,
+  which `layout_blocks` no longer receives. Git merged the two textually and
+  left the state stranded across the split. Resolved by carrying it properly:
+  - `layout_blocks` takes a new `page_starts: &[usize]` argument;
+  - `Flow` gains `page_start_blocks`, `wide_blocks` and `clears`;
+  - `build_with_floats` destructures them from the `Flow`;
+  - the float-body call site (`typeset/floatpage.rs`) passes `&[]`, since a
+    float body has no page starts of its own.
+  - The `Context` field conflict (main's footnote `notes`/`note_anchors` vs
+    #135's `hsize_override`/`sloppy`/`baselineskip_override`/`parbox`) was
+    both.
+- Checks: the three integration errors this merge introduced are gone; the
+  remaining build errors are the pending stage 3 PRs listed above.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

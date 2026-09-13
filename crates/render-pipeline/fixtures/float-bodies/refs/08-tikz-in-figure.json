@@ -1,0 +1,135 @@
+{
+ "fixture": "08-tikz-in-figure.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "before",
+    "x": 99.3176,
+    "y_top": 83.955
+   },
+   {
+    "text": "the",
+    "x": 134.4301,
+    "y_top": 83.955
+   },
+   {
+    "text": "float",
+    "x": 154.5865,
+    "y_top": 83.955
+   },
+   {
+    "text": "in",
+    "x": 181.2586,
+    "y_top": 83.955
+   },
+   {
+    "text": "its",
+    "x": 194.9114,
+    "y_top": 83.955
+   },
+   {
+    "text": "own",
+    "x": 211.2422,
+    "y_top": 83.955
+   },
+   {
+    "text": "paragraph.",
+    "x": 235.6284,
+    "y_top": 83.955
+   },
+   {
+    "text": "Figure",
+    "x": 240.075,
+    "y_top": 167.355
+   },
+   {
+    "text": "1:",
+    "x": 276.9759,
+    "y_top": 167.355
+   },
+   {
+    "text": "A",
+    "x": 291.2815,
+    "y_top": 167.355
+   },
+   {
+    "text": "TikZ",
+    "x": 303.966,
+    "y_top": 167.355
+   },
+   {
+    "text": "picture.",
+    "x": 332.9023,
+    "y_top": 167.355
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 195.748
+   },
+   {
+    "text": "after",
+    "x": 99.3176,
+    "y_top": 195.748
+   },
+   {
+    "text": "the",
+    "x": 126.9533,
+    "y_top": 195.748
+   },
+   {
+    "text": "float,",
+    "x": 147.1097,
+    "y_top": 195.748
+   },
+   {
+    "text": "in",
+    "x": 177.0336,
+    "y_top": 195.748
+   },
+   {
+    "text": "a",
+    "x": 190.6864,
+    "y_top": 195.748
+   },
+   {
+    "text": "paragraph",
+    "x": 200.4371,
+    "y_top": 195.748
+   },
+   {
+    "text": "of",
+    "x": 256.3755,
+    "y_top": 195.748
+   },
+   {
+    "text": "its",
+    "x": 269.7031,
+    "y_top": 195.748
+   },
+   {
+    "text": "own.",
+    "x": 286.022,
+    "y_top": 195.748
+   }
+  ]
+ ],
+ "rules": [
+  [
+   [
+    263.48,
+    142.5481,
+    85.0404,
+    0.3985
+   ]
+  ]
+ ]
+}

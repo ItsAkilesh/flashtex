@@ -1,0 +1,181 @@
+{
+ "fixture": "12-minipages-captions.tex",
+ "reference_engine": "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)",
+ "invocation": "pdflatex -interaction=batchmode, two passes, SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1",
+ "unit": "bp, y from page top; rules [x, top, width, height]",
+ "pages": [
+  [
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 83.955
+   },
+   {
+    "text": "before",
+    "x": 99.3176,
+    "y_top": 83.955
+   },
+   {
+    "text": "the",
+    "x": 134.4301,
+    "y_top": 83.955
+   },
+   {
+    "text": "float",
+    "x": 154.5865,
+    "y_top": 83.955
+   },
+   {
+    "text": "in",
+    "x": 181.2586,
+    "y_top": 83.955
+   },
+   {
+    "text": "its",
+    "x": 194.9114,
+    "y_top": 83.955
+   },
+   {
+    "text": "own",
+    "x": 211.2422,
+    "y_top": 83.955
+   },
+   {
+    "text": "paragraph.",
+    "x": 235.6284,
+    "y_top": 83.955
+   },
+   {
+    "text": "Figure",
+    "x": 139.745,
+    "y_top": 221.859
+   },
+   {
+    "text": "1:",
+    "x": 176.6459,
+    "y_top": 221.859
+   },
+   {
+    "text": "Left.",
+    "x": 190.9515,
+    "y_top": 221.859
+   },
+   {
+    "text": "Figure",
+    "x": 329.401,
+    "y_top": 232.636
+   },
+   {
+    "text": "2:",
+    "x": 369.6494,
+    "y_top": 232.636
+   },
+   {
+    "text": "Right,",
+    "x": 390.6618,
+    "y_top": 232.636
+   },
+   {
+    "text": "with",
+    "x": 430.4487,
+    "y_top": 232.636
+   },
+   {
+    "text": "a",
+    "x": 460.4682,
+    "y_top": 232.636
+   },
+   {
+    "text": "caption",
+    "x": 473.5664,
+    "y_top": 232.636
+   },
+   {
+    "text": "long",
+    "x": 518.5442,
+    "y_top": 232.636
+   },
+   {
+    "text": "enough",
+    "x": 329.401,
+    "y_top": 247.082
+   },
+   {
+    "text": "to",
+    "x": 369.7187,
+    "y_top": 247.082
+   },
+   {
+    "text": "wrap.",
+    "x": 384.0339,
+    "y_top": 247.082
+   },
+   {
+    "text": "Text",
+    "x": 72.0,
+    "y_top": 275.475
+   },
+   {
+    "text": "after",
+    "x": 99.3176,
+    "y_top": 275.475
+   },
+   {
+    "text": "the",
+    "x": 126.9533,
+    "y_top": 275.475
+   },
+   {
+    "text": "float,",
+    "x": 147.1097,
+    "y_top": 275.475
+   },
+   {
+    "text": "in",
+    "x": 177.0336,
+    "y_top": 275.475
+   },
+   {
+    "text": "a",
+    "x": 190.6864,
+    "y_top": 275.475
+   },
+   {
+    "text": "paragraph",
+    "x": 200.4371,
+    "y_top": 275.475
+   },
+   {
+    "text": "of",
+    "x": 256.3755,
+    "y_top": 275.475
+   },
+   {
+    "text": "its",
+    "x": 269.7031,
+    "y_top": 275.475
+   },
+   {
+    "text": "own.",
+    "x": 286.022,
+    "y_top": 275.475
+   }
+  ]
+ ],
+ "rules": [
+  [
+   [
+    329.401,
+    100.227,
+    210.599,
+    108.0
+   ],
+   [
+    72.0,
+    125.45,
+    210.599,
+    72.0
+   ]
+  ]
+ ]
+}
