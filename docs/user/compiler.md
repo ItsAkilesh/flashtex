@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 200 text-mode and 522 math-mode command entries, 43 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 204 text-mode and 522 math-mode command entries, 45 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -296,6 +296,10 @@ Canonical sources:
 | `\linebreak` | `[n]` | line break |
 | `\nolinebreak` | `[n]` | accepted no-op |
 | `\vfill` |  | vertical glue filling the rest of the page |
+| `\columnbreak` | `[n]` | multicol: ends the current column of multicols (priority n, default 4) |
+| `\newcolumn` |  | multicol: ends the current column of multicols, filling it |
+| `\raggedcolumns` |  | multicol: columns keep their natural height |
+| `\flushcolumns` |  | multicol: columns are stretched to one height (the default) |
 | `\pagestyle` | `{style}` | accepted; no headers or footers are rendered |
 | `\thispagestyle` | `{style}` | accepted; no headers or footers are rendered |
 | `\pagenumbering` | `{style}` | accepted; no page numbers are rendered |
@@ -607,6 +611,8 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `lstlisting` | text | literal monospaced lines (basic listings) |
 | `proof` | text | amsthm proof with a closing square |
 | `thebibliography` | text | References section with numbered \bibitem entries |
+| `multicols` | text | multicol {n}[preface][premulticols]: balanced columns, laid out by the render pipeline |
+| `multicols*` | text | multicol {n}[preface][premulticols]: unbalanced columns, laid out by the render pipeline |
 | `array` | math | math grid, centred cells |
 | `matrix` | math | math grid, centred cells |
 | `smallmatrix` | math | math grid, centred cells |
@@ -632,6 +638,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
 | `geometry` | `letterpaper, margin=1in` | matches the fixed US Letter page with 1in margins |
+| `multicol` | `` | multicols and multicols* with preface, \columnbreak, \raggedcolumns (columns set by the render pipeline) |
 
 Any other package, or these packages with other options, is recorded and reported as recognised but not implemented.
 <!-- END GENERATED supported-latex -->
