@@ -41,6 +41,9 @@ fn linear(t: &Transform) -> Transform {
     Transform::new(t.a, t.b, t.c, t.d, 0.0, 0.0)
 }
 
+/// Scoped definitions saved around a group: styles, colours, macros.
+type Defs = (HashMap<String, (String, Option<String>)>, Palette, HashMap<String, String>);
+
 /// Maximum nesting of styles, scopes and `\foreach` bodies.
 const MAX_DEPTH: usize = 48;
 /// Maximum `\foreach` iterations per loop.
@@ -303,11 +306,10 @@ impl NodeGeom {
 
     fn local_anchor(&self, name: &str) -> Option<V> {
         let name = name.trim();
-        if let Ok(a) = expr::eval(name, self.em) {
-            if !a.dim {
+        if let Ok(a) = expr::eval(name, self.em)
+            && !a.dim {
                 return Some(self.border_local(v(rad(a.v).cos(), rad(a.v).sin())));
             }
-        }
         let o = self.outer;
         let c = self.c;
         let mid_y = 0.5 * 0.430_555 * self.em;
@@ -718,13 +720,12 @@ impl<'a> Interp<'a> {
                     let mut st2 = st.clone();
                     let lead = inner.len() - inner.trim_start().len();
                     let mut body_at = 0;
-                    if inner.trim_start().starts_with('[') {
-                        if let Some(close) = matching(inner, lead) {
+                    if inner.trim_start().starts_with('[')
+                        && let Some(close) = matching(inner, lead) {
                             let opts = inner[lead + 1..close - 1].to_string();
                             self.apply_opts(&mut st2, &opts);
                             body_at = close;
                         }
-                    }
                     self.block(&inner[body_at..], &mut st2, offset.map(|o| o + i + 1 + body_at));
                     self.restore_defs(saved);
                 }
@@ -742,11 +743,11 @@ impl<'a> Interp<'a> {
         self.depth -= 1;
     }
 
-    fn save_defs(&self) -> (HashMap<String, (String, Option<String>)>, Palette, HashMap<String, String>) {
+    fn save_defs(&self) -> Defs {
         (self.styles.clone(), self.palette.clone(), self.macros.clone())
     }
 
-    fn restore_defs(&mut self, saved: (HashMap<String, (String, Option<String>)>, Palette, HashMap<String, String>)) {
+    fn restore_defs(&mut self, saved: Defs) {
         self.styles = saved.0;
         self.palette = saved.1;
         self.macros = saved.2;
@@ -795,12 +796,11 @@ impl<'a> Interp<'a> {
                 let body_end = rest.rfind(close).unwrap_or(rest.len());
                 let mut k = skip_ws(rest, after);
                 let mut opts = String::new();
-                if rest[k..].starts_with('[') {
-                    if let Some(e) = matching(rest, k) {
+                if rest[k..].starts_with('[')
+                    && let Some(e) = matching(rest, k) {
                         opts = rest[k + 1..e - 1].to_string();
                         k = e;
                     }
-                }
                 let saved = self.save_defs();
                 let mut st2 = st.clone();
                 if self.styles.contains_key("every scope") {
@@ -1574,8 +1574,8 @@ impl<'a> Interp<'a> {
             let geom = n.clone();
             return Some(CoordKind::Canvas(geom.center(), if geom.shape == Shape::Coordinate { None } else { Some(content.to_string()) }));
         }
-        if let Some((name, anchor)) = content.rsplit_once('.') {
-            if let Some(n) = self.nodes.get(name.trim()).cloned() {
+        if let Some((name, anchor)) = content.rsplit_once('.')
+            && let Some(n) = self.nodes.get(name.trim()).cloned() {
                 return match n.local_anchor(anchor) {
                     Some(p) => Some(CoordKind::Canvas(n.m.apply(p), None)),
                     None => {
@@ -1584,7 +1584,6 @@ impl<'a> Interp<'a> {
                     }
                 };
             }
-        }
         self.warn(format!("unknown coordinate `({content})`"));
         None
     }
@@ -1965,7 +1964,7 @@ impl<'a> Interp<'a> {
                 }
                 let (deferred, k) = self.deferred_nodes(s, k)?;
                 let (p, node, k2) = self.coordinate(pb, ps, s, k)?;
-                self.to_path(pb, ps, &local, p, node);
+                self.bend_or_line(pb, ps, &local, p, node);
                 self.place_deferred(pb, ps, deferred);
                 Some(k2)
             }
@@ -2096,7 +2095,7 @@ impl<'a> Interp<'a> {
         pb.segs.push((Seg::M(a), None));
     }
 
-    fn from_point(&mut self, pb: &mut Pb, toward: V) -> V {
+    fn segment_start(&mut self, pb: &mut Pb, toward: V) -> V {
         if !pb.have_cur {
             let c = pb.cur;
             self.move_to(pb, c, None);
@@ -2112,7 +2111,7 @@ impl<'a> Interp<'a> {
     }
 
     fn line_to(&mut self, pb: &mut Pb, ps: &St, p: V, node: Option<String>) {
-        let a = self.from_point(pb, p);
+        let a = self.segment_start(pb, p);
         let from_center = pb.cur;
         let b = match &node {
             Some(n) => self.nodes.get(n).map(|g| g.border_toward(from_center)).unwrap_or(p),
@@ -2125,7 +2124,7 @@ impl<'a> Interp<'a> {
     }
 
     fn corner_to(&mut self, pb: &mut Pb, ps: &St, corner: V, p: V, node: Option<String>) {
-        let a = self.from_point(pb, corner);
+        let a = self.segment_start(pb, corner);
         let b = match &node {
             Some(n) => self.nodes.get(n).map(|g| g.border_toward(corner)).unwrap_or(p),
             None => p,
@@ -2138,7 +2137,7 @@ impl<'a> Interp<'a> {
     }
 
     fn curve_to(&mut self, pb: &mut Pb, ps: &St, c1: V, c2: V, p: V, node: Option<String>) {
-        let a = self.from_point(pb, c1);
+        let a = self.segment_start(pb, c1);
         let b = match &node {
             Some(n) => self.nodes.get(n).map(|g| g.border_toward(c2)).unwrap_or(p),
             None => p,
@@ -2149,7 +2148,7 @@ impl<'a> Interp<'a> {
         pb.cur_node = node;
     }
 
-    fn to_path(&mut self, pb: &mut Pb, ps: &St, local: &St, p: V, node: Option<String>) {
+    fn bend_or_line(&mut self, pb: &mut Pb, ps: &St, local: &St, p: V, node: Option<String>) {
         if local.bend.is_none() && local.out_angle.is_none() && local.in_angle.is_none() {
             self.line_to(pb, ps, p, node);
             return;
@@ -2403,15 +2402,14 @@ impl<'a> Interp<'a> {
             }
         };
         let mut m = Transform::translate(-a.x, -a.y);
-        if ns.sloped {
-            if let Some(mut ang) = slope {
+        if ns.sloped
+            && let Some(mut ang) = slope {
                 // Keep text upright, as TikZ does.
                 if ang.to_degrees() > 90.0 + 1e-9 || ang.to_degrees() < -90.0 - 1e-9 {
                     ang += std::f64::consts::PI;
                 }
                 m = m.then(&Transform::rotate(ang));
             }
-        }
         m = m.then(&node_tf);
         if ns.transform_shape {
             m = m.then(&linear(&outer_tf));
@@ -2587,19 +2585,17 @@ impl<'a> Interp<'a> {
         let mut clip = false;
         if drawable {
             // Stroked paths grow the picture by half the line width.
-            if ps.do_draw {
-                if let Some([x0, y0, x1, y1]) = path_extent(&pb.segs) {
+            if ps.do_draw
+                && let Some([x0, y0, x1, y1]) = path_extent(&pb.segs) {
                     let h = ps.lw / 2.0;
                     self.bbox_add(v(x0 - h, y0 - h));
                     self.bbox_add(v(x1 + h, y1 + h));
                 }
-            }
-            if ps.bbox_only {
-                if let Some([x0, y0, x1, y1]) = path_extent(&segs) {
+            if ps.bbox_only
+                && let Some([x0, y0, x1, y1]) = path_extent(&segs) {
                     self.bbox = Some([x0, y0, x1, y1]);
                     self.bbox_locked = true;
                 }
-            }
             if ps.do_clip {
                 self.raws.push(Raw::ClipBegin {
                     path: to_path(&segs),
@@ -2619,16 +2615,14 @@ impl<'a> Interp<'a> {
                 let open = !matches!(segs.iter().rev().find(|(s, _)| !matches!(s, Seg::M(_))), Some((Seg::Z, _)));
                 let mut tips = Vec::new();
                 if open {
-                    if let Some(t) = ps.end_tip {
-                        if let Some((o, d)) = shorten_end(&mut segs, tip_extend(t, ps.lw)) {
+                    if let Some(t) = ps.end_tip
+                        && let Some((o, d)) = shorten_end(&mut segs, tip_extend(t, ps.lw)) {
                             tips.extend(self.tip(t, o, d, ps));
                         }
-                    }
-                    if let Some(t) = ps.start_tip {
-                        if let Some((o, d)) = shorten_start(&mut segs, tip_extend(t, ps.lw)) {
+                    if let Some(t) = ps.start_tip
+                        && let Some((o, d)) = shorten_start(&mut segs, tip_extend(t, ps.lw)) {
                             tips.extend(self.tip(t, o, d, ps));
                         }
-                    }
                 }
                 self.raws.push(Raw::Stroke {
                     path: to_path(&segs),
@@ -2856,11 +2850,10 @@ fn spec_pos(spec: &NodeSpec) -> Option<f64> {
             "at start" => return Some(0.0),
             "at end" => return Some(1.0),
             _ => {
-                if let Some(v) = e.strip_prefix("pos") {
-                    if let Some(v) = v.trim_start().strip_prefix('=') {
+                if let Some(v) = e.strip_prefix("pos")
+                    && let Some(v) = v.trim_start().strip_prefix('=') {
                         return expr::eval(v, 10.0).ok().map(|x| x.v);
                     }
-                }
             }
         }
     }
