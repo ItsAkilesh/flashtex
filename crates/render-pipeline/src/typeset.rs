@@ -619,8 +619,16 @@ impl<'a> Context<'a> {
 
     /// Shapes one styled segment into a box record and a paragraph-layout box.
     fn text_box(&mut self, seg: &adapter::Segment, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        self.text_box_in(seg, size, None)
+    }
+
+    /// [`Self::text_box`] shaped in `face` instead of the style's text face.
+    fn text_box_in(&mut self, seg: &adapter::Segment, size: f64, face: Option<Rc<LoadedFace>>) -> Option<(pl::GlyphRun, usize)> {
         let span = seg_span(seg)?;
-        let face = self.face(seg.style, size, span);
+        let face = match face {
+            Some(face) => face,
+            None => self.face(seg.style, size, span),
+        };
         let shaped = self.shaper.shape(&face, &seg.text);
         if let Some(e) = &shaped.tfm_error {
             let src = self.source(span);
@@ -1662,7 +1670,7 @@ impl<'a> Context<'a> {
             ParaStyle::Center => (pl::BreakMode::Justified, fil.clone(), fil),
             ParaStyle::FlushRight => (pl::BreakMode::Justified, fil, pl::Glue::fixed(0.0)),
             ParaStyle::FlushLeft => (pl::BreakMode::RaggedRight, pl::Glue::fixed(0.0), pl::Glue::fixed(0.0)),
-            ParaStyle::Quote => (pl::BreakMode::Justified, margin.clone(), margin),
+            ParaStyle::Quote | ParaStyle::Quotation => (pl::BreakMode::Justified, margin.clone(), margin),
         };
         // `\list`: `\parshape` every line `\@totalleftmargin` in (`\rightmargin`
         // is 0pt), on top of any `quote` margin.
@@ -1678,7 +1686,12 @@ impl<'a> Context<'a> {
             adj_demerits: s.adjdemerits,
             double_hyphen_demerits: 10_000.0,
             final_hyphen_demerits: 5_000.0,
-            parindent: if indent { s.parindent_pt } else { 0.0 },
+            // `quotation`: `\listparindent 1.5em`.
+            parindent: match (indent, style) {
+                (false, _) => 0.0,
+                (true, ParaStyle::Quotation) => 1.5 * s.em_pt,
+                (true, _) => s.parindent_pt,
+            },
             left_skip,
             right_skip,
             baselineskip,
@@ -1709,7 +1722,7 @@ impl<'a> Context<'a> {
             hang_pt = hang;
             if let Some((text, span)) = geom.label.as_ref().filter(|_| starts_paragraph) {
                 if let Some((run, rec)) = self.label_box(text, *span, size) {
-                    let labelsep = self.style.labelsep_pt;
+                    let labelsep = geom.labelsep;
                     let lead = [
                         (pl::Item::kern(-(labelsep + run.width.min(labelwidth))), None),
                         (pl::Item::Box(run), Some(rec)),
@@ -1767,7 +1780,7 @@ impl<'a> Context<'a> {
     /// list's label width (`\leftmargin - \labelsep` for a class margin;
     /// the widest label's own width under enumitem's `leftmargin=*`).
     fn list_geometry(&mut self, geom: &ListGeom, size: f64) -> (f64, f64) {
-        let labelsep = self.style.labelsep_pt;
+        let labelsep = geom.labelsep;
         let mut hang = 0.0;
         let mut labelwidth = 0.0;
         for margin in &geom.margins {
@@ -1794,7 +1807,15 @@ impl<'a> Context<'a> {
     /// The `\item` label as a text box whose characters all point at the
     /// `\item` command's bytes (article's `\labelenumi`/`\labelitemi` in
     /// the body font).
+    ///
+    /// The itemize symbols are OT1's math-font glyphs: `\textbullet`,
+    /// `\textasteriskcentered` and `\textperiodcentered` are cmsy's
+    /// `\bullet`/`\ast`/`\cdot` (0.5em, 0.5em, 0.277779em wide), set here
+    /// from Latin Modern Math, whose advances are the same; `\labelitemii`
+    /// is `\bfseries\textendash`.
     fn label_box(&mut self, text: &str, span: Span, size: f64) -> Option<(pl::GlyphRun, usize)> {
+        let math = matches!(text, "•" | "∗" | "⋅");
+        let style = TextStyle { bold: text == "–", ..TextStyle::default() };
         let seg = adapter::Segment {
             text: text.to_string(),
             chars: text
@@ -1805,9 +1826,10 @@ impl<'a> Context<'a> {
                     end: span.end,
                 })
                 .collect(),
-            style: TextStyle::default(),
+            style,
         };
-        self.text_box(&seg, size)
+        let face = math.then(|| self.fonts.resolve(self.style.family, Role::Math, size).face);
+        self.text_box_in(&seg, size, face)
     }
 
     fn heading_block(&mut self, level: u8, items: &[AItem]) -> Option<BuiltBlock> {
@@ -1890,7 +1912,8 @@ impl<'a> Context<'a> {
                 // `\hskip-\labelwidth \hskip-\labelsep \hbox to\labelwidth
                 // {\hss <label>} \hskip\labelsep`: the label's right edge
                 // ends `\labelsep` before the text edge.
-                let x = hang - s.labelsep_pt - run.width.min(labelwidth);
+                let labelsep = list_geom.map_or(s.labelsep_pt, |g| g.labelsep);
+                let x = hang - labelsep - run.width.min(labelwidth);
                 height = run.height;
                 depth = run.depth;
                 runs.push(position_run(&run, x, run.height));
@@ -2543,7 +2566,7 @@ impl<'a> Context<'a> {
     /// list its `\@totalleftmargin`).
     fn display_shape(&mut self, style: ParaStyle, list_geom: Option<&ListGeom>) -> (f64, f64) {
         let size = self.style.body_size_pt;
-        let quote = if matches!(style, ParaStyle::Quote) { self.style.leftmargini_pt } else { 0.0 };
+        let quote = if matches!(style, ParaStyle::Quote | ParaStyle::Quotation) { self.style.leftmargini_pt } else { 0.0 };
         let hang = list_geom.map_or(0.0, |g| self.list_geometry(g, size).0);
         let s = quote + hang;
         (s, (self.style.text_width_pt - s - quote).max(0.0))
@@ -4410,7 +4433,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 }
                 // `\addvspace`: only the excess over the skip the previous
                 // block already left (`\@xaddvskip`).
-                if *addvspace_before != 0.0 {
+                if *addvspace_before != 0.0 && env_open.is_none() {
                     let prev_after = blocks.last().and_then(|b| b.vertical.space_after).map_or(0.0, |s| s.0);
                     vspace += (addvspace_before - prev_after).max(0.0);
                 }
@@ -4426,6 +4449,22 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                     env_vmode = e.vmode;
                 }
                 let mut env_before = env_open.map(|e| env_skip(e.vmode));
+                // A list closed right before the environment: its `\@item`'s
+                // `\addvspace\@topsep` (`\@topsepadd + \parskip`, the
+                // paragraph's own `\parskip` taken back) keeps the larger of
+                // that and the list's `\@endparenv` skip.
+                if let (Some(e), true) = (env_before, *addvspace_before > 0.0) {
+                    let l = addvspace_before - ctx.style.parskip.natural;
+                    if l > e.0 {
+                        env_before = Some((l, 0.0, 0.0));
+                    }
+                }
+                // Right after another environment's `\@endparenv` skip
+                // (`center` then `flushleft`): `\addvspace` adds only the
+                // excess over that skip.
+                if let (Some(e), Some(prev)) = (env_before, blocks.last().and_then(|b| b.vertical.space_after).filter(|s| s.0 > 0.0)) {
+                    env_before = (e.0 > prev.0).then(|| (e.0 - prev.0, (e.1 - prev.1).max(0.0), (e.2 - prev.2).max(0.0)));
+                }
                 let env_after = env_close.then(|| env_skip(env_vmode));
                 let first_block = blocks.len();
                 // TeX's pre_display_size: the width of the line before a
@@ -4446,6 +4485,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                         (span.end - span.start).hash(&mut h);
                     }
                     g.parsep.natural.to_bits().hash(&mut h);
+                    g.labelsep.to_bits().hash(&mut h);
                     h.finish()
                 });
                 for part in parts {
