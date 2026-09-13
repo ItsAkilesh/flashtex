@@ -172,6 +172,21 @@ pub enum Inline {
         /// See `Inline::Text::space_before`.
         space_before: bool,
     },
+    /// Page-dependent text inside a fancyhdr header/footer field
+    /// (`Block::PageField`): `\thepage`, `\leftmark`, `\rightmark`,
+    /// `\thechapter`, `\thesection` or `\thesubsection`, resolved by the
+    /// layout when the page ships (fancyhdr stores field text unexpanded,
+    /// fancyhdr.sty v5.2 line 51 `\def#1{#2\strut}`). `uppercase` is
+    /// false inside `\nouppercase{..}` (fancyhdr.sty lines 366-371), where a
+    /// mark's `\MakeUppercase` is disabled. `span` is the command.
+    PageMark {
+        kind: PageMarkKind,
+        uppercase: bool,
+        span: Span,
+        style: TextStyle,
+        /// See `Inline::Text::space_before`.
+        space_before: bool,
+    },
 }
 
 /// One `\\`-separated row of a multi-row display; cells are split on `&`.
@@ -194,6 +209,53 @@ pub struct Intertext {
     /// `\shortintertext`: the short display skips.
     pub short: bool,
     pub span: Span,
+}
+
+/// One of fancyhdr's twelve header/footer slots (`\f@nch@<eo><lcr><hf>`,
+/// fancyhdr.sty v5.2 lines 155-171): even or odd page, left/centre/right
+/// field, header or footer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PageSlot {
+    pub even: bool,
+    pub position: SlotPosition,
+    pub footer: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SlotPosition {
+    Left,
+    Center,
+    Right,
+}
+
+/// What an `Inline::PageMark` shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PageMarkKind {
+    /// `\thepage`.
+    PageNumber,
+    /// `\leftmark` (the page's last `\markboth` left text).
+    LeftMark,
+    /// `\rightmark` (the page's first mark's right text).
+    RightMark,
+    /// `\thechapter`.
+    Chapter,
+    /// `\thesection`.
+    Section,
+    /// `\thesubsection`.
+    Subsection,
+}
+
+/// A `\headrule`/`\footrule` definition (fancyhdr.sty v5.2 lines 543-548
+/// define the defaults: an `\hrule` of `\headrulewidth`/`\footrulewidth`
+/// across `\headwidth`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleMacro {
+    /// The package definition.
+    Default,
+    /// `\renewcommand{\headrule}{}`: no rule.
+    Empty,
+    /// Any other redefinition, as its detokenized replacement text.
+    Custom(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -286,6 +348,63 @@ pub enum Block {
     /// on the current page, computed at layout time from the cursor's
     /// actual position (unlike `VSpace`'s flat, parse-time amount).
     VFill,
+    /// fancyhdr `\fancyhead[<selectors>]{..}`, `\fancyfoot`, `\fancyhf`
+    /// (fancyhdr.sty v5.2 lines 118-120, 135-155) or the legacy
+    /// `\lhead`/`\chead`/`\rhead`/`\lfoot`/`\cfoot`/`\rfoot` (lines
+    /// 258-269): `content` replaces every slot in `slots` (empty content
+    /// clears them). Field text is already-resolved inline content with
+    /// `Inline::PageMark`s for the page-dependent parts; the layout keeps
+    /// the twelve slots as state and sets them when a page ships under a
+    /// fancy page style. `span` covers the command and its arguments.
+    PageField {
+        span: Span,
+        slots: Vec<PageSlot>,
+        content: Vec<Inline>,
+    },
+    /// `\fancyheadoffset[<selectors>]{<dimen>}`, `\fancyfootoffset`,
+    /// `\fancyhfoffset` (fancyhdr.sty v5.2 lines 121-123, 156-175): the
+    /// selected left/right fields extend `dimen` (the argument's source
+    /// text, evaluated against the class lengths by the layout) into the
+    /// margin.
+    PageFieldOffset {
+        span: Span,
+        slots: Vec<PageSlot>,
+        dimen: String,
+    },
+    /// `\fancypagestyle{name}[base]{body}` (fancyhdr.sty v5.2 lines
+    /// 656-682): `body`'s directives run whenever `\pagestyle{name}` or
+    /// `\thispagestyle{name}` selects the style, on top of `base`
+    /// (`fancy` when absent). Redefining `plain` changes chapter openers and
+    /// `\maketitle` pages. The last block of `body` is the
+    /// `PageStyleState` in force at the end of the body.
+    PageStyleDefinition {
+        span: Span,
+        name: String,
+        base: String,
+        starred: bool,
+        body: Vec<Block>,
+    },
+    /// The fancyhdr macros a user may `\renewcommand`, as in force at
+    /// `\begin{document}` (and at the end of each `\fancypagestyle` body):
+    /// `\headrulewidth`/`\footrulewidth`/`\headruleskip`/`\footruleskip`
+    /// in TeX points (`None` when not a plain dimension — the package
+    /// defaults are 0.4pt, 0pt, 0pt and `.3\normalbaselineskip`, fancyhdr.sty
+    /// v5.2 lines 270-277), `\headrule`/`\footrule`, and the `\meaning` of
+    /// `\chaptermark`/`\sectionmark`/`\subsectionmark` when the document
+    /// redefined them (`None` keeps the class/package definitions). Only
+    /// produced when `fancyhdr` is loaded.
+    PageStyleState {
+        span: Span,
+        head_rule_width_pt: Option<f64>,
+        foot_rule_width_pt: Option<f64>,
+        head_rule_skip_pt: Option<f64>,
+        foot_rule_skip_pt: Option<f64>,
+        head_rule: RuleMacro,
+        foot_rule: RuleMacro,
+        chapter_mark: Option<String>,
+        section_mark: Option<String>,
+        subsection_mark: Option<String>,
+    },
 }
 
 /// One physical source line of a `Block::Verbatim`. `text` is already
@@ -607,6 +726,19 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "pagestyle",
     "thispagestyle",
     "pagenumbering",
+    "fancyhead",
+    "fancyfoot",
+    "fancyhf",
+    "lhead",
+    "chead",
+    "rhead",
+    "lfoot",
+    "cfoot",
+    "rfoot",
+    "fancyheadoffset",
+    "fancyfootoffset",
+    "fancyhfoffset",
+    "fancypagestyle",
     "listfiles",
     "centering",
     "Centering",
@@ -905,6 +1037,7 @@ pub fn parse_project(documents: &[SourceDocument<'_>], entry_path: &str) -> Pars
         style: TextStyle::default(),
         style_stack: Vec::new(),
         env_styles: Vec::new(),
+        in_page_field: false,
         declared_alignment: None,
         alignment_stack: Vec::new(),
         env_alignments: Vec::new(),
@@ -1038,6 +1171,9 @@ struct P<'a> {
     style: TextStyle,
     style_stack: Vec<TextStyle>,
     env_styles: Vec<TextStyle>,
+    /// Reading a fancyhdr field's content (`inlines_from_tokens` then
+    /// resolves `\thepage`, `\leftmark`, ... to `Inline::PageMark`).
+    in_page_field: bool,
     /// `\centering`/`\raggedright`/`\raggedleft` in force. Like TeX's
     /// paragraph parameters it is read when a paragraph ends, and it is
     /// saved on `{`/`\begin` and restored on the matching `}`/`\end`.
@@ -1302,6 +1438,22 @@ impl P<'_> {
                 self.date = Some((tokens, span.merge(argument_span)));
             }
             "maketitle" => self.maketitle(span, blocks, para),
+            // `\pagestyle` is a preamble command as often as a body one; the
+            // header/footer layout reads it from the source (this parser
+            // only has to accept it).
+            "pagestyle" => {
+                let _ = self.required_group(name, span);
+            }
+            // fancyhdr (v5.2). Field definitions are `Block::PageField`s in
+            // source order (they take effect from the page that ships next);
+            // the rule and mark macros the document may `\renewcommand` are
+            // read by the expansion pass and arrive as the
+            // `\flashtex@fancystate` marker (see `expansion::HOST_PRELUDE`).
+            "fancyhead" | "fancyfoot" | "fancyhf" => self.fancy_field(name, span, blocks),
+            "lhead" | "chead" | "rhead" | "lfoot" | "cfoot" | "rfoot" => self.legacy_field(name, span, blocks),
+            "fancyheadoffset" | "fancyfootoffset" | "fancyhfoffset" => self.fancy_offset(name, span, blocks),
+            "fancypagestyle" => self.fancy_page_style(span, blocks),
+            "flashtex@fancystate" => self.fancy_state(span, blocks),
             _ if self.has_document && !self.in_body => self.unsupported_preamble(name, span),
             "section" | "subsection" | "subsubsection" => {
                 let level = match name {
@@ -1738,16 +1890,8 @@ impl P<'_> {
                 blocks.push(Block::VFill);
                 self.finish_block_dependencies();
             }
-            "pagestyle" => {
-                // No header/footer rendering exists yet, so every style is
-                // accepted with the same (honest) effect: none. `empty` and
-                // `plain` both describe "no footer content beyond a page
-                // number", which is already what happens.
-                let _ = self.required_group(name, span);
-            }
-            // `\thispagestyle` differs from `\pagestyle` only in scope
-            // (current page vs. every later one); since no style ever
-            // renders anything either way, the same honest no-op covers it.
+            // `\thispagestyle`: accepted like `\pagestyle` above; the
+            // header/footer layout reads it from the source.
             "thispagestyle" => {
                 let _ = self.required_group(name, span);
             }
@@ -3533,6 +3677,250 @@ impl P<'_> {
         self.alignment_stack.push(self.declared_alignment);
     }
 
+    // ---- fancyhdr (v5.2) ----
+
+    /// `\fancyhead[<selectors>]{<content>}`, `\fancyfoot`, `\fancyhf`
+    /// (fancyhdr.sty v5.2 `\f@nch@fancyhf`, lines 135-155): every
+    /// comma-separated selector names a page side (`E`/`O`, default both),
+    /// a field (`L`/`C`/`R`, default all three) and, for `\fancyhf`, a
+    /// line (`H`/`F`, default both); the content replaces each selected
+    /// slot. Other letters are the package's "Illegal char" error.
+    fn fancy_field(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>) {
+        let selectors = self.optional_bracket_argument();
+        let (tokens, argument_span) = self.required_group_bounded(name, span, true);
+        let full = span.merge(argument_span);
+        let default_lines = match name {
+            "fancyhead" => "h",
+            "fancyfoot" => "f",
+            _ => "hf",
+        };
+        let selectors = selectors.as_ref().map_or("", |(s, _)| s.as_str());
+        let slots = match fancy_selectors(selectors, "lcr", default_lines) {
+            Ok(slots) => slots,
+            Err(illegal) => {
+                self.diags.push(Diagnostic::error(
+                    format!("Package fancyhdr Error: Illegal char `{illegal}' in \\{name} argument: [{selectors}]"),
+                    Some(full),
+                    Some("ignored the command".into()),
+                ));
+                return;
+            }
+        };
+        let content = self.page_field_content(tokens);
+        blocks.push(Block::PageField { span: full, slots, content });
+    }
+
+    /// `\lhead[<even>]{<odd>}` and the other five legacy commands
+    /// (fancyhdr.sty v5.2 lines 258-269): without the optional argument
+    /// both sides get the content.
+    fn legacy_field(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>) {
+        let even = self.optional_bracket_tokens();
+        let (tokens, argument_span) = self.required_group_bounded(name, span, true);
+        let full = span.merge(argument_span);
+        let position = match name.as_bytes()[0] {
+            b'l' => SlotPosition::Left,
+            b'c' => SlotPosition::Center,
+            _ => SlotPosition::Right,
+        };
+        let footer = name.ends_with("foot");
+        let content = self.page_field_content(tokens);
+        match even {
+            Some(even_tokens) => {
+                let even_content = self.page_field_content(even_tokens);
+                blocks.push(Block::PageField {
+                    span: full,
+                    slots: vec![PageSlot { even: false, position, footer }],
+                    content,
+                });
+                blocks.push(Block::PageField {
+                    span: full,
+                    slots: vec![PageSlot { even: true, position, footer }],
+                    content: even_content,
+                });
+            }
+            None => blocks.push(Block::PageField {
+                span: full,
+                slots: vec![
+                    PageSlot { even: false, position, footer },
+                    PageSlot { even: true, position, footer },
+                ],
+                content,
+            }),
+        }
+    }
+
+    /// `\fancyheadoffset[<selectors>]{<dimen>}` etc. (fancyhdr.sty v5.2
+    /// `\f@nch@fancyhfoffs`, lines 156-175): like `fancy_field` with `L`/`R`
+    /// only.
+    fn fancy_offset(&mut self, name: &str, span: Span, blocks: &mut Vec<Block>) {
+        let selectors = self.optional_bracket_argument();
+        let (tokens, argument_span) = self.required_group(name, span);
+        let full = span.merge(argument_span);
+        let default_lines = match name {
+            "fancyheadoffset" => "h",
+            "fancyfootoffset" => "f",
+            _ => "hf",
+        };
+        let selectors = selectors.as_ref().map_or("", |(s, _)| s.as_str());
+        let slots = match fancy_selectors(selectors, "lr", default_lines) {
+            Ok(slots) => slots,
+            Err(illegal) => {
+                self.diags.push(Diagnostic::error(
+                    format!("Package fancyhdr Error: Illegal char `{illegal}' in \\{name} argument: [{selectors}]"),
+                    Some(full),
+                    Some("ignored the command".into()),
+                ));
+                return;
+            }
+        };
+        let dimen = token_source_text(&tokens).trim().to_string();
+        blocks.push(Block::PageFieldOffset { span: full, slots, dimen });
+    }
+
+    /// The expansion pass rewrites `\fancypagestyle{name}[base]{body}` to
+    /// `\fancypagestyle{<star>}{name}{base}{body \flashtex@fancystate}`
+    /// (see `expansion::HOST_PRELUDE`); the body is parsed as a nested
+    /// block list of fancyhdr directives.
+    fn fancy_page_style(&mut self, span: Span, blocks: &mut Vec<Block>) {
+        let (star, _) = self.required_group("fancypagestyle", span);
+        let (name_tokens, _) = self.required_group("fancypagestyle", span);
+        let (base_tokens, _) = self.required_group("fancypagestyle", span);
+        let (body_tokens, body_span) = self.required_group_bounded("fancypagestyle", span, true);
+        let name = token_text(&name_tokens).trim().to_string();
+        let mut base = token_text(&base_tokens).trim().to_string();
+        if base.is_empty() {
+            base = "fancy".to_string();
+        }
+        let starred = token_text(&star).trim() == "*";
+        let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(body_tokens));
+        let outer_index = std::mem::replace(&mut self.i, 0);
+        let outer_braces = self.brace_stack.len();
+        let mut body = Vec::new();
+        let mut para = Vec::new();
+        self.parse_stream(&mut body, &mut para);
+        self.brace_stack.truncate(outer_braces);
+        self.t = outer_tokens;
+        self.i = outer_index;
+        blocks.push(Block::PageStyleDefinition {
+            span: span.merge(body_span),
+            name,
+            base,
+            starred,
+            body,
+        });
+    }
+
+    /// `\flashtex@fancystate{headrulewidth}{footrulewidth}{headruleskip}
+    /// {footruleskip}{headrule}{footrule}{chaptermark}{sectionmark}
+    /// {subsectionmark}`: the expansion pass's snapshot of the macros
+    /// (`expansion::HOST_PRELUDE`). Dropped unless `fancyhdr` is loaded.
+    fn fancy_state(&mut self, span: Span, blocks: &mut Vec<Block>) {
+        let mut groups = Vec::with_capacity(9);
+        for _ in 0..9 {
+            let (tokens, _) = self.required_group_bounded("flashtex@fancystate", span, true);
+            groups.push(token_source_text(&tokens).trim().to_string());
+        }
+        if !self.packages.iter().any(|p| p == "fancyhdr") {
+            return;
+        }
+        // `\meaning`: `macro:->body` (`\long macro:->body` for a
+        // `\renewcommand` definition).
+        let rule_macro = |text: &str| {
+            let body = text.split_once("->").map_or(text, |(_, body)| body).trim();
+            if body.contains("\\flashtex@defaultheadrule") || body.contains("\\flashtex@defaultfootrule") {
+                RuleMacro::Default
+            } else if body.is_empty() {
+                RuleMacro::Empty
+            } else {
+                RuleMacro::Custom(body.to_string())
+            }
+        };
+        let mark_macro = |text: &str| {
+            if text.contains("\\flashtex@defaultmark") || text == "undefined" {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        };
+        blocks.push(Block::PageStyleState {
+            span,
+            head_rule_width_pt: tex_dimen_pt(&groups[0]),
+            foot_rule_width_pt: tex_dimen_pt(&groups[1]),
+            head_rule_skip_pt: tex_dimen_pt(&groups[2]),
+            foot_rule_skip_pt: tex_dimen_pt(&groups[3]),
+            head_rule: rule_macro(&groups[4]),
+            foot_rule: rule_macro(&groups[5]),
+            chapter_mark: mark_macro(&groups[6]),
+            section_mark: mark_macro(&groups[7]),
+            subsection_mark: mark_macro(&groups[8]),
+        });
+    }
+
+    /// A field's content: ordinary inline content (fancyhdr sets fields in
+    /// `\normalfont\normalsize`, latex.ltx `\@outputpage` `\reset@font
+    /// \normalsize`) plus `Inline::PageMark`s.
+    fn page_field_content(&mut self, tokens: Vec<InputToken>) -> Vec<Inline> {
+        let outer = std::mem::replace(&mut self.in_page_field, true);
+        let content = self.inlines_from_tokens(tokens, TextStyle::default());
+        self.in_page_field = outer;
+        content
+    }
+
+    /// `[...]` as tokens (the bracket characters split off the words that
+    /// carry them), for optional arguments holding commands
+    /// (`\lhead[\thepage]{..}`). `None` when no bracket follows.
+    fn optional_bracket_tokens(&mut self) -> Option<Vec<InputToken>> {
+        self.skip_spaces();
+        let first = self.peek()?.clone();
+        let TokenKind::Word(first_word) = &first.kind else {
+            return None;
+        };
+        if !first_word.starts_with('[') {
+            return None;
+        }
+        let split_word = |input: &InputToken, text: &str, from: usize| -> InputToken {
+            let mut out = input.clone();
+            let span = input.token.span;
+            out.token.kind = TokenKind::Word(text.to_string());
+            if !input.maps_to_invocation {
+                out.token.span = Span::in_document(span.document, span.start + from, span.start + from + text.len());
+            }
+            out
+        };
+        let mut out = Vec::new();
+        let head = self.t[self.i].clone();
+        self.i += 1;
+        if let Some(close) = first_word[1..].find(']') {
+            let inside = &first_word[1..1 + close];
+            if !inside.is_empty() {
+                out.push(split_word(&head, inside, 1));
+            }
+            return Some(out);
+        }
+        if first_word.len() > 1 {
+            out.push(split_word(&head, &first_word[1..], 1));
+        }
+        while self.i < self.t.len() {
+            let input = self.t[self.i].clone();
+            self.i += 1;
+            if let TokenKind::Word(word) = &input.token.kind {
+                if let Some(close) = word.find(']') {
+                    if close > 0 {
+                        out.push(split_word(&input, &word[..close], 0));
+                    }
+                    return Some(out);
+                }
+            }
+            out.push(input);
+        }
+        self.diags.push(Diagnostic::error(
+            "optional argument is missing its closing ']'",
+            Some(first.span),
+            Some("used the text through end of input as the option".into()),
+        ));
+        Some(out)
+    }
+
     fn inlines_from_tokens(&mut self, tokens: Vec<InputToken>, base: TextStyle) -> Vec<Inline> {
         let outer_tokens = std::mem::replace(&mut self.t, std::rc::Rc::new(tokens));
         let outer_index = std::mem::replace(&mut self.i, 0);
@@ -3548,6 +3936,9 @@ impl P<'_> {
         let mut style = base;
         let mut saved = Vec::new();
         let mut pending = None;
+        // fancyhdr `\nouppercase{..}`: marks inside keep their case.
+        let mut uppercase = true;
+        let mut pending_nouppercase = false;
         for (index, input) in expanded.iter().enumerate() {
             let space_before = preceded_by_space(&expanded, index);
             match &input.token.kind {
@@ -3557,15 +3948,33 @@ impl P<'_> {
                 TokenKind::Command(name) if style_declaration(name) => {
                     style = apply_style(style, name);
                 }
+                TokenKind::Command(name) if self.in_page_field && name == "nouppercase" => {
+                    pending_nouppercase = true;
+                }
+                TokenKind::Command(name) if self.in_page_field && page_mark_kind(name).is_some() => {
+                    if let Some(kind) = page_mark_kind(name) {
+                        content.push(Inline::PageMark {
+                            kind,
+                            uppercase,
+                            span: input.token.span,
+                            style,
+                            space_before,
+                        });
+                    }
+                }
                 TokenKind::LBrace => {
-                    saved.push(style);
+                    saved.push((style, uppercase));
                     if let Some(next) = pending.take() {
                         style = next;
                     }
+                    if std::mem::take(&mut pending_nouppercase) {
+                        uppercase = false;
+                    }
                 }
                 TokenKind::RBrace => {
-                    if let Some(previous) = saved.pop() {
+                    if let Some((previous, previous_upper)) = saved.pop() {
                         style = previous;
+                        uppercase = previous_upper;
                     }
                 }
                 TokenKind::Word(text) if control_symbol_kern(text, input.token.span).is_some() => {
@@ -4165,6 +4574,9 @@ fn package_matches_layout(package: &str, options: &str) -> bool {
         // \newtheorem/\theoremstyle/proof are implemented (see theorems.rs);
         // amsthm takes no package options of its own.
         "amsthm" => options.is_empty(),
+        // fancyhdr's field commands and page styles are parsed here and set
+        // by the page layout; `compatV3` (enlarging \headheight) is not.
+        "fancyhdr" => options.iter().all(|option| *option == "twoside" || *option == "nocheck"),
         // array.sty's preamble builder, column types and row strut are
         // implemented (parser/tabular.rs, crate::tabular); no options.
         "array" => options.is_empty(),
@@ -4338,6 +4750,110 @@ fn dimen_source(tokens: &[InputToken]) -> String {
                 result.push_str(name);
             }
             TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            _ => {}
+        }
+    }
+    result
+}
+
+/// The `Inline::PageMark` a command names inside a fancyhdr field.
+fn page_mark_kind(name: &str) -> Option<PageMarkKind> {
+    Some(match name {
+        "thepage" => PageMarkKind::PageNumber,
+        "leftmark" => PageMarkKind::LeftMark,
+        "rightmark" => PageMarkKind::RightMark,
+        "thechapter" => PageMarkKind::Chapter,
+        "thesection" => PageMarkKind::Section,
+        "thesubsection" => PageMarkKind::Subsection,
+        _ => return None,
+    })
+}
+
+/// fancyhdr selector letters (`\f@nch@fancyhf`, fancyhdr.sty v5.2 lines
+/// 135-155, `\f@nch@default` lines 108-112): each comma-separated item
+/// contributes the page sides, fields and lines it names, or the defaults;
+/// the cross product of the three is the slot list. `fields` is `lcr` or,
+/// for the offset commands, `lr`. Returns the first illegal character.
+fn fancy_selectors(selectors: &str, fields: &str, default_lines: &str) -> Result<Vec<PageSlot>, char> {
+    let mut slots = Vec::new();
+    let items: Vec<&str> = selectors.split(',').collect();
+    for item in items {
+        let item = item.trim().to_ascii_lowercase();
+        for c in item.chars() {
+            if !"eolcrhf".contains(c) || (c == 'c' && !fields.contains('c')) {
+                return Err(c);
+            }
+        }
+        let pick = |set: &str, default: &str| -> Vec<char> {
+            let chosen: Vec<char> = set.chars().filter(|c| item.contains(*c)).collect();
+            if chosen.is_empty() {
+                default.chars().collect()
+            } else {
+                chosen
+            }
+        };
+        for eo in pick("eo", "eo") {
+            for lcr in pick(fields, fields) {
+                for hf in pick("hf", default_lines) {
+                    let slot = PageSlot {
+                        even: eo == 'e',
+                        position: match lcr {
+                            'l' => SlotPosition::Left,
+                            'c' => SlotPosition::Center,
+                            _ => SlotPosition::Right,
+                        },
+                        footer: hf == 'f',
+                    };
+                    if !slots.contains(&slot) {
+                        slots.push(slot);
+                    }
+                }
+            }
+        }
+    }
+    Ok(slots)
+}
+
+/// A TeX dimension in TeX points (72.27 per inch), for values that end up
+/// in the page-frame layout rather than this compiler's own bp layout.
+pub(crate) fn tex_dimen_pt(text: &str) -> Option<f64> {
+    let text = text.trim().trim_end_matches("\\relax").trim();
+    let split = text.find(|c: char| c.is_ascii_alphabetic())?;
+    let number: f64 = text[..split].trim().parse().ok()?;
+    let per_unit = match text[split..].trim() {
+        "pt" => 1.0,
+        "bp" => 72.27 / 72.0,
+        "in" => 72.27,
+        "cm" => 72.27 / 2.54,
+        "mm" => 72.27 / 25.4,
+        "pc" => 12.0,
+        "dd" => 1238.0 / 1157.0,
+        "cc" => 12.0 * 1238.0 / 1157.0,
+        "sp" => 1.0 / 65536.0,
+        _ => return None,
+    };
+    Some(number * per_unit)
+}
+
+/// The tokens' text with control words written back as `\name`, the way
+/// TeX's `\meaning`/`\detokenize` output reads.
+fn token_source_text(tokens: &[InputToken]) -> String {
+    let mut result = String::new();
+    for input in tokens {
+        match &input.token.kind {
+            TokenKind::Word(text) => result.push_str(text),
+            TokenKind::Command(text) => {
+                result.push('\\');
+                result.push_str(text);
+                if text.chars().all(|c| c.is_ascii_alphabetic() || c == '@') {
+                    result.push(' ');
+                }
+            }
+            TokenKind::LBrace => result.push('{'),
+            TokenKind::RBrace => result.push('}'),
+            TokenKind::LineBreak => result.push_str("\\\\"),
+            TokenKind::Space | TokenKind::ParBreak => result.push(' '),
+            TokenKind::MathShift => result.push('$'),
             _ => {}
         }
     }

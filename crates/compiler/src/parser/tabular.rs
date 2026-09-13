@@ -121,7 +121,11 @@ fn block_inlines(block: Block) -> Vec<Inline> {
         | Block::Verbatim { .. }
         | Block::TableOfContents { .. }
         | Block::TitleBlock { .. }
-        | Block::VFill => Vec::new(),
+        | Block::VFill
+        | Block::PageFieldOffset { .. }
+        | Block::PageStyleDefinition { .. }
+        | Block::PageStyleState { .. } => Vec::new(),
+        Block::PageField { content, .. } => content,
     }
 }
 

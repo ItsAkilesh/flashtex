@@ -100,6 +100,17 @@ pub struct Expansion {
 /// already hidden, and `\\:`, which latex.ltx only uses while building
 /// `\\@ifnextchar` before redefining it as a math space) are removed, so they
 /// pass through.
+///
+/// fancyhdr (v5.2): the macros a document may `\renewcommand`
+/// (`\headrulewidth`, `\footrulewidth`, `\headruleskip`, `\footruleskip`,
+/// `\headrule`, `\footrule`; the class's `\chaptermark`/`\sectionmark`/
+/// `\subsectionmark`) are defined here so those redefinitions execute, and
+/// their values are snapshotted into a `\flashtex@fancystatemarker` (the
+/// parser's `\flashtex@fancystate`) at `\begin{document}` and at the end of
+/// every `\fancypagestyle` body — where a `\renewcommand` is local to the
+/// body's group, exactly as in fancyhdr.sty lines 674-677. `\fancypagestyle`
+/// itself becomes `\flashtex@fancypagestylemarker{<star>}{name}{base}{body}`,
+/// which the converter hands to the parser as `\fancypagestyle`.
 pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
 \\let\\label\\flashtexundefined
 \\let\\verb\\flashtexundefined
@@ -110,6 +121,27 @@ pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
 \\def\\tabular{\\flashtexbegintabular\\expandafter{\\arraystretch}}%
 \\expandafter\\def\\csname tabular*\\endcsname{\\flashtexbegintabularstar\\expandafter{\\arraystretch}}%
 \\def\\array{\\flashtexbeginarray\\expandafter{\\arraystretch}}%
+\\makeatletter
+\\def\\headrulewidth{0.4pt}%
+\\def\\footrulewidth{0pt}%
+\\def\\headruleskip{0pt}%
+\\def\\footruleskip{.3\\normalbaselineskip}%
+\\def\\plainheadrulewidth{0pt}%
+\\def\\plainfootrulewidth{0pt}%
+\\def\\headrule{\\flashtex@defaultheadrule}%
+\\def\\footrule{\\flashtex@defaultfootrule}%
+\\def\\chaptermark#1{\\flashtex@defaultmark}%
+\\def\\sectionmark#1{\\flashtex@defaultmark}%
+\\def\\subsectionmark#1{\\flashtex@defaultmark}%
+\\def\\subsubsectionmark#1{\\flashtex@defaultmark}%
+\\def\\paragraphmark#1{\\flashtex@defaultmark}%
+\\def\\subparagraphmark#1{\\flashtex@defaultmark}%
+\\def\\flashtex@fancystate{\\flashtex@fancystatemarker{\\headrulewidth}{\\footrulewidth}{\\headruleskip}{\\footruleskip}{\\meaning\\headrule}{\\meaning\\footrule}{\\meaning\\chaptermark}{\\meaning\\sectionmark}{\\meaning\\subsectionmark}}%
+\\long\\def\\fancypagestyle{\\@ifstar{\\flashtex@fancypagestyle{*}}{\\flashtex@fancypagestyle{}}}%
+\\long\\def\\flashtex@fancypagestyle#1#2{\\@ifnextchar[{\\flashtex@fancypagestyle@{#1}{#2}}{\\flashtex@fancypagestyle@{#1}{#2}[]}}%
+\\long\\def\\flashtex@fancypagestyle@#1#2[#3]#4{\\flashtex@fancypagestylemarker{#1}{#2}{#3}{#4\\flashtex@fancystate}}%
+\\AtBeginDocument{\\flashtex@fancystate}%
+\\makeatother
 ";
 
 /// Engine diagnostics that duplicate the parser's own reports, or only note
@@ -703,6 +735,10 @@ impl<'d> Converter<'d> {
                         conv.stretch = Some(((begin.span.document.0, begin.span.start), 0, String::new()));
                         conv.push_environment("begin", env, begin);
                     }
+                    // fancyhdr markers (`HOST_PRELUDE`): the parser's
+                    // `\fancypagestyle` and `\flashtex@fancystate` arms.
+                    "flashtex@fancypagestylemarker" => conv.push(TokenKind::Command("fancypagestyle".into()), at),
+                    "flashtex@fancystatemarker" => conv.push(TokenKind::Command("flashtex@fancystate".into()), at),
                     "\\" => conv.push(TokenKind::LineBreak, at),
                     "[" => conv.push(TokenKind::DisplayMathOpen, at),
                     "]" => conv.push(TokenKind::DisplayMathClose, at),

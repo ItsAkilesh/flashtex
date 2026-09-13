@@ -1367,6 +1367,11 @@ impl LayoutCursor {
                 let remaining = (PAGE_HEIGHT_PT - MARGIN_PT - self.y).max(0.0);
                 self.vertical_gap(remaining);
             }
+            // fancyhdr directives: this layout draws no headers or footers.
+            Block::PageField { .. }
+            | Block::PageFieldOffset { .. }
+            | Block::PageStyleDefinition { .. }
+            | Block::PageStyleState { .. } => {}
         }
         self.first_block = false;
         self.state()
@@ -1499,7 +1504,13 @@ impl LayoutCursor {
                 emit(self, content, body_size, Font::TimesRoman);
                 self.newline(body_size);
             }
-            Block::VSpace { .. } | Block::PageBreak | Block::VFill => {}
+            Block::VSpace { .. }
+            | Block::PageBreak
+            | Block::VFill
+            | Block::PageField { .. }
+            | Block::PageFieldOffset { .. }
+            | Block::PageStyleDefinition { .. }
+            | Block::PageStyleState { .. } => {}
             Block::TableOfContents { span } => {
                 self.render_prepared_block(&Block::Heading {
                     level: 1,
@@ -2073,7 +2084,11 @@ fn visit_references(blocks: &[Block], visitor: &mut impl FnMut(&str, Span)) {
             | Block::PageBreak
             | Block::Verbatim { .. }
             | Block::TableOfContents { .. }
-            | Block::VFill => {}
+            | Block::VFill
+            | Block::PageField { .. }
+            | Block::PageFieldOffset { .. }
+            | Block::PageStyleDefinition { .. }
+            | Block::PageStyleState { .. } => {}
         }
     }
 }
@@ -2232,6 +2247,8 @@ fn emit(c: &mut LayoutCursor, inlines: &[Inline], size: f64, font: Font) {
                 });
                 c.place_logo(*logo, text_size, *span, style_font(*style), *space_before)
             }
+            // Header/footer marks never reach this layout's body text.
+            Inline::PageMark { .. } => {}
             Inline::Kern { amount, style, .. } => {
                 let text_size = style.size.map_or(size, |level| {
                     size_declaration_pt(level, c.constraints.font_size_pt)

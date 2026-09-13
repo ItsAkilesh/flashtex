@@ -455,6 +455,18 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             Some(())
         }
         Block::VFill => Some(()),
+        Block::PageField { span, content, .. } => {
+            map_span(span, changes, deltas)?;
+            shift_inlines(content, changes, deltas)
+        }
+        Block::PageFieldOffset { span, .. } | Block::PageStyleState { span, .. } => map_span(span, changes, deltas),
+        Block::PageStyleDefinition { span, body, .. } => {
+            map_span(span, changes, deltas)?;
+            for block in body.iter_mut() {
+                shift_block(block, changes, deltas)?;
+            }
+            Some(())
+        }
     }
 }
 
@@ -532,7 +544,7 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                     shift_inlines(text, changes, deltas)?;
                 }
             }
-            Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => {
+            Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } | Inline::PageMark { span, .. } => {
                 map_span(span, changes, deltas)?
             }
             Inline::Tabular(table) => {
@@ -702,7 +714,11 @@ fn block_signature(block: &Block) -> BlockSignature {
         | Block::PageBreak
         | Block::Verbatim { .. }
         | Block::TableOfContents { .. }
-        | Block::VFill => &[],
+        | Block::VFill
+        | Block::PageFieldOffset { .. }
+        | Block::PageStyleDefinition { .. }
+        | Block::PageStyleState { .. } => &[],
+        Block::PageField { content, .. } => content,
         // Signature only, not identity (see the doc comment above): using
         // just `title` here (never `authors`/`date`) can only widen the
         // candidate set on an author/date-only edit, never produce a wrong
@@ -722,7 +738,7 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Footnote { span, .. } => *span,
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
-        Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
+        Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } | Inline::PageMark { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);
     let last = inlines.last().map(span_of);

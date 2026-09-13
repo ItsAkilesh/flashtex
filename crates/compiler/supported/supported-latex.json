@@ -84,6 +84,19 @@
     {"name": "pagestyle", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "accepted; no headers or footers are rendered", "renders": true},
     {"name": "thispagestyle", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "accepted; no headers or footers are rendered", "renders": true},
     {"name": "pagenumbering", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "accepted; no page numbers are rendered", "renders": true},
+    {"name": "fancyhead", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{...}", "description": "fancyhdr header field(s) as structured content for the page layout; E/O, L/C/R selectors", "renders": true},
+    {"name": "fancyfoot", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{...}", "description": "fancyhdr footer field(s) as structured content for the page layout", "renders": true},
+    {"name": "fancyhf", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{...}", "description": "fancyhdr header and footer fields; \\fancyhf{} clears all twelve", "renders": true},
+    {"name": "lhead", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy left header field", "renders": true},
+    {"name": "chead", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy centre header field", "renders": true},
+    {"name": "rhead", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy right header field", "renders": true},
+    {"name": "lfoot", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy left footer field", "renders": true},
+    {"name": "cfoot", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy centre footer field", "renders": true},
+    {"name": "rfoot", "mode": "text", "origin": "text_dispatch", "arguments": "[even]{odd}", "description": "fancyhdr legacy right footer field", "renders": true},
+    {"name": "fancyheadoffset", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{dimension}", "description": "fancyhdr header field offset into the margin", "renders": true},
+    {"name": "fancyfootoffset", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{dimension}", "description": "fancyhdr footer field offset into the margin", "renders": true},
+    {"name": "fancyhfoffset", "mode": "text", "origin": "text_dispatch", "arguments": "[selectors]{dimension}", "description": "fancyhdr header and footer field offset into the margin", "renders": true},
+    {"name": "fancypagestyle", "mode": "text", "origin": "text_dispatch", "arguments": "{name}[base]{...}", "description": "fancyhdr page style definition; redefining plain affects chapter and title pages", "renders": true},
     {"name": "listfiles", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "accepted no-op; there is no log stream", "renders": true},
     {"name": "centering", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "centres the following paragraphs", "renders": true},
     {"name": "Centering", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "centres the following paragraphs (ragged2e form)", "renders": true},
@@ -778,7 +791,8 @@
     {"name": "amsthm", "silent_options": "", "description": "\\newtheorem, \\theoremstyle and the proof environment"},
     {"name": "array", "silent_options": "", "description": "tabular >{} <{} !{} m b w columns, \\newcolumntype and \\extrarowheight"},
     {"name": "enumitem", "silent_options": "shortlabels", "description": "enumerate label templates; \\setlist itemsep/topsep"},
-    {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"}
+    {"name": "geometry", "silent_options": "letterpaper, margin=1in", "description": "matches the fixed US Letter page with 1in margins"},
+    {"name": "fancyhdr", "silent_options": "twoside, nocheck", "description": "\\fancyhead/\\fancyfoot/\\fancyhf, \\lhead.., \\fancypagestyle, offsets, \\headrulewidth/\\footrulewidth"}
   ],
   "coverage": {
     "sources": [

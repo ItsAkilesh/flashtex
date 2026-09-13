@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 200 text-mode and 522 math-mode command entries, 43 environments and 6 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 213 text-mode and 522 math-mode command entries, 43 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -299,6 +299,19 @@ Canonical sources:
 | `\pagestyle` | `{style}` | accepted; no headers or footers are rendered |
 | `\thispagestyle` | `{style}` | accepted; no headers or footers are rendered |
 | `\pagenumbering` | `{style}` | accepted; no page numbers are rendered |
+| `\fancyhead` | `[selectors]{...}` | fancyhdr header field(s) as structured content for the page layout; E/O, L/C/R selectors |
+| `\fancyfoot` | `[selectors]{...}` | fancyhdr footer field(s) as structured content for the page layout |
+| `\fancyhf` | `[selectors]{...}` | fancyhdr header and footer fields; \fancyhf{} clears all twelve |
+| `\lhead` | `[even]{odd}` | fancyhdr legacy left header field |
+| `\chead` | `[even]{odd}` | fancyhdr legacy centre header field |
+| `\rhead` | `[even]{odd}` | fancyhdr legacy right header field |
+| `\lfoot` | `[even]{odd}` | fancyhdr legacy left footer field |
+| `\cfoot` | `[even]{odd}` | fancyhdr legacy centre footer field |
+| `\rfoot` | `[even]{odd}` | fancyhdr legacy right footer field |
+| `\fancyheadoffset` | `[selectors]{dimension}` | fancyhdr header field offset into the margin |
+| `\fancyfootoffset` | `[selectors]{dimension}` | fancyhdr footer field offset into the margin |
+| `\fancyhfoffset` | `[selectors]{dimension}` | fancyhdr header and footer field offset into the margin |
+| `\fancypagestyle` | `{name}[base]{...}` | fancyhdr page style definition; redefining plain affects chapter and title pages |
 | `\listfiles` |  | accepted no-op; there is no log stream |
 | `\centering` |  | centres the following paragraphs |
 | `\Centering` |  | centres the following paragraphs (ragged2e form) |
@@ -632,6 +645,7 @@ Typeset as upright words: `\sin`, `\cos`, `\tan`, `\cot`, `\sec`, `\csc`, `\arcs
 | `array` | `` | tabular >{} <{} !{} m b w columns, \newcolumntype and \extrarowheight |
 | `enumitem` | `shortlabels` | enumerate label templates; \setlist itemsep/topsep |
 | `geometry` | `letterpaper, margin=1in` | matches the fixed US Letter page with 1in margins |
+| `fancyhdr` | `twoside, nocheck` | \fancyhead/\fancyfoot/\fancyhf, \lhead.., \fancypagestyle, offsets, \headrulewidth/\footrulewidth |
 
 Any other package, or these packages with other options, is recorded and reported as recognised but not implemented.
 <!-- END GENERATED supported-latex -->
