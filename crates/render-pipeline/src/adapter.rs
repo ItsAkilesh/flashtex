@@ -737,7 +737,8 @@ pub fn adapt_cached(
     );
     // The class's `\parindent` (`size1x.clo`: 15pt / 17pt / 1.5em; `1em` in
     // two-column mode) comes with the resolved frame.
-    style.parindent_pt = parindent(source, size).unwrap_or(if explicit_class.is_some() {
+    let em_ex = ec_em_ex(size, style.family);
+    style.parindent_pt = setlength_in(source, "parindent", size, em_ex).unwrap_or(if explicit_class.is_some() {
         style.parindent_pt
     } else {
         options.default_parindent_pt
@@ -758,7 +759,7 @@ pub fn adapt_cached(
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
     // article's `0pt plus 1pt`.
-    if let Some(pt) = parskip(source, size) {
+    if let Some(pt) = setlength_in(source, "parskip", size, em_ex) {
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
@@ -2066,6 +2067,11 @@ pub fn parskip(source: &str, size: u32) -> Option<f64> {
 
 /// The last `\setlength{\<name>}{<dimen>}` of the source, in points.
 fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
+    setlength_in(source, name, size, None)
+}
+
+/// [`setlength`] with the document's own `em`/`ex` ([`ec_em_ex`]).
+fn setlength_in(source: &str, name: &str, size: u32, em_ex: Option<(f64, f64)>) -> Option<f64> {
     let needle = format!("{{\\{name}}}");
     let mut from = 0;
     let mut found = None;
@@ -2075,7 +2081,7 @@ fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
         if let Some(r) = rest.strip_prefix(needle.as_str()) {
             if let Some(r) = r.trim_start().strip_prefix('{') {
                 if let Some(end) = r.find('}') {
-                    found = parse_dimen(&r[..end], size).or(found);
+                    found = parse_dimen_in(&r[..end], size, em_ex).or(found);
                 }
             }
         }
@@ -2102,6 +2108,34 @@ pub fn parse_dimen_pt(s: &str, size: u32) -> Option<f64> {
 }
 
 fn parse_dimen(s: &str, size: u32) -> Option<f64> {
+    parse_dimen_in(s, size, None)
+}
+
+/// `em`/`ex` of the body font a document's own preamble and `\setlist`
+/// keys are evaluated in, when it differs from the class size.
+/// `\usepackage[T1]{fontenc}` without `lmodern` selects `t1cmr.fd`'s EC
+/// fonts ([`Family::ComputerModern`](crate::fonts::Family)) before the
+/// user's `\setlength`s run, and TeX's `em`/`ex` are that font's
+/// `\fontdimen6`/`\fontdimen5`. `tftopl` (TeX Live 2026): ecrm1000 QUAD
+/// 0.999756 XHEIGHT 0.43045, ecrm1095 QUAD 0.994328 XHEIGHT 0.4304495,
+/// ecrm1200 QUAD 0.978928 XHEIGHT 0.43045; pdflatex reports
+/// `\setlength{\parskip}{0.65em}` as 7.07704pt at 11pt. Class-load values
+/// (article's `\labelsep .5em`) were evaluated in OT1 `cmr` and keep
+/// [`parse_dimen`]'s class size.
+fn ec_em_ex(size: u32, family: crate::fonts::Family) -> Option<(f64, f64)> {
+    if family != crate::fonts::Family::ComputerModern {
+        return None;
+    }
+    let (design, quad, xheight) = match size {
+        12 => (12.0, 0.978928, 0.43045),
+        11 => (10.949997, 0.994328, 0.4304495),
+        _ => (10.0, 0.999756, 0.43045),
+    };
+    Some((design * quad, design * xheight))
+}
+
+/// [`parse_dimen`] with explicit `em`/`ex` (points) when `em_ex` is set.
+fn parse_dimen_in(s: &str, size: u32, em_ex: Option<(f64, f64)>) -> Option<f64> {
     let s = s.trim();
     let split = s.find(|c: char| c.is_ascii_alphabetic())?;
     let (num, unit) = s.split_at(split);
@@ -2111,10 +2145,11 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
         11 => 10.95,
         _ => 10.0,
     };
+    let (em, ex) = em_ex.unwrap_or((body, body * 0.430556));
     Some(match unit.trim() {
         "pt" => v,
-        "em" => v * body,
-        "ex" => v * body * 0.430556,
+        "em" => v * em,
+        "ex" => v * ex,
         "in" => v * 72.27,
         "cm" => v * 72.27 / 2.54,
         "mm" => v * 72.27 / 25.4,
@@ -2164,7 +2199,7 @@ fn list_seps(source: &str, env: &str, depth: usize, size: u32, style: &Styleshee
             continue;
         }
         for (key, value) in list_keys(keys) {
-            let Some(pt) = parse_dimen(value, size) else { continue };
+            let Some(pt) = parse_dimen_in(value, size, ec_em_ex(size, style.family)) else { continue };
             match key {
                 "topsep" => seps.topsep = pt,
                 "partopsep" => seps.partopsep = pt,
