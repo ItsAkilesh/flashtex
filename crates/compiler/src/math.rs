@@ -4292,13 +4292,13 @@ mod accent_tests {
     }
 
     #[test]
-    fn widehat_over_one_symbol_is_silent_but_warns_over_more_than_one() {
+    fn widehat_is_silent_over_one_or_more_symbols() {
+        // The accent grows with its body (cmex successor chain, msbm "5B past
+        // 2em) in TFM-driven layouts, so a wide body is no longer diagnosed.
         let (_, one) = laid_out(r"\widehat{A}", 10.0);
         assert!(one.is_empty(), "{one:?}");
-
-        let (_, many) = laid_out(r"\widehat{AB}", 10.0);
-        assert_eq!(many.len(), 1, "{many:?}");
-        assert!(many[0].message.contains("does not stretch"));
+        let (_, many) = laid_out(r"\widetilde{ABC}", 10.0);
+        assert!(many.is_empty(), "{many:?}");
     }
 
     #[test]
@@ -4441,12 +4441,16 @@ mod spacing_tests {
             "vdash",
             "dashv",
         ] {
-            let glyph = command_glyph(command).unwrap();
+            // amssymb commands set their own table text at msam/msbm widths.
+            let glyph = crate::amssymb::by_name(command)
+                .map(|s| s.text)
+                .unwrap_or_else(|| command_glyph(command).unwrap());
             // A space after a control word is swallowed by the lexer (like
             // real TeX), so it safely separates the command from `b`.
             let b = laid_out(&format!(r"a\{command} b"), SIZE);
             close(x(&b, glyph), width("a", SIZE) + 5.0);
-            close(x(&b, "b"), x(&b, glyph) + width(glyph, SIZE) + 5.0);
+            let own = width(&format!(r"\{command}"), SIZE);
+            close(x(&b, "b"), x(&b, glyph) + own + 5.0);
         }
     }
 
