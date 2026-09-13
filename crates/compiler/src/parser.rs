@@ -646,6 +646,7 @@ pub(crate) const BUILT_INS: &[&str] = &[
     "setcitestyle",
     "newblock",
     "natexlab",
+    "penalty",
     "title",
     "author",
     "date",
@@ -1539,6 +1540,16 @@ impl P<'_> {
             // between blocks of an entry; the layouts read the glue from
             // the source bytes around the command.
             "newblock" => {}
+            // TeX's `\penalty<number>` (BibTeX's `.bbl` writes `\penalty0`
+            // inside page ranges): a break opportunity, never text.
+            "penalty" => {
+                self.skip_spaces();
+                let numeric = matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Word(word))
+                    if !word.is_empty() && word.trim_start_matches('-').chars().all(|c| c.is_ascii_digit()));
+                if numeric {
+                    self.i += 1;
+                }
+            }
             // natbib: the extra year label (`1984a`), shown only in
             // author-year mode.
             "natexlab" => {

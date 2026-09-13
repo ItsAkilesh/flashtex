@@ -847,7 +847,10 @@ impl Citer {
             let mut last_yr: Option<String> = None;
             for key in keys {
                 let Some(item) = bibliography.item(key) else {
+                    // natbib.sty 385: `{\reset@font\bfseries?}` ends its
+                    // line, so a space follows the mark.
                     body.bold("?");
+                    body.text(" ");
                     continue;
                 };
                 let last_num = std::mem::replace(&mut num, item.natbib_num.clone());
@@ -916,6 +919,7 @@ impl Citer {
         for key in keys {
             let Some(item) = bibliography.item(key) else {
                 body.bold("?");
+                body.text(" ");
                 continue;
             };
             let nm = item.names.as_ref().map(|n| self.names(request, key, n));
@@ -1281,6 +1285,9 @@ mod tests {
         assert_eq!(cite_text(num("numbers,sort"), "cite", &[], "h,kp,k84", &bib), "[1, 3, 4]");
         assert_eq!(cite_text(num("numbers,sort&compress"), "cite", &[], "h,kp,k86", &bib), "[2\u{2013}4]");
         assert_eq!(cite_text(num("super"), "cite", &[], "k84,kp", &bib), "1;3");
+        // pdflatex: `[1? , 3]` and `?]`.
+        assert_eq!(cite_text(num("numbers"), "citep", &[], "k84,zz,kp", &bib), "[1? , 3]");
+        assert_eq!(cite_text(num("numbers"), "citet", &[], "zz", &bib), "? ]");
     }
 
     #[test]

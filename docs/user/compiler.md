@@ -183,7 +183,7 @@ same data is available as JSON from `flashtex-compiler --supported`.
 <!-- BEGIN GENERATED supported-latex: `flashtex-compiler --supported markdown`; do not edit by hand -->
 ## Supported LaTeX
 
-This compiler implements a finite LaTeX subset: 215 text-mode and 521 math-mode command entries, 43 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
+This compiler implements a finite LaTeX subset: 216 text-mode and 521 math-mode command entries, 43 environments and 7 layout-neutral packages. Every other command produces an explicit "not supported" diagnostic naming it, and every other environment or package a warning; nothing is dropped silently. Descriptions note approximations. Outstanding features with reproductions are in `crates/compiler/UNSUPPORTED.md`.
 
 Regenerate with `crates/compiler/scripts/render_supported_latex.sh`; `cargo test --test supported_latex` fails when this section is stale.
 
@@ -338,6 +338,7 @@ Canonical sources:
 | `\setcitestyle` | `{options}` | natbib citation punctuation keywords and key=value settings |
 | `\newblock` |  | glue between blocks of a bibliography entry |
 | `\natexlab` | `{letter}` | natbib extra year label, shown in author-year mode |
+| `\penalty` | `number` | a break opportunity (BibTeX's \penalty0); sets no text |
 | `\title` | `{...}` | title for \maketitle |
 | `\author` | `{...}` | author block for \maketitle; \and and \thanks inside it |
 | `\date` | `{...}` | date for \maketitle; \today inside it |

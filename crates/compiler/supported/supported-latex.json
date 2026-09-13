@@ -123,6 +123,7 @@
     {"name": "setcitestyle", "mode": "text", "origin": "text_dispatch", "arguments": "{options}", "description": "natbib citation punctuation keywords and key=value settings", "renders": true},
     {"name": "newblock", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "glue between blocks of a bibliography entry", "renders": true},
     {"name": "natexlab", "mode": "text", "origin": "text_dispatch", "arguments": "{letter}", "description": "natbib extra year label, shown in author-year mode", "renders": true},
+    {"name": "penalty", "mode": "text", "origin": "text_dispatch", "arguments": "number", "description": "a break opportunity (BibTeX's \\penalty0); sets no text", "renders": true},
     {"name": "title", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "title for \\maketitle", "renders": true},
     {"name": "author", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "author block for \\maketitle; \\and and \\thanks inside it", "renders": true},
     {"name": "date", "mode": "text", "origin": "text_dispatch", "arguments": "{...}", "description": "date for \\maketitle; \\today inside it", "renders": true},

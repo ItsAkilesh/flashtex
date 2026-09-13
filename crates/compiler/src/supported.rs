@@ -285,6 +285,7 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("setcitestyle", "{options}", "natbib citation punctuation keywords and key=value settings"),
     ("newblock", "", "glue between blocks of a bibliography entry"),
     ("natexlab", "{letter}", "natbib extra year label, shown in author-year mode"),
+    ("penalty", "number", "a break opportunity (BibTeX's \\penalty0); sets no text"),
     ("title", "{...}", "title for \\maketitle"),
     ("author", "{...}", "author block for \\maketitle; \\and and \\thanks inside it"),
     ("date", "{...}", "date for \\maketitle; \\today inside it"),
