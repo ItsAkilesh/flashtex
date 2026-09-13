@@ -1305,6 +1305,7 @@ fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
         span: atom.span,
         superscript: atom.superscript,
         subscript: atom.subscript,
+        class_override: atom.class_override,
     }
 }
 
@@ -1927,6 +1928,7 @@ fn with_delimiter_scale(atom: &MathAtom, scale: f64) -> MathAtom {
         span: atom.span,
         superscript: atom.superscript.clone(),
         subscript: atom.subscript.clone(),
+        class_override: atom.class_override,
     }
 }
 
