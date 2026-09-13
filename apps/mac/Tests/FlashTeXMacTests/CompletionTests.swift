@@ -21,25 +21,36 @@ final class CompletionTests: XCTestCase {
         let s = Completion.suggestions(in: text, caretUTF16: (text as NSString).length, result: nil)
         // The label shows the argument shape; the inserted text is the command alone.
         // Text-mode entries precede math ones (table order); nothing is spelled `se`.
-        XCTAssertEqual(labels(s), ["\\section{...}", "\\setlength{\\length}{dimension}", "\\setlist[list]{options}",
-                                    "\\setcounter{counter}{number}", "\\settowidth{\\name}{text}", "\\settoheight{\\name}{text}",
-                                    "\\settodepth{\\name}{text}", "\\sec", "\\setminus"])
+        // Computed from the live vocabulary (not a hand-copied snapshot) so this
+        // tracks the compiler's inventory as it grows.
+        XCTAssertEqual(labels(s), CompletionTestVocabulary.labels(forPrefix: "se"))
         XCTAssertTrue(s.allSatisfy { $0.kind == .command && $0.insertText.hasPrefix("\\se") })
         XCTAssertEqual(s.first?.insertText, "\\section")
         XCTAssertEqual(s.first?.detail, "numbered section heading; starred form unnumbered")
         XCTAssertEqual(s.map(\.detail).suffix(2), ["math · upright operator name", "math · symbol ∖"])
 
         // The command spelled exactly as typed ranks first; the rest keep table order.
-        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sec", caretUTF16: 6, result: nil)), ["\\sec", "\\section{...}"])
-        XCTAssertEqual(labels(Completion.suggestions(in: "x \\it", caretUTF16: 5, result: nil)), ["\\it", "\\item", "\\itshape"])
-        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sub", caretUTF16: 6, result: nil)),
-                       ["\\subsection{...}", "\\subsubsection{...}", "\\substack{a \\\\ b}", "\\subset", "\\subseteq",
-                        "\\subseteqq", "\\subsetneqq", "\\subsetneq"])
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sec", caretUTF16: 6, result: nil)), CompletionTestVocabulary.labels(forPrefix: "sec"))
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\it", caretUTF16: 5, result: nil)), CompletionTestVocabulary.labels(forPrefix: "it"))
+        XCTAssertEqual(labels(Completion.suggestions(in: "x \\sub", caretUTF16: 6, result: nil)), CompletionTestVocabulary.labels(forPrefix: "sub"))
+
+        // The ranking rule itself, isolated from the compiler's (growing)
+        // vocabulary through the `supported:` injection seam: the name typed
+        // exactly ranks first, the rest keep the order `supported` gave them,
+        // and a candidate that does not start with the prefix is dropped.
+        let synthetic = ["second", "sec", "sea", "search", "setminus", "xyz"]
+        let ruleCheck = Completion.suggestions(in: "x \\se", caretUTF16: 5, result: nil, supported: synthetic)
+        XCTAssertEqual(ruleCheck.map(\.insertText), ["\\second", "\\sec", "\\sea", "\\search", "\\setminus"])
+        // `second` leads `sec` in table order, but typing `\sec` exactly must
+        // still rank it first.
+        let ruleCheckExact = Completion.suggestions(in: "x \\sec", caretUTF16: 6, result: nil, supported: synthetic)
+        XCTAssertEqual(ruleCheckExact.map(\.insertText), ["\\sec", "\\second"],
+                       "the exact typed spelling ranks first even though it is later in table order")
 
         // A lone backslash lists every supported command (capped at 12).
         let all = Completion.suggestions(in: "x \\", caretUTF16: 3, result: nil)
         XCTAssertEqual(all.count, Completion.maxSuggestions)
-        XCTAssertEqual(all.first?.label, "\\section{...}")
+        XCTAssertEqual(all.first?.label, Completion.Vocabulary.entries.first?.label)
         XCTAssertTrue(all.allSatisfy { $0.kind == .command })
 
         // `\\` itself is a supported command.
@@ -119,7 +130,9 @@ final class CompletionTests: XCTestCase {
         XCTAssertEqual(env.first?.kind, .environment)
         let beginCtx = "\\begin{itemize}\\end{itemize}\\begin{d"
         let b = Completion.suggestions(in: beginCtx, caretUTF16: (beginCtx as NSString).length, result: nil)
-        XCTAssertEqual(labels(b), ["document", "displaymath", "dcases"])
+        // Every known environment starting with `d`, in table order (computed
+        // from the live vocabulary, not a hand-copied snapshot).
+        XCTAssertEqual(labels(b), Completion.knownEnvironments.filter { $0.hasPrefix("d") })
         XCTAssertEqual(b.first?.detail, "supported by this compiler")
     }
 
@@ -214,8 +227,7 @@ final class CompletionTests: XCTestCase {
         var index = -1
         let items = tv.completions(forPartialWordRange: tv.rangeForUserCompletion, indexOfSelectedItem: &index)
         // AppKit's list carries the insert texts (no argument shapes), in the pure function's order.
-        XCTAssertEqual(items, ["\\section", "\\setlength", "\\setlist", "\\setcounter", "\\settowidth", "\\settoheight",
-                               "\\settodepth", "\\sec", "\\setminus"])
+        XCTAssertEqual(items, CompletionTestVocabulary.insertTexts(forPrefix: "se"))
         XCTAssertEqual(items, Completion.suggestions(in: tv.string, caretUTF16: end, result: nil).map(\.insertText))
         XCTAssertEqual(index, 0)
         // `\e` offers the unclosed environment first.
@@ -442,7 +454,9 @@ final class CompletionTests: XCTestCase {
         for c in rendered where c.mode == .text && c.origin != .controlSymbol && !text.contains(c.name) { text.append(c.name) }
         let structures = byOrigin(.mathStructure).filter { V.byName[$0]?.mode == .math }
         XCTAssertEqual(entries.map(\.name), text + ["\\"] + structures + byOrigin(.mathOperator) + byOrigin(.mathSymbol))
-        XCTAssertEqual(entries.first?.name, "section")
+        // The first text-mode command in file order, whatever the inventory
+        // currently leads with (not necessarily `section`).
+        XCTAssertEqual(entries.first?.name, text.first)
     }
 
     /// Hover documentation names only commands the compiler inventories or
@@ -975,7 +989,7 @@ final class CompletionTests: XCTestCase {
         spin("session") { tv.session != nil }
         // `\s` overflows the cap; the session shows exactly the pure function's list.
         XCTAssertEqual(tv.session?.items.count, Completion.maxSuggestions)
-        XCTAssertEqual(tv.session?.items.map(\.label).prefix(2), ["\\section{...}", "\\subsection{...}"])
+        XCTAssertEqual(tv.session?.items.map(\.label).prefix(2), CompletionTestVocabulary.labels(forPrefix: "s").prefix(2))
         XCTAssertEqual(tv.session?.items, Completion.suggestions(in: tv.string, caretUTF16: caret, metadata: nil))
         XCTAssertEqual(tv.session?.range, NSRange(location: caret - 2, length: 2))
         XCTAssertNil(tv.session?.metadataRevision, "no metadata was bound")
