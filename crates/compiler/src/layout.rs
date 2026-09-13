@@ -27,6 +27,11 @@ pub const MARGIN_PT: f64 = 72.0;
 pub const BODY_SIZE_PT: f64 = 12.0;
 pub const LINE_SPACING: f64 = 1.2;
 pub const PARAGRAPH_GAP_PT: f64 = 6.0;
+/// Justification leaves a wrapped line ragged rather than stretch its
+/// inter-word spaces by more than this multiple of their natural width
+/// (so no gap exceeds 3x its natural size), standing in for TeX's
+/// tolerance/badness limit on an underfull line.
+const JUSTIFY_MAX_STRETCH: f64 = 2.0;
 /// `quote` margins: LaTeX's `\leftmargini` (2.5em at 10pt).
 pub const QUOTE_INDENT_PT: f64 = 25.0;
 /// `\leftmargini`..`\leftmarginiv` (standard classes' 10pt-class defaults):
@@ -314,6 +319,14 @@ pub struct LayoutCursor {
     /// Page-item-index boundaries recorded by `mark_hfill` for the current
     /// line, resolved (and cleared) by `resolve_hfill` when the line closes.
     line_fills: Vec<usize>,
+    /// Inter-word spaces on the current line as (page-item index of the item
+    /// after the space, natural width), consumed by `justify_line` when the
+    /// line wraps and cleared whenever a line or block ends.
+    line_spaces: Vec<(usize, f64)>,
+    /// Whether the block being rendered is set justified (body paragraphs,
+    /// list items, `quote`); off for headings, captions, `center`/`flush*`
+    /// and displays.
+    justify: bool,
     first_block: bool,
     constraints: LayoutConstraints,
     resolved_labels: BTreeMap<String, ReferenceValue>,
@@ -352,6 +365,8 @@ impl LayoutCursor {
             line_start: 0,
             content_end: MARGIN_PT,
             line_fills: Vec::new(),
+            line_spaces: Vec::new(),
+            justify: false,
             first_block: true,
             constraints,
             resolved_labels,
@@ -407,7 +422,54 @@ impl LayoutCursor {
         }
     }
 
+    /// Ends a line because the next item does not fit: unlike an explicit
+    /// `\\` or a paragraph's last line, such a line is justified.
+    fn wrap_line(&mut self, size: f64) {
+        self.justify_line();
+        self.newline(size);
+    }
+
+    /// Stretches the current line's inter-word spaces, in proportion to their
+    /// natural widths, so its last item ends at the right edge. Lines with
+    /// infinite glue (`\hfill`), no spaces, overfull content, or needing more
+    /// than `JUSTIFY_MAX_STRETCH` stay as they are.
+    fn justify_line(&mut self) {
+        let spaces = std::mem::take(&mut self.line_spaces);
+        let natural: f64 = spaces.iter().map(|&(_, width)| width).sum();
+        let slack = self.right_edge() - self.content_end;
+        if !self.justify
+            || !self.line_fills.is_empty()
+            || natural <= 0.0
+            || slack <= 0.0
+            || slack > JUSTIFY_MAX_STRETCH * natural
+        {
+            return;
+        }
+        let Some(page) = self.pages.last_mut() else {
+            return;
+        };
+        let mut shift = 0.0;
+        let mut spaces = spaces.into_iter().peekable();
+        for (index, item) in page.items.iter_mut().enumerate().skip(self.line_start) {
+            while let Some((_, width)) = spaces.next_if(|&(boundary, _)| boundary <= index) {
+                shift += slack * width / natural;
+            }
+            item.x_pt = round2(item.x_pt + shift);
+        }
+    }
+
+    /// Records the reserved gap before an item about to be pushed as a
+    /// stretchable inter-word space, unless the item starts its line.
+    fn note_space(&mut self) {
+        let gap = self.x - self.content_end;
+        let len = self.pages.last().expect("at least one page").items.len();
+        if gap > 0.0 && len > self.line_start {
+            self.line_spaces.push((len, gap));
+        }
+    }
+
     fn newline(&mut self, size: f64) {
+        self.line_spaces.clear();
         self.resolve_hfill();
         self.align_current_line();
         self.x = self.left_edge();
@@ -486,6 +548,7 @@ impl LayoutCursor {
     /// one still has room. Unlike `newline`'s overflow break, this always
     /// creates a new page rather than only doing so past the bottom margin.
     fn force_page_break(&mut self) {
+        self.line_spaces.clear();
         self.x = MARGIN_PT;
         self.content_end = self.x;
         let n = self.pages.len() as u32 + 1;
@@ -511,8 +574,9 @@ impl LayoutCursor {
         }
         let (w, span) = shaped_width(&text, size, font, span, &mut self.diagnostics);
         if self.x > self.left_edge() && self.x + w > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
         }
+        self.note_space();
         self.ensure_extents(size, size * (LINE_SPACING - 1.0));
         let item = TextItem {
             text,
@@ -540,7 +604,7 @@ impl LayoutCursor {
     fn text_glue(&mut self, em: f64, size: f64) {
         let width = em * size;
         if self.x > self.left_edge() && self.x + width > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
             return;
         }
         self.x += width;
@@ -567,8 +631,9 @@ impl LayoutCursor {
             self.x = self.content_end;
         }
         if self.x > self.left_edge() && self.x + b.width > self.right_edge() {
-            self.newline(size);
+            self.wrap_line(size);
         }
+        self.note_space();
         self.ensure_extents(b.ascent, b.descent);
         let base_x = self.x;
         let base_y = self.y;
@@ -597,6 +662,7 @@ impl LayoutCursor {
     fn display_math(&mut self, b: MathBox, size: f64, number: Option<(&str, Span)>) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
+        let justify = std::mem::replace(&mut self.justify, false);
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -614,6 +680,7 @@ impl LayoutCursor {
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.style = style;
+        self.justify = justify;
     }
 
     /// Draws an `\item` label (bullet/number) right-aligned so it ends
@@ -664,6 +731,7 @@ impl LayoutCursor {
     fn display_rows(&mut self, rows: &[MathRow], aligned: bool, size: f64) {
         // Displays centre themselves; line alignment must not move them again.
         let style = self.style.take();
+        let justify = std::mem::replace(&mut self.justify, false);
         if self.x > MARGIN_PT
             || self
                 .pages
@@ -726,6 +794,7 @@ impl LayoutCursor {
         self.newline(self.constraints.font_size_pt);
         self.vertical_gap(PARAGRAPH_GAP_PT);
         self.style = style;
+        self.justify = justify;
     }
 
     /// Apply the inter-block spacing and return the state used as a cache key.
@@ -800,9 +869,13 @@ impl LayoutCursor {
         let starts: Vec<usize> = self.pages.iter().map(|page| page.items.len()).collect();
         let body_size = self.constraints.font_size_pt;
         match block {
-            Block::Paragraph(inlines) => emit(self, inlines, body_size, Font::TimesRoman),
+            Block::Paragraph(inlines) => {
+                self.justify = true;
+                emit(self, inlines, body_size, Font::TimesRoman);
+            }
             Block::Styled { style, content } => {
                 self.style = Some(*style);
+                self.justify = *style == ParagraphStyle::Quote;
                 // `left_edge()` depends on `self.style` (the `quote` indent),
                 // which just changed, so `content_end` — synced to the old
                 // margin by `prepare_block`'s `newline` — must move with it.
@@ -824,6 +897,7 @@ impl LayoutCursor {
                 ..
             } => {
                 self.list_margin_pt = list_margin_pt(*level, body_size);
+                self.justify = true;
                 if let Some((text, span)) = label {
                     self.place_list_label(text, *span, self.list_margin_pt, body_size);
                 }
@@ -909,6 +983,8 @@ impl LayoutCursor {
         // ephemeral `line_fills` state that is intentionally absent from
         // `FlowState`. Explicit line breaks already resolve earlier lines.
         self.resolve_hfill();
+        self.line_spaces.clear();
+        self.justify = false;
         let mut placed = Vec::new();
         for (page_index, page) in self.pages.iter().enumerate() {
             let start = starts.get(page_index).copied().unwrap_or(0);
@@ -1574,5 +1650,46 @@ mod tests {
             "an overlong label should overflow past the page margin, like LaTeX's overfull label box (got {})",
             label.x_pt
         );
+    }
+
+    /// Right edge of each line (by baseline) on the first page, in order.
+    fn line_ends(pages: &[Page]) -> Vec<f64> {
+        let mut ends: Vec<(f64, f64)> = Vec::new();
+        for item in &pages[0].items {
+            let end = item.x_pt + glyph_width(&item.text, item.font_size_pt, item.font);
+            match ends.last_mut() {
+                Some((y, e)) if *y == item.baseline_y_pt => *e = e.max(end),
+                _ => ends.push((item.baseline_y_pt, end)),
+            }
+        }
+        ends.into_iter().map(|(_, end)| end).collect()
+    }
+
+    #[test]
+    fn wrapped_lines_are_justified_but_last_forced_and_centered_lines_are_not() {
+        let words = "Justified text stretches its spaces evenly. ".repeat(8);
+        let right = PAGE_WIDTH_PT - MARGIN_PT;
+        let ends = line_ends(&laid_out(&format!("{words}\\\\ {words}")).1);
+        assert!(ends.len() >= 5, "{ends:?}");
+        // Each paragraph piece: wrapped lines justified, the line closed by
+        // `\\` and the paragraph's final line left ragged.
+        let ragged: Vec<bool> = ends.iter().map(|end| (end - right).abs() > 0.05).collect();
+        assert_eq!(ragged.iter().filter(|r| **r).count(), 2, "{ends:?}");
+        assert!(ragged[ragged.len() - 1]);
+
+        let centered = line_ends(&laid_out(&format!("\\begin{{center}}{words}\\end{{center}}")).1);
+        assert!(centered.len() >= 3);
+        assert!(
+            centered.iter().all(|end| (end - right).abs() > 0.05),
+            "{centered:?}"
+        );
+
+        // A line with infinite glue keeps the `\hfill` distribution only.
+        let filled = laid_out(&format!("a\\hfill b {words}")).1;
+        let items = &filled[0].items;
+        let space = word_space(BODY_SIZE_PT, Font::TimesRoman);
+        let natural_after_b = items[1].x_pt + glyph_width("b", BODY_SIZE_PT, Font::TimesRoman);
+        assert!((items[2].x_pt - natural_after_b - space).abs() < 0.05);
+        assert!((line_ends(&filled)[0] - right).abs() < 0.05);
     }
 }

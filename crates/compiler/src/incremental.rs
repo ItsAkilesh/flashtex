@@ -793,6 +793,15 @@ mod tests {
     }
 
     #[test]
+    fn justified_multi_line_paragraphs_reuse_identically() {
+        let body = "Several words wrap across lines and get justified. ".repeat(6);
+        let old = format!("{body}\n\n{body}\n\n{body}");
+        let new = format!("{body}\n\nEdited {body}\n\n{body}");
+        let result = compile_edit(&old, &new);
+        assert!(result.stats.blocks_reused >= 1);
+    }
+
+    #[test]
     fn multibyte_insertion_shifts_later_spans_by_byte_delta() {
         let new = "A café closes.\n\nLater paragraph stays.";
         let result = compile_edit("A cafe closes.\n\nLater paragraph stays.", new);
