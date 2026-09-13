@@ -36,3 +36,4 @@ flashtex-document-style = { path = "vendor/document-style" }
 flashtex-pdf = { path = "vendor/pdf" }
 flashtex-font-resources = { path = "vendor/font-resources" }
 flashtex-project-files = { path = "vendor/project-files" }
+flashtex-vector-graphics = { path = "../vector-graphics" }

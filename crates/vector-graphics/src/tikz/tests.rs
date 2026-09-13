@@ -163,7 +163,10 @@ fn rounded_corners_arcs_grids_and_curves() {
     let curves = |i: usize| s[i].path.commands().iter().filter(|c| matches!(c, PathCommand::CubicTo(..))).count();
     assert_eq!(curves(0), 4, "four rounded corners");
     assert_eq!(curves(1), 1, "a quarter arc");
-    assert_eq!(s[2].path.commands().iter().filter(|c| matches!(c, PathCommand::MoveTo(..))).count(), 6);
+    // PGF's sp arithmetic: 0.5cm truncates to 932339sp, so 2cm is not a
+    // multiple and its line is skipped; 3cm and 1cm come from the final
+    // 0.01pt-early line. 2 horizontal + 3 vertical.
+    assert_eq!(s[2].path.commands().iter().filter(|c| matches!(c, PathCommand::MoveTo(..))).count(), 5);
     assert_eq!(curves(3), 1);
     assert_eq!(curves(4), 1);
 }
