@@ -89,6 +89,11 @@ struct SourceEditorView: NSViewRepresentable {
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
         tv.allowsUndo = true
+        // Standard Find bar (EditorFind.swift routes Edit ▸ Find to it via
+        // performTextFinderAction); incremental search highlights matches as
+        // the query is typed.
+        tv.usesFindBar = true
+        tv.isIncrementalSearchingEnabled = true
         tv.textContainerInset = NSSize(width: 8, height: 8)
         tv.setAccessibilityLabel("LaTeX source") // FlashTeXAccessibility: VoiceOver names the editor
         tv.setAccessibilityHelp("LaTeX source editor. Moving the selection announces the line and column.")

@@ -79,6 +79,12 @@ enum CommandPaletteModel {
         case .nearbyCompanion: openWindow(id: "nearby")
         case .restoreDiscardedBuffer: _ = model.restoreDiscardedBuffer()
         case .undo: NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+        case .find: EditorFindAction.send(.showFindInterface)
+        case .findAndReplace: EditorFindAction.send(.showReplaceInterface)
+        case .findNext: EditorFindAction.send(.nextMatch)
+        case .findPrevious: EditorFindAction.send(.previousMatch)
+        case .useSelectionForFind: EditorFindAction.send(.setSearchString)
+        case .jumpToSelection: EditorFindAction.centerSelection()
         case .completion, .completionList, .selectPreviewItemSource, .nextSearchMatch: return false
         case .goToMatching: model.goToMatching()
         case .nextDiagnostic: model.goToDiagnostic(forward: true)
