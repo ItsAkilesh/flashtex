@@ -387,6 +387,50 @@ error is a stage 3 PR's job, which is the expected order:
   fields), #158 (`ColorBox`), #165 (`MathBox::tag`), #170 (`Graphic`/
   `Transform`) and #151/#154 (`Piece::Caption::short`).
 
+### #154 footnotes-2 (render-pipeline) @ 8217e984
+
+The hardest merge of the stage so far: main and #154 both restructured the
+same per-column placement code in `typeset/floatpage.rs`.
+
+- `src/typeset/floatpage.rs`, column placement: #154 wraps the column in a
+  footnote-aware `\@makecol` branch (`pagebuild::make_column` with `\footins`)
+  and keeps the old loop as the `else`; main had independently added the
+  column glue setting (`column_glue_set`, `glue_adj`, the adjusted `floatsep`)
+  and the two-column offset `off`/`dbl_off`. Git interleaved the two into
+  three overlapping hunks. Resolved by taking #154's structure and re-applying
+  main's deltas inside it, verified against the three merge stages (`:1:`,
+  `:2:`, `:3:`) rather than the conflict markers:
+  - `bots_span` uses main's glue-adjusted `floatsep`, not `fp.floatsep.n`;
+  - both branches place bottom floats at `off + pl.colht - bots_span` and
+    advance by `floatsep`, so a two-column page keeps its offset;
+  - the plain branch keeps main's `glue_adj(stretch, shrink)` in both glue
+    arms (`VItem::Glue` and `N::Glue`), which is what makes a shrunken or
+    stretched column measure correctly.
+- `src/typeset/floatpage.rs`, `paginate` signature: main added `first_colht`
+  (the first page's `\@colht` below a `\twocolumn[...]` box) and #154 added
+  `text_blocks`/`ins` plus a fourth return value (the footnote areas). Merged
+  into one signature carrying all of them.
+- `src/typeset.rs`, the `paginate` call: #154 emitted an `unsupported_block`
+  warning that "`\twocolumn[\@maketitle]` with floats does not shorten the
+  first page's columns" — which is exactly what main's `first_colht` fixes.
+  Dropped the warning and passed `first_colht`, rather than shipping a
+  warning about a limitation that no longer exists.
+- `src/typeset.rs`, other conflicts: `Context` fields (both); the `AItem`
+  arms (both, with the brace git shared between #138's `TextBox` arm and
+  #154's `NoteParBreak` arm restored); `BoxRec::Rule` painting — kept main's
+  version, which carries the `bottom` field the shared tail reads and whose
+  `width <= 0 || height <= 0` guard already covers #154's zero-height rule.
+- `src/mathtex.rs`: #154 made `TexMathMetrics::new` return an `Option` while
+  main added the `fraktur`/`alphabets` fields; combined.
+- Follow-on fixes: `math_box` gained #154's `size` argument, so main's
+  `\LaTeXe` epsilon call passes the logo's own `size`; #154's `\parindent`
+  rule gained `bottom: 0.0`; and `floats.rs`'s float-body block match gained
+  `Block::Part`/`Block::TocEntry` arms (main's variants, unsupported inside a
+  float box, like `Block::Chapter`).
+- Checks: every error this merge introduced is resolved. The remaining
+  render-pipeline build errors are #152, #158, #165, #170 and the
+  `Piece::Caption::short` field.
+
 ## PAUSED 2026-09-13 (session handoff)
 
 Stage 1 is partly done; see the draft PR description for resume notes.

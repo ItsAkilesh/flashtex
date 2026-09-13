@@ -767,6 +767,10 @@ fn body_parts(
             adapter::Block::Heading { span, .. } | adapter::Block::Rule { span, .. } => flow(Some(span.start), Some(span.end), block, &mut out),
             adapter::Block::Picture { picture, .. } => flow(Some(picture.start), Some(picture.end), block, &mut out),
             adapter::Block::Chapter { .. } => unsupported("a chapter heading", diags),
+            // Like a chapter: a page-level heading or a contents line has no
+            // meaning inside a float box.
+            adapter::Block::Part { .. } => unsupported("a \\part heading", diags),
+            adapter::Block::TocEntry(_) => unsupported("a table-of-contents entry", diags),
             adapter::Block::Chrome { .. } | adapter::Block::ClearPage { .. } => {}
             adapter::Block::Title { .. } => unsupported("a \\maketitle title", diags),
         }
