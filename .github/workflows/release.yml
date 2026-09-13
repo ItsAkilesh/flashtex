@@ -78,7 +78,6 @@ jobs:
             crates/render-pipeline
             crates/preview-controller
             crates/project-files
-            crates/assistant-context
           key: helpers
       - name: Build every bundled helper (release)
         run: scripts/ci/build-helpers.sh | tee -a "$GITHUB_ENV"

@@ -9,7 +9,7 @@ import Security
 /// NearbyListener, verifies `hello.proof`, hands over `pair_psk` on the
 /// bootstrap key, answers `destination_query` and `capture_submit`
 /// (in-memory inbox: `durable:false`), errors on anything else. Loopback only.
-/// No provider, no Grok, no Rust helper: it answers exactly what nearby-v1
+/// No conversion provider, no Rust helper: it answers exactly what nearby-v1
 /// §4 lets a Mac answer, nothing more.
 final class FakeMac {
     struct Key { let identity: String; let psk: Data; let bootstrap: Bool }
