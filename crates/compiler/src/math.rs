@@ -50,6 +50,10 @@ pub struct MathAtom {
     /// shared by commands whose TeX fonts differ (`\varnothing` is msbm10's
     /// 0.777781em where `\emptyset`'s identical U+2205 is cmsy10's).
     pub width_em: Option<f64>,
+    /// The amssymb/amsfonts symbol (`crate::amssymb`) this atom sets: its msam/msbm
+    /// font slot and math class, which a TFM-driven layout boxes from the
+    /// AMS font metrics while `nucleus` keeps the Unicode text.
+    pub ams_symbol: Option<&'static crate::amssymb::AmsSymbol>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -284,6 +288,62 @@ pub enum Frame {
     Box,
     Over,
     Under,
+    /// `\overbrace` (`fontmath.ltx` 430-433): `\mathop{..}\limits`, so its
+    /// scripts are limits.
+    OverBrace,
+    /// `\underbrace` (`fontmath.ltx` 434-437).
+    UnderBrace,
+    /// amsmath `\overrightarrow` (`amsmath.sty` 985-986).
+    OverRightArrow,
+    /// amsmath `\overleftarrow` (987-988).
+    OverLeftArrow,
+    /// amsmath `\overleftrightarrow` (989-990).
+    OverLeftRightArrow,
+    /// amsmath `\underrightarrow` (1001-1002).
+    UnderRightArrow,
+    /// amsmath `\underleftarrow` (1003-1004).
+    UnderLeftArrow,
+    /// amsmath `\underleftrightarrow` (1005-1006).
+    UnderLeftRightArrow,
+}
+
+impl Frame {
+    /// Whether the decoration sits above the body (a rule over it in the
+    /// compiler's own layout).
+    pub fn is_over(self) -> bool {
+        matches!(
+            self,
+            Frame::Box
+                | Frame::Over
+                | Frame::OverBrace
+                | Frame::OverRightArrow
+                | Frame::OverLeftArrow
+                | Frame::OverLeftRightArrow
+        )
+    }
+
+    /// Whether the decoration sits below the body.
+    pub fn is_under(self) -> bool {
+        matches!(
+            self,
+            Frame::Box
+                | Frame::Under
+                | Frame::UnderBrace
+                | Frame::UnderRightArrow
+                | Frame::UnderLeftArrow
+                | Frame::UnderLeftRightArrow
+        )
+    }
+
+    /// The extensible arrow of an over/under arrow frame.
+    pub fn arrow(self) -> Option<ExtArrow> {
+        match self {
+            Frame::OverRightArrow | Frame::UnderRightArrow => Some(ExtArrow::Right),
+            Frame::OverLeftArrow | Frame::UnderLeftArrow => Some(ExtArrow::Left),
+            Frame::OverLeftRightArrow | Frame::UnderLeftRightArrow => Some(ExtArrow::LeftRight),
+            _ => None,
+        }
+    }
 }
 
 /// Math-mode environments implemented as grids: (name, default column
@@ -501,6 +561,7 @@ impl MathParser<'_> {
                             subscript: None,
                             class_override: None,
                             width_em: None,
+                            ams_symbol: None,
                         }],
                     };
                 }
@@ -660,6 +721,13 @@ impl MathParser<'_> {
     }
 
     fn command_atom(&mut self, name: String, span: Span) -> MathAtom {
+        // amsfonts' obsolete `\Bbb` and `\bold` (`amsfonts.sty` 111-116) are
+        // `\mathbb` and `\mathbf` after an obsolescence warning.
+        let name = match name.as_str() {
+            "Bbb" => "mathbb".to_string(),
+            "bold" => "mathbf".to_string(),
+            _ => name,
+        };
         if let Some(operator) = OPERATOR_NAMES.iter().find(|op| **op == name) {
             return text_atom(operator.to_string(), span);
         }
@@ -685,6 +753,7 @@ impl MathParser<'_> {
             "bot" => MathAtom {
                 class_override: Some(AtomClass::Ord),
                 width_em: None,
+                ams_symbol: None,
                 ..symbol("⊥".into(), span)
             },
             // `\bigtriangleup` renders `\triangle`'s exact glyph (U+25B3) but
@@ -692,6 +761,7 @@ impl MathParser<'_> {
             "bigtriangleup" => MathAtom {
                 class_override: Some(AtomClass::Bin),
                 width_em: None,
+                ams_symbol: None,
                 ..symbol("△".into(), span)
             },
             // TeXbook Chapter 17's `\mathbin`/`\mathrel`/... family: the
@@ -716,6 +786,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: Some(class),
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             // amsopn.sty: `\operatorname` is `\qopname\newmcodes@ o` (`\nolimits`),
@@ -735,6 +806,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "phantom" | "hphantom" | "vphantom" => {
@@ -750,6 +822,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "xrightarrow" | "xleftarrow" | "xleftrightarrow" => {
@@ -773,6 +846,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "substack" => {
@@ -784,6 +858,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             // Upright roman is already the math default in this subset, and
@@ -885,6 +960,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "cfrac" => self.command_atom("frac".into(), span),
@@ -901,6 +977,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "begin" => self.grid_environment(span),
@@ -913,6 +990,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 };
                 match index {
                     // The root index sits as a raised script ahead of the sign.
@@ -941,6 +1019,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "mathbf" | "textbf" => {
@@ -952,13 +1031,24 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
-            "boxed" | "overline" | "underline" => {
+            "boxed" | "overline" | "underline" | "overbrace" | "underbrace" | "overrightarrow"
+            | "overleftarrow" | "overleftrightarrow" | "underrightarrow" | "underleftarrow"
+            | "underleftrightarrow" => {
                 let body = self.required_group(&name, span);
                 let frame = match name.as_str() {
                     "boxed" => Frame::Box,
                     "overline" => Frame::Over,
+                    "overbrace" => Frame::OverBrace,
+                    "underbrace" => Frame::UnderBrace,
+                    "overrightarrow" => Frame::OverRightArrow,
+                    "overleftarrow" => Frame::OverLeftArrow,
+                    "overleftrightarrow" => Frame::OverLeftRightArrow,
+                    "underrightarrow" => Frame::UnderRightArrow,
+                    "underleftarrow" => Frame::UnderLeftArrow,
+                    "underleftrightarrow" => Frame::UnderLeftRightArrow,
                     _ => Frame::Under,
                 };
                 MathAtom {
@@ -968,6 +1058,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "tag" => {
@@ -996,6 +1087,7 @@ impl MathParser<'_> {
                     subscript: None,
                     class_override: None,
                     width_em: None,
+                    ams_symbol: None,
                 }
             }
             "quad" => text_space(QUAD_EM, span),
@@ -1063,9 +1155,34 @@ impl MathParser<'_> {
             "grave" => self.accent_atom(Accent::Grave, span),
             "widehat" => self.accent_atom(Accent::WideHat, span),
             "widetilde" => self.accent_atom(Accent::WideTilde, span),
-            _ => match command_glyph(&name) {
-                Some(glyph) => symbol(glyph.into(), span),
-                None => {
+            // amsfonts `\dashrightarrow` = `\mathrel{\dabar@\dabar@\mathchar"0\hexnumber@
+            // \symAMSa 4B}` (`\dasharrow` its alias) and `\dashleftarrow` with the
+            // "4C head first (`amsfonts.sty` 87-95).
+            "dashrightarrow" | "dasharrow" | "dashleftarrow" => {
+                let piece = |n: &str| {
+                    ams_atom(
+                        crate::amssymb::piece(n).expect("generated amssymb piece"),
+                        span,
+                    )
+                };
+                let atoms = if name == "dashleftarrow" {
+                    vec![piece("dashleftarrow@"), piece("dabar@"), piece("dabar@")]
+                } else {
+                    vec![piece("dabar@"), piece("dabar@"), piece("dashrightarrow@")]
+                };
+                MathAtom {
+                    nucleus: Nucleus::Group(MathList { atoms }),
+                    class_override: Some(AtomClass::Rel),
+                    ..symbol(String::new(), span)
+                }
+            }
+            // amssymb/amsfonts symbols take precedence over the older glyph
+            // rows for the same names (`\square`, `\nleq`, ...): they carry
+            // the msam/msbm slot and declared class pdfLaTeX sets.
+            _ => match (crate::amssymb::by_name(&name), command_glyph(&name)) {
+                (Some(ams), _) => ams_atom(ams, span),
+                (None, Some(glyph)) => symbol(glyph.into(), span),
+                (None, None) => {
                     self.diagnostics.push(Diagnostic::command_error(
                         &name,
                         format!("\\{} is not supported in math mode", name),
@@ -1164,15 +1281,6 @@ impl MathParser<'_> {
                 Some(span),
                 Some("typeset the base without the accent mark and continued".into()),
             ));
-        } else if matches!(accent, Accent::WideHat | Accent::WideTilde) && body.atoms.len() > 1 {
-            self.diagnostics.push(Diagnostic::warning(
-                format!(
-                    "\\{} does not stretch to cover more than one symbol without a cmex-style growing glyph",
-                    accent.command()
-                ),
-                Some(span),
-                Some("centered a fixed-width accent glyph over the whole base and continued".into()),
-            ));
         }
         MathAtom {
             nucleus: Nucleus::Accent { accent, body },
@@ -1181,6 +1289,7 @@ impl MathParser<'_> {
             subscript: None,
             class_override: None,
             width_em: None,
+            ams_symbol: None,
         }
     }
 
@@ -1542,6 +1651,7 @@ impl MathParser<'_> {
             },
             class_override: None,
             width_em: None,
+            ams_symbol: None,
             span,
             superscript: None,
             subscript: None,
@@ -1666,6 +1776,7 @@ fn gen_fraction(
         subscript: None,
         class_override: None,
         width_em: None,
+        ams_symbol: None,
     }
 }
 
@@ -1712,11 +1823,32 @@ fn symbol(text: String, span: Span) -> MathAtom {
         subscript: None,
         class_override: None,
         width_em: None,
+        ams_symbol: None,
     }
 }
 
 /// Scales a delimiter taken by `\big`..`\Biggm`. The null delimiter (a zero
 /// space) and an empty recovery glyph are left as they are.
+/// An amssymb/amsfonts symbol (`crate::amssymb`): its Unicode text as the
+/// nucleus, the declared `\math<class>` forced, msam10/msbm10's character
+/// width for this crate's own layout, and the table entry for TFM-driven
+/// layouts, which box it from the AMS font metrics at the math size.
+pub(crate) fn ams_atom(ams: &'static crate::amssymb::AmsSymbol, span: Span) -> MathAtom {
+    use crate::amssymb::SymbolClass as C;
+    MathAtom {
+        class_override: Some(match ams.class {
+            C::Ord => AtomClass::Ord,
+            C::Bin => AtomClass::Bin,
+            C::Rel => AtomClass::Rel,
+            C::Open => AtomClass::Open,
+            C::Close => AtomClass::Close,
+        }),
+        width_em: Some(ams.width_em),
+        ams_symbol: Some(ams),
+        ..symbol(ams.text.into(), span)
+    }
+}
+
 fn sized_delimiter(mut atom: MathAtom, command: &str) -> MathAtom {
     let Nucleus::Symbol(glyph) = &atom.nucleus else {
         return atom;
@@ -1771,6 +1903,7 @@ fn left_right_delimiter(atom: MathAtom, role: DelimiterRole) -> MathAtom {
         subscript: atom.subscript,
         class_override: atom.class_override,
         width_em: atom.width_em,
+        ams_symbol: atom.ams_symbol,
     }
 }
 
@@ -1790,6 +1923,7 @@ fn space(em: f64, span: Span) -> MathAtom {
         subscript: None,
         class_override: None,
         width_em: None,
+        ams_symbol: None,
     }
 }
 
@@ -2010,6 +2144,7 @@ fn text_atom(text: String, span: Span) -> MathAtom {
         subscript: None,
         class_override: None,
         width_em: None,
+        ams_symbol: None,
     }
 }
 
@@ -2099,6 +2234,11 @@ fn atom_class(atom: &MathAtom) -> Option<AtomClass> {
         Nucleus::Operator { .. } => Op,
         // `\ext@arrow` is `\mathrel{\mathop{...}\limits...}`.
         Nucleus::ExtArrow { .. } => Rel,
+        // `\overbrace`/`\underbrace` are `\mathop{..}\limits` (`fontmath.ltx` 430-437).
+        Nucleus::Framed {
+            frame: Frame::OverBrace | Frame::UnderBrace,
+            ..
+        } => Op,
         Nucleus::Matrix { left, right, .. } if !left.is_empty() || !right.is_empty() => Inner,
         // amsmath's `\overset`/`\stackrel` keep a relation or binary base's class.
         Nucleus::Stacked { base, .. } if base.atoms.len() == 1 => {
@@ -2408,6 +2548,7 @@ fn with_delimiter_scale(atom: &MathAtom, scale: f64) -> MathAtom {
         subscript: atom.subscript.clone(),
         class_override: atom.class_override,
         width_em: atom.width_em,
+        ams_symbol: atom.ams_symbol,
     }
 }
 
@@ -2428,6 +2569,7 @@ fn layout_nucleus(
                 subscript: None,
                 class_override: atom.class_override,
                 width_em: atom.width_em,
+                ams_symbol: atom.ams_symbol,
             },
             size,
             root_size,
@@ -2594,10 +2736,10 @@ fn layout_nucleus(
                 }),
             };
             let mut rules = Vec::new();
-            if matches!(frame, Frame::Box | Frame::Over) {
+            if frame.is_over() {
                 rules.push(rule_item(0.0, top - rule, width, rule));
             }
-            if matches!(frame, Frame::Box | Frame::Under) {
+            if frame.is_under() {
                 rules.push(rule_item(0.0, bottom, width, rule));
             }
             if *frame == Frame::Box {
@@ -3152,6 +3294,7 @@ fn shift_atom(atom: &MathAtom, delta: isize) -> MathAtom {
         subscript: atom.subscript.as_ref().map(|l| shift_list(l, delta)),
         class_override: atom.class_override,
         width_em: atom.width_em,
+        ams_symbol: atom.ams_symbol,
     }
 }
 

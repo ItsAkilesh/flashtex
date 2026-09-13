@@ -143,6 +143,9 @@ pub fn advance(c: char) -> Option<u16> {
         .iter()
         .find(|(glyph, _)| *glyph == c)
         .map(|(_, advance)| *advance)
+        // amssymb/amsfonts symbols bound to the same resource
+        // (`crate::amssymb::LM_ADVANCES`, generated from this font program).
+        .or_else(|| crate::amssymb::lm_advance(c))
 }
 
 /// True when `text` is non-empty and every character comes from this resource.
