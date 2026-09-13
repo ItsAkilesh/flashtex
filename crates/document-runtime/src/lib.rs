@@ -247,6 +247,10 @@ pub struct Session {
     snapshot_epoch: u64,
     completed_snapshots_enabled: bool,
     completed_snapshot: Option<CompletedSnapshot>,
+    /// PROPOSAL (display-list-v2-images §2): absolute directory sent as
+    /// `payload.project_root` on every compile request. `None` keeps the
+    /// frozen runtime-v1 request bytes unchanged.
+    project_root: Option<String>,
 }
 impl Session {
     pub fn spawn(executable: impl AsRef<Path>, limits: Limits) -> Result<Self, String> {
@@ -290,7 +294,22 @@ impl Session {
             snapshot_epoch: 0,
             completed_snapshots_enabled: false,
             completed_snapshot: None,
+            project_root: None,
         })
+    }
+    /// Directory the producer reads `\includegraphics` files from, forwarded
+    /// per request as `payload.project_root` (display-list-v2-images §2).
+    /// Only the textual shape is checked here; callers must pass a canonical
+    /// existing directory. Applies to requests submitted after this call.
+    pub fn set_project_root(&mut self, root: Option<String>) -> Result<(), String> {
+        if let Some(root) = root.as_deref() {
+            validate_project_root(root)?;
+        }
+        self.project_root = root;
+        Ok(())
+    }
+    pub fn project_root(&self) -> Option<&str> {
+        self.project_root.as_deref()
     }
     pub fn submit(&mut self, request: Request) -> Result<(), String> {
         self.submit_with_capabilities(request, Vec::new())
@@ -387,7 +406,12 @@ impl Session {
             );
         }
         let encode_start = Instant::now();
-        let bytes = encode(&request, self.limits.max_frame, &capabilities)?;
+        let bytes = encode_rooted(
+            &request,
+            self.limits.max_frame,
+            &capabilities,
+            self.project_root.as_deref(),
+        )?;
         let encode_ms = encode_start.elapsed().as_secs_f64() * 1000.0;
         if self.latest.values().any(|(_, id)| id == &request.id)
             || self
@@ -734,7 +758,33 @@ fn safe_path(p: &str) -> bool {
         && !p.contains(['\\', ':', '\0'])
         && !p.split('/').any(|s| s.is_empty() || s == "." || s == "..")
 }
+/// Textual checks for a forwarded project root: absolute, UTF-8 (by type),
+/// bounded, no NUL/control characters and no empty, `.` or `..` components.
+/// Existence, directory-ness and symlink canonicalization are the caller's
+/// filesystem checks (preview-controller canonicalizes before forwarding).
+pub fn validate_project_root(root: &str) -> Result<(), String> {
+    let components = root.strip_prefix('/').map(|rest| rest.split('/'));
+    let ok = root.len() <= 4096
+        && !root.chars().any(char::is_control)
+        && components.is_some_and(|mut parts| {
+            root == "/" || parts.all(|s| !s.is_empty() && s != "." && s != "..")
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err("project_root must be a normalized absolute directory path".into())
+    }
+}
+#[cfg(test)]
 fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>, String> {
+    encode_rooted(r, limit, capabilities, None)
+}
+fn encode_rooted(
+    r: &Request,
+    limit: usize,
+    capabilities: &[String],
+    project_root: Option<&str>,
+) -> Result<Vec<u8>, String> {
     if r.id.is_empty()
         || r.id.len() > 128
         || r.project_id.is_empty()
@@ -763,6 +813,8 @@ fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>,
         documents: &'a [Document],
         #[serde(skip_serializing_if = "<[String]>::is_empty")]
         layout_capabilities: &'a [String],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        project_root: Option<&'a str>,
     }
     #[derive(Serialize)]
     struct Envelope<'a> {
@@ -782,6 +834,7 @@ fn encode(r: &Request, limit: usize, capabilities: &[String]) -> Result<Vec<u8>,
             entry_path: &r.entry_path,
             documents: &r.documents,
             layout_capabilities: capabilities,
+            project_root,
         },
     };
     let mut bytes = serde_json::to_vec(&envelope).map_err(|e| e.to_string())?;
@@ -854,10 +907,17 @@ fn validate_reply_value(v: Value, r: &Request, requested: &[String]) -> Result<V
         !requested.contains(cap)
             || !matches!(
                 cap.as_str(),
-                "rules-v1" | "font-hints-v1" | "display-list-v2"
+                "rules-v1" | "font-hints-v1" | "display-list-v2" | "display-list-v2-images"
             )
     }) {
         return Err("compiler accepted unknown or unrequested capability".into());
+    }
+    // PROPOSAL display-list-v2-images §1: honoured only together with
+    // `display-list-v2`; the display sibling stays opaque to this runtime.
+    if accepted.iter().any(|cap| cap == "display-list-v2-images")
+        && !accepted.iter().any(|cap| cap == "display-list-v2")
+    {
+        return Err("compiler accepted display-list-v2-images without display-list-v2".into());
     }
 
     if !matches!(p["status"].as_str(), Some("ok" | "recovered" | "failed"))
@@ -977,6 +1037,85 @@ pub fn validate_layout_capabilities(capabilities: &[String]) -> Result<(), Strin
 }
 
 pub mod experimental_chunks;
+
+#[cfg(test)]
+mod project_root_tests {
+    use super::*;
+    fn request() -> Request {
+        Request {
+            id: "r1".into(),
+            project_id: "p".into(),
+            revision: 1,
+            entry_path: "main.tex".into(),
+            documents: vec![Document {
+                path: "main.tex".into(),
+                text: "x".into(),
+            }],
+        }
+    }
+    #[test]
+    fn project_root_textual_validation() {
+        for ok in ["/", "/Users/me/paper", "/private/var/folders/a b/π"] {
+            assert!(validate_project_root(ok).is_ok(), "{ok}");
+        }
+        let long = format!("/{}", "a".repeat(4096));
+        for bad in [
+            "",
+            "relative/dir",
+            "./x",
+            "/a//b",
+            "/a/",
+            "/a/./b",
+            "/a/../b",
+            "/a\0b",
+            "/a\nb",
+            long.as_str(),
+        ] {
+            assert!(validate_project_root(bad).is_err(), "{bad:?}");
+        }
+    }
+    #[test]
+    fn absent_root_keeps_legacy_request_bytes_and_present_root_is_forwarded() {
+        let r = request();
+        let legacy = encode(&r, 1 << 20, &[]).unwrap();
+        assert_eq!(encode_rooted(&r, 1 << 20, &[], None).unwrap(), legacy);
+        assert!(!String::from_utf8_lossy(&legacy).contains("project_root"));
+        let caps = vec!["display-list-v2-images".to_string()];
+        let rooted = encode_rooted(&r, 1 << 20, &caps, Some("/tmp/proj")).unwrap();
+        let v: Value = serde_json::from_slice(&rooted).unwrap();
+        assert_eq!(v["payload"]["project_root"], "/tmp/proj");
+        assert_eq!(
+            v["payload"]["layout_capabilities"][0],
+            "display-list-v2-images"
+        );
+        assert_eq!(v["payload"]["entry_path"], "main.tex");
+    }
+    #[test]
+    fn image_capability_is_accepted_only_when_requested_with_display_list() {
+        let r = request();
+        let reply = |caps: Value| {
+            serde_json::json!({"protocol_version":1,"id":"r1","type":"compile_result",
+                "payload":{"project_id":"p","revision":1,"status":"ok","pages":[],
+                "diagnostics":[],"layout_capabilities":caps}})
+        };
+        let both: Vec<String> = vec!["display-list-v2".into(), "display-list-v2-images".into()];
+        assert!(validate_reply_value(reply(serde_json::json!(both)), &r, &both).is_ok());
+        // Requested but only display-list-v2 honoured (old producer): fine.
+        assert!(
+            validate_reply_value(reply(serde_json::json!(["display-list-v2"])), &r, &both).is_ok()
+        );
+        // Not requested: refused.
+        let plain: Vec<String> = vec!["display-list-v2".into()];
+        assert!(validate_reply_value(reply(serde_json::json!(both)), &r, &plain).is_err());
+        // Images echoed without display-list-v2: refused.
+        assert!(validate_reply_value(
+            reply(serde_json::json!(["display-list-v2-images"])),
+            &r,
+            &both
+        )
+        .is_err());
+    }
+}
 
 #[cfg(all(test, unix))]
 mod decode_cancellation_probe {
