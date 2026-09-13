@@ -89,8 +89,73 @@ pub struct Controller {
     layout_capabilities: Vec<String>,
     submitted: Option<(String, VersionSnapshot, Instant)>,
     closed: bool,
+    /// Canonical project directory forwarded to every compiler session
+    /// (`payload.project_root`); `None` for store-backed projects.
+    project_root: Option<String>,
+}
+/// Canonicalizes a project root for forwarding to the producer: it must be an
+/// absolute, existing, UTF-8 directory whose path is already canonical, so a
+/// symlinked or `..`-containing spelling is refused instead of silently
+/// re-pointed (the producer's rooted reads refuse symlinks the same way).
+pub fn canonical_project_root(root: &std::path::Path) -> Result<String, String> {
+    if !root.is_absolute() {
+        return Err("project_root must be absolute".into());
+    }
+    let canonical = root
+        .canonicalize()
+        .map_err(|e| format!("project_root cannot be resolved: {e}"))?;
+    if canonical != root {
+        return Err("project_root must be canonical (no symlink or relative components)".into());
+    }
+    if !canonical.is_dir() {
+        return Err("project_root is not a directory".into());
+    }
+    let text = canonical
+        .to_str()
+        .ok_or("project_root must be UTF-8")?
+        .to_owned();
+    flashtex_document_runtime::validate_project_root(&text)?;
+    Ok(text)
+}
+#[cfg(test)]
+mod project_root_tests {
+    use super::canonical_project_root;
+    #[test]
+    fn only_canonical_existing_directories_are_forwarded() {
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        assert_eq!(
+            canonical_project_root(&canonical).unwrap(),
+            canonical.to_str().unwrap()
+        );
+        assert!(canonical_project_root(std::path::Path::new("relative")).is_err());
+        assert!(canonical_project_root(&canonical.join("missing")).is_err());
+        std::fs::write(canonical.join("file.tex"), "x").unwrap();
+        assert!(canonical_project_root(&canonical.join("file.tex")).is_err());
+        std::fs::create_dir(canonical.join("real")).unwrap();
+        assert!(canonical_project_root(&canonical.join("real/../real")).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(canonical.join("real"), canonical.join("link")).unwrap();
+            assert!(canonical_project_root(&canonical.join("link")).is_err());
+        }
+    }
 }
 impl Controller {
+    /// Forward `root` (validated by [`canonical_project_root`]) as
+    /// `payload.project_root` on every later compile request, including
+    /// across `restart`. `None` restores the unchanged legacy request.
+    pub fn set_project_root(&mut self, root: Option<&std::path::Path>) -> Result<(), String> {
+        let root = root.map(canonical_project_root).transpose()?;
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.set_project_root(root.clone())?;
+        }
+        self.project_root = root;
+        Ok(())
+    }
+    pub fn project_root(&self) -> Option<&str> {
+        self.project_root.as_deref()
+    }
     /// All stores must already contain initialized durable documents. Ownership of
     /// their exclusive locks transfers here. No source is imported or overwritten.
     pub fn new(
@@ -165,6 +230,7 @@ impl Controller {
             layout_capabilities: Vec::new(),
             submitted: None,
             closed: false,
+            project_root: None,
         })
     }
     pub fn index(&self) -> &ProjectIndex {
@@ -625,6 +691,7 @@ impl Controller {
         self.layout_capabilities
             .retain(|cap| cap != "display-list-v2");
         runtime.set_completed_snapshots_enabled(self.historical.enabled)?;
+        runtime.set_project_root(self.project_root.clone())?;
         self.replace_membership(&expected, &documents, None)?;
         self.runtime = Some(runtime);
         self.submitted = None;

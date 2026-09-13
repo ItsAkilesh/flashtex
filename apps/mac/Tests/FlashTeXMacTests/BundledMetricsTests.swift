@@ -47,7 +47,9 @@ final class BundledMetricsTests: XCTestCase {
         let doc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: pinURL)) as? [String: Any])
         XCTAssertEqual(doc["schema_version"] as? Int, 1)
         let entries = try XCTUnwrap(doc["entries"] as? [[String: Any]])
-        XCTAssertEqual(entries.count, 23)
+        // 23 Latin Modern + 70 EC (5 families x 14 t1cmr.fd sizes) + 6 AMS
+        // symbols (msbm/msam at 5/7/10 pt) + 2 license files (ec, amsfonts).
+        XCTAssertEqual(entries.count, 101)
         let pinnedPaths = Set(Self.pinned.map(\.path))
         var listed = Set<String>()
         for e in entries {
@@ -58,17 +60,39 @@ final class BundledMetricsTests: XCTestCase {
             XCTAssertEqual(data.count, e["byte_length"] as? Int, path)
             XCTAssertEqual(Self.sha256Hex(data), e["sha256"] as? String, path)
         }
-        let dir = Self.vendoredRoot.appendingPathComponent(BundledMetrics.tfmSubdirectory)
-        let onDisk = Set(try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".tfm") }
-            .map { BundledMetrics.tfmSubdirectory + "/" + $0 })
-        XCTAssertEqual(onDisk, pinnedPaths.filter { $0.hasSuffix(".tfm") }.union(listed), "every vendored TFM is pinned by one tier")
-        // The faces the pin claims are exactly the files present.
+        // Every vendored TFM under each subdirectory this pin covers is
+        // accounted for by exactly one tier (Commander-pinned or listed here).
+        for subdirectory in [BundledMetrics.tfmSubdirectory, BundledMetrics.ecTfmSubdirectory, BundledMetrics.amsSymbolsSubdirectory] {
+            let dir = Self.vendoredRoot.appendingPathComponent(subdirectory)
+            let onDisk = Set(try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".tfm") }
+                .map { subdirectory + "/" + $0 })
+            XCTAssertEqual(onDisk, pinnedPaths.filter { $0.hasPrefix(subdirectory + "/") }.union(listed.filter { $0.hasPrefix(subdirectory + "/") }),
+                          "every vendored TFM under \(subdirectory) is pinned by one tier")
+        }
+        // The Latin Modern faces the pin claims are exactly the files present.
         for (family, sizes) in try XCTUnwrap(doc["faces_covered"] as? [String: [Int]]) {
             for size in sizes {
                 let name = "\(BundledMetrics.tfmSubdirectory)/\(family)\(size).tfm"
-                XCTAssertTrue(onDisk.contains(name), "claimed face missing: \(name)")
+                XCTAssertTrue(listed.contains(name) || pinnedPaths.contains(name), "claimed face missing: \(name)")
             }
         }
+        // The EC faces the pin claims (family -> 4-digit t1cmr.fd size codes) are exactly the files present.
+        for (family, codes) in try XCTUnwrap(doc["ec_faces_covered"] as? [String: [String]]) {
+            for code in codes {
+                let name = "\(BundledMetrics.ecTfmSubdirectory)/\(family)\(code).tfm"
+                XCTAssertTrue(listed.contains(name), "claimed EC face missing: \(name)")
+            }
+        }
+        // The AMS symbol faces the pin claims are exactly the files present.
+        for (family, sizes) in try XCTUnwrap(doc["ams_symbols_covered"] as? [String: [Int]]) {
+            for size in sizes {
+                let name = "\(BundledMetrics.amsSymbolsSubdirectory)/\(family)\(size).tfm"
+                XCTAssertTrue(listed.contains(name), "claimed AMS symbol face missing: \(name)")
+            }
+        }
+        // The two license files this pin adds are present alongside the metrics.
+        XCTAssertTrue(listed.contains("doc/fonts/ec/copyrite.txt"))
+        XCTAssertTrue(listed.contains("doc/fonts/amsfonts/README"))
     }
 
     // MARK: environment
@@ -102,18 +126,35 @@ final class BundledMetricsTests: XCTestCase {
 
     func testProducerEnvironmentAppendsAndPassesEverythingElseThrough() {
         let base = ["PATH": "/usr/bin", "FLASHTEX_TFM_DIRS": "/user/tfm", "FLASHTEX_RENDER": "/x"]
-        let env = BundledMetrics.producerEnvironment(base: base, bundledDirectory: URL(fileURLWithPath: "/App/Contents/Resources/texmf/fonts/tfm/public/lm"))
+        let env = BundledMetrics.producerEnvironment(base: base, bundledDirectories: [URL(fileURLWithPath: "/App/Contents/Resources/texmf/fonts/tfm/public/lm")])
         XCTAssertEqual(env["FLASHTEX_TFM_DIRS"], "/user/tfm:/App/Contents/Resources/texmf/fonts/tfm/public/lm")
         XCTAssertEqual(env["PATH"], "/usr/bin")
         XCTAssertEqual(env["FLASHTEX_RENDER"], "/x")
         XCTAssertEqual(env.count, 3)
-        let unset = BundledMetrics.producerEnvironment(base: ["PATH": "/usr/bin"], bundledDirectory: URL(fileURLWithPath: "/b"))
+        let unset = BundledMetrics.producerEnvironment(base: ["PATH": "/usr/bin"], bundledDirectories: [URL(fileURLWithPath: "/b")])
         XCTAssertEqual(unset["FLASHTEX_TFM_DIRS"], "/b")
     }
 
     func testProducerEnvironmentIsUntouchedWithoutABundledDirectory() {
         let base = ["PATH": "/usr/bin", "FLASHTEX_TFM_DIRS": "/user/tfm"]
-        XCTAssertEqual(BundledMetrics.producerEnvironment(base: base, bundledDirectory: nil), base)
+        XCTAssertEqual(BundledMetrics.producerEnvironment(base: base, bundledDirectories: []), base)
+    }
+
+    /// The three bundled directories are appended in order (Latin Modern,
+    /// EC, AMS symbols), each preserving everything appended before it.
+    func testProducerEnvironmentAppendsAllThreeBundledDirectoriesInOrder() {
+        let dirs = [URL(fileURLWithPath: "/App/lm"), URL(fileURLWithPath: "/App/ec"), URL(fileURLWithPath: "/App/ams")]
+        let env = BundledMetrics.producerEnvironment(base: ["FLASHTEX_TFM_DIRS": "/user/tfm"], bundledDirectories: dirs)
+        XCTAssertEqual(env["FLASHTEX_TFM_DIRS"], "/user/tfm:/App/lm:/App/ec:/App/ams")
+    }
+
+    func testDefaultBundledDirectoriesFindsAllThreeFromTheRepositoryCopy() {
+        let dirs = BundledMetrics.defaultBundledDirectories(roots: [Self.vendoredRoot])
+        XCTAssertEqual(dirs.map(\.path), [
+            Self.vendoredRoot.appendingPathComponent(BundledMetrics.tfmSubdirectory).standardizedFileURL.path,
+            Self.vendoredRoot.appendingPathComponent(BundledMetrics.ecTfmSubdirectory).standardizedFileURL.path,
+            Self.vendoredRoot.appendingPathComponent(BundledMetrics.amsSymbolsSubdirectory).standardizedFileURL.path,
+        ])
     }
 
     // MARK: real producer (env route, host TeX excluded)
@@ -135,15 +176,16 @@ final class BundledMetricsTests: XCTestCase {
     /// styles and an 11 pt document, with an
     /// `env -i`-style environment (no PATH to texbin, empty HOME, no
     /// FLASHTEX_*/TEXMF*) and host TeX trees denied by sandbox-exec.
-    private func runProducer(_ executable: String, tfmDirs: String?, home: URL) throws -> ProducerRun {
-        let requests = [
-            #"{"protocol_version":1,"id":"preview-1","type":"compile","payload":{"project_id":"p","revision":1,"entry_path":"main.tex","documents":[{"path":"chapter.tex","text":"Chapter text with \\(a+b\\).\n"},{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nOffice AV fi.\\input{chapter}\n\\end{document}\n"},{"path":"refs.bib","text":"@article{sample, title={Example}, author={A. Author}, year={2026}}\n"}]}}"#,
-            #"{"protocol_version":1,"id":"text-12pt","type":"compile","payload":{"project_id":"p","revision":2,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nOffice AV fi. Twelve point text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
-            #"{"protocol_version":1,"id":"math-12pt","type":"compile","payload":{"project_id":"p","revision":3,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nBody $x^2 + y_1$ text. \\[ \\sum_{i=1}^{n} a_i \\]\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
-            // Supplementary metrics: 10 pt bold/italic/bold-italic and an 11 pt document.
-            #"{"protocol_version":1,"id":"styles-10pt","type":"compile","payload":{"project_id":"p","revision":4,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nRegular \\textbf{bold} \\textit{italic} \\textbf{\\textit{bold italic}} with $x_i^2$ text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
-            #"{"protocol_version":1,"id":"text-11pt","type":"compile","payload":{"project_id":"p","revision":5,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[11pt]{article}\n\\begin{document}\nEleven point \\textbf{bold} \\textit{italic} text with $a+b$.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
-        ]
+    private static let defaultRequests = [
+        #"{"protocol_version":1,"id":"preview-1","type":"compile","payload":{"project_id":"p","revision":1,"entry_path":"main.tex","documents":[{"path":"chapter.tex","text":"Chapter text with \\(a+b\\).\n"},{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nOffice AV fi.\\input{chapter}\n\\end{document}\n"},{"path":"refs.bib","text":"@article{sample, title={Example}, author={A. Author}, year={2026}}\n"}]}}"#,
+        #"{"protocol_version":1,"id":"text-12pt","type":"compile","payload":{"project_id":"p","revision":2,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nOffice AV fi. Twelve point text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+        #"{"protocol_version":1,"id":"math-12pt","type":"compile","payload":{"project_id":"p","revision":3,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[12pt]{article}\n\\begin{document}\nBody $x^2 + y_1$ text. \\[ \\sum_{i=1}^{n} a_i \\]\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+        // Supplementary metrics: 10 pt bold/italic/bold-italic and an 11 pt document.
+        #"{"protocol_version":1,"id":"styles-10pt","type":"compile","payload":{"project_id":"p","revision":4,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass{article}\n\\begin{document}\nRegular \\textbf{bold} \\textit{italic} \\textbf{\\textit{bold italic}} with $x_i^2$ text.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+        #"{"protocol_version":1,"id":"text-11pt","type":"compile","payload":{"project_id":"p","revision":5,"entry_path":"main.tex","documents":[{"path":"main.tex","text":"\\documentclass[11pt]{article}\n\\begin{document}\nEleven point \\textbf{bold} \\textit{italic} text with $a+b$.\n\\end{document}\n"}],"layout_capabilities":["display-list-v2"]}}"#,
+    ]
+
+    private func runProducer(_ executable: String, tfmDirs: String?, home: URL, requests: [String] = defaultRequests) throws -> ProducerRun {
         let profile = home.appendingPathComponent("no-host-tex.sb")
         try """
         (version 1)
@@ -201,7 +243,7 @@ final class BundledMetricsTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: home) }
 
         // Exactly what WorkerClient / PreviewControllerClient hand the child.
-        let env = BundledMetrics.producerEnvironment(base: [:], bundledDirectory: BundledMetrics.tfmDirectory(roots: [Self.vendoredRoot]))
+        let env = BundledMetrics.producerEnvironment(base: [:], bundledDirectories: [BundledMetrics.tfmDirectory(roots: [Self.vendoredRoot])].compactMap { $0 })
         let tfmDirs = try XCTUnwrap(env[BundledMetrics.environmentKey])
         let routed = try runProducer(render, tfmDirs: tfmDirs, home: home)
         XCTAssertEqual(routed.results, 5)
@@ -232,5 +274,56 @@ final class BundledMetricsTests: XCTestCase {
         XCTAssertEqual(removed.results, 5)
         XCTAssertTrue(removed.missing.contains { $0.id == "preview-1" && $0.message.contains("ec-lmr10.tfm") },
                       "10 pt request must name the missing ec-lmr10.tfm: \(removed.missing)")
+    }
+
+    /// GH111 (PR #111): rendering a real `[T1]{fontenc}` document (no
+    /// `lmodern`) with ONLY the app's bundled metric directories
+    /// (`BundledMetrics.defaultBundledDirectories`: Latin Modern, EC, AMS
+    /// symbols) and host TeX excluded must produce zero
+    /// `ec_metrics_unavailable` diagnostics — the fixture the render
+    /// pipeline falls back to the OTF-metrics warning for when the EC TFMs
+    /// are not on its search path.
+    func testHW1WithOnlyBundledDirectoriesProducesNoECMetricsUnavailableDiagnostic() throws {
+        guard let render = ProcessInfo.processInfo.environment["FLASHTEX_RENDER"],
+              FileManager.default.isExecutableFile(atPath: render) else {
+            throw XCTSkip("FLASHTEX_RENDER not set to a built flashtex-render")
+        }
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else { throw XCTSkip("sandbox-exec unavailable") }
+        let repoRoot = Self.macDir.deletingLastPathComponent().deletingLastPathComponent()
+        let hw1URL = repoRoot.appendingPathComponent("fixtures/real-world/hw1/HW1.tex")
+        let hw1 = try String(contentsOf: hw1URL, encoding: .utf8)
+        XCTAssertTrue(hw1.contains("[T1]{fontenc}") && !hw1.contains("lmodern"),
+                      "fixture must actually exercise the EC-metrics path (T1 fontenc, no lmodern)")
+
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("flashtex-hw1-ec-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let payload: [String: Any] = ["protocol_version": 1, "id": "hw1", "type": "compile",
+                                       "payload": ["project_id": "p", "revision": 1, "entry_path": "HW1.tex",
+                                                   "documents": [["path": "HW1.tex", "text": hw1]],
+                                                   "layout_capabilities": ["display-list-v2"]]]
+        let request = try String(data: JSONSerialization.data(withJSONObject: payload), encoding: .utf8)!
+
+        // Exactly BundledMetrics.producerEnvironment()'s default: every
+        // bundled metrics directory this app ships, nothing else.
+        let dirs = BundledMetrics.defaultBundledDirectories(roots: [Self.vendoredRoot])
+        XCTAssertEqual(dirs.count, 3, "Latin Modern, EC and AMS symbols must all be present in the vendored tree")
+        let tfmDirs = dirs.map(\.path).joined(separator: ":")
+
+        let run = try runProducer(render, tfmDirs: tfmDirs, home: home, requests: [request])
+        XCTAssertEqual(run.results, 1)
+        let ecWarnings = run.all.filter { $0.code == "ec_metrics_unavailable" }
+        XCTAssertTrue(ecWarnings.isEmpty, "bundled EC metrics must satisfy every T1 cmr face HW1 requests: \(ecWarnings)")
+        XCTAssertTrue(run.missing.isEmpty, "\(run.missing)")
+
+        // Control: without the EC directory (Latin Modern only), the same
+        // document DOES warn — proving the assertion above is meaningful
+        // and not vacuous (e.g. a producer that never emits the diagnostic).
+        let lmOnly = try XCTUnwrap(dirs.first { $0.path.hasSuffix(BundledMetrics.tfmSubdirectory) }).path
+        let controlRun = try runProducer(render, tfmDirs: lmOnly, home: home, requests: [request])
+        XCTAssertEqual(controlRun.results, 1)
+        XCTAssertFalse(controlRun.all.filter { $0.code == "ec_metrics_unavailable" }.isEmpty,
+                       "control (no EC dir) must reproduce the fallback diagnostic HW1 triggers without bundled EC metrics")
     }
 }

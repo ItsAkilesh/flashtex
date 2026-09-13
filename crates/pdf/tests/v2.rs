@@ -387,8 +387,10 @@ fn unsupported_envelope_content_is_refused_not_approximated() {
     let base = r#"{"protocol_version":2,"id":"t","type":"display_list","payload":{"render_format":"display-list-v2","coordinate_unit":"bp_2pow20","color_space":"srgb","fonts":[],"pages":[{"number":1,"width":1048576,"height":1048576,"items":[ITEM]}],"diagnostics":[]}}"#;
     let cases = [
         (
+            // Image items are supported (tests/images.rs); a malformed one is
+            // a named error.
             r#"{"kind":"image","paint":{"r":0,"g":0,"b":0,"a":1}}"#,
-            "item kind \"image\"",
+            "items[0].width: expected a number",
         ),
         (
             r#"{"kind":"rule","x":0,"top":0,"width":5,"height":5,"paint":{"r":0,"g":0,"b":0,"a":0.5}}"#,

@@ -178,6 +178,20 @@ pub struct MathRow {
     pub cells: Vec<MathList>,
     pub number: Option<String>,
     pub span: Span,
+    /// `\intertext`/`\shortintertext` paragraphs set between the previous
+    /// row and this one, in order.
+    pub intertext: Vec<Intertext>,
+}
+
+/// amsmath `\intertext{..}` (`amsmath.sty` 1186-1199 `\intertext@`) or
+/// mathtools `\shortintertext{..}` (`mathtools.sty` 1464-1529): a
+/// `\noindent` paragraph in a `\noalign` between two alignment rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Intertext {
+    pub content: Vec<Inline>,
+    /// `\shortintertext`: the short display skips.
+    pub short: bool,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3046,9 +3060,10 @@ impl P<'_> {
             // The column-pair count; cells are split on `&` regardless.
             let _ = self.required_group("alignat", open);
         }
-        // Per row: (cells of raw tokens, unnumbered flag, labels).
-        type RawRow = (Vec<Vec<Token>>, bool, Vec<(String, Span)>);
-        let mut rows: Vec<RawRow> = vec![(vec![Vec::new()], false, Vec::new())];
+        // Per row: (cells of raw tokens, unnumbered flag, labels, intertext
+        // set before the row).
+        type RawRow = (Vec<Vec<Token>>, bool, Vec<(String, Span)>, Vec<Intertext>);
+        let mut rows: Vec<RawRow> = vec![(vec![Vec::new()], false, Vec::new(), Vec::new())];
         let mut depth = 0usize;
         let mut end = open.end;
         let mut found_end = false;
@@ -3081,11 +3096,42 @@ impl P<'_> {
                     }
                     continue;
                 }
+                TokenKind::Command(command)
+                    if depth == 0 && (command == "intertext" || command == "shortintertext") =>
+                {
+                    self.i += 1;
+                    let (tokens, argument_span) = self.required_group(command, token.span);
+                    let content = self.inlines_from_tokens(tokens, TextStyle::default());
+                    // `\ifvmode\else\\\@empty\fi`: a row holding material is
+                    // ended first; right after `\\` the text joins the next row.
+                    let blank = |t: &Token| {
+                        matches!(
+                            t.kind,
+                            TokenKind::Space | TokenKind::Comment | TokenKind::ParBreak
+                        )
+                    };
+                    let started = {
+                        let row = rows.last().expect("at least one row");
+                        row.0.len() > 1 || row.0.iter().flatten().any(|t| !blank(t))
+                    };
+                    if started {
+                        rows.push((vec![Vec::new()], false, Vec::new(), Vec::new()));
+                    }
+                    rows.last_mut()
+                        .expect("at least one row")
+                        .3
+                        .push(Intertext {
+                            content,
+                            short: command == "shortintertext",
+                            span: token.span.merge(argument_span),
+                        });
+                    continue;
+                }
                 TokenKind::Command(command) if command == "nonumber" || command == "notag" => {
                     row.1 = true;
                 }
                 TokenKind::LineBreak if depth == 0 => {
-                    rows.push((vec![Vec::new()], false, Vec::new()));
+                    rows.push((vec![Vec::new()], false, Vec::new(), Vec::new()));
                 }
                 TokenKind::Word(word) if depth == 0 && word.contains('&') => {
                     let exact = token.span.end - token.span.start == word.len();
@@ -3149,8 +3195,9 @@ impl P<'_> {
         }
         // A trailing `\\` before `\end` does not start a real row.
         if rows.len() > 1
-            && rows.last().is_some_and(|(cells, _, labels)| {
+            && rows.last().is_some_and(|(cells, _, labels, intertext)| {
                 labels.is_empty()
+                    && intertext.is_empty()
                     && cells.iter().flatten().all(|t| {
                         matches!(
                             t.kind,
@@ -3171,7 +3218,7 @@ impl P<'_> {
 
         let mut math_rows = Vec::new();
         let mut labels = Vec::new();
-        for (cells, unnumbered, row_labels) in rows {
+        for (cells, unnumbered, row_labels, intertext) in rows {
             let span = cells
                 .iter()
                 .flatten()
@@ -3209,6 +3256,7 @@ impl P<'_> {
                 cells,
                 number,
                 span,
+                intertext,
             });
         }
         para.push(Inline::MathRows {
@@ -5410,6 +5458,52 @@ mod tests {
         assert!(inlines.iter().any(
             |inline| matches!(inline, Inline::Label { key, value, .. } if key == "a" && value == "1")
         ));
+    }
+
+    #[test]
+    fn intertext_is_set_between_align_rows() {
+        let source = "\\begin{align} a &= b \\\\ \\intertext{so that} c &= d \\shortintertext{and} e &= f \\end{align}";
+        let parsed = parse(source);
+        let rows = parsed
+            .blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Paragraph(inlines) => Some(inlines),
+                _ => None,
+            })
+            .flatten()
+            .find_map(|i| match i {
+                Inline::MathRows { rows, .. } => Some(rows),
+                _ => None,
+            })
+            .expect("align rows");
+        // `\\ \intertext` does not start an empty row; `\shortintertext`
+        // after material ends the row first.
+        assert_eq!(rows.len(), 3);
+        assert!(rows[0].intertext.is_empty());
+        assert_eq!(
+            rows.iter().map(|r| r.number.as_deref()).collect::<Vec<_>>(),
+            [Some("1"), Some("2"), Some("3")]
+        );
+        let texts: Vec<(bool, String)> = rows[1..]
+            .iter()
+            .flat_map(|r| &r.intertext)
+            .map(|t| {
+                let words: Vec<&str> = t
+                    .content
+                    .iter()
+                    .filter_map(|i| match i {
+                        Inline::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                (t.short, words.join(" "))
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [(false, "so that".to_string()), (true, "and".to_string())]
+        );
     }
 
     #[test]

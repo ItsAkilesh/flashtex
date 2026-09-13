@@ -421,6 +421,9 @@ fn expected_rules(list: &MathList) -> usize {
                 Nucleus::List(l) | Nucleus::Styled { body: l, .. } => expected_rules(l),
                 Nucleus::BigDelimiter { .. } | Nucleus::Glue { .. } => 0,
                 Nucleus::Phantom { .. } => 0,
+                Nucleus::ExtArrow { above, below, .. } => {
+                    expected_rules(above) + expected_rules(below)
+                }
                 Nucleus::SubArray { rows, .. } => rows.iter().map(expected_rules).sum(),
                 Nucleus::Fraction {
                     numerator,
@@ -677,4 +680,57 @@ fn times_approximation_lays_out_everything_with_reported_limitations() {
     let r = positioned_runs(&layout(&fixtures::frac_a_b(), Style::TEXT, &m), (0.0, 0.0));
     assert_eq!(r.rules.len(), 1);
     assert_eq!(f5(r.rules[0].h), "0.39998");
+}
+
+#[test]
+fn ext_arrow_is_natural_width_or_stretched_to_its_label_with_centred_leaders() {
+    // amsmath `\ext@arrow 0359\rightarrowfill@`: `\relbar\mkern-7mu
+    // \cleaders\hbox{$\mkern-2mu\relbar\mkern-2mu$}\hfill\mkern-7mu\rightarrow`
+    // in an hbox as wide as `\scriptstyle\mkern5mu{label}\mkern9mu`.
+    let m = cm();
+    let text = Style::TEXT.size_class();
+    let mu = m.params(text).mu();
+    let script_mu = m.params(Style::SCRIPT.size_class()).mu();
+    let minus = m.glyph('-', text).unwrap();
+    let arrow = m.glyph('\u{2192}', text).unwrap();
+    let natural = minus.width - 14.0 * mu + arrow.width;
+    let arrow_atom = |above: &str| {
+        MathList::new(vec![Atom::ext_arrow(
+            ['-', '-', '\u{2192}'],
+            [0.0, 3.0, 5.0, 9.0],
+            MathList::symbols(above),
+            MathList::default(),
+        )])
+    };
+    // An empty label (`\scriptstyle\mkern5mu{}\mkern9mu`) is narrower.
+    let short = layout(&arrow_atom(""), Style::DISPLAY, &m);
+    assert_eq!(f5(short.width), f5(natural));
+    let r = positioned_runs(&short, (0.0, 0.0));
+    assert_eq!(r.glyphs.iter().filter(|g| g.ch == '-').count(), 1);
+
+    let label = "xxxxxxxx";
+    let x = m.glyph('x', Style::SCRIPT.size_class()).unwrap();
+    let wide = 14.0 * script_mu + 8.0 * (x.width + x.italic);
+    let long = layout(&arrow_atom(label), Style::DISPLAY, &m);
+    assert_eq!(f5(long.width), f5(wide));
+    // tex.web §626: `\cleaders` boxes of `\wd(minus) - 4mu`, as many as fit
+    // in the glue (plus 10sp), the remainder split evenly at both ends.
+    let sp = |v: f64| (v * 65536.0).round() as i64;
+    let leaders = ((sp(wide - natural) + 10) / sp(minus.width - 4.0 * mu)) as usize;
+    assert!(leaders >= 1);
+    let r = positioned_runs(&long, (0.0, 0.0));
+    let mut xs: Vec<f64> = r
+        .glyphs
+        .iter()
+        .filter(|g| g.ch == '-')
+        .map(|g| g.x)
+        .collect();
+    xs.sort_by(f64::total_cmp);
+    assert_eq!(xs.len(), 1 + leaders);
+    let pitch = minus.width - 4.0 * mu;
+    for pair in xs[1..].windows(2) {
+        assert!((pair[1] - pair[0] - pitch).abs() < 1e-4, "{xs:?}");
+    }
+    let arrow_x = r.glyphs.iter().find(|g| g.ch == '\u{2192}').unwrap().x;
+    assert_eq!(f5(arrow_x + arrow.width), f5(wide));
 }

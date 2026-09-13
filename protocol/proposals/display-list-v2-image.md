@@ -52,6 +52,19 @@ items). Live round trip verified against `flashtex-render` at this SHA.
 The echoed `accepted` list names `display-list-v2-images` only when it was
 honoured (same rule as the other layout capabilities).
 
+**PROPOSAL addition (FT-063, helper route, `kabir-claude`):** on the
+preview-controller helper route the client does not build compile requests.
+A file-backed helper (startup config `project_root`) forwards its canonical
+project directory itself: the producer is launched with
+`--project-root <dir>` and every compile request carries the same
+`payload.project_root` (per request, authoritative; survives `restart`). The
+directory is the one `FileProject` opened, after checks that it is absolute,
+existing, a directory, UTF-8 and already canonical (a symlinked or `..`
+spelling is refused, matching the rooted symlink-refusing reads). Store-backed
+helpers send neither; their launch argv and request bytes are unchanged.
+Producers that do not know the flag or field ignore them. No new field is
+needed from the Mac client on this route.
+
 ## 3. Item shape
 
 Coordinates follow the frozen list: `bp_2pow20` integer ticks, y down from

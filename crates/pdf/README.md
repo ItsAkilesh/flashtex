@@ -162,7 +162,7 @@ let run = GlyphRun { font: "F1".into(), size: Decimal::new("12")?, glyphs };
 let mut ops = run.to_ops()?;
 ops.extend(Op::rule(Decimal::new("72")?, Decimal::new("690.25")?, Decimal::new("28.5")?, Decimal::new("0.398")?));
 let page = ExactPage { width: Decimal::new("612")?, height: Decimal::new("792")?, content: Content::Ops(ops), fonts: None };
-let doc = ExactDocument { pages: vec![page], fonts: BTreeMap::from([("F1".to_string(), f1)]) };
+let doc = ExactDocument { pages: vec![page], fonts: BTreeMap::from([("F1".to_string(), f1)]), images: BTreeMap::new() };
 let pdf = render_exact(&doc)?;   // PdfOutput { bytes, warnings: [] }
 ```
 
@@ -216,7 +216,7 @@ rules become `re f`, fonts
 are resolved by content hash from `--font-dir`/`FLASHTEX_FONT_DIRS`/
 `FLASHTEX_LM_DIR`/the TeX Live Latin Modern directories and embedded as
 GID-preserving subsets, cluster text becomes ToUnicode. `opentype-cff` and
-`static-truetype` are accepted; `core14-afm`, alpha, image items, non-integer
+`static-truetype` are accepted; `core14-afm`, alpha, non-integer
 ticks and non-terminating colours are errors. Both SHA-256(bytes) and
 font-engine's SHA-256(bytes ‖ face index) are accepted as `sha256` (the
 latter is reported as a deviation). The measured gap between
@@ -227,7 +227,61 @@ differ where the pipeline's own diagnostics say they do. This glyph-run route
 (embedded fonts, searchable text) is complementary to rendering-core's
 outline route (`pdf_export.rs`, paths only).
 
-Tests: `tests/exact.rs` (deterministic serialisation, verbatim decimals and
+**Images (`display-list-v2-images`, `protocol/proposals/display-list-v2-image.md`
+§5.4).** `from-v2 … --project-root DIR` (`v2::from_v2_rooted`) exports
+`image` items; without a root they are refused. Each file is read under the
+root with every component checked to be a real directory/file (no symbolic
+links, no `.`/`..`/absolute paths, device+inode re-checked after open), and
+its length and SHA-256 must equal the item's before decoding; a pixel size,
+`pdf_box` or `pdf_rotate` that disagrees with the bytes is refused as stale.
+What is written follows pdfTeX 1.40.29 (TeX Live 2026), measured:
+
+- PNG (`crate::raster`, zero-dependency): decoded (IDAT inflate, all five
+  filters, Adam7) and re-encoded `/FlateDecode` without a predictor, as
+  pdfTeX does. Gray/RGB keep depth 1/2/4/8/16; palettes become
+  `[/Indexed /DeviceRGB hival lookup-stream]`; gray+alpha/RGBA split into
+  colour plus an 8-bit `/SMask` (16-bit alpha keeps its high byte) and the
+  page gets `/Group << /S /Transparency /CS /DeviceRGB /I true >>`; palette +
+  `tRNS` becomes RGB8 + `/SMask` without a page group. `gAMA`/`iCCP` are
+  ignored (`\pdfimageapplygamma=0`). A `tRNS` colour key on gray/RGB is
+  refused. The compressor (`crate::deflate`, fixed Huffman + LZ77) is not
+  zlib-identical; the decoded samples are (checked by hash).
+- JPEG: bytes unchanged as `/DCTDecode`; size/components from the SOF
+  (baseline, extended, progressive); Adobe APP14 CMYK gets
+  `/Decode [1 0 1 0 1 0 1 0]`. 12-bit, lossless, arithmetic and CMYK without
+  APP14 are refused.
+- PDF page (`crate::images::from_pdf_page`): a Form XObject with `/BBox` =
+  CropBox ∩ MediaBox (graphicx default `pagebox=cropbox`, `pdftex.def`),
+  `/Rotate` as `/Matrix` (90: `[0 -1 1 0 -lly urx]`), the content stream
+  copied raw with its filter (arrays joined and re-compressed), `/Resources`
+  and `/Group` deep-copied with renumbering (object streams read; links back
+  into the page tree become `null`; encrypted files refused). pdfTeX's
+  `/PTEX.*` keys are not written (`/PTEX.FileName` is an absolute path).
+- Placement: `q [a -b c -d e H-f] cm … /ImN Do Q` from the item's transform
+  (its own decimals; `H - f` exact from ticks); forms add
+  `1/W 0 0 1/H 0 0 cm` (12 decimals) and, unrotated, `1 0 0 1 -llx -lly cm`
+  like pdfTeX. XObjects are numbered after the fonts; a page lists only the
+  XObjects it paints, so documents without images serialise byte-identically
+  to before (HW1 `from-v2`, HW1/HW2 `reemit` and the v2 fixtures checked).
+
+Oracle (`tests/fixtures/images/make_oracle.py`, pdflatex; cargo never runs
+TeX): 19 single-image pages (PNG RGB8/Adam7/gray 144 dpi/gray2/palette4/
+palette+tRNS/RGBA8/gray+alpha/RGB16/RGBA16, JPEG RGB 96 dpi/progressive/gray/
+CMYK, PDF CropBox/Rotate 90, rotated 30°/-45°/90°). `tests/images.rs` checks
+our CTM at `Do` against pdfTeX's within 0.01 bp (measured max 0.00048 bp: the
+producer's 1/1000 pt transform rounding), the XObject dictionary summary
+(Subtype, Width, Height, BitsPerComponent, ColorSpace, palette, Filter,
+Decode, SMask, BBox, Matrix), the SHA-256 of decoded samples/content, and
+the page group, all equal. Ghostscript 10.07.1 at 150 dpi without
+anti-aliasing (`oracle/raster.json`): 18/19 pages pixel-identical; the
+CropBox form differs in one 40-pixel row (an edge on a pixel boundary under
+a 1.1e-5 bp CTM difference) and is identical at 300 dpi. Tolerance: 0.01 bp
+for placement, zero differing pixels at 150 dpi or, for a boundary flip, at
+300 dpi.
+
+Tests: `tests/images.rs` (above, plus rooted-read refusals for links,
+`..`, missing/relative roots, stale length and hash, stale geometry, shared
+XObjects and `Do` validation); `tests/exact.rs` (deterministic serialisation, verbatim decimals and
 codes, CFF subset identity, bounded glyph sets, validation errors, Type 1
 round trip through the reader, PFB parsing, classifier categories, and,
 skipped when the tool is absent, Latin Modern rendering in CoreGraphics and

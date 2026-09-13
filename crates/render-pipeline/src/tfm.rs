@@ -41,6 +41,26 @@ impl std::fmt::Display for TfmError {
     }
 }
 
+/// The first `lf` words of a TFM file, `lf` being its header's file length
+/// in words. TeX (`tex.web` §575) reads exactly `lf` words and never looks
+/// past them, and `tftopl` accepts trailing bytes ("extra junk at the end
+/// of the TFM file ... proceed as if it weren't there"). The `jknappen/ec`
+/// metrics that `t1cmr.fd` loads (`ecrm1095.tfm` and every other EC size)
+/// are zero-padded to 3584 bytes, which the shared reader's exact
+/// `len == lf * 4` check rejects. A file shorter than `lf` words is passed
+/// through unchanged so the reader still reports it as truncated.
+fn tex_file_words(b: &[u8]) -> &[u8] {
+    if b.len() < 2 {
+        return b;
+    }
+    let lf_bytes = usize::from(u16::from_be_bytes([b[0], b[1]])) * 4;
+    if lf_bytes > 0 && b.len() > lf_bytes {
+        &b[..lf_bytes]
+    } else {
+        b
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Tfm {
     inner: SharedTfm,
@@ -54,6 +74,7 @@ impl Tfm {
     }
 
     pub fn parse(b: &[u8]) -> Result<Tfm, String> {
+        let b = tex_file_words(b);
         let inner = SharedTfm::parse(b).map_err(|e| format!("{e:?}"))?;
         Ok(Tfm::from_shared(inner))
     }
@@ -175,5 +196,44 @@ mod tests {
         // Interword glue: \fontdimen2..4 and 7.
         assert!((Tfm::pt(t.param(2).unwrap(), 12.0) - 3.916).abs() < 0.002);
         assert!(!t.has_boundary());
+    }
+
+    #[test]
+    fn bytes_after_the_declared_file_length_are_ignored_like_tex() {
+        let Some(p) = crate::fonts::default_tfm_dirs().into_iter().map(|d| d.join("ec-lmr12.tfm")).find(|p| p.is_file()) else {
+            eprintln!("skipping: ec-lmr12.tfm not installed");
+            return;
+        };
+        let exact = std::fs::read(&p).unwrap();
+        let mut padded = exact.clone();
+        padded.extend_from_slice(&[0u8; 412]);
+        let a = Tfm::parse(&exact).unwrap();
+        let b = Tfm::parse(&padded).expect("trailing bytes are not part of the TFM");
+        assert_eq!(a.metrics(b'w'), b.metrics(b'w'));
+        assert_eq!(a.param(2), b.param(2));
+        // A file shorter than its declared length is still rejected.
+        assert!(Tfm::parse(&exact[..exact.len() - 4]).is_err());
+        assert!(Tfm::parse(&[]).is_err());
+    }
+
+    #[test]
+    fn ecrm1095_the_padded_t1_cmr_body_metrics_loads() {
+        let Some(p) = crate::fonts::default_tfm_dirs().into_iter().map(|d| d.join("ecrm1095.tfm")).find(|p| p.is_file()) else {
+            eprintln!("skipping: ecrm1095.tfm not installed");
+            return;
+        };
+        // jknappen/ec files are zero-padded past `lf` words (3584 bytes).
+        let bytes = std::fs::read(&p).unwrap();
+        assert!(bytes.len() > usize::from(u16::from_be_bytes([bytes[0], bytes[1]])) * 4);
+        let t = Tfm::load(&p).unwrap();
+        assert!((t.design_size_pt - 10.95).abs() < 1e-3, "{}", t.design_size_pt);
+        // TFtoPL: (SPACE R 0.331557), (CHARACTER C w (CHARWD R 0.713515)).
+        assert!((Tfm::pt(t.param(2).unwrap(), 10.95) - 0.331557 * 10.95).abs() < 0.001);
+        let w = t.metrics(b'w').unwrap();
+        let lm = crate::fonts::default_tfm_dirs().into_iter().map(|d| d.join("ec-lmr10.tfm")).find(|p| p.is_file()).and_then(|p| Tfm::load(&p).ok());
+        if let Some(lm) = lm {
+            // The EC design is narrower than Latin Modern scaled to 10.95pt.
+            assert!(w.width < lm.metrics(b'w').unwrap().width);
+        }
     }
 }

@@ -100,6 +100,27 @@ pub enum BoxRec {
     Rule { width: f64, height: f64, span: Span },
     /// A `tikzpicture`: its bounding box sits on the baseline (depth 0).
     Picture(Rc<PictureRec>),
+    /// A `tabular` (`table.rs`): its cell lines and rules, set as one box
+    /// whose origin is the table's reference baseline.
+    Table(Rc<TableRec>),
+}
+
+/// A laid-out table (`Context::table_box`): every entry or `@{}` box as
+/// its broken lines at their position, and the rules. y is measured down
+/// from the table's baseline.
+#[derive(Clone)]
+pub struct TableRec {
+    pub pieces: Vec<TablePiece>,
+    pub rules: Vec<crate::table::PlacedRule>,
+    pub span: Span,
+}
+
+#[derive(Clone)]
+pub struct TablePiece {
+    pub x: f64,
+    /// The first line's baseline below the table's baseline.
+    pub baseline: f64,
+    pub block: BuiltBlock,
 }
 
 /// A compiled `tikzpicture` and its node text shaped for painting
@@ -442,6 +463,13 @@ impl<'a> Context<'a> {
                 ),
             );
         }
+        if let Some(note) = &r.face.metrics_fallback {
+            let src = self.source(span);
+            self.report_once(
+                format!("ecmetrics:{}", r.face.name),
+                Diagnostic::warning("ec_metrics_unavailable", format!("{}: {note}", r.face.name), vec![src]),
+            );
+        }
         match &r.face.tfm_status {
             crate::fonts::TfmStatus::Loaded => {}
             crate::fonts::TfmStatus::RequiredUnavailable(reason) => {
@@ -687,6 +715,13 @@ impl<'a> Context<'a> {
     fn math_box(&mut self, list: &flashtex_compiler::math::MathList, span: Span, display: bool) -> Option<usize> {
         let fonts = self.math_fonts(span)?;
         let mut sink = crate::mathtext::TextSink::default();
+        // `\quad` in math is `\hskip1em` of the text font (`\fontdimen6`),
+        // not 18 mu of the math symbol font.
+        let fam2_quad = ml::MathFontMetrics::params(fonts.metrics(), ml::Style::TEXT.size_class()).quad;
+        let text_quad = self.text_params(TextStyle::default(), self.style.body_size_pt).quad;
+        if fam2_quad > 0.0 && text_quad > 0.0 {
+            sink.text_quad = Some((text_quad, text_quad / fam2_quad));
+        }
         let texts = self.texts;
         let fence = |sp: &Span| fence_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
         let class = |sp: &Span| class_override_of(texts.get(sp.document.0).copied().unwrap_or(""), sp.start);
@@ -701,7 +736,7 @@ impl<'a> Context<'a> {
         // `Matrix`) is laid out on this side (`mathgrid`) from its cells,
         // each a formula of its own; a grid nested in a sub-formula (a
         // fraction, a script, inside `\left...\right`) stays reported.
-        let segments = split_at_spaces(list, &fence);
+        let segments = split_at_spaces(list, &fence, sink.font_em_ratio());
         let ml_lists: Vec<ml::MathList> = segments.iter().map(|(atoms, _)| convert_math_classed(&flashtex_compiler::math::MathList { atoms: atoms.clone() }, &mut sink, &fence, &class)).collect();
         let mut grids = Vec::new();
         for (atoms, _) in &segments {
@@ -1240,6 +1275,11 @@ impl<'a> Context<'a> {
                     push(&mut out, &mut recs, pl::Item::Glue(glue), None)
                 }
                 AItem::HSpace { pt } => push(&mut out, &mut recs, pl::Item::Glue(pl::Glue::fixed(*pt)), None),
+                AItem::Table(table) => {
+                    if let Some((run, rec)) = self.table_box(table, size) {
+                        push(&mut out, &mut recs, pl::Item::Box(run), Some(rec));
+                    }
+                }
                 AItem::Label { key } => labels.push((key.clone(), out.len())),
                 AItem::ItalicCorrection => {
                     // `\/`: a kern of the last character's TFM italic
@@ -1269,6 +1309,151 @@ impl<'a> Context<'a> {
         push(&mut out, &mut recs, pl::Item::Glue(if fills { pl::Glue::fil() } else { pl::Glue::fixed(0.0) }), None);
         push(&mut out, &mut recs, pl::Item::penalty(pl::FORCED_BREAK), None);
         (out, recs, labels, skips)
+    }
+
+    /// A `tabular` as one box (`table.rs`): every entry and `@{}` text is
+    /// set as an hbox (a `p{}` entry as its `\vtop`), then placed by the
+    /// kernel's alignment rules. The record keeps the pieces to paint.
+    fn table_box(&mut self, t: &crate::table::TableItem, outer_size: f64) -> Option<(pl::GlyphRun, usize)> {
+        use crate::table::{self as tb, Dims, MCell, Slot, TableMaterial};
+        use flashtex_compiler::tabular::Align;
+        let size = if t.size_cpt == 0 { outer_size } else { f64::from(t.size_cpt) / 100.0 };
+        let body_size = self.style.body_size_pt;
+        // `\strutbox` of the size in force (`\@setfontsize`).
+        let bskip = if (size - body_size).abs() < 1e-9 {
+            self.style.baselineskip_pt
+        } else {
+            tb::baselineskip_pt(adapter::class_size_of(body_size), (size * 100.0).round() as u16)
+        };
+        let strut_height = tb::sp(t.arraystretch * tb::sp(0.7 * bskip));
+        let strut_depth = tb::sp(t.arraystretch * tb::sp(0.3 * bskip));
+        let body = self.text_params(TextStyle::default(), body_size);
+        let quad = self.text_params(TextStyle::default(), size).quad;
+        let measure = self.style.text_width_pt;
+        let mut blocks: std::collections::HashMap<(usize, usize, Slot), BuiltBlock> = std::collections::HashMap::new();
+        let mut rows: Vec<Vec<MCell>> = Vec::new();
+        for entry in &t.entries {
+            let tb::TableEntry::Row { cells, .. } = entry else { continue };
+            let ri = rows.len();
+            let mut out = Vec::new();
+            for (ci, (cell, (column, columns, template))) in cells.iter().zip(tb::row_slots(t, cells)).enumerate() {
+                let (before_m, align, after_m): (&[TableMaterial], Align, &[TableMaterial]) = match template {
+                    Some(c) => (&c.before, c.align, &c.after),
+                    None => (&[], Align::Left, &[]),
+                };
+                let before = self.table_pieces(before_m, size, (ri, ci), true, &mut blocks);
+                let content = match align {
+                    Align::Paragraph(len) => {
+                        let width = tb::resolve(len, measure).max(0.0);
+                        match self.table_pbox(&cell.items, size, width, bskip, strut_depth, quad) {
+                            Some((block, dims)) => {
+                                blocks.insert((ri, ci, Slot::Content), block);
+                                dims
+                            }
+                            None => Dims { width, height: 0.0, depth: strut_depth },
+                        }
+                    }
+                    _ => match self.table_hbox(&cell.items, size) {
+                        Some((block, dims)) => {
+                            blocks.insert((ri, ci, Slot::Content), block);
+                            dims
+                        }
+                        None => Dims::default(),
+                    },
+                };
+                let after = self.table_pieces(after_m, size, (ri, ci), false, &mut blocks);
+                out.push(MCell { column, columns, align, before, content, after });
+            }
+            rows.push(out);
+        }
+        let metrics = tb::Metrics { strut_height, strut_depth, em: body.quad, ex: body.x_height, axis: tb::AXIS_EM * size, measure };
+        let geometry = tb::layout(t, &rows, &metrics);
+        let mut pieces = Vec::new();
+        for p in &geometry.placed {
+            if let Some(block) = blocks.remove(&(p.row, p.cell, p.slot)) {
+                pieces.push(TablePiece { x: p.x, baseline: p.baseline, block });
+            }
+        }
+        self.recs.push(BoxRec::Table(Rc::new(TableRec { pieces, rules: geometry.rules, span: t.span })));
+        let run = pl::GlyphRun {
+            font: MATH_SENTINEL,
+            size,
+            glyphs: Vec::new(),
+            width: geometry.width,
+            height: geometry.height,
+            depth: geometry.depth,
+            source: t.span.start..t.span.end,
+        };
+        Some((run, self.recs.len() - 1))
+    }
+
+    /// Measures a template's `u`/`v` material, shaping `@{}` text.
+    fn table_pieces(
+        &mut self,
+        material: &[crate::table::TableMaterial],
+        size: f64,
+        key: (usize, usize),
+        before: bool,
+        blocks: &mut std::collections::HashMap<(usize, usize, crate::table::Slot), BuiltBlock>,
+    ) -> Vec<crate::table::MPiece> {
+        use crate::table::{MPiece, Slot, TableMaterial};
+        let mut out = Vec::with_capacity(material.len());
+        for (i, m) in material.iter().enumerate() {
+            out.push(match m {
+                TableMaterial::Space(pt) => MPiece::Space(*pt),
+                TableMaterial::Rule(span) => MPiece::Rule(*span),
+                TableMaterial::Text(items) => match self.table_hbox(items, size) {
+                    Some((block, dims)) => {
+                        blocks.insert((key.0, key.1, if before { Slot::Before(i) } else { Slot::After(i) }), block);
+                        MPiece::Text(dims)
+                    }
+                    None => MPiece::Text(Default::default()),
+                },
+            });
+        }
+        out
+    }
+
+    /// An `l`/`c`/`r` entry: its material at natural width (`\hbox`), set
+    /// as one unbroken line in a `\maxdimen` measure with `\parfillskip`.
+    fn table_hbox(&mut self, items: &[AItem], size: f64) -> Option<(BuiltBlock, crate::table::Dims)> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let mut params = self.line_params(false, self.style.baselineskip_pt, ParaStyle::Plain, 0.0);
+        params.line_width = crate::table::MAX_DIMEN_PT;
+        let lines = self.break_paragraph(&list, &params, items)?;
+        let width = lines.lines.iter().map(|l| l.natural_width).fold(0.0, f64::max);
+        let (first, last) = (lines.lines.first()?, lines.lines.last()?);
+        let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth };
+        Some((table_cell_block(lines, list, recs, labels), dims))
+    }
+
+    /// A `p{width}` entry: `\@startpbox` (`\vtop`, `\hsize` width,
+    /// `\@arrayparboxrestore`: no indent, `\normalbaselineskip`, `\sloppy`)
+    /// and `\@endpbox`'s `\@finalstrut` (the last line at least the strut's
+    /// depth). The box's height is its first line's.
+    fn table_pbox(&mut self, items: &[AItem], size: f64, width: f64, baselineskip: f64, strut_depth: f64, em: f64) -> Option<(BuiltBlock, crate::table::Dims)> {
+        let (list, recs, labels, _) = self.hlist(items, size, TextStyle::default(), ParaStyle::Plain);
+        if !list.iter().any(|i| matches!(i, pl::Item::Box(_))) {
+            return None;
+        }
+        let mut params = self.line_params(false, baselineskip, ParaStyle::Plain, 0.0);
+        params.line_width = width;
+        // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt`.
+        // paragraph-layout's `badness` is infinite above a stretch ratio of
+        // 1.29 (TeX §108: above 1290/297 = 4.34), so a loose `p{}` line TeX
+        // accepts at this tolerance is infeasible there and the entry can
+        // break differently; the kernel's parameters are kept regardless.
+        params.tolerance = 9999.0;
+        params.emergency_stretch = 3.0 * em;
+        params.hfuzz = 0.5;
+        let lines = self.break_paragraph(&list, &params, items)?;
+        self.report_overfull(&lines, &list, &recs);
+        let (first, last) = (lines.lines.first()?, lines.lines.last()?);
+        let dims = crate::table::Dims { width, height: first.height, depth: last.baseline_y - first.baseline_y + last.depth.max(strut_depth) };
+        Some((table_cell_block(lines, list, recs, labels), dims))
     }
 
     fn line_params(&self, indent: bool, baselineskip: f64, style: ParaStyle, hang_pt: f64) -> pl::LineBreakParams {
@@ -2411,10 +2596,50 @@ impl<'a> Context<'a> {
         let (strut_h, strut_d) = (0.7 * normal, 0.3 * normal);
         let mut items = Vec::new();
         let mut recs = Vec::new();
-        let mut lines = Vec::with_capacity(rows.len());
+        let mut lines: Vec<pl::Line> = Vec::with_capacity(rows.len());
         let mut extents = Vec::with_capacity(rows.len());
+        let mut vskips: Vec<f64> = Vec::with_capacity(rows.len());
+        // Skip ahead of the first line when an `\intertext` opens the display.
+        let mut lead = 0.0;
         let mut total = 0.0;
         for (ri, row) in cells.iter().enumerate() {
+            // `\intertext`: `\noalign{\penalty\postdisplaypenalty \vskip<before>
+            // \vbox{\normalbaselines \noindent#1\par} \penalty\predisplaypenalty
+            // \vskip<after>}` between the previous row and this one; the
+            // interline glue around the `\vbox` is the alignment's
+            // (`\baselineskip+\jot`), inside it `\normalbaselines`.
+            for text in &rows[ri].intertext {
+                let (before, after) = self.intertext_skips(text);
+                match vskips.last_mut() {
+                    Some(v) => *v += before,
+                    None => lead += before,
+                }
+                if let Some(b) = self.paragraph_block(&text.items, false, true, false, ParaStyle::Plain, None) {
+                    let offset = items.len();
+                    let n = b.block.lines.lines.len();
+                    for (k, mut line) in b.block.lines.lines.into_iter().enumerate() {
+                        // Hyphen runs find their record through `breaks`,
+                        // which this block does not carry: they stay drawn
+                        // but unmapped.
+                        line.index = lines.len();
+                        line.items = line.items.start + offset..line.items.end + offset;
+                        extents.push((line.height, line.depth));
+                        total += line.height + line.depth;
+                        let mut v = b.vertical.vskip_after.get(k).copied().unwrap_or(0.0);
+                        if k + 1 < n {
+                            v -= JOT;
+                        }
+                        vskips.push(v);
+                        lines.push(line);
+                    }
+                    items.extend(b.items);
+                    recs.extend(b.recs);
+                }
+                match vskips.last_mut() {
+                    Some(v) => *v += after,
+                    None => lead += after,
+                }
+            }
             let start = items.len();
             let (mut h, mut d) = (strut_h, strut_d);
             let mut runs = Vec::new();
@@ -2449,7 +2674,7 @@ impl<'a> Context<'a> {
                 self.emit(None, Diagnostic::warning("overfull_display", format!("display row is {:.2}pt wider than the text width", natural - dw), vec![src]));
             }
             lines.push(pl::Line {
-                index: ri,
+                index: lines.len(),
                 runs,
                 baseline_y: h,
                 height: h,
@@ -2462,6 +2687,7 @@ impl<'a> Context<'a> {
                 hyphenated: false,
             });
             extents.push((h, d));
+            vskips.push(0.0);
             total += h + d;
         }
         if lines.is_empty() {
@@ -2491,7 +2717,7 @@ impl<'a> Context<'a> {
         let vertical = VBlock {
             lines: extents,
             penalty_before: Some(PREDISPLAY_PENALTY),
-            space_before: Some((an + first_adjust, ast, ash)),
+            space_before: Some((an + first_adjust + lead, ast, ash)),
             parskip: None,
             // `\interdisplaylinepenalty` is 10000 in LaTeX.
             interline_penalty: pagebuild::INF_PENALTY,
@@ -2502,7 +2728,7 @@ impl<'a> Context<'a> {
             no_interline_first: false,
             no_interline_after: false,
             baselineskip: Some(normal + JOT),
-            vskip_after: Vec::new(),
+            vskip_after: vskips,
         };
         Some(BuiltBlock {
             block: pl::ParagraphBlock {
@@ -2519,6 +2745,28 @@ impl<'a> Context<'a> {
         })
     }
 
+    /// The `\noalign` skips before and after an `\intertext` paragraph:
+    /// amsmath `\belowdisplayskip`/`\abovedisplayskip` (`amsmath.sty`
+    /// 1190-1197). mathtools (`\MT_intertext:`, `mathtools.sty` 1424-1448;
+    /// `\MT_shortintertext:n`, 1502-1528, with `\abovedisplayshortskip` on
+    /// both sides) adds `-\lineskiplimit+\normallineskiplimit` to each, which
+    /// is `-\jot` under the alignment's `\openup\jot`, and the
+    /// `(above|below)[short]intertext` dimensions: 0pt, 3pt for the short form.
+    fn intertext_skips(&self, text: &adapter::IntertextPart) -> (f64, f64) {
+        const JOT: f64 = 3.0;
+        let s = self.style;
+        let (before, after, sep) = if text.short {
+            (s.abovedisplayshortskip.natural, s.abovedisplayshortskip.natural, 3.0)
+        } else {
+            (s.belowdisplayskip.natural, s.abovedisplayskip.natural, 0.0)
+        };
+        if text.mathtools {
+            (before - JOT + sep, after - JOT + sep)
+        } else {
+            (before, after)
+        }
+    }
+
     fn report_overfull(&mut self, lines: &pl::Lines, list: &[pl::Item], recs: &[Option<usize>]) {
         for o in &lines.stats.overfull {
             let line = &lines.lines[o.line];
@@ -2531,6 +2779,7 @@ impl<'a> Context<'a> {
                     BoxRec::Math(m) => Some(self.maths[*m].span),
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
                 })
                 .next();
             let _ = list;
@@ -2559,6 +2808,26 @@ fn vskips_of(lines: &pl::Lines, skips: &[(usize, f64)]) -> Vec<f64> {
 
 fn skip_tuple(s: crate::style::Skip) -> (f64, f64, f64) {
     (s.natural, s.stretch, s.shrink)
+}
+
+/// A table entry's lines as a block assembled like a paragraph's.
+fn table_cell_block(lines: pl::Lines, items: Vec<pl::Item>, recs: Vec<Option<usize>>, labels: Vec<(String, usize)>) -> BuiltBlock {
+    let vertical = VBlock {
+        lines: line_extents(&lines),
+        penalty_before: None,
+        space_before: None,
+        parskip: None,
+        interline_penalty: 0,
+        club_penalty: 0,
+        widow_penalty: 0,
+        penalty_after: None,
+        space_after: None,
+        no_interline_first: false,
+        no_interline_after: false,
+        baselineskip: None,
+        vskip_after: Vec::new(),
+    };
+    BuiltBlock { block: pl::ParagraphBlock::body(lines), items, recs, vertical, labels, cache_key: None }
 }
 
 fn line_extents(lines: &pl::Lines) -> Vec<(f64, f64)> {
@@ -2626,7 +2895,7 @@ fn role_of(style: TextStyle) -> Role {
 pub(crate) fn design_size(family: Family, size: f64) -> u32 {
     match family {
         Family::Times => 10,
-        Family::LatinModern => {
+        Family::LatinModern | Family::ComputerModern => {
             if size < 8.5 {
                 8
             } else if size < 11.0 {
@@ -2766,7 +3035,11 @@ pub fn convert_math_classed(
             // takes no part in atom spacing, like TeX's glue node. Top-level
             // glue is still split out by `split_at_spaces`.
             #[cfg(feature = "amsmath-inline")]
-            N::Space { em } if a.superscript.is_none() && a.subscript.is_none() => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            N::Space { em, font_em } if a.superscript.is_none() && a.subscript.is_none() => match (*font_em, sink.text_quad) {
+                // `\quad`: text-font ems, the same at every math style.
+                (true, Some((quad, _))) => vec![ml::Atom::glue(0.0, em * quad)],
+                _ => vec![ml::Atom::glue(em * 18.0, 0.0)],
+            },
             // amsmath `\genfrac` family (`\dfrac`, `\tfrac`, `\binom`, ...):
             // a Rule 15e fraction with its delimiters, in a group (Ord),
             // under the explicit style when one is given.
@@ -2792,6 +3065,21 @@ pub fn convert_math_classed(
             N::Operator { body, limits } => vec![ml::Atom::new(ml::AtomClass::Op, ml::Nucleus::List(sub(body, sink))).with_limits(if *limits { ml::Limits::Limits } else { ml::Limits::NoLimits })],
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, align } => vec![ml::Atom::subarray(rows.iter().map(|r| sub(r, sink)).collect(), *align)],
+            // amsmath `\ext@arrow#1#2#3#4` kerns and `\arrowfill@` pieces:
+            // `\xrightarrow` 0359 `\relbar\relbar\rightarrow`, `\xleftarrow`
+            // 3095 `\leftarrow\relbar\relbar` (amsmath.sty 977-978,
+            // 1027-1028), mathtools `\xleftrightarrow` 3399
+            // `\leftarrow\relbar\rightarrow` (mathtools.sty 323-326).
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { arrow, above, below } => {
+                use flashtex_compiler::math::ExtArrow as X;
+                let (pieces, kerns) = match arrow {
+                    X::Right => (['-', '-', '\u{2192}'], [0.0, 3.0, 5.0, 9.0]),
+                    X::Left => (['\u{2190}', '-', '-'], [3.0, 0.0, 9.0, 5.0]),
+                    X::LeftRight => (['\u{2190}', '-', '\u{2192}'], [3.0, 3.0, 9.0, 9.0]),
+                };
+                vec![ml::Atom::ext_arrow(pieces, kerns, sub(above, sink), sub(below, sink))]
+            }
             // `\quad`/`\qquad` (compiler `Space { em }`): TeX glue in the
             // math list. math-layout has no kern/glue atom, so the glue is
             // dropped (inter-atom spacing across it is what TeX's mlist_to_hlist
@@ -3077,7 +3365,7 @@ fn grid_pieces(
                             }
                             _ => cell,
                         };
-                        let parts = split_at_spaces(cell, fence);
+                        let parts = split_at_spaces(cell, fence, sink.font_em_ratio());
                         let runs = parts.iter().map(|(atoms, _)| convert_math_classed(&CList { atoms: atoms.clone() }, sink, fence, class)).collect();
                         let glue = parts.iter().map(|(_, em)| *em).collect();
                         (runs, glue)
@@ -3105,14 +3393,18 @@ fn grid_pieces(
 /// pairs): each entry is a run of atoms and the glue after it in ems
 /// (`None` for the last run). Consecutive spaces sum; a formula without
 /// top-level glue is one run.
-fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Span) -> Option<Fence>) -> Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> {
+///
+/// Glue in text-font ems (`\quad`, compiler `font_em`) is converted to math
+/// symbol font quads with `font_em_ratio` (text quad / family-2 quad).
+fn split_at_spaces(list: &flashtex_compiler::math::MathList, fence: &dyn Fn(&Span) -> Option<Fence>, font_em_ratio: f64) -> Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> {
     use flashtex_compiler::math::Nucleus as N;
     let mut out: Vec<(Vec<flashtex_compiler::math::MathAtom>, Option<f64>)> = Vec::new();
     let mut current = Vec::new();
     let mut depth = 0usize;
     for a in &list.atoms {
         match &a.nucleus {
-            N::Space { em } if depth == 0 && a.superscript.is_none() && a.subscript.is_none() => {
+            N::Space { em, .. } if depth == 0 && a.superscript.is_none() && a.subscript.is_none() => {
+                let em = &space_em(a, *em, font_em_ratio);
                 if current.is_empty() {
                     if let Some((_, Some(prev))) = out.last_mut() {
                         *prev += em;
@@ -3179,6 +3471,11 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
             N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_grids(r, out),
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, .. } => rows.iter().for_each(|r| math_grids(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_grids(above, out);
+                math_grids(below, out);
+            }
         }
         if let Some(s) = &a.superscript {
             math_grids(s, out);
@@ -3189,6 +3486,17 @@ fn math_grids(list: &flashtex_compiler::math::MathList, out: &mut Vec<(usize, us
     }
 }
 
+/// `em` of a compiler `Space` atom in family-2 quads: text-font ems
+/// (`\quad`) are scaled by `ratio`.
+fn space_em(a: &flashtex_compiler::math::MathAtom, em: f64, ratio: f64) -> f64 {
+    #[cfg(feature = "amsmath-inline")]
+    if matches!(a.nucleus, flashtex_compiler::math::Nucleus::Space { font_em: true, .. }) {
+        return em * ratio;
+    }
+    let _ = (a, ratio);
+    em
+}
+
 /// Total explicit math glue (`\quad`/`\qquad`, in ems) in `list` and its
 /// sub-formulas; see the `Space` arm of [`convert_math_fenced`].
 fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
@@ -3197,7 +3505,7 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
         .iter()
         .map(|a| {
             let own = match &a.nucleus {
-                N::Space { em } => *em,
+                N::Space { em, .. } => *em,
                 N::Fraction { numerator, denominator } => math_glue_em(numerator) + math_glue_em(denominator),
                 N::Radical(r) | N::Framed { body: r, .. } | N::Accent { body: r, .. } | N::Group(r) => math_glue_em(r),
                 N::Stacked { base, over, under } => {
@@ -3211,6 +3519,8 @@ fn math_glue_em(list: &flashtex_compiler::math::MathList) -> f64 {
                 N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_glue_em(r),
                 #[cfg(feature = "amsmath-inline")]
                 N::SubArray { rows, .. } => rows.iter().map(math_glue_em).sum(),
+                #[cfg(feature = "amsmath-inline")]
+                N::ExtArrow { above, below, .. } => math_glue_em(above) + math_glue_em(below),
             };
             own + a.superscript.as_ref().map_or(0.0, math_glue_em) + a.subscript.as_ref().map_or(0.0, math_glue_em)
         })
@@ -3285,6 +3595,11 @@ fn math_approximations(list: &flashtex_compiler::math::MathList, out: &mut Vec<S
             N::Phantom { body: r, .. } | N::Operator { body: r, .. } => math_approximations(r, out),
             #[cfg(feature = "amsmath-inline")]
             N::SubArray { rows, .. } => rows.iter().for_each(|r| math_approximations(r, out)),
+            #[cfg(feature = "amsmath-inline")]
+            N::ExtArrow { above, below, .. } => {
+                math_approximations(above, out);
+                math_approximations(below, out);
+            }
         }
         for part in [&a.superscript, &a.subscript].into_iter().flatten() {
             math_approximations(part, out);
@@ -3563,6 +3878,11 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                                     for cell in &row.cells {
                                         incremental::hash_math(cell, &mut h);
                                     }
+                                    row.intertext.len().hash(&mut h);
+                                    for text in &row.intertext {
+                                        (text.short, text.mathtools).hash(&mut h);
+                                        incremental::hash_items(&text.items, span.start, &mut h);
+                                    }
                                 }
                                 bracket.hash(&mut h);
                                 (Some(h.finish()), Some((span.document, span.start)))
@@ -3789,6 +4109,7 @@ pub fn build_with_floats(ctx: &mut Context, doc: &Doc, cache: Option<&RenderCach
                 BoxRec::Math(m) => Some(ctx.maths[*m].span),
                 BoxRec::Rule { span, .. } => Some(*span),
                 BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
             });
         let src = span.map(|sp| vec![ctx.source(sp)]).unwrap_or_default();
         ctx.diagnostics.push(Diagnostic::warning(
@@ -4190,6 +4511,7 @@ pub fn assemble(
                     BoxRec::Math(mi) => Some(laid.maths[*mi].span),
                     BoxRec::Rule { span, .. } => Some(*span),
                     BoxRec::Picture(p) => Some(p.span),
+                    BoxRec::Table(t) => Some(t.span),
                     BoxRec::Text { .. } => None,
                 });
                 diagnostics.push(Diagnostic::warning(
@@ -4309,6 +4631,40 @@ fn assemble_block(
                     }
                 }
                 BoxRec::Picture(p) => picture_items(&local, p, source_of, &mut items, &mut used),
+                BoxRec::Table(t) => {
+                    // Each piece is assembled like a block of its own, then
+                    // moved to its place; the rules follow the text.
+                    for piece in &t.pieces {
+                        let a = assemble_block(&piece.block, recs, maths, 0.0, source_of, paths, empty);
+                        let piece_lines = &piece.block.block.lines.lines;
+                        let first = piece_lines.first().map_or(0.0, |l| l.baseline_y);
+                        let dx = Tick::from_tex_pt(local.x + piece.x);
+                        for (li, line_items) in a.lines.iter().enumerate() {
+                            let dy = piece.baseline + piece_lines.get(li).map_or(0.0, |l| l.baseline_y - first);
+                            let dy = Tick::from_tex_pt(dy);
+                            for it in line_items {
+                                let mut item = incremental::place_item(it, dy, "", 0);
+                                display::shift_x(&mut item, dx);
+                                items.push(item);
+                            }
+                        }
+                        for f in a.faces {
+                            used.entry(f.font_id.clone()).or_insert(f);
+                        }
+                        resources.extend(a.resources);
+                        unmapped.extend(a.unmapped);
+                    }
+                    for r in &t.rules {
+                        items.push(display::Item::Rule(Rule {
+                            x: Tick::from_tex_pt(local.x + r.x),
+                            top: Tick::from_tex_pt(r.top),
+                            width: Tick::from_tex_pt(r.width).max(Tick(1)),
+                            height: Tick::from_tex_pt(r.height).max(Tick(1)),
+                            paint: Paint::BLACK,
+                            provenance: Provenance::Source(source_of(r.span)),
+                        }));
+                    }
+                }
                 BoxRec::Rule { width, height, span } => {
                     // Line-local like text: the rule's bottom is the baseline.
                     items.push(display::Item::Rule(Rule {

@@ -27,6 +27,7 @@ pub mod pdf;
 pub mod protocol;
 pub mod shape;
 pub mod style;
+pub mod table;
 pub mod tfm;
 pub mod tikz;
 pub mod typeset;

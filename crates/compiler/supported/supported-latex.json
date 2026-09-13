@@ -191,6 +191,9 @@
     {"name": "phantom", "mode": "math", "origin": "math_structure", "arguments": "{x}", "description": "empty box with the width and/or height and depth of the argument", "renders": true},
     {"name": "hphantom", "mode": "math", "origin": "math_structure", "arguments": "{x}", "description": "empty box with the width and/or height and depth of the argument", "renders": true},
     {"name": "vphantom", "mode": "math", "origin": "math_structure", "arguments": "{x}", "description": "empty box with the width and/or height and depth of the argument", "renders": true},
+    {"name": "xrightarrow", "mode": "math", "origin": "math_structure", "arguments": "[below]{above}", "description": "amsmath/mathtools extensible arrow stretched to its labels (\\ext@arrow)", "renders": true},
+    {"name": "xleftarrow", "mode": "math", "origin": "math_structure", "arguments": "[below]{above}", "description": "amsmath/mathtools extensible arrow stretched to its labels (\\ext@arrow)", "renders": true},
+    {"name": "xleftrightarrow", "mode": "math", "origin": "math_structure", "arguments": "[below]{above}", "description": "amsmath/mathtools extensible arrow stretched to its labels (\\ext@arrow)", "renders": true},
     {"name": "substack", "mode": "math", "origin": "math_structure", "arguments": "{a \\\\ b}", "description": "amsmath centred script-style rows for limits", "renders": true},
     {"name": "sqrt", "mode": "math", "origin": "math_structure", "arguments": "[index]{x}", "description": "radical with optional raised index", "renders": true},
     {"name": "binom", "mode": "math", "origin": "math_structure", "arguments": "{n}{k}", "description": "amsmath binomial: zero-thickness \\genfrac in parentheses; d/t forms force the style", "renders": true},
@@ -549,7 +552,7 @@
     "rows": [
       {"set": "kernel", "kind": "command", "canonical": 410, "supported": 136, "percent": 33.2},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
-      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 33, "percent": 32.4},
+      {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
       {"set": "amssymb", "kind": "command", "canonical": 229, "supported": 20, "percent": 8.7},
       {"set": "enumitem", "kind": "command", "canonical": 17, "supported": 1, "percent": 5.9},
@@ -560,6 +563,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 224, "percent": 22.3}
+    "total": {"canonical": 1003, "supported": 226, "percent": 22.5}
   }
 }

@@ -80,9 +80,18 @@ pub struct TextSink {
     /// Arguments beyond [`MAX_TEXT_ATOMS`], in order: refused before any
     /// state changed, reported by the caller as `math_text_overflow`.
     pub refused: Vec<String>,
+    /// The text font's quad in pt and its ratio to the math symbol font's
+    /// quad at the text size, for `\quad` glue in math (`None`: unknown,
+    /// the glue is measured in math quads).
+    pub text_quad: Option<(f64, f64)>,
 }
 
 impl TextSink {
+    /// Text-font quad / math quad, 1 when unknown.
+    pub fn font_em_ratio(&self) -> f64 {
+        self.text_quad.map_or(1.0, |(_, r)| r)
+    }
+
     /// An `Ord` atom for `text` (TeX §1076: an hbox in math is an Ord); an
     /// empty Ord (scripts still attach) once the handle space is exhausted.
     pub fn atom(&mut self, text: &str) -> ml::Atom {

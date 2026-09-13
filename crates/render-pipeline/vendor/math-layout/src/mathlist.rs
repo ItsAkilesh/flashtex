@@ -107,6 +107,23 @@ pub enum Nucleus {
         right: Option<char>,
         body: MathList,
     },
+    /// amsmath `\ext@arrow` (`amsmath.sty` 1012-1026) over an `\arrowfill@`
+    /// (971-976): `$\displaystyle left\mkern-7mu\cleaders\hbox{$\mkern-2mu
+    /// fill\mkern-2mu$}\hfill\mkern-7mu right$` at the text size with every
+    /// muskip zero, in an hbox as wide as the widest of its natural width and
+    /// `\scriptstyle\mkern kerns[2]mu{label}\mkern kerns[3]mu` for either
+    /// label; then `\mathop{..}\limits` with `^{\mkern kerns[0]mu above
+    /// \mkern kerns[1]mu}` and `_{..below..}` for the non-empty labels. A
+    /// minus piece (`\relbar`, `\mathsm@sh` of the minus) has no height or
+    /// depth.
+    ExtArrow {
+        left: char,
+        fill: char,
+        right: char,
+        kerns: [f64; 4],
+        above: MathList,
+        below: MathList,
+    },
     /// `{}`: an empty ordinary atom.
     Empty,
 }
@@ -233,6 +250,22 @@ impl Atom {
     /// amsmath `\substack` (`align` `c`) / `subarray{l}`.
     pub fn subarray(rows: Vec<MathList>, align: char) -> Atom {
         Atom::new(AtomClass::Ord, Nucleus::SubArray { rows, align })
+    }
+
+    /// A relation holding an amsmath extensible arrow ([`Nucleus::ExtArrow`]):
+    /// `pieces` are the left piece, the leader fill and the right piece.
+    pub fn ext_arrow(pieces: [char; 3], kerns: [f64; 4], above: MathList, below: MathList) -> Atom {
+        Atom::new(
+            AtomClass::Rel,
+            Nucleus::ExtArrow {
+                left: pieces[0],
+                fill: pieces[1],
+                right: pieces[2],
+                kerns,
+                above,
+                below,
+            },
+        )
     }
 
     pub fn sqrt(radicand: MathList) -> Atom {
