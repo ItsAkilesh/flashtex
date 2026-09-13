@@ -3061,9 +3061,31 @@ impl P<'_> {
     /// `self.style` has already been saved onto `env_styles` by the caller
     /// (see `environment`), so mutating it here to the body's default style
     /// is correctly restored at the matching `\end`.
+    ///
+    /// The head is `\the\thm@headfont \thm@indent <name> <number> <note>
+    /// \the\thm@headpunct` (amsthm.sty `\@begintheorem`/`\thmhead@plain`):
+    /// everything but the note is set in the head font — including the
+    /// space tokens between the pieces and the trailing punctuation — while
+    /// the note itself is `\thm@notefont{\fontseries\mddefault\upshape}` and
+    /// the number is `\@upn` (upright). Measured against pdflatex (TeX Live
+    /// 2025, `\documentclass[11pt]{article}`): `Definition 1.1 (Divides).`
+    /// traces as `\T1/cmr/bx/n/10.95 D…n`, `\glue 4.17043 plus 2.08443
+    /// minus 1.3896` (the *bold* interword space), `1.1`, the same bold
+    /// glue, `\T1/cmr/m/n/10.95 (Divides)`, then `\T1/cmr/bx/n/10.95 .`;
+    /// a numbered `remark` traces as italic `Remark`, italic glue,
+    /// `\OT1/cmr/m/n/10.95 1`, italic `.`.
     fn begin_theorem(&mut self, def: &TheoremDef, span: Span, para: &mut Vec<Inline>) {
         let note = self.optional_bracket_argument();
+        let head_style = def.style.head_style();
+        // `\thmnumber{...\@upn{#2}}`: the number is `\textup`, so a
+        // `remark`-style head (`\thm@headfont{\itshape}`) numbers upright
+        // inside its italic name. For the bold heads `\@upn` is a no-op.
+        let number_style = TextStyle {
+            italic: false,
+            ..head_style
+        };
         let mut head = def.title.clone();
+        let mut number = None;
         if def.numbered {
             let counter = self
                 .theorem_counters
@@ -3071,36 +3093,72 @@ impl P<'_> {
                 .or_insert(0);
             *counter += 1;
             let n = *counter;
-            let number = if def.within_section {
+            let value = if def.within_section {
                 format!("{}.{}", self.counters.value("section").unwrap_or(0), n)
             } else {
                 n.to_string()
             };
-            self.current_counter = Some(number.clone());
-            head.push(' ');
-            head.push_str(&number);
+            self.current_counter = Some(value.clone());
+            // `\@ifnotempty{#1}{ }` sits outside `\@upn`, so the space token
+            // between the name and the number is read in the head font
+            // either way; the number only needs a run of its own where
+            // `\@upn` actually changes the shape (a `remark` head).
+            if number_style == head_style {
+                head.push(' ');
+                head.push_str(&value);
+            } else {
+                number = Some(value);
+            }
         }
         para.push(Inline::Text {
             text: head,
             span,
-            style: def.style.head_style(),
+            style: head_style,
             space_before: true,
         });
+        if let Some(number) = number {
+            para.push(Inline::Text {
+                text: " ".to_string(),
+                span,
+                style: head_style,
+                space_before: false,
+            });
+            para.push(Inline::Text {
+                text: number,
+                span,
+                style: number_style,
+                space_before: false,
+            });
+        }
         if let Some((note_text, note_span)) = note {
             let note_text = note_text.trim();
             if !note_text.is_empty() {
+                // `\thmnote{ {\the\thm@notefont(#3)}}`: the space is outside
+                // the `\thm@notefont` group, so it too is a head-font space;
+                // only the parenthesised note itself is `\fontseries
+                // \mddefault\upshape`.
                 para.push(Inline::Text {
-                    text: format!(" ({note_text})"),
+                    text: " ".to_string(),
+                    span,
+                    style: head_style,
+                    space_before: false,
+                });
+                para.push(Inline::Text {
+                    text: format!("({note_text})"),
                     span: note_span,
                     style: TextStyle::default(),
                     space_before: false,
                 });
             }
         }
+        // `\the\thm@headpunct` is typeset inside `\the\thm@headfont`'s
+        // group: pdflatex sets a `plain`/`definition` head's period from the
+        // bold face (`\T1/cmr/bx/n/10.95 .`) and a `remark`'s from the
+        // italic one, never from the body font.
         para.push(Inline::Text {
             text: ".".to_string(),
             span,
-            style: TextStyle::default(),
+            style: head_style,
             space_before: false,
         });
         self.style = def.style.body_style();
