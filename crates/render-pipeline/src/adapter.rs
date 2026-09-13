@@ -2104,7 +2104,7 @@ enum StyleKind {
 /// so a size is never applied twice. The compiler's own table is the same
 /// one, but it resolves against its integer class size where the pipeline
 /// sets `\normalsize` at the class's real `\normalsize` (10.95pt at 11pt).
-fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
+pub(crate) fn declared_size(level: Option<flashtex_compiler::parser::FontSizeLevel>, base: u32) -> u16 {
     use flashtex_compiler::parser::FontSizeLevel as L;
     let Some(level) = level else { return 0 };
     // tiny, scriptsize, footnotesize, small, large, Large, LARGE, huge, Huge

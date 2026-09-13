@@ -315,6 +315,10 @@ pub struct Context<'a> {
     /// `\hsize` for paragraphs set outside the column (`\textwidth` for a
     /// two-column `\twocolumn[\@maketitle]` box); `None` = `\columnwidth`.
     hsize_override: Option<f64>,
+    /// `\sloppy` (`\@arrayparboxrestore` in a float box or caption).
+    sloppy: bool,
+    /// `\baselineskip` for paragraphs of another size (`\small` in a float).
+    baselineskip_override: Option<f64>,
 }
 
 impl<'a> Context<'a> {
@@ -339,6 +343,8 @@ impl<'a> Context<'a> {
             reported: BTreeSet::new(),
             capture: None,
             hsize_override: None,
+            sloppy: false,
+            baselineskip_override: None,
             path_rcs: std::cell::RefCell::new(BTreeMap::new()),
         }
     }
@@ -1478,13 +1484,19 @@ impl<'a> Context<'a> {
         // `\list`: `\parshape` every line `\@totalleftmargin` in (`\rightmargin`
         // is 0pt), on top of any `quote` margin.
         let left_skip = if hang_pt != 0.0 { pl::Glue::fixed(left_skip.width + hang_pt) } else { left_skip };
+        // `\sloppy`: `\tolerance 9999 \emergencystretch 3em \hfuzz .5pt`.
+        let (tolerance, emergency_stretch, hfuzz) = if self.sloppy {
+            (9999.0, 3.0 * self.text_params(TextStyle::default(), s.body_size_pt).quad, 0.5)
+        } else {
+            (s.tolerance, s.emergency_stretch_pt, 0.1)
+        };
         pl::LineBreakParams {
             line_width: self.hsize_override.unwrap_or(s.text_width_pt),
             mode,
             algorithm: pl::Algorithm::TotalFit,
             pretolerance: s.pretolerance,
-            tolerance: s.tolerance,
-            emergency_stretch: s.emergency_stretch_pt,
+            tolerance,
+            emergency_stretch,
             line_penalty: s.linepenalty,
             adj_demerits: s.adjdemerits,
             double_hyphen_demerits: 10_000.0,
@@ -1495,7 +1507,7 @@ impl<'a> Context<'a> {
             baselineskip,
             lineskip: s.lineskip_pt,
             lineskiplimit: s.lineskiplimit_pt,
-            hfuzz: 0.1,
+            hfuzz,
             hbadness: 1000.0,
         }
     }
@@ -1536,7 +1548,7 @@ impl<'a> Context<'a> {
                 }
             }
         }
-        let params = self.line_params(indent, self.style.baselineskip_pt, style, hang_pt);
+        let params = self.line_params(indent, self.baselineskip_override.unwrap_or(self.style.baselineskip_pt), style, hang_pt);
         let lines = self.break_paragraph(&list, &params, items)?;
         self.report_overfull(&lines, &list, &recs);
         // `\list` sets `\parskip\parsep`: an item paragraph adds `\parsep`.

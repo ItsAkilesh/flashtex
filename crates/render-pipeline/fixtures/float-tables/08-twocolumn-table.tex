@@ -1,0 +1,26 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+Text before the float.
+
+\begin{table}[t]
+  \centering
+  \caption{A table in one column.}
+  \label{tab:two}
+  \begin{tabular}{lrrr}
+    \toprule
+    Corpus & Keys & Moved & Rate \\
+    \midrule
+    Homework & 12480 & 41 & 0.33 \\
+    Notes & 30112 & 208 & 0.69 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Text after the float, in a paragraph of its own, also long enough to wrap in the column.
+\end{document}

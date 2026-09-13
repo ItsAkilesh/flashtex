@@ -1,0 +1,17 @@
+\documentclass[10pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+Text before the float in its own paragraph.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcr}\hline Left & Centre & Right\\\hline one & two & three\\ four & five & six\\\hline\end{tabular}
+\caption{A long caption that does not fit on one line of the text width, so it is set as an ordinary paragraph instead of a centred box.}
+\end{table}
+
+Text after the float, in a paragraph of its own.
+\end{document}

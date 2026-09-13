@@ -62,6 +62,10 @@ pub struct FloatEnv {
     /// paragraph precedes it): `\vadjust` after the line instead of a
     /// vertical-mode marker.
     pub hmode: bool,
+    /// `figure*`/`table*`.
+    pub wide: bool,
+    /// The body's byte range (after `\begin{...}[...]`, before `\end`).
+    pub body: (usize, usize),
     pub pieces: Vec<Piece>,
 }
 
@@ -124,6 +128,8 @@ pub fn scan(text: &str, document: DocumentId) -> Vec<FloatEnv> {
             placement,
             span: Span::in_document(document, pos, end + end_tag.len()),
             hmode,
+            wide: name.ends_with('*'),
+            body: (cursor, end),
             pieces,
         });
         at = end + end_tag.len();
@@ -439,91 +445,163 @@ fn em_ex(body: f64) -> (f64, f64) {
     }
 }
 
-/// Byte ranges (`\begin` through `\end`) of the `tabular`/`tabular*`
-/// environments inside `span` of `text` (not nested).
-fn tabular_ranges(text: &str, span: Span) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
-    let mut at = span.start;
-    while let Some(pos) = text.get(at..span.end).and_then(|t| t.find("\\begin{tabular")) {
-        let start = at + pos;
-        let rest = &text[start + "\\begin{tabular".len()..span.end];
-        let env_end = if rest.starts_with("*}") {
-            "\\end{tabular*}"
-        } else if rest.starts_with('}') {
-            "\\end{tabular}"
-        } else {
-            at = start + 1;
-            continue;
-        };
-        match text[start..span.end].find(env_end) {
-            Some(e) => {
-                out.push((start, start + e + env_end.len()));
-                at = start + e + env_end.len();
-            }
-            None => break,
-        }
-    }
-    out
+/// `\tiny` .. `\Huge` as the compiler's size levels (`None` = `\normalsize`).
+fn size_command(name: &str) -> Option<Option<flashtex_compiler::parser::FontSizeLevel>> {
+    use flashtex_compiler::parser::FontSizeLevel as L;
+    Some(Some(match name {
+        "tiny" => L::Tiny,
+        "scriptsize" => L::ScriptSize,
+        "footnotesize" => L::FootnoteSize,
+        "small" => L::Small,
+        "large" => L::Large1,
+        "Large" => L::Large2,
+        "LARGE" => L::Large3,
+        "huge" => L::Huge1,
+        "Huge" => L::Huge2,
+        "normalsize" => return Some(None),
+        _ => return None,
+    }))
 }
 
-/// The compiler's model of the tabular at `range` (parsed on its own).
-fn tabular_in(documents: &[SourceDocument<'_>], d: usize, texts: &[&str], range: Span) -> Option<flashtex_compiler::tabular::Tabular> {
-    use flashtex_compiler::parser::{Block, Inline};
-    let isolated = isolate(documents[d].text, range);
+/// The first source byte an item list was set from.
+fn first_byte(items: &[AItem]) -> Option<usize> {
+    items.iter().find_map(|i| match i {
+        AItem::Word(w) => w.segments.iter().find_map(|s| s.chars.first()).map(|c| c.start),
+        AItem::Math { span, .. } => Some(span.start),
+        AItem::Table(t) => Some(t.span.start),
+        _ => None,
+    })
+}
+
+/// The float body as the main flow would set it: the body bytes alone
+/// (preamble kept), with `\caption`/`\includegraphics` replaced by `\par`
+/// and `\label` by spaces (byte offsets preserved), parsed and adapted.
+/// Returns each paragraph's first source byte and part, in source order.
+#[allow(clippy::too_many_arguments)]
+fn body_parts(
+    f: &FloatEnv,
+    number: u32,
+    d: usize,
+    documents: &[SourceDocument<'_>],
+    entry_index: usize,
+    texts: &[&str],
+    options: &RenderOptions,
+    labels: &Labels,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<(usize, FloatPart)> {
+    let text = documents[d].text;
+    let mut isolated = isolate(text, Span::in_document(f.span.document, f.body.0, f.body.1)).into_bytes();
+    for p in &f.pieces {
+        let (span, par) = match p {
+            Piece::Caption { span, .. } | Piece::Graphic { span, .. } => (*span, true),
+            Piece::Label { span, .. } => (*span, false),
+            _ => continue,
+        };
+        for b in &mut isolated[span.start..span.end] {
+            *b = b' ';
+        }
+        if par && span.end - span.start >= 4 {
+            isolated[span.start..span.start + 4].copy_from_slice(b"\\par");
+        }
+    }
+    let isolated = String::from_utf8(isolated).unwrap_or_default();
     let mut texts2: Vec<&str> = texts.to_vec();
     texts2[d] = &isolated;
     let docs2: Vec<SourceDocument<'_>> = documents.iter().zip(&texts2).map(|(doc, t)| SourceDocument { path: doc.path, text: t }).collect();
     let parsed = flashtex_compiler::parser::parse_project(&docs2, documents[d].path);
-    parsed.blocks.iter().find_map(|b| {
-        let inlines = match b {
-            Block::Paragraph(i) => i,
-            Block::Styled { content, .. } => content,
-            _ => return None,
-        };
-        inlines.iter().find_map(|i| match i {
-            Inline::Tabular(t) => {
-                let t: &flashtex_compiler::tabular::Tabular = t;
-                Some(t.clone())
+    let doc = adapter::adapt(&texts2, entry_index, &parsed, options, labels);
+    let path: Rc<str> = Rc::from(documents[d].path);
+    let inside = |s: &Span| s.document == f.span.document && s.start >= f.body.0 && s.start < f.body.1;
+    let paths: Vec<&str> = documents.iter().map(|x| x.path).collect();
+    for cd in &parsed.diagnostics {
+        if cd.span.as_ref().is_some_and(inside) {
+            diags.push(Diagnostic::from_compiler(cd, &paths));
+        }
+    }
+    for (code, span, message) in &doc.limitations {
+        if inside(span) {
+            diags.push(Diagnostic::warning(code, message.clone(), vec![SourceRange { path: path.clone(), start_byte: span.start, end_byte: span.end }]));
+        }
+    }
+    let mut out: Vec<(usize, usize, FloatPart)> = Vec::new();
+    let unsupported = |what: &str, diags: &mut Vec<Diagnostic>| {
+        diags.push(Diagnostic::warning(
+            "float_content_unsupported",
+            format!("{} {number}: {what} inside a float is not typeset yet; it is omitted", f.kind.name()),
+            vec![SourceRange { path: path.clone(), start_byte: f.span.start, end_byte: f.span.end }],
+        ));
+    };
+    for block in &doc.blocks {
+        match block {
+            adapter::Block::Paragraph { parts, style, env_open, env_close, vspace_before, addvspace_before, list, .. } => {
+                if list.is_some() {
+                    unsupported("a list", diags);
+                    continue;
+                }
+                let n = parts.len();
+                for (pi, part) in parts.iter().enumerate() {
+                    match part {
+                        ParaPart::Lines(items) => {
+                            let Some(at) = first_byte(items) else { continue };
+                            out.push((
+                                at,
+                                last_byte(items).unwrap_or(at),
+                                FloatPart::Text {
+                                    items: items.clone(),
+                                    style: *style,
+                                    env_open: if pi == 0 { env_open.map(|e| e.vmode) } else { None },
+                                    env_close: *env_close && pi + 1 == n,
+                                    vspace_before: if pi == 0 { *vspace_before } else { 0.0 },
+                                    addvspace_before: if pi == 0 { *addvspace_before } else { 0.0 },
+                                },
+                            ));
+                        }
+                        ParaPart::Display { .. } | ParaPart::Rows { .. } => unsupported("display math", diags),
+                    }
+                }
             }
-            _ => None,
+            adapter::Block::Heading { .. } | adapter::Block::Chapter { .. } => unsupported("a sectioning command", diags),
+            adapter::Block::Picture { .. } => unsupported("a tikzpicture", diags),
+            adapter::Block::Rule { .. } => unsupported("a vertical-mode rule", diags),
+            adapter::Block::Chrome { .. } => {}
+        }
+    }
+    // The adapter finds an environment's `\begin`/`\end` in the bytes around
+    // a paragraph, which in the isolated body reach into the preamble
+    // (`\begin{document}`); keep its skips only where the float body itself
+    // opens or closes a paragraph-shape environment there.
+    const ENVS: [&str; 6] = ["center", "flushleft", "flushright", "quote", "quotation", "verse"];
+    let has = |gap: &str, cmd: &str| ENVS.iter().any(|e| gap.contains(&format!("\\{cmd}{{{e}}}")));
+    let spans: Vec<(usize, usize)> = out.iter().map(|(a, b, _)| (*a, *b)).collect();
+    out.into_iter()
+        .enumerate()
+        .map(|(i, (at, end, mut part))| {
+            if let FloatPart::Text { env_open, env_close, .. } = &mut part {
+                let before = text.get(if i == 0 { f.body.0 } else { spans[i - 1].1.min(at) }..at).unwrap_or("");
+                if !has(before, "begin") {
+                    *env_open = None;
+                }
+                let after = text.get(end..spans.get(i + 1).map_or(f.body.1, |s| s.0.max(end))).unwrap_or("");
+                if !has(after, "end") {
+                    *env_close = false;
+                }
+            }
+            (at, part)
         })
-    })
+        .collect()
 }
 
-/// Height and depth of a tabular's box, in points: every row is
-/// `\@arstrut` (`.7\baselineskip` + `.3\baselineskip`, times
-/// `\arraystretch`, deepened by `\\[<dimen>]`), `\hline` is
-/// `\arrayrulewidth`, booktabs rules add their width and separations
-/// (`\toprule`: `\heavyrulewidth` + `\belowrulesep`; `\midrule`:
-/// `\aboverulesep` + `\lightrulewidth` + `\belowrulesep`; `\bottomrule`:
-/// `\aboverulesep` + `\heavyrulewidth`; `\cmidrule` like `\midrule` with
-/// `\cmidrulewidth`). `[c]` centres the box on the math axis (`.25em`).
-fn tabular_box(t: &flashtex_compiler::tabular::Tabular, baselineskip: f64, em: f64, ex: f64) -> (f64, f64) {
-    use flashtex_compiler::tabular::{BookRule, Entry, VerticalPosition};
-    let (strut_h, strut_d) = (0.7 * baselineskip * t.arraystretch, 0.3 * baselineskip * t.arraystretch);
-    let mut total = 0.0;
-    for e in &t.entries {
-        total += match e {
-            Entry::Row(r) => strut_h + strut_d + r.extra_depth_pt.max(0.0),
-            Entry::HLine { .. } => 0.4,
-            Entry::CLine { .. } => 0.0,
-            Entry::BookRule { kind, width_pt, .. } => match kind {
-                BookRule::Top => width_pt.unwrap_or(0.08 * em) + 0.65 * ex,
-                BookRule::Mid => 0.4 * ex + width_pt.unwrap_or(0.05 * em) + 0.65 * ex,
-                BookRule::Bottom => 0.4 * ex + width_pt.unwrap_or(0.08 * em),
-            },
-            Entry::CMidRule { width_pt, .. } => 0.4 * ex + width_pt.unwrap_or(0.03 * em) + 0.65 * ex,
-            Entry::VSpace { pt } => *pt,
-        };
-    }
-    match t.position {
-        VerticalPosition::Center => {
-            let axis = 0.25 * em;
-            (total / 2.0 + axis, total / 2.0 - axis)
-        }
-        VerticalPosition::Top => (strut_h.min(total), (total - strut_h).max(0.0)),
-        VerticalPosition::Bottom => ((total - strut_d).max(0.0), strut_d.min(total)),
-    }
+/// The source byte just past the last character an item list was set from.
+fn last_byte(items: &[AItem]) -> Option<usize> {
+    items
+        .iter()
+        .filter_map(|i| match i {
+            AItem::Word(w) => w.segments.iter().filter_map(|s| s.chars.last()).map(|c| c.end).max(),
+            AItem::Math { span, .. } => Some(span.end),
+            AItem::Table(t) => Some(t.span.end),
+            _ => None,
+        })
+        .max()
 }
 
 /// `\usepackage[..,demo,..]{graphicx}` (or `graphics`) in the preamble:
@@ -585,42 +663,31 @@ pub fn prepare(
             };
             let mut parts = Vec::new();
             let mut spec_labels = Vec::new();
-            let mut reported_other = false;
-            // `tabular`/`tabular*` environments in the float body: their box
-            // keeps its height (the cells are not painted yet).
-            let tabulars = tabular_ranges(documents[d].text, f.span);
-            let mut tabular_done = vec![false; tabulars.len()];
+            // Paragraphs of the body (text, `tabular`, `center`, ...), merged
+            // with the pieces below in source order.
+            let mut text = body_parts(f, number, d, documents, entry_index, texts, options, labels, &mut diags).into_iter().peekable();
+            let class_size = adapter::class_size_of(style.body_size_pt);
             for piece in &f.pieces {
+                let at = match piece {
+                    Piece::Graphic { span, .. } | Piece::Caption { span, .. } | Piece::Label { span, .. } | Piece::Other { span } => Some(span.start),
+                    Piece::Centering | Piece::ParBreak => None,
+                };
+                if let Some(at) = at {
+                    while let Some((_, part)) = text.next_if(|(b, _)| *b < at) {
+                        parts.push(part);
+                    }
+                }
                 match piece {
                     Piece::Centering => parts.push(FloatPart::Centering),
                     Piece::ParBreak => parts.push(FloatPart::ParBreak),
                     Piece::Label { key, .. } => spec_labels.push(key.clone()),
                     Piece::Other { span } => {
-                        if let Some(ti) = tabulars.iter().position(|(s, e)| (*s..*e).contains(&span.start)) {
-                            if std::mem::replace(&mut tabular_done[ti], true) {
-                                continue;
-                            }
-                            let range = Span::in_document(span.document, tabulars[ti].0, tabulars[ti].1);
-                            if let Some(t) = tabular_in(documents, d, texts, range) {
-                                let (height, depth) = tabular_box(&t, style.baselineskip_pt, em, ex);
-                                let rows = t.entries.iter().filter(|e| matches!(e, flashtex_compiler::tabular::Entry::Row(_))).count();
-                                diags.push(Diagnostic::warning(
-                                    "float_content_unsupported",
-                                    format!("{} {number}: tabular ({rows} row(s)) keeps its height in the float, but its cells and rules are not painted yet", f.kind.name()),
-                                    vec![src(range)],
-                                ));
-                                let gbox = graphics::GraphicBox { width: 0.0, height, depth, matrix: [0.0; 6] };
-                                parts.push(FloatPart::Graphic(PreparedGraphic { gbox, resource: None, span: range, demo: false }));
-                                continue;
-                            }
-                        }
-                        if !reported_other {
-                            reported_other = true;
-                            diags.push(Diagnostic::warning(
-                                "float_content_unsupported",
-                                format!("{} {number}: only \\includegraphics, \\caption, \\label and \\centering are typeset inside a float so far; this material is omitted", f.kind.name()),
-                                vec![src(*span)],
-                            ));
+                        // A size declaration at the float's top level sets the
+                        // `\baselineskip` of what follows (the paragraphs'
+                        // own words carry their size from the compiler).
+                        let src_text = &documents[d].text[span.start..span.end];
+                        if let Some(level) = src_text.strip_prefix('\\').and_then(size_command) {
+                            parts.push(FloatPart::Size(adapter::declared_size(level, class_size)));
                         }
                     }
                     Piece::Graphic { span, options: opts, path: file } => {
@@ -668,7 +735,8 @@ pub fn prepare(
                     }
                 }
             }
-            specs.push(FloatSpec { kind: f.kind, number, bits, span: f.span, hmode: f.hmode, parts, labels: spec_labels });
+            parts.extend(text.map(|(_, part)| part));
+            specs.push(FloatSpec { kind: f.kind, number, bits, span: f.span, hmode: f.hmode, wide: f.wide, parts, labels: spec_labels });
         }
     }
     (specs, diags)
@@ -721,41 +789,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn graphicx_demo_option_and_tabular_ranges() {
+    fn graphicx_demo_option() {
         assert!(graphics_demo("\\documentclass{article}\n\\usepackage[demo]{graphicx}\n\\begin{document}\n"));
         assert!(graphics_demo("\\usepackage[draft, demo]{graphics,xcolor}\n\\begin{document}"));
         assert!(!graphics_demo("% \\usepackage[demo]{graphicx}\n\\usepackage{graphicx}\n\\begin{document}\\usepackage[demo]{graphicx}"));
-        let src = "\\begin{table}\\caption{C}\\begin{tabular}{ll}a&b\\\\\\end{tabular} \\begin{tabular*}{\\textwidth}{l}c\\end{tabular*}\\end{table}";
-        let r = tabular_ranges(src, Span::in_document(DocumentId(0), 0, src.len()));
-        assert_eq!(r.len(), 2);
-        assert!(src[r[0].0..r[0].1].starts_with("\\begin{tabular}{ll}") && src[r[0].0..r[0].1].ends_with("\\end{tabular}"));
-        assert!(src[r[1].0..r[1].1].starts_with("\\begin{tabular*}") && src[r[1].0..r[1].1].ends_with("\\end{tabular*}"));
     }
 
     #[test]
-    fn booktabs_tabular_box_height() {
-        use flashtex_compiler::parser::{Block, Inline};
-        let src = "\\documentclass{article}\n\\usepackage{booktabs}\n\\begin{document}\n\\begin{tabular}{l}\\toprule a\\\\ \\midrule b\\\\ \\bottomrule\\end{tabular}\n\\end{document}\n";
-        let parsed = flashtex_compiler::parser::parse(src);
-        let t = parsed
-            .blocks
-            .iter()
-            .filter_map(|b| match b {
-                Block::Paragraph(i) => Some(i),
-                _ => None,
-            })
-            .flatten()
-            .find_map(|i| match i {
-                Inline::Tabular(t) => Some(t.clone()),
-                _ => None,
-            })
-            .expect("tabular");
-        let (em, ex) = (10.0, 4.30554);
-        let (h, d) = tabular_box(&t, 12.0, em, ex);
-        // Two 12pt struts; \toprule .8 + .65ex; \midrule .4ex + .5 + .65ex; \bottomrule .4ex + .8.
-        let total = 24.0 + (0.8 + 0.65 * ex) + (0.4 * ex + 0.5 + 0.65 * ex) + (0.4 * ex + 0.8);
-        assert!((h + d - total).abs() < 1e-9, "{h} + {d} vs {total}");
-        assert!((h - d - 5.0).abs() < 1e-9, "[c] centres on the axis");
+    fn star_floats_are_wide_and_body_excludes_the_placement() {
+        let src = "\\begin{document}\n\\begin{table*}[t]\\caption{C}x\\end{table*}\n";
+        let f = &scan(src, DocumentId(0))[0];
+        assert!(f.wide);
+        assert_eq!(&src[f.body.0..f.body.1], "\\caption{C}x");
     }
 
     #[test]

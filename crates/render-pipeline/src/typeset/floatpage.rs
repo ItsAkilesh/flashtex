@@ -39,6 +39,8 @@ pub struct FloatSpec {
     /// The environment's source span (`\begin` .. `\end`).
     pub span: Span,
     pub hmode: bool,
+    /// `figure*`/`table*`: `\hsize` is `\textwidth` (`\@dblfloat`).
+    pub wide: bool,
     pub parts: Vec<FloatPart>,
     pub labels: Vec<String>,
 }
@@ -50,6 +52,22 @@ pub enum FloatPart {
     Graphic(PreparedGraphic),
     /// The caption paragraph's items, `Figure~N: ` prefix included.
     Caption { items: Vec<AItem> },
+    /// A paragraph of the float body (text, a `tabular`, ...) as the
+    /// adapter sets it in the main flow, with its environment skips.
+    Text {
+        items: Vec<AItem>,
+        style: ParaStyle,
+        /// A `center`-like environment opens here: `Some(vmode)`.
+        env_open: Option<bool>,
+        env_close: bool,
+        /// `\vspace` before the paragraph, in points.
+        vspace_before: f64,
+        /// `\addvspace` before the paragraph, in points.
+        addvspace_before: f64,
+    },
+    /// A size declaration at the float's top level (`\small`), hundredths
+    /// of a point (0 = `\normalsize`): the `\baselineskip` from here on.
+    Size(u16),
 }
 
 #[derive(Debug, Clone)]
@@ -103,29 +121,96 @@ struct FloatBox {
     labels: Vec<String>,
 }
 
-/// Sets the float's box (see the module docs).
+/// The float's vertical list while it is set (`\vbox`, natural height).
+struct VState {
+    y: f64,
+    prev_depth: Option<f64>,
+    /// `\if@minipage`: `\@setminipage` at the box top, cleared by the first
+    /// paragraph (`\everypar`) or a one-line caption; `\addvspace` does
+    /// nothing while it is set.
+    minipage: bool,
+    /// `\lastskip`: the glue the list ends with (0 after a box).
+    last_skip: f64,
+}
+
+impl VState {
+    /// Appends a box with interline glue (§679).
+    fn add_box(&mut self, h: f64, d: f64, baselineskip: f64, lineskip: f64, lineskiplimit: f64) -> f64 {
+        if let Some(pd) = self.prev_depth {
+            let mut g = baselineskip - pd - h;
+            if g < lineskiplimit {
+                g = lineskip;
+            }
+            self.y += g;
+        }
+        let b = self.y + h;
+        self.y = b + d;
+        self.prev_depth = Some(d);
+        self.last_skip = 0.0;
+        b
+    }
+
+    fn vskip(&mut self, pt: f64) {
+        self.y += pt;
+        self.last_skip = pt;
+    }
+
+    /// `\addvspace` (latex.ltx `\@xaddvskip`, natural widths).
+    fn addvspace(&mut self, pt: f64) {
+        if self.minipage {
+            return;
+        }
+        if self.last_skip == 0.0 {
+            self.vskip(pt);
+        } else if self.last_skip < pt {
+            self.y += pt - self.last_skip;
+            self.last_skip = pt;
+        }
+    }
+}
+
+/// `\baselineskip` of a size declaration (0 = `\normalsize`).
+fn size_baselineskip(ctx: &Context, size_cpt: u16) -> f64 {
+    let body = ctx.style.body_size_pt;
+    if size_cpt == 0 || (f64::from(size_cpt) / 100.0 - body).abs() < 1e-9 {
+        ctx.style.baselineskip_pt
+    } else {
+        crate::table::baselineskip_pt(crate::adapter::class_size_of(body), size_cpt)
+    }
+}
+
+/// The size a paragraph is set at: its first sized word or table.
+fn items_size(items: &[AItem]) -> u16 {
+    items
+        .iter()
+        .find_map(|i| match i {
+            AItem::Word(w) => w.segments.iter().map(|s| s.style.size_cpt).find(|c| *c != 0),
+            AItem::Table(t) => Some(t.size_cpt).filter(|c| *c != 0),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
+/// Sets the float's box (see the module docs): `\@xfloat`'s `\vbox{\hsize
+/// \columnwidth \@parboxrestore \@floatboxreset ...}` (`\textwidth` for
+/// `figure*`/`table*`), whose natural height is the float's height.
+/// `\@parboxrestore`: no `\parindent`, `\parskip` 0, `\sloppy`;
+/// `\@floatboxreset`: `\normalsize`, `\@setminipage`.
 fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, fp: &FloatParams) -> FloatBox {
     let s = ctx.style;
-    let (bs, ls, lsl, tw) = (s.baselineskip_pt, s.lineskip_pt, s.lineskiplimit_pt, s.text_width_pt);
-    let mut y = 0.0;
-    let mut prev_depth: Option<f64> = None;
+    let (normal_bs, ls, lsl) = (s.baselineskip_pt, s.lineskip_pt, s.lineskiplimit_pt);
+    let tw = if spec.wide { s.class_geometry.as_deref().map_or(s.text_width_pt, |g| crate::style::frame_pt(g.frame.text_width)) } else { s.text_width_pt };
+    let (topsep, partopsep) = (s.topsep.natural, s.partopsep.natural);
+    let saved = (ctx.hsize_override, ctx.sloppy, ctx.baselineskip_override);
+    ctx.hsize_override = spec.wide.then_some(tw);
+    ctx.sloppy = true;
+    let mut v = VState { y: 0.0, prev_depth: None, minipage: true, last_skip: 0.0 };
     let mut elems = Vec::new();
     let mut centered = false;
+    let mut bs = normal_bs;
+    let mut env_vmode = false;
     let mut pending: Vec<&PreparedGraphic> = Vec::new();
-    let add_box = |h: f64, d: f64, y: &mut f64, prev: &mut Option<f64>| -> f64 {
-        if let Some(pd) = *prev {
-            let mut g = bs - pd - h;
-            if g < lsl {
-                g = ls;
-            }
-            *y += g;
-        }
-        let b = *y + h;
-        *y = b + d;
-        *prev = Some(d);
-        b
-    };
-    let flush = |pending: &mut Vec<&PreparedGraphic>, centered: bool, y: &mut f64, prev: &mut Option<f64>, elems: &mut Vec<Elem>, ctx: &Context| {
+    let flush = |pending: &mut Vec<&PreparedGraphic>, centered: bool, bs: f64, v: &mut VState, elems: &mut Vec<Elem>, ctx: &Context| {
         if pending.is_empty() {
             return;
         }
@@ -133,7 +218,8 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
         let h = pending.iter().map(|g| g.gbox.height).fold(0.0, f64::max);
         let d = pending.iter().map(|g| g.gbox.depth).fold(0.0, f64::max);
         let mut x = if centered { ((tw - w) / 2.0).max(0.0) } else { 0.0 };
-        let b = add_box(h, d, y, prev);
+        let b = v.add_box(h, d, bs, ls, lsl);
+        v.minipage = false;
         for g in pending.drain(..) {
             elems.push(Elem::Image { x, baseline: b, gbox: g.gbox, resource: g.resource.clone(), provenance: Provenance::Source(ctx.source(g.span)), demo: g.demo });
             x += g.gbox.width;
@@ -142,11 +228,51 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
     for part in &spec.parts {
         match part {
             FloatPart::Centering => centered = true,
+            FloatPart::Size(cpt) => bs = size_baselineskip(ctx, *cpt),
             FloatPart::Graphic(g) => pending.push(g),
-            FloatPart::ParBreak => flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx),
+            FloatPart::ParBreak => flush(&mut pending, centered, bs, &mut v, &mut elems, ctx),
+            FloatPart::Text { items, style, env_open, env_close, vspace_before, addvspace_before } => {
+                flush(&mut pending, centered, bs, &mut v, &mut elems, ctx);
+                if *vspace_before != 0.0 {
+                    v.vskip(*vspace_before);
+                }
+                if *addvspace_before != 0.0 {
+                    v.addvspace(*addvspace_before);
+                }
+                if let Some(vmode) = env_open {
+                    // `\@trivlist`: `\@topsep` = `\topsep` (+ `\partopsep`
+                    // from vertical mode) + `\parskip` (0), by `\addvspace`.
+                    env_vmode = *vmode;
+                    v.addvspace(topsep + if *vmode { partopsep } else { 0.0 });
+                }
+                let para_bs = match items_size(items) {
+                    0 => bs,
+                    c => size_baselineskip(ctx, c),
+                };
+                ctx.baselineskip_override = Some(para_bs);
+                if let Some(block) = ctx.paragraph_block(items, false, false, false, *style, None) {
+                    let bi = blocks.len();
+                    for (li, line) in block.block.lines.lines.iter().enumerate() {
+                        let b = v.add_box(line.height, line.depth, para_bs, ls, lsl);
+                        elems.push(Elem::Line { block: bi, line: li, baseline: b, height: line.height, depth: line.depth });
+                        if let Some(&sk) = block.vertical.vskip_after.get(li).filter(|sk| **sk != 0.0) {
+                            v.vskip(sk);
+                        }
+                    }
+                    v.minipage = false;
+                    blocks.push(block);
+                }
+                ctx.baselineskip_override = None;
+                if *env_close {
+                    // `\@endparenv`: `\addvspace\@topsepadd`.
+                    v.addvspace(topsep + if env_vmode { partopsep } else { 0.0 });
+                }
+            }
             FloatPart::Caption { items } => {
-                flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
-                y += fp.abovecaptionskip;
+                flush(&mut pending, centered, bs, &mut v, &mut elems, ctx);
+                // `\@caption`: `\par`, `\@parboxrestore`, `\normalsize`, then
+                // `\@makecaption`'s `\vskip\abovecaptionskip`.
+                v.vskip(fp.abovecaptionskip);
                 let Some(mut block) = ctx.paragraph_block(items, false, true, false, ParaStyle::Plain, None) else { continue };
                 let lines = &block.block.lines.lines;
                 // `\@caption` runs `\@parboxrestore` before `\@makecaption`, so
@@ -160,15 +286,19 @@ fn build_box(ctx: &mut Context, blocks: &mut Vec<BuiltBlock>, spec: &FloatSpec, 
                 }
                 let bi = blocks.len();
                 for (li, line) in block.block.lines.lines.iter().enumerate() {
-                    let b = add_box(line.height, line.depth, &mut y, &mut prev_depth);
+                    let b = v.add_box(line.height, line.depth, normal_bs, ls, lsl);
                     elems.push(Elem::Line { block: bi, line: li, baseline: b, height: line.height, depth: line.depth });
                 }
+                v.minipage = false;
+                // `\vskip\belowcaptionskip` (article: 0pt).
+                v.vskip(0.0);
                 blocks.push(block);
             }
         }
     }
-    flush(&mut pending, centered, &mut y, &mut prev_depth, &mut elems, ctx);
-    let mut height = y;
+    flush(&mut pending, centered, bs, &mut v, &mut elems, ctx);
+    (ctx.hsize_override, ctx.sloppy, ctx.baselineskip_override) = saved;
+    let mut height = v.y;
     if height > s.text_height_pt {
         ctx.diagnostics.push(Diagnostic::warning(
             "float_too_large",
