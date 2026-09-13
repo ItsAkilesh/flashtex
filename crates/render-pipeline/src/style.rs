@@ -93,6 +93,12 @@ pub struct Stylesheet {
     pub abovedisplayshortskip: Skip,
     pub belowdisplayskip: Skip,
     pub belowdisplayshortskip: Skip,
+    /// amsmath `leqno` (a class or package option): `\veqno` is `\leqno`,
+    /// equation numbers sit at the left of the display.
+    pub leqno: bool,
+    /// amsmath `fleqn`: displays are set flush left, `\@mathmargin`
+    /// (`\leftmargini`) in from the display's left edge.
+    pub fleqn: bool,
     pub script_size_pt: f64,
     pub scriptscript_size_pt: f64,
     pub tolerance: f64,
@@ -203,6 +209,8 @@ impl Stylesheet {
             abovedisplayshortskip: above_short,
             belowdisplayskip: above,
             belowdisplayshortskip: below_short,
+            leqno: false,
+            fleqn: false,
             script_size_pt: script,
             scriptscript_size_pt: scriptscript,
             tolerance: 200.0,
