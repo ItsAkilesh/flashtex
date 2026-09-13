@@ -109,6 +109,30 @@
     {"name": "maketitle", "mode": "text", "origin": "text_dispatch", "arguments": "", "description": "article.cls title block", "renders": true},
     {"name": "newtheorem", "mode": "text", "origin": "text_dispatch", "arguments": "{env}[counter]{name}", "description": "defines a numbered theorem-like environment (amsthm)", "renders": true},
     {"name": "theoremstyle", "mode": "text", "origin": "text_dispatch", "arguments": "{style}", "description": "selects the amsthm style for following \\newtheorem", "renders": true},
+    {"name": "long", "mode": "text", "origin": "expansion", "arguments": "", "description": "prefix: the following definition accepts \\par in arguments", "renders": true},
+    {"name": "protected", "mode": "text", "origin": "expansion", "arguments": "", "description": "e-TeX prefix: the following macro is not expanded inside \\edef-like contexts", "renders": true},
+    {"name": "providecommand", "mode": "text", "origin": "expansion", "arguments": "{\\name}[n][default]{body}", "description": "defines the macro only when \\name is undefined", "renders": true},
+    {"name": "DeclareRobustCommand", "mode": "text", "origin": "expansion", "arguments": "{\\name}[n][default]{body}", "description": "defines or redefines a macro (robustness is not modelled separately)", "renders": true},
+    {"name": "newenvironment", "mode": "text", "origin": "expansion", "arguments": "{env}[n][default]{begin}{end}", "description": "defines an environment run by \\begin{env}/\\end{env}", "renders": true},
+    {"name": "renewenvironment", "mode": "text", "origin": "expansion", "arguments": "{env}[n][default]{begin}{end}", "description": "redefines an environment", "renders": true},
+    {"name": "newcounter", "mode": "text", "origin": "expansion", "arguments": "{counter}[within]", "description": "allocates a counter (\\c@counter, \\thecounter) reset by within", "renders": true},
+    {"name": "setcounter", "mode": "text", "origin": "expansion", "arguments": "{counter}{number}", "description": "sets a counter globally", "renders": true},
+    {"name": "addtocounter", "mode": "text", "origin": "expansion", "arguments": "{counter}{number}", "description": "adds to a counter globally", "renders": true},
+    {"name": "stepcounter", "mode": "text", "origin": "expansion", "arguments": "{counter}", "description": "increments a counter and resets its dependants", "renders": true},
+    {"name": "refstepcounter", "mode": "text", "origin": "expansion", "arguments": "{counter}", "description": "increments a counter and makes it the current \\label value", "renders": true},
+    {"name": "value", "mode": "text", "origin": "expansion", "arguments": "{counter}", "description": "a counter's value in a number context", "renders": true},
+    {"name": "Alph", "mode": "text", "origin": "expansion", "arguments": "{counter}", "description": "a counter as an upper-case letter", "renders": true},
+    {"name": "fnsymbol", "mode": "text", "origin": "expansion", "arguments": "{counter}", "description": "a counter as a footnote symbol", "renders": true},
+    {"name": "newlength", "mode": "text", "origin": "expansion", "arguments": "{\\name}", "description": "allocates a skip register", "renders": true},
+    {"name": "settowidth", "mode": "text", "origin": "expansion", "arguments": "{\\name}{text}", "description": "sets a length from text measured by the expansion pass's box measurer (an approximation)", "renders": true},
+    {"name": "settoheight", "mode": "text", "origin": "expansion", "arguments": "{\\name}{text}", "description": "sets a length from text height (an approximation, as \\settowidth)", "renders": true},
+    {"name": "settodepth", "mode": "text", "origin": "expansion", "arguments": "{\\name}{text}", "description": "sets a length from text depth (an approximation, as \\settowidth)", "renders": true},
+    {"name": "AtBeginDocument", "mode": "text", "origin": "expansion", "arguments": "{code}", "description": "stores code that runs at \\begin{document}", "renders": true},
+    {"name": "AtEndDocument", "mode": "text", "origin": "expansion", "arguments": "{code}", "description": "stores code that runs at \\end{document}", "renders": true},
+    {"name": "makeatother", "mode": "text", "origin": "expansion", "arguments": "", "description": "makes @ an other character again", "renders": true},
+    {"name": "space", "mode": "text", "origin": "expansion", "arguments": "", "description": "expands to one space", "renders": true},
+    {"name": "ignorespaces", "mode": "text", "origin": "expansion", "arguments": "", "description": "skips the spaces that follow", "renders": true},
+    {"name": "jobname", "mode": "text", "origin": "expansion", "arguments": "", "description": "expands to texput", "renders": true},
     {"name": "\\", "mode": "text", "origin": "control_symbol", "arguments": "", "description": "line break; an optional [length] is consumed", "renders": true},
     {"name": ",", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "thin space (3mu)", "renders": true},
     {"name": ":", "mode": "math", "origin": "control_symbol", "arguments": "", "description": "medium space (4mu)", "renders": true},
@@ -484,7 +508,7 @@
       "Source tikz: tokens of tikz.sty, tikz.code.tex (tikz.sty 2025-08-29 v3.1.11a (3.1.11a); pgf 3.1.11a); dependency baseline: pgf, pgfrcs, pgfcore, graphicx, keyval, graphics, trig, pgfsys, xcolor, pgfcomp-version-0-65, pgfcomp-version-1-18, pgffor, pgfkeys, pgfmath"
     ],
     "rows": [
-      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 104, "percent": 25.4},
+      {"set": "kernel", "kind": "command", "canonical": 410, "supported": 128, "percent": 31.2},
       {"set": "kernel", "kind": "environment", "canonical": 30, "supported": 15, "percent": 50},
       {"set": "amsmath", "kind": "command", "canonical": 102, "supported": 35, "percent": 34.3},
       {"set": "amsmath", "kind": "environment", "canonical": 21, "supported": 17, "percent": 81},
@@ -497,6 +521,6 @@
       {"set": "tikz", "kind": "command", "canonical": 43, "supported": 0, "percent": 0},
       {"set": "tikz", "kind": "environment", "canonical": 2, "supported": 0, "percent": 0}
     ],
-    "total": {"canonical": 1003, "supported": 194, "percent": 19.3}
+    "total": {"canonical": 1003, "supported": 218, "percent": 21.7}
   }
 }
