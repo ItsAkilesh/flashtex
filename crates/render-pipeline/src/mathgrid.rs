@@ -334,6 +334,7 @@ pub fn layout_grid(rows: Vec<Vec<MathBox>>, columns: &str, spec: &GridSpec, pitc
         width,
         height,
         depth,
+        ..MathBox::empty()
     }
 }
 
@@ -417,6 +418,7 @@ fn stack_extensible(r: &ml::metrics::Extensible, wanted: f64) -> MathBox {
         height,
         depth: w - height,
         kind: BoxKind::VBox(children),
+        ..MathBox::empty()
     }
 }
 

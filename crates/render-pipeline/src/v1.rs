@@ -26,6 +26,10 @@ pub const CAP_DISPLAY_LIST: &str = "display-list-v2";
 /// items on the `display_list` line. Accepted only together with
 /// `display-list-v2`; without it image items are never serialised.
 pub const CAP_IMAGES: &str = "display-list-v2-images";
+/// PROPOSAL (`protocol/proposals/display-list-v2-device-color.md`): paints
+/// carry `device_color` (pdfTeX's exact colour operands). Accepted only
+/// together with `display-list-v2`.
+pub const CAP_DEVICE_COLOR: &str = "display-list-v2-device-color";
 
 /// Capabilities the producer accepted for one request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +38,7 @@ pub struct Capabilities {
     pub font_hints: bool,
     pub display_list: bool,
     pub images: bool,
+    pub device_color: bool,
 }
 
 impl Capabilities {
@@ -55,6 +60,10 @@ impl Capabilities {
                 }
                 CAP_DISPLAY_LIST if !caps.display_list => {
                     caps.display_list = true;
+                    accepted.push(r.clone());
+                }
+                CAP_DEVICE_COLOR if !caps.device_color && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {
+                    caps.device_color = true;
                     accepted.push(r.clone());
                 }
                 CAP_IMAGES if !caps.images && requested.iter().any(|c| c == CAP_DISPLAY_LIST) => {

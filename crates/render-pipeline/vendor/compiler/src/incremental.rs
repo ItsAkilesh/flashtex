@@ -417,7 +417,20 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             shift_inlines(content, changes, deltas)
         }
         Block::FigureCaption { content } => shift_inlines(content, changes, deltas),
-        Block::Styled { style: _, content } => shift_inlines(content, changes, deltas),
+        Block::Styled {
+            style: _,
+            content,
+            lists,
+            line_break_before,
+        } => {
+            for frame in lists.iter_mut() {
+                map_span(&mut frame.begin_span, changes, deltas)?;
+            }
+            if let Some(line_break) = line_break_before {
+                map_span(&mut line_break.span, changes, deltas)?;
+            }
+            shift_inlines(content, changes, deltas)
+        }
         Block::ListItem {
             level: _,
             label,
@@ -426,9 +439,18 @@ fn shift_block(block: &mut Block, changes: &[ChangedBytes], deltas: &[isize]) ->
             extra_gap_after_pt: _,
             leftmargin: _,
             widest_label: _,
+            lists,
+            item,
         } => {
             if let Some((_, span)) = label {
                 map_span(span, changes, deltas)?;
+            }
+            for frame in lists.iter_mut() {
+                map_span(&mut frame.begin_span, changes, deltas)?;
+            }
+            if let Some(crate::parser::ItemLabel::Explicit { content, span, .. }) = item {
+                map_span(span, changes, deltas)?;
+                shift_inlines(content, changes, deltas)?;
             }
             shift_inlines(content, changes, deltas)
         }
@@ -476,8 +498,13 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 number_span,
                 span,
                 space_before: _,
+                color: _,
+                color_ranges,
             } => {
                 shift_math_list(list, changes, deltas)?;
+                for (range, _) in color_ranges.iter_mut() {
+                    map_span(range, changes, deltas)?;
+                }
                 if let Some(number_span) = number_span {
                     map_span(number_span, changes, deltas)?;
                 }
@@ -553,6 +580,22 @@ fn shift_inlines(inlines: &mut [Inline], changes: &[ChangedBytes], deltas: &[isi
                 span,
                 space_before: _,
             } => map_span(span, changes, deltas)?,
+            Inline::ColorBox(b) => {
+                map_span(&mut b.span, changes, deltas)?;
+                shift_inlines(&mut b.content, changes, deltas)?;
+            }
+            Inline::Graphic(graphic) => map_span(&mut graphic.span, changes, deltas)?,
+            Inline::Transform(transform) => {
+                let shifted = transform.try_map_spans(
+                    &mut |span| mapped_span(span, changes, deltas),
+                    &mut |inlines| {
+                        let mut owned = inlines.to_vec();
+                        shift_inlines(&mut owned, changes, deltas)?;
+                        Some(owned)
+                    },
+                )?;
+                **transform = shifted;
+            }
         }
     }
     Some(())
@@ -722,6 +765,9 @@ fn block_signature(block: &Block) -> BlockSignature {
         Inline::Footnote { span, .. } => *span,
         Inline::Tabular(table) => table.span,
         Inline::Verbatim { span, .. } => *span,
+        Inline::ColorBox(b) => b.span,
+        Inline::Graphic(graphic) => graphic.span,
+        Inline::Transform(transform) => transform.span,
         Inline::Logo { span, .. } | Inline::Rule { span, .. } | Inline::Kern { span, .. } => *span,
     };
     let first = inlines.first().map(span_of);

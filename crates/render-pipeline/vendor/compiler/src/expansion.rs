@@ -104,6 +104,8 @@ pub const HOST_PRELUDE: &str = "\\let\\setlength\\flashtexundefined
 \\let\\label\\flashtexundefined
 \\let\\verb\\flashtexundefined
 \\let\\:\\flashtexundefined
+\\let\\counterwithin\\flashtexundefined
+\\let\\counterwithout\\flashtexundefined
 \\long\\def\\flashtexdeclaremathop#1#2#3{\\newcommand#2{\\operatorname#1{#3}}}%
 \\expandafter\\def\\expandafter\\DeclareMathOperator\\expandafter{\\csname @ifstar\\endcsname{\\flashtexdeclaremathop*}{\\flashtexdeclaremathop{}}}%
 \\def\\arraystretch{1}%
@@ -177,7 +179,10 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
         skip: Vec::new(),
         verbatim_ends: HashMap::new(),
     };
-    let has_labels = text.contains('*') && LABEL_FORMATS.iter().any(|f| text.contains(&format!("\\{f}*")));
+    // amsmath `\numberwithin[\alph]{..}{..}`: the format is a name the parser
+    // reads, not a `\alph` call for the engine to run on `]`.
+    let has_labels = (text.contains('*') && LABEL_FORMATS.iter().any(|f| text.contains(&format!("\\{f}*"))))
+        || text.contains("\\numberwithin[");
     let has_urls = text.contains("\\url") || text.contains("\\href") || text.contains("\\nolinkurl");
     if !(has_labels
         || has_urls
@@ -219,7 +224,8 @@ fn prepare<'a>(text: &'a str, document: DocumentId) -> Prepared<'a> {
             }
             TokenKind::Command(name)
                 if LABEL_FORMATS.contains(&name.as_str())
-                    && text.as_bytes().get(token.span.end) == Some(&b'*') =>
+                    && (text.as_bytes().get(token.span.end) == Some(&b'*')
+                        || text[..token.span.start].trim_end().ends_with("\\numberwithin[")) =>
             {
                 let format = LABEL_FORMATS.iter().find(|f| **f == name.as_str()).copied().unwrap_or("arabic");
                 for b in &mut bytes[token.span.start + 1..token.span.end] {

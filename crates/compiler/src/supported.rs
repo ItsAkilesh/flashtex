@@ -111,7 +111,7 @@ pub struct Inventory {
 }
 
 /// Text commands that have a dispatch arm but only ever emit a diagnostic.
-pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["includegraphics", "frac", "sqrt"];
+pub const TEXT_DIAGNOSTIC_ONLY: &[&str] = &["frac", "sqrt"];
 
 /// `parser::BUILT_INS` names read only inside another command's argument
 /// (`\maketitle`'s title/author block); on their own they are diagnosed.
@@ -156,8 +156,22 @@ const EXPANSION_COMMANDS: &[(&str, &str, &str)] = &[
 const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("documentclass", "[options]{class}", "records the class and its 10pt/11pt/12pt size option; only the document body is typeset"),
     ("usepackage", "[options]{a,b,c}", "records packages; layout-neutral ones are silent, every other package warns that it is not implemented"),
+    ("definecolor", "[class]{name}{model}{spec}", "colour definition in rgb, cmy, cmyk, gray, RGB, HTML or Gray (model lists pick the target model)"),
+    ("providecolor", "[class]{name}{model}{spec}", "\\definecolor unless the colour is already defined"),
+    ("xdefinecolor", "[class]{name}{model}{spec}", "xcolor synonym of \\definecolor"),
+    ("colorlet", "[class]{name}[model]{expression}", "names an xcolor expression, optionally converted to a model"),
+    ("definecolorset", "[class]{models}{head}{tail}{set}", "defines name,spec;... colours in one go"),
+    ("DefineNamedColor", "{named}{name}{model}{spec}", "driver named colour, as dvipsnam.def uses it"),
+    ("selectcolormodel", "{model}", "xcolor target model: natural, rgb, cmy, cmyk or gray"),
+    ("color", "[model]{expression}", "text colour for the rest of the group; pdfTeX's exact operator values"),
+    ("textcolor", "[model]{expression}{text}", "text in a colour"),
+    ("pagecolor", "[model]{expression}", "page background colour, document-wide"),
+    ("nopagecolor", "", "removes the page background colour"),
+    ("normalcolor", "", "back to the default text colour"),
+    ("colorbox", "[model]{expression}{text}", "text on a filled box \\fboxsep larger than its content"),
+    ("fcolorbox", "[model]{frame}{fill}{text}", "\\colorbox inside a \\fboxrule frame"),
     ("setlength", "{\\length}{dimension}", "preamble \\parskip, and \\parindent of 0pt; other lengths warn"),
-    ("setlist", "[list]{options}", "enumitem itemsep and topsep; other keys warn"),
+    ("setlist", "[list]{options}", "enumitem keys recorded on every matching list; itemsep and topsep also set the built-in layout, other keys warn"),
     ("newcolumntype", "{X}[n]{spec}", "array column type expanded in later tabular specifications"),
     ("arraybackslash", "", "array no-op: \\\\ already ends the row inside p, m and b entries"),
     ("newcommand", "{\\name}[n]{body}", "defines a macro with 0-9 arguments; rejects an existing name"),
@@ -174,7 +188,7 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("ref", "{key}", "number of the labelled item"),
     ("pageref", "{key}", "page number of the labelled item"),
     ("caption", "{...}", "numbered \"Figure N:\" caption inside figure"),
-    ("item", "", "entry of an itemize or enumerate list"),
+    ("item", "[label]", "entry of an itemize, enumerate or description list"),
     ("textbf", "{...}", "bold text"),
     ("textmd", "{...}", "medium-weight text"),
     ("textit", "{...}", "italic text"),
@@ -231,12 +245,21 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("subsubsection", "{...}", "numbered subsubsection heading; starred form unnumbered"),
     ("tableofcontents", "", "article contents list from the previous layout pass"),
     ("eqref", "{key}", "parenthesised equation number of the labelled item"),
+    ("numberwithin", "[\\style]{counter}{parent}", "amsmath: counter reset by parent and printed \\theparent.\\style{counter} (equation, figure, table; theorem counters within section)"),
+    ("counterwithin", "{counter}{parent}", "counter reset by parent and printed \\theparent.\\arabic{counter}; starred form keeps the printed form"),
+    ("counterwithout", "{counter}{parent}", "undoes \\counterwithin; starred form keeps the printed form"),
     ("url", "{url}", "monospaced URL text; links are not clickable"),
     ("href", "{url}{text}", "link text; links are not clickable"),
     ("nolinkurl", "{url}", "monospaced URL text without a link"),
     ("footnote", "[n]{...}", "numbered mark and page-bottom footnote text"),
     ("footnotemark", "[n]", "footnote mark only"),
     ("footnotetext", "[n]{...}", "footnote text without a mark"),
+    ("includegraphics", "*[keys]{file}", "image box in running text (graphicx keys as written)"),
+    ("scalebox", "{x}[y]{...}", "graphics.sty scaled box of the content"),
+    ("resizebox", "*{width}{height}{...}", "graphics.sty box scaled to a width and/or height; ! keeps the aspect ratio"),
+    ("rotatebox", "[keys]{angle}{...}", "graphicx rotated box; the box is the rotated bounding box"),
+    ("reflectbox", "{...}", "graphics.sty box mirrored left to right"),
+    ("graphicspath", "{{dir/}...}", "image search directories; no material"),
     ("clearpage", "", "forces a page break"),
     ("cleardoublepage", "", "forces a page break (one-sided article)"),
     ("TeX", "", "latex.ltx logo: T, kern -.1667em, E lowered .5ex, kern -.125em, X"),
@@ -256,6 +279,10 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("linebreak", "[n]", "line break"),
     ("nolinebreak", "[n]", "accepted no-op"),
     ("vfill", "", "vertical glue filling the rest of the page"),
+    ("columnbreak", "[n]", "multicol: ends the current column of multicols (priority n, default 4)"),
+    ("newcolumn", "", "multicol: ends the current column of multicols, filling it"),
+    ("raggedcolumns", "", "multicol: columns keep their natural height"),
+    ("flushcolumns", "", "multicol: columns are stretched to one height (the default)"),
     ("thispagestyle", "{style}", "accepted; no headers or footers are rendered"),
     ("pagenumbering", "{style}", "accepted; no page numbers are rendered"),
     ("centering", "", "centres the following paragraphs"),
@@ -276,6 +303,20 @@ const TEXT_COMMANDS: &[(&str, &str, &str)] = &[
     ("maketitle", "", "article.cls title block"),
     ("newtheorem", "{env}[counter]{name}", "defines a numbered theorem-like environment (amsthm)"),
     ("theoremstyle", "{style}", "selects the amsthm style for following \\newtheorem"),
+    ("num", "[options]{number}", "siunitx number: digit groups, decimal marker, exponent, uncertainty, as an upright formula"),
+    ("unit", "[options]{units}", "siunitx unit: prefixes, powers, \\per as a power, fraction or solidus; literal m/s"),
+    ("si", "[options]{units}", "siunitx v2 name of \\unit"),
+    ("qty", "[options]{number}{units}", "siunitx quantity: number, unbreakable thin space, unit"),
+    ("SI", "[options]{number}[pre-unit]{units}", "siunitx v2 name of \\qty with an optional pre-unit"),
+    ("numlist", "[options]{numbers}", "siunitx list of ;-separated numbers joined by list-separator and \" and \""),
+    ("numrange", "[options]{number}{number}", "siunitx range: two numbers joined by range-phrase \" to \""),
+    ("qtylist", "[options]{numbers}{units}", "siunitx list of quantities, the unit repeated"),
+    ("qtyrange", "[options]{number}{number}{units}", "siunitx range of quantities, the unit repeated"),
+    ("SIlist", "[options]{numbers}{units}", "siunitx v2 name of \\qtylist"),
+    ("SIrange", "[options]{number}{number}{units}", "siunitx v2 name of \\qtyrange"),
+    ("ang", "[options]{degrees;minutes;seconds}", "siunitx angle with degree, minute and second marks"),
+    ("sisetup", "{options}", "siunitx settings for the following commands (document-global in this model)"),
+    ("DeclareSIUnit", "[options]{\\name}{units}", "defines a siunitx unit macro usable inside \\unit and \\qty"),
 ];
 
 const SIZE_DECLARATIONS: &[&str] = &[
@@ -294,6 +335,56 @@ const SIZE_DECLARATIONS: &[&str] = &[
 /// Math `command_atom` arms and list-level switches, grouped by behaviour:
 /// (names, arguments, description, renders).
 const MATH_STRUCTURES: &[(&[&str], &str, &str, bool)] = &[
+    (&["color"], "[model]{expression}", "colours the rest of the math group", true),
+    (&["textcolor"], "[model]{expression}{body}", "math body in a colour", true),
+    (
+        &["num", "numlist"],
+        "[options]{number}",
+        "siunitx number or ;-separated list inside a formula",
+        true,
+    ),
+    (
+        &["unit", "si"],
+        "[options]{units}",
+        "siunitx unit inside a formula",
+        true,
+    ),
+    (
+        &["qty", "numrange"],
+        "[options]{number}{units}",
+        "siunitx quantity (3mu thin space before the unit) or number range inside a formula",
+        true,
+    ),
+    (
+        &["SI"],
+        "[options]{number}[pre-unit]{units}",
+        "siunitx v2 quantity inside a formula",
+        true,
+    ),
+    (
+        &["qtylist", "SIlist"],
+        "[options]{numbers}{units}",
+        "siunitx list of quantities inside a formula",
+        true,
+    ),
+    (
+        &["qtyrange", "SIrange"],
+        "[options]{number}{number}{units}",
+        "siunitx range of quantities inside a formula",
+        true,
+    ),
+    (
+        &["ang"],
+        "[options]{angle}",
+        "siunitx angle inside a formula",
+        true,
+    ),
+    (
+        &["sisetup"],
+        "{options}",
+        "siunitx settings changed inside a formula",
+        true,
+    ),
     (
         &["rule"],
         "[raise]{dimension}{dimension}",
@@ -606,17 +697,23 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
         "multi-line display; only the last line is numbered",
     ),
     ("multline*", "multi-line display"),
+    (
+        "subequations",
+        "amsmath: displays inside number as the parent number plus a, b, ...; a \\label right after \\begin gets the parent number",
+    ),
     ("figure", "numbered captions; no floating"),
     ("center", "centred paragraphs"),
     ("flushleft", "left-aligned paragraphs"),
     ("flushright", "right-aligned paragraphs"),
     ("quote", "indented paragraphs"),
     ("quotation", "indented paragraphs"),
-    ("itemize", "bulleted list"),
+    ("verse", "indented lines; each \\\\ ends a line"),
+    ("itemize", "bulleted list; article labels per depth, \\item[label]"),
     (
         "enumerate",
-        "numbered list; enumitem [label] templates a, A, i, I, 1",
+        "numbered list; article labels per depth, enumitem label/label*/shortlabels, start and resume",
     ),
+    ("description", "list of bold \\item[term] labels"),
     ("tabular", "table with l/c/r/p columns, rules and multicolumn; with array also >{} <{} !{} m b w and \\extrarowheight"),
     ("tabular*", "table of a given width"),
     ("verbatim", "literal monospaced lines"),
@@ -626,6 +723,14 @@ const TEXT_ENVIRONMENTS: &[(&str, &str)] = &[
     (
         "thebibliography",
         "References section with numbered \\bibitem entries",
+    ),
+    (
+        "multicols",
+        "multicol {n}[preface][premulticols]: balanced columns, laid out by the render pipeline",
+    ),
+    (
+        "multicols*",
+        "multicol {n}[preface][premulticols]: unbalanced columns, laid out by the render pipeline",
     ),
 ];
 
@@ -637,6 +742,12 @@ const PACKAGES: &[(&str, &str, &str)] = &[
         "source text is already decoded as UTF-8",
     ),
     ("fontenc", "T1", "text glyphs are mapped from Unicode"),
+    ("color", "dvipsnames, usenames", "color.sty colours with pdfTeX's exact operator values"),
+    (
+        "xcolor",
+        "natural, rgb, cmy, cmyk, gray, dvipsnames, svgnames, x11names, table",
+        "xcolor 3.02 definitions, expressions and target models with pdfTeX's exact operator values; hsb models, colour series and table colours are diagnosed",
+    ),
     (
         "amsthm",
         "",
@@ -650,12 +761,22 @@ const PACKAGES: &[(&str, &str, &str)] = &[
     (
         "enumitem",
         "shortlabels",
-        "enumerate label templates; \\setlist itemsep/topsep",
+        "list keys (label, start, resume, seps, margins) parsed as options; \\setlist",
     ),
     (
         "geometry",
         "letterpaper, margin=1in",
         "matches the fixed US Letter page with 1in margins",
+    ),
+    (
+        "siunitx",
+        "any \\sisetup keys",
+        "v3 \\num, \\unit, \\qty, lists, ranges, \\ang, \\sisetup and \\DeclareSIUnit; unmodelled keys are diagnosed",
+    ),
+    (
+        "multicol",
+        "",
+        "multicols and multicols* with preface, \\columnbreak, \\raggedcolumns (columns set by the render pipeline)",
     ),
 ];
 
@@ -664,7 +785,8 @@ pub const CANONICAL_TSV: &str = include_str!("../supported/canonical-latex.tsv")
 
 /// Canonical sets, in report order.
 pub const CANONICAL_SETS: &[&str] = &[
-    "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz",
+    "kernel", "amsmath", "amssymb", "enumitem", "geometry", "graphicx", "hyperref", "tikz", "xcolor",
+    "siunitx",
 ];
 
 fn text_description(name: &str) -> String {

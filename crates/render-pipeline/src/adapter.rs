@@ -20,6 +20,7 @@ use flashtex_compiler::{DocumentId, Span};
 use flashtex_class_geometry::{ClassKind, DocumentSetup, GeometryInput, PageStyle};
 
 use crate::display::Diagnostic;
+use flashtex_compiler::color::DeviceColor;
 use crate::style::Stylesheet;
 use crate::RenderOptions;
 
@@ -35,6 +36,8 @@ pub struct TextStyle {
     pub medium: bool,
     /// Shape `sl` (`\slshape`, running heads); `scsl` with `caps`.
     pub slanted: bool,
+    /// The compiler's text colour (`TextStyle::color`): the glyph run's paint.
+    pub color: Option<DeviceColor>,
     /// Small caps (`\scshape`): shape `sc`, or `scit`/`scsl` with
     /// `italic`/`slanted`.
     pub caps: bool,
@@ -171,6 +174,21 @@ pub enum Item {
     /// `typeset::footnotes` (`None` for `\footnotemark`). `span` is the
     /// command token.
     Footnote { number: String, mark: bool, span: Span, text: Option<Vec<Item>> },
+    /// `\colorbox`/`\fcolorbox` (compiler `Inline::ColorBox`).
+    ColorBox(Box<ColorBoxItem>),
+}
+
+/// A `\colorbox`/`\fcolorbox`: `items` set as an `\hbox` on a `fill`
+/// rectangle `sep_pt` larger on every side, inside a `rule_pt` frame of
+/// colour `frame` for `\fcolorbox`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorBoxItem {
+    pub fill: DeviceColor,
+    pub frame: Option<DeviceColor>,
+    pub sep_pt: f64,
+    pub rule_pt: f64,
+    pub items: Vec<Item>,
+    pub span: Span,
 }
 
 /// Which amsmath display alignment a [`ParaPart::Rows`] is (read from the
@@ -467,6 +485,12 @@ pub struct Doc {
     pub limitations: Vec<(&'static str, Span, String)>,
     /// `secnumdepth` in force (numbers in running heads).
     pub secnumdepth: u8,
+    /// `\pagecolor` (compiler `Parsed::page_color`).
+    pub page_color: Option<DeviceColor>,
+    /// The default text colour (compiler `Parsed::default_color`).
+    pub default_color: Option<DeviceColor>,
+    /// The colour of every formula set in one, by `(document, start, end)`.
+    pub math_colors: std::collections::HashMap<(usize, usize, usize), DeviceColor>,
     /// Indices of the blocks after a `\clearpage`/`\cleardoublepage` (see
     /// `clear_page_blocks`).
     pub page_starts: Vec<usize>,
@@ -587,6 +611,8 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                 out.push(CBlock::Styled {
                     style: ParagraphStyle::FlushLeft,
                     content,
+                    lists: Vec::new(),
+                    line_break_before: None,
                 });
             }
             // Set by `crate::toc` from the source command; the block stays
@@ -609,6 +635,8 @@ fn lower_blocks(texts: &[&str], blocks: &[CBlock], stash_titles: bool) -> (Vec<C
                     out.push(CBlock::Styled {
                         style: ParagraphStyle::Center,
                         content: sized(part, size),
+                        lists: Vec::new(),
+                        line_break_before: None,
                     });
                 }
             }
@@ -737,7 +765,8 @@ pub fn adapt_cached(
     );
     // The class's `\parindent` (`size1x.clo`: 15pt / 17pt / 1.5em; `1em` in
     // two-column mode) comes with the resolved frame.
-    style.parindent_pt = parindent(source, size).unwrap_or(if explicit_class.is_some() {
+    let em_ex = ec_em_ex(size, style.family);
+    style.parindent_pt = setlength_in(source, "parindent", size, em_ex).unwrap_or(if explicit_class.is_some() {
         style.parindent_pt
     } else {
         options.default_parindent_pt
@@ -754,11 +783,20 @@ pub fn adapt_cached(
     }
     // amsmath makes `\[` a plain `$$` (see [`ParaPart::Display::bracket`]).
     let amsmath = parsed.packages.iter().any(|p| p == "amsmath");
+    // amsmath's `leqno`/`fleqn` options (global class options reach it too).
+    // Without amsmath, `leqno.clo`/`fleqn.clo` build displays differently
+    // (a zero-width `\eqno`, a `trivlist`), which is not modelled.
+    if amsmath {
+        let package = package_options(source, "amsmath").unwrap_or_default();
+        let has = |name: &str| class_options.split(',').chain(package.split(',')).any(|o| o.trim() == name);
+        style.leqno = has("leqno");
+        style.fleqn = has("fleqn");
+    }
     #[cfg(feature = "amsmath-inline")]
     let mathtools = parsed.packages.iter().any(|p| p == "mathtools");
     // `\setlength{\parskip}{...}`: a fixed skip (no stretch) replaces
     // article's `0pt plus 1pt`.
-    if let Some(pt) = parskip(source, size) {
+    if let Some(pt) = setlength_in(source, "parskip", size, em_ex) {
         style.parskip = crate::style::Skip::fixed(pt);
     }
     let secnumdepth = counter(source, "secnumdepth").unwrap_or(options.default_secnumdepth);
@@ -1163,7 +1201,7 @@ pub fn adapt_cached(
                                 let cells: Vec<MathList> = row.cells.iter().map(|c| strip_tag(texts, c, &mut tag)).collect();
                                 let number = match tag {
                                     Some(t) => Some((t, row.span)),
-                                    None => row.number.clone().map(|n| (n, row.span)),
+                                    None => row.number.clone().map(|n| (format!("({n})"), row.span)),
                                 };
                                 #[cfg(feature = "amsmath-inline")]
                                 let intertext = row
@@ -1196,9 +1234,13 @@ pub fn adapt_cached(
                             let rest = texts.get(span.document.0).and_then(|t| t.get(span.start..)).unwrap_or("");
                             let mut tag = None;
                             let list = strip_tag(texts, &list, &mut tag);
-                            let number = match tag {
-                                Some(t) => Some((t, span)),
-                                None => display_number(inlines, span).filter(|_| rest.starts_with("\\begin{equation}")),
+                            let (list, eqno) = strip_eqno(texts, list, span);
+                            let number = match (tag, eqno) {
+                                (Some(t), _) => Some((t, span)),
+                                (None, Some(n)) => Some(n),
+                                (None, None) => display_number(inlines, span)
+                                    .filter(|_| rest.starts_with("\\begin{equation}"))
+                                    .map(|(n, s)| (format!("({n})"), s)),
                             };
                             let bracket = !amsmath && (rest.starts_with("\\[") || rest.starts_with("\\begin{displaymath}"));
                             parts.push(ParaPart::Display {
@@ -1217,7 +1259,7 @@ pub fn adapt_cached(
                 let only_labels = parts
                     .iter()
                     .all(|p| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. }))));
-                if parts.is_empty() || only_labels {
+                if parts.is_empty() {
                     continue;
                 }
                 // A display environment inside a paragraph (no blank line or
@@ -1229,22 +1271,59 @@ pub fn adapt_cached(
                 let first_span = inlines.iter().map(inline_span).next();
                 let starts_display = matches!(parts.first(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
                 if let (Some(Block::Paragraph { parts: prev_parts, style: prev_style, list: prev_list, .. }), Some(f), Some(p)) = (blocks.last_mut(), first_span, prev_para_end) {
-                    let prev_ends_display = matches!(prev_parts.last(), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                    // Labels only, or a `label_line` (labels then one space).
+                    let label_only = |p: &ParaPart| matches!(p, ParaPart::Lines(items) if items.iter().all(|i| matches!(i, Item::Label { .. } | Item::Space { .. })));
+                    // A display's `\label` is flushed after it as a part of
+                    // labels only.
+                    let prev_ends_display = matches!(prev_parts.iter().rev().find(|p| !label_only(p)), Some(ParaPart::Display { .. } | ParaPart::Rows { .. }));
+                    // Inside `quote` and friends or a list item, the same
+                    // environment (and item) continues.
+                    let same_list = match (list.as_ref(), prev_list.as_ref()) {
+                        (None, None) => true,
+                        (Some(g), Some(pg)) => g.label.is_none() && g.level == pg.level && g.margins == pg.margins,
+                        _ => false,
+                    };
                     let same_flow = !eject_before
                         && vspace_before == 0.0
                         && unit.addvspace_before == 0.0
-                        && styled.is_none()
-                        && list.is_none()
+                        && styled.unwrap_or_default() == *prev_style
+                        && same_list
                         && !caption
-                        && env_open.is_none()
-                        && *prev_style == ParaStyle::Plain
-                        && prev_list.is_none();
+                        && env_open.is_none();
                     if same_flow && (starts_display || prev_ends_display) && gap_continues(texts, p, f) {
+                        if only_labels {
+                            // A `\label` outside the display, still in the
+                            // paragraph's horizontal mode (`\begin{subequations}
+                            // \label{..}`): a whatsit TeX sets on a line of its
+                            // own when a display or the paragraph end follows.
+                            // Kept as a `label_line` (labels, then one space)
+                            // that text following it absorbs below.
+                            let mut items: Vec<Item> = parts
+                                .into_iter()
+                                .flat_map(|p| match p {
+                                    ParaPart::Lines(items) => items,
+                                    _ => Vec::new(),
+                                })
+                                .collect();
+                            items.push(Item::Space { style: TextStyle::default(), factor: 1000, no_break: false });
+                            prev_parts.push(ParaPart::Lines(items));
+                            prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
+                            continue;
+                        }
+                        if matches!(parts.first(), Some(ParaPart::Lines(_))) && prev_parts.last().is_some_and(label_only) {
+                            if let (Some(ParaPart::Lines(labels)), Some(ParaPart::Lines(head))) = (prev_parts.pop(), parts.first_mut()) {
+                                let at = usize::from(matches!(head.first(), Some(Item::Space { .. })));
+                                head.splice(at..at, labels.into_iter().filter(|i| matches!(i, Item::Label { .. })));
+                            }
+                        }
                         prev_parts.extend(parts);
                         prev_para_end = inlines.iter().map(inline_span).last().or(prev_para_end);
                         after_heading = false;
                         continue;
                     }
+                }
+                if only_labels {
+                    continue;
                 }
                 prev_para_end = inlines.iter().map(inline_span).last();
                 // `\noindent` right before the paragraph's first material.
@@ -1320,8 +1399,52 @@ pub fn adapt_cached(
         diagnostics: Vec::new(),
         limitations,
         secnumdepth,
+        page_color: parsed.page_color,
+        default_color: parsed.default_color,
+        math_colors: math_colors(&parsed.blocks),
         page_starts,
     }
+}
+
+/// `(document, start, end)` of every formula with a colour of its own
+/// (`Inline::Math::color`); colours changed inside a formula
+/// (`color_ranges`) are not painted: placed math glyphs carry no spans.
+fn math_colors(blocks: &[flashtex_compiler::parser::Block]) -> std::collections::HashMap<(usize, usize, usize), DeviceColor> {
+    use flashtex_compiler::parser::Block as CBlock;
+    fn walk(inlines: &[Inline], out: &mut std::collections::HashMap<(usize, usize, usize), DeviceColor>) {
+        for inline in inlines {
+            match inline {
+                Inline::Math { color: Some(c), span, .. } => {
+                    out.insert((span.document.0, span.start, span.end), *c);
+                }
+                Inline::Footnote { text: Some(text), .. } => walk(text, out),
+                Inline::Tabular(t) => {
+                    for list in t.inline_lists() {
+                        walk(list, out);
+                    }
+                }
+                Inline::ColorBox(b) => walk(&b.content, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = std::collections::HashMap::new();
+    for block in blocks {
+        match block {
+            CBlock::Paragraph(content)
+            | CBlock::FigureCaption { content }
+            | CBlock::Styled { content, .. }
+            | CBlock::ListItem { content, .. }
+            | CBlock::Heading { content, .. } => walk(content, &mut out),
+            CBlock::TitleBlock { title, authors, date } => {
+                walk(title, &mut out);
+                walk(authors, &mut out);
+                walk(date.as_deref().unwrap_or(&[]), &mut out);
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Blocks whose `eject_before` comes from `\clearpage`/`\cleardoublepage`
@@ -1375,6 +1498,9 @@ fn inline_span(i: &Inline) -> Span {
         | Inline::Rule { span, .. }
         | Inline::Kern { span, .. } => *span,
         Inline::Tabular(t) => t.span,
+        Inline::ColorBox(b) => b.span,
+        Inline::Graphic(g) => g.span,
+        Inline::Transform(t) => t.span,
     }
 }
 
@@ -1865,7 +1991,8 @@ fn math_row_of(inlines: &[Inline], span: Span) -> Option<(Span, &flashtex_compil
 
 /// `list` without the atoms the compiler makes of `\tag{..}`/`\tag*{..}` (the
 /// label text and the `2\quad` glue it inserts, both spanning the command);
-/// the label, parentheses removed, goes to `tag`.
+/// the label as set goes to `tag`: `\tagform@`'s parentheses for `\tag`,
+/// none for `\tag*`.
 fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathList {
     use flashtex_compiler::math::Nucleus;
     let is_tag = |span: Span| texts.get(span.document.0).and_then(|t| t.get(span.start..)).is_some_and(|r| r.starts_with("\\tag"));
@@ -1873,14 +2000,33 @@ fn strip_tag(texts: &[&str], list: &MathList, tag: &mut Option<String>) -> MathL
     for a in &list.atoms {
         if is_tag(a.span) {
             if let Nucleus::Text(s) | Nucleus::Symbol(s) = &a.nucleus {
-                let inner = s.strip_prefix('(').and_then(|r| r.strip_suffix(')')).unwrap_or(s);
-                *tag = Some(inner.to_string());
+                *tag = Some(s.clone());
             }
             continue;
         }
         atoms.push(a.clone());
     }
     MathList { atoms }
+}
+
+/// `$$ ... \eqno <number> $$` (or `\leqno`): the compiler reads the
+/// primitive as text, so the atoms from it on are dropped and the source
+/// after the command (before the closing `$$`) becomes the number, set as
+/// is; its span starts at the command, which tells the typesetter the side.
+fn strip_eqno(texts: &[&str], list: MathList, display: Span) -> (MathList, Option<(String, Span)>) {
+    let src = texts.get(display.document.0).copied().unwrap_or("");
+    let is_eqno = |start: usize| src.get(start..).is_some_and(|r| r.starts_with("\\eqno") || r.starts_with("\\leqno"));
+    let Some(i) = list.atoms.iter().position(|a| a.span.document == display.document && is_eqno(a.span.start)) else {
+        return (list, None);
+    };
+    let start = list.atoms[i].span.start;
+    let end = display.end.min(src.len()).max(start);
+    let body = &src[start..end];
+    let body = body.strip_prefix("\\leqno").or_else(|| body.strip_prefix("\\eqno")).unwrap_or(body).trim_end();
+    let body = body.strip_suffix("$$").unwrap_or(body).trim();
+    let mut atoms = list.atoms;
+    atoms.truncate(i);
+    (MathList { atoms }, Some((body.to_string(), Span::in_document(display.document, start, end))))
 }
 
 /// Whether the source between two consecutive pieces of material keeps TeX
@@ -2112,6 +2258,11 @@ pub fn parskip(source: &str, size: u32) -> Option<f64> {
 
 /// The last `\setlength{\<name>}{<dimen>}` of the source, in points.
 fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
+    setlength_in(source, name, size, None)
+}
+
+/// [`setlength`] with the document's own `em`/`ex` ([`ec_em_ex`]).
+fn setlength_in(source: &str, name: &str, size: u32, em_ex: Option<(f64, f64)>) -> Option<f64> {
     let needle = format!("{{\\{name}}}");
     let mut from = 0;
     let mut found = None;
@@ -2121,7 +2272,7 @@ fn setlength(source: &str, name: &str, size: u32) -> Option<f64> {
         if let Some(r) = rest.strip_prefix(needle.as_str()) {
             if let Some(r) = r.trim_start().strip_prefix('{') {
                 if let Some(end) = r.find('}') {
-                    found = parse_dimen(&r[..end], size).or(found);
+                    found = parse_dimen_in(&r[..end], size, em_ex).or(found);
                 }
             }
         }
@@ -2148,6 +2299,34 @@ pub fn parse_dimen_pt(s: &str, size: u32) -> Option<f64> {
 }
 
 fn parse_dimen(s: &str, size: u32) -> Option<f64> {
+    parse_dimen_in(s, size, None)
+}
+
+/// `em`/`ex` of the body font a document's own preamble and `\setlist`
+/// keys are evaluated in, when it differs from the class size.
+/// `\usepackage[T1]{fontenc}` without `lmodern` selects `t1cmr.fd`'s EC
+/// fonts ([`Family::ComputerModern`](crate::fonts::Family)) before the
+/// user's `\setlength`s run, and TeX's `em`/`ex` are that font's
+/// `\fontdimen6`/`\fontdimen5`. `tftopl` (TeX Live 2026): ecrm1000 QUAD
+/// 0.999756 XHEIGHT 0.43045, ecrm1095 QUAD 0.994328 XHEIGHT 0.4304495,
+/// ecrm1200 QUAD 0.978928 XHEIGHT 0.43045; pdflatex reports
+/// `\setlength{\parskip}{0.65em}` as 7.07704pt at 11pt. Class-load values
+/// (article's `\labelsep .5em`) were evaluated in OT1 `cmr` and keep
+/// [`parse_dimen`]'s class size.
+fn ec_em_ex(size: u32, family: crate::fonts::Family) -> Option<(f64, f64)> {
+    if family != crate::fonts::Family::ComputerModern {
+        return None;
+    }
+    let (design, quad, xheight) = match size {
+        12 => (12.0, 0.978928, 0.43045),
+        11 => (10.949997, 0.994328, 0.4304495),
+        _ => (10.0, 0.999756, 0.43045),
+    };
+    Some((design * quad, design * xheight))
+}
+
+/// [`parse_dimen`] with explicit `em`/`ex` (points) when `em_ex` is set.
+fn parse_dimen_in(s: &str, size: u32, em_ex: Option<(f64, f64)>) -> Option<f64> {
     let s = s.trim();
     let split = s.find(|c: char| c.is_ascii_alphabetic())?;
     let (num, unit) = s.split_at(split);
@@ -2157,10 +2336,11 @@ fn parse_dimen(s: &str, size: u32) -> Option<f64> {
         11 => 10.95,
         _ => 10.0,
     };
+    let (em, ex) = em_ex.unwrap_or((body, body * 0.430556));
     Some(match unit.trim() {
         "pt" => v,
-        "em" => v * body,
-        "ex" => v * body * 0.430556,
+        "em" => v * em,
+        "ex" => v * ex,
         "in" => v * 72.27,
         "cm" => v * 72.27 / 2.54,
         "mm" => v * 72.27 / 25.4,
@@ -2233,7 +2413,9 @@ fn list_seps_with(source: &str, env: &str, depth: usize, size: u32, style: &Styl
                     set_parsep(&mut seps, 0.0);
                 }
                 _ => {
-                    let Some(pt) = parse_dimen(value, size) else { continue };
+                    // `em`/`ex` are the EC body font's, as pdfTeX resolves
+                    // \setlength/\setlist lengths (hw-residuals-2).
+                    let Some(pt) = parse_dimen_in(value, size, ec_em_ex(size, style.family)) else { continue };
                     match key {
                         "topsep" => seps.topsep = pt,
                         "partopsep" => seps.partopsep = pt,
@@ -3596,13 +3778,15 @@ fn items_cached(
         let s = inline_span(i);
         (s.start.wrapping_sub(start), s.end.wrapping_sub(start)).hash(&mut h);
         match i {
-            Inline::Text { text, .. } => {
+            Inline::Text { text, style, .. } => {
                 0u8.hash(&mut h);
                 text.hash(&mut h);
+                style.color.hash(&mut h);
             }
             Inline::LineBreak { .. } => 1u8.hash(&mut h),
-            Inline::Math { list, display, number, .. } => {
+            Inline::Math { list, display, number, color, .. } => {
                 2u8.hash(&mut h);
+                color.hash(&mut h);
                 display.hash(&mut h);
                 number.hash(&mut h);
                 crate::incremental::hash_math(list, &mut h);
@@ -3634,6 +3818,10 @@ fn items_cached(
             Inline::Verbatim { text, .. } => {
                 11u8.hash(&mut h);
                 text.hash(&mut h);
+            }
+            Inline::ColorBox(b) => {
+                15u8.hash(&mut h);
+                format!("{b:?}").hash(&mut h);
             }
             Inline::Logo { logo, style, .. } => {
                 12u8.hash(&mut h);
@@ -3671,6 +3859,14 @@ fn items_cached(
                         crate::incremental::hash_math(cell, &mut h);
                     }
                 }
+            }
+            Inline::Graphic(g) => {
+                16u8.hash(&mut h);
+                format!("{g:?}").hash(&mut h);
+            }
+            Inline::Transform(t) => {
+                17u8.hash(&mut h);
+                format!("{t:?}").hash(&mut h);
             }
         }
     }
@@ -3782,6 +3978,27 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(span);
                 factor = 1000;
             }
+            Inline::ColorBox(b) => {
+                // `\leavevmode\hbox{...}` like a tabular: one box.
+                let span = b.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                let content = items_from_inlines_styled(texts, &b.content, styles, labels, size, heading, compiler_weight);
+                items.push(Item::ColorBox(Box::new(ColorBoxItem {
+                    fill: b.fill,
+                    frame: b.frame,
+                    sep_pt: b.fboxsep_pt,
+                    rule_pt: b.fboxrule_pt,
+                    items: content,
+                    span,
+                })));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
+            }
             Inline::LineBreak { span } => {
                 let skip_pt = line_break_skip(text_of(span.document), span.end, size).unwrap_or(0.0);
                 items.push(Item::LineBreak { skip_pt });
@@ -3789,6 +4006,33 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 prev_span = Some(*span);
                 factor = 1000;
                 after_control_word = false;
+            }
+            // #169's Inline::Graphic/Transform have no pipeline conversion
+            // arm yet (#170 is not in this integration: its own diff
+            // depends on a wire-protocol capability refactor -- a new
+            // Wire { transforms } field threaded through display.rs's JSON
+            // writers -- that collides with #158's already-merged
+            // Wire { device_color } and needs real reconciliation, not a
+            // mechanical merge). Degrade like the compiler's own Core 14
+            // layout does: an image leaves no space for now, and a
+            // transform box keeps its content set untransformed, so
+            // nothing is silently dropped.
+            Inline::Graphic(g) => {
+                prev_end = Some(g.span.end);
+                prev_span = Some(g.span);
+                after_control_word = false;
+            }
+            Inline::Transform(t) => {
+                let span = t.span;
+                let gap = space_between(prev_end, prev_span, span, None, after_control_word);
+                let mut gap_style = space_style(texts, styles, prev_end, span, TextStyle::default());
+                gap_style.size_cpt = space_size(texts, prev_end, span, prev_size_cpt, 0);
+                push_gap(&mut items, gap, gap_style, factor);
+                after_control_word = false;
+                items.extend(items_from_inlines_styled(texts, &t.content, styles, labels, size, false, compiler_weight));
+                prev_end = Some(span.end);
+                prev_span = Some(span);
+                factor = 1000;
             }
             Inline::HFill { span } | Inline::HSpace { span, .. } | Inline::TextGlue { span, .. } => {
                 // Explicit horizontal glue: the interword space read before
@@ -3956,6 +4200,7 @@ fn items_from_inlines_styled(texts: &[&str], inlines: &[Inline], styles: &[Style
                 // `\tiny`..`\Huge` come from the compiler's scoping.
                 let Inline::Text { style: compiler_style, .. } = &**inline else { unreachable!() };
                 style.size_cpt = declared_size(compiler_style.size, size);
+                style.color = compiler_style.color;
                 if heading {
                     // `\@startsection` sets `\bfseries`; the compiler's
                     // heading styles start bold and `\normalfont`/
